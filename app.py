@@ -17061,28 +17061,6 @@ def api_workspace_os_bootstrap():
             try: out["payslips"] = [dict(x) for x in db.execute("SELECT * FROM workspace_payslips WHERE workspace_id=? AND user_id=? ORDER BY year DESC,month DESC,created DESC LIMIT 24", (wsid, uid)).fetchall()]
             except Exception: out["payslips"] = []
             try:
-                if can_people:
-                    out["team_attendance_today"] = [dict(x) for x in db.execute("""
-                        SELECT a.*, u.name user_name, u.email user_email FROM attendance_logs a
-                        LEFT JOIN users u ON u.id=a.user_id
-                        WHERE a.workspace_id=? AND a.work_date=?
-                        ORDER BY lower(u.name)
-                    """, (wsid, today)).fetchall()]
-                else:
-                    out["team_attendance_today"] = []
-            except Exception: out["team_attendance_today"] = []
-            try:
-                if can_people:
-                    out["team_leaves"] = [dict(x) for x in db.execute("""
-                        SELECT l.*, u.name user_name, u.email user_email FROM leave_requests l
-                        LEFT JOIN users u ON u.id=l.user_id
-                        WHERE l.workspace_id=?
-                        ORDER BY CASE WHEN l.status='pending' THEN 0 ELSE 1 END, l.created DESC LIMIT 200
-                    """, (wsid,)).fetchall()]
-                else:
-                    out["team_leaves"] = []
-            except Exception: out["team_leaves"] = []
-            try:
                 # Workspace OS now includes a lightweight timesheet payload so the
                 # employee hub can show/log project hours without a full Timesheet page load.
                 out["timelogs"] = [dict(x) for x in db.execute("SELECT id,date,task_name,project_id,task_id,hours,minutes,comments,status,billable,start_time,end_time,created FROM time_logs WHERE workspace_id=? AND user_id=? ORDER BY date DESC, created DESC LIMIT 90", (wsid, uid)).fetchall()]

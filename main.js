@@ -1,4 +1,143 @@
 
+// Favicon is now served as PNG via /favicon.ico — no JS override needed
+
+
+(function(){
+'use strict';
+
+window._pfSWReady = false;
+window._pfPushSub = null;
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js?v=dm-instant-20260515c', {scope:'/'})
+    .then(function(reg){ try{reg.update&&reg.update();}catch(_e){}
+      window._pfSWReady = true;
+      window._pfSWReg   = reg;
+
+      navigator.serviceWorker.addEventListener('message', function(e){
+        if(e.data && e.data.type === 'PF_NAVIGATE'){
+          var u=e.data.url || '/';
+          try{ window.location.href=u; }catch(_e){ window.location.hash=u; }
+          window.focus();
+        }
+        if(e.data && e.data.type === 'PF_NOTIF_CLICK'){
+          window.focus();
+          var tag=e.data.tag;
+          var handlerFired=false;
+          var dmUser='';
+          try{var clickUrl=String(e.data.url||'');var q=new URLSearchParams((clickUrl.split('?')[1])||'');dmUser=String(q.get('user')||q.get('sender')||q.get('peer')||e.data.peer_id||e.data.sender||'').trim();}catch(_u){}
+          if(tag&&window._pfNotifHandlers&&window._pfNotifHandlers[tag]){
+            try{window._pfNotifHandlers[tag]();}catch(err){}
+            delete window._pfNotifHandlers[tag];
+            handlerFired=true;
+          }
+          // Fallback: if the stored handler is gone (e.g. page refreshed since the
+          // notification was shown) but we have sender/kind in the payload, route
+          // in-app directly instead of doing nothing.
+          if(!handlerFired && (e.data.kind==='dm' || dmUser)){
+            try{
+              sessionStorage.removeItem('pt_dm_manual_lock');
+              window.__ptDmManualLock=null;
+              if(dmUser){sessionStorage.setItem('pt_open_dm_user',dmUser);sessionStorage.setItem('pt_dm_notification_target',dmUser);}
+              else {sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}
+            }catch(_){}
+            if(dmUser && typeof window.__ptOpenDmPeer==='function'){
+              try{window.__ptOpenDmPeer(dmUser,'sw-notification');}catch(_){}
+            }else if(dmUser){
+              window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:dmUser,source:'sw-notification'}}));
+            }
+          }
+        }
+      });
+
+      _pfSetupPush(reg);
+    })
+    .catch(function(e){ console.warn('[PF] SW registration failed:', e); });
+}
+
+function _pfUrlB64(base64String){
+  var padding='='.repeat((4-base64String.length%4)%4);
+  var base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  var rawData=window.atob(base64);
+  var outputArray=new Uint8Array(rawData.length);
+  for(var i=0;i<rawData.length;++i) outputArray[i]=rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function _pfSetupPush(reg){
+  if(!('PushManager' in window)) return;
+
+  var vapidKey='';
+  try{
+    var r=await fetch('/api/push/vapid-key',{credentials:'include'});
+    var d=await r.json();
+    vapidKey=d.publicKey||'';
+  }catch(e){ return; }
+
+  if(!vapidKey){
+    return;
+  }
+
+  var perm = Notification.permission;
+  if(perm==='default'){
+    perm = await Notification.requestPermission();
+  }
+  if(perm!=='granted') return;
+
+  var existingSub = await reg.pushManager.getSubscription();
+  if(existingSub){
+    window._pfPushSub = existingSub;
+    _pfSendSubToServer(existingSub);
+    return;
+  }
+
+  try{
+    var sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true, applicationServerKey: _pfUrlB64(vapidKey)
+    });
+    window._pfPushSub = sub;
+    _pfSendSubToServer(sub);
+  }catch(e){
+    console.warn('[PF] Push subscribe failed:', e);
+  }
+}
+
+function _pfSendSubToServer(sub){
+  // Guard: only send push subscription if React has confirmed an active session.
+  // window._pfCurrentUser is set by the App useEffect after /api/auth/me succeeds,
+  // preventing a redundant 401 call before auth state is resolved.
+  if(!window._pfCurrentUser) return;
+  var subJson = sub.toJSON();
+  fetch('/api/push/subscribe',{
+    method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+      endpoint: subJson.endpoint, keys: subJson.keys
+    })
+  }).catch(function(){});
+}
+
+window._pfLastPollTrigger = null;
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible'){
+    if(typeof window._pfOnVisible === 'function'){
+      window._pfOnVisible();
+    }
+  }
+});
+
+window._pfPushUnsubscribe = async function(){
+  if(window._pfPushSub){
+    try{
+      await window._pfPushSub.unsubscribe();
+      fetch('/api/push/unsubscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:window._pfPushSub.endpoint})});
+      window._pfPushSub = null;
+    }catch(e){}
+  }
+};
+
+})();
+
+
+
 (function(){
 'use strict';
 
@@ -18,17 +157,19 @@ window._pfStartApp=function(){
 /* ── bind htm to React.createElement so html`...` works throughout ── */
 const html=htm.bind(React.createElement);
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
-
-/* ─── useDebounce — debounce a value by the given delay (ms) ─── */
-function useDebounce(value, delay) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
 const RC=Recharts;
+
+window.ptPinFreshTaskRow=window.ptPinFreshTaskRow||function(task,ttlMs){
+  try{
+    if(!task||!task.id)return;
+    ttlMs=ttlMs||30000;
+    window.__ptTaskPins=window.__ptTaskPins||{};
+    window.__ptTaskPins[String(task.id)]={task:task,until:Date.now()+ttlMs};
+    Object.keys(window.__ptTaskPins).forEach(function(k){try{if(Number(window.__ptTaskPins[k].until||0)<Date.now())delete window.__ptTaskPins[k];}catch(_){}});
+    try{ if(typeof ptInstantCacheDel==='function')ptInstantCacheDel('/api/app-data'); }catch(_){ }
+  }catch(_){ }
+};
+
 
 /* ─── AppLoader — single gradient loading screen (replaces old plain white loader) ── */
 function AppLoader(){
@@ -95,15 +236,13 @@ const _apiCleanMessage = (message, status) => {
   return msg;
 };
 const _API_SILENT_PREFIXES = [
-  '/api/auth/me',
-  '/api/app-data',
-  '/api/presence',
-  '/api/notifications',
-  '/api/reminders/due',
-  '/api/calls/incoming',
-  '/api/dm/unread',
-  '/api/timelogs',
-  '/api/files' // missing/deleted attachment must not look like auth failure
+  '/api/auth/me',          // expected on logged-out/expired sessions
+  '/api/app-data',         // background refresh; show banner in UI, not toast spam
+  '/api/presence',         // heartbeat/polling
+  '/api/notifications',    // SSE/fallback polling
+  '/api/reminders/due',    // reminder polling
+  '/api/dm/unread',        // DM polling
+  '/api/timelogs'          // dashboard background poll
 ];
 const _apiShouldToast = (url, status) => {
   const u = String(url || '').split('?')[0];
@@ -111,110 +250,22 @@ const _apiShouldToast = (url, status) => {
   if (status === 401 || status === 403) return false;
   return true;
 };
-
-function ptMergeProfileNonEmpty(base, patch){
-  const out={...(base||{})};
-  Object.entries(patch||{}).forEach(([k,v])=>{
-    if(v===undefined||v===null)return;
-    if(typeof v==='string' && v.trim()==='' && out[k])return;
-    out[k]=v;
-  });
-  return out;
-}
-function ptNormalizeProfilePayload(p, fallback={}){
-  const x=ptMergeProfileNonEmpty(fallback,p||{});
-  if(!x.birth_date && x.birthday)x.birth_date=x.birthday;
-  if(!x.birthday && x.birth_date)x.birthday=x.birth_date;
-  if(!x.dob && x.birth_date)x.dob=x.birth_date;
-  if(!x.birth_date_visibility && x.dob_visibility)x.birth_date_visibility=x.dob_visibility;
-  if(!x.dob_visibility && x.birth_date_visibility)x.dob_visibility=x.birth_date_visibility;
-  return x;
-}
-
-function ptInstantCacheScope(){
-  try{
-    const u=window.PT_CURRENT_USER||window._pfCurrentUser||{};
-    const w=(window.PT_WORKSPACE||{}).workspace_id||u.workspace_id||u.workspace_id_from_me||'';
-    const id=u.id||'';
-    return (w||id)?(':'+String(w||'noworkspace')+':'+String(id||'nouser')):'';
-  }catch(_){return '';}
-}
-function ptInstantCacheKey(key){
-  const k=String(key||'');
-  // App-data must be scoped. A global /api/app-data cache from a previous
-  // workspace/user caused dashboards to open with all counters as zero.
-  if(k.startsWith('/api/app-data')) return 'pt_instant_cache'+ptInstantCacheScope()+':'+k;
-  return 'pt_instant_cache:'+k;
-}
+function ptInstantCacheKey(key){return 'pt_instant_cache:'+String(key||'');}
 function ptInstantCacheGet(key,fallback){
-  try{const isApp=String(key||'').startsWith('/api/app-data');const raw=sessionStorage.getItem(ptInstantCacheKey(key))||(!isApp?localStorage.getItem(ptInstantCacheKey(key)):null);if(!raw)return fallback;const p=JSON.parse(raw);const data=p&&p.data!==undefined?p.data:fallback;if(isApp&&data&&data.partial)return fallback;return data;}catch(_){return fallback;}
+  try{const raw=sessionStorage.getItem(ptInstantCacheKey(key))||localStorage.getItem(ptInstantCacheKey(key));if(!raw)return fallback;const p=JSON.parse(raw);const data=p&&p.data!==undefined?p.data:fallback;if(String(key||'').startsWith('/api/app-data')&&data&&data.partial)return fallback;return data;}catch(_){return fallback;}
 }
 function ptInstantCacheSet(key,data){
-  try{const payload=JSON.stringify({at:Date.now(),data});sessionStorage.setItem(ptInstantCacheKey(key),payload);if(!String(key||'').startsWith('/api/app-data'))localStorage.setItem(ptInstantCacheKey(key),payload);}catch(_){}
+  try{const payload=JSON.stringify({at:Date.now(),data});sessionStorage.setItem(ptInstantCacheKey(key),payload);localStorage.setItem(ptInstantCacheKey(key),payload);}catch(_){}
 }
-
-function ptMakeTaskClientKey(){
-  try{return 'ctk_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);}catch(_){return 'ctk_'+String(Date.now());}
-}
-function ptTaskTombstones(){
-  try{return JSON.parse(localStorage.getItem('pt_task_tombstones')||'{}')||{};}catch(_){return {};}
-}
-function ptSaveTaskTombstones(x){
-  try{localStorage.setItem('pt_task_tombstones',JSON.stringify(x||{}));}catch(_){}
-}
-function ptMarkTaskDeleted(id){
-  if(!id)return;
-  const x=ptTaskTombstones();
-  x[String(id)]=Date.now()+30*60*1000;
-  Object.keys(x).forEach(k=>{if(Number(x[k]||0)<Date.now())delete x[k];});
-  ptSaveTaskTombstones(x);
-}
-function ptIsTaskDeleted(id){
-  if(!id)return false;
-  const x=ptTaskTombstones();
-  return Number(x[String(id)]||0)>Date.now();
-}
-function ptMergeTasksStable(prevTasks, serverTasks){
-  const now=Date.now();
-  const prev=Array.isArray(prevTasks)?prevTasks:[];
-  const srv=(Array.isArray(serverTasks)?serverTasks:[]).filter(t=>t&&!String(t.deleted_at||'').trim()&&!ptIsTaskDeleted(t.id));
-  const byId=new Map();
-  const byKey=new Map();
-  prev.forEach(t=>{if(!t)return; if(t.id)byId.set(String(t.id),t); if(t.client_task_key)byKey.set(String(t.client_task_key),t);});
-  const out=[]; const seenId=new Set(); const seenKey=new Set();
-  srv.forEach(st=>{
-    const local=(st.client_task_key&&byKey.get(String(st.client_task_key)))||(st.id&&byId.get(String(st.id)))||null;
-    const merged={...(local||{}),...st,_pending:false,_syncing:false,_localTs:(local&&local._localTs)||Date.now()};
-    if(merged.id)seenId.add(String(merged.id));
-    if(merged.client_task_key)seenKey.add(String(merged.client_task_key));
-    out.push(merged);
-  });
-  // Keep optimistic/recent tasks while Railway app-data/Redis catches up. This is
-  // the core fix for Temp -> vanish after 10/20 sec: stale app-data is no longer
-  // allowed to erase a just-created task until it has had enough time to appear
-  // in the DB-backed payload or fail visibly.
-  prev.forEach(t=>{
-    if(!t||String(t.deleted_at||'').trim()||ptIsTaskDeleted(t.id))return;
-    const id=String(t.id||''); const key=String(t.client_task_key||'');
-    if((id&&seenId.has(id))||(key&&seenKey.has(key)))return;
-    const keep = t._pending || t._syncing || Number(t._recentLocalUntil||0)>now || (Number(t._localTs||0) && now-Number(t._localTs||0)<180000);
-    if(keep)out.unshift(t);
-  });
-  const final=[]; const fids=new Set(); const fkeys=new Set();
-  out.forEach(t=>{
-    const id=String(t.id||''); const key=String(t.client_task_key||'');
-    if(id&&fids.has(id))return;
-    if(key&&fkeys.has(key))return;
-    if(id)fids.add(id); if(key)fkeys.add(key);
-    final.push(t);
-  });
-  return final;
+function ptInstantCacheDel(key){
+  try{sessionStorage.removeItem(ptInstantCacheKey(key));localStorage.removeItem(ptInstantCacheKey(key));}catch(_){}
 }
 const _apiNotifyError = (url, message, status) => {
   message = _apiCleanMessage(message, status);
   const key = `${status || 0}:${String(url || '').split('?')[0]}:${message || ''}`;
   const now = Date.now();
-  if ((now - (_apiErrorSeen.get(key) || 0)) < 120000) return; // prevent polling-error toast spam
+  // One visible toast per unique API problem every 2 minutes. Background polls are console-only.
+  if ((now - (_apiErrorSeen.get(key) || 0)) < 120000) return;
   _apiErrorSeen.set(key, now);
   console.warn('[API]', status || 'network', url, message);
   if (!_apiShouldToast(url, status)) return;
@@ -222,7 +273,7 @@ const _apiNotifyError = (url, message, status) => {
 };
 const _apiRequest = async (u, opts = {}) => {
   const method = (opts.method || 'GET').toUpperCase();
-  const timeoutMs = opts.timeoutMs || (method === 'GET' ? 15000 : 30000);
+  const timeoutMs = opts.timeoutMs || (method === 'GET' ? 10000 : 15000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -242,7 +293,7 @@ const _apiRequest = async (u, opts = {}) => {
     const data = await _apiRead(r);
     if (!r.ok) {
       const message = data?.error || data?.message || `HTTP ${r.status}`;
-      if (!(r.status === 401 && !u.startsWith('/api/auth/'))) _apiNotifyError(u, message, r.status);
+      if(!opts.quiet) _apiNotifyError(u, message, r.status);
       return { ok:false, error:message, status:r.status, data };
     }
     const etag = r.headers.get('ETag');
@@ -258,14 +309,14 @@ const _apiRequest = async (u, opts = {}) => {
     return data;
   } catch (e) {
     if (e.name === 'AbortError') return { ok:false, error:'Request timed out', status:408 };
-    _apiNotifyError(u, e.message || 'Network error', 0);
+    if(!opts.quiet) _apiNotifyError(u, e.message || 'Network error', 0);
     return { ok:false, error:e.message || 'Network error', status:0 };
   } finally {
     clearTimeout(timer);
   }
 };
 
-const ptPollManager=(()=>{let timer=null,inFlight=null,sseHealthy=true,lastTick=0;const handlers=new Set();const tick=async(force=false)=>{const now=Date.now();if(!force&&now-lastTick<25000)return inFlight;if(document.hidden&&!force)return inFlight;lastTick=now;if(inFlight)return inFlight;inFlight=api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{handlers.forEach(h=>{try{h(d||{});}catch(e){console.warn('[poll handler]',e);}});return d;}).finally(()=>{inFlight=null;});return inFlight;};const start=()=>{if(timer)return;timer=setInterval(()=>{if(!document.hidden&&!sseHealthy)tick(false);},30000);};const setSseHealthy=v=>{sseHealthy=!!v;if(sseHealthy&&timer){clearInterval(timer);timer=null;}else if(!sseHealthy)start();};/* SCALABILITY: expose getter so DM component can check SSE health without coupling to SSE internals */const isSseHealthy=()=>sseHealthy;return{subscribe(h){handlers.add(h);return()=>handlers.delete(h);},tick,start,setSseHealthy,isSseHealthy};})();
+const ptPollManager=(()=>{let timer=null,inFlight=null,sseHealthy=true,lastTick=0;const handlers=new Set();const tick=async(force=false)=>{const now=Date.now();if(!force&&now-lastTick<25000)return inFlight;lastTick=now;if(inFlight)return inFlight;inFlight=api.get('/api/poll',{quiet:true,timeoutMs:6000}).then(d=>{handlers.forEach(h=>{try{h(d||{});}catch(e){console.warn('[poll handler]',e);}});return d;}).finally(()=>{inFlight=null;});return inFlight;};const start=()=>{if(timer)return;timer=setInterval(()=>{if(!document.hidden&&!sseHealthy)tick(false);},30000);};const setSseHealthy=v=>{sseHealthy=!!v;if(sseHealthy&&timer){clearInterval(timer);timer=null;}else if(!sseHealthy)start();};return{subscribe(h){handlers.add(h);return()=>handlers.delete(h);},tick,start,setSseHealthy};})();
 window.ptPollManager=ptPollManager;
 function _ptDmThreadPeerFromUrl(u){
   try{
@@ -285,15 +336,12 @@ function _ptDmLocalThreadCache(peer){
 }
 const api={
   _abort(){ _apiAbortCtrl.abort(); _apiAbortCtrl = new AbortController(); },
-  get:(u,o)=>{
+  get:(u,opts={})=>{
     const peer=_ptDmThreadPeerFromUrl(u);
     if(peer){
       try{
         const active=String(window.__ptActiveDmUser||window.__ptDmActivePollUser||'');
-        const allowNoActive=(o&&o.allowNoActiveDmFetch)===true;
-        // Hard stop for the bug seen in logs: old timers/components must not keep
-        // fetching other DM threads and repainting the current chat. Only the
-        // current active peer may hit /api/dm/:id. Stale callers get cached data.
+        const allowNoActive=(opts&&opts.allowNoActiveDmFetch)===true;
         if(active&&String(peer)!==active){
           console.debug('[DM] suppressed stale thread request', {peer,active,url:u});
           return Promise.resolve(_ptDmLocalThreadCache(peer));
@@ -307,17 +355,14 @@ const api={
     const now=Date.now();
     const hit=_apiInflight.get(key);
     if(hit && (now-hit.at)<2500) return hit.promise;
-    const p=_apiRequest(u,o||{}).finally(()=>{setTimeout(()=>{const cur=_apiInflight.get(key);if(cur&&cur.promise===p)_apiInflight.delete(key);},500);});
+    const p=_apiRequest(u,opts).finally(()=>{setTimeout(()=>{const cur=_apiInflight.get(key);if(cur&&cur.promise===p)_apiInflight.delete(key);},500);});
     _apiInflight.set(key,{at:now,promise:p});
     return p;
   },
-  post:(u,b,o)=>{
-    if(String(u||'').split('?')[0]==='/api/dm/typing') return Promise.resolve({ok:true});
-    return _apiRequest(u,{...(o||{}),method:'POST',headers:{'Content-Type':'application/json',...((o&&o.headers)||{})},body:JSON.stringify(b ?? {})});
-  },
-  put:(u,b,o)=>_apiRequest(u,{...(o||{}),method:'PUT',headers:{'Content-Type':'application/json',...((o&&o.headers)||{})},body:JSON.stringify(b ?? {})}),
-  del:u=>_apiRequest(u,{method:'DELETE'}),
-  upload:(u,fd)=>_apiRequest(u,{method:'POST',body:fd}),
+  post:(u,b,opts={})=>{if(String(u||'').split('?')[0]==='/api/dm/typing')return Promise.resolve({ok:true});return _apiRequest(u,{...opts,method:'POST',headers:{'Content-Type':'application/json',...(opts.headers||{})},body:JSON.stringify(b ?? {})});},
+  put:(u,b,opts={})=>_apiRequest(u,{...opts,method:'PUT',headers:{'Content-Type':'application/json',...(opts.headers||{})},body:JSON.stringify(b ?? {})}),
+  del:(u,opts={})=>_apiRequest(u,{...opts,method:'DELETE'}),
+  upload:(u,fd,opts={})=>_apiRequest(u,{...opts,method:'POST',body:fd}),
 };
 
 const STAGES={
@@ -424,7 +469,7 @@ function AuthScreen({onLogin}){
       const p=new URLSearchParams(window.location.search);
       if(p.get('google_auth')==='1'){
         fetch('/api/auth/me').then(r=>r.ok?r.json():null).then(u=>{
-          if(u&&u.id){history.replaceState(null,'','/');onLogin(u);}
+          if(u&&u.id){history.replaceState(null,'',workspaceBasePath(u));onLogin(u);}
         }).catch(()=>{});
       }
     }catch(e){}
@@ -1767,8 +1812,8 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
                   return html`
                     <div key=${r.id} style=${{display:'flex',flexDirection:'column',alignItems:'center',marginRight:i<upcoming.length-1?28:0,flexShrink:0,position:'relative',zIndex:1,cursor:'pointer'}} onClick=${onViewReminders} title=${r.task_title}>
                       <div style=${{position:'relative'}}>
-                        ${(cu&&cu.avatar_data&&cu.avatar_data.startsWith('data:image'))||(cu&&cu.has_avatar&&cu.id)?
-                          html`<img src=${cu.avatar_data&&cu.avatar_data.startsWith('data:image')?cu.avatar_data:('/api/users/'+encodeURIComponent(cu.id)+'/avatar?v='+encodeURIComponent(cu.avatar_rev||cu.last_active||''))} style=${{width:isNow?28:22,height:isNow?28:22,borderRadius:'50%',objectFit:'cover',border:isNow?'2px solid #22c55e':'2px solid rgba(90,140,255,.35)',boxShadow:isNow?'0 0 0 3px rgba(34,197,94,.2)':'none',transition:'all .18s'}} onError=${e=>{try{e.currentTarget.style.display='none';}catch(_){}}}/>`:
+                        ${cu&&cu.avatar_data&&cu.avatar_data.startsWith('data:image')?
+                          html`<img src=${cu.avatar_data} style=${{width:isNow?28:22,height:isNow?28:22,borderRadius:'50%',objectFit:'cover',border:isNow?'2px solid #22c55e':'2px solid rgba(90,140,255,.35)',boxShadow:isNow?'0 0 0 3px rgba(34,197,94,.2)':'none',transition:'all .18s'}}/>`:
                           html`<div style=${{width:isNow?28:22,height:isNow?28:22,borderRadius:'50%',background:isNow?'linear-gradient(135deg,#22c55e,#16a34a)':'linear-gradient(135deg,#3b82f6,#2563eb)',border:isNow?'2px solid #22c55e':'2px solid rgba(96,165,250,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:isNow?10:8,fontWeight:700,color:isNow?'#fff':'#fff',boxShadow:isNow?'0 0 0 3px rgba(34,197,94,.2)':'0 0 8px rgba(59,130,246,.3)',transition:'all .18s'}}>
                             ${(r.task_title||'?').charAt(0).toUpperCase()}
                           </div>`}
@@ -1903,16 +1948,12 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
 }
 
 /* ─── MemberPicker ────────────────────────────────────────────────────────── */
-function MemberPicker({allUsers,selected,onChange,onlineUsers=new Set()}){
+function MemberPicker({allUsers,selected,onChange}){
   return html`<div style=${{display:'flex',flexWrap:'wrap',gap:7,marginTop:4}}>
     ${safe(allUsers).map(u=>html`
       <button key=${u.id} class=${'chip'+(selected.includes(u.id)?' on':'')}
         onClick=${()=>onChange(selected.includes(u.id)?selected.filter(x=>x!==u.id):[...selected,u.id])}>
-        <div style=${{position:'relative',display:'inline-flex',alignItems:'center'}}>
-          <${Av} u=${u} size=${18}/>
-          ${onlineUsers.has(u.id)?html`<span style=${{position:'absolute',bottom:-1,right:-1,width:6,height:6,borderRadius:'50%',background:'#22c55e',border:'1.5px solid var(--bg)',boxShadow:'0 0 0 1px #22c55e',pointerEvents:'none'}}></span>`:null}
-        </div>
-        <span>${u.name}</span>
+        <${Av} u=${u} size=${18}/><span>${u.name}</span>
         ${selected.includes(u.id)?html`<span style=${{color:'var(--ac2)',fontSize:11}}>✓</span>`:null}
       </button>`)}
   </div>`;
@@ -1958,7 +1999,7 @@ const TYPE_COLORS={task:'#1d4ed8',story:'#15803d',bug:'#b91c1c',epic:'#6d28d9',s
 const TYPE_BG={task:'rgba(29,78,216,0.10)',story:'rgba(21,128,61,0.10)',bug:'rgba(185,28,28,0.10)',epic:'rgba(109,40,217,0.10)',spike:'rgba(180,83,9,0.10)'};
 const TYPE_BORDER={task:'rgba(29,78,216,0.2)',story:'rgba(21,128,61,0.2)',bug:'rgba(185,28,28,0.2)',epic:'rgba(109,40,217,0.2)',spike:'rgba(180,83,9,0.2)'};
 
-function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSetReminder,teams,activeTeam,onlineUsers=new Set()}){
+function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSetReminder,teams,activeTeam}){
   const [title,setTitle]=useState((task&&task.title)||'');
   const [desc,setDesc]=useState((task&&task.description)||'');
   const [pid,setPid]=useState((task&&task.project)||defaultPid||(projects[0]&&projects[0].id)||'');
@@ -2066,12 +2107,16 @@ function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSet
     }
     if(task&&task.id)payload.id=task.id;
     if(!rmEnabled&&!opts.keepOpen){
-      if((payload.stage==='completed'||payload.stage==='production')&&typeof window!=='undefined'){
-        try{window.dispatchEvent(new CustomEvent('pt:task-celebrate',{detail:{title:payload.title||title||'Task',project:payload.project||pid||'',id:payload.id||''}}));}catch(_){ }
-      }
+      // TRUE INSTANT SAVE: close the modal first, then let the parent do the
+      // optimistic UI update + API write in the background. This avoids the
+      // button/spinner feeling stuck while the server sends notifications, writes
+      // activity rows, or waits on slow hosting cold-starts.
       const closeNow=()=>{setSaving(false);onClose();};
-      if(window.ReactDOM&&typeof ReactDOM.flushSync==='function')ReactDOM.flushSync(closeNow);
-      else closeNow();
+      if(window.ReactDOM&&typeof ReactDOM.flushSync==='function'){
+        ReactDOM.flushSync(closeNow);
+      } else {
+        closeNow();
+      }
       setTimeout(()=>Promise.resolve(onSave(payload)).catch(()=>{}),0);
       return payload;
     }
@@ -2362,7 +2407,7 @@ function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSet
 }
 
 /* ─── ProjectDetail ───────────────────────────────────────────────────────── */
-function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,onSetReminder,teams,activeTeam,onlineUsers=new Set()}){
+function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,onSetReminder,teams,activeTeam}){
   const [tab,setTab]=useState('tasks');const [edit,setEdit]=useState(false);
   const [name,setName]=useState(project.name||'');const [desc,setDesc]=useState(project.description||'');
   const [tDate,setTDate]=useState(project.target_date||'');const [color,setColor]=useState(project.color||'#5a8cff');
@@ -2400,6 +2445,7 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
     };
     if(window.ReactDOM&&typeof ReactDOM.flushSync==='function')ReactDOM.flushSync(closeNow);
     else closeNow();
+
     api.put('/api/projects/'+project.id,{name,description:desc,target_date:tDate,color,members,team_id:projTeamId},{quiet:true}).then(saved=>{
       if(saved&&!saved.error){
         setData&&setData(prev=>({...prev,projects:prev.projects.map(p=>p.id===project.id?{...p,...saved,_localTs:Date.now()}:p)}));
@@ -2425,33 +2471,42 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
     }catch(_){}
     onReload();
   };
-  const saveTask=async p=>{
-    let r;
+  const saveTask=p=>{
+    // Fully optimistic + fire-and-forget. The modal closes instantly; the server
+    // confirmation patches the temporary task in the background. This removes the
+    // visible ~2s wait caused by task notifications/email work on the backend.
     if(p.id&&allTasks.find(t=>t.id===p.id)){
-      // UPDATE: optimistic patch
-      setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id?{...t,...p}:t)}));
-      r=await api.put('/api/tasks/'+p.id,p);
-    } else {
-      // CREATE: post then show immediately
-      // Pre-optimistic: show task immediately before API responds
-      const clientTaskKey=ptMakeTaskClientKey();
-      const tempId2='tmp_'+clientTaskKey;
-      const tempT2={...p,project:project.id,id:tempId2,client_task_key:clientTaskKey,created:new Date().toISOString(),_localTs:Date.now(),_recentLocalUntil:Date.now()+180000,_pending:true,_syncing:true};
-      setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[tempT2])}));
-      r=await api.post('/api/tasks',{...p,project:project.id,client_task_key:clientTaskKey},{timeoutMs:15000,quiet:true});
-      if(r&&r.id){
-        setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[{...r,client_task_key:r.client_task_key||clientTaskKey,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])}));
-      } else {
-        setData&&setData(prev=>({...prev,tasks:(prev.tasks||[]).map(t=>t.id===tempId2?{...t,_pending:false,_syncing:false,_failed:true,_recentLocalUntil:Date.now()+180000}:t)}));
-      }
+      setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id?{...t,...p,_pending:true}:t)}));
+      api.put('/api/tasks/'+p.id,p).then(r=>{
+        if(r&&!r.error)setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id?{...t,...r,_localTs:Date.now()}:t)}));
+      }).catch(()=>{onReload&&onReload();});
+      return {...p,_pending:true};
     }
-    // Reconcile: background reload syncs DB state without blocking the optimistic update.
-    // Removed the 2s forced reload (it was making the board feel sluggish after task creation).
-    return r;
+    const tempId2='tmp_'+Date.now();
+    const tempT2={...p,project:project.id,id:tempId2,created:new Date().toISOString(),_localTs:Date.now(),_pending:true};
+    setData&&setData(prev=>({...prev,tasks:[tempT2,...(prev.tasks||[])]}));
+    api.post('/api/tasks',{...p,project:project.id},{quiet:true}).then(r=>{
+      if(r&&r.id){
+        setData&&setData(prev=>{
+          const ts=prev.tasks||[];
+          const hasTmp=ts.some(t=>t.id===tempId2);
+          const hasReal=ts.some(t=>String(t.id)===String(r.id));
+          if(hasTmp&&!hasReal)return{...prev,tasks:ts.map(t=>t.id===tempId2?{...r,_localTs:Date.now()}:t)};
+          if(hasTmp&&hasReal)return{...prev,tasks:ts.filter(t=>t.id!==tempId2)};
+          if(!hasTmp&&hasReal)return{...prev,tasks:ts.map(t=>String(t.id)===String(r.id)?{...t,...r}:t)};
+          return{...prev,tasks:[{...r,_localTs:Date.now()},...ts]};
+        });
+      }else{
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==tempId2)}));
+      }
+    }).catch(()=>{
+      setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===tempId2?{...t,_pending:false,_failed:true}:t)}));
+    });
+    return tempT2;
   };
   const delTask=async id=>{
     setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==id)}));
-    ptMarkTaskDeleted(id); api.del('/api/tasks/'+id,{quiet:true,timeoutMs:12000}).then(()=>setTimeout(()=>onReload(undefined,true),1200)).catch(()=>{});
+    api.del('/api/tasks/'+id).then(()=>setTimeout(()=>onReload(),800)).catch(()=>onReload());
   };
 
   return html`
@@ -2490,7 +2545,7 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
                   ${safe(teams).map(t=>html`<option key=${t.id} value=${t.id}>${t.name} (${parseIdList(t.member_ids).length} members)</option>`)}
                 </select>
               </div>
-              <div><label class="lbl">Members</label><${MemberPicker} allUsers=${allUsers} selected=${members} onChange=${setMembers} onlineUsers=${onlineUsers}/></div>
+              <div><label class="lbl">Members</label><${MemberPicker} allUsers=${allUsers} selected=${members} onChange=${setMembers}/></div>
             </div>
             <div style=${{height:1,background:'var(--bd)',marginBottom:12}}></div>`:html`
             <p style=${{color:'var(--tx2)',fontSize:13,marginBottom:11,lineHeight:1.55}}>${project.description||'No description.'}</p>
@@ -2593,13 +2648,13 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
         </div>
       </div>
 
-      ${showNew?html`<${TaskModal} task=${null} onClose=${()=>setShowNew(false)} onSave=${saveTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam} onlineUsers=${onlineUsers}/>`:null}
-      ${editTask?html`<${TaskModal} task=${editTask} onClose=${()=>setEditTask(null)} onSave=${saveTask} onDel=${delTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]} onlineUsers=${onlineUsers}/>`:null}
+      ${showNew?html`<${TaskModal} task=${null} onClose=${()=>setShowNew(false)} onSave=${saveTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam}/>`:null}
+      ${editTask?html`<${TaskModal} task=${editTask} onClose=${()=>setEditTask(null)} onSave=${saveTask} onDel=${delTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]}/>`:null}
     </div>`;
 }
 
 /* ─── ProjectsView ────────────────────────────────────────────────────────── */
-function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,teams,activeTeam,initialProjectId,onClearInitial,onlineUsers=new Set()}){
+function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,teams,activeTeam,initialProjectId,onClearInitial}){
   const [showNew,setShowNew]=useState(false);const [detail,setDetail]=useState(null);
 
   // Open project from initialProjectId prop OR directly from URL path /projects/<id>
@@ -2632,14 +2687,14 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
     // Push clean URL with project id
     try{
       const slug=detail.id;
-      history.pushState(null,'',ptEntityUrl('projects',slug,cu));
+      history.pushState(null,'',workspaceBasePath(cu)+'projects/'+slug);
       document.title='Project Tracker — '+detail.name+' | Projects';
     }catch(e){}
   } else {
     // Back to /projects when detail closes
     try{
-      if(ptRouteInfo().page==='projects'&&ptRouteInfo().id){
-        history.pushState(null,'',ptEntityUrl('projects','',cu));
+      if(routeViewFromPath(['projects'])==='projects'){
+        history.pushState(null,'',workspaceBasePath(cu)+'projects');
         document.title='Project Tracker — Projects | AI-Powered Team Collaboration';
       }
     }catch(e){}
@@ -2703,7 +2758,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
       if(!Array.isArray(realProj.members)){try{realProj.members=parseIdList(realProj.members);}catch{realProj.members=[];}}
       setData&&setData(prev=>({...prev,projects:prev.projects.map(p=>p.id===tempId?realProj:p)}));
       // Background cache-warm reload (non-blocking, uses injected cache — NOT bust=1)
-      setTimeout(()=>reload(),2000);
+      // SSE triggers reload — no extra delay needed
     }catch(e){
       setData&&setData(prev=>({...prev,projects:prev.projects.filter(p=>!p._pending)}));
       setErr('Error creating project: '+(e.message||'Unknown error'));
@@ -2903,7 +2958,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
                 </div>
               </div>
               <div><label class="lbl">Add Members</label>
-                <${MemberPicker} allUsers=${users} selected=${members} onChange=${setMembers} onlineUsers=${onlineUsers}/></div>
+                <${MemberPicker} allUsers=${users} selected=${members} onChange=${setMembers}/></div>
               ${cu&&(cu.role==='Admin'||cu.role==='Manager')&&teams.length>0?html`
               <div><label class="lbl">Assign to Team <span style=${{fontSize:9,color:'var(--tx3)',fontWeight:400}}>(optional — adds all team members)</span></label>
                 <select class="sel" value=${projTeam} onChange=${e=>setProjTeam(e.target.value)}>
@@ -2924,7 +2979,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
         </div>`:null}
 
       ${detail?html`<${ProjectDetail} project=${detail} allTasks=${tasks} allUsers=${users} cu=${cu}
-        onClose=${()=>setDetail(null)} onReload=${reload} setData=${setData} onSetReminder=${onSetReminder} teams=${teams} activeTeam=${activeTeam} onlineUsers=${onlineUsers||new Set()}/>`:null}
+        onClose=${()=>setDetail(null)} onReload=${reload} setData=${setData} onSetReminder=${onSetReminder} teams=${teams} activeTeam=${activeTeam}/>`:null}
     </div>`;
 }
 
@@ -2933,7 +2988,7 @@ const STAGE_DAYS={backlog:0,planning:7,development:21,code_review:28,testing:35,
 const STAGE_PCT={backlog:0,planning:10,development:35,code_review:55,testing:70,uat:80,release:90,production:95,completed:100,blocked:null};
 function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
 
-function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initialStage,initialPriority,initialAssignee,initialTaskId,onClearInitialTask,teams,activeTeam,onlineUsers=new Set()}){
+function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initialStage,initialPriority,initialAssignee,initialTaskId,onClearInitialTask,teams,activeTeam}){
   const [mode,setMode]=useState('kanban');
   const [pid,setPid]=useState('all');
   const [teamF,setTeamF]=useState('all');
@@ -2943,7 +2998,7 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
   const [dueF,setDueF]=useState('all');
   const [typeF,setTypeF]=useState('all');
   const [search,setSearch]=useState('');
-  const debouncedSearch=useDebounce(search,250);
+  const [showFilters,setShowFilters]=useState(!!(initialStage||initialPriority));
   const [showResolved,setShowResolved]=useState(true);
   const [sortCol,setSortCol]=useState(null);
   const [sortDir,setSortDir]=useState('asc');
@@ -2963,34 +3018,35 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
   },[]);
 
   useEffect(()=>{
+    if(!initialTaskId)return;
+    let cancelled=false;
+    const openTask=(t)=>{
+      if(!t||cancelled)return;
+      setEditT(t);
+      if(t.project)setPid(t.project);
+      setShowResolved(true);
+      onClearInitialTask&&onClearInitialTask();
+      try{history.replaceState(null,'',workspaceBasePath(cu)+'tasks');}catch(e){}
+    };
+    const existing=safe(tasks).find(x=>String(x.id)===String(initialTaskId));
+    if(existing){openTask(existing);return;}
+    // Deep links from email can arrive before app-data has this task.
+    // Fetch the exact task by ID, inject it into state, then open the modal.
+    api.get('/api/tasks/'+encodeURIComponent(initialTaskId),{quiet:true}).then(t=>{
+      if(t&&t.id&&!cancelled){
+        setData&&setData(prev=>({ ...prev, tasks:[t,...safe(prev.tasks).filter(x=>String(x.id)!==String(t.id))] }));
+        openTask(t);
+      }
+    }).catch(()=>{});
+    return()=>{cancelled=true;};
+  },[initialTaskId,tasks]);
+
+  useEffect(()=>{
     if(initialStage){setStageF(initialStage);setShowFilters(true);}
     if(initialStage==='completed'){setShowResolved(true);}
     if(initialPriority){setPriF(initialPriority);setShowFilters(true);}
     if(initialAssignee==='me'&&cu){setAssF(cu.id);setShowFilters(true);}
   },[initialStage,initialPriority,initialAssignee,cu]);
-
-  useEffect(()=>{
-    if(!initialTaskId||!safe(tasks).length)return;
-    const t=safe(tasks).find(x=>String(x.id)===String(initialTaskId));
-    if(t){
-      setShowResolved(true);
-      setPid('all');setTeamF('all');setPriF('all');setStageF('all');setAssF('all');setDueF('all');setSearch('');
-      setEditT(t);
-      onClearInitialTask&&onClearInitialTask();
-      try{history.replaceState(null,'',ptEntityUrl('tasks',String(t.id),cu));}catch(e){}
-    }
-  },[initialTaskId,tasks,onClearInitialTask]);
-
-  useEffect(()=>{
-    try{
-      const ri=ptRouteInfo();
-      if(editT&&editT.id){
-        history.replaceState(null,'',ptEntityUrl('tasks',String(editT.id),cu));
-      }else if(ri.page==='tasks'&&ri.id){
-        history.replaceState(null,'',ptEntityUrl('tasks','',cu));
-      }
-    }catch(e){}
-  },[editT&&editT.id,cu&&cu.workspace_id]);
 
   const RESOLVED_STAGES=new Set(['completed']);
 
@@ -3018,7 +3074,7 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
         const byAssignee=teamFilterMemberIds&&t.assignee&&teamFilterMemberIds.has(t.assignee);
         if(!byTeamId&&!byAssignee)return false;
       }
-      if(debouncedSearch){const sq=debouncedSearch.toLowerCase();if(!t.title.toLowerCase().includes(sq)&&!t.id.toLowerCase().includes(sq))return false;}
+      if(search){const sq=search.toLowerCase();if(!t.title.toLowerCase().includes(sq)&&!t.id.toLowerCase().includes(sq))return false;}
       if(dueF!=='all'&&t.due){
         const d=new Date(t.due);d.setHours(0,0,0,0);
         if(dueF==='overdue'&&d>=today)return false;
@@ -3030,7 +3086,7 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       if(sprintFilter&&t.sprint!==sprintFilter)return false;
       return true;
     });
-  },[tasks,pid,teamF,teamFilterMemberIds,priF,stageF,assF,dueF,debouncedSearch,showResolved,sprintFilter,typeF]);
+  },[tasks,pid,teamF,teamFilterMemberIds,priF,stageF,assF,dueF,search,showResolved,sprintFilter,typeF]);
 
   const toggleSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
 
@@ -3071,8 +3127,6 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
   // Guard: prevent concurrent saves for the same task id (stops double PUT on rapid submits)
   const _savingTaskIds=useRef(new Set());
   const saveT=async p=>{
-    // Concurrent-save guard — drop the second call if same task is already in-flight
-    const taskKey=p.id?String(p.id):'new_'+Date.now();
     if(p.id&&_savingTaskIds.current.has(String(p.id)))return;
     if(p.id)_savingTaskIds.current.add(String(p.id));
     let r;
@@ -3083,30 +3137,48 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       r=await api.put('/api/tasks/'+p.id,p);
     } else {
       // CREATE: pre-optimistic — show task card INSTANTLY before API returns
-      const clientTaskKey=ptMakeTaskClientKey();
-      const tempTaskId='tmp_'+clientTaskKey;
+      const tempTaskId='tmp_'+Date.now();
       const tempTask={
-        ...p, id:tempTaskId, client_task_key:clientTaskKey,
+        ...p, id:tempTaskId,
         created:new Date().toISOString(),
-        _localTs:Date.now(),_recentLocalUntil:Date.now()+180000,_pending:true,_syncing:true
+        _localTs:Date.now(),_pending:true
       };
-      setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[tempTask])}));
-      // API call in background; stale app-data cannot remove this temp/recent task.
-      r=await api.post('/api/tasks',{...p,client_task_key:clientTaskKey},{timeoutMs:15000,quiet:true});
-      if(r&&r.id){
-        setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[{...r,client_task_key:r.client_task_key||clientTaskKey,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])}));
-      } else {
-        setData&&setData(prev=>({...prev,tasks:(prev.tasks||[]).map(t=>t.id===tempTaskId?{...t,_pending:false,_syncing:false,_failed:true,_recentLocalUntil:Date.now()+180000}:t)}));
-      }
+      setData&&setData(prev=>({...prev,tasks:[tempTask,...(prev.tasks||[])]}));
+      // API call in background. Do not block the modal/button on email/push side effects.
+      api.post('/api/tasks',p,{quiet:true}).then(real=>{
+        if(real&&real.id){
+          try{window.ptPinFreshTaskRow&&window.ptPinFreshTaskRow(real);}catch(_){}
+          // Guard against race: SSE-triggered load() may have already added the real task
+          // while the temp (_pending) is still present → dedup instead of double-adding.
+          setData&&setData(prev=>{
+            const ts=prev.tasks||[];
+            const hasTmp=ts.some(t=>t.id===tempTaskId);
+            const hasReal=ts.some(t=>String(t.id)===String(real.id));
+            if(hasTmp&&!hasReal)return{...prev,tasks:ts.map(t=>t.id===tempTaskId?{...real,_localTs:Date.now()}:t)};
+            if(hasTmp&&hasReal)return{...prev,tasks:ts.filter(t=>t.id!==tempTaskId)};
+            if(!hasTmp&&hasReal)return{...prev,tasks:ts.map(t=>String(t.id)===String(real.id)?{...t,...real}:t)};
+            return{...prev,tasks:[{...real,_localTs:Date.now()},...ts]};
+          });
+        } else {
+          setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==tempTaskId)}));
+        }
+      }).catch(()=>{
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==tempTaskId)}));
+      });
+      r=tempTask;
     }
-    // NOTE: celebration is fired by pt:task-celebrate event (dispatched by TaskModal before save),
-    // so we do NOT call triggerTaskCelebration here to avoid double badge/confetti.
+    // Trigger celebration if task just completed
+    if(p.stage==='completed'||p.stage==='production'){
+      const tTitle=p.title||(safe(tasks).find(t=>t.id===p.id)||{}).title||'Task';
+      triggerTaskCelebration(tTitle,p.project,p.id||'');
+    }
+    // SSE (task_updated) already triggers load() — no extra reload needed
     return r;
     }finally{if(p.id)_savingTaskIds.current.delete(String(p.id));}
   };
   const delT=async id=>{
     setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==id)}));
-    ptMarkTaskDeleted(id); api.del('/api/tasks/'+id,{quiet:true,timeoutMs:12000}).then(()=>setTimeout(()=>reload(undefined,true),1200)).catch(()=>{});
+    api.del('/api/tasks/'+id).then(()=>reload()).catch(()=>reload());
   };
   const quickStage=async(tid,stage)=>{
     const autoPct=STAGE_PCT[stage];
@@ -3436,8 +3508,8 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
           </div>
         </div>`:null}
 
-      ${editT?html`<${TaskModal} task=${editT} onClose=${()=>setEditT(null)} onSave=${saveT} onDel=${delT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]} onlineUsers=${onlineUsers}/>`:null}
-      ${newT?html`<${TaskModal} task=${null} onClose=${()=>setNewT(false)} onSave=${saveT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam||null} onlineUsers=${onlineUsers}/>`:null}
+      ${editT?html`<${TaskModal} task=${editT} onClose=${()=>setEditT(null)} onSave=${saveT} onDel=${delT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]}/>`:null}
+      ${newT?html`<${TaskModal} task=${null} onClose=${()=>setNewT(false)} onSave=${saveT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam||null}/>`:null}
     </div>`;
 }
 
@@ -3450,7 +3522,7 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [teamSearch,setTeamSearch]=useState('');
   const [roleOptions,setRoleOptions]=useState(ROLES);
-  useEffect(()=>{api.get('/api/workspace/roles',{quiet:true,timeoutMs:12000}).then(r=>{if(r&&r.ok)setRoleOptions([...(r.items||[]).map(x=>x.name)].filter(Boolean));}).catch(()=>{});},[]);
+  useEffect(()=>{api.get('/api/workspace/roles',{quiet:true,timeoutMs:6000}).then(r=>{if(r&&r.ok)setRoleOptions([...(r.items||[]).map(x=>x.name)].filter(Boolean));}).catch(()=>{});},[]);
   const teamDropRef=useRef(null);
   useEffect(()=>{
     if(!teamDropOpen)return;
@@ -4233,40 +4305,6 @@ function ptCallStoreSet(callId,status){try{if(!callId)return;const all=JSON.pars
 function ptSetActiveCallUsers(ids){try{localStorage.setItem('ptActiveCallUsers:v1',JSON.stringify(Array.from(ids||[]).filter(Boolean)));window.dispatchEvent(new CustomEvent('pt_active_call_users',{detail:{users:Array.from(ids||[]).filter(Boolean)}}));}catch{}}
 function ptGetActiveCallUsers(){try{return new Set(JSON.parse(localStorage.getItem('ptActiveCallUsers:v1')||'[]')||[]);}catch{return new Set();}}
 function ptClearActiveCallUsers(){try{localStorage.removeItem('ptActiveCallUsers:v1');window.dispatchEvent(new CustomEvent('pt_active_call_users',{detail:{users:[]}}));}catch{}}
-/** Open a new tab with a friendly loading page instead of about:blank.
- *  Must be called synchronously inside a user-gesture handler so the
- *  browser doesn't block the popup.  Once the Meet URL is ready, set
- *  win.location.href to navigate the tab to the real meeting. */
-function openMeetLoadingWindow(){
-  const win=null;
-  if(!win)return null;
-  try{
-    win.document.open();
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting to Google Meet…</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px}svg{animation:spin 1.2s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}h1{font-size:20px;font-weight:600;color:#f1f5f9}p{font-size:14px;color:#94a3b8}</style>
-<style id="wsos-v34-professional-fix">
-.wsos-wrap.compact{max-width:1180px;margin:14px auto 40px;padding:0 12px}.wsos-hero{min-height:58px;padding:12px 16px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.wsos-hero h2{margin:0;font-size:22px}.wsos-hero p{margin:3px 0 0;color:var(--tx2);font-size:12px}.wsos-actions{display:flex;gap:8px;align-items:center}.wsos-tabs{margin:10px 0;display:flex;gap:6px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px}.wsos-tabs button{border:0;background:transparent;color:var(--tx2);padding:8px 12px;border-radius:999px;font-weight:800;font-size:12px;cursor:pointer}.wsos-tabs button.active{background:rgba(104,96,255,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(104,96,255,.35)}.wsos-panel,.wsos-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px}.wsos-grid{display:grid;grid-template-columns:1fr;gap:12px}.wsos-grid.two{grid-template-columns:1fr 1fr}.wsos-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.wsos-card-head b{font-size:14px}.wsos-card-head span,.wsos-row span,.wsos-empty{display:block;color:var(--tx2);font-size:12px;margin-top:3px}.wsos-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.wsos-metrics>div{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:12px}.wsos-metrics b{display:block;font-size:22px}.wsos-quick{display:flex;gap:8px;margin:12px 0}.wsos-form{display:grid;grid-template-columns:repeat(12,1fr);gap:8px;margin-top:10px}.wsos-form .span1{grid-column:span 1}.wsos-form .span2{grid-column:span 2}.wsos-form .span3{grid-column:span 3}.wsos-form .span4{grid-column:span 4}.wsos-form .span5{grid-column:span 5}.wsos-form .span12{grid-column:span 12}.wsos-form label{display:block;font-size:11px;color:var(--tx2);font-weight:800;text-transform:uppercase;margin-bottom:4px}.wsos-form textarea{min-height:70px}.wsos-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}.wsos-row:last-child{border-bottom:0}.wsos-pill{display:inline-flex;align-items:center;border:1px solid rgba(104,96,255,.35);background:rgba(104,96,255,.14);color:var(--accent);border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;white-space:nowrap}.wsos-pill.good{color:#29b36a;background:rgba(41,179,106,.12);border-color:rgba(41,179,106,.28)}.wsos-pill.warn{color:#ff9a3c;background:rgba(255,154,60,.12);border-color:rgba(255,154,60,.28)}.wsos-balance{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}.wsos-balance-card{border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(255,255,255,.035)}.wsos-balance-card span{display:block;color:var(--tx2);font-size:11px;margin-top:4px}.wsos-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin:8px 0}.wsos-bar i{display:block;height:100%;background:linear-gradient(90deg,#6860ff,#a855f7);border-radius:99px}.wsos-table{width:100%;border-collapse:collapse;margin-top:10px}.wsos-table th,.wsos-table td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.wsos-table th{color:var(--tx2);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.wsos-lock,.wsos-empty{border:1px dashed var(--line);border-radius:14px;padding:18px;text-align:center;color:var(--tx2)}
-    .wos-file-input{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}.wos-file-label{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--wos-soft);border:1px dashed color-mix(in srgb,var(--wos-ac) 55%,var(--wos-line));color:var(--wos-tx);border-radius:12px;padding:10px 12px;min-height:40px;font-weight:900;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wos-file-label small{color:var(--wos-muted);font-weight:800;overflow:hidden;text-overflow:ellipsis}.wos-section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.wos-balance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.wos-balance{background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:15px;padding:12px}.wos-balance b{display:block;font-size:20px}.wos-balance small{color:var(--wos-muted);font-size:11px;font-weight:900}.wos-two-col{display:grid;grid-template-columns:minmax(560px,1.35fr) minmax(480px,.95fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-doc-grid{display:grid;grid-template-columns:minmax(560px,1.1fr) minmax(520px,.9fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-action-strip{background:color-mix(in srgb,var(--wos-ac) 8%,var(--wos-card));border:1px solid color-mix(in srgb,var(--wos-ac) 35%,var(--wos-line));border-radius:16px;padding:12px;margin-top:12px}.wos-mini-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}.wos-mini-day{min-height:46px;border-radius:12px;background:var(--wos-soft);border:1px solid var(--wos-line);padding:6px;font-size:11px}.wos-mini-day.has{background:color-mix(in srgb,#22c55e 12%,var(--wos-soft));border-color:rgba(34,197,94,.25)}@media(max-width:1050px){.wos-two-col,.wos-doc-grid{grid-template-columns:1fr}.wos-balance-grid{grid-template-columns:repeat(2,1fr)}}
-    @media(max-width:900px){.wsos-grid.two,.wsos-metrics,.wsos-balance{grid-template-columns:1fr 1fr}.wsos-form .span1,.wsos-form .span2,.wsos-form .span3,.wsos-form .span4,.wsos-form .span5{grid-column:span 6}}@media(max-width:620px){.wsos-grid.two,.wsos-metrics,.wsos-balance{grid-template-columns:1fr}.wsos-hero{flex-direction:column;align-items:flex-start}.wsos-form>*{grid-column:span 12!important}}
-</style>
-
-
-<style id="wos-v48-profile-polish">
-  .wos-overlay{z-index:21990!important;background:rgba(4,7,18,.62)!important;backdrop-filter:blur(10px)!important}
-  .wos-drawer{z-index:22000!important;background:var(--wos-card)!important;color:var(--wos-tx)!important;border:1px solid var(--wos-line)!important;box-shadow:0 30px 90px rgba(0,0,0,.42)!important;overflow:auto!important}
-  .wos-profile-title{display:flex;align-items:center;gap:12px;min-width:0}.wos-profile-title h3{font-size:20px;letter-spacing:-.02em}.wos-profile-title p{max-width:720px;line-height:1.45}
-  .wos-profile-tabs{position:sticky;top:0;z-index:2;background:var(--wos-card);border-bottom:1px solid var(--wos-line);padding:10px 0;margin-bottom:14px}.wos-profile-tabs button{min-height:32px;padding:7px 12px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--wos-muted);font-weight:900;cursor:pointer}.wos-profile-tabs button.active{background:color-mix(in srgb,var(--wos-ac) 16%,var(--wos-card));border-color:color-mix(in srgb,var(--wos-ac) 35%,var(--wos-line));color:var(--wos-ac)}
-  .wos-drawer .wos-card{box-shadow:none}.wos-drawer .wos-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wos-drawer .wos-edit-grid[style*="repeat(4"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wos-drawer .inp,.wos-drawer .sel{min-height:42px;width:100%;font-size:13px}.wos-drawer textarea.inp{min-height:96px}
-  .wos-policy-pillbox{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.wos-policy-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--wos-line);background:var(--wos-soft);border-radius:999px;padding:6px 9px;font-size:11px;font-weight:900;color:var(--wos-tx)}
-  .wos-action-strip .inp,.wos-action-strip .sel,.wos-action-strip .wos-input{min-height:42px!important}.wos-file-label{justify-content:flex-start!important;min-width:180px!important;min-height:44px!important;padding:10px 14px!important}.wos-file-label span{flex:0 0 auto}.wos-file-label small{min-width:0;flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .wos-action-strip h3{margin:0 0 10px}.wos-section-title h3{margin:0}.wos-section-title p{max-width:560px;line-height:1.45}.wos-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wos-field{border:1px solid var(--wos-line);background:var(--wos-soft);border-radius:14px;padding:11px 12px;min-height:58px}.wos-field small{display:block;color:var(--wos-muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:900;margin-bottom:5px}.wos-field b{display:block;color:var(--wos-tx);font-size:13px;word-break:break-word}
-  @media(max-width:860px){.wos-drawer{left:12px!important;right:12px!important;top:12px!important;bottom:12px!important;width:auto!important}.wos-drawer .wos-edit-grid,.wos-drawer .wos-edit-grid[style*="repeat(4"],.wos-field-grid{grid-template-columns:1fr!important}}
-</style>
-
-</head><body><svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" stroke="#334155" stroke-width="4"/><path d="M24 4a20 20 0 0 1 20 20" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/></svg><h1>Connecting to Google Meet…</h1><p>Please wait while your meeting room is being created.</p></body></html>`);
-    win.document.close();
-  }catch(e){}
-  return win;
-}
 function renderChatContent(text){
   const raw=String(text||'');
   const safe=escapeHtml(raw);
@@ -4300,7 +4338,7 @@ function renderChatContent(text){
       actions=`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button data-pt-call-action="popup" data-pt-call-id="${escapeHtml(callId)}" data-pt-call-meet="${escapeHtml(meetUrl)}" data-pt-call-from="${escapeHtml(from)}" data-pt-call-peer="${escapeHtml(callerId)}" style="border:0;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;background:#22c55e;color:white;cursor:pointer">Accept</button><button data-pt-call-action="reject" data-pt-call-id="${escapeHtml(callId)}" data-pt-call-meet="${escapeHtml(meetUrl)}" data-pt-call-from="${escapeHtml(from)}" data-pt-call-peer="${escapeHtml(callerId)}" style="border:0;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;background:#475569;color:white;cursor:pointer">Dismiss</button></div>`;
     }
     const title=isEnded?'📞 Call ended':(isOngoing?'Call in progress':'Video call');
-    const body=isEnded?'Call ended':(isOngoing?'This call is already active.':(escapeHtml(from)+' is calling.'));
+    const body=isEnded?'Call ended':(isOngoing?'Both users joined this call.':(escapeHtml(from)+' is calling you.'));
     return `<div style="min-width:230px;max-width:320px;border:1px solid rgba(59,130,246,.28);border-radius:16px;padding:11px 13px;background:linear-gradient(135deg,rgba(37,99,235,.16),rgba(14,165,233,.08))"><div style="display:flex;align-items:center;gap:9px;font-weight:900"><span style="width:28px;height:28px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:${isEnded?'#64748b':'#2563eb'};color:white">📞</span><span>${title}</span></div><div style="font-size:12px;opacity:.82;margin-top:6px;line-height:1.4">${body}</div>${actions}</div>`;
   }
   const meetMatch=raw.match(/https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:\?[^\s<]*)?/i);
@@ -4319,12 +4357,6 @@ function renderChatContent(text){
   }
   if(fileUrl&&isImg){
     return safe.replace(/(^|\s)(\/api\/files\/[A-Za-z0-9_-]+)/g,'$1<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;font-weight:800">Open image</a>').replace(/\n/g,'<br>');
-  }
-  const meetMatch2=raw.match(/https:\/\/meet\.google\.com\/[A-Za-z0-9-]+/i);
-  if(meetMatch2){
-    const url=meetMatch2[0];
-    const code=(raw.match(/Code:\s*([A-Za-z0-9-]+)/i)||[])[1]||url.split('/').pop();
-    return `<div style="min-width:240px;display:grid;gap:8px"><div style="display:flex;align-items:center;gap:8px;font-weight:900"><span style="width:30px;height:30px;border-radius:999px;background:#2563eb;color:#fff;display:inline-flex;align-items:center;justify-content:center">📹</span><span>Google Meet call</span></div><div style="font-size:11px;opacity:.82;font-family:monospace">Invite code: ${escapeHtml(code)}</div><a href="${url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;border-radius:12px;padding:9px 12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:900">Join Google Meet ↗</a></div>`;
   }
   return safe
     .replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;font-weight:700">$1</a>')
@@ -4407,10 +4439,7 @@ function MessagesView({projects,users,cu,tasks}){
   const pidRef=useRef('');
   useEffect(()=>{pidRef.current=pid;},[pid]);
   const [msgs,setMsgs]=useState([]);const [txt,setTxt]=useState('');const ref=useRef(null);
-  const _chanCacheKey='pfChannelMessageCache:v2';
-  const _loadChanCache=()=>{try{return new Map(Object.entries(JSON.parse(localStorage.getItem(_chanCacheKey)||'{}')));}catch{return new Map();}};
-  const _saveChanCache=(id,list)=>{try{const raw=JSON.parse(localStorage.getItem(_chanCacheKey)||'{}');raw[id]=Array.isArray(list)?list.slice(-250):[];localStorage.setItem(_chanCacheKey,JSON.stringify(raw));}catch{}};
-  const msgCacheRef=useRef(_loadChanCache());
+  const msgCacheRef=useRef((()=>{try{const raw=JSON.parse(localStorage.getItem('ptChannelMsgCache')||'{}');return new Map(Object.entries(raw).map(([k,v])=>[k,Array.isArray(v)?v:[]]));}catch{return new Map();}})());
   const msgReqSeq=useRef(0);
   const [loadingChannel,setLoadingChannel]=useState('');
   const [showChatEmoji,setShowChatEmoji]=useState(false);
@@ -4443,9 +4472,10 @@ function MessagesView({projects,users,cu,tasks}){
     if(seq!==msgReqSeq.current||id!==pidRef.current)return;
     if(Array.isArray(d)){
       msgCacheRef.current.set(id,d);
-      _saveChanCache(id,d);
+      try{const obj={};msgCacheRef.current.forEach((v,k)=>{obj[k]=(Array.isArray(v)?v:[]).slice(-250);});localStorage.setItem('ptChannelMsgCache',JSON.stringify(obj));}catch{}
       setMsgs(d);
       setLoadingChannel('');
+      // Mark channel as read — store the latest message ts
       if(d.length>0){
         const latestTs=d.reduce((mx,m)=>m.ts>mx?m.ts:mx,'');
         lastSeenMsgRef.current[id]=latestTs;
@@ -4474,21 +4504,45 @@ function MessagesView({projects,users,cu,tasks}){
     if(!pid){setMsgs([]);setLoadingChannel('');return;}
     const cached=msgCacheRef.current.get(pid);
     if(cached){setMsgs(cached);setLoadingChannel('');}
-    else {setMsgs([]);setLoadingChannel(pid);}
     loadMsgs(pid,'switch');
   },[pid,loadMsgs]);
 
   useEffect(()=>{
     if(!pid)return;
+    // FIX 15: Subscribe to pt:realtime for message_created so we don't need a tight
+    // interval when SSE is healthy. Interval is kept as a 120s fallback only.
+    const onRealtime=(ev)=>{
+      const msg=ev&&ev.detail;
+      if(!msg)return;
+      if((msg.type==='message_created'||msg.type==='message_updated')&&msg.data&&String(msg.data.project||msg.data.project_id||'')===String(pid)){
+        api.get('/api/messages?project='+pid).then(d=>{
+          if(Array.isArray(d)){
+            setMsgs(prev=>{
+              if(d.length>prev.length){
+                const newMsgs=d.slice(prev.length);
+                if(newMsgs.some(m=>m.sender!==cu.id))playSound('notif');
+              }
+              if(d.length>0){
+                const latest=d.reduce((mx,m)=>m.ts>mx?m.ts:mx,'');
+                setLastMsgTs(prev2=>({...prev2,[pid]:latest}));
+                lastSeenMsgRef.current[pid]=latest;
+                saveLastSeen(lastSeenMsgRef.current);
+                setChannelUnread(prev3=>({...prev3,[pid]:0}));
+              }
+              return d;
+            });
+          }
+        });
+      }
+    };
+    window.addEventListener('pt:realtime',onRealtime);
     const id=setInterval(()=>{
       api.get('/api/messages?project='+pid).then(d=>{
         if(Array.isArray(d)){
-          msgCacheRef.current.set(pid,d);
-          _saveChanCache(pid,d);
-          setLoadingChannel('');
           setMsgs(prev=>{
             if(d.length>prev.length){
-              playSound('notif');
+              const newMsgs=d.slice(prev.length);
+              if(newMsgs.some(m=>m.sender!==cu.id))playSound('notif');
               if(d.length>0){
                 const latest=d.reduce((mx,m)=>m.ts>mx?m.ts:mx,'');
                 setLastMsgTs(prev2=>({...prev2,[pid]:latest}));
@@ -4501,8 +4555,8 @@ function MessagesView({projects,users,cu,tasks}){
           });
         }
       });
-    },60000); // reduced 2s->15s: channel message poll
-    return()=>clearInterval(id);
+    },120000); // FIX 15: 60s→120s — SSE+realtime event is primary; this is a pure fallback
+    return()=>{clearInterval(id);window.removeEventListener('pt:realtime',onRealtime);}
   },[pid]);
 
   useEffect(()=>{
@@ -4521,10 +4575,10 @@ function MessagesView({projects,users,cu,tasks}){
     if(!body||!pid)return;
     if(textOverride===undefined)setTxt('');
     const temp={id:'tmpmsg'+Date.now(),project:pid,sender:cu.id,content:body,ts:new Date().toISOString(),_pending:true};
-    setMsgs(prev=>{const next=[...prev,temp];msgCacheRef.current.set(pid,next);_saveChanCache(pid,next);return next;});
+    setMsgs(prev=>{const next=[...prev,temp];msgCacheRef.current.set(pid,next);return next;});
     const m=await api.post('/api/messages',{project:pid,content:body},{quiet:true});
     if(m&&m.id){
-      setMsgs(prev=>{const next=prev.map(x=>x.id===temp.id?m:x);msgCacheRef.current.set(pid,next);_saveChanCache(pid,next);return next;});
+      setMsgs(prev=>{const next=prev.map(x=>x.id===temp.id?m:x);msgCacheRef.current.set(pid,next);return next;});
       setLastMsgTs(prev=>({...prev,[pid]:m.ts||new Date().toISOString()}));
     }
   };
@@ -4590,20 +4644,6 @@ function MessagesView({projects,users,cu,tasks}){
     return rows;
   },[allProjects,chanSearch,newMsgProjects]);
 
-  useEffect(()=>{
-    if(!incomingCall){ stopRingtone(); return; }
-    startRingtone();
-    callTimeoutRef.current=setTimeout(() => {
-      const call=incomingCall;
-      if(!call)return;
-      dismissedCallIds.current.add(call.callId);
-      setIncomingCall(null);
-      stopRingtone();
-      api.post('/api/calls/respond',{callId:call.callId,action:'missed',peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true}).catch(()=>{});
-    },20000);
-    return()=>{clearTimeout(callTimeoutRef.current);stopRingtone();};
-  },[incomingCall,startRingtone,stopRingtone]);
-
   const trackDmMeetWindow=(win,call)=>{
     if(!win||!call)return;
     dmMeetWindowRef.current=win;
@@ -4641,19 +4681,21 @@ function MessagesView({projects,users,cu,tasks}){
     dismissedCallIds.current.add(call.callId);
     stopRingtone();
     setIncomingCall(null);
-    const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-    try{
-      const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-      if(action==='accept'&&((r&&r.meetUrl)||call.meetUrl)){
-        if(acceptWin){acceptWin.location.href=(r&&r.meetUrl)||call.meetUrl;trackDmMeetWindow(acceptWin,call);}
-        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Accept again.','error');
-      }
-      if(typeof window.showToast==='function') window.showToast(action==='accept'?'Call accepted':'Call rejected',action==='accept'?'success':'info');
-    }catch(e){
-      try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{}
-      console.warn('[DM] call response failed',e);
-      if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');
+    let meetWin=null;
+    if(action==='accept'&&call.meetUrl){
+      meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+      if(meetWin&&typeof trackDmMeetWindow==='function')trackDmMeetWindow(meetWin,call);
+      else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Connect again.','error');
+      // Wait for server call_status=in_call before showing In a call.
+      // Wait for server call_status=in_call before storing active call state.
     }
+    api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:6000})
+      .then(r=>{
+        if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setActiveCallUsers&&setActiveCallUsers(ids);}catch(_){ }try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}
+        if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}
+        if(typeof window.showToast==='function') window.showToast(action==='accept'?'Joining call…':'Call rejected',action==='accept'?'success':'info');
+      })
+      .catch(e=>{console.warn('[DM] call response failed',e);if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');});
   };
   const joinOutgoingMeet=()=>{
     if(!outgoingMeetCall||!outgoingMeetCall.meetUrl)return;
@@ -4904,7 +4946,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   const [msgs,setMsgs]=useState([]);
   const [txt,setTxt]=useState('');
   const [search,setSearch]=useState('');
-  const debouncedDmSearch=useDebounce(search,250);
+  const [msgThreadId,setMsgThreadId]=useState('');
   const [sending,setSending]=useState(false);
   const [lastMsgMap,setLastMsgMap]=useState({});
   const [dmContext,setDmContext]=useState(null);
@@ -4947,7 +4989,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   const reqSeq=useRef(0);
   const _dmCacheKey='pfDmThreadCache:v3';
   const _loadDmCache=()=>{try{return new Map(Object.entries(JSON.parse(localStorage.getItem(_dmCacheKey)||'{}')));}catch{return new Map();}};
-  const _saveDmCache=(id,list)=>{try{const raw=JSON.parse(localStorage.getItem(_dmCacheKey)||'{}');raw[id]=Array.isArray(list)?list.slice(-300):[];localStorage.setItem(_dmCacheKey,JSON.stringify(raw));}catch{}};
+  const _saveDmCache=(id,list)=>{try{const raw=JSON.parse(localStorage.getItem(_dmCacheKey)||'{}');raw[id]=Array.isArray(list)?list.slice(-250):[];localStorage.setItem(_dmCacheKey,JSON.stringify(raw));}catch{}};
   const threadCache=useRef(_loadDmCache());
   const dmSeenIdsRef=useRef(new Set());
   const dmRecentSendRef=useRef({key:'',at:0});
@@ -4986,7 +5028,14 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       out.push(m);
     }
     out.sort((a,b)=>(Date.parse(a.ts||'')||0)-(Date.parse(b.ts||'')||0));
-    return out;
+    // FIX 22b: Derive status from DB fields so tick icons reflect reality on load
+    return out.map(m=>{
+      if(m.status)return m; // already set (e.g. by markSeen)
+      if(m.seen_at&&m.seen_at!=='')return {...m,status:'seen'};
+      if(m.read===1||m.read===true)return {...m,status:'delivered'};
+      if(m._pending)return m;
+      return {...m,status:'delivered'};
+    });
   },[]);
   const setThreadMessages=useCallback((peer,list,alsoSetVisible=true)=>{
     peer=String(peer||'');
@@ -5075,18 +5124,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       return m;
     });
     const serverIds=new Set(merged.map(m=>m.id));
-    // Never let background polling/SSE temporarily erase local messages that haven't been
-    // confirmed by the server yet (pending/failed/temp) OR that were confirmed very recently
-    // (within 30 s) and may have been missed by an incremental fetch due to same-second
-    // timestamp precision or a race with the network round-trip.
-    const recentCutoff=Date.now()-30000;
+    // Never let background polling/SSE temporarily erase optimistic local messages.
     localList.forEach(m=>{
-      if(!serverIds.has(m.id)){
-        const isPendingOrTemp=m._pending||m._failed||String(m.id||'').startsWith('tmpdm');
-        const isRecentConfirmed=!m._pending&&!m._failed&&!String(m.id||'').startsWith('tmpdm')&&(Date.parse(m.ts||'')||0)>recentCutoff;
-        if(isPendingOrTemp||isRecentConfirmed){
-          merged.push(m);
-        }
+      if(!serverIds.has(m.id)&&(m._pending||m._failed||String(m.id||'').startsWith('tmpdm'))){
+        merged.push(m);
       }
     });
     merged.sort((a,b)=>new Date(a.ts||0)-new Date(b.ts||0));
@@ -5100,16 +5141,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     // fuzzy/session/unread resolution. This prevents a stale notification target
     // from keeping the UI on the previous conversation.
     const clickedPeer=(source==='click')?(safe(users).find(u=>u&&String(u.id)===rawId)||null):null;
-    let id2=clickedPeer?String(clickedPeer.id):resolvePeerId(rawId);
-    // FIX: When users haven't loaded yet (app-data still in-flight, ~2-3s),
-    // resolvePeerId returns '' for any ID. For trusted notification sources carrying
-    // a server-issued numeric peer ID, bypass the local user-list validation and
-    // use the raw ID directly. The API endpoint /api/dm/:id validates on the server
-    // side. This eliminates the 2-3s routing delay caused by waiting for app-data.
-    if(!id2&&(source==='notification'||source==='sw-notification')&&/^\d+$/.test(rawId)&&rawId!==String(cu&&cu.id)){
-      console.debug('[DM] users not loaded yet — using raw notification peer ID provisionally',{rawId,source});
-      id2=rawId;
-    }
+    const id2=clickedPeer?String(clickedPeer.id):resolvePeerId(rawId);
     if(!id2){
       console.warn('[DM] blocked invalid peer target', {target:rawId,source});
       if(source!=='click'){
@@ -5173,11 +5205,8 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     reqSeq.current+=1; // invalidate any in-flight response for the previous thread
     const cached=threadCache.current.get(id);
     if(cached){
-      const readCached=normalizeDmList(cached.map(m=>String(m.sender)===String(id)?{...m,read:1}:m));
-      threadCache.current.set(id,readCached);
-      _saveDmCache(id,readCached);
       setMsgThreadId(id);
-      setMsgs(readCached);
+      setMsgs(cached);
       setLoadingThread('');
     }else{
       setMsgThreadId('');
@@ -5205,16 +5234,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     // IMPORTANT: initialUserId is a one-shot command, but it may arrive before
     // users are loaded. Validate only after users exist; otherwise retry when
     // the users list changes through resolvePeerId/switchToUser dependencies.
-    // FIX: If users haven't loaded yet but the target is a numeric server-issued
-    // peer ID (from a notification), proceed immediately with the raw ID rather
-    // than waiting 2-3s for app-data. switchToUser will call /api/dm/:id directly.
-    // When users do load, resolvePeerId fires again via dep change — but the
-    // same-peer guard (lastInitialUserIdRef + activeToRef) prevents a duplicate switch.
-    let resolvedTarget=resolvePeerId(target);
-    if(!resolvedTarget&&/^\d+$/.test(target)&&target!==String(cu&&cu.id)){
-      console.debug('[DM] initialUserId: users not loaded yet, using numeric ID directly',{target});
-      resolvedTarget=target;
-    }
+    const resolvedTarget=resolvePeerId(target);
     if(!resolvedTarget)return;
     if(resolvedTarget===lastInitialUserIdRef.current && String(activeToRef.current||'')===String(resolvedTarget))return;
     try{
@@ -5291,10 +5311,8 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     else setLoadingThread(id);
     console.debug('[DM] load start', {id,reason,seq,cached:existing.length});
     const lastMsg=existing.length?existing[existing.length-1]:null;
-    // Subtract 1 s so messages at the exact same second as the last known message
-    // are not excluded by the strict ts > ? comparison on the server.
-    const sinceParam=(lastMsg&&lastMsg.ts&&reason!=='load')?'?since='+(new Date(lastMsg.ts).getTime()-1000):'';
-    const d=await api.get('/api/dm/'+id+sinceParam,{quiet:true,timeoutMs:12000,allowNoActiveDmFetch:true});
+    const sinceParam=(lastMsg&&lastMsg.ts&&reason!=='load')?'?since='+new Date(lastMsg.ts).getTime():'';
+    const d=await api.get('/api/dm/'+id+sinceParam,{quiet:true,timeoutMs:45000,allowNoActiveDmFetch:true});
     if(seq!==reqSeq.current||id!==activeToRef.current){
       console.debug('[DM] stale response ignored', {id,active:activeToRef.current,seq,current:reqSeq.current});
       return;
@@ -5306,11 +5324,6 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         const seen=new Set(existing.map(m=>m.id));
         merged=mergePendingReactionState(id,[...existing,...d.filter(m=>!seen.has(m.id))]);
       }else merged=mergePendingReactionState(id,d);
-      // Opening a DM means the user has seen this thread now. Mark local incoming
-      // messages as read immediately so the stale "New messages" divider disappears
-      // without waiting for the next poll/render. The server is already marking them
-      // read inside GET /api/dm/<user>.
-      merged=normalizeDmList(merged.map(m=>m.sender===id?{...m,read:1}:m));
       setThreadMessages(id,merged,true);
       setLoadingThread('');
       onDmRead(id);
@@ -5362,39 +5375,21 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     }catch(_){}
     let dmPollBusy=false;
     const id=setInterval(async()=>{
-      // SCALABILITY: Skip the fallback poll entirely when SSE is live.
-      // The dm_created SSE event already appends messages directly to state
-      // (see onDmRefresh handler below) with zero extra network cost.
-      // We only need this interval when SSE has dropped (readyState !== OPEN).
-      // Check window.__ptSSEActive which is set by the SSE useEffect.
-      // SCALABILITY: dual SSE health check — EventSource readyState + ptPollManager flag.
-      // readyState===1 (OPEN) means the server is actively streaming.
-      // ptPollManager.isSseHealthy() is set to false when the onError/close fires,
-      // giving a belt-and-suspenders guard against missed state changes.
-      const sseOpen=(window.__ptSSEActive&&window.__ptSSEActive.readyState===1)||
-                    (window.ptPollManager&&window.ptPollManager.isSseHealthy&&window.ptPollManager.isSseHealthy());
-      if(sseOpen){
-        console.debug('[DM] skipping fallback poll — SSE is healthy, dm_created events deliver in real-time');
-        return;
-      }
       if(dmPollBusy)return;
       dmPollBusy=true;
       try{
         const requestedTo=toId;
-        // Capture sinceParam from current cache before the network call.
+        // Read cache BEFORE await for sinceParam, but re-read AFTER await for merging
+        // to avoid stale snapshots causing confirmed messages to vanish.
         const cachedAtStart=threadCache.current.get(requestedTo)||[];
         const lastMsgAtStart=cachedAtStart.length?cachedAtStart[cachedAtStart.length-1]:null;
-        // Subtract 1s so same-second messages are not excluded by strict > on the server.
         const sinceParam=lastMsgAtStart&&lastMsgAtStart.ts?'?since='+(new Date(lastMsgAtStart.ts).getTime()-1000):'';
-        const d=await api.get('/api/dm/'+requestedTo+sinceParam,{quiet:true,timeoutMs:12000,allowNoActiveDmFetch:true});
+        const d=await api.get('/api/dm/'+requestedTo+sinceParam,{quiet:true,timeoutMs:45000,allowNoActiveDmFetch:true});
         if(requestedTo!==String(activeToRef.current||''))return;
         try{if(window.__ptDmActivePollUser&&String(window.__ptDmActivePollUser)!==requestedTo)return;}catch(_){}
         if(Array.isArray(d)){
           if(sinceParam&&d.length===0)return;
-          // Re-read threadCache AFTER the await so we always merge onto the freshest local state.
-          // Using the stale pre-await snapshot was the root cause of confirmed messages vanishing:
-          // messages confirmed during the ~6s network round-trip were absent from the snapshot
-          // and not re-added by mergePendingReactionState (which only preserves _pending/_failed/tmpdm).
+          // Use freshCached (post-await) so confirmed messages written during network roundtrip are included
           const freshCached=threadCache.current.get(requestedTo)||[];
           const seen=new Set(freshCached.map(m=>m.id));
           const merged=sinceParam?mergePendingReactionState(requestedTo,[...freshCached,...d.filter(m=>!seen.has(m.id))]):mergePendingReactionState(requestedTo,d);
@@ -5402,8 +5397,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
           setThreadMessages(requestedTo,merged,false);
           setLoadingThread('');
           setMsgs(prev=>{
-            // Also preserve any _pending/_failed/tmpdm from current React state not yet in merged
-            // (e.g. optimistic messages added after threadCache was read above).
+            // Preserve any _pending/_failed/tmpdm from React state not yet in merged
             const prevArr=Array.isArray(prev)?prev:[];
             const mergedIds=new Set(merged.map(m=>m.id));
             const extraPending=prevArr.filter(m=>!mergedIds.has(m.id)&&(m._pending||m._failed||String(m.id||'').startsWith('tmpdm')));
@@ -5417,7 +5411,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
           onDmRead(requestedTo);
         }
       }finally{dmPollBusy=false;}
-    },60000);
+    },15000); // FIX 05: 60s→15s so missed SSE events surface faster
     try{window.__ptDmActivePollTimer=id;window.__ptDmActivePollUser=String(toId);}catch(_){}
     const onDmRefresh=(ev)=>{
       const msg=ev&&ev.detail;
@@ -5456,7 +5450,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       if(msg&&msg.type==='dm_seen'&&data){
         const peer=String(data.reader||data.sender||'');
         const seenAt=data.seen_at||new Date().toISOString();
-        // U3: also set status:'seen' so the double-tick SVG renders immediately
+        // FIX 22: also set status:'seen' so the double-tick SVG renders immediately
         const markSeen=list=>(Array.isArray(list)?list:[]).map(x=>String(x.sender)===String(cu.id)&&String(x.recipient)===peer?{...x,read:1,seen_at:x.seen_at||seenAt,status:'seen'}:x);
         if(peer){
           const patched=markSeen(threadCache.current.get(peer)||[]);
@@ -5472,11 +5466,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         return;
       }
       if(msg&&msg.type==='dm_created'&&data&&data.message){
-        let m=data.message;
+        const m=data.message;
         const peer=(m.sender===cu.id)?m.recipient:m.sender;
         const belongs=peer===toId || data.sender===toId || data.recipient===toId;
         if(belongs){
-          if(m.sender!==cu.id)m={...m,read:1};
           setMsgThreadId(toId);
           setLoadingThread('');
           setMsgs(prev=>{
@@ -5496,7 +5489,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
             const withoutTmp=base.filter(x=>!(String(x.id||'').startsWith('tmpdm')&&x.content===m.content&&x.sender===m.sender) && !(String(x.id||'').startsWith('srvtmp')&&x.content===m.content&&x.sender===m.sender));
             const next=mergePendingReactionState(toId,[...withoutTmp,{...m,_pending:false}]);
             setThreadMessages(toId,next,false);
-            if(m.sender!==cu.id)playSound('notif');
+            if(m.sender!==cu.id&&!msg.soundPlayed)playSound('notif');
             return normalizeDmList(next);
           });
           onDmRead(toId);
@@ -5527,51 +5520,24 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     let cancelled=false;
     const loadPreviews=async()=>{
       try{
-        const d=await api.get('/api/dm/previews',{quiet:true,timeoutMs:12000});
+        const d=await api.get('/api/dm/previews',{quiet:true,timeoutMs:8000});
         if(cancelled||!d||typeof d!=='object')return;
         setLastMsgMap(prev=>({...prev,...d}));
       }catch(_){}
     };
+    // FIX 20: Load previews immediately on mount (synchronous, no background defer).
+    // Also refresh previews when a new DM arrives via SSE so the sidebar
+    // shows the correct preview text without waiting up to 60s.
+    const onDmPreviewRefresh=(ev)=>{
+      const msg=ev&&ev.detail;
+      if(msg&&(msg.type==='dm_created'||msg.type==='dm_updated'||msg.type==='dm_deleted'))
+        loadPreviews();
+    };
+    window.addEventListener('dm_refresh',onDmPreviewRefresh);
     loadPreviews();
     const id=setInterval(loadPreviews,60000);
-    return()=>{cancelled=true;clearInterval(id);};
+    return()=>{cancelled=true;clearInterval(id);window.removeEventListener('dm_refresh',onDmPreviewRefresh);};
   },[]);
-
-  // ── DM thread pre-warm ──────────────────────────────────────────────────
-  // Silently fetch the top 5 most-recent DM threads in the background when
-  // the panel mounts. This fills threadCache so the first click on any of
-  // those conversations renders instantly from cache instead of waiting for
-  // a cold network round-trip (the "click then load" symptom).
-  useEffect(()=>{
-    if(!cu||!users||!users.length)return;
-    let cancelled=false;
-    const prewarm=async()=>{
-      try{
-        const previews=await api.get('/api/dm/previews',{quiet:true,timeoutMs:8000});
-        if(cancelled||!previews||typeof previews!=='object')return;
-        // Sort peers by most recent message timestamp, take top 5
-        const peers=Object.entries(previews)
-          .sort((a,b)=>(b[1].ts||'').localeCompare(a[1].ts||''))
-          .slice(0,5)
-          .map(([peerId])=>peerId);
-        for(const peerId of peers){
-          if(cancelled)break;
-          if(threadCache.current.get(peerId)&&threadCache.current.get(peerId).length>0)continue;
-          try{
-            const msgs=await api.get('/api/dm/'+peerId,{quiet:true,timeoutMs:8000,allowNoActiveDmFetch:true});
-            if(!cancelled&&Array.isArray(msgs)&&msgs.length){
-              setThreadMessages(peerId,msgs,false);
-            }
-          }catch(_){}
-          // Small gap between fetches to avoid stampeding the server
-          await new Promise(r=>setTimeout(r,200));
-        }
-      }catch(_){}
-    };
-    // Delay slightly so the visible page finishes rendering first
-    const t=setTimeout(prewarm,1500);
-    return()=>{cancelled=true;clearTimeout(t);};
-  },[cu&&cu.id,users&&users.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const atBottomRef=useRef(true);
   const handleScroll=()=>{if(!ref.current)return;const{scrollTop,scrollHeight,clientHeight}=ref.current;atBottomRef.current=scrollHeight-scrollTop-clientHeight<120;};
@@ -5604,7 +5570,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     dmRecentSendRef.current={key:sendKey,at:Date.now()};
     const clientMsgId='cmid_'+cu.id+'_'+Date.now()+'_'+Math.random().toString(16).slice(2);
     const tempId='tmpdm'+Date.now();
-    const optimistic={id:tempId,client_msg_id:clientMsgId,sender:cu.id,recipient,content:c,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:true};
+    const optimistic={id:tempId,client_msg_id:clientMsgId,sender:cu.id,recipient,content:c,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:true,_instant:true};
     setTxt('');setReplyTo(null);
     setSending(true);
     setTimeout(()=>setSending(false),120);
@@ -5634,7 +5600,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         setMsgs(prev=>{
           const base=Array.isArray(prev)?prev:[];
           const replaced=base.some(x=>x.id===tempId||x.id===m.id||(x.client_msg_id&&x.client_msg_id===clientMsgId));
-          const list=replaced?base.map(x=>(x.id===tempId||x.id===m.id||(x.client_msg_id&&x.client_msg_id===clientMsgId))?confirmed:x):[...base,confirmed];
+          const list=replaced?base.map(x=>x.id===tempId||x.client_msg_id===clientMsgId?confirmed:x):[...base,confirmed];
           const next=normalizeDmList(list);
           threadCache.current.set(recipient,next);
           _saveDmCache(recipient,next);
@@ -5702,8 +5668,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     const peer=toUser&&toUser.name?toUser.name:'teammate';
     const recipient=toId;
     setStartingMeet(true);
-    let hostWin=null;
-    // Do not open an intermediate blank/loading tab. Open Meet directly only after URL is ready.
+    // No intermediate about:blank tab. Open only the final Google Meet URL.
     try{
       const r=await api.post('/api/calls/google-meet',{type:'dm',targetId:recipient,title:`Call with ${peer}`},{quiet:true});
       if(!r||!r.ok||!r.meetUrl){
@@ -5721,8 +5686,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       }
       // Caller initiated the meeting from a direct click, so open Meet immediately in a new tab.
       const call={callId:r.callId,peer,peerId:recipient,meetUrl:r.meetUrl};
-      hostWin=window.open(r.meetUrl,'_blank','noopener,noreferrer');
-      if(hostWin){trackDmMeetWindow(hostWin,call);} else if(typeof window.showToast==='function') window.showToast('Meeting invite sent. Allow popups or use the Join button in chat.','success');
+      if(hostWin){hostWin.location.href=r.meetUrl;trackDmMeetWindow(hostWin,call);} else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker and click the call button again.','error');
       if(typeof setOutgoingMeetCall==='function')setOutgoingMeetCall(null);
       ptCallStoreSet(r.callId,'ringing');
       if(typeof window.showToast==='function') window.showToast('Calling '+peer+'… waiting for them to accept','success');
@@ -5757,7 +5721,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         const body=(file.type||'').startsWith('image/')?'🖼️ '+uploaded.name+'\n/api/files/'+uploaded.id:'📎 '+uploaded.name+'\n/api/files/'+uploaded.id;
         const recipient=toId;
         const tempId='tmpdm'+Date.now();
-        const optimistic={id:tempId,sender:cu.id,recipient,content:body,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:false};
+        const optimistic={id:tempId,sender:cu.id,recipient,content:body,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:true};
         setReplyTo(null);setMsgThreadId(recipient);
         setMsgs(prevMsgs=>{const next=[...prevMsgs,optimistic];threadCache.current.set(recipient,next);_saveDmCache(recipient,next);return next;});
         const m=await api.post('/api/dm',{recipient,content:body,reply_to:optimistic.reply_to});
@@ -5782,7 +5746,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       switchToUser(valid,'url');
     }
   },[toId,resolvePeerId,switchToUser]);
-  const filtered=others.filter(u=>u.name.toLowerCase().includes(debouncedDmSearch.toLowerCase()));
+  const filtered=others.filter(u=>u.name.toLowerCase().includes(search.toLowerCase()));
   const toUser=safe(users).find(u=>String(u.id)===String(toId));
   const visibleMsgs=(String(msgThreadId)===String(toId))?normalizeDmList(msgs.filter(m=>(String(m.sender)===String(cu.id)&&String(m.recipient)===String(toId))||(String(m.sender)===String(toId)&&String(m.recipient)===String(cu.id)))):[];
   const displayMsgs=msgSearch.trim()?visibleMsgs.filter(m=>String(m.content||'').toLowerCase().includes(msgSearch.toLowerCase())):visibleMsgs;
@@ -5867,22 +5831,21 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     dismissedCallIds.current.add(call.callId);
     stopRingtone();
     setIncomingCall(null);
-    const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-    try{
-      const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-      if(action==='accept'){
-        // Wait for server call_status=in_call before showing In a call.
-        // Wait for server call_status=in_call before storing active call state.
-        const joinUrl=(r&&r.meetUrl)||call.meetUrl;
-        if(acceptWin){acceptWin.location.href=joinUrl;trackDmMeetWindow(acceptWin,call);}
-        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Connect again.','error');
-      }
-      if(typeof window.showToast==='function') window.showToast(action==='accept'?'Joining call…':'Call rejected',action==='accept'?'success':'info');
-    }catch(e){
-      try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{}
-      console.warn('[DM] call response failed',e);
-      if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');
+    let meetWin=null;
+    if(action==='accept'&&call.meetUrl){
+      meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+      if(meetWin&&typeof trackDmMeetWindow==='function')trackDmMeetWindow(meetWin,call);
+      else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Connect again.','error');
+      // Wait for server call_status=in_call before showing In a call.
+      // Wait for server call_status=in_call before storing active call state.
     }
+    api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:6000})
+      .then(r=>{
+        if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setActiveCallUsers&&setActiveCallUsers(ids);}catch(_){ }try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}
+        if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}
+        if(typeof window.showToast==='function') window.showToast(action==='accept'?'Joining call…':'Call rejected',action==='accept'?'success':'info');
+      })
+      .catch(e=>{console.warn('[DM] call response failed',e);if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');});
   };
   const joinOutgoingMeet=()=>{
     if(!outgoingMeetCall||!outgoingMeetCall.meetUrl)return;
@@ -5950,14 +5913,6 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       </div>
       ${pinnedMsgs.length?html`<div style=${{padding:'7px 16px',borderBottom:'1px solid var(--bd)',background:'rgba(245,158,11,.08)',display:'flex',gap:8,alignItems:'center',fontSize:12,color:'var(--tx2)'}}><b>📌 Pinned</b><span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${pinnedMsgs[0].content}</span></div>`:null}
       <div ref=${ref} onScroll=${handleScroll} onDragOver=${ev=>ev.preventDefault()} onDrop=${handleDmDrop} onClick=${closeMsgOverlays} style=${{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12}}>
-        ${isThreadLoading?html`
-          <div style=${{display:'flex',flexDirection:'column',gap:14,padding:'8px 0'}}>
-            ${[72,48,90,56,80].map((w,i)=>{const isR=i%2===0;return html`
-              <div key=${i} style=${{display:'flex',gap:8,alignItems:'flex-end',flexDirection:isR?'row':'row-reverse'}}>
-                <div style=${{width:28,height:28,borderRadius:'50%',background:'var(--sf2)',flexShrink:0,animation:'ap-shimmer 1.6s linear infinite',backgroundImage:'linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%)',backgroundSize:'200% 100%'}}></div>
-                <div style=${{width:w+'%',maxWidth:280,height:38,borderRadius:14,background:'var(--sf2)',animation:'ap-shimmer 1.6s linear infinite',animationDelay:(i*0.12)+'s',backgroundImage:'linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%)',backgroundSize:'200% 100%'}}></div>
-              </div>`;})}
-          </div>`:null}
                 ${(!isThreadLoading&&visibleMsgs.length===0)?html`<div style=${{textAlign:'center',paddingTop:60,color:'var(--tx3)',fontSize:13}}><div style=${{fontSize:28,marginBottom:6}}>👋</div><div style=${{fontWeight:600,marginBottom:4,color:'var(--tx2)'}}>${toUser?'Start a conversation with '+toUser.name:'Select someone'}</div></div>`:null}
         ${displayMsgs.map((m,i)=>{const isMe=m.sender===cu.id;const showT=i===displayMsgs.length-1||displayMsgs[i+1].sender!==m.sender;const prevM=i>0?displayMsgs[i-1]:null;const curDateLabel=m.date_label||(()=>{try{const d=new Date(m.ts);const now=new Date();const diff=now.setHours(0,0,0,0)-new Date(d).setHours(0,0,0,0);return diff===0?'Today':diff===86400000?'Yesterday':d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}catch{return '';}})();const prevDateLabel=prevM?(prevM.date_label||(()=>{try{const d=new Date(prevM.ts);const now=new Date();const diff=now.setHours(0,0,0,0)-new Date(d).setHours(0,0,0,0);return diff===0?'Today':diff===86400000?'Yesterday':d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}catch{return '';}})()):'__START__';const showDateSep=curDateLabel&&curDateLabel!==prevDateLabel;const replied=findMsg(m.reply_to);return html`${showDateSep?html`<div style=${{display:'flex',alignItems:'center',gap:10,color:'var(--tx3)',fontSize:11,fontWeight:600,margin:'8px 0 4px'}}><span style=${{height:1,background:'var(--bd)',flex:1}}></span><span style=${{padding:'2px 10px',borderRadius:999,border:'1px solid var(--bd)',background:'var(--sf)',whiteSpace:'nowrap'}}>${curDateLabel}</span><span style=${{height:1,background:'var(--bd)',flex:1}}></span></div>`:null}${firstUnreadIdx===i?html`<div style=${{display:'flex',alignItems:'center',gap:10,color:'var(--ac)',fontSize:10,fontWeight:800,margin:'6px 0'}}><span style=${{height:1,background:'var(--ac)',flex:1,opacity:.45}}></span>New messages<span style=${{height:1,background:'var(--ac)',flex:1,opacity:.45}}></span></div>`:null}
           <div key=${m.client_msg_id||m.id} style=${{display:'flex',gap:8,alignItems:'flex-end',flexDirection:isMe?'row-reverse':'row',animation:'dmBubbleIn .18s ease-out'}}>
@@ -5998,7 +5953,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         <button title="Start instant video call" class="btn" style=${{padding:'7px 10px',fontSize:16,flexShrink:0,background:startingMeet?'rgba(34,197,94,.18)':'linear-gradient(135deg,#16a34a,#22c55e)',color:'#fff',border:'none'}} onClick=${startGoogleMeetCall} disabled=${!toId||startingMeet}>${startingMeet?'…':html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style=${{display:'block'}}><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`}</button>
         <button title="Voice note" class="btn" style=${{padding:'7px 10px',fontSize:16,flexShrink:0,background:recording?'rgba(239,68,68,.2)':'var(--sf)'}} onClick=${toggleRecording} disabled=${!toId}>${recording?'■':html`<span style=${{width:30,height:30,borderRadius:99,background:'#050505',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:3,boxShadow:'0 8px 24px rgba(0,0,0,.28)'}}><i style=${{width:3,height:10,borderRadius:3,background:'#fff',display:'block'}}></i><i style=${{width:3,height:16,borderRadius:3,background:'#fff',display:'block'}}></i><i style=${{width:3,height:10,borderRadius:3,background:'#fff',display:'block'}}></i></span>`}</button>
         <textarea class="inp" style=${{flex:1,minHeight:40,maxHeight:100,resize:'none',padding:'9px 13px',lineHeight:1.5}} placeholder=${editingId?'Edit message...':'Message '+((toUser&&toUser.name)||'...')} value=${txt} onInput=${e=>{setTxt(e.target.value);sendTyping();}} onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}></textarea>
-        <button class="btn bp" style=${{padding:'9px 15px',flexShrink:0,opacity:sending?0.65:1}} onClick=${send} disabled=${!txt.trim()||!toId}>➤</button>
+        <button class="btn bp" style=${{padding:'9px 15px',flexShrink:0}} onClick=${send} disabled=${!txt.trim()||!toId}>➤</button>
       </div>
     </div>
   </div>`;
@@ -6011,6 +5966,7 @@ function NotifsView({notifs,reload,setData,onNavigate}){
   const unread=safe(notifs).filter(n=>!n.read).length;
   const handleClick=async(n)=>{
     if(!n.read) await api.put('/api/notifications/'+n.id+'/read',{});
+    const T=NT[n.type]||NT.comment;
     if(onNavigate){onNavigate(n);}
     reload();
   };
@@ -6253,7 +6209,7 @@ function TeamView({users,cu,reload,projects}){
   const [memberSearch,setMemberSearch]=useState('');
   const [teamSearch,setTeamSearch]=useState('');
   const [roleOptions,setRoleOptions]=useState(ROLES);
-  useEffect(()=>{api.get('/api/workspace/roles',{quiet:true,timeoutMs:12000}).then(r=>{if(r&&r.ok)setRoleOptions([...(r.items||[]).map(x=>x.name)].filter(Boolean));}).catch(()=>{});},[]);
+  useEffect(()=>{api.get('/api/workspace/roles',{quiet:true,timeoutMs:6000}).then(r=>{if(r&&r.ok)setRoleOptions([...(r.items||[]).map(x=>x.name)].filter(Boolean));}).catch(()=>{});},[]);
 
   const loadTeams=useCallback(async()=>{const d=await api.get('/api/teams');setTeams(Array.isArray(d)?d:[]);},[]);
   useEffect(()=>{loadTeams();},[loadTeams]);
@@ -6497,7 +6453,7 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
   const [filterType,setFilterType]=useState('');
   const [filterAssignee,setFilterAssignee]=useState(()=>initialAssignee==='me'&&cu?cu.id:'');
   const [ticketSearch,setTicketSearch]=useState('');
-  const debouncedTicketSearch=useDebounce(ticketSearch,250);
+  const [showNew,setShowNew]=useState(false);
   const [editTicket,setEditTicket]=useState(null);
   const [detailTicket,setDetailTicket]=useState(null);
   const [comments,setComments]=useState([]);
@@ -6589,19 +6545,40 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
     if(filterPriority&&t.priority!==filterPriority)return false;
     if(filterType&&t.type!==filterType)return false;
     if(filterAssignee&&t.assignee!==filterAssignee)return false;
-    const q=debouncedTicketSearch.trim().toLowerCase();
+    const q=ticketSearch.trim().toLowerCase();
     if(q&&!String([t.id,t.title,t.description,t.type,t.priority,t.status,(umap[t.assignee]||{}).name].join(' ')).toLowerCase().includes(q))return false;
     return true;
-  }),[tickets,showResolved,filterStatus,filterPriority,filterType,filterAssignee,debouncedTicketSearch,users]);
+  }),[tickets,showResolved,filterStatus,filterPriority,filterType,filterAssignee,ticketSearch,users]);
 
   const saveTicket=async()=>{
     if(!nTitle.trim())return;
     if(saving)return;
     setSaving(true);
-    setSaving(true);
     const payload={title:nTitle.trim(),description:nDesc,type:nType,priority:nPriority,assignee:nAssignee,project:nProject,status:nStatus,team_id:activeTeam?activeTeam.id:''};
-    try{ if(editTicket){await api.put('/api/tickets/'+editTicket.id,payload);} else {await api.post('/api/tickets',payload);} }
-    finally{setSaving(false);setShowNew(false);setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');load();}
+    if(editTicket){
+      // EDIT: optimistic update
+      setSaving(true);
+      setTickets(prev=>prev.map(t=>t.id===editTicket.id?{...t,...payload}:t));
+      setShowNew(false);setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');
+      try{await api.put('/api/tickets/'+editTicket.id,payload);}
+      finally{setSaving(false);load();}
+    } else {
+      // CREATE: optimistic — show ticket immediately, close modal, save in background
+      const tempId='tmptkt_'+Date.now();
+      const tempTicket={...payload,id:tempId,reporter:cu.id,created:new Date().toISOString(),updated:new Date().toISOString(),tags:'[]',_pending:true};
+      setTickets(prev=>[tempTicket,...prev]);
+      setShowNew(false);setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');
+      try{
+        const result=await api.post('/api/tickets',payload);
+        if(result&&result.id){
+          setTickets(prev=>prev.map(t=>t.id===tempId?{...result}:t));
+        } else {
+          setTickets(prev=>prev.filter(t=>t.id!==tempId));
+        }
+      }catch(e){
+        setTickets(prev=>prev.filter(t=>t.id!==tempId));
+      }
+    }
   };
   const openEdit=(t)=>{setEditTicket(t);setNTitle(t.title||'');setNDesc(t.description||'');setNType(t.type||'bug');setNPriority(t.priority||'medium');setNAssignee(t.assignee||'');setNProject(t.project||'');setNStatus(t.status||'open');setShowNew(true);};
   const openDetail=async(t)=>{setDetailTicket(t);setCopilotOpen(true);try{const c=await api.get('/api/tickets/'+t.id+'/comments');setComments(Array.isArray(c)?c:[]);}catch(e){setComments([]);}};
@@ -6877,29 +6854,59 @@ function NotifPrefsPanel({cu}){
   return html`<div style=${{maxWidth:640,margin:'0 auto',padding:'24px 0'}}>
     <h2 style=${{fontSize:17,fontWeight:600,color:'var(--tx1)',margin:'0 0 4px'}}>Notification preferences</h2>
     <p style=${{fontSize:13,color:'var(--tx3)',margin:'0 0 20px'}}>Control how and when you receive alerts across all channels.</p>
+
     ${sect('Channels')}
     <div style=${S.card}>
-      <div style=${S.row}><div><p style=${S.label}>In-app notifications</p><p style=${S.sub}>Banner alerts inside the dashboard</p></div><${Toggle} on=${prefs.inapp_enabled!==false} onChange=${v=>save({inapp_enabled:v})}/></div>
-      <div style=${S.row}><div><p style=${S.label}>Desktop / push alerts</p><p style=${S.sub}>Browser and Tauri OS notifications</p></div><${Toggle} on=${prefs.push_enabled!==false} onChange=${v=>save({push_enabled:v})}/></div>
-      <div style=${S.rowLast}><div><p style=${S.label}>Email notifications</p><p style=${S.sub}>Due-date, ticket, and digest emails</p></div><${Toggle} on=${prefs.email_enabled!==false} onChange=${v=>save({email_enabled:v})}/></div>
+      <div style=${S.row}>
+        <div><p style=${S.label}>In-app notifications</p><p style=${S.sub}>Banner alerts inside the dashboard</p></div>
+        <${Toggle} on=${prefs.inapp_enabled!==false} onChange=${v=>save({inapp_enabled:v})}/>
+      </div>
+      <div style=${S.row}>
+        <div><p style=${S.label}>Desktop / push alerts</p><p style=${S.sub}>Browser and Tauri OS notifications</p></div>
+        <${Toggle} on=${prefs.push_enabled!==false} onChange=${v=>save({push_enabled:v})}/>
+      </div>
+      <div style=${S.rowLast}>
+        <div><p style=${S.label}>Email notifications</p><p style=${S.sub}>Due-date, ticket, and digest emails</p></div>
+        <${Toggle} on=${prefs.email_enabled!==false} onChange=${v=>save({email_enabled:v})}/>
+      </div>
     </div>
+
     ${sect('Quiet hours')}
     <div style=${S.card}>
-      <div style=${S.row}><div><p style=${S.label}>Mute after office hours</p><p style=${S.sub}>Suppress push and email during mute window</p></div><${Toggle} on=${!!prefs.mute_after_hours} onChange=${v=>save({mute_after_hours:v})}/></div>
+      <div style=${S.row}>
+        <div><p style=${S.label}>Mute after office hours</p><p style=${S.sub}>Suppress push and email during mute window</p></div>
+        <${Toggle} on=${!!prefs.mute_after_hours} onChange=${v=>save({mute_after_hours:v})}/>
+      </div>
       ${prefs.mute_after_hours?html`<div style=${{display:'flex',gap:16,padding:'10px 0',alignItems:'center'}}>
-        <div><p style=${S.label}>Mute from</p><input type="time" value=${prefs.mute_start||'18:00'} onChange=${e=>save({mute_start:e.target.value})} style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,width:110}}/></div>
-        <div><p style=${S.label}>Until</p><input type="time" value=${prefs.mute_end||'09:00'} onChange=${e=>save({mute_end:e.target.value})} style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,width:110}}/></div>
+        <div><p style=${S.label} style=${{marginBottom:4}}>Mute from</p>
+          <input type="time" value=${prefs.mute_start||'18:00'}
+            onChange=${e=>save({mute_start:e.target.value})}
+            style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,width:110}}/></div>
+        <div><p style=${S.label} style=${{marginBottom:4}}>Until</p>
+          <input type="time" value=${prefs.mute_end||'09:00'}
+            onChange=${e=>save({mute_end:e.target.value})}
+            style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,width:110}}/></div>
       </div>`:null}
     </div>
+
     ${sect('Alert filtering')}
     <div style=${S.card}>
-      <div style=${S.row}><div><p style=${S.label}>Priority alerts only</p><p style=${S.sub}>Only push for urgent events (tasks, approvals, DMs)</p></div><${Toggle} on=${!!prefs.priority_only} onChange=${v=>save({priority_only:v})}/></div>
-      ${(cu.role==='TeamLead'||cu.role==='Manager'||cu.role==='Admin')?html`<div style=${S.rowLast}><div><p style=${S.label}>Role-based digest alerts</p><p style=${S.sub}>Daily summary for blockers, SLA breaches, pending approvals</p></div><${Toggle} on=${prefs.role_alerts!==false} onChange=${v=>save({role_alerts:v})}/></div>`:null}
+      <div style=${S.row}>
+        <div><p style=${S.label}>Priority alerts only</p><p style=${S.sub}>Only send push for urgent events (assigned tasks, approvals, DMs)</p></div>
+        <${Toggle} on=${!!prefs.priority_only} onChange=${v=>save({priority_only:v})}/>
+      </div>
+      ${(cu.role==='TeamLead'||cu.role==='Manager'||cu.role==='Admin')?html`<div style=${S.rowLast}>
+        <div><p style=${S.label}>Role-based digest alerts</p><p style=${S.sub}>Daily summary: blockers, SLA breaches, pending approvals based on your role</p></div>
+        <${Toggle} on=${prefs.role_alerts!==false} onChange=${v=>save({role_alerts:v})}/>
+      </div>`:null}
     </div>
+
     ${sect('Email digest frequency')}
     <div style=${S.card}>
-      <div style=${S.rowLast}><div><p style=${S.label}>Summary email frequency</p><p style=${S.sub}>Personalised task and project overview</p></div>
-        <select value=${prefs.digest_frequency||'weekly'} onChange=${e=>save({digest_frequency:e.target.value})} style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,cursor:'pointer'}}>
+      <div style=${S.rowLast}>
+        <div><p style=${S.label}>Summary email frequency</p><p style=${S.sub}>Personalised task and project overview</p></div>
+        <select value=${prefs.digest_frequency||'weekly'} onChange=${e=>save({digest_frequency:e.target.value})}
+          style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,cursor:'pointer'}}>
           <option value="daily">Daily</option>
           <option value="weekly">Weekly (Mon)</option>
           <option value="bi-weekly">Bi-weekly (1st & 15th)</option>
@@ -6977,7 +6984,7 @@ function WorkspaceOSPolicySettingsCard({cu}){
   const titleCase=s=>String(s||'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
   const defaults={permission_hours_per_month:2,allowed_work_modes:['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty'],holiday_upload_roles:['admin','hr'],activity_catalog:['Meeting','Client Call','Code Review','Deployment','Support','Documentation','Research','Testing','Planning','Training']};
   const [cfg,setCfg]=useState(defaults);const [loading,setLoading]=useState(false);const [msg,setMsg]=useState('');
-  const load=useCallback(async()=>{if(!allowed)return;setLoading(true);const r=await api.get('/api/workspace-os/settings',{quiet:true,timeoutMs:12000}).catch(e=>({error:e.message}));setLoading(false);if(r&&r.settings)setCfg({...defaults,...r.settings});else setMsg('Using default policy');},[allowed]);
+  const load=useCallback(async()=>{if(!allowed)return;setLoading(true);const r=await api.get('/api/workspace-os/settings',{quiet:true,timeoutMs:8000}).catch(e=>({error:e.message}));setLoading(false);if(r&&r.settings)setCfg({...defaults,...r.settings});else setMsg('Using default policy');},[allowed]);
   useEffect(()=>{load();},[load]);
   const setModesFromText=v=>setCfg({...cfg,allowed_work_modes:String(v||'').split(',').map(x=>x.trim()).filter(Boolean)});
   const setRolesFromText=v=>setCfg({...cfg,holiday_upload_roles:String(v||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)});
@@ -7020,7 +7027,7 @@ function WorkspaceOSAdminImportsCard({cu}){
   const addHoliday=async()=>{
     if(!holiday.title){setMsg('Holiday title is required');return;}
     setBusy('holiday');
-    const r=await api.post('/api/holidays',holiday,{quiet:true,timeoutMs:12000}).catch(e=>({error:e.message}));
+    const r=await api.post('/api/holidays',holiday,{quiet:true,timeoutMs:8000}).catch(e=>({error:e.message}));
     setBusy('');
     if(r&&r.ok){setHoliday({...holiday,title:''});setMsg('Holiday added and published');try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}
     else setMsg((r&&r.error)||'Holiday save failed');
@@ -7096,7 +7103,7 @@ function WorkspaceSettings({cu,onReload}){
     if(smtpPassword&&!smtpPassword.startsWith('•'))payload.smtp_password=smtpPassword;
     await api.put('/api/workspace',payload);
     setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
-    await onReload();
+    onReload();
   };
 
   const sendTestEmail=async()=>{
@@ -7298,7 +7305,7 @@ function WorkspaceSettings({cu,onReload}){
 
 /* ─── AiDocsView — Chat-first AI Documentation Studio ─────────────────────── */
 
-/* ─── NotesView — Professional notes command workspace ───────────────────── */
+/* ─── NotesView — OneNote-inspired quick notes workspace ───────────────────── */
 function NotesView({cu}){
   const [notes,setNotes]=useState([]);
   const [activeId,setActiveId]=useState(null);
@@ -7308,15 +7315,12 @@ function NotesView({cu}){
   const [tagInput,setTagInput]=useState('');
   const [toolsOpen,setToolsOpen]=useState(false);
   const [viewMode,setViewMode]=useState('focus');
-  const [creating,setCreating]=useState(false);
-  const [deleting,setDeleting]=useState(false);
   const editorRef=useRef(null);
   const saveTimer=useRef(null);
   const colors=['#facc15','#60a5fa','#34d399','#f472b6','#fb923c','#a78bfa','#f87171','#22d3ee','#ffffff','#111827'];
   const toTags=(v)=>Array.isArray(v)?v:(typeof v==='string'?v.split(',').map(x=>x.trim()).filter(Boolean):[]);
   const stripHtml=(html='')=>{const d=document.createElement('div');d.innerHTML=html||'';return (d.textContent||d.innerText||'').trim();};
-  const uid=()=> ((window.crypto&&window.crypto.randomUUID)?window.crypto.randomUUID():('tmp_'+Date.now()+'_'+Math.random().toString(16).slice(2)));
-  const normalizeNote=(n)=>({...n,tags:toTags(n&&n.tags),title:(n&&n.title)||'Untitled note',body:(n&&n.body)||'',plain_text:(n&&n.plain_text)||stripHtml((n&&n.body)||''),notebook:(n&&n.notebook)||'Quick Notes',section:(n&&n.section)||'General',color:(n&&n.color)||'#60a5fa'});
+  const normalizeNote=(n)=>({...n,tags:toTags(n&&n.tags),title:(n&&n.title)||'Untitled note',body:(n&&n.body)||'',plain_text:(n&&n.plain_text)||stripHtml((n&&n.body)||''),notebook:(n&&n.notebook)||'Quick Notes',section:(n&&n.section)||'General',color:(n&&n.color)||'#facc15'});
   const loadNotes=useCallback(async()=>{
     const d=await api.get('/api/notes'+(archived?'?archived=1':''),{quiet:true,timeoutMs:10000});
     if(Array.isArray(d)){
@@ -7327,41 +7331,43 @@ function NotesView({cu}){
   },[archived]);
   useEffect(()=>{loadNotes();return()=>clearTimeout(saveTimer.current);},[loadNotes]);
   const active=notes.find(n=>n.id===activeId)||notes[0]||null;
-  useEffect(()=>{if(active&&editorRef.current&&editorRef.current.innerHTML!==active.body){editorRef.current.innerHTML=active.body||'';}},[active&&active.id,active&&active.body]);
-  const filtered=notes.filter(n=>{const hay=((n.title||'')+' '+(n.plain_text||'')+' '+(n.notebook||'')+' '+(n.section||'')+' '+toTags(n.tags).join(' ')).toLowerCase();return !q||hay.includes(q.toLowerCase());});
+  useEffect(()=>{
+    if(active&&editorRef.current&&editorRef.current.innerHTML!==active.body){
+      editorRef.current.innerHTML=active.body||'';
+    }
+  },[active&&active.id,active&&active.body]);
+  const filtered=notes.filter(n=>{
+    const hay=((n.title||'')+' '+(n.plain_text||'')+' '+(n.notebook||'')+' '+(n.section||'')+' '+toTags(n.tags).join(' ')).toLowerCase();
+    return !q||hay.includes(q.toLowerCase());
+  });
   const notebooks=[...new Set(notes.map(n=>n.notebook||'Quick Notes'))];
   const sections=[...new Set(notes.map(n=>n.section||'General'))];
   const updateLocal=(id,patch)=>setNotes(prev=>prev.map(n=>n.id===id?normalizeNote({...n,...patch,updated:new Date().toISOString()}):n));
   const savePatch=(id,patch,instant=false)=>{
-    if(!id||String(id).startsWith('tmp_'))return;
-    updateLocal(id,patch); clearTimeout(saveTimer.current);
-    const run=async()=>{try{setSaving(true);await api.put('/api/notes/'+id,patch,{quiet:true,timeoutMs:12000});}finally{setSaving(false);}};
-    if(instant)run();else saveTimer.current=setTimeout(run,300);
+    if(!id)return;
+    updateLocal(id,patch);
+    clearTimeout(saveTimer.current);
+    const run=async()=>{try{setSaving(true);await api.put('/api/notes/'+id,patch,{quiet:true,timeoutMs:10000});}finally{setSaving(false);}};
+    if(instant)run();else saveTimer.current=setTimeout(run,450);
   };
-  const templateData=(template='blank')=>{
+  const createNote=async(template='blank')=>{
     const templates={
-      blank:'<p></p>',
+      blank:'',
       meeting:'<h2>Meeting notes</h2><p><b>Agenda</b></p><ul><li></li></ul><p><b>Decisions</b></p><ul><li></li></ul><p><b>Action items</b></p><ul data-checklist="1"><li><label><input type="checkbox" class="note-check"> Follow up</label></li></ul>',
       daily:'<h2>Daily plan</h2><ul data-checklist="1"><li><label><input type="checkbox" class="note-check"> Top priority</label></li><li><label><input type="checkbox" class="note-check"> Blocker</label></li></ul><p><b>Notes</b></p><p></p>',
       idea:'<h2>Idea</h2><p><b>Problem:</b></p><p><b>Solution:</b></p><p><b>Next step:</b></p>'
     };
-    const palette={blank:'#60a5fa',meeting:'#a78bfa',daily:'#34d399',idea:'#facc15'};
-    return {title:template==='blank'?'Untitled note':template[0].toUpperCase()+template.slice(1)+' note',body:templates[template]||'',plain_text:stripHtml(templates[template]||''),notebook:'Quick Notes',section:'General',color:palette[template]||'#60a5fa',tags:template==='blank'?[]:[template]};
+    const d=await api.post('/api/notes',{title:template==='blank'?'Untitled note':template[0].toUpperCase()+template.slice(1)+' note',body:templates[template]||'',notebook:'Quick Notes',section:'General',color:'#facc15'},{quiet:true});
+    await loadNotes();
+    if(d&&d.id)setActiveId(d.id);
   };
-  const createNote=async(template='blank')=>{
-    if(creating)return; setCreating(true);
-    const draft=normalizeNote({...templateData(template),id:'tmp_'+uid(),created:new Date().toISOString(),updated:new Date().toISOString()});
-    setNotes(prev=>[draft,...prev]); setActiveId(draft.id);
-    try{const d=await api.post('/api/notes',draft,{quiet:true,timeoutMs:12000});
-      if(d&&d.id){setNotes(prev=>prev.map(n=>n.id===draft.id?normalizeNote({...draft,...d,id:d.id}):n));setActiveId(d.id);}else await loadNotes();
-    }catch(e){setNotes(prev=>prev.filter(n=>n.id!==draft.id));setActiveId(notes[0]&&notes[0].id||null);}finally{setCreating(false);}
-  };
-  const duplicateActive=async()=>{if(!active||creating)return;const d=await api.post('/api/notes',{title:(active.title||'Untitled note')+' copy',body:active.body||'',notebook:active.notebook,section:active.section,color:active.color,tags:toTags(active.tags)},{quiet:true,timeoutMs:12000});if(d&&d.id){setNotes(prev=>[normalizeNote(d),...prev]);setActiveId(d.id);}else loadNotes();};
-  const deleteActive=async()=>{if(!active||deleting)return;if(!confirm('Delete this note permanently?'))return;const old=notes;const next=notes.find(n=>n.id!==active.id);setDeleting(true);setNotes(prev=>prev.filter(n=>n.id!==active.id));setActiveId(next?next.id:null);try{await api.del('/api/notes/'+active.id,{quiet:true,timeoutMs:12000});}catch(e){setNotes(old);setActiveId(active.id);}finally{setDeleting(false);}};
+  const duplicateActive=async()=>{if(!active)return;const d=await api.post('/api/notes',{title:(active.title||'Untitled note')+' copy',body:active.body||'',notebook:active.notebook,section:active.section,color:active.color,tags:toTags(active.tags)},{quiet:true});await loadNotes();if(d&&d.id)setActiveId(d.id);};
+  const deleteActive=async()=>{if(!active)return;if(!confirm('Delete this note permanently?'))return;await api.del('/api/notes/'+active.id,{quiet:true});const next=notes.find(n=>n.id!==active.id);setNotes(prev=>prev.filter(n=>n.id!==active.id));setActiveId(next?next.id:null);};
   const focusEditor=()=>{if(editorRef.current)editorRef.current.focus();};
-  const saveEditorNow=()=>{if(active&&editorRef.current)savePatch(active.id,{body:editorRef.current.innerHTML,plain_text:stripHtml(editorRef.current.innerHTML)},true);};
+  const saveEditorNow=()=>{if(active&&editorRef.current)savePatch(active.id,{body:editorRef.current.innerHTML,plain_text:stripHtml(editorRef.current.innerHTML)});};
   const cmd=(c,v=null)=>{focusEditor();document.execCommand(c,false,v);saveEditorNow();};
-  const applyTextColor=(c)=>cmd('foreColor',c); const applyHighlight=(c)=>cmd('backColor',c);
+  const applyTextColor=(c)=>cmd('foreColor',c);
+  const applyHighlight=(c)=>cmd('backColor',c);
   const addTag=()=>{if(!active||!tagInput.trim())return;const tags=[...new Set([...toTags(active.tags),tagInput.trim().replace(/^#/,'')])];setTagInput('');savePatch(active.id,{tags},true);};
   const insertChecklist=()=>cmd('insertHTML','<ul data-checklist="1"><li><label><input type="checkbox" class="note-check"> New task</label></li></ul>');
   const insertCallout=()=>cmd('insertHTML','<blockquote class="note-callout">💡 Important note</blockquote>');
@@ -7371,30 +7377,27 @@ function NotesView({cu}){
   const words=(active&&stripHtml(active.body||active.plain_text||'')||'').trim()?(stripHtml(active.body||active.plain_text||'')).trim().split(/\s+/).length:0;
   const doneCount=active&&editorRef.current?editorRef.current.querySelectorAll('.note-check:checked').length:0;
   const taskCount=active&&editorRef.current?editorRef.current.querySelectorAll('.note-check').length:0;
-  return html`<div class=${'notes-page pro '+(viewMode==='wide'?'wide':'focus')+' '+(toolsOpen?'tools-open':'') }>
+  return html`<div class=${'notes-page '+(viewMode==='wide'?'wide':'focus')}>
     <style>${`
-      .notes-page.pro{height:100%;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 75% 8%,rgba(96,165,250,.14),transparent 28%),radial-gradient(circle at 16% 88%,rgba(168,85,247,.16),transparent 34%),#05070d;overflow:hidden;color:#eef3ff}.notes-page.pro.wide{grid-template-columns:230px minmax(0,1fr)}
-      .notes-sidebar{border-right:1px solid rgba(148,163,184,.18);background:linear-gradient(180deg,rgba(15,23,42,.95),rgba(2,6,23,.92));display:flex;flex-direction:column;min-width:0;box-shadow:10px 0 30px rgba(0,0,0,.22)}
-      .notes-head{padding:16px;border-bottom:1px solid rgba(148,163,184,.16)}.notes-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.notes-title{font-size:20px;font-weight:950;color:#fff;letter-spacing:-.03em}.notes-sub{font-size:10px;color:#94a3b8}.notes-count{font-size:10px;color:#bfdbfe;background:rgba(37,99,235,.18);border:1px solid rgba(96,165,250,.28);border-radius:999px;padding:4px 8px}
-      .notes-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.notes-tabs{display:flex;gap:8px;margin-top:10px}.notes-mini{height:32px!important;font-size:11px!important;padding:0 12px!important;border-radius:999px!important}.notes-quick .notes-mini:nth-child(1){background:linear-gradient(135deg,#8b5cf6,#6366f1)!important;color:#fff!important}.notes-quick .notes-mini:nth-child(2){background:linear-gradient(135deg,#10b981,#059669)!important;color:#fff!important}.notes-quick .notes-mini:nth-child(3){background:linear-gradient(135deg,#f59e0b,#f97316)!important;color:#111827!important}.notes-quick .notes-mini:nth-child(4){background:rgba(255,255,255,.08)!important;color:#e5e7eb!important;border:1px solid rgba(255,255,255,.14)!important}
-      .notes-list{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:10px}.notes-card{text-align:left;border:1px solid rgba(148,163,184,.14);background:linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,41,59,.66));border-radius:18px;padding:8px;cursor:pointer;color:#e5e7eb;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.notes-card:hover{transform:translateY(-2px);border-color:var(--note-color,#60a5fa);box-shadow:0 12px 30px rgba(0,0,0,.24)}.notes-card.active{border-color:var(--note-color,#60a5fa);background:linear-gradient(135deg,rgba(37,99,235,.22),rgba(15,23,42,.94));box-shadow:0 0 0 1px color-mix(in srgb,var(--note-color,#60a5fa) 40%,transparent)}.notes-card.pinned{box-shadow:inset 3px 0 0 var(--note-color,#60a5fa)}
-      .notes-card-top{display:flex;gap:9px;align-items:center}.notes-dot{width:10px;height:10px;border-radius:99px;background:var(--note-color,#60a5fa);box-shadow:0 0 16px var(--note-color,#60a5fa);flex-shrink:0}.notes-card-title{font-size:13px;font-weight:950;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notes-card-text{font-size:11px;color:#94a3b8;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.notes-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.notes-tag{font-size:9px;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.07);color:#cbd5e1;border:1px solid rgba(255,255,255,.1)}
-      .notes-main{min-width:0;display:grid;grid-template-rows:auto 1fr;overflow:hidden}.notes-topbar{min-height:62px;padding:10px 18px;border-bottom:1px solid rgba(148,163,184,.16);background:linear-gradient(180deg,rgba(15,23,42,.92),rgba(15,23,42,.72));display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:10px;align-items:center;backdrop-filter:blur(14px)}.notes-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.notes-saved{font-size:10px;color:#94a3b8}.notes-title-input{font-size:20px!important;font-weight:950!important;height:40px!important;border-radius:13px!important;background:rgba(255,255,255,.08)!important;color:#fff!important;border-color:rgba(255,255,255,.14)!important}.notes-tools{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;border:1px solid rgba(148,163,184,.16);border-radius:18px;background:rgba(2,6,23,.6)}
-      .notes-color{width:20px;height:20px;border-radius:99px;border:1px solid rgba(255,255,255,.22);cursor:pointer;background:var(--note-color,#60a5fa)}.notes-color.active{outline:2px solid #fff;outline-offset:2px}.notes-tool-group{display:flex;gap:6px;align-items:center;padding:5px 8px;border:1px solid rgba(148,163,184,.14);border-radius:999px;background:rgba(255,255,255,.06)}.notes-tool-label{font-size:10px;color:#94a3b8}
-      .notes-workspace{min-height:0;display:grid;grid-template-columns:1fr;overflow:hidden}.notes-page.pro.tools-open .notes-workspace{grid-template-columns:minmax(0,1fr) 260px}.notes-panel{border-left:1px solid rgba(148,163,184,.16);background:rgba(15,23,42,.76);padding:14px;overflow:auto}.notes-panel h4{margin:9px 0 7px;font-size:10px;color:#93c5fd;text-transform:uppercase;letter-spacing:.12em}.notes-tagbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-      .notes-editor-wrap{overflow:auto;padding:18px 26px 24px;background:radial-gradient(circle at top right,rgba(124,58,237,.16),transparent 35%),linear-gradient(180deg,rgba(2,6,23,.8),#020617)}.notes-editor{min-height:calc(100% - 8px);width:min(1180px,96%);margin:0 auto;padding:38px;border-radius:26px;background:linear-gradient(180deg,rgba(24,24,27,.98),rgba(15,23,42,.96));border:1px solid rgba(148,163,184,.22);box-shadow:0 22px 70px rgba(0,0,0,.32);color:#f8fafc;font-size:15px;line-height:1.85;outline:none}.notes-page.pro.wide .notes-editor{width:min(1360px,98%)}.notes-editor:focus{border-color:#60a5fa;box-shadow:0 0 0 4px rgba(96,165,250,.12),0 22px 70px rgba(0,0,0,.32)}.notes-editor h1,.notes-editor h2,.notes-editor h3{line-height:1.25;color:#fff}.notes-editor blockquote,.note-callout{border-left:4px solid #60a5fa;background:rgba(96,165,250,.12);padding:8px 14px;border-radius:14px;margin:12px 0}.notes-editor input[type=checkbox]{width:16px;height:16px;vertical-align:middle;margin-right:8px;accent-color:#60a5fa}.notes-empty{height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8}.notes-empty-list{padding:28px;text-align:center;color:#94a3b8}
-      .notes-page.pro .inp{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.14)}.notes-page.pro .btn:disabled{opacity:.55;cursor:not-allowed}.notes-page.pro .danger{background:rgba(239,68,68,.12)!important;color:#fecaca!important;border-color:rgba(239,68,68,.28)!important}
-      @media(max-width:980px){.notes-page.pro{grid-template-columns:1fr}.notes-sidebar{max-height:250px}.notes-page.pro.tools-open .notes-workspace{grid-template-columns:1fr}.notes-panel{display:none}.notes-topbar{grid-template-columns:1fr}.notes-actions{justify-content:flex-start}.notes-editor{width:100%;padding:24px}.notes-editor-wrap{padding:8px}}
+      .notes-page{height:100%;display:grid;grid-template-columns:268px 1fr;background:var(--bg);overflow:hidden;color:var(--tx)}
+      .notes-page.wide{grid-template-columns:220px 1fr}.notes-sidebar{border-right:1px solid var(--bd);background:linear-gradient(180deg,var(--sf),rgba(255,255,255,.02));display:flex;flex-direction:column;min-width:0}
+      .notes-head{padding:8px;border-bottom:1px solid var(--bd)}.notes-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.notes-title{font-size:18px;font-weight:950;color:var(--tx)}.notes-sub{font-size:10px;color:var(--tx3)}
+      .notes-quick{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.notes-tabs{display:flex;gap:6px;margin-top:8px}.notes-list{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:7px}.notes-card{text-align:left;border:1px solid var(--bd);background:var(--sf2);border-radius:14px;padding:10px;cursor:pointer;color:var(--tx);transition:.15s}.notes-card:hover{transform:translateY(-1px);border-color:var(--ac)}.notes-card.active{border-color:var(--ac);background:var(--ac3)}.notes-card.pinned{box-shadow:0 0 0 1px var(--note-color,#facc15)}
+      .notes-card-top{display:flex;gap:7px;align-items:center}.notes-dot{width:9px;height:9px;border-radius:99px;background:var(--note-color,#facc15);flex-shrink:0}.notes-card-title{font-size:12px;font-weight:900;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notes-card-text{font-size:10px;color:var(--tx3);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.notes-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}.notes-tag{font-size:9px;padding:1px 6px;border-radius:99px;background:var(--sf);color:var(--tx2);border:1px solid var(--bd)}
+      .notes-main{min-width:0;display:grid;grid-template-rows:auto 1fr;overflow:hidden}.notes-topbar{height:auto;min-height:54px;padding:8px 14px;border-bottom:1px solid var(--bd);background:var(--sf);display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:8px;align-items:center}.notes-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.notes-saved{font-size:10px;color:var(--tx3)}.notes-title-input{font-size:19px!important;font-weight:950!important;height:38px!important}.notes-mini{height:30px!important;font-size:11px!important;padding:0 10px!important}.notes-tools{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--bd)}
+      .notes-color{width:19px;height:19px;border-radius:99px;border:1px solid var(--bd);cursor:pointer;background:var(--note-color,#facc15)}.notes-color.active{border:2px solid var(--tx)}.notes-tool-group{display:flex;gap:5px;align-items:center;padding:3px 6px;border:1px solid var(--bd);border-radius:999px;background:var(--bg)}.notes-tool-label{font-size:10px;color:var(--tx3)}
+      .notes-workspace{min-height:0;display:grid;grid-template-columns:1fr 240px;overflow:hidden}.notes-page.wide .notes-workspace{grid-template-columns:1fr 190px}.notes-panel{border-left:1px solid var(--bd);background:var(--sf);padding:10px;overflow:auto}.notes-panel h4{margin:8px 0 6px;font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em}.notes-tagbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.notes-editor-wrap{overflow:auto;padding:18px;background:radial-gradient(circle at top right,rgba(124,58,237,.12),transparent 35%),linear-gradient(180deg,var(--bg),rgba(255,255,255,.02))}.notes-editor{min-height:calc(100% - 12px);max-width:900px;margin:0 auto;padding:30px;border-radius:22px;background:var(--sf);border:1px solid var(--bd);box-shadow:0 18px 60px rgba(0,0,0,.18);color:var(--tx);font-size:15px;line-height:1.8;outline:none}.notes-editor:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac3),0 18px 60px rgba(0,0,0,.18)}.notes-editor h1,.notes-editor h2,.notes-editor h3{line-height:1.25}.notes-editor blockquote,.note-callout{border-left:4px solid var(--ac);background:var(--ac3);padding:10px 12px;border-radius:12px;margin:10px 0}.notes-editor input[type=checkbox]{width:16px;height:16px;vertical-align:middle;margin-right:8px;accent-color:var(--ac)}.notes-empty{height:100%;display:flex;align-items:center;justify-content:center;color:var(--tx3)}.notes-empty-list{padding:24px;text-align:center;color:var(--tx3)}
+      @media(max-width:980px){.notes-page{grid-template-columns:1fr}.notes-sidebar{max-height:240px}.notes-workspace{grid-template-columns:1fr}.notes-panel{display:none}.notes-topbar{grid-template-columns:1fr}.notes-actions{justify-content:flex-start}}
     `}</style>
     <aside class="notes-sidebar">
       <div class="notes-head">
-        <div class="notes-title-row"><div><div class="notes-title">Notes Studio</div><div class="notes-sub">Fast capture · rich canvas · autosave</div></div><button class="btn bp" disabled=${creating} onClick=${()=>createNote('blank')}>＋</button></div>
+        <div class="notes-title-row"><div><div class="notes-title">Notes</div><div class="notes-sub">Quick notes, notebooks, tags, autosave</div></div><button class="btn bp" onClick=${()=>createNote('blank')}>＋</button></div>
         <input class="inp notes-mini" value=${q} onInput=${e=>setQ(e.target.value)} placeholder="Search notes, tags, notebooks..." />
-        <div class="notes-quick"><button class="btn notes-mini" disabled=${creating} onClick=${()=>createNote('meeting')}>Meeting</button><button class="btn notes-mini" disabled=${creating} onClick=${()=>createNote('daily')}>Daily</button><button class="btn notes-mini" disabled=${creating} onClick=${()=>createNote('idea')}>Idea</button><button class="btn notes-mini" onClick=${()=>setViewMode(viewMode==='wide'?'focus':'wide')}>${viewMode==='wide'?'Focus':'Wide'}</button></div>
-        <div class="notes-tabs"><button class=${'btn notes-mini '+(!archived?'bp':'')} onClick=${()=>setArchived(false)}>Active</button><button class=${'btn notes-mini '+(archived?'bp':'')} onClick=${()=>setArchived(true)}>Archive</button><span class="notes-count">${filtered.length} notes</span></div>
+        <div class="notes-quick"><button class="btn notes-mini" onClick=${()=>createNote('meeting')}>Meeting</button><button class="btn notes-mini" onClick=${()=>createNote('daily')}>Daily</button><button class="btn notes-mini" onClick=${()=>createNote('idea')}>Idea</button><button class="btn notes-mini" onClick=${()=>setViewMode(viewMode==='wide'?'focus':'wide')}>${viewMode==='wide'?'Focus':'Compact'}</button></div>
+        <div class="notes-tabs"><button class=${'btn notes-mini '+(!archived?'bp':'')} onClick=${()=>setArchived(false)}>Active</button><button class=${'btn notes-mini '+(archived?'bp':'')} onClick=${()=>setArchived(true)}>Archive</button></div>
       </div>
       <div class="notes-list">
-        ${filtered.length?filtered.map(n=>html`<button key=${n.id} class=${'notes-card '+((active&&active.id===n.id)?'active ':'')+(n.pinned?'pinned':'')} style=${{'--note-color':n.color||'#60a5fa'}} onClick=${()=>setActiveId(n.id)}>
+        ${filtered.length?filtered.map(n=>html`<button key=${n.id} class=${'notes-card '+((active&&active.id===n.id)?'active ':'')+(n.pinned?'pinned':'')} style=${{'--note-color':n.color||'#facc15'}} onClick=${()=>setActiveId(n.id)}>
           <div class="notes-card-top"><span class="notes-dot"></span><div class="notes-card-title">${n.pinned?'📌 ':''}${n.favorite?'★ ':''}${n.title||'Untitled note'}</div></div>
           <div class="notes-card-text">${stripHtml(n.body||n.plain_text||'')||'No content yet'}</div>
           <div class="notes-tags">${toTags(n.tags).slice(0,3).map(t=>html`<span class="notes-tag">#${t}</span>`)}</div>
@@ -7405,7 +7408,7 @@ function NotesView({cu}){
       ${active?html`<div class="notes-topbar">
         <input class="inp notes-title-input" value=${active.title||''} onInput=${e=>savePatch(active.id,{title:e.target.value})} placeholder="Note title" />
         <div class="notes-actions">
-          <button class="btn notes-mini" onClick=${()=>savePatch(active.id,{pinned:active.pinned?0:1},true)}>${active.pinned?'📌':'📍'} Pin</button><button class="btn notes-mini" onClick=${()=>savePatch(active.id,{favorite:active.favorite?0:1},true)}>${active.favorite?'★':'☆'}</button><button class="btn notes-mini" onClick=${()=>setToolsOpen(!toolsOpen)}>${toolsOpen?'Hide tools':'Tools'}</button><button class="btn notes-mini danger" disabled=${deleting} onClick=${deleteActive}>${deleting?'Deleting…':'Delete'}</button><span class="notes-saved">${saving?'Saving…':'Saved'} · ${words} words${taskCount?' · '+doneCount+'/'+taskCount+' done':''}</span>
+          <button class="btn notes-mini" onClick=${()=>savePatch(active.id,{pinned:active.pinned?0:1},true)}>${active.pinned?'📌':'📍'} Pin</button><button class="btn notes-mini" onClick=${()=>savePatch(active.id,{favorite:active.favorite?0:1},true)}>${active.favorite?'★':'☆'}</button><button class="btn notes-mini" onClick=${()=>setToolsOpen(!toolsOpen)}>${toolsOpen?'Hide tools':'Tools'}</button><button class="btn notes-mini danger" onClick=${deleteActive}>Delete</button><span class="notes-saved">${saving?'Saving…':'Saved'} · ${words} words${taskCount?' · '+doneCount+'/'+taskCount+' done':''}</span>
         </div>
         ${toolsOpen?html`<div class="notes-tools">
           <div class="notes-tool-group"><button class="btn notes-mini" onClick=${()=>cmd('bold')}>B</button><button class="btn notes-mini" onClick=${()=>cmd('italic')}>I</button><button class="btn notes-mini" onClick=${()=>cmd('underline')}>U</button><button class="btn notes-mini" onClick=${()=>cmd('formatBlock','h2')}>H2</button><button class="btn notes-mini" onClick=${()=>cmd('insertUnorderedList')}>•</button><button class="btn notes-mini" onClick=${()=>cmd('insertOrderedList')}>1.</button><button class="btn notes-mini" onClick=${insertChecklist}>☑</button><button class="btn notes-mini" onClick=${insertCallout}>Callout</button></div>
@@ -7417,14 +7420,14 @@ function NotesView({cu}){
       </div>
       <div class="notes-workspace">
         <div class="notes-editor-wrap"><div ref=${editorRef} class="notes-editor" contentEditable=${true} suppressContentEditableWarning=${true} onInput=${e=>savePatch(active.id,{body:e.currentTarget.innerHTML,plain_text:stripHtml(e.currentTarget.innerHTML)})} onClick=${onEditorClick} onKeyDown=${onEditorKeyDown}></div></div>
-        ${toolsOpen?html`<aside class="notes-panel">
+        <aside class="notes-panel">
           <h4>Notebook</h4><input class="inp notes-mini" value=${active.notebook||''} onInput=${e=>savePatch(active.id,{notebook:e.target.value})} list="note-books" placeholder="Notebook"/><datalist id="note-books">${notebooks.map(x=>html`<option value=${x}></option>` )}</datalist>
           <h4>Section</h4><input class="inp notes-mini" value=${active.section||''} onInput=${e=>savePatch(active.id,{section:e.target.value})} list="note-sections" placeholder="Section"/><datalist id="note-sections">${sections.map(x=>html`<option value=${x}></option>` )}</datalist>
           <h4>Tags</h4><div class="notes-tagbar">${toTags(active.tags).map(t=>html`<button class="btn notes-mini" onClick=${()=>savePatch(active.id,{tags:toTags(active.tags).filter(x=>x!==t)},true)}>#${t} ×</button>`)}</div><div style=${{display:'flex',gap:'6px',marginTop:'6px'}}><input class="inp notes-mini" value=${tagInput} onInput=${e=>setTagInput(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter')addTag();}} placeholder="Add tag"/><button class="btn notes-mini" onClick=${addTag}>Add</button></div>
           <h4>Quick insert</h4><button class="btn notes-mini" onClick=${insertChecklist}>Checklist</button> <button class="btn notes-mini" onClick=${insertCallout}>Callout</button> <button class="btn notes-mini" onClick=${()=>cmd('insertHorizontalRule')}>Divider</button>
           <h4>Shortcuts</h4><div class="notes-sub">Ctrl+S save · Ctrl+B bold · Ctrl+I italic · checkbox clicks are saved</div>
-        </aside>`:null}
-      </div>`:html`<div class="notes-empty"><button class="btn bp" disabled=${creating} onClick=${()=>createNote('blank')}>Create your first note</button></div>`}
+        </aside>
+      </div>`:html`<div class="notes-empty"><button class="btn bp" onClick=${()=>createNote('blank')}>Create your first note</button></div>`}
     </main>
   </div>`;
 }
@@ -8084,7 +8087,7 @@ function ToastStack({toasts,onDismiss,onNav}){
         const cfg=TOAST_CFG[t.type]||TOAST_CFG.default;
         return html`
           <div key=${t.id} class=${'toast'+(t.leaving?' leaving':'')}
-            onClick=${()=>{onDismiss(t.id);onNav&&onNav(cfg.nav);}}>
+            onClick=${()=>{onDismiss(t.id);if(onNav){const nav=cfg.nav+(t.extra&&t.extra.peer?':'+String(t.extra.peer):'');onNav(nav);}}}>
             <div class="toast-accent" style=${{background:cfg.color}}></div>
             <div class="toast-bar" style=${{width:t.progress+'%',background:cfg.color}}></div>
             <div class="toast-icon" style=${{background:cfg.bg,color:cfg.color}}>${cfg.icon}</div>
@@ -8845,7 +8848,7 @@ function TimesheetView({cu,teams,users,projects,tasks}){
     setShowForm(false);
     setSaveMsg('✓ Hours added');
     try{
-      const res=await api.post('/api/timelogs',payload,{quiet:true,timeoutMs:12000});
+      const res=await api.post('/api/timelogs',payload,{quiet:true,timeoutMs:8000});
       if(res&&res.id){
         setLogs(prev=>{const next=prev.map(l=>l.id===tempId?{...optimisticEntry,...res,_saving:false}:l);ptInstantCacheSet(tsCacheKey,{logs:next,week:weekInfo,requiredHrs});return next;});
         api.get('/api/timesheet/weeks/current').then(w=>w&&w.week&&setWeekInfo(w.week)).catch(()=>{});
@@ -8862,7 +8865,7 @@ function TimesheetView({cu,teams,users,projects,tasks}){
     if(!confirm('Delete this log entry?'))return;
     const old=logs;
     setLogs(prev=>{const next=prev.filter(l=>l.id!==id);ptInstantCacheSet(tsCacheKey,{logs:next,week:weekInfo,requiredHrs});return next;});
-    try{await api.del('/api/timelogs/'+id,{quiet:true,timeoutMs:12000});api.get('/api/timesheet/weeks/current').then(w=>w&&w.week&&setWeekInfo(w.week)).catch(()=>{});}
+    try{await api.del('/api/timelogs/'+id,{quiet:true,timeoutMs:8000});api.get('/api/timesheet/weeks/current').then(w=>w&&w.week&&setWeekInfo(w.week)).catch(()=>{});}
     catch(e){setLogs(old);ptInstantCacheSet(tsCacheKey,{logs:old,week:weekInfo,requiredHrs});setSaveMsg('⚠ Delete failed');setTimeout(()=>setSaveMsg(''),2500);}
   };
 
@@ -8877,7 +8880,7 @@ function TimesheetView({cu,teams,users,projects,tasks}){
     setLogs(prev=>{const next=prev.map(x=>x.id===l.id?{...x,...patch,_saving:true}:x);ptInstantCacheSet(tsCacheKey,{logs:next,week:weekInfo,requiredHrs});return next;});
     setEditId(null);
     try{
-      const r=await api.put('/api/timelogs/'+l.id,patch,{quiet:true,timeoutMs:12000});
+      const r=await api.put('/api/timelogs/'+l.id,patch,{quiet:true,timeoutMs:8000});
       if(r&&(r.ok||r.id)){setLogs(prev=>{const next=prev.map(x=>x.id===l.id?{...x,...patch,_saving:false}:x);ptInstantCacheSet(tsCacheKey,{logs:next,week:weekInfo,requiredHrs});return next;});}
       else throw new Error('Update failed');
     }catch(e){setLogs(old);ptInstantCacheSet(tsCacheKey,{logs:old,week:weekInfo,requiredHrs});setSaveMsg('⚠ Update failed');setTimeout(()=>setSaveMsg(''),2500);}
@@ -8886,13 +8889,13 @@ function TimesheetView({cu,teams,users,projects,tasks}){
   const submitWeek=async()=>{
     if(!weekInfo)return;
     const prev=weekInfo; setWeekInfo({...weekInfo,status:'submitted',submitted_at:new Date().toISOString()});
-    try{await api.post('/api/timesheet/weeks/'+weekInfo.id+'/submit',{}, {quiet:true,timeoutMs:12000});setSaveMsg('✓ Week submitted');}
+    try{await api.post('/api/timesheet/weeks/'+weekInfo.id+'/submit',{}, {quiet:true,timeoutMs:8000});setSaveMsg('✓ Week submitted');}
     catch(e){setWeekInfo(prev);setSaveMsg('⚠ Submit failed');}
   };
   const approveWeek=async(status='approved')=>{
     if(!weekInfo)return;
     const prev=weekInfo; setWeekInfo({...weekInfo,status,approved_at:new Date().toISOString()});
-    try{await api.post('/api/timesheet/weeks/'+weekInfo.id+'/approve',{status}, {quiet:true,timeoutMs:12000});setSaveMsg(status==='approved'?'✓ Week approved':'✓ Week rejected');}
+    try{await api.post('/api/timesheet/weeks/'+weekInfo.id+'/approve',{status}, {quiet:true,timeoutMs:8000});setSaveMsg(status==='approved'?'✓ Week approved':'✓ Week rejected');}
     catch(e){setWeekInfo(prev);setSaveMsg('⚠ Approval failed');}
   };
 
@@ -10069,6 +10072,38 @@ function VaultView({cu}){
 
 
 
+function pathParts(){try{return window.location.pathname.split('/').filter(Boolean);}catch(e){return [];}}
+function routeViewFromPath(validViews){
+  try{
+    const parts=pathParts();
+    const i=parts.findIndex(x=>validViews.includes(String(x||'').trim()));
+    return i>=0?parts[i]:'';
+  }catch(e){}
+  return '';
+}
+function projectIdFromPath(){
+  try{
+    const ri=ptRouteInfo();
+    if(ri.page==='projects'&&ri.id)return ri.id;
+  }catch(e){}
+  return '';
+}
+
+function deepLinkFromSearch(){
+  try{
+    const sp=new URLSearchParams(window.location.search);
+    const action=(sp.get('action')||'').toLowerCase();
+    const id=sp.get('id')||sp.get('task_id')||sp.get('ticket_id')||sp.get('project_id')||'';
+    if(action==='task')return {view:'tasks',taskId:id};
+    if(action==='ticket')return {view:'tickets',ticketId:id};
+    if(action==='project')return {view:'projects',projectId:id};
+    if(action==='dm')return {view:'dm',dmUser:sp.get('user')||sp.get('sender')||sp.get('id')||''};
+    if(['dashboard','workspace-os','ops','projects','tasks','tickets','reminders','messages','dm','settings','team','timeline','productivity','timesheet'].includes(action))return {view:action,dmUser:sp.get('user')||sp.get('sender')||''};
+  }catch(e){}
+  return {};
+}
+
+
 
 function workspaceSlugFromUser(u){
   try{
@@ -10221,7 +10256,19 @@ async function ptResolveDmNotificationTarget(cuId, dmUnread){
     if(peer)return String(peer);
   }catch(_e){}
   try{
-    const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:1500});
+    // FIX 16: 5s client-side dedup — /api/dm/latest-unread is called from two
+    // independent paths (ptResolveDmPeer + poll fallback). A time-gate prevents
+    // a double DB hit when both fire within the same render cycle.
+    const _now=Date.now();
+    const _last=ptResolveDmPeer._lastUnreadAt||0;
+    if(_now-_last>5000){
+      ptResolveDmPeer._lastUnreadAt=_now;
+      const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:1500});
+      if(Array.isArray(latest)&&latest.length){
+        ptResolveDmPeer._lastUnreadCache=latest;
+      }
+    }
+    const latest=ptResolveDmPeer._lastUnreadCache||[];
     if(Array.isArray(latest)&&latest.length){
       const m=latest.find(x=>x&&(String(x.sender)!==String(cuId)))||latest[0];
       const peer=String(m.sender)===String(cuId)?m.recipient:m.sender;
@@ -10616,7 +10663,7 @@ function WorkspaceRolesSettings({cu}){
   const [roles,setRoles]=useState([]);
   const [draft,setDraft]=useState({name:'',base_role:'Developer',description:'',color:'#6366f1'});
   const [msg,setMsg]=useState('');
-  const load=useCallback(async()=>{const r=await api.get('/api/workspace/roles',{quiet:true,timeoutMs:12000}).catch(e=>({error:e.message})); if(r&&r.ok)setRoles(r.items||[]); else setMsg(r&&r.error||'Roles unavailable');},[]);
+  const load=useCallback(async()=>{const r=await api.get('/api/workspace/roles',{quiet:true,timeoutMs:6000}).catch(e=>({error:e.message})); if(r&&r.ok)setRoles(r.items||[]); else setMsg(r&&r.error||'Roles unavailable');},[]);
   useEffect(()=>{load();},[]);
   const save=async()=>{
     if(!canManage)return setMsg('Admin/Manager/HR only');
@@ -10652,10 +10699,9 @@ function WorkspaceOSView({cu,users=[]}){
   const fmtDate=v=>{try{return v?new Date(String(v).slice(0,10)+'T00:00:00').toLocaleDateString([], {day:'2-digit',month:'short',year:'numeric'}):'—'}catch(_){return v||'—'}};
   const initials=u=>String((u&&u.name)||u&&u.email||'?').trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase()||'?';
   const titleCase=s=>String(s||'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-  const statusBadgeClass=st=>{const v=String(st||'').toLowerCase();if(['approved','checked_in','checked_out','completed','done','clean','active','published'].includes(v))return 'gr';if(['pending','draft','in_review'].includes(v))return 'am';if(['rejected','cancelled','failed','blocked'].includes(v))return 'rd';return 'gy';};
   const localAttendKey=cacheKey+':attendance:today';
   let bootAttendance=null;try{const tmp=JSON.parse(localStorage.getItem(localAttendKey)||'null');if(tmp&&tmp.work_date===todayStr())bootAttendance=tmp;}catch(_){ }
-  const seed={ok:true,features:{},me:cu||{},org_profile:{},attendance_today:bootAttendance,attendance_history:bootAttendance?[bootAttendance]:[],leaves:[],leave_balances:[],tickets:[],tasks:[],my_active_tasks_count:0,my_open_tickets_count:0,pending_leave_count:0,policies:[],announcements:[],org_people:users||[],approvals:[],holidays:[],payslips:[],timelogs:[],custom_roles:[],work_items:[],team_attendance_today:[],team_leaves:[]};
+  const seed={ok:true,features:{},me:cu||{},org_profile:{},attendance_today:bootAttendance,attendance_history:bootAttendance?[bootAttendance]:[],leaves:[],leave_balances:[],tickets:[],tasks:[],my_active_tasks_count:0,my_open_tickets_count:0,pending_leave_count:0,policies:[],announcements:[],org_people:users||[],approvals:[],holidays:[],payslips:[],timelogs:[],custom_roles:[],work_items:[]};
   const cached=ptInstantCacheGet(cacheKey)||{};
   const [tab,setTab]=useState(()=>{try{const v=sessionStorage.getItem('pt_wos_tab'); if(v){sessionStorage.removeItem('pt_wos_tab'); return v;} }catch(_){} return 'home';});
   const [data,setData]=useState(()=>({...seed,...(cached.data||{}),attendance_today:(cached.data&&cached.data.attendance_today)||bootAttendance||null,org_people:(cached.data&&cached.data.org_people&&cached.data.org_people.length)?cached.data.org_people:(users||[])}));
@@ -10668,7 +10714,6 @@ function WorkspaceOSView({cu,users=[]}){
   const [profileFullTab,setProfileFullTab]=useState('overview');
   const [leave,setLeave]=useState({leave_type:'casual',start_date:todayStr(),end_date:todayStr(),days:1,reason:''});
   const [attendanceMode,setAttendanceMode]=useState((bootAttendance&&bootAttendance.work_mode)||'office');
-  const [attendanceDetail,setAttendanceDetail]=useState(null);
   const [holiday,setHoliday]=useState({title:'',holiday_date:todayStr(),category:'holiday'});
   const [osSettings,setOsSettings]=useState({permission_hours_per_month:2,holiday_upload_roles:['admin','hr'],allowed_work_modes:['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty'],activity_catalog:['Meeting','Client Call','Code Review','Deployment','Support','Documentation','Research','Testing','Planning','Training']});
   const [holidayFile,setHolidayFile]=useState(null);
@@ -10685,59 +10730,27 @@ function WorkspaceOSView({cu,users=[]}){
     const hist=[attendance_today,...(d.attendance_history||prev.attendance_history||[]).filter(x=>attendance_today?(x.id!==attendance_today.id&&x.work_date!==attendance_today.work_date):true)].filter(Boolean).slice(0,14);
     return {...prev,...d,attendance_today,attendance_history:hist,org_people:(d.org_people&&d.org_people.length)?d.org_people:(prev.org_people&&prev.org_people.length?prev.org_people:(users||[]))};
   });},[updateData,users,localAttendKey]);
-  const refresh=useCallback(async(force=false)=>{setBusy(true);const d=await api.get('/api/workspace-os/bootstrap'+(force?'?force=1':''),{quiet:true,timeoutMs:force?20000:6000}).catch(e=>({error:e.message}));setBusy(false);if(d&&d.ok){if(d.settings)setOsSettings(prev=>({...prev,...d.settings}));mergeServerData(d);setMsg(d.cache==='hit'?'Showing saved data':(d.cache==='quick'?'Loaded instantly':'Live'));setTimeout(()=>setMsg(''),1200);}else{setMsg('Showing saved data');setTimeout(()=>setMsg(''),1500);}},[mergeServerData]);
-  useEffect(()=>{refresh(false);const t=setTimeout(()=>refresh(true),900);return()=>clearTimeout(t);},[]);
+  const refresh=useCallback(async(force=false)=>{setBusy(true);const d=await api.get('/api/workspace-os/bootstrap'+(force?'?force=1':''),{quiet:true,timeoutMs:15000}).catch(e=>({error:e.message}));setBusy(false);if(d&&d.ok){if(d.settings)setOsSettings(prev=>({...prev,...d.settings}));mergeServerData(d);setMsg(d.cache==='hit'?'Showing saved data':(d.cache==='quick'?'Loaded instantly':'Live'));setTimeout(()=>setMsg(''),1200);}else{setMsg('Showing saved data');setTimeout(()=>setMsg(''),1500);}},[mergeServerData]);
+  useEffect(()=>{refresh(false);},[]);
   useEffect(()=>{const h=()=>refresh(true);window.addEventListener('pt:wos-refresh',h);return()=>window.removeEventListener('pt:wos-refresh',h);},[refresh]);
-  useEffect(()=>{
-    const h=e=>{
-      const id=e&&e.detail&&e.detail.user_id, profile=e&&e.detail&&e.detail.profile;
-      if(!id||!profile)return;
-      const normalized=ptNormalizeProfilePayload(profile);
-      updateData(prev=>({...prev,org_people:(prev.org_people||[]).map(u=>String(u.id)===String(id)?ptMergeProfileNonEmpty(u,normalized):u),org_profile:String(id)===String(cu&&cu.id)?ptMergeProfileNonEmpty(prev.org_profile||{},normalized):prev.org_profile}));
-      setSelected(prev=>prev&&String(prev.id)===String(id)?ptMergeProfileNonEmpty(prev,normalized):prev);
-      setProfileDraft(prev=>String(id)===String(cu&&cu.id)?ptMergeProfileNonEmpty(prev,normalized):prev);
-    };
-    window.addEventListener('pt:profile-updated',h);
-    return()=>window.removeEventListener('pt:profile-updated',h);
-  },[updateData,cu&&cu.id]);
   const goTimesheet=()=>setTab('time');
   const attendanceAction=async(action)=>{
     const now=new Date().toISOString(); const prev=data.attendance_today;
-    const mode=attendanceMode||(prev&&prev.work_mode)||'office';
-    const oldMode=(prev&&prev.work_mode)||mode;
-    const localEvent=(type,extra={})=>({id:'local-aev-'+Date.now()+'-'+Math.random().toString(16).slice(2),event_type:type,event_time:now,work_mode:extra.work_mode||mode,from_mode:extra.from_mode||'',to_mode:extra.to_mode||'',label:extra.label||'',created:now});
-    const next=prev?{...prev,updated:now,_localUpdatedAt:now,events:[...((prev&&prev.events)||[])]}:{id:'local-'+Date.now(),workspace_id:cu&&cu.workspace_id,user_id:cu&&cu.id,work_date:todayStr(),check_in:'',check_out:'',work_mode:mode,status:'checked_in',created:now,updated:now,_localUpdatedAt:now,events:[]};
-    if(action==='check_out'){
-      next.check_out=now;next.status='checked_out';next.work_mode=mode;next.events=[...(next.events||[]),localEvent('check_out',{work_mode:mode,label:'Checked Out · '+titleCase(mode)})];
-    }else if(action==='switch_mode'||action==='mode_change'){
-      next.status='checked_in';next.work_mode=mode;next.mode_summary=oldMode&&oldMode!==mode?'mixed':mode;next.mode_label=oldMode&&oldMode!==mode?titleCase(oldMode)+' → '+titleCase(mode):titleCase(mode);next.events=[...(next.events||[]),localEvent('mode_change',{work_mode:mode,from_mode:oldMode,to_mode:mode,label:'Switched to '+titleCase(mode)})];
-    }else{
-      next.check_in=next.check_in||now;next.status='checked_in';next.work_mode=mode;next.events=(next.events&&next.events.length)?next.events:[localEvent('check_in',{work_mode:mode,label:'Checked In · '+titleCase(mode)})];
-    }
+    const next=prev?{...prev,updated:now,_localUpdatedAt:now}:{id:'local-'+Date.now(),workspace_id:cu&&cu.workspace_id,user_id:cu&&cu.id,work_date:todayStr(),check_in:'',check_out:'',work_mode:attendanceMode||'office',status:'checked_in',created:now,updated:now,_localUpdatedAt:now};
+    if(action==='check_out'){next.check_out=now;next.status='checked_out';}else{next.check_in=next.check_in||now;next.status='checked_in';}
     try{localStorage.setItem(localAttendKey,JSON.stringify(next));}catch(_){ }
     updateData(p=>({...p,attendance_today:next,attendance_history:[next,...(p.attendance_history||[]).filter(x=>x.id!==next.id&&x.work_date!==next.work_date)].slice(0,14)}));
-    const r=await api.post('/api/attendance/today',{action,work_mode:mode},{quiet:true,timeoutMs:12000}).catch(e=>({error:e.message}));
-    if(r&&r.ok&&r.attendance){try{localStorage.setItem(localAttendKey,JSON.stringify(r.attendance));}catch(_){ }updateData(p=>({...p,attendance_today:r.attendance,attendance_history:[r.attendance,...(p.attendance_history||[]).filter(x=>x.id!==r.attendance.id&&x.work_date!==r.attendance.work_date)].slice(0,14)}));setMsg(action==='switch_mode'||action==='mode_change'?'Work mode switched':'Attendance synced');setTimeout(()=>setMsg(''),1200);}
+    next.work_mode=attendanceMode||next.work_mode||'office';const r=await api.post('/api/attendance/today',{action,work_mode:next.work_mode||'office'},{quiet:true,timeoutMs:6500}).catch(e=>({error:e.message}));
+    if(r&&r.ok&&r.attendance){try{localStorage.setItem(localAttendKey,JSON.stringify(r.attendance));}catch(_){ }updateData(p=>({...p,attendance_today:r.attendance,attendance_history:[r.attendance,...(p.attendance_history||[]).filter(x=>x.id!==r.attendance.id&&x.work_date!==r.attendance.work_date)].slice(0,14)}));}
     else setMsg('Saved locally. Sync will retry.');
   };
   const submitLeave=async()=>{const optimistic={...leave,id:'local-lv-'+Date.now(),status:'pending',created:new Date().toISOString()};updateData(p=>({...p,leaves:[optimistic,...(p.leaves||[])]}));const r=await api.post('/api/leaves',leave,{quiet:true,timeoutMs:7000}).catch(e=>({error:e.message}));if(r&&r.ok&&r.item){updateData(p=>({...p,leaves:[r.item,...(p.leaves||[]).filter(x=>x.id!==optimistic.id)]}));setLeave({...leave,reason:''});}else{updateData(p=>({...p,leaves:(p.leaves||[]).filter(x=>x.id!==optimistic.id)}));setMsg(r&&r.error||'Leave save failed');}};
-  const saveTimeLog=async()=>{const hrs=Number(timeDraft.hours||0), mins=Number(timeDraft.minutes||0);if(!timeDraft.task_name.trim()&&!timeDraft.task_id){setMsg('Add task/activity before saving time');setTimeout(()=>setMsg(''),1500);return;}const savePayload={...timeDraft,task_id:String(timeDraft.task_id||'').startsWith('activity:')?'':timeDraft.task_id,item_type:String(timeDraft.task_id||'').startsWith('activity:')?'activity':timeDraft.item_type};const optimistic={...savePayload,id:'local-tl-'+Date.now(),hours:hrs,minutes:mins,status:'draft',created:new Date().toISOString(),user_id:cu&&cu.id,user_name:cu&&cu.name};updateData(p=>({...p,timelogs:[optimistic,...(p.timelogs||[])]}));setTimeDraft({...timeDraft,task_name:'',comments:'',hours:'1',minutes:'0'});const r=await api.post('/api/timelogs',optimistic,{quiet:true,timeoutMs:12000}).catch(e=>({error:e.message}));if(r&&r.id){updateData(p=>({...p,timelogs:[r,...(p.timelogs||[]).filter(x=>x.id!==optimistic.id)]}));setMsg('Time logged');}else{updateData(p=>({...p,timelogs:(p.timelogs||[]).filter(x=>x.id!==optimistic.id)}));setMsg(r&&r.error||'Time save failed');}setTimeout(()=>setMsg(''),1500);};
+  const saveTimeLog=async()=>{const hrs=Number(timeDraft.hours||0), mins=Number(timeDraft.minutes||0);if(!timeDraft.task_name.trim()&&!timeDraft.task_id){setMsg('Add task/activity before saving time');setTimeout(()=>setMsg(''),1500);return;}const savePayload={...timeDraft,task_id:String(timeDraft.task_id||'').startsWith('activity:')?'':timeDraft.task_id,item_type:String(timeDraft.task_id||'').startsWith('activity:')?'activity':timeDraft.item_type};const optimistic={...savePayload,id:'local-tl-'+Date.now(),hours:hrs,minutes:mins,status:'draft',created:new Date().toISOString(),user_id:cu&&cu.id,user_name:cu&&cu.name};updateData(p=>({...p,timelogs:[optimistic,...(p.timelogs||[])]}));setTimeDraft({...timeDraft,task_name:'',comments:'',hours:'1',minutes:'0'});const r=await api.post('/api/timelogs',optimistic,{quiet:true,timeoutMs:8000}).catch(e=>({error:e.message}));if(r&&r.id){updateData(p=>({...p,timelogs:[r,...(p.timelogs||[]).filter(x=>x.id!==optimistic.id)]}));setMsg('Time logged');}else{updateData(p=>({...p,timelogs:(p.timelogs||[]).filter(x=>x.id!==optimistic.id)}));setMsg(r&&r.error||'Time save failed');}setTimeout(()=>setMsg(''),1500);};
   const addHoliday=async()=>{if(!canHR)return;const optimistic={...holiday,id:'local-hol-'+Date.now(),created:new Date().toISOString()};updateData(p=>({...p,holidays:[...(p.holidays||[]),optimistic].sort((a,b)=>String(a.holiday_date).localeCompare(String(b.holiday_date)))}));const r=await api.post('/api/holidays',holiday,{quiet:true,timeoutMs:7000}).catch(e=>({error:e.message}));if(r&&r.ok&&r.item){updateData(p=>({...p,holidays:[...(p.holidays||[]).filter(x=>x.id!==optimistic.id),r.item].sort((a,b)=>String(a.holiday_date).localeCompare(String(b.holiday_date)))}));setHoliday({...holiday,title:''});}else setMsg(r&&r.error||'Holiday save failed');};
   const importHolidays=async()=>{if(!canHR||!holidayFile)return;const fd=new FormData();fd.append('file',holidayFile);const r=await api.post('/api/holidays/import',fd,{quiet:true,timeoutMs:12000}).catch(e=>({error:e.message}));setMsg((r&&r.ok)?('Imported '+(r.success||0)+' holidays'):(r&&r.error||'Import failed'));refresh(true);};
   const publishPolicy=async()=>{if(!canHR||!policy.title.trim())return;const item={...policy,id:'local-pol-'+Date.now(),updated:new Date().toISOString()};updateData(p=>({...p,policies:[item,...(p.policies||[])]}));const r=await api.post('/api/policies',policy,{quiet:true,timeoutMs:7000}).catch(e=>({error:e.message}));if(r&&r.ok&&r.item){updateData(p=>({...p,policies:[r.item,...(p.policies||[]).filter(x=>x.id!==item.id)]}));setPolicy({title:'',category:'Policy',body:'',requires_ack:false});}else setMsg(r&&r.error||'Policy publish failed');};
   const postAnnouncement=async()=>{if(!canPeopleAdmin||!ann.title.trim())return;const item={...ann,id:'local-ann-'+Date.now(),created:new Date().toISOString()};updateData(p=>({...p,announcements:[item,...(p.announcements||[])]}));const r=await api.post('/api/announcements',ann,{quiet:true,timeoutMs:7000}).catch(e=>({error:e.message}));if(r&&r.ok&&r.item){updateData(p=>({...p,announcements:[r.item,...(p.announcements||[]).filter(x=>x.id!==item.id)]}));setAnn({title:'',body:'',priority:'normal'});}else setMsg(r&&r.error||'Announcement failed');};
-  const uploadPayslips=async()=>{if(!canHR||!payFiles.length)return;setBusy(true);const fd=new FormData();Array.from(payFiles).forEach(f=>fd.append('files',f));if(payMap)fd.append('mapping',payMap);fd.append('month',pay.month);fd.append('year',pay.year);const r=await api.upload('/api/payslips/import',fd).catch(e=>({error:e.message}));setBusy(false);if(r&&r.ok){setPayFiles([]);setPayMap(null);setMsg('Payslips uploaded: '+(r.uploaded||0)+(r.failed?(', '+r.failed+' unmatched'):''));}else{setMsg((r&&r.error)||'Payslip upload failed');}refresh(true);};
-  const teamAttendanceToday=data.team_attendance_today||[];
-  const teamLeaves=data.team_leaves||[];
-  const pendingTeamLeaves=teamLeaves.filter(l=>String(l.status)==='pending');
-  const decideLeave=async(id,status)=>{
-    updateData(p=>({...p,team_leaves:(p.team_leaves||[]).map(x=>x.id===id?{...x,status}:x)}));
-    const r=await api.put('/api/leaves/'+id,{status}).catch(e=>({error:e.message}));
-    if(r&&r.ok){setMsg('Leave '+status);refresh(true);}
-    else{setMsg((r&&r.error)||'Update failed');refresh(true);}
-    setTimeout(()=>setMsg(''),1500);
-  };
-
+  const uploadPayslips=async()=>{if(!canHR||!payFiles.length)return;const fd=new FormData();Array.from(payFiles).forEach(f=>fd.append('files',f));if(payMap)fd.append('mapping',payMap);fd.append('month',pay.month);fd.append('year',pay.year);const r=await api.post('/api/payslips/upload',fd,{quiet:true,timeoutMs:20000}).catch(e=>({error:e.message}));setMsg((r&&r.ok)?('Payslips uploaded: '+(r.success||0)):(r&&r.error||'Upload failed'));refresh(true);};
   const openProfile=p=>{setSelected(p);setDrawerTab('overview');setEditing(false);setProfileDraft({...p});api.get('/api/users/'+encodeURIComponent(p.id)+'/profile',{quiet:true,timeoutMs:12000}).then(r=>{if(r&&r.ok&&r.profile){setSelected(prev=>prev&&String(prev.id)===String(p.id)?ptMergeProfileNonEmpty(prev,r.profile):prev);setProfileDraft(prev=>ptMergeProfileNonEmpty(prev||{},r.profile));}}).catch(()=>{});};
   const saveProfile=async()=>{if(!selected)return;const id=selected.id;const canEditProfile=canPeopleAdmin||String(id)===String(cu&&cu.id);if(!canEditProfile){setMsg('Profile edit access denied');return;}const optimistic=ptNormalizeProfilePayload(profileDraft,selected);updateData(p=>({...p,org_people:(p.org_people||[]).map(u=>String(u.id)===String(id)?ptMergeProfileNonEmpty(u,optimistic):u),org_profile:String(id)===String(cu&&cu.id)?ptMergeProfileNonEmpty(p.org_profile||{},optimistic):p.org_profile}));setSelected(prev=>ptMergeProfileNonEmpty(prev,optimistic));setProfileDraft(prev=>ptMergeProfileNonEmpty(prev||{},optimistic));setMsg('Saving profile...');try{if(String(id)===String(cu&&cu.id)){localStorage.setItem('pt_profile_local_'+id,JSON.stringify(ptMergeProfileNonEmpty(JSON.parse(localStorage.getItem('pt_profile_local_'+id)||'{}'),optimistic)));}window.dispatchEvent(new CustomEvent('pt:profile-updated',{detail:{user_id:id,profile:optimistic}}));window.dispatchEvent(new CustomEvent('pt:wos-profile-sync',{detail:{user_id:id,profile:optimistic}}));}catch(_){}const r=await api.put('/api/users/'+encodeURIComponent(id)+'/profile',optimistic,{quiet:true,timeoutMs:15000}).catch(e=>({error:e.message}));if(r&&r.ok){const saved=ptNormalizeProfilePayload({...optimistic,...(r.profile||r.item||{})},optimistic);updateData(p=>({...p,org_people:(p.org_people||[]).map(u=>String(u.id)===String(id)?ptMergeProfileNonEmpty(u,saved):u),org_profile:String(id)===String(cu&&cu.id)?ptMergeProfileNonEmpty(p.org_profile||{},saved):p.org_profile}));setSelected(prev=>ptMergeProfileNonEmpty(prev,saved));setProfileDraft(prev=>ptMergeProfileNonEmpty(prev||{},saved));setEditing(false);setMsg('✓ Profile updated');try{window._pfToast&&window._pfToast('success','Profile saved','Changes are visible across Profile, Workspace OS and Org Chart.');}catch(_){}setTimeout(()=>setMsg(''),1400);try{if(String(id)===String(cu&&cu.id)){localStorage.setItem('pt_profile_local_'+id,JSON.stringify(ptMergeProfileNonEmpty(JSON.parse(localStorage.getItem('pt_profile_local_'+id)||'{}'),saved)));}window.dispatchEvent(new CustomEvent('pt:profile-updated',{detail:{user_id:id,profile:saved}}));window.dispatchEvent(new CustomEvent('pt:wos-profile-sync',{detail:{user_id:id,profile:saved}}));}catch(_){}}else{setMsg((r&&r.error)||'Saved locally. Server sync failed.');try{window._pfToast&&window._pfToast('error','Profile save failed',String((r&&r.error)||'Server sync failed.'));}catch(_){}setTimeout(()=>setMsg(''),1800);}};
   const people=(data.org_people&&data.org_people.length?data.org_people:users||[]).map(p=>{
@@ -10752,12 +10765,6 @@ function WorkspaceOSView({cu,users=[]}){
   const customRoles=Array.isArray(data.custom_roles)?data.custom_roles:[];try{window.__ptCustomRoles=customRoles;}catch(_){}
   const roleOptions=[...customRoles.map(r=>r.name),'Admin','Manager','HR','TeamLead','Developer','Tester','Viewer','Employee','Finance','Support'].filter((v,i,a)=>v&&a.indexOf(v)===i);
   const modeOptions=(osSettings.allowed_work_modes&&osSettings.allowed_work_modes.length?osSettings.allowed_work_modes:['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty']);
-  const attendanceEvents=a=>Array.isArray(a&&a.events)?a.events:((a&&a.check_in)?[{event_type:'check_in',event_time:a.check_in,work_mode:a.work_mode,label:'Checked In · '+titleCase(a.work_mode||'office')},...(a.check_out?[{event_type:'check_out',event_time:a.check_out,work_mode:a.work_mode,label:'Checked Out · '+titleCase(a.work_mode||'office')}]:[])]:[]);
-  const attendanceModeLabel=a=>{if(!a)return '—'; if(a.mode_label)return a.mode_label; const ev=attendanceEvents(a); const modes=[]; ev.forEach(e=>[e.work_mode,e.from_mode,e.to_mode].forEach(v=>{v=String(v||''); if(v&&!modes.includes(v))modes.push(v)})); return modes.length>1?modes.map(titleCase).join(' → '):titleCase(a.work_mode||modes[0]||'office');};
-  const attendanceActionLabel=()=>{const active=attend&&attend.check_in&&!attend.check_out; if(active&&attendanceMode&&attendanceMode!==(attend.work_mode||''))return 'Switch to '+titleCase(attendanceMode); return active?'Check out':'Check in';};
-  const attendanceNextAction=()=>{const active=attend&&attend.check_in&&!attend.check_out; if(active&&attendanceMode&&attendanceMode!==(attend.work_mode||''))return 'switch_mode'; return active?'check_out':'check_in';};
-  const attendanceEventChip=e=>{const t=String(e.event_type||'').toLowerCase(); const cls=t==='check_out'?'out':(t==='mode_change'?'mode':'present'); const label=e.label||(t==='check_in'?'IN · '+titleCase(e.work_mode||'office'):(t==='check_out'?'OUT · '+titleCase(e.work_mode||'office'):'Mode → '+titleCase(e.to_mode||e.work_mode||''))); return html`<span class="wos-cal-event ${cls}">${t==='check_in'?'🟢':t==='check_out'?'🔴':'🔵'} ${fmtTime(e.event_time)} ${label}</span>`;};
-
   const saveOsSettings=async()=>{const r=await api.put('/api/workspace-os/settings',osSettings,{quiet:true,timeoutMs:7000}).catch(e=>({error:e.message}));setMsg(r&&r.ok?'Workspace OS settings saved':(r&&r.error)||'Settings save failed');setTimeout(()=>setMsg(''),1600);};
   const personCard=(p,level=0)=>html`<div class="wos-node"><button class="wos-person ${selected&&selected.id===p.id?'active':''}" onClick=${()=>openProfile(p)}><${Av} u=${p} size=${38}/><span><b>${p.name||p.email}</b><em>${p.designation||titleCase(p.role)||'Team member'}</em><small>${p.department||p.custom_role||p.designation||'No department'}${directCount(p.id)?' • '+directCount(p.id)+' reports':''}</small></span></button>${(children[String(p.id)]||[]).length?html`<div class="wos-children">${(children[String(p.id)]||[]).map(c=>personCard(c,level+1))}</div>`:null}</div>`;
   const css=html`<style>
@@ -10773,7 +10780,7 @@ function WorkspaceOSView({cu,users=[]}){
 
     .wos-timesheet-board,.wos-time-layout{display:grid;grid-template-columns:minmax(560px,1.3fr) minmax(320px,.7fr);gap:16px;align-items:start}.wos-time-page{padding:18px;background:linear-gradient(180deg,color-mix(in srgb,var(--wos-ac) 5%,var(--wos-card)),var(--wos-card))}.wos-time-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px}.wos-time-log-card,.wos-time-side,.wos-time-calendar-card,.wos-recent-time{background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:18px;padding:14px;min-width:0}.wos-time-log-title span{display:block;font-size:14px;font-weight:950}.wos-time-log-title small{display:block;color:var(--wos-muted);font-size:11px;margin-top:3px}.wos-time-form{margin-top:12px}.wos-time-duration{display:grid!important;grid-template-columns:1fr 1fr;gap:8px}.wos-time-duration label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--wos-muted);font-weight:900}.wos-time-duration .inp{margin-top:5px;width:100%}.wos-billable-toggle{display:flex!important;align-items:center;gap:9px;background:var(--wos-card);border:1px solid var(--wos-line);border-radius:13px;padding:10px 12px;color:var(--wos-tx);font-weight:900}.wos-timer-hero{display:grid;grid-template-columns:1fr;gap:10px}.wos-timer-tile{background:var(--wos-card);border:1px solid var(--wos-line);border-radius:16px;padding:14px}.wos-timer-tile b{display:block;font-size:26px;letter-spacing:-.05em}.wos-timer-tile small{display:block;color:var(--wos-muted);font-weight:900;margin-top:3px}.wos-time-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;color:var(--wos-muted);font-size:11px;font-weight:900}.wos-time-legend i{display:inline-block;width:9px;height:9px;border-radius:999px;background:var(--wos-line);margin-right:5px}.wos-time-legend i.logged{background:#22c55e}.wos-time-legend i.today{background:var(--wos-ac)}.wos-month-grid{display:grid;grid-template-columns:repeat(31,minmax(26px,1fr));gap:6px;align-items:end}.wos-month-day{min-height:78px;border:1px solid var(--wos-line);background:var(--wos-soft);color:var(--wos-muted);border-radius:14px;padding:7px 5px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;cursor:pointer}.wos-month-day b{font-size:11px;color:var(--wos-tx)}.wos-month-day span{width:100%;border-radius:9px;background:var(--wos-line);display:block}.wos-month-day.logged span{background:linear-gradient(180deg,#22c55e,var(--wos-ac))}.wos-month-day.today{border-color:var(--wos-ac);box-shadow:0 0 0 3px color-mix(in srgb,var(--wos-ac) 18%,transparent)}.wos-month-day small{font-size:9px;min-height:12px;color:var(--wos-muted)}.wos-time-entry-list{display:grid;gap:8px}.wos-time-entry-card{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:15px;padding:10px}.wos-time-entry-card b{display:block;font-size:12px}.wos-time-entry-card small{display:block;color:var(--wos-muted);font-size:11px;margin-top:2px}.wos-time-amount{font-weight:950;color:var(--wos-ac);white-space:nowrap}@media(max-width:1150px){.wos-time-layout{grid-template-columns:1fr}.wos-timer-hero{grid-template-columns:repeat(3,1fr)}.wos-month-grid{grid-template-columns:repeat(7,1fr)}}
 
-    .wos-att-calendar{margin-top:14px;border:1px solid var(--wos-line);border-radius:18px;overflow:hidden;background:var(--wos-soft)}.wos-cal-head,.wos-cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}.wos-cal-head span{padding:9px 8px;text-align:center;color:var(--wos-muted);font-size:10px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--wos-line)}.wos-cal-cell{min-height:112px;border-right:1px solid var(--wos-line);border-bottom:1px solid var(--wos-line);padding:8px;position:relative;background:var(--wos-card);cursor:pointer}.wos-cal-cell:nth-child(7n){border-right:0}.wos-cal-cell.empty{background:transparent;cursor:default}.wos-cal-cell.weekend{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--wos-muted) 5%,transparent),color-mix(in srgb,var(--wos-muted) 5%,transparent) 6px,transparent 6px,transparent 12px)}.wos-cal-day{font-size:12px;font-weight:1000;color:var(--wos-tx);display:flex;justify-content:space-between;gap:4px}.wos-cal-mode{font-size:9px;color:var(--wos-muted);font-weight:1000;max-width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wos-cal-event{display:block;margin-top:5px;border-radius:8px;padding:3px 6px;font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wos-cal-event.present{background:rgba(34,197,94,.15);color:#22c55e}.wos-cal-event.out{background:rgba(239,68,68,.14);color:#f87171}.wos-cal-event.mode{background:rgba(59,130,246,.15);color:#60a5fa}.wos-cal-event.leave{background:rgba(168,85,247,.16);color:#c084fc}.wos-cal-event.holiday{background:rgba(59,130,246,.15);color:#60a5fa}.wos-att-detail{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:75;display:grid;place-items:center;padding:18px}.wos-att-modal{width:min(620px,96vw);background:var(--wos-card);border:1px solid var(--wos-line);border-radius:22px;box-shadow:0 28px 90px rgba(0,0,0,.55);padding:18px}.wos-timeline{display:grid;gap:9px;margin-top:12px}.wos-timeline-row{display:grid;grid-template-columns:88px 1fr;gap:10px;align-items:start;background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:14px;padding:10px}.wos-timeline-row b{font-size:12px}.wos-timeline-row small{display:block;color:var(--wos-muted);font-size:11px;margin-top:2px}.wos-cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;color:var(--wos-muted);font-size:11px}.wos-cal-dot{width:8px;height:8px;border-radius:999px;display:inline-block;margin-right:4px}.wos-cal-dot.present{background:#22c55e}.wos-cal-dot.leave{background:#a855f7}.wos-cal-dot.holiday{background:#3b82f6}.wos-cal-dot.mode{background:#3b82f6}
+    .wos-att-calendar{margin-top:14px;border:1px solid var(--wos-line);border-radius:18px;overflow:hidden;background:var(--wos-soft)}.wos-cal-head,.wos-cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}.wos-cal-head span{padding:9px 8px;text-align:center;color:var(--wos-muted);font-size:10px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--wos-line)}.wos-cal-cell{min-height:82px;border-right:1px solid var(--wos-line);border-bottom:1px solid var(--wos-line);padding:8px;position:relative;background:var(--wos-card)}.wos-cal-cell:nth-child(7n){border-right:0}.wos-cal-cell.empty{background:transparent}.wos-cal-cell.weekend{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--wos-muted) 5%,transparent),color-mix(in srgb,var(--wos-muted) 5%,transparent) 6px,transparent 6px,transparent 12px)}.wos-cal-day{font-size:12px;font-weight:1000;color:var(--wos-tx)}.wos-cal-event{display:block;margin-top:6px;border-radius:8px;padding:3px 6px;font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wos-cal-event.present{background:rgba(34,197,94,.15);color:#22c55e}.wos-cal-event.leave{background:rgba(168,85,247,.16);color:#c084fc}.wos-cal-event.holiday{background:rgba(59,130,246,.15);color:#60a5fa}.wos-cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;color:var(--wos-muted);font-size:11px}.wos-cal-dot{width:8px;height:8px;border-radius:999px;display:inline-block;margin-right:4px}.wos-cal-dot.present{background:#22c55e}.wos-cal-dot.leave{background:#a855f7}.wos-cal-dot.holiday{background:#3b82f6}
     
     .wos-file-input{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}.wos-file-label{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--wos-soft);border:1px dashed color-mix(in srgb,var(--wos-ac) 55%,var(--wos-line));color:var(--wos-tx);border-radius:12px;padding:10px 12px;min-height:40px;font-weight:900;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wos-file-label small{color:var(--wos-muted);font-weight:800;overflow:hidden;text-overflow:ellipsis}.wos-section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.wos-balance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.wos-balance{background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:15px;padding:12px}.wos-balance b{display:block;font-size:20px}.wos-balance small{color:var(--wos-muted);font-size:11px;font-weight:900}.wos-two-col{display:grid;grid-template-columns:minmax(560px,1.35fr) minmax(480px,.95fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-doc-grid{display:grid;grid-template-columns:minmax(560px,1.1fr) minmax(520px,.9fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-action-strip{background:color-mix(in srgb,var(--wos-ac) 8%,var(--wos-card));border:1px solid color-mix(in srgb,var(--wos-ac) 35%,var(--wos-line));border-radius:16px;padding:12px;margin-top:12px}.wos-mini-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}.wos-mini-day{min-height:46px;border-radius:12px;background:var(--wos-soft);border:1px solid var(--wos-line);padding:6px;font-size:11px}.wos-mini-day.has{background:color-mix(in srgb,#22c55e 12%,var(--wos-soft));border-color:rgba(34,197,94,.25)}@media(max-width:1050px){.wos-two-col,.wos-doc-grid{grid-template-columns:1fr}.wos-balance-grid{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:900px){.wos-wrap{width:100%;padding:12px}.span-8,.span-6,.span-4,.span-3{grid-column:span 12}.wos-form .col1,.wos-form .col2,.wos-form .col3,.wos-form .col4,.wos-form .col5,.wos-form .col6,.wos-form .col8{grid-column:span 12}.wos-field-grid,.wos-edit-grid{grid-template-columns:1fr}.wos-top{flex-direction:column}.wos-tree{justify-content:flex-start}.wos-children{flex-direction:column;align-items:center}.wos-children:after,.wos-children>.wos-node:after{display:none}}
@@ -10844,8 +10851,8 @@ function WorkspaceOSView({cu,users=[]}){
     <div class="wos-top"><div class="wos-title"><h1>Workspace OS</h1><p>Self-service, attendance, leave, holidays, documents, payslips, organisation and approvals.</p></div><div class="wos-actions"><span class="wos-pill wos-live">Live</span>${msg?html`<span class="wos-pill">${msg}</span>`:null}<button class="wos-btn" disabled=${busy} onClick=${()=>refresh(true)}>↻ Refresh</button></div></div>
     <div class="wos-tabs">${[['home','My Hub'],['attendance','Attendance'],['leave','Leave & Holidays'],['time','Timesheet'],['docs','Docs & Payslips'],['org','Org Chart'],['ann','Announcements'],['approvals','Approvals']].filter(x=>x[0]!=='approvals'||canPeopleAdmin).map(x=>html`<button class="wos-tab ${tab===x[0]?'active':''}" onClick=${()=>setTab(x[0])}>${x[1]}</button>`)}</div>
     ${tab==='home'?html`<div class="wos-grid"><div class="wos-card span-12"><h3>Today</h3><p>Your personal workspace status. Attendance and timesheet are linked but kept separate.</p><div class="wos-grid" style=${{marginTop:12}}><div class="wos-metric span-3"><b>${attend&&attend.check_in?fmtTime(attend.check_in):'—'}</b><small>Check-in</small></div><div class="wos-metric span-3"><b>${Number(data.my_active_tasks_count ?? (data.tasks||[]).length)||0}</b><small>My active tasks</small></div><div class="wos-metric span-3"><b>${Number(data.my_open_tickets_count ?? (data.tickets||[]).length)||0}</b><small>My open tickets</small></div><div class="wos-metric span-3"><b>${Number(data.pending_leave_count ?? leaves.filter(x=>String(x.status)==='pending').length)||0}</b><small>Pending leave</small></div></div><div class="wos-row" style=${{marginTop:12}}><button class="wos-btn primary" onClick=${()=>attendanceAction(attend&&attend.check_in&&!attend.check_out?'check_out':'check_in')}>${attend&&attend.check_in&&!attend.check_out?'Check out':'Check in'}</button><button class="wos-btn" onClick=${goTimesheet}>Open Timesheet</button><button class="wos-btn" onClick=${()=>setTab('leave')}>Apply Leave</button></div></div></div>`:null}
-    ${tab==='attendance'?html`<div class="wos-grid"><div class="wos-card span-12"><div class="wos-row" style=${{justifyContent:'space-between'}}><div><h3>Attendance calendar</h3><p>Hybrid-day timeline view: check-in, mode switches, check-out, holidays and leaves are visible separately.</p></div><div class="wos-row"><select class="wos-input" value=${attendanceMode} onChange=${e=>setAttendanceMode(e.target.value)}>${modeOptions.map(m=>html`<option value=${m}>${titleCase(m)}</option>`)}</select><button class="wos-btn primary" onClick=${()=>attendanceAction(attendanceNextAction())}>${attendanceActionLabel()}</button>${attend&&attend.check_in&&!attend.check_out&&attendanceNextAction()==='switch_mode'?html`<button class="wos-btn" onClick=${()=>attendanceAction('check_out')}>Check out</button>`:null}</div></div><div class="wos-grid" style=${{marginTop:12}}><div class="wos-metric span-3"><b>${attend&&attend.check_in?fmtTime(attend.check_in):'—'}</b><small>IN · ${titleCase((attendanceEvents(attend).find(e=>e.event_type==='check_in')||{}).work_mode||attend&&attend.work_mode||'')}</small></div><div class="wos-metric span-3"><b>${attend&&attend.check_out?fmtTime(attend.check_out):'—'}</b><small>OUT · ${titleCase((attendanceEvents(attend).find(e=>e.event_type==='check_out')||{}).work_mode||attend&&attend.work_mode||'')}</small></div><div class="wos-metric span-3"><b>${attendanceModeLabel(attend)}</b><small>${attendanceModeLabel(attend).includes('→')?'Mixed Work Mode':'Work mode'}</small></div><div class="wos-metric span-3"><b>${titleCase(attend&&attend.status)||'Not marked'}</b><small>Status</small></div></div><div class="wos-att-calendar"><div class="wos-cal-head">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>html`<span>${d}</span>`)}</div><div class="wos-cal-grid">${monthDays.map(day=>day?html`<div class="wos-cal-cell ${day.dow===0||day.dow===6?'weekend':''}" onClick=${()=>attByDate[day.date]&&setAttendanceDetail(attByDate[day.date])}><div class="wos-cal-day"><span>${day.day}</span>${attByDate[day.date]?html`<em class="wos-cal-mode">${attendanceModeLabel(attByDate[day.date])}</em>`:null}</div>${attByDate[day.date]?attendanceEvents(attByDate[day.date]).slice(0,3).map(attendanceEventChip):null}${holidayByDate[day.date]?html`<span class="wos-cal-event holiday">★ ${holidayByDate[day.date].title}</span>`:null}${leaveByDate[day.date]?html`<span class="wos-cal-event leave">● ${titleCase(leaveByDate[day.date].leave_type||'Leave')}</span>`:null}</div>`:html`<div class="wos-cal-cell empty"></div>`)}</div></div><div class="wos-cal-legend"><span><i class="wos-cal-dot present"></i>Check-in</span><span><i class="wos-cal-dot mode"></i>Mode switch</span><span><i class="wos-cal-dot holiday"></i>Holiday</span><span><i class="wos-cal-dot leave"></i>Leave</span><span>Click a date to view full timeline.</span></div>${attendanceDetail?html`<div class="wos-att-detail" onClick=${()=>setAttendanceDetail(null)}><div class="wos-att-modal" onClick=${e=>e.stopPropagation()}><div class="wos-row" style=${{justifyContent:'space-between'}}><div><h3>${fmtDate(attendanceDetail.work_date)}</h3><p>${attendanceModeLabel(attendanceDetail)} · ${titleCase(attendanceDetail.status||'')}</p></div><button class="wos-btn" onClick=${()=>setAttendanceDetail(null)}>Close</button></div><div class="wos-timeline">${attendanceEvents(attendanceDetail).length?attendanceEvents(attendanceDetail).map(e=>html`<div class="wos-timeline-row"><b>${fmtTime(e.event_time)}</b><span>${e.label||(String(e.event_type||'').replace('_',' '))}<small>${e.event_type==='mode_change'?titleCase(e.from_mode)+' → '+titleCase(e.to_mode):titleCase(e.work_mode||'')}</small></span></div>`):html`<div class="wos-empty">No event timeline recorded for this day.</div>`}</div></div></div>`:null}${(data.attendance_history||[]).length?html`<table class="wos-table"><thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Timeline</th><th>Mode</th></tr></thead><tbody>${(data.attendance_history||[]).slice(0,8).map(a=>html`<tr><td>${fmtDate(a.work_date)}</td><td>${fmtTime(a.check_in)}</td><td>${fmtTime(a.check_out)}</td><td>${attendanceEvents(a).map(e=>fmtTime(e.event_time)+' '+(e.event_type==='mode_change'?'Mode → '+titleCase(e.to_mode):e.event_type==='check_out'?'OUT':'IN')).join(' · ')}</td><td>${attendanceModeLabel(a)}</td></tr>`)}</tbody></table>`:null}</div>${canPeopleAdmin?html`<div class="wos-card span-12"><div class="wos-row" style=${{justifyContent:'space-between'}}><div><h3>Team attendance — today</h3><p>Who is checked in, their work mode, and check-out status across the team.</p></div><span class="wos-badge">${teamAttendanceToday.length} logged today</span></div>${teamAttendanceToday.length?html`<table class="wos-table"><thead><tr><th>Employee</th><th>Check-in</th><th>Check-out</th><th>Mode</th><th>Status</th></tr></thead><tbody>${teamAttendanceToday.map(a=>html`<tr><td>${a.user_name||a.user_email||'—'}</td><td>${fmtTime(a.check_in)}</td><td>${fmtTime(a.check_out)}</td><td>${titleCase(a.work_mode||'')}</td><td><span class="wos-badge ${statusBadgeClass(a.status)}">${titleCase(a.status||'Not marked')}</span></td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No one has checked in yet today.</div>`}</div>`:null}</div>`:null}
-    ${tab==='leave'?html`<div class="wos-two-col"><div class="wos-card"><div class="wos-section-title"><div><h3>Leave & availability</h3><p>Request leave, track balances and see approval status without leaving Workspace OS.</p></div><button class="wos-btn primary" onClick=${submitLeave}>Submit leave</button></div><div class="wos-balance-grid"><div class="wos-balance"><b>${availableLeave}</b><small>Available days</small></div><div class="wos-balance"><b>${pendingLeave}</b><small>Pending approval</small></div><div class="wos-balance"><b>${usedLeave}</b><small>Used leave</small></div><div class="wos-balance"><b>${totalLeave}</b><small>Annual allowance</small></div></div><div class="wos-action-strip"><div class="wos-form"><select class="sel col3" value=${leave.leave_type} onChange=${e=>setLeave({...leave,leave_type:e.target.value})}><option value="casual">Casual leave</option><option value="sick">Sick leave</option><option value="earned">Earned leave</option><option value="loss_of_pay">Loss of pay</option></select><input class="inp col3" type="date" value=${leave.start_date} onInput=${e=>setLeave({...leave,start_date:e.target.value})}/><input class="inp col3" type="date" value=${leave.end_date} onInput=${e=>setLeave({...leave,end_date:e.target.value})}/><input class="inp col3" type="number" min="0.5" step="0.5" value=${leave.days} onInput=${e=>setLeave({...leave,days:e.target.value})}/><textarea class="inp" placeholder="Reason for leave" value=${leave.reason} onInput=${e=>setLeave({...leave,reason:e.target.value})}></textarea></div></div><h3 style=${{marginTop:16}}>My leave requests</h3>${leaves.length?html`<table class="wos-table"><thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th></tr></thead><tbody>${leaves.map(l=>html`<tr><td>${titleCase(l.leave_type)}</td><td>${fmtDate(l.start_date)} — ${fmtDate(l.end_date)}</td><td>${l.days}</td><td><span class="wos-badge ${statusBadgeClass(l.status)}">${titleCase(l.status)}</span></td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No leave requests yet.</div>`}</div><div class="wos-card"><div class="wos-section-title"><div><h3>Organisation holidays</h3><p>Published company holidays are visible to everyone. Admin/HR manage the calendar from Workspace Settings.</p></div><span class="wos-badge">Published calendar</span></div>${holidays.length?html`<table class="wos-table"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>${holidays.slice(0,12).map(h=>html`<tr><td>${fmtDate(h.holiday_date)}</td><td>${h.title}</td><td>${titleCase(h.category)}</td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No holidays published.</div>`}<div class="wos-note">Holiday upload/import controls moved to Workspace Settings → Workspace OS Admin Imports.</div></div></div>${canPeopleAdmin?html`<div class="wos-card span-12" style=${{marginTop:16}}><div class="wos-row" style=${{justifyContent:'space-between'}}><div><h3>Team leave requests</h3><p>Approve or reject leave across the team. Pending requests are shown first.</p></div><span class="wos-badge">${pendingTeamLeaves.length} pending</span></div>${teamLeaves.length?html`<table class="wos-table"><thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>${teamLeaves.map(l=>html`<tr><td>${l.user_name||l.user_email||'—'}</td><td>${titleCase(l.leave_type)}</td><td>${fmtDate(l.start_date)} — ${fmtDate(l.end_date)}</td><td>${l.days}</td><td>${l.reason||'—'}</td><td><span class="wos-badge ${statusBadgeClass(l.status)}">${titleCase(l.status)}</span></td><td>${String(l.status)==='pending'?html`<div class="wos-row"><button class="wos-btn primary" onClick=${()=>decideLeave(l.id,'approved')}>Approve</button><button class="wos-btn" onClick=${()=>decideLeave(l.id,'rejected')}>Reject</button></div>`:null}</td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No leave requests from the team yet.</div>`}</div>`:null}`:null}
+    ${tab==='attendance'?html`<div class="wos-grid"><div class="wos-card span-12"><div class="wos-row" style=${{justifyContent:'space-between'}}><div><h3>Attendance calendar</h3><p>Month view like HR portals: weekends, holidays, leave and check-in state are visible in one place. Check-in remains local-first and syncs in the background.</p></div><div class="wos-row"><select class="wos-input" value=${attendanceMode} onChange=${e=>setAttendanceMode(e.target.value)}>${modeOptions.map(m=>html`<option value=${m}>${titleCase(m)}</option>`)}</select><button class="wos-btn primary" onClick=${()=>attendanceAction(attend&&attend.check_in&&!attend.check_out?'check_out':'check_in')}>${attend&&attend.check_in&&!attend.check_out?'Check out':'Check in'}</button></div></div><div class="wos-grid" style=${{marginTop:12}}><div class="wos-metric span-3"><b>${attend&&attend.check_in?fmtTime(attend.check_in):'—'}</b><small>Today check-in</small></div><div class="wos-metric span-3"><b>${attend&&attend.check_out?fmtTime(attend.check_out):'—'}</b><small>Today check-out</small></div><div class="wos-metric span-3"><b>${titleCase(attend&&attend.work_mode)||'—'}</b><small>Work mode</small></div><div class="wos-metric span-3"><b>${titleCase(attend&&attend.status)||'Not marked'}</b><small>Status</small></div></div><div class="wos-att-calendar"><div class="wos-cal-head">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>html`<span>${d}</span>`)}</div><div class="wos-cal-grid">${monthDays.map(day=>day?html`<div class="wos-cal-cell ${day.dow===0||day.dow===6?'weekend':''}"><div class="wos-cal-day">${day.day}</div>${attByDate[day.date]?html`<span class="wos-cal-event present">✓ ${fmtTime(attByDate[day.date].check_in)}${attByDate[day.date].check_out?' - '+fmtTime(attByDate[day.date].check_out):''}</span>`:null}${holidayByDate[day.date]?html`<span class="wos-cal-event holiday">★ ${holidayByDate[day.date].title}</span>`:null}${leaveByDate[day.date]?html`<span class="wos-cal-event leave">● ${titleCase(leaveByDate[day.date].leave_type||'Leave')}</span>`:null}</div>`:html`<div class="wos-cal-cell empty"></div>`)}</div></div><div class="wos-cal-legend"><span><i class="wos-cal-dot present"></i>Present</span><span><i class="wos-cal-dot holiday"></i>Holiday</span><span><i class="wos-cal-dot leave"></i>Leave</span><span>Weekend cells are shaded</span></div>${(data.attendance_history||[]).length?html`<table class="wos-table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Status</th><th>Mode</th></tr></thead><tbody>${(data.attendance_history||[]).slice(0,8).map(a=>html`<tr><td>${fmtDate(a.work_date)}</td><td>${fmtTime(a.check_in)}</td><td>${fmtTime(a.check_out)}</td><td>${titleCase(a.status)}</td><td>${titleCase(a.work_mode)}</td></tr>`)}</tbody></table>`:null}</div></div>`:null}
+    ${tab==='leave'?html`<div class="wos-two-col"><div class="wos-card"><div class="wos-section-title"><div><h3>Leave & availability</h3><p>Request leave, track balances and see approval status without leaving Workspace OS.</p></div><button class="wos-btn primary" onClick=${submitLeave}>Submit leave</button></div><div class="wos-balance-grid"><div class="wos-balance"><b>${availableLeave}</b><small>Available days</small></div><div class="wos-balance"><b>${pendingLeave}</b><small>Pending approval</small></div><div class="wos-balance"><b>${usedLeave}</b><small>Used leave</small></div><div class="wos-balance"><b>${totalLeave}</b><small>Annual allowance</small></div></div><div class="wos-action-strip"><div class="wos-form"><select class="sel col3" value=${leave.leave_type} onChange=${e=>setLeave({...leave,leave_type:e.target.value})}><option value="casual">Casual leave</option><option value="sick">Sick leave</option><option value="earned">Earned leave</option><option value="loss_of_pay">Loss of pay</option></select><input class="inp col3" type="date" value=${leave.start_date} onInput=${e=>setLeave({...leave,start_date:e.target.value})}/><input class="inp col3" type="date" value=${leave.end_date} onInput=${e=>setLeave({...leave,end_date:e.target.value})}/><input class="inp col3" type="number" min="0.5" step="0.5" value=${leave.days} onInput=${e=>setLeave({...leave,days:e.target.value})}/><textarea class="inp" placeholder="Reason for leave" value=${leave.reason} onInput=${e=>setLeave({...leave,reason:e.target.value})}></textarea></div></div><h3 style=${{marginTop:16}}>My leave requests</h3>${leaves.length?html`<table class="wos-table"><thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th></tr></thead><tbody>${leaves.map(l=>html`<tr><td>${titleCase(l.leave_type)}</td><td>${fmtDate(l.start_date)} — ${fmtDate(l.end_date)}</td><td>${l.days}</td><td><span class="wos-badge">${titleCase(l.status)}</span></td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No leave requests yet.</div>`}</div><div class="wos-card"><div class="wos-section-title"><div><h3>Organisation holidays</h3><p>Published company holidays are visible to everyone. Admin/HR manage the calendar from Workspace Settings.</p></div><span class="wos-badge">Published calendar</span></div>${holidays.length?html`<table class="wos-table"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>${holidays.slice(0,12).map(h=>html`<tr><td>${fmtDate(h.holiday_date)}</td><td>${h.title}</td><td>${titleCase(h.category)}</td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No holidays published.</div>`}<div class="wos-note">Holiday upload/import controls moved to Workspace Settings → Workspace OS Admin Imports.</div></div></div>`:null}
     ${tab==='time'?html`<div class="wos-grid"><div class="wos-card span-12 wos-time-page"><div class="wos-time-head"><div><h3>Timesheet</h3><p>Log work from Workspace OS without a page reload. Attendance confirms presence; timesheet records project/task effort.</p></div><div class="wos-row"><span class="wos-badge">${Math.floor(todayMinutes/60)}h ${todayMinutes%60}m today</span><button class="wos-btn primary" onClick=${saveTimeLog}>＋ Save time</button></div></div><div class="wos-time-layout"><section class="wos-time-log-card"><div class="wos-time-log-title"><span>Quick log</span><small>Task, ticket or activity logging in one compact form. Activity options are configured in Settings.</small></div><div class="wos-form wos-time-form"><input class="inp col3" type="date" value=${timeDraft.date} onInput=${e=>setTimeDraft({...timeDraft,date:e.target.value})}/><select class="sel col5" value=${timeDraft.task_id} onChange=${e=>{const t=workItems.find(x=>String(x.id)===String(e.target.value));setTimeDraft({...timeDraft,task_id:e.target.value,task_name:t?(t.title||t.task_name||''):timeDraft.task_name,project_id:t?t.project_id||'':timeDraft.project_id,item_type:t?t.item_type||'activity':''})}}><option value="">Select task / ticket / activity</option>${workItems.length?workItems.map(t=>html`<option value=${t.id}>${t.item_type==='ticket'?'🎫 Ticket':'✅ Task'} · ${t.title||t.task_name||t.id}${t.project_name?' — '+t.project_name:''}${t.stage?' · '+t.stage:''}</option>`):html`<option disabled value="">No current assigned/project tasks or tickets — use Manual activity name</option>`}</select><input class="inp col4" placeholder="Manual activity name" value=${timeDraft.task_name} onInput=${e=>setTimeDraft({...timeDraft,task_name:e.target.value})}/><div class="wos-time-duration col4"><label>Hours<input class="inp" type="number" min="0" step="0.25" value=${timeDraft.hours} onInput=${e=>setTimeDraft({...timeDraft,hours:e.target.value})}/></label><label>Minutes<input class="inp" type="number" min="0" max="59" value=${timeDraft.minutes} onInput=${e=>setTimeDraft({...timeDraft,minutes:e.target.value})}/></label></div><div class="wos-time-duration col4"><label>Start<input class="inp" type="time" value=${timeDraft.start_time} onInput=${e=>setTimeDraft({...timeDraft,start_time:e.target.value})}/></label><label>End<input class="inp" type="time" value=${timeDraft.end_time} onInput=${e=>setTimeDraft({...timeDraft,end_time:e.target.value})}/></label></div><label class="wos-billable-toggle col4"><input type="checkbox" checked=${!!timeDraft.billable} onChange=${e=>setTimeDraft({...timeDraft,billable:e.target.checked})}/><span>${timeDraft.billable?'Billable work':'Non-billable work'}</span></label><textarea class="inp col12" placeholder="What did you work on? Add outcome, blocker, or client note." value=${timeDraft.comments} onInput=${e=>setTimeDraft({...timeDraft,comments:e.target.value})}></textarea></div></section><aside class="wos-time-side"><div class="wos-timer-hero"><div class="wos-timer-tile"><b>${Math.floor(todayMinutes/60)}h ${todayMinutes%60}m</b><small>Today logged</small></div><div class="wos-timer-tile"><b>${Math.floor(billableMinutes/60)}h ${billableMinutes%60}m</b><small>Billable</small></div><div class="wos-timer-tile"><b>${todayLogs.length}</b><small>Entries</small></div></div><div class="wos-time-legend"><span><i class="logged"></i>Logged</span><span><i class="today"></i>Today</span><span><i></i>No time</span></div></aside></div><div class="wos-card wos-time-calendar-card"><div class="wos-section-title"><div><h3>Monthly activity</h3><p>Compact heatmap view of daily logged hours.</p></div></div><div class="wos-month-grid">${currentMonthDays.map(d=>html`<button title=${d.mins?Math.floor(d.mins/60)+'h '+(d.mins%60)+'m':'No time logged'} class="wos-month-day ${d.mins?'logged':''} ${d.today?'today':''}"><b>${d.day}</b><span style=${{height:Math.max(4,Math.min(34,Math.round((d.mins||0)/30)))+'px'}}></span><small>${d.mins?Math.round((d.mins/60)*10)/10+'h':''}</small></button>`)}</div></div><div class="wos-card wos-recent-time"><div class="wos-section-title"><div><h3>Recent entries</h3><p>Latest work logs saved in this workspace.</p></div></div>${timelogs.length?html`<div class="wos-time-entry-list">${timelogs.slice(0,10).map(l=>html`<div class="wos-time-entry-card"><span class="wos-avatar">${String(l.task_name||'T')[0]}</span><span><b>${l.task_name||'Time entry'}</b><small>${fmtDate(l.date)} · ${l.billable===0?'Non-billable':'Billable'} · ${l.comments||'No notes'}</small></span><span class="wos-time-amount">${Number(l.hours||0)}h ${Number(l.minutes||0)}m</span></div>`)}</div>`:html`<div class="wos-empty">No time logged yet. Add your first entry.</div>`}</div></div></div>`:null}
     ${tab==='docs'?html`<div class="wos-doc-grid"><div class="wos-card"><div class="wos-section-title"><div><h3>Documents & policies</h3><p>Policies, handbooks and acknowledgements for the workspace.</p></div>${canHR?html`<button class="wos-btn primary" onClick=${publishPolicy}>Publish</button>`:null}</div>${canHR?html`<div class="wos-action-strip"><div class="wos-form"><input class="inp col5" placeholder="Policy title" value=${policy.title} onInput=${e=>setPolicy({...policy,title:e.target.value})}/><select class="sel col3" value=${policy.category} onChange=${e=>setPolicy({...policy,category:e.target.value})}><option>Policy</option><option>Handbook</option><option>Security</option><option>Leave</option></select><label class="wos-row col4"><input type="checkbox" checked=${policy.requires_ack} onChange=${e=>setPolicy({...policy,requires_ack:e.target.checked})}/> Acknowledgement required</label><textarea class="inp" placeholder="Policy details" value=${policy.body} onInput=${e=>setPolicy({...policy,body:e.target.value})}></textarea></div></div>`:null}${(data.policies||[]).length?html`<table class="wos-table"><thead><tr><th>Document</th><th>Category</th><th>Requirement</th></tr></thead><tbody>${(data.policies||[]).map(p=>html`<tr><td><b>${p.title}</b></td><td>${p.category}</td><td>${p.requires_ack?'Acknowledgement required':'Information'}</td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No policies published yet.</div>`}</div><div class="wos-card"><div class="wos-section-title"><div><h3>Payslips</h3><p>${canHR?'Bulk upload PDFs and map them to employees safely before publishing.':'Only your own payslips are visible here.'}</p></div>${canHR?html`<span class="wos-badge">Managed in Settings</span>`:null}</div>${canHR?html`<div class="wos-note">Bulk payslip upload moved to Workspace Settings → Workspace OS Admin Imports. Employees only see published payslips here.</div>`:null}${payslips.length?html`<table class="wos-table"><thead><tr><th>Period</th><th>Employee</th><th>File</th></tr></thead><tbody>${payslips.map(p=>html`<tr><td>${p.month}/${p.year}</td><td>${p.user_name||p.user_email||'Me'}</td><td>${p.filename||p.title}</td></tr>`)}</tbody></table>`:html`<div class="wos-empty">No payslips available.</div>`}</div></div>`:null}
     ${tab==='org'?html`<div class="wos-grid"><div class="wos-card span-12"><div class="wos-row" style=${{justifyContent:'space-between'}}><div><h3>Organisation chart</h3><p>Tree view based on reporting manager, departments and designations. Custom roles are managed from Settings → Roles & Permissions.</p></div><span class="wos-badge">${people.length} people</span></div><div class="wos-org"><div class="wos-tree">${roots.length?roots.map(r=>personCard(r)):html`<div class="wos-empty">No people found.</div>`}</div></div></div><div class="wos-card span-12"><h3>Employee directory</h3><p>Quick people cards. Click any person to open the profile summary.</p><div class="wos-directory">${people.map(p=>html`<div class="wos-dir-card" onClick=${()=>openProfile(p)}><${Av} u=${p} size=${38}/><span><b>${p.name||p.email}</b><small>${p.email}</small><small><span class="wos-badge">${p.designation||p.custom_role||titleCase(p.role)}</span> ${p.department||'Unassigned'}</small></span></div>`)}</div></div></div>`:null}
@@ -10864,132 +10871,58 @@ function App(){
   // Read initial view from URL path or ?page= param
   const VALID_VIEWS=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault'];
   // Also treat /projects/<id> as valid
+  const [initialProjectId,setInitialProjectId]=useState(()=>deepLinkFromSearch().projectId||null);
+  const [initialTaskId,setInitialTaskId]=useState(()=>deepLinkFromSearch().taskId||null);
+  const [initialTicketId,setInitialTicketId]=useState(()=>deepLinkFromSearch().ticketId||null);
+  const [dmTargetUser,setDmTargetUser]=useState(()=>{
+    try{
+      const dl=deepLinkFromSearch();
+      // Only explicit URL/deep-link selection may choose a DM on first render.
+      // Never restore sessionStorage here; it was re-opening stale chats and
+      // overriding the user-selected conversation after notifications/polls.
+      if(dl.dmUser)return String(dl.dmUser);
+      const ri=ptRouteInfo();
+      if(ri.page==='dm'&&ri.user)return String(ri.user);
+      return null;
+    }catch(_){return null;}
+  });
   useEffect(()=>{
     try{
-      const ri=ptRouteInfo();
-      if(ri.page==='projects'&&ri.id){setInitialProjectId(ri.id);setView('projects');}
-      if(ri.page==='tasks'&&ri.id){setInitialTaskId(ri.id);setView('tasks');}
-      if(ri.page==='tickets'&&ri.id){setInitialTicketId(ri.id);setView('tickets');}
+      const p=window.location.pathname;
+      const dl=deepLinkFromSearch();
+      if(dl.view)setView(dl.view);
+      if(dl.view==='dm'&&!dl.dmUser){try{sessionStorage.setItem('pt_dm_resolve_next','1');}catch(_){}}
+      if(dl.taskId)setInitialTaskId(dl.taskId);
+      if(dl.ticketId)setInitialTicketId(dl.ticketId);
+      if(dl.projectId)setInitialProjectId(dl.projectId);
+      if(dl.dmUser){setDmTargetUser(String(dl.dmUser));try{sessionStorage.setItem('pt_dm_notification_target',String(dl.dmUser));}catch(_){}}
+      const pathView=routeViewFromPath(VALID_VIEWS);
+      if(pathView==='dm'&&!dl.dmUser&&!new URLSearchParams(window.location.search||'').get('user')){try{sessionStorage.setItem('pt_dm_resolve_next','1');}catch(_){}}
+      const pid=projectIdFromPath();
+      if(pid){setInitialProjectId(pid);setView('projects');}
     }catch(e){}
   },[]);
   // Set initial page title based on current URL path
   useEffect(()=>{
     try{
       const VIEW_T={dashboard:'Dashboard',ops:'Ops Center',projects:'Projects',tasks:'Kanban Board',messages:'Channels',dm:'Direct Messages',tickets:'Tickets',ops:'Ops Center',timeline:'Timeline Tracker',reminders:'Reminders',settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity'};
-      const ri=ptRouteInfo(); const p=ri.page;
+      const p=routeViewFromPath(Object.keys(VIEW_T));
       if(p&&VIEW_T[p]) document.title='Project Tracker — '+VIEW_T[p]+' | AI-Powered Team Collaboration';
       else document.title='Project Tracker — AI-Powered Team Collaboration Platform';
     }catch(e){}
   },[]);
   const [view,setView]=useState(()=>{
     try{
-      const ri=ptRouteInfo();
-      if(ri.page&&VALID_VIEWS.includes(ri.page)) return ri.page;
+      const dl=deepLinkFromSearch();
+      if(dl.view&&VALID_VIEWS.includes(dl.view)) return dl.view;
+      const p=routeViewFromPath(VALID_VIEWS);
+      if(p&&VALID_VIEWS.includes(p)) return p;
       const sp=new URLSearchParams(window.location.search).get('page');
       if(sp&&VALID_VIEWS.includes(sp)) return sp;
     }catch(e){}
     return 'dashboard';
   });
-  // Production hard-sync: the browser URL is the source of truth on first paint.
-  // This prevents /tasks or /dashboard from staying stuck on the previous Ops view after cache/hydration.
-  useEffect(()=>{
-    try{
-      const ri=ptRouteInfo();
-      if(ri.page&&VALID_VIEWS.includes(ri.page)&&ri.page!==view) setView(ri.page);
-    }catch(e){}
-  },[]);
-  // Validate workspace slug + workspace id together on page load; redirect to canonical URL.
-  useEffect(()=>{
-    let cancelled=false;
-    (async()=>{
-      try{
-        const ri=ptRouteInfo();
-        if(!ri.workspaceId || !String(ri.workspaceId).startsWith('ws'))return;
-        const qs=new URLSearchParams({slug:ri.workspaceSlug||'',workspace_id:ri.workspaceId||'',rest:ri.workspaceRest||ri.page||'dashboard'});
-        const res=await api.get('/api/workspace/route-guard?'+qs.toString(),{timeoutMs:12000});
-        if(cancelled||!res)return;
-        if(res.redirect){
-          const next=String(res.redirect||'')+(window.location.search||'');
-          if(next!==window.location.pathname+window.location.search) window.location.replace(next);
-        }
-      }catch(e){}
-    })();
-    return()=>{cancelled=true;};
-  },[]);
-
-  // Keep browser URL in sync with current view
-  const VIEW_TITLES={
-    dashboard:'Dashboard',ops:'Ops Center',projects:'Projects',tasks:'Kanban Board',
-    messages:'Channels',dm:'Direct Messages',tickets:'Tickets',ops:'Ops Center',
-    timeline:'Timeline Tracker',reminders:'Reminders',
-    settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity',
-    'ai-docs':'AI Documentation'
-  };
-  const [dmTargetUser,setDmTargetUser]=useState(()=>{
-    try{
-      const ri=ptRouteInfo();
-      // Only an explicit /dm?user=<id> may select a DM on page load.
-      // Never restore sessionStorage here: it caused stale chats to reopen and override manual clicks.
-      if(ri.page==='dm'&&ri.user)return String(ri.user);
-      return null;
-    }catch(_){return null;}
-  });
-  const clearDmTargetUser=useCallback(()=>setDmTargetUser(null),[]);
-  const _setView=useCallback((v)=>{
-    const raw=String(v||'dashboard');
-    const base=raw.split(':')[0];
-    try{if(base==='workspace-os'&&raw.startsWith('workspace-os:'))sessionStorage.setItem('pt_wos_tab',raw.slice('workspace-os:'.length)||'home');}catch(_){}
-    // When navigating away from DM, clear the manual lock so the user can freely
-    // switch DM conversations next time they return to the DM view.
-    if(base!=='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.removeItem('pt_dm_notification_target');sessionStorage.removeItem('pt_dm_resolve_next');}catch(_){}}
-    setView(base);
-    try{
-      if(VALID_VIEWS.includes(base)){
-        let suffix='';
-        if(base==='dm'){
-          const explicit=raw.startsWith('dm:')?raw.slice(3):'';
-          // Plain /dm must stay plain. Only explicit dm:<user> creates /dm?user=.
-          // This prevents old saved targets from stealing the active conversation.
-          const target=explicit||'';
-          if(target)suffix='?user='+encodeURIComponent(String(target));
-        }else if(raw.startsWith(base+':')){
-          const entityId=raw.slice(base.length+1);
-          if(entityId)suffix='/'+encodeURIComponent(String(entityId));
-        }
-        const nextUrl=workspaceBasePath(cu)+base+suffix;
-        if(nextUrl !== (window.location.pathname+window.location.search)) history.pushState(null,'',nextUrl);
-        document.title='Project Tracker — '+(VIEW_TITLES[base]||base)+' | AI-Powered Team Collaboration';
-      }
-    }catch(e){}
-  },[cu]);
-  // Handle browser back/forward
-  useEffect(()=>{
-    const onPop=()=>{
-      try{
-        const ri=ptRouteInfo();
-        if(ri.page&&VALID_VIEWS.includes(ri.page)) setView(ri.page);
-        else setView('dashboard');
-        if(ri.page==='dm')setDmTargetUser(ri.user?String(ri.user):null);
-      }catch(e){}
-    };
-    window.addEventListener('popstate',onPop);
-    return()=>window.removeEventListener('popstate',onPop);
-  },[]);
-  useEffect(()=>{
-    const onOpenView=(e)=>{
-      try{
-        const v=String(e&&e.detail&&e.detail.view||'');
-        if(!v||!VALID_VIEWS.includes(v))return;
-        setView(v);
-        const nextUrl=workspaceBasePath(cu)+v;
-        if(nextUrl !== (window.location.pathname+window.location.search)) history.pushState(null,'',nextUrl);
-      }catch(_){ }
-    };
-    window.addEventListener('pt:open-view',onOpenView);
-    return()=>window.removeEventListener('pt:open-view',onOpenView);
-  },[cu]);
-  const [col,setCol]=useState(()=>{try{return localStorage.getItem('pf_col')==='1';}catch{return false;}});
-  const initialAppCache=null; // do not hydrate app-data before current user/workspace is known
+  const initialAppCache=ptInstantCacheGet('/api/app-data',null);
   const [data,setData]=useState(()=>{
     if(initialAppCache&&!initialAppCache.error){
       const _pm=parseMembers;
@@ -11021,9 +10954,61 @@ function App(){
       }
     }catch(e){}
   },[data.users,cu&&cu.id]);
-  const [initialProjectId,setInitialProjectId]=useState(null);
-  const [initialTaskId,setInitialTaskId]=useState(null);
-  const [initialTicketId,setInitialTicketId]=useState(null);
+  // Validate workspace slug + workspace id together on page load; redirect to canonical URL.
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        const ri=ptRouteInfo();
+        if(!ri.workspaceId || !String(ri.workspaceId).startsWith('ws'))return;
+        const qs=new URLSearchParams({slug:ri.workspaceSlug||'',workspace_id:ri.workspaceId||'',rest:ri.workspaceRest||ri.page||'dashboard'});
+        const res=await api.get('/api/workspace/route-guard?'+qs.toString(),{timeoutMs:8000});
+        if(cancelled||!res)return;
+        if(res.redirect){
+          const next=String(res.redirect||'')+(window.location.search||'');
+          if(next!==window.location.pathname+window.location.search) window.location.replace(next);
+        }
+      }catch(e){}
+    })();
+    return()=>{cancelled=true;};
+  },[]);
+
+  // Keep browser URL in sync with current view
+  const VIEW_TITLES={
+    dashboard:'Dashboard',ops:'Ops Center',projects:'Projects',tasks:'Kanban Board',
+    messages:'Channels',dm:'Direct Messages',tickets:'Tickets',ops:'Ops Center',
+    timeline:'Timeline Tracker',reminders:'Reminders',
+    settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity',
+    'ai-docs':'AI Documentation'
+  };
+  const clearDmTargetUser=useCallback(()=>setDmTargetUser(null),[]);
+  const _setView=useCallback((v)=>{
+    const raw=String(v||'dashboard');
+    const base=raw.split(':')[0];
+    try{if(base==='workspace-os'&&raw.startsWith('workspace-os:'))sessionStorage.setItem('pt_wos_tab',raw.slice('workspace-os:'.length)||'home');}catch(_){}
+    // When navigating away from DM, clear the manual lock so the user can freely
+    // switch DM conversations next time they return to the DM view.
+    if(base!=='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.removeItem('pt_dm_notification_target');sessionStorage.removeItem('pt_dm_resolve_next');}catch(_){}}
+    setView(base);
+    try{
+      if(VALID_VIEWS.includes(base)){
+        let suffix='';
+        if(base==='dm'){
+          const explicit=raw.startsWith('dm:')?raw.slice(3):'';
+          // Plain /dm must stay plain. Only explicit dm:<user> creates /dm?user=.
+          // This prevents old saved targets from stealing the active conversation.
+          const target=explicit||'';
+          if(target)suffix='?user='+encodeURIComponent(String(target));
+        }else if(raw.startsWith(base+':')){
+          const entityId=raw.slice(base.length+1);
+          if(entityId)suffix='/'+encodeURIComponent(String(entityId));
+        }
+        const nextUrl=workspaceBasePath(cu)+base+suffix;
+        if(nextUrl !== (window.location.pathname+window.location.search)) history.pushState(null,'',nextUrl);
+        document.title='Project Tracker — '+(VIEW_TITLES[base]||base)+' | AI-Powered Team Collaboration';
+      }
+    }catch(e){}
+  },[cu,dmTargetUser]);
   const routeToNotification=useCallback(async(n={})=>{
     // Deep notification router: handles DB notifications, web-push URLs, older rows
     // that do not yet have entity_id/entity_type, and duplicate frontend bundles.
@@ -11045,7 +11030,7 @@ function App(){
       (u.email&&contentLow.includes(String(u.email).toLowerCase()))
     ));
 
-    let dmPeer=s(n.peer_id||n.dm_user_id||n.chat_user_id||n.conversation_user_id||n.sender_id||n.from_user_id||n.from||n.sender||n.caller_id); if(!dmPeer && (low(n.kind)==='dm'||low(n.type).includes('dm'))) dmPeer=s(n.user_id); if(dmPeer&&String(dmPeer)===String(cu&&cu.id)) dmPeer=s(n.sender_id||n.from_user_id||n.peer_id||n.dm_user_id||'');
+    let dmPeer=s(n.peer_id||n.dm_user_id||n.sender_id||n.from_user_id||n.sender||n.caller_id); if(!dmPeer && (low(n.kind)==='dm'||low(n.type).includes('dm'))) dmPeer=s(n.user_id);
     let urlLooksDm=false;
     try{
       const notifUrl=s(n.url||n.nav_url||n.link||n.href||'');
@@ -11073,10 +11058,9 @@ function App(){
       dmPeer=ptFirstValidDmPeer([dmPeer],users,cu&&cu.id)||String(dmPeer||'');
       try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;}catch(_e){}
       if(dmPeer){
-        try{sessionStorage.setItem('pt_open_dm_user',String(dmPeer));sessionStorage.setItem('pt_dm_notification_target',String(dmPeer));sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_e){}
+        try{sessionStorage.setItem('pt_open_dm_user',String(dmPeer));sessionStorage.setItem('pt_dm_notification_target',String(dmPeer));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_e){}
         setDmTargetUser(String(dmPeer));
         _setView('dm:'+String(dmPeer));
-        try{history.pushState(null,'',ptDmUrl(String(dmPeer)));}catch(_){}
         const fireDmOpen=()=>{try{if(window.__ptOpenDmPeer)window.__ptOpenDmPeer(String(dmPeer),'notification');window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(dmPeer),source:'notification'}}));}catch(_){}};
         fireDmOpen();
       }else{
@@ -11116,7 +11100,6 @@ function App(){
       return;
     }
 
-
     if(entityType==='message'||entityType==='channel'||['message','channel_message','project_message'].includes(type)){
       const msgProjectId=s(n.project_id||rawEntityId);
       try{ if(msgProjectId) sessionStorage.setItem('pt_open_project_message', String(msgProjectId)); }catch(_e){}
@@ -11125,33 +11108,32 @@ function App(){
     }
     _setView('notifs');
   },[_setView,data,cu]);
-
+  // Handle browser back/forward
   useEffect(()=>{
-    try{
-      const ri=ptRouteInfo();
-      const action=ri.action;
-      const id=ri.id||'';
-      const user=ri.user||'';
-      if((action==='task'||ri.page==='tasks')&&id){setInitialTaskId(String(id));_setView('tasks:'+String(id));}
-      else if((action==='project'||ri.page==='projects')&&id){setInitialProjectId(String(id));_setView('projects:'+String(id));}
-      else if((action==='ticket'||ri.page==='tickets')&&id){setInitialTicketId(String(id));_setView('tickets:'+String(id));}
-      else if(action==='dm'||ri.page==='dm'){
-        const target=user||'';
-        let fromNotif=false;
-        try{const q=new URLSearchParams(window.location.search);fromNotif=q.get('notif')==='dm'||q.get('notification')==='dm'||action==='dm';}catch(_){}
-        if(target){
-          setDmTargetUser(String(target));
-          try{sessionStorage.setItem('pt_open_dm_user',String(target));sessionStorage.setItem('pt_dm_notification_target',String(target));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_){}
-          _setView('dm:'+String(target));
-        }else{
-          // Plain /dm from sidebar/direct navigation stays unselected. Only a
-          // notification-marked /dm?notif=dm may resolve latest unread.
-          if(fromNotif){try{sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}}
-          _setView('dm');
-        }
-      }
-    }catch(e){}
-  },[_setView]);
+    const onPop=()=>{
+      try{
+        const p=routeViewFromPath(VALID_VIEWS);
+        if(p&&VALID_VIEWS.includes(p)) setView(p);
+        else setView('dashboard');
+      }catch(e){}
+    };
+    window.addEventListener('popstate',onPop);
+    return()=>window.removeEventListener('popstate',onPop);
+  },[]);
+  useEffect(()=>{
+    const onOpenView=(e)=>{
+      try{
+        const v=String(e&&e.detail&&e.detail.view||'');
+        if(!v||!VALID_VIEWS.includes(v))return;
+        setView(v);
+        const nextUrl=workspaceBasePath(cu)+v;
+        if(nextUrl !== (window.location.pathname+window.location.search)) history.pushState(null,'',nextUrl);
+      }catch(_){ }
+    };
+    window.addEventListener('pt:open-view',onOpenView);
+    return()=>window.removeEventListener('pt:open-view',onOpenView);
+  },[cu]);
+  const [col,setCol]=useState(()=>{try{return localStorage.getItem('pf_col')==='1';}catch{return false;}});
   useEffect(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem('pf_accent')||'null');
@@ -11321,16 +11303,15 @@ function App(){
       globalDismissedCallIds.current.add(call.callId);
       stopGlobalRingtone();
       setGlobalIncomingCall(null);
-      const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-      try{
-        const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-        if(action==='accept'){
-          // Wait for server call_status=in_call before storing active call state.
-          const joinUrl=(r&&r.meetUrl)||call.meetUrl;
-          if(acceptWin){acceptWin.location.href=joinUrl;trackGlobalMeetWindow(acceptWin,call);}
-          else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Accept again.','error');
-        }
-      }catch(e){ try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{} if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error'); }
+      let meetWin=null;
+      if(action==='accept'&&call.meetUrl){
+        meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+        if(meetWin)trackGlobalMeetWindow(meetWin,call);
+        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Accept again.','error');
+      }
+      api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:6000})
+        .then(r=>{if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}})
+        .catch(e=>{ if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error'); });
     };
     document.addEventListener('click',h,true);
     return()=>document.removeEventListener('click',h,true);
@@ -11342,20 +11323,16 @@ function App(){
     globalDismissedCallIds.current.add(call.callId);
     stopGlobalRingtone();
     setGlobalIncomingCall(null);
-    const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-    try{
-      const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-      if(action==='accept'){
-          // Wait for server call_status=in_call before storing active call state.
-        const joinUrl=(r&&r.meetUrl)||call.meetUrl;
-        if(acceptWin){acceptWin.location.href=joinUrl;trackGlobalMeetWindow(acceptWin,call);}
-        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Connect again.','error');
-      }
-    }catch(e){
-      try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{}
-      console.warn('[Call] response failed',e);
-      if(window._pfToast)window._pfToast('error','Unable to update call status','Please try again.');
+    let meetWin=null;
+    if(action==='accept'&&call.meetUrl){
+      meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+      if(meetWin&&typeof trackGlobalMeetWindow==='function')trackGlobalMeetWindow(meetWin,call);
+      else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Connect again.','error');
+      // Wait for server call_status=in_call before storing active call state.
     }
+    api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:6000})
+      .then(r=>{if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}})
+      .catch(e=>{console.warn('[Call] response failed',e);if(window._pfToast)window._pfToast('error','Unable to update call status','Please try again.');});
   },[globalIncomingCall,cu,stopGlobalRingtone,_setView,trackGlobalMeetWindow]);
 
   useEffect(()=>{
@@ -11384,7 +11361,7 @@ function App(){
     let stopped=false;
     const check=async()=>{
       try{
-        const res=await api.get('/api/calls/incoming',{quiet:true,timeoutMs:30000});
+        const res=await api.get('/api/calls/incoming',{quiet:true});
         const calls=(res&&Array.isArray(res.calls))?res.calls:[];
         if(stopped||!calls.length)return;
         const c=calls.find(x=>x&&x.callId&&!globalDismissedCallIds.current.has(x.callId));
@@ -11406,25 +11383,20 @@ function App(){
   // write, so changes propagate to all connected clients in <1s instead of 30s.
   useEffect(()=>{
     if(!cu)return;
-    let es=null;let retryTimer=null;let retryDelay=3000;
+    let es=null;let retryTimer=null;
     const connect=()=>{
       // ── SSE Singleton guard ────────────────────────────────────────────────
-      // Prevents triple connections when multiple bundles (frontend.js / main.js /
-      // template.html) run in the same page context. The first bundle to connect
-      // registers window.__ptSSEActive; subsequent bundles reuse it and receive
-      // events via the 'pt:realtime' CustomEvent broadcast below.
       if(window.__ptSSEActive&&window.__ptSSEActive.readyState!==EventSource.CLOSED){
         es=window.__ptSSEActive; return;
       }
       try{
         es=new EventSource('/api/stream', {withCredentials: true});
         window.__ptSSEActive=es;
-        es.onopen=()=>{retryDelay=3000;try{window.ptPollManager&&window.ptPollManager.setSseHealthy(true);}catch(_){}};
         es.onmessage=e=>{
           try{
             const msg=JSON.parse(e.data);
             if(msg.type==='connected')return; // initial handshake
-            // Broadcast to all bundles that share this singleton
+            // Broadcast to all bundles sharing this singleton
             try{window.dispatchEvent(new CustomEvent('pt:realtime',{detail:msg}));}catch(_){}
             const __ptMsgForMe=(m)=>{
               try{
@@ -11439,43 +11411,7 @@ function App(){
                 return sender===me || recipient===me;
               }catch(_){return false;}
             };
-            if(['task_updated','task.updated','task.deleted'].includes(msg.type)){
-              const d=msg.data||{};
-              if(d.id){
-                setData&&setData(prev=>{
-                  const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
-                  if(d.action==='deleted'||msg.type==='task.deleted'){ptMarkTaskDeleted(d.id);return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};}
-                  if(d.task)return {...prev,tasks:ptMergeTasksStable(tasks,[{...d.task,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])};
-                  const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.client_task_key?{client_task_key:d.client_task_key}:{}),...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}:t);
-                  // If this is a 'created' event and the task isn't in the list yet (POST still in flight),
-                  // schedule a bust reload to fetch the confirmed task from DB
-                  if(d.action==='created'&&!tasks.some(t=>String(t.id)===String(d.id))&&!tasks.some(t=>t._pending)){
-                    setTimeout(()=>load(teamCtx,true),800);
-                  }
-                  return {...prev,tasks:updated};
-                });
-              }
-              return;
-            }
-            if(['project_updated','ticket_updated','notification_updated','reminder_updated','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
-              load(teamCtx);
-            }
-            // task.created: DON'T call load() here — it returns stale cache and wipes the
-            // optimistic task that was just inserted by the POST /api/tasks response.
-            // Instead, do a targeted bust reload ONLY if the task isn't already in state
-            // (covers the case where another team member created the task).
-            if(msg.type==='task.created'){
-              const d=msg.data||{};
-              setData&&setData(prev=>{
-                const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
-                const alreadyHave=d.id&&(tasks.some(t=>String(t.id)===String(d.id))||tasks.some(t=>t._pending));
-                if(!alreadyHave){
-                  // Another user created this task — schedule a bust to fetch it
-                  setTimeout(()=>load(teamCtx,true),1200);
-                }
-                return prev; // don't touch state — the POST handler owns it
-              });
-            }
+            // pt:realtime listener (below) handles debounced reload — no double-fire here
             if(msg.type==='notification'||msg.type==='notification_updated'){
               triggerPollRef.current&&triggerPollRef.current();
             }
@@ -11487,14 +11423,11 @@ function App(){
             }
             if(['dm','dm_created','dm_reaction','dm_updated','dm_deleted','dm_pinned','dm_seen','dm_typing','call_status'].includes(msg.type)){
               if(!__ptMsgForMe(msg)) return;
-              if(msg.type!=='dm_typing'&&msg.type!=='dm_seen'){
-                api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{if(d&&Array.isArray(d.dm_unread))setDmUnread(d.dm_unread);if(d&&Array.isArray(d.notifications))setData(prev=>({...prev,notifs:d.notifications}));}).catch(()=>{});
-              }
-              if(msg.type==='dm_created'){
-                try{
-                  const m=(msg.data&&msg.data.message)||{};
-                  if(m&&m.id&&window.__ptSeenDmIds&&window.__ptSeenDmIds.has(m.id)){
-                    // Cache incoming DM messages globally so DirectMessages can pre-populate instantly
+              // Use /api/poll (served from cache) to refresh both DM unread and notifications at once
+              if(msg.type!=='dm_typing'&&msg.type!=='dm_seen')api.get('/api/poll').then(r=>{
+                if(r&&Array.isArray(r.dm_unread))setDmUnread(r.dm_unread);
+              }).catch(()=>{});
+              // Cache incoming DM messages globally so DirectMessages can pre-populate instantly
               // on mount without waiting for the loadMsgs network call to complete.
               try{
                 if(msg.type==='dm_created'){
@@ -11510,34 +11443,12 @@ function App(){
                 }
               }catch(_){}
               window.dispatchEvent(new CustomEvent('dm_refresh',{detail:msg}));
-                    return;
-                  }
-                  window.__ptSeenDmIds=window.__ptSeenDmIds||new Set();
-                  if(m&&m.id)window.__ptSeenDmIds.add(m.id);
-                  if(String(m.recipient||'')===String(cu.id)&&String(m.sender||'')!==String(cu.id)){
-                    const sender=(data.users||[]).find(u=>String(u.id)===String(m.sender))||{};
-                    const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90);
-                    if(!String(m.content||'').includes('CALL_INVITE:')) showBrowserNotif(sender.name||'New message', body||'Sent you a message', ()=>{window.focus(); try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));setDmTargetUser&&setDmTargetUser(String(m.sender));}catch(_){} _setView&&_setView('dm:'+String(m.sender)); try{if(window.__ptOpenDmPeer)window.__ptOpenDmPeer(String(m.sender),'notification');window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){}}, {tag:'dm-'+(m.id||Date.now())});
-                  }
-                }catch(e){}
-              }
-              // Notify the active DM panel to refresh messages/call state immediately.
-              window.dispatchEvent(new CustomEvent('dm_refresh',{detail:msg}));
               // Show incoming DM browser/toast notification directly from SSE.
               // This avoids waiting for the 2s poll and keeps notifications immediate.
+              // FIX 02: centralised handler eliminates double-fire between SSE + poll paths
               try{
                 const m=(msg.data&&msg.data.message)||msg.message||msg.data||{};
-                if(msg.type==='dm_created'&&m&&m.id&&!notifiedDmIdsRef.current.has(m.id)){
-                  notifiedDmIdsRef.current.add(m.id);
-                  const raw=String(m.content||'');
-                  if(String(m.sender||'')!==String(cu.id)&&String(m.recipient||'')===String(cu.id)&&!raw.includes('CALL_INVITE:')){
-                    const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
-                    const body=raw.replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
-                    window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm:'+String(m.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
-                    playSound('notif');
-                  }
-                }
+                if(msg.type==='dm_created'&&m&&m.id)handleNewDmMessage(m,false);
               }catch(_){}
               // Fallback for calls: if the dedicated call_status event is missed but the DM invite arrives,
               // still show the full-screen call popup. This fixes chat-card-only ringing.
@@ -11584,33 +11495,19 @@ function App(){
               }
             }
             if(msg.type==='presence'){
-              const d=msg.data||{};
-              if(Array.isArray(d.online)||Array.isArray(d.away)){
-                setOnlineUsers(prev=>{const next=new Set(prev);(d.online||[]).forEach(x=>next.add(String(x)));(d.away||[]).forEach(x=>next.delete(String(x)));return next;});
-                setAwayUsers(prev=>{const next=new Set(prev);(d.away||[]).forEach(x=>next.add(String(x)));(d.online||[]).forEach(x=>next.delete(String(x)));return next;});
-              }else if(d.user_id){
-                const uid=String(d.user_id);
-                const st=String(d.status||'online').toLowerCase();
-                setOnlineUsers(prev=>{const next=new Set(prev); if(st==='online'||st==='active')next.add(uid); else next.delete(uid); return next;});
-                setAwayUsers(prev=>{const next=new Set(prev); if(st==='away'||st==='idle')next.add(uid); else next.delete(uid); return next;});
-              }
+              api.get('/api/presence',{quiet:true,timeoutMs:6000}).then(p=>{if(Array.isArray(p))setOnlineUsers(new Set(p.map(String)));else if(p){setOnlineUsers(new Set((p.online||[]).map(String)));}}).catch(()=>{});
             }
           }catch(err){}
         };
         es.onerror=()=>{
-          // Scale-safe reconnect: one retry timer with exponential backoff.
-          // Do not let EventSource 204/temporary proxy failures create a storm.
-          try{window.ptPollManager&&window.ptPollManager.setSseHealthy(false);}catch(_){}
-          try{es.close();}catch(_){}
-          if(retryTimer)clearTimeout(retryTimer);
-          const delay=retryDelay;
-          retryDelay=Math.min(60000, Math.floor(retryDelay*1.8));
-          retryTimer=setTimeout(connect,delay);
+          // EventSource reconnects automatically, but we add a backoff guard
+          es.close();
+          retryTimer=setTimeout(connect,5000);
         };
       }catch(err){}
     };
     connect();
-    return()=>{try{window.ptPollManager&&window.ptPollManager.setSseHealthy(false);}catch(_){} if(es){es.close();if(window.__ptSSEActive===es)window.__ptSSEActive=null;}if(retryTimer)clearTimeout(retryTimer);};
+    return()=>{if(es){es.close();if(window.__ptSSEActive===es)window.__ptSSEActive=null;}if(retryTimer)clearTimeout(retryTimer);};
   },[cu,teamCtx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Presence heartbeat — throttled to avoid DB/client exhaustion.
@@ -11626,21 +11523,18 @@ function App(){
     };
     const fetchPresence=()=>{
       const now=Date.now();
-      // Skip when tab is hidden — avoids piling up 499s on Railway while the user is away
-      if(presenceBusy||now-lastFetched<15000||document.hidden)return Promise.resolve();
+      if(presenceBusy||now-lastFetched<15000)return Promise.resolve();
       presenceBusy=true;lastFetched=now;
-      return api.get('/api/presence',{quiet:true,timeoutMs:12000}).then(applyPresenceLite).catch(()=>{}).finally(()=>{presenceBusy=false;});
+      return api.get('/api/presence',{quiet:true,timeoutMs:6000}).then(applyPresenceLite).catch(()=>{}).finally(()=>{presenceBusy=false;});
     };
     const beat=()=>{
-      // Don't heartbeat while the tab is in the background
-      if(document.hidden)return Promise.resolve();
       const now=Date.now();
-      if(now-lastPosted<25000)return fetchPresence();
+      if(now-lastPosted<60000)return fetchPresence();
       lastPosted=now;
-      return api.post('/api/presence',{}, {quiet:true,timeoutMs:12000}).then(fetchPresence).catch(fetchPresence);
+      return api.post('/api/presence',{}, {quiet:true,timeoutMs:6000}).then(fetchPresence).catch(fetchPresence);
     };
     const presStartId=setTimeout(()=>beat(),500);
-    const beatId=setInterval(beat,25000);
+    const beatId=setInterval(beat,30000);
     const onFocus=()=>{beat();};
     window.addEventListener('focus',onFocus);
     return()=>{clearTimeout(presStartId);clearInterval(beatId);window.removeEventListener('focus',onFocus);};
@@ -11651,10 +11545,10 @@ function App(){
   const toastTimers=useRef({});
   const TOAST_DUR=6000; // ms before auto-dismiss
 
-  const addToast=useCallback((type,title,body)=>{
+  const addToast=useCallback((type,title,body,extra=null)=>{
     const id='t'+Date.now()+Math.random();
     const timeStr=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    setToasts(prev=>[{id,type,title,body,timeStr,progress:100,leaving:false},...prev].slice(0,5));
+    setToasts(prev=>[{id,type,title,body,timeStr,progress:100,leaving:false,extra:extra||null},...prev].slice(0,5));
     const start=Date.now();
     const tick=setInterval(()=>{
       const elapsed=Date.now()-start;
@@ -11697,6 +11591,38 @@ function App(){
 
   const [teamLoading,setTeamLoading]=useState(false);
 
+
+  const mergeFreshTaskRows=(serverRows, prevRows=[])=>{
+    const srv=Array.isArray(serverRows)?serverRows:[];
+    const prev=Array.isArray(prevRows)?prevRows:[];
+    const now=Date.now();
+    let pins={};
+    try{pins=window.__ptTaskPins||{};}catch(_){pins={};}
+    const srvIds=new Set(srv.map(t=>String(t&&t.id||'')).filter(Boolean));
+    const keep=[];
+    const keepIds=new Set();
+    for(const t of prev){
+      if(!t||!t.id)continue;
+      const id=String(t.id);
+      if(srvIds.has(id)||keepIds.has(id))continue;
+      const recentLocal=Number(t._localTs||0)&&now-Number(t._localTs||0)<30000;
+      const pinned=pins[id]&&Number(pins[id].until||0)>now;
+      if(t._pending||String(id).startsWith('tmp_')||recentLocal||pinned){
+        keep.push(t); keepIds.add(id);
+      }
+    }
+    return [...keep,...srv];
+  };
+  const pinFreshTaskRow=(task,ttlMs=30000)=>{
+    try{
+      if(!task||!task.id)return;
+      window.__ptTaskPins=window.__ptTaskPins||{};
+      window.__ptTaskPins[String(task.id)]={task,until:Date.now()+ttlMs};
+      Object.keys(window.__ptTaskPins).forEach(k=>{if(Number(window.__ptTaskPins[k].until||0)<Date.now())delete window.__ptTaskPins[k];});
+      try{ptInstantCacheDel&&ptInstantCacheDel('/api/app-data');}catch(_){ }
+    }catch(_){ }
+  };
+
   const load=useCallback(async(overrideTeamCtx, bust=false)=>{
     if(!cu)return;
     const tCtx=overrideTeamCtx!==undefined?overrideTeamCtx:teamCtx;
@@ -11705,10 +11631,9 @@ function App(){
       // bust=true forces a fresh DB read on the server, bypassing stale worker caches.
       const bustParam=bust?'bust=1':'';
       const teamParam=tCtx?'team_id='+tCtx:'';
-      const wsParam=(window.PT_WORKSPACE&&window.PT_WORKSPACE.workspace_id)?('workspace_id='+encodeURIComponent(window.PT_WORKSPACE.workspace_id)):'';
-      const qs=[teamParam,bustParam,wsParam].filter(Boolean).join('&');
+      const qs=[teamParam,bustParam].filter(Boolean).join('&');
       const appDataUrl='/api/app-data'+(qs?'?'+qs:'');
-      const cachedApp=ptInstantCacheGet(appDataUrl,null)||ptInstantCacheGet('/api/app-data',null);
+      const cachedApp=bust?null:(ptInstantCacheGet(appDataUrl,null)||ptInstantCacheGet('/api/app-data',null));
       if(cachedApp&&!cachedApp.error){
         const {users=[],projects=[],tasks=[],notifications:notifs=[],dm_unread:dmu=[],workspace:ws={},teams:teamsRaw=[],tickets:ticketsRaw=[],reminders:rems=[],feature_flags:featureFlags={},feature_catalog:featureCatalog={},plan:workspacePlan='starter',plan_limits:planLimits={},dashboardSummary={}}=cachedApp;
         // Never let a partial/offline shell overwrite real dashboard data with zeros.
@@ -11718,7 +11643,7 @@ function App(){
           const teams=Array.isArray(teamsRaw)?teamsRaw:[];
           const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
           const _pm=parseMembers;
-          setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)})),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
+          setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)})),tasks:Array.isArray(tasks)?tasks:[],notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
           if(Array.isArray(dmu))setDmUnread(dmu);
           if(Array.isArray(rems)){const now=new Date();setUpcomingReminders(rems.filter(r=>new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));}
         }
@@ -11728,8 +11653,6 @@ function App(){
       const d=await api.get(appDataUrl,{quiet:true,timeoutMs:12000}); // stale-while-refresh for instant tabs
       if(!d||d.error){
         const st=Number(d&&d.status)||0;
-        // Only a real auth failure should send the user back to login.
-        // 404/500/timeout from app-data or unrelated file requests must not clear the session.
         if(st===401||st===403){
           console.warn('[Load] Authentication expired, clearing session');
           try{localStorage.removeItem('pf_had_session');}catch{}
@@ -11738,16 +11661,11 @@ function App(){
           return;
         }
         console.warn('[Load] App data failed, keeping current session/state:', d);
-        // Suppress toast for timeouts/network errors (499, 408, 0) — server may be cold-starting
-        if(st!==0&&st!==408){
-          try{window._pfToast&&window._pfToast('error','Data refresh failed',String(d.error||'Server error'));}catch{}
-        }
         return;
       }
       if(!(d&&d.partial)){ ptInstantCacheSet(appDataUrl,d); if(!appDataUrl.includes('?'))ptInstantCacheSet('/api/app-data',d); }
-      if(d&&d.ok===false){console.warn('[Load] app-data returned fallback, keeping current state',d);try{clearTimeout(window.__ptAppDataPartialRetry);window.__ptAppDataPartialRetry=setTimeout(()=>load(tCtx,true),1500);}catch(_){} return;}
       if(d&&d.partial){
-        try{clearTimeout(window.__ptAppDataPartialRetry);window.__ptAppDataPartialRetry=setTimeout(()=>load(tCtx,true),900);}catch(_){}
+        try{clearTimeout(window.__ptAppDataPartialRetry);window.__ptAppDataPartialRetry=setTimeout(()=>load(tCtx,true),1200);}catch(_){}
         const ws=d.workspace||{};
         const featureFlags=d.feature_flags||{}; const featureCatalog=d.feature_catalog||{};
         const workspacePlan=d.plan||data.workspacePlan||'starter'; const planLimits=d.plan_limits||data.planLimits||{};
@@ -11756,17 +11674,11 @@ function App(){
         if(ws){try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},ws,{workspace_id:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_id_from_me:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_slug:ws.workspace_slug||ws.slug||'',workspace_name:ws.name||ws.workspace_name||''});}catch(_){} setWsDmEnabled(ws.dm_enabled!==0);}
         return;
       }
-      if(d&&!d.partial&&Array.isArray(d.projects)&&Array.isArray(d.tasks)&&Array.isArray(d.users)&&d.projects.length===0&&d.tasks.length===0&&d.users.length===0){
-        console.warn('[Load] app-data returned an empty full payload; keeping existing state and running diagnostics', d);
-        try{api.get('/api/data-diagnostics?include_deleted=1',{quiet:true,timeoutMs:8000}).then(diag=>{window.PT_DATA_DIAGNOSTICS=diag;console.warn('[DataDiagnostics]',diag);if(window._pfToast){const c=(diag&&diag.counts)||{};window._pfToast('warning','Dashboard data check',`Visible: ${c.projects_visible||0} projects, ${c.tasks_visible||0} tasks. Hidden/deleted: ${c.projects_deleted||0} projects, ${c.tasks_deleted||0} tasks.`);}}).catch(()=>{});}catch(_){}
-        try{clearTimeout(window.__ptAppDataEmptyRetry);window.__ptAppDataEmptyRetry=setTimeout(()=>load(tCtx,true),1500);}catch(_){}
-        return;
-      }
       const {users=[],projects=[],tasks=[],notifications:notifs=[],dm_unread:dmu=[],workspace:ws={},teams:teamsRaw=[],tickets:ticketsRaw=[],reminders:rems=[],feature_flags:featureFlags={},feature_catalog:featureCatalog={},plan:workspacePlan='starter',plan_limits:planLimits={},dashboardSummary={}}=d;
       const teams=Array.isArray(teamsRaw)?teamsRaw:[];
       const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
       const _pm=parseMembers;
-      setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)})),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
+      setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)})),tasks:Array.isArray(tasks)?tasks:[],notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
       setDmUnread(Array.isArray(dmu)?dmu:[]);
       if(ws&&ws.name)setWsName(ws.name);
       if(ws){try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},ws,{workspace_id:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_id_from_me:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_slug:ws.workspace_slug||ws.slug||'',workspace_name:ws.name||ws.workspace_name||''});}catch(_){} setWsDmEnabled(ws.dm_enabled!==0);}
@@ -11777,25 +11689,8 @@ function App(){
   useEffect(()=>{
     // Try to get current user; if backend is unreachable, enter offline mode
     // so Vault and Password Generator still work without a server
-    api.get('/api/auth/me',{quiet:true,timeoutMs:15000}).then(u=>{
-      if(u&&!u.error){ setCu(u); window._pfCurrentUser=u; window.PT_CURRENT_USER=u; try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},{workspace_id:u.workspace_id||u.workspace_id_from_me||'',workspace_id_from_me:u.workspace_id_from_me||u.workspace_id||'',workspace_slug:u.workspace_slug||'',workspace_name:u.workspace_name||u._ws_name||''});}catch(_){} try{localStorage.setItem('pf_had_session','1');}catch{} setLoading(false); api.get('/api/bootstrap',{quiet:true,timeoutMs:15000}).then(b=>{if(b&&b.ok){window.PT_BOOTSTRAP=b;ptInstantCacheSet('/api/bootstrap',b);
-        // SCALABILITY FIX: bootstrap now returns users+dm_unread (added to /api/bootstrap).
-        // Pre-populating data.users here means resolvePeerId is functional in ~100ms
-        // instead of 2-3s, which eliminates the entire class of DM routing/display bugs
-        // caused by empty users during the cold app-data window.
-        // The full /api/app-data call that follows will overwrite with richer records
-        // (has_avatar, last_active, two_fa_enabled etc.) — this is just the fast seed.
-        setData(prev=>{
-          const bootstrapUsers=Array.isArray(b.users)&&b.users.length?b.users:null;
-          return{...prev,bootstrap:b,
-            // Only seed users if we don't already have richer app-data users loaded.
-            // Richer = has has_avatar field set by _fetch_app_data_from_db.
-            users:bootstrapUsers&&!(prev.users&&prev.users.length&&prev.users[0]&&'has_avatar'in prev.users[0])?bootstrapUsers:prev.users,
-            workspacePlan:(b.entitlements&&b.entitlements.plan)||prev.workspacePlan,
-            planLimits:(b.entitlements&&b.entitlements.limits)||prev.planLimits};
-        });
-        if(Array.isArray(b.dm_unread)&&b.dm_unread.length){setDmUnread(prev=>prev&&prev.length?prev:b.dm_unread);}
-      }}).catch(()=>{}); }
+    api.get('/api/auth/me').then(u=>{
+      if(u&&!u.error){ setCu(u); window._pfCurrentUser=u; window.PT_CURRENT_USER=u; try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},{workspace_id:u.workspace_id||u.workspace_id_from_me||'',workspace_id_from_me:u.workspace_id_from_me||u.workspace_id||'',workspace_slug:u.workspace_slug||'',workspace_name:u.workspace_name||u._ws_name||''});}catch(_){} try{localStorage.setItem('pf_had_session','1');}catch{} setLoading(false); api.get('/api/bootstrap',{quiet:true,timeoutMs:5000}).then(b=>{if(b&&b.ok){window.PT_BOOTSTRAP=b;ptInstantCacheSet('/api/bootstrap',b);setData(prev=>({...prev,bootstrap:b,workspacePlan:(b.entitlements&&b.entitlements.plan)||prev.workspacePlan,planLimits:(b.entitlements&&b.entitlements.limits)||prev.planLimits}));}}).catch(()=>{}); }
       else {
         // Got a response but errored (e.g. 401 not logged in) — show login instantly
         try{localStorage.removeItem('pf_had_session');}catch{}
@@ -11868,7 +11763,7 @@ function App(){
     load(teamCtx).finally(()=>setTeamLoading(false));
   },[teamCtx,cu]);
   // NOTE: The 30s projects+tasks interval has been removed.
-  // /api/app-data (called by load()) already fetches both on every poll.
+  // /api/dashboard/bootstrap (called by load()) already fetches both on every poll.
   // Additionally, the SSE stream now triggers load() immediately on any
   // task/project mutation — so this extra interval was both redundant and
   // doubling DB load (2 extra queries every 30s per connected user).
@@ -11890,77 +11785,90 @@ function App(){
 
   const prevDmsRef=useRef([]);
   const notifiedDmIdsRef=useRef(new Set());
-  useEffect(()=>{
-    if(!cu)return;
-    api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{if(d&&Array.isArray(d.dm_unread)){prevDmsRef.current=d.dm_unread;setDmUnread(d.dm_unread);}if(d&&Array.isArray(d.notifications))setData(prev=>({...prev,notifs:d.notifications}));}).catch(()=>{});
-    let latestBusy=false;
-    const pullLatest=async()=>{
-      if(latestBusy)return;
-      latestBusy=true;
-      try{
-        const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:30000});
-        if(Array.isArray(latest)){
-          latest.slice().reverse().forEach(m=>{
-            if(!m||!m.id||notifiedDmIdsRef.current.has(m.id))return;
-            if(String(m.recipient||'')!==String(cu.id)||String(m.sender||'')===String(cu.id))return;
-            window.__ptSeenDmIds=window.__ptSeenDmIds||new Set();
-            if(window.__ptSeenDmIds.has(m.id)){ notifiedDmIdsRef.current.add(m.id); return; }
-            notifiedDmIdsRef.current.add(m.id);
-            window.__ptSeenDmIds.add(m.id);
-            // Inject the real message immediately into the DM panel. This avoids
-            // fake alerts that open before the message is visible.
-            // Cache latest-unread messages globally so DirectMessages can pre-populate instantly
-            // even when the component was not mounted when the fallback poll fired.
-            try{
-              const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
-              if(peer){
-                window._pfDmIncoming=window._pfDmIncoming||{};
-                window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
-                if(!window._pfDmIncoming[peer].find(x=>String(x.id)===String(m.id))){
-                  window._pfDmIncoming[peer].push(m);
-                }
-              }
-            }catch(_){}
-            window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'dm_created',soundPlayed:true,data:{id:m.id,sender:m.sender,recipient:m.recipient,message:m}}}));
-            const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
-            const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
-            if(!String(m.content||'').includes('CALL_INVITE:')){
-              window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm:'+String(m.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
-              playSound('notif');
-            }
-          });
-        }
-        const poll=await api.get('/api/poll',{quiet:true,timeoutMs:12000});
-        const d=poll&&Array.isArray(poll.dm_unread)?poll.dm_unread:[];
-        if(Array.isArray(d)){prevDmsRef.current=d;setDmUnread(d);}
-      }catch(e){}
-      finally{latestBusy=false;}
-    };
-    const pullStartId=setTimeout(()=>pullLatest(),5000); // delay avoids cold-start stampede
-    const id=setInterval(pullLatest,30000); // fallback only; SSE handles instant delivery
-    return()=>{clearTimeout(pullStartId);clearInterval(id);};
-  },[cu,data.users]);
 
+  // FIX 02: Shared DM notification handler — single source of truth for toast/sound/browser-notif.
+  // Both the SSE path and the 60s poll fallback call this. The notifiedDmIdsRef Set is checked
+  // and updated atomically here, eliminating the race-window duplicate-notification bug.
+  // FIX 21: The Set is capped at 500 entries (FIFO eviction) to prevent unbounded growth.
+  const handleNewDmMessage=useCallback((m,fromPoll=false)=>{
+    if(!m||!m.id)return;
+    const id=String(m.id);
+    if(notifiedDmIdsRef.current.has(id))return;
+    notifiedDmIdsRef.current.add(id);
+    // FIX 21: cap Set size to 500 — evict oldest entry
+    if(notifiedDmIdsRef.current.size>500){
+      const first=notifiedDmIdsRef.current.values().next().value;
+      notifiedDmIdsRef.current.delete(first);
+    }
+    // Cache message globally so DirectMessages can pre-populate instantly
+    try{
+      const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
+      if(peer){
+        window._pfDmIncoming=window._pfDmIncoming||{};
+        window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
+        if(!window._pfDmIncoming[peer].find(x=>String(x.id)===id))
+          window._pfDmIncoming[peer].push(m);
+      }
+    }catch(_){}
+    // Always dispatch dm_refresh so the DM thread re-renders
+    window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'dm_created',soundPlayed:fromPoll,data:{id:m.id,sender:m.sender,recipient:m.recipient,message:m}}}));
+    if(String(m.sender||'')===String(cu.id)||String(m.recipient||'')!==String(cu.id))return;
+    const raw=String(m.content||'');
+    if(raw.includes('CALL_INVITE:'))return;
+    const sname=m.sender_name||((data.users||[]).find(u=>String(u.id)===String(m.sender))||{}).name||'Someone';
+    const body=raw.replace(/CALL_[A-Z_]+:[^
+]+/g,'').trim().slice(0,90)||'Sent you a message';
+    window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body,{peer:String(m.sender||'')});
+    showBrowserNotif('💬 '+sname,body,()=>{
+      try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){}
+      setDmTargetUser(String(m.sender));_setView('dm:'+String(m.sender));
+      try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){}
+      window.focus();
+    },{tag:'dm-'+id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+    if(!fromPoll)playSound('notif');
+  },[cu.id,data.users,setDmTargetUser,_setView]);
   const prevNotifIdsRef=useRef(null); // null = not yet seeded
   const NTITLES={
     task_assigned:'✅ Task assigned to you', status_change:'🔄 Task status changed', comment:'💬 New comment on task', deadline:'⏰ Deadline approaching', dm:'📨 New direct message', project_added:'📁 Added to a project', reminder:'⏰ Reminder', call:'📞 Huddle call', message:'#️⃣ New channel message', };
   const NNAV={task_assigned:'tasks',status_change:'tasks',comment:'tasks',deadline:'tasks',dm:'dm',project_added:'projects',reminder:'reminders',call:'dm',message:'messages'};
+
+  // Unified poll: dm_unread + notifications in ONE request instead of two.
+  // Saves a full DB connection per polling cycle per user.
   useEffect(()=>{
     if(!cu)return;
 
     const pollOnce=()=>{
-      api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(poll=>{
-        const d=(poll&&Array.isArray(poll.notifications))?poll.notifications:[];
-        if(!Array.isArray(d))return;
+      api.get('/api/poll').then(result=>{
+        if(!result||result.error)return;
+
+        // ── DM unread ──────────────────────────────────────────────
+        const dms=result.dm_unread;
+        if(Array.isArray(dms)){
+          prevDmsRef.current=dms;
+          setDmUnread(dms);
+        }
+        // Poll the actual latest unread DM messages, not just counters. This
+        // prevents delayed/fake alerts that open before the message is visible.
+        // FIX 02: Use the shared handleNewDmMessage helper to avoid double-fire
+        // (SSE path + poll path previously both fired toasts independently with a race window)
+        api.get('/api/dm/latest-unread',{quiet:true}).then(latest=>{
+          if(!Array.isArray(latest))return;
+          latest.slice().reverse().forEach(m=>handleNewDmMessage(m,true));
+        }).catch(()=>{});
+
+        // ── Notifications ──────────────────────────────────────────
+        const notifs=result.notifications;
+        if(!Array.isArray(notifs))return;
         if(prevNotifIdsRef.current===null){
-          prevNotifIdsRef.current=new Set(d.map(n=>n.id));
-          setData(prev=>({...prev,notifs:d}));
+          prevNotifIdsRef.current=new Set(notifs.map(n=>n.id));
+          setData(prev=>({...prev,notifs}));
+          const unread=notifs.filter(n=>!n.read).length;
+          const dmTotal=(result.dm_unread||[]).reduce((a,x)=>a+(x.cnt||0),0);
+          updateBadge(unread+dmTotal);
           return;
         }
-        const brandNew=d.filter(n=>!prevNotifIdsRef.current.has(n.id));
+        const brandNew=notifs.filter(n=>!prevNotifIdsRef.current.has(n.id));
         brandNew.forEach(n=>{
-          if(n.type==='dm')return; // DMs handled by separate poll
           if(n.type==='call') return;
           const title=NTITLES[n.type]||'Project Tracker';
           const nav=NNAV[n.type]||'notifs';
@@ -11971,29 +11879,21 @@ function App(){
           },{tag:'notif-'+n.id});
           playSound('notif');
         });
-        prevNotifIdsRef.current=new Set(d.map(n=>n.id));
-        setData(prev=>({...prev,notifs:d}));
-        const unread=d.filter(n=>!n.read).length;
-        const dmTotal=dmUnread.reduce((a,x)=>a+(x.cnt||0),0);
+        prevNotifIdsRef.current=new Set(notifs.map(n=>n.id));
+        setData(prev=>({...prev,notifs}));
+        const unread=notifs.filter(n=>!n.read).length;
+        const dmTotal=(Array.isArray(dms)?dms:dmUnread).reduce((a,x)=>a+(x.cnt||0),0);
         updateBadge(unread+dmTotal);
       });
     };
 
-    api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(poll=>{
-        const d=(poll&&Array.isArray(poll.notifications))?poll.notifications:[];
-      if(Array.isArray(d)){
-        prevNotifIdsRef.current=new Set(d.map(n=>n.id));
-        setData(prev=>({...prev,notifs:d}));
-        const unread=d.filter(n=>!n.read).length;
-        updateBadge(unread+dmUnread.reduce((a,x)=>a+(x.cnt||0),0));
-      }
-    });
-
+    // Startup jitter: 5–13 s delay so poll doesn't collide with bootstrap on mount
+    const startDelay=5000; // stagger away from cold-start stampede
+    const startTimer=setTimeout(()=>pollOnce(),startDelay);
     triggerPollRef.current=pollOnce;
-
-    const unsub=window.ptPollManager&&window.ptPollManager.subscribe(()=>pollOnce());
-    return()=>{ if(unsub)unsub(); if(triggerPollRef.current===pollOnce) triggerPollRef.current=null; };
-  },[cu,addToast]);
+    const id=setInterval(()=>{if(!document.hidden)pollOnce();},60000); // SSE is primary; poll is a fallback only
+    return()=>{clearTimeout(startTimer);clearInterval(id);if(triggerPollRef.current===pollOnce)triggerPollRef.current=null;};
+  },[cu,addToast]); // intentionally omit data.users — sender name is best-effort
 
   const onDmRead=useCallback(sid=>{
     const sidS=String(sid||'');
@@ -12051,13 +11951,9 @@ function App(){
 
   useEffect(()=>{
     if(!cu)return;
-    const onRefresh=()=>load(undefined,{bust:true});
-    // Debounce ref — collapses burst of notification_updated/project_updated events into one reload
-    const _rtReloadTimer={current:null};
-    const debouncedRefresh=()=>{
-      clearTimeout(_rtReloadTimer.current);
-      _rtReloadTimer.current=setTimeout(()=>load(undefined,{bust:true}),600);
-    };
+    // Server already clears its cache on write — no client-side bust needed for SSE reloads
+    const onRefresh=()=>load(undefined,false);
+    let _realtimeDebounceTimer=null;
     const onRealtime=(e)=>{
       const msg=e.detail||{};
       if(['task_updated','task.updated','task.deleted'].includes(msg.type)){
@@ -12066,43 +11962,19 @@ function App(){
           setData&&setData(prev=>{
             const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
             if(d.action==='deleted'||msg.type==='task.deleted')return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};
-            const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now()}:t);
-            // If this is a 'created' event and task isn't in the list, schedule a bust load
-            if(d.action==='created'&&!tasks.some(t=>String(t.id)===String(d.id))&&!tasks.some(t=>t._pending)){
-              setTimeout(()=>load(undefined,{bust:true}),800);
-            }
-            return {...prev,tasks:updated};
+            return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now()}:t)};
           });
         }
         return;
       }
-      // notification_updated fires after every task save (backend creates a notification record).
-      // Debounce these to avoid a full reload after each PUT /api/tasks.
-      // Other events (project_updated, ticket_updated, etc.) also debounce to collapse bursts.
-      if(['project_updated','ticket_updated','notification_updated','reminder_updated','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
-        debouncedRefresh();
-      }
-      // task.created via pt:realtime: same fix — skip stale-cache reload; only bust if task missing
-      if(msg.type==='task.created'){
-        const d=msg.data||{};
-        setData&&setData(prev=>{
-          const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
-          const alreadyHave=d.id&&(tasks.some(t=>String(t.id)===String(d.id))||tasks.some(t=>t._pending));
-          if(!alreadyHave){
-            clearTimeout(_rtReloadTimer.current);
-            _rtReloadTimer.current=setTimeout(()=>load(undefined,{bust:true}),1200);
-          }
-          return prev;
-        });
+      if(['project_updated','ticket_updated','notification_updated','reminder_updated','task.created','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
+        clearTimeout(_realtimeDebounceTimer);
+        _realtimeDebounceTimer=setTimeout(()=>onRefresh(),800);
       }
     };
     window.addEventListener('pt:refresh', onRefresh);
     window.addEventListener('pt:realtime', onRealtime);
-    return()=>{
-      clearTimeout(_rtReloadTimer.current);
-      window.removeEventListener('pt:refresh', onRefresh);
-      window.removeEventListener('pt:realtime', onRealtime);
-    };
+    return()=>{clearTimeout(_realtimeDebounceTimer);window.removeEventListener('pt:refresh', onRefresh);window.removeEventListener('pt:realtime', onRealtime);};
   },[cu,load]);
 
   useEffect(()=>{
@@ -12115,7 +11987,7 @@ function App(){
   useEffect(()=>{
     if(!cu)return;
     const checkDue=async()=>{
-      const due=await api.get('/api/reminders/due',{quiet:true,timeoutMs:12000}).catch(()=>[]);
+      const due=await api.get('/api/reminders/due',{quiet:true,timeoutMs:8000}).catch(()=>[]);
       const rems=upcomingReminders;
       if(Array.isArray(due)&&due.length>0){
         due.forEach(r=>{
@@ -12150,9 +12022,11 @@ function App(){
         setUpcomingReminders(rems.filter(r=>!r.fired&&new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));
       }
     };
-    checkDue();
+    // Startup jitter: delay 10–20 s so reminders/due doesn't fire at t=0 with bootstrap
+    const remStartDelay=10000+Math.random()*10000;
+    const remStartTimer=setTimeout(()=>checkDue(),remStartDelay);
     const id=setInterval(()=>{if(!document.hidden)checkDue();},30000); // SSE handles most updates; fallback only
-    return()=>clearInterval(id);
+    return()=>{clearTimeout(remStartTimer);clearInterval(id);};
   },[cu,addToast]);
 
   const isDevRole=cu&&cu.role!=='Admin'&&cu.role!=='Manager';
@@ -12256,11 +12130,12 @@ function App(){
           notifs=${data.notifs}
           activeTeam=${activeTeam} teams=${data.teams} setTeamCtx=${setTeamCtx}
           onNotifClick=${async n=>{
-            // Mark read + DELETE from panel immediately (natural notification behaviour)
+            // Mark read + DELETE from panel immediately
             api.put('/api/notifications/'+n.id+'/read',{}).catch(()=>{});
             api.del('/api/notifications/'+n.id).catch(()=>{});
-            // Remove from local state instantly — panel clears without waiting for reload
+            // Remove from local state instantly
             setData(prev=>({...prev,notifs:prev.notifs.filter(x=>x.id!==n.id)}));
+            // Use deep notification router — handles all types with entity deep-linking
             routeToNotification(n);
           }}
           onMarkAllRead=${async()=>{setData(prev=>({...prev,notifs:(prev.notifs||[]).map(n=>({...n,read:1}))}));await api.put('/api/notifications/read-all',{});load();}}
@@ -12281,17 +12156,18 @@ function App(){
                   <button class="btn bp" style=${{marginTop:16}} onClick=${()=>setView('dashboard')}>Go to Dashboard</button>
                 </div>
               </div>`:null}
-            ${baseView==='projects'?html`<${ProjectsView} projects=${scopedProjects} tasks=${scopedTasks} users=${data.users} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam} initialProjectId=${initialProjectId} onClearInitial=${()=>setInitialProjectId(null)} onlineUsers=${onlineUsers}/>`:null}
+            ${baseView==='projects'?html`<${ProjectsView} projects=${scopedProjects} tasks=${scopedTasks} users=${data.users} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam} initialProjectId=${initialProjectId} onClearInitial=${()=>setInitialProjectId(null)}/>`:null}
             ${baseView==='tasks'?html`<${TasksView} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam}
               initialStage=${taskFilterType==='stage'?taskFilterValue:null}
               initialPriority=${taskFilterType==='priority'?taskFilterValue:null}
               initialAssignee=${taskFilterType==='assignee'?taskFilterValue:null}
               initialTaskId=${initialTaskId}
               onClearInitialTask=${()=>setInitialTaskId(null)}
-              onlineUsers=${onlineUsers}
             />`:null}
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
-            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
+            <div style=${{display:baseView==='dm'?'flex':'none',flex:1,overflow:'hidden',flexDirection:'column',height:'100%'}}>
+              <${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>
+            </div>
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}
@@ -12463,3 +12339,4 @@ if(window._vwHideBoot)window._vwHideBoot();
 };
 waitForLibs(window._pfStartApp);
 })();
+
