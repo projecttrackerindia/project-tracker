@@ -1474,20 +1474,6 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
     setPinnedTop(npt);setPinnedBottom(npb);
     saveNavPrefs(navOrder,npt,npb);
   };
-  const NAV_GROUP_OF={
-    dashboard:'Overview','workspace-os':'Overview', ops:'Overview',
-    projects:'Work', tasks:'Work', timeline:'Work', productivity:'Work', timesheet:'Work',
-    messages:'Comms', dm:'Comms', tickets:'Comms', reminders:'Comms',
-    team:'People & Finance', billing:'People & Finance',
-    'ai-docs':'Tools', notes:'Tools', 'password-generator':'Tools', vault:'Tools',
-  };
-  const NAV_GROUP_ORDER=['Overview','Work','Comms','People & Finance','Tools'];
-  const [collapsedGroups,setCollapsedGroups]=useState(()=>{try{const s=localStorage.getItem('pf_nav_grp_collapsed');return s?new Set(JSON.parse(s)):new Set();}catch{return new Set();}});
-  const toggleGroupCollapsed=g=>{
-    const next=new Set(collapsedGroups); next.has(g)?next.delete(g):next.add(g);
-    setCollapsedGroups(next);
-    try{localStorage.setItem('pf_nav_grp_collapsed',JSON.stringify([...next]));}catch{}
-  };
   const orderedSections=useMemo(()=>{
     let items=navOrder
       ?navOrder.map(id=>baseNavItems.find(x=>x.id===id)).filter(Boolean)
@@ -1578,31 +1564,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
             </div>`)}
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>`:null}
 
-        ${!navOrder && !col ? NAV_GROUP_ORDER.map(g=>{
-          const items=orderedSections.mid.filter(it=>(NAV_GROUP_OF[it.id]||'Tools')===g);
-          if(!items.length) return null;
-          const isCollapsed=collapsedGroups.has(g);
-          return html`
-            <div key=${g}>
-              <div onClick=${()=>toggleGroupCollapsed(g)}
-                style=${{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px 4px',cursor:'pointer',userSelect:'none'}}>
-                <span style=${{fontSize:9.5,fontWeight:800,color:'rgba(165,180,252,0.4)',textTransform:'uppercase',letterSpacing:'0.08em'}}>${g}</span>
-                <span style=${{fontSize:8,color:'rgba(165,180,252,0.4)',transform:isCollapsed?'rotate(-90deg)':'none',transition:'transform .12s'}}>▾</span>
-              </div>
-              ${!isCollapsed?items.map(it=>html`
-                <div key=${it.id} style=${{position:'relative'}}
-                  onMouseEnter=${()=>setHoverNav(it.id)} onMouseLeave=${()=>setHoverNav(null)}>
-                  ${renderNavBtn(it)}
-                  ${hoverNav===it.id?html`
-                    <div style=${{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',display:'flex',gap:2,zIndex:20}}>
-                      <button title="Pin to top" onClick=${e=>{e.stopPropagation();togglePin(it.id,'top');}}
-                        style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↑</button>
-                      <button title="Pin to bottom" onClick=${e=>{e.stopPropagation();togglePin(it.id,'bot');}}
-                        style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↓</button>
-                    </div>`:null}
-                </div>`):null}
-            </div>`;
-        }) : orderedSections.mid.map(it=>html`
+        ${orderedSections.mid.map(it=>html`
           <div key=${it.id}
             draggable=${!col}
             onDragStart=${()=>{dragSrc.current=it.id;}}
@@ -9526,31 +9488,16 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   const [copyFlash,setCopyFlash]= useState(null);
   const [saving, setSaving] = useState(false);
   const [menu, setMenu] = useState(null); // {type:'row'|'col', id, index, x, y}
-  const [category, setCategory] = useState(card.category||'other');
-  const [description, setDescription] = useState(card.description||'');
-  const [expiry, setExpiryVal] = useState(card.expiry||'');
-  const [pinned, setPinned] = useState(!!card.pinned);
-  const [notes, setNotes] = useState(card.notes||'');
-  const [showDetails, setShowDetails] = useState(false);
-  const CAT_LABELS={database:'Database',api:'API',server:'Server',auth:'Auth',cloud:'Cloud',other:'Other'};
-  const expiringSoon = expiry && (new Date(expiry)-new Date())/86400000<=30;
 
-  function push(nextCols, nextRows, nextTitle, nextTags, extra){
+  function push(nextCols, nextRows, nextTitle, nextTags){
     const c = nextCols  !== undefined ? nextCols  : cols;
     const r = nextRows  !== undefined ? nextRows  : rows;
     const t = nextTitle !== undefined ? nextTitle : title;
     const tg= nextTags  !== undefined ? nextTags  : tags;
-    const ex = extra || {};
     setSaving(true);
-    onUpdate({...card, title:t, tags:tg, cols:c, rows:r,
-      category:'category' in ex?ex.category:category,
-      description:'description' in ex?ex.description:description,
-      expiry:'expiry' in ex?ex.expiry:expiry,
-      pinned:'pinned' in ex?ex.pinned:pinned,
-      notes:'notes' in ex?ex.notes:notes});
+    onUpdate({...card, title:t, tags:tg, cols:c, rows:r});
     setTimeout(() => setSaving(false), 800);
   }
-  function togglePinned(){ const next=!pinned; setPinned(next); push(undefined,undefined,undefined,undefined,{pinned:next}); }
 
   function emptyRow(){
     const obj={_id:vaultNewId(),_secret:false};
@@ -9657,47 +9604,13 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
         ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
         ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
-        <span class="vault-tag" style=${{background:'rgba(90,94,247,.08)',color:'#a5b4fc',border:'1px solid rgba(90,94,247,.2)'}}>${CAT_LABELS[category]||'Other'}</span>
-        ${expiringSoon && html`<span class="vault-tag" style=${{background:'rgba(251,191,36,.12)',color:'#fbbf24',border:'1px solid rgba(251,191,36,.3)'}}>⚠ Expires ${new Date(expiry).toLocaleDateString('en-IN',{month:'short',day:'numeric'})}</span>`}
         <div style=${{display:'flex',gap:6,flexShrink:0}}>
-          <button class="vault-action-btn" title=${pinned?'Unpin':'Pin to top'} onClick=${togglePinned} style=${pinned?{background:'rgba(168,85,247,.15)',color:'#c084fc',border:'1px solid rgba(168,85,247,.3)'}:{}}>📌 ${pinned?'Pinned':'Pin'}</button>
-          <button class="vault-action-btn" onClick=${()=>setShowDetails(v=>!v)}>${showDetails?'Hide':'Details'}</button>
           ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>Lock</button>`}
           ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
           <button class="vault-action-btn danger" onClick=${()=>setShowDel(true)}>Delete</button>
         </div>
       </div>
       ${tags && html`<div style=${{padding:'6px 18px 8px',display:'flex',gap:5,flexWrap:'wrap',borderBottom:'1px solid var(--bd)'}}>${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.08)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.2)'}}>${t}</span>`)}</div>`}
-      ${showDetails && html`
-        <div style=${{padding:'14px 18px',borderBottom:'1px solid var(--bd)',display:'flex',flexDirection:'column',gap:10,background:'rgba(255,255,255,.015)'}}>
-          <div style=${{display:'flex',gap:10,flexWrap:'wrap'}}>
-            <div style=${{flex:'1 1 160px'}}>
-              <label style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',display:'block',marginBottom:5}}>Category</label>
-              <select value=${category} style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:7,padding:'6px 9px',color:'var(--tx)',fontSize:12.5}}
-                onChange=${e=>{setCategory(e.target.value);push(undefined,undefined,undefined,undefined,{category:e.target.value});}}>
-                ${Object.entries(CAT_LABELS).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}
-              </select>
-            </div>
-            <div style=${{flex:'1 1 160px'}}>
-              <label style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',display:'block',marginBottom:5}}>Expiry date</label>
-              <input type="date" value=${expiry} style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:7,padding:'6px 9px',color:'var(--tx)',fontSize:12.5,boxSizing:'border-box'}}
-                onInput=${e=>setExpiryVal(e.target.value)}
-                onBlur=${()=>push(undefined,undefined,undefined,undefined,{expiry})}/>
-            </div>
-          </div>
-          <div>
-            <label style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',display:'block',marginBottom:5}}>Description</label>
-            <input value=${description} placeholder="What this credential is for" style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:7,padding:'6px 9px',color:'var(--tx)',fontSize:12.5,boxSizing:'border-box'}}
-              onInput=${e=>setDescription(e.target.value)}
-              onBlur=${()=>push(undefined,undefined,undefined,undefined,{description})}/>
-          </div>
-          <div>
-            <label style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',display:'block',marginBottom:5}}>Notes</label>
-            <textarea value=${notes} rows="3" placeholder="Owner, rotation schedule, related tickets…" style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:7,padding:'6px 9px',color:'var(--tx)',fontSize:12.5,boxSizing:'border-box',fontFamily:'inherit',resize:'vertical'}}
-              onInput=${e=>setNotes(e.target.value)}
-              onBlur=${()=>push(undefined,undefined,undefined,undefined,{notes})}></textarea>
-          </div>
-        </div>`}
 
       ${isLocked && !isUnlocked && html`
         <div class="vault-locked-overlay">
@@ -9778,18 +9691,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
                   </tr>`; })}
               <tr>
                 <td colSpan=${cols.length+4} style=${{padding:0}}>
-                  <div style=${{display:'flex'}}>
-                    <button class="vault-add-row-btn" onClick=${addRow} style=${{flex:1}}>+ Add row</button>
-                    <button class="vault-add-row-btn" title="Add a row with a generated strong password in the last column" style=${{flex:'0 0 auto',borderLeft:'1px solid var(--bd)'}}
-                      onClick=${()=>{
-                        const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
-                        let pw=''; for(let i=0;i<20;i++) pw+=chars[Math.floor(Math.random()*chars.length)];
-                        const lastCol=cols[cols.length-1];
-                        const obj={_id:vaultNewId(),_secret:true}; cols.forEach(c=>{obj[c.id]=c.id===lastCol.id?pw:'';});
-                        const next=[...rows,obj]; setRows(next); push(undefined,next,undefined,undefined);
-                        try{navigator.clipboard.writeText(pw);}catch(e){}
-                      }}>🎲 Generate password</button>
-                  </div>
+                  <button class="vault-add-row-btn" onClick=${addRow}>+ Add row</button>
                 </td>
               </tr>
             </tbody>
@@ -9840,7 +9742,6 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
 function VaultNewCardModal({onClose, onCreate}){
   const [title, setTitle] = useState('');
   const [tags,  setTags]  = useState('');
-  const [category, setCategory] = useState('other');
   const [err,   setErr]   = useState('');
   const inp = {
     width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,
@@ -9853,7 +9754,6 @@ function VaultNewCardModal({onClose, onCreate}){
       id: vaultNewId(),
       title: title.trim(),
       tags: tags.trim(),
-      category: category,
       cols: [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
       rows: [],
       lockHash: '',
@@ -9892,15 +9792,6 @@ function VaultNewCardModal({onClose, onCreate}){
             onBlur=${e=>{e.target.style.borderColor='rgba(255,255,255,.12)';}}
             onInput=${e=>setTags(e.target.value)}
             onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
-        </div>
-        <div style=${{marginBottom:24}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Category</label>
-          <select value=${category} onChange=${e=>setCategory(e.target.value)}
-            style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}>
-            <option value="database">Database</option><option value="api">API</option>
-            <option value="server">Server</option><option value="auth">Auth</option>
-            <option value="cloud">Cloud</option><option value="other">Other</option>
-          </select>
         </div>
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button style=${{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'#94a3b8',fontSize:13,padding:'9px 18px',borderRadius:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600,transition:'all .15s'}}
@@ -9967,9 +9858,7 @@ function VaultView({cu}){
     const res = await api.post('/api/vault', {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||'',
-      category:card.category||'other', description:card.description||'',
-      expiry:card.expiry||'', pinned:!!card.pinned, notes:card.notes||''
+      lock_hash: card.lockHash||''
     });
     vaultClearCache();
     if(res && res.id){
@@ -9980,9 +9869,7 @@ function VaultView({cu}){
     await api.put('/api/vault/'+card.id, {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||'',
-      category:card.category||'other', description:card.description||'',
-      expiry:card.expiry||'', pinned:!!card.pinned, notes:card.notes||''
+      lock_hash: card.lockHash||''
     });
     vaultClearCache();
   }
@@ -10013,35 +9900,15 @@ function VaultView({cu}){
   function handleUnlock(id){ setUnlocked(u=>({...u,[id]:true})); }
   function handleLock(id){   setUnlocked(u=>{const n={...u};delete n[id];return n;}); }
 
-  const VAULT_CATEGORIES=[
-    {id:'all',label:'All'},{id:'database',label:'Database'},{id:'api',label:'API'},
-    {id:'server',label:'Server'},{id:'auth',label:'Auth'},{id:'cloud',label:'Cloud'},{id:'other',label:'Other'}
-  ];
-  const [activeCat,setActiveCat]=useState('all');
-  const isExpiringSoon=c=>{
-    if(!c.expiry) return false;
-    const days=(new Date(c.expiry)-new Date())/86400000;
-    return days<=30;
-  };
-
-  const filtered = cards
-    .filter(c=>activeCat==='all'||(c.category||'other')===activeCat)
-    .filter(c=>{
-      if(!filter) return true;
-      const hay=(c.title||'')+(c.tags||'')+(c.description||'')+(c.rows||[]).map(r=>Object.values(r).join(' ')).join(' ');
-      return hay.toLowerCase().includes(filter.toLowerCase());
-    })
-    .slice()
-    .sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
-
-  const catCounts={};
-  cards.forEach(c=>{ const k=c.category||'other'; catCounts[k]=(catCounts[k]||0)+1; });
+  const filtered = cards.filter(c=>{
+    if(!filter) return true;
+    const hay=(c.title||'')+(c.tags||'')+(c.rows||[]).map(r=>Object.values(r).join(' ')).join(' ');
+    return hay.toLowerCase().includes(filter.toLowerCase());
+  });
 
   const totalCreds = cards.reduce((s,c)=>(c.rows||[]).length+s,0);
   const totalProtected = cards.filter(c=>c.lockHash).length;
   const totalSecrets = cards.reduce((s,c)=>(c.rows||[]).filter(r=>r._secret).length+s,0);
-  const totalExpiring = cards.filter(isExpiringSoon).length;
-  const totalPinned = cards.filter(c=>c.pinned).length;
 
   return html`
     <div class="vault-scroll" style=${{...VS.wrap, background:'var(--bg)'}}>
@@ -10070,8 +9937,6 @@ function VaultView({cu}){
           {icon:'🔑', val:String(totalCreds),          lbl:'Credentials',  accent:'rgba(34,197,94,.12)',   border:'rgba(34,197,94,.22)'},
           {icon:'🔒', val:String(totalProtected),      lbl:'Protected',    accent:'rgba(245,158,11,.12)',  border:'rgba(245,158,11,.22)'},
           {icon:'🕵️', val:String(totalSecrets),        lbl:'Secret Rows',  accent:'rgba(239,68,68,.08)',   border:'rgba(239,68,68,.2)', danger:true},
-          {icon:'⏳', val:String(totalExpiring),        lbl:'Expiring ≤30d',accent:'rgba(251,191,36,.12)',  border:'rgba(251,191,36,.25)', danger:totalExpiring>0},
-          {icon:'📌', val:String(totalPinned),          lbl:'Pinned',       accent:'rgba(168,85,247,.12)',  border:'rgba(168,85,247,.25)'},
         ].map(s=>html`
           <div style=${{
             background:'var(--sf)',border:'1px solid var(--bd)',
@@ -10086,17 +9951,6 @@ function VaultView({cu}){
               <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:600,marginTop:2}}>${s.lbl}</div>
             </div>
           </div>`)}
-      </div>
-
-      <!-- Category pills -->
-      <div style=${{display:'flex',gap:7,marginBottom:16,flexWrap:'wrap'}}>
-        ${VAULT_CATEGORIES.map(c=>html`
-          <button key=${c.id} onClick=${()=>setActiveCat(c.id)} style=${{
-            fontSize:11.5,fontWeight:700,padding:'6px 13px',borderRadius:100,cursor:'pointer',
-            border:'1px solid '+(activeCat===c.id?'rgba(129,140,248,.5)':'var(--bd)'),
-            background:activeCat===c.id?'rgba(90,94,247,.18)':'var(--sf)',
-            color:activeCat===c.id?'#a5b4fc':'var(--tx2)',
-          }}>${c.label} <span style=${{opacity:.6}}>${c.id==='all'?cards.length:(catCounts[c.id]||0)}</span></button>`)}
       </div>
 
       <!-- Search & count -->

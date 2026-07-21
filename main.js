@@ -7021,7 +7021,6 @@ function WorkspaceOSAdminImportsCard({cu}){
   const [pay,setPay]=useState({month:String(today.getMonth()+1).padStart(2,'0'),year:String(today.getFullYear())});
   const [payFiles,setPayFiles]=useState([]);
   const [payMap,setPayMap]=useState(null);
-  const [payStep,setPayStep]=useState(1);
   const [busy,setBusy]=useState('');
   const [msg,setMsg]=useState('');
   if(!allowed)return null;
@@ -7051,20 +7050,15 @@ function WorkspaceOSAdminImportsCard({cu}){
     setBusy('payslips');
     const r=await api.upload('/api/payslips/import',fd).catch(e=>({error:e.message}));
     setBusy('');
-    if(r&&r.ok){setPayFiles([]);setPayMap(null);setPayStep(1);setMsg(`Payslips uploaded: ${r.uploaded||0}${r.failed?`, ${r.failed} unmatched`:''}`);try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}
+    if(r&&r.ok){setPayFiles([]);setPayMap(null);setMsg(`Payslips uploaded: ${r.uploaded||0}${r.failed?`, ${r.failed} unmatched`:''}`);try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}
     else setMsg((r&&r.error)||'Payslip upload failed');
     setTimeout(()=>setMsg(''),3600);
   };
-  const removeFile=(idx)=>setPayFiles(payFiles.filter((_,i)=>i!==idx));
   const dropStyle={border:'1px dashed rgba(90,140,255,.40)',borderRadius:16,padding:16,background:'linear-gradient(135deg,rgba(90,140,255,.08),rgba(168,85,247,.06))'};
   const fileBox=(label,sub,accept,multiple,onChange,chosen)=>html`<label style=${{...dropStyle,display:'flex',flexDirection:'column',gap:8,cursor:'pointer',minHeight:88,justifyContent:'center'}}>
     <input type="file" accept=${accept} multiple=${!!multiple} style=${{display:'none'}} onChange=${e=>onChange(multiple?e.target.files:(e.target.files&&e.target.files[0]))}/>
     <b style=${{fontSize:12,color:'var(--tx)'}}>${label}</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${chosen||sub}</span>
   </label>`;
-  const stepDot=(n,label)=>html`<div style=${{display:'flex',flexDirection:'column',alignItems:'center',flex:1}}>
-    <div style=${{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,background:payStep>=n?'var(--grad-main)':'var(--sf2)',color:payStep>=n?'#fff':'var(--tx3)',border:payStep>=n?'none':'1px solid var(--bd)'}}>${payStep>n?'✓':n}</div>
-    <span style=${{fontSize:10,fontWeight:800,color:payStep>=n?'var(--tx)':'var(--tx3)',marginTop:5}}>${label}</span>
-  </div>`;
   return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
     <div style=${{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',marginBottom:14}}>
       <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>
@@ -7077,31 +7071,9 @@ function WorkspaceOSAdminImportsCard({cu}){
         <div style=${{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'stretch'}}>${fileBox('Choose CSV/XLSX','No file selected','.csv,.xlsx',false,setHolidayFile,holidayFile&&holidayFile.name)}<button class="btn bp" style=${{minWidth:130}} onClick=${importHolidays} disabled=${!!busy}>${busy==='holiday-import'?'Importing…':'Import holidays'}</button></div>
       </div>
       <div style=${dropStyle}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:14}}><div><h4 style=${{fontSize:13,fontWeight:800,margin:0,color:'var(--tx)'}}>Payslips — bulk upload for all employees</h4><p style=${{fontSize:11,color:'var(--tx3)',margin:'3px 0 0'}}>Step-by-step so a whole month's batch can't be published by accident.</p></div></div>
-        <div style=${{display:'flex',marginBottom:16}}>${stepDot(1,'Period')}${stepDot(2,'Upload')}${stepDot(3,'Confirm')}</div>
-        ${payStep===1?html`<div>
-          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
-            <label><span class="lbl">Month</span><input class="inp" value=${pay.month} onInput=${e=>setPay({...pay,month:e.target.value})}/></label>
-            <label><span class="lbl">Year</span><input class="inp" value=${pay.year} onInput=${e=>setPay({...pay,year:e.target.value})}/></label>
-          </div>
-          <button class="btn bp" style=${{width:'100%'}} onClick=${()=>setPayStep(2)}>Continue → choose files</button>
-        </div>`:null}
-        ${payStep===2?html`<div>
-          <p style=${{fontSize:11,color:'var(--tx3)',margin:'0 0 10px'}}>Uploading payslips for <b style=${{color:'var(--tx)'}}>${pay.month}/${pay.year}</b>. Select every employee's PDF at once, or add a mapping CSV for large batches.</p>
-          ${fileBox('Choose payslip PDFs (multi-select)','No PDFs selected yet','.pdf',true,f=>setPayFiles(Array.from(f||[])),payFiles.length?`${payFiles.length} file(s) selected`:null)}
-          ${payFiles.length?html`<div style=${{display:'flex',flexWrap:'wrap',gap:6,margin:'10px 0'}}>${payFiles.map((f,i)=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:6,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:999,padding:'4px 10px',fontSize:11,color:'var(--tx2)'}}>${f.name}<button type="button" style=${{border:'none',background:'none',color:'var(--tx3)',cursor:'pointer',fontSize:12,lineHeight:1}} onClick=${()=>removeFile(i)}>✕</button></span>`)}</div>`:null}
-          <div style=${{marginTop:10}}>${fileBox('Optional mapping CSV','Recommended for 100–1000 employees. Columns: email/user_id, month, year, filename.','.csv',false,setPayMap,payMap&&payMap.name)}</div>
-          <div style=${{display:'flex',gap:8,marginTop:14}}><button class="btn brd" onClick=${()=>setPayStep(1)}>← Back</button><button class="btn bp" style=${{flex:1}} disabled=${!payFiles.length} onClick=${()=>setPayStep(3)}>Continue to confirm (${payFiles.length} file${payFiles.length===1?'':'s'})</button></div>
-        </div>`:null}
-        ${payStep===3?html`<div>
-          <div style=${{background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:14,padding:12,marginBottom:12}}>
-            <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:6}}>Period: <b style=${{color:'var(--tx)'}}>${pay.month}/${pay.year}</b></div>
-            <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:6}}>Files: <b style=${{color:'var(--tx)'}}>${payFiles.length}</b> payslip PDF(s)</div>
-            <div style=${{fontSize:12,color:'var(--tx2)'}}>Mapping: <b style=${{color:'var(--tx)'}}>${payMap?payMap.name:'None — matched by filename'}</b></div>
-          </div>
-          <p style=${{fontSize:11,color:'var(--tx3)',margin:'0 0 12px'}}>Publishing makes each matched payslip visible to that employee under Workspace OS → Payslips.</p>
-          <div style=${{display:'flex',gap:8}}><button class="btn brd" onClick=${()=>setPayStep(2)}>← Back</button><button class="btn bp" style=${{flex:1}} onClick=${uploadPayslips} disabled=${!!busy}>${busy==='payslips'?'Uploading…':`✅ Publish to ${payFiles.length} employee(s)`}</button></div>
-        </div>`:null}
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:12}}><div><h4 style=${{fontSize:13,fontWeight:800,margin:0,color:'var(--tx)'}}>Payslips</h4><p style=${{fontSize:11,color:'var(--tx3)',margin:'3px 0 0'}}>Bulk upload PDFs and map safely before publishing to employees.</p></div><button class="btn bp" style=${{fontSize:11,padding:'7px 12px'}} onClick=${uploadPayslips} disabled=${!!busy}>${busy==='payslips'?'Uploading…':'Upload payslips'}</button></div>
+        <div style=${{display:'grid',gridTemplateColumns:'80px 100px 1fr',gap:10,marginBottom:10}}><input class="inp" value=${pay.month} onInput=${e=>setPay({...pay,month:e.target.value})}/><input class="inp" value=${pay.year} onInput=${e=>setPay({...pay,year:e.target.value})}/>${fileBox('Choose payslip PDFs','No PDFs selected','.pdf',true,setPayFiles,payFiles&&payFiles.length?`${payFiles.length} PDF(s) selected`:null)}</div>
+        ${fileBox('Optional mapping CSV','Recommended for 100–1000 employees. Columns: email/user_id, month, year, filename.','.csv',false,setPayMap,payMap&&payMap.name)}
       </div>
     </div>
     ${msg?html`<div style=${{marginTop:12,padding:'9px 12px',borderRadius:12,background:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.08)':'rgba(22,163,74,.09)',border:'1px solid '+(msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.20)':'rgba(22,163,74,.22)'),fontSize:12,color:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'var(--rd)':'var(--gn)'}}>${msg}</div>`:null}
@@ -11844,7 +11816,8 @@ function App(){
     const raw=String(m.content||'');
     if(raw.includes('CALL_INVITE:'))return;
     const sname=m.sender_name||((data.users||[]).find(u=>String(u.id)===String(m.sender))||{}).name||'Someone';
-    const body=raw.replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
+    const body=raw.replace(/CALL_[A-Z_]+:[^
+]+/g,'').trim().slice(0,90)||'Sent you a message';
     window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body,{peer:String(m.sender||'')});
     showBrowserNotif('💬 '+sname,body,()=>{
       try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){}
