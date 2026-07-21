@@ -1,0 +1,26 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    depends_on: [redis, pgbouncer]
+    ports: ["8080:8080"]
+    command: gunicorn app:app --bind 0.0.0.0:8080 --worker-class gevent --workers 2 --worker-connections 1000 --timeout 75
+  worker:
+    build: .
+    env_file: .env
+    depends_on: [redis, pgbouncer]
+    command: python worker.py
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: ["redis-data:/data"]
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 50
+    ports: ["6432:5432"]
+volumes:
+  redis-data:

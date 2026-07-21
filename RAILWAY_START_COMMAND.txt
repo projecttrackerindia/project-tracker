@@ -1,0 +1,11 @@
+Use this Railway Start Command:
+
+sh start.sh
+
+Do not manually wrap $PORT in quotes. Railway injects PORT automatically at runtime.
+Do not use:
+  gunicorn app:app --bind 0.0.0.0:'$PORT'
+  gunicorn app:app --bind '0.0.0.0:$PORT'
+
+Direct alternative if you do not want start.sh:
+  gunicorn app:app --bind 0.0.0.0:$PORT --worker-class gevent --workers ${WEB_CONCURRENCY:-2} --worker-connections ${WEB_WORKER_CONNECTIONS:-1000} --timeout ${WEB_TIMEOUT:-75}
