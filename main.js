@@ -10072,15 +10072,17 @@ function VaultView({cu}){
           <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter?'No cards match your search':'Your vault is empty'}</div>
           <div style=${{fontSize:13,color:'#334155'}}>${filter?'Try a different search term':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.map(c=>html`
-        <${VaultSpreadCard}
-          key=${c.id}
-          card=${c}
-          isUnlocked=${!!unlocked[c.id]}
-          onUnlock=${handleUnlock}
-          onLock=${handleLock}
-          onDelete=${handleDelete}
-          onUpdate=${handleUpdate}/>`)}
+      ${!vLoading && filtered.length>0 && html`<div class="vault-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(380px,1fr))',gap:16,alignItems:'start'}}>
+        ${filtered.map(c=>html`
+          <${VaultSpreadCard}
+            key=${c.id}
+            card=${c}
+            isUnlocked=${!!unlocked[c.id]}
+            onUnlock=${handleUnlock}
+            onLock=${handleLock}
+            onDelete=${handleDelete}
+            onUpdate=${handleUpdate}/>`)}
+      </div>`}
 
       ${showNew && html`
         <${VaultNewCardModal}
