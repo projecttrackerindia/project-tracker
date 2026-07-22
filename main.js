@@ -1477,17 +1477,6 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
     vault: html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="18" rx="3"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5V6"/><path d="M12 18v-2.5"/><path d="M7.5 12H5"/><path d="M19 12h-2.5"/><path d="M9.2 9.2L7.5 7.5"/><path d="M16.5 16.5l-1.7-1.7"/><path d="M14.8 9.2l1.7-1.7"/><path d="M7.5 16.5l1.7-1.7"/></svg>`,
     'workspace-os': html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M9 8h1"/><path d="M14 8h1"/><path d="M9 12h1"/><path d="M14 12h1"/><path d="M10 21v-5h4v5"/></svg>`,
   };
-  const NAV_SECTIONS=[
-    {key:'overview', label:'Overview', ids:['dashboard','workspace-os','ops']},
-    {key:'work', label:'Work', ids:['projects','tasks','timeline','productivity']},
-    {key:'comms', label:'Comms', ids:['messages','dm','tickets','reminders']},
-    {key:'people', label:'People & Finance', ids:['team','billing']},
-    {key:'tools', label:'Tools', ids:['ai-docs','notes','password-generator','vault']},
-  ];
-  const NAV_SECTION_OF={};
-  NAV_SECTIONS.forEach(s=>s.ids.forEach(id=>{NAV_SECTION_OF[id]=s.key;}));
-  const NAV_SECTION_LABEL={};
-  NAV_SECTIONS.forEach(s=>{NAV_SECTION_LABEL[s.key]=s.label;});
   const adminNav=[
     {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'ops', label:'Ops Center', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   const devNav=[
@@ -1620,20 +1609,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
             </div>`)}
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>`:null}
 
-        ${(()=>{
-          const secOrder=NAV_SECTIONS.map(s=>s.key).concat(['other']);
-          const grouped=[...orderedSections.mid].sort((a,b)=>{
-            const sa=secOrder.indexOf(NAV_SECTION_OF[a.id]||'other');
-            const sb=secOrder.indexOf(NAV_SECTION_OF[b.id]||'other');
-            if(sa!==sb)return sa-sb;
-            return orderedSections.mid.indexOf(a)-orderedSections.mid.indexOf(b);
-          });
-          return grouped;
-        })().map((it,idx,arr)=>{
-          const secKey=NAV_SECTION_OF[it.id]||'other';
-          const prevSecKey=idx>0?(NAV_SECTION_OF[arr[idx-1].id]||'other'):null;
-          const showHeader=!col&&secKey!==prevSecKey;
-          return html`${showHeader?html`<div key=${'hdr-'+secKey} style=${{fontSize:8,fontWeight:700,color:'rgba(165,180,252,0.35)',textTransform:'uppercase',letterSpacing:'0.08em',padding:idx===0?'4px 10px 2px':'10px 10px 2px'}}>${NAV_SECTION_LABEL[secKey]||''}</div>`:null}
+        ${orderedSections.mid.map(it=>html`
           <div key=${it.id}
             draggable=${!col}
             onDragStart=${()=>{dragSrc.current=it.id;}}
@@ -1664,8 +1640,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
                 <button title="Pin to bottom" onClick=${e=>{e.stopPropagation();togglePin(it.id,'bot');}}
                   style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↓</button>
               </div>`:null}
-          </div>`;
-        })}
+          </div>`)}
 
         ${orderedSections.bot.length>0?html`
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>
@@ -3115,21 +3090,6 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
 
   const toggleSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
 
-  const boardStats=useMemo(()=>{
-    const all=safe(tasks);
-    const today=new Date();today.setHours(0,0,0,0);
-    const endOfWeek=new Date(today);endOfWeek.setDate(today.getDate()+7);
-    let overdue=0,dueSoon=0,completed=0,mine=0,unassigned=0;
-    all.forEach(t=>{
-      const isDone=RESOLVED_STAGES.has(t.stage);
-      if(isDone)completed++;
-      if(!isDone&&t.due){const d=new Date(t.due);d.setHours(0,0,0,0);if(d<today)overdue++;else if(d<=endOfWeek)dueSoon++;}
-      if(cu&&t.assignee===cu.id)mine++;
-      if(!t.assignee)unassigned++;
-    });
-    return{total:all.length,overdue,dueSoon,completed,mine,unassigned};
-  },[tasks,cu]);
-
   const PRI_ORD={critical:0,high:1,medium:2,low:3};
   const STAGE_ORD={backlog:0,planning:1,development:2,code_review:3,testing:4,uat:5,release:6,production:7,completed:8,blocked:9};
 
@@ -3296,16 +3256,6 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       </div>
     </div>`:null}
       <div style=${{padding:'8px 18px',borderBottom:'1px solid var(--bd)',background:'var(--sf)',flexShrink:0}}>
-        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,marginBottom:9}}>
-          ${[
-            {label:'Total tasks',val:boardStats.total,icon:'🗂️',tone:'rgba(90,140,255,.14)'},
-            {label:'Overdue',val:boardStats.overdue,icon:'⚠️',tone:'rgba(239,68,68,.16)'},
-            {label:'Due this week',val:boardStats.dueSoon,icon:'📅',tone:'rgba(245,158,11,.14)'},
-            {label:'Completed',val:boardStats.completed,icon:'✅',tone:'rgba(34,197,94,.14)'},
-            {label:'My tasks',val:boardStats.mine,icon:'👤',tone:'rgba(139,92,246,.14)'},
-            {label:'Unassigned',val:boardStats.unassigned,icon:'❔',tone:'rgba(148,163,184,.14)'},
-          ].map(c=>html`<div key=${c.label} style=${{border:'1px solid var(--bd)',background:'linear-gradient(135deg,var(--sf),var(--sf2))',borderRadius:12,padding:'7px 9px',display:'flex',alignItems:'center',gap:9}}><div style=${{width:26,height:26,borderRadius:9,display:'grid',placeItems:'center',background:c.tone,fontSize:13,flexShrink:0}}>${c.icon}</div><div style=${{minWidth:0}}><div style=${{fontSize:15,fontWeight:900,color:'var(--tx)',lineHeight:1}}>${c.val}</div><div style=${{fontSize:9,fontWeight:800,color:'var(--tx2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${c.label}</div></div></div>`)}
-        </div>
         <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
           <div style=${{position:'relative',flex:'1 1 160px',minWidth:130}}>
             <span style=${{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--tx3)',fontSize:13}}>🔍</span>
@@ -6969,7 +6919,7 @@ function NotifPrefsPanel({cu}){
 }
 
 
-function WorkspacePlanUsageCard({cu,embedded}){
+function WorkspacePlanUsageCard({cu}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','manager','workspace owner'].includes(roleNorm);
   const [data,setData]=useState(null);
@@ -7012,9 +6962,9 @@ function WorkspacePlanUsageCard({cu,embedded}){
       <div style=${{height:8,borderRadius:999,background:'var(--sf2)',border:'1px solid var(--bd)',overflow:'hidden'}}><div style=${{height:'100%',width:pct+'%',background:warn,borderRadius:999,transition:'width .25s ease'}}></div></div>
     </div>`;
   };
-  return html`<div class=${embedded?'':'card'} style=${embedded?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
-      ${embedded?html`<div style=${{flex:1}}/>`:html`<div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>📊 Workspace Plan & Usage</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Live workspace limits and current usage. This belongs under Settings, not invoice billing.</p></div>`}
+      <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>📊 Workspace Plan & Usage</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Live workspace limits and current usage. This belongs under Settings, not invoice billing.</p></div>
       <button class="btn brd" style=${{fontSize:11,padding:'5px 10px'}} onClick=${load} disabled=${loading}>${loading?'Refreshing…':'↻ Refresh'}</button>
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Workspace plan and usage is available to admins/managers only</div>`:null}
@@ -7028,7 +6978,7 @@ function WorkspacePlanUsageCard({cu,embedded}){
 }
 
 
-function WorkspaceOSPolicySettingsCard({cu,embedded}){
+function WorkspaceOSPolicySettingsCard({cu}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const titleCase=s=>String(s||'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -7046,9 +6996,9 @@ function WorkspaceOSPolicySettingsCard({cu,embedded}){
   const save=async()=>{setLoading(true);const r=await api.put('/api/workspace-os/settings',cfg,{quiet:true,timeoutMs:10000}).catch(e=>({error:e.message}));setLoading(false);if(r&&r.ok){setCfg({...cfg,...r.settings});setMsg('Attendance policy saved');try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}else setMsg((r&&r.error)||'Policy save failed');setTimeout(()=>setMsg(''),1800);};
   const modeOptions=['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty'];
   const roleOptions=['admin','hr','manager','peopleops','finance'];
-  return html`<div class=${embedded?'':'card'} style=${embedded?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
-      ${embedded?html`<div style=${{flex:1}}/>`:html`<div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>`}
+      <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>
       ${allowed?html`<button class="btn bp" style=${{fontSize:11,padding:'7px 12px'}} onClick=${save} disabled=${loading}>${loading?'Saving…':'Save policy'}</button>`:null}
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Only Admin/Owner/HR can configure attendance policy.</div>`:html`<div style=${{display:'grid',gridTemplateColumns:'160px 1fr 1fr',gap:12,alignItems:'start'}}>
@@ -7062,7 +7012,7 @@ function WorkspaceOSPolicySettingsCard({cu,embedded}){
 }
 
 
-function WorkspaceOSAdminImportsCard({cu,embedded}){
+function WorkspaceOSAdminImportsCard({cu}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const today=new Date();
@@ -7109,9 +7059,9 @@ function WorkspaceOSAdminImportsCard({cu,embedded}){
     <input type="file" accept=${accept} multiple=${!!multiple} style=${{display:'none'}} onChange=${e=>onChange(multiple?e.target.files:(e.target.files&&e.target.files[0]))}/>
     <b style=${{fontSize:12,color:'var(--tx)'}}>${label}</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${chosen||sub}</span>
   </label>`;
-  return html`<div class=${embedded?'':'card'} style=${embedded?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
+  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
     <div style=${{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',marginBottom:14}}>
-      ${embedded?html`<div style=${{flex:1}}/>`:html`<div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>`}
+      <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>
       <div style=${{display:'flex',gap:8}}><a class="btn brd" href="/api/holidays/template" style=${{fontSize:11,padding:'6px 10px'}}>Holiday template</a><a class="btn brd" href="/api/payslips/template" style=${{fontSize:11,padding:'6px 10px'}}>Payslip mapping CSV</a></div>
     </div>
     <div style=${{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:16}}>
@@ -7127,36 +7077,6 @@ function WorkspaceOSAdminImportsCard({cu,embedded}){
       </div>
     </div>
     ${msg?html`<div style=${{marginTop:12,padding:'9px 12px',borderRadius:12,background:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.08)':'rgba(22,163,74,.09)',border:'1px solid '+(msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.20)':'rgba(22,163,74,.22)'),fontSize:12,color:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'var(--rd)':'var(--gn)'}}>${msg}</div>`:null}
-  </div>`;
-}
-
-function AdminConsoleTabs({cu}){
-  const TABS=[
-    {key:'plan', label:'Plan & Usage', icon:'📊'},
-    {key:'attendance', label:'Attendance & Holiday Policy', icon:'🕘'},
-    {key:'imports', label:'Data Imports', icon:'🗂'},
-  ];
-  const [tab,setTab]=useState('plan');
-  return html`<div class="card" style=${{marginBottom:16,padding:0,overflow:'hidden',borderColor:'rgba(90,140,255,.22)'}}>
-    <div style=${{padding:'16px 18px 0'}}>
-      <h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4,display:'flex',alignItems:'center',gap:8}}>⚙️ Admin Console</h3>
-      <p style=${{fontSize:12,color:'var(--tx3)',margin:'0 0 14px'}}>Plan & Usage · Attendance & Holiday Policy · Data Imports — merged into one console</p>
-      <div style=${{display:'flex',gap:4,borderBottom:'1px solid var(--bd)'}}>
-        ${TABS.map(t=>html`<button key=${t.key} onClick=${()=>setTab(t.key)}
-          style=${{
-            background:'none',border:'none',cursor:'pointer',
-            padding:'8px 14px',fontSize:12,fontWeight:700,
-            color:tab===t.key?'var(--ac)':'var(--tx3)',
-            borderBottom:tab===t.key?'2px solid var(--ac)':'2px solid transparent',
-            marginBottom:-1,display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'
-          }}>${t.icon} ${t.label}</button>`)}
-      </div>
-    </div>
-    <div style=${{padding:'16px 18px 18px'}}>
-      ${tab==='plan'?html`<${WorkspacePlanUsageCard} cu=${cu} embedded=${true}/>`:null}
-      ${tab==='attendance'?html`<${WorkspaceOSPolicySettingsCard} cu=${cu} embedded=${true}/>`:null}
-      ${tab==='imports'?html`<${WorkspaceOSAdminImportsCard} cu=${cu} embedded=${true}/>`:null}
-    </div>
   </div>`;
 }
 
@@ -7271,7 +7191,11 @@ function WorkspaceSettings({cu,onReload}){
         </div>
       </div>
 
-      <${AdminConsoleTabs} cu=${cu}/>
+      <${WorkspacePlanUsageCard} cu=${cu}/>
+
+      <${WorkspaceOSPolicySettingsCard} cu=${cu}/>
+
+      <${WorkspaceOSAdminImportsCard} cu=${cu}/>
 
       <${WorkspaceRolesSettings} cu=${cu}/>
 
@@ -7391,7 +7315,6 @@ function NotesView({cu}){
   const [tagInput,setTagInput]=useState('');
   const [toolsOpen,setToolsOpen]=useState(false);
   const [viewMode,setViewMode]=useState('focus');
-  const [notebookFilter,setNotebookFilter]=useState(null);
   const editorRef=useRef(null);
   const saveTimer=useRef(null);
   const colors=['#facc15','#60a5fa','#34d399','#f472b6','#fb923c','#a78bfa','#f87171','#22d3ee','#ffffff','#111827'];
@@ -7415,13 +7338,10 @@ function NotesView({cu}){
   },[active&&active.id,active&&active.body]);
   const filtered=notes.filter(n=>{
     const hay=((n.title||'')+' '+(n.plain_text||'')+' '+(n.notebook||'')+' '+(n.section||'')+' '+toTags(n.tags).join(' ')).toLowerCase();
-    if(notebookFilter&&(n.notebook||'Quick Notes')!==notebookFilter)return false;
     return !q||hay.includes(q.toLowerCase());
   });
   const notebooks=[...new Set(notes.map(n=>n.notebook||'Quick Notes'))];
   const sections=[...new Set(notes.map(n=>n.section||'General'))];
-  const allTagsCount=new Set(notes.flatMap(n=>toTags(n.tags))).size;
-  const pinnedCount=notes.filter(n=>n.pinned).length;
   const updateLocal=(id,patch)=>setNotes(prev=>prev.map(n=>n.id===id?normalizeNote({...n,...patch,updated:new Date().toISOString()}):n));
   const savePatch=(id,patch,instant=false)=>{
     if(!id)return;
@@ -7473,15 +7393,6 @@ function NotesView({cu}){
       <div class="notes-head">
         <div class="notes-title-row"><div><div class="notes-title">Notes</div><div class="notes-sub">Quick notes, notebooks, tags, autosave</div></div><button class="btn bp" onClick=${()=>createNote('blank')}>＋</button></div>
         <input class="inp notes-mini" value=${q} onInput=${e=>setQ(e.target.value)} placeholder="Search notes, tags, notebooks..." />
-        <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,margin:'8px 0'}}>
-          <div style=${{padding:'6px 8px',borderRadius:9,background:'var(--sf2)',border:'1px solid var(--bd)',borderTop:'2px solid var(--ac)'}}><div style=${{fontSize:14,fontWeight:900,color:'var(--tx)'}}>${notes.length}</div><div style=${{fontSize:8,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.04em'}}>Notes</div></div>
-          <div style=${{padding:'6px 8px',borderRadius:9,background:'var(--sf2)',border:'1px solid var(--bd)',borderTop:'2px solid #facc15'}}><div style=${{fontSize:14,fontWeight:900,color:'var(--tx)'}}>${pinnedCount}</div><div style=${{fontSize:8,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.04em'}}>Pinned</div></div>
-          <div style=${{padding:'6px 8px',borderRadius:9,background:'var(--sf2)',border:'1px solid var(--bd)',borderTop:'2px solid #a78bfa'}}><div style=${{fontSize:14,fontWeight:900,color:'var(--tx)'}}>${allTagsCount}</div><div style=${{fontSize:8,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.04em'}}>Tags</div></div>
-        </div>
-        ${notebooks.length>1?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:2}}>
-          <button class=${'btn notes-mini '+(!notebookFilter?'bp':'')} style=${{padding:'2px 8px',fontSize:9}} onClick=${()=>setNotebookFilter(null)}>All</button>
-          ${notebooks.map(nb=>html`<button key=${nb} class=${'btn notes-mini '+(notebookFilter===nb?'bp':'')} style=${{padding:'2px 8px',fontSize:9}} onClick=${()=>setNotebookFilter(notebookFilter===nb?null:nb)}>${nb}</button>`)}
-        </div>`:null}
         <div class="notes-quick"><button class="btn notes-mini" onClick=${()=>createNote('meeting')}>Meeting</button><button class="btn notes-mini" onClick=${()=>createNote('daily')}>Daily</button><button class="btn notes-mini" onClick=${()=>createNote('idea')}>Idea</button><button class="btn notes-mini" onClick=${()=>setViewMode(viewMode==='wide'?'focus':'wide')}>${viewMode==='wide'?'Focus':'Compact'}</button></div>
         <div class="notes-tabs"><button class=${'btn notes-mini '+(!archived?'bp':'')} onClick=${()=>setArchived(false)}>Active</button><button class=${'btn notes-mini '+(archived?'bp':'')} onClick=${()=>setArchived(true)}>Archive</button></div>
       </div>
@@ -10072,17 +9983,15 @@ function VaultView({cu}){
           <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter?'No cards match your search':'Your vault is empty'}</div>
           <div style=${{fontSize:13,color:'#334155'}}>${filter?'Try a different search term':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.length>0 && html`<div class="vault-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(380px,1fr))',gap:16,alignItems:'start'}}>
-        ${filtered.map(c=>html`
-          <${VaultSpreadCard}
-            key=${c.id}
-            card=${c}
-            isUnlocked=${!!unlocked[c.id]}
-            onUnlock=${handleUnlock}
-            onLock=${handleLock}
-            onDelete=${handleDelete}
-            onUpdate=${handleUpdate}/>`)}
-      </div>`}
+      ${!vLoading && filtered.map(c=>html`
+        <${VaultSpreadCard}
+          key=${c.id}
+          card=${c}
+          isUnlocked=${!!unlocked[c.id]}
+          onUnlock=${handleUnlock}
+          onLock=${handleLock}
+          onDelete=${handleDelete}
+          onUpdate=${handleUpdate}/>`)}
 
       ${showNew && html`
         <${VaultNewCardModal}
