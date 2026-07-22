@@ -192,7 +192,7 @@ window._pfPushUnsubscribe = async function(){
 <link rel="dns-prefetch" href="https://unpkg.com"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet"/>
 <script>
 (function(){
   // Load libs in correct dependency order.
@@ -800,392 +800,6 @@ textarea.inp{resize:vertical;min-height:66px;line-height:1.5}
 .btn,.btn2,.card,.modal,.panel,.dropdown,.inp,textarea,select{transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease;}
 .dm input,.dm textarea,.dm select{color-scheme:dark;}
 .lm input,.lm textarea,.lm select{color-scheme:light;}
-
-</style>
-<style id="dv-design-system-v29">
-/* ============================================================
-   PHASE 1 — Design System Foundation, migrated from
-   fsbl-unified-workspace-v29-full-demo.html.
-
-   Everything below is namespaced under .dv-scope so it cannot
-   touch any existing page until a component explicitly opts in
-   by rendering inside a container with class="dv-scope".
-   All custom properties from the demo are prefixed --dv- so
-   they never override the app's existing --bg/--tx/--ac/etc.
-   tokens (--ac2, --bd, --bd2, --tx2, --tx3 all collided with
-   the demo's names before prefixing).
-
-   Renamed to avoid collisions with existing app-wide classes:
-     .btn  -> .dv-btn   (app already has a global .btn)
-     .chip -> .dv-chip  (app already has a global .chip)
-   Renamed to avoid keyframe collisions:
-     fade  -> dvFade
-     shake -> dvShake
-
-   Usage in components (Phase 2+): wrap new markup in
-   <div class="dv-scope"> ... </div> and use the demo's original
-   class names (.side, .vstats, .vcard, .vpill, .dv-btn, etc.)
-   unchanged — the scoping/renaming above is transparent.
-   ============================================================ */
-
-  :root{
-    --dv-bg0:#0b0a18; --dv-bg1:#12102a; --dv-panel:#161331; --dv-panel2:#1b1840; --dv-panel3:#201c4a;
-    --dv-bd:rgba(120,110,255,0.14); --dv-bd2:rgba(120,110,255,0.26); --dv-bd3:rgba(120,110,255,0.42);
-    --dv-ac1:#635bff; --dv-ac2:#a855f7; --dv-grad:linear-gradient(135deg,var(--dv-ac1),var(--dv-ac2));
-    --dv-tx1:#f4f3fc; --dv-tx2:rgba(226,224,250,0.66); --dv-tx3:rgba(190,188,220,0.4);
-    --dv-green:#34d399; --dv-amber:#fbbf24; --dv-red:#f87171; --dv-cyan:#22d3ee; --dv-orange:#fb923c;
-    --dv-font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    --dv-mono:'SF Mono','JetBrains Mono',ui-monospace,monospace;
-  }
-  .dv-scope{box-sizing:border-box;}
-  .dv-scope html, .dv-scope body{height:100%;}
-  .dv-scope body{margin:0;background:radial-gradient(1200px 800px at 15% -10%,rgba(99,91,255,.10),transparent),
-    linear-gradient(180deg,var(--dv-bg0),var(--dv-bg1) 55%,var(--dv-bg0));
-    color:var(--dv-tx1);font-family:var(--dv-font);}
-  .dv-scope ::-webkit-scrollbar{width:8px;height:8px;}
-  .dv-scope ::-webkit-scrollbar-thumb{background:rgba(120,110,255,.25);border-radius:8px;}
-  .dv-scope .shell{display:flex;height:100vh;overflow:hidden;}
-
-  /* ================= SIDEBAR ================= */
-  .dv-scope .side{width:232px;flex-shrink:0;background:linear-gradient(180deg,#0d0b1f,#130f2c);
-    border-right:1px solid var(--dv-bd);display:flex;flex-direction:column;height:100%;}
-  .dv-scope .side-head{display:flex;align-items:center;gap:10px;padding:16px 16px 14px;border-bottom:1px solid var(--dv-bd);}
-  .dv-scope .side-head .logo{width:30px;height:30px;border-radius:9px;background:var(--dv-grad);flex-shrink:0;
-    box-shadow:0 4px 16px rgba(99,91,255,.4);position:relative;}
-  .dv-scope .side-head .logo::after{content:'';position:absolute;inset:8px;border-radius:4px;background:rgba(255,255,255,.85);}
-  .dv-scope .side-head b{font-size:13px;display:block;}
-  .dv-scope .side-head small{font-size:10.5px;color:var(--dv-tx3);}
-  .dv-scope .side-scroll{flex:1;overflow-y:auto;padding:12px 10px;}
-  .dv-scope .grp{margin-bottom:4px;}
-  .dv-scope .grp-head{display:flex;align-items:center;justify-content:space-between;padding:9px 8px 6px;cursor:pointer;user-select:none;}
-  .dv-scope .grp-head .lbl{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--dv-tx3);}
-  .dv-scope .grp-head .chev{color:var(--dv-tx3);font-size:9px;transition:transform .15s;}
-  .dv-scope .grp.collapsed .chev{transform:rotate(-90deg);}
-  .dv-scope .grp.collapsed .grp-body{display:none;}
-  .dv-scope .grp-body{display:flex;flex-direction:column;gap:1px;}
-  .dv-scope .item{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;cursor:pointer;
-    color:var(--dv-tx2);font-size:12.5px;font-weight:600;position:relative;transition:background .12s,color .12s;}
-  .dv-scope .item:hover{background:rgba(120,110,255,.08);color:#c7c4ff;}
-  .dv-scope .item.active{background:rgba(120,110,255,.16);color:#c4c0ff;}
-  .dv-scope .item.active::before{content:'';position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--dv-grad);}
-  .dv-scope .item .ic{width:16px;text-align:center;flex-shrink:0;opacity:.9;}
-  .dv-scope .item .badge{margin-left:auto;font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:5px;background:var(--dv-grad);color:#fff;letter-spacing:.03em;}
-  .dv-scope .side-foot{padding:10px;border-top:1px solid var(--dv-bd);display:flex;flex-direction:column;gap:2px;}
-
-  /* ================= MAIN ================= */
-  .dv-scope .main{flex:1;min-width:0;overflow-y:auto;}
-  .dv-scope .page{padding:26px 30px 80px;max-width:1280px;margin:0 auto;display:none;}
-  .dv-scope .page.active{display:block;animation:dvFade .18s ease;}
-  @keyframes dvFade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
-  .dv-scope .dv-btn{border:none;font-family:inherit;font-size:12px;font-weight:700;padding:9px 15px;border-radius:9px;
-    cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:all .12s;}
-  .dv-scope .dv-btn.primary{background:var(--dv-grad);color:#fff;box-shadow:0 6px 18px rgba(99,91,255,.35);}
-  .dv-scope .dv-btn.primary:hover{filter:brightness(1.08);}
-  .dv-scope .dv-btn.ghost{background:var(--dv-panel);color:var(--dv-tx2);border:1px solid var(--dv-bd);}
-  .dv-scope .dv-btn.ghost:hover{border-color:var(--dv-bd3);color:var(--dv-tx1);}
-  .dv-scope .dv-btn.danger{background:rgba(248,113,113,.1);color:var(--dv-red);}
-
-  /* --dv-------dv--- generic stub page --dv-------dv--- */
-  .dv-scope .stub{display:flex;flex-direction:column;align-items:flex-start;padding:60px 10px;max-width:520px;}
-  .dv-scope .stub .ic{width:52px;height:52px;border-radius:14px;background:var(--dv-panel2);border:1px solid var(--dv-bd2);
-    display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px;}
-  .dv-scope .stub h1{font-size:19px;margin:0 0 8px;}
-  .dv-scope .stub p{font-size:13px;color:var(--dv-tx2);line-height:1.6;margin:0 0 16px;}
-  .dv-scope .stub .tag{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#a5b4fc;
-    background:rgba(120,110,255,.14);padding:4px 10px;border-radius:20px;}
-
-  /* ================= VAULT ================= */
-  .dv-scope .vlock-wrap{display:flex;align-items:center;justify-content:center;min-height:70vh;}
-  .dv-scope .vlock-card{width:100%;max-width:380px;text-align:center;background:var(--dv-panel);border:1px solid var(--dv-bd);
-    border-radius:20px;padding:34px 28px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
-  .dv-scope .vlock-ic{font-size:40px;margin-bottom:12px;}
-  .dv-scope .vlock-card h2{font-size:17px;margin:0 0 6px;}
-  .dv-scope .vlock-card p{font-size:12px;color:var(--dv-tx3);margin:0 0 18px;line-height:1.5;}
-  .dv-scope .vlock-input{width:100%;background:var(--dv-panel2);border:1px solid var(--dv-bd);border-radius:11px;
-    padding:11px 14px;color:var(--dv-tx1);font-family:var(--dv-mono);font-size:13px;text-align:center;
-    letter-spacing:2px;margin-bottom:12px;outline:none;}
-  .dv-scope .vlock-input:focus{border-color:var(--dv-ac1);}
-  .dv-scope .vlock-err{color:var(--dv-red);font-size:11.5px;min-height:16px;margin-top:6px;}
-  .dv-scope .vlock-card.shake{animation:dvShake .4s;}
-  @keyframes dvShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(2px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
-
-  .dv-scope .vault-body{display:none;}
-  .dv-scope .vault-body.open{display:block;}
-
-  .dv-scope .vhead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
-  .dv-scope .vhead h1{font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
-  .dv-scope .vhead p{font-size:12.5px;color:var(--dv-tx2);margin:0;max-width:520px;}
-  .dv-scope .vhead .actions{display:flex;gap:8px;}
-
-  .dv-scope .vstats{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:20px;}
-  .dv-scope .vstat{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:14px;padding:13px 15px;position:relative;
-    overflow:hidden;transition:transform .12s;}
-  .dv-scope .vstat:hover{transform:translateY(-2px);}
-  .dv-scope .vstat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
-  .dv-scope .vstat.c1::before{background:var(--dv-ac1);} .dv-scope .vstat.c2::before{background:var(--dv-green);}
-  .dv-scope .vstat.c3::before{background:var(--dv-amber);} .dv-scope .vstat.c4::before{background:var(--dv-red);}
-  .dv-scope .vstat.c5::before{background:var(--dv-cyan);}
-  .dv-scope .vstat .num{font-size:19px;font-weight:800;}
-  .dv-scope .vstat .lbl{font-size:10px;color:var(--dv-tx3);font-weight:700;margin-top:3px;text-transform:uppercase;letter-spacing:.03em;}
-
-  .dv-scope .vtoolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
-  .dv-scope .vsearch{flex:1;min-width:200px;display:flex;align-items:center;gap:8px;background:var(--dv-panel);
-    border:1px solid var(--dv-bd);border-radius:11px;padding:9px 14px;}
-  .dv-scope .vsearch input{border:none;background:transparent;outline:none;color:var(--dv-tx1);font-size:12.5px;flex:1;font-family:inherit;}
-  .dv-scope .vsort{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:11px;padding:9px 12px;color:var(--dv-tx2);
-    font-size:12px;font-family:inherit;}
-  .dv-scope .vpills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;}
-  .dv-scope .vpill{font-size:11px;font-weight:700;padding:6px 13px;border-radius:20px;border:1px solid var(--dv-bd);
-    background:var(--dv-panel);color:var(--dv-tx3);cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:6px;}
-  .dv-scope .vpill .cnt{font-size:9.5px;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:20px;}
-  .dv-scope .vpill.active{background:var(--dv-grad);border-color:transparent;color:#fff;}
-  .dv-scope .vpill.active .cnt{background:rgba(255,255,255,.22);}
-
-  .dv-scope .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;}
-  .dv-scope .vcard{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:16px;position:relative;overflow:hidden;
-    transition:transform .12s,box-shadow .12s;}
-  .dv-scope .vcard:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(0,0,0,.28);border-color:var(--dv-bd3);}
-  .dv-scope .vcard.pinned{border-color:rgba(251,191,36,.4);}
-  .dv-scope .vcard::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
-  .dv-scope .vcard.cat-database::before{background:linear-gradient(90deg,var(--dv-ac2),var(--dv-ac1));}
-  .dv-scope .vcard.cat-api::before{background:linear-gradient(90deg,var(--dv-ac1),var(--dv-cyan));}
-  .dv-scope .vcard.cat-server::before{background:linear-gradient(90deg,var(--dv-amber),var(--dv-orange));}
-  .dv-scope .vcard.cat-auth::before{background:linear-gradient(90deg,var(--dv-green),var(--dv-cyan));}
-  .dv-scope .vcard.cat-cloud::before{background:linear-gradient(90deg,var(--dv-cyan),var(--dv-ac1));}
-  .dv-scope .vcard.cat-other::before{background:linear-gradient(90deg,#8a8a9a,#5c5c6e);}
-
-  .dv-scope .vcard-in{padding:16px 18px 12px;}
-  .dv-scope .vcard-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px;gap:8px;}
-  .dv-scope .vcard-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
-  .dv-scope .vcard-name{font-size:14px;font-weight:700;}
-  .dv-scope .pinbadge{font-size:11px;color:var(--dv-amber);}
-  .dv-scope .catbadge{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;
-    border-radius:6px;background:rgba(120,110,255,.14);color:#a5b4fc;}
-  .dv-scope .catbadge.cat-server{background:rgba(251,191,36,.14);color:var(--dv-amber);}
-  .dv-scope .catbadge.cat-auth{background:rgba(52,211,153,.14);color:var(--dv-green);}
-  .dv-scope .catbadge.cat-cloud{background:rgba(34,211,238,.14);color:var(--dv-cyan);}
-  .dv-scope .catbadge.cat-other{background:rgba(140,140,160,.14);color:#a3a3b0;}
-
-  .dv-scope .vcard-desc{font-size:11.5px;color:var(--dv-tx3);margin-bottom:10px;line-height:1.5;}
-  .dv-scope .vcard-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px;}
-  .dv-scope .vtag{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--dv-panel2);color:var(--dv-tx3);}
-
-  .dv-scope .vfields{display:flex;flex-direction:column;gap:8px;margin-bottom:8px;}
-  .dv-scope .vfield-lbl{font-size:10px;color:var(--dv-tx3);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;}
-  .dv-scope .vfield-row{display:flex;align-items:center;gap:6px;background:var(--dv-panel2);border:1px solid var(--dv-bd);
-    border-radius:9px;padding:6px 8px 6px 11px;}
-  .dv-scope .vfield-val{font-family:var(--dv-mono);font-size:12px;color:var(--dv-tx1);flex:1;overflow:hidden;text-overflow:ellipsis;
-    white-space:nowrap;letter-spacing:.2px;}
-  .dv-scope .vfield-val.masked{letter-spacing:3px;color:var(--dv-tx3);}
-  .dv-scope .vfbtn{background:rgba(255,255,255,.05);border:none;color:var(--dv-tx3);width:22px;height:22px;border-radius:6px;
-    cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;transition:all .12s;}
-  .dv-scope .vfbtn:hover{background:rgba(120,110,255,.16);color:#a5b4fc;}
-  .dv-scope .vfbtn.copied{background:rgba(52,211,153,.18);color:var(--dv-green);}
-
-  .dv-scope .vexpiry{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;
-    gap:4px;margin-bottom:9px;}
-  .dv-scope .vexpiry.soon{background:rgba(251,191,36,.13);color:var(--dv-amber);}
-  .dv-scope .vexpiry.ok{background:rgba(52,211,153,.13);color:var(--dv-green);}
-
-  .dv-scope .vcard-meta{font-size:10.5px;color:var(--dv-tx3);padding-top:9px;border-top:1px solid rgba(120,110,255,.08);}
-  .dv-scope .vcard-ft{display:flex;gap:5px;padding:9px 18px 12px;}
-  .dv-scope .vcbtn{flex:1;border:none;background:var(--dv-panel2);color:var(--dv-tx2);font-size:11px;font-weight:700;
-    padding:8px 0;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:all .12s;}
-  .dv-scope .vcbtn.pin{color:var(--dv-amber);} .dv-scope .vcbtn.pin:hover{background:rgba(251,191,36,.14);}
-  .dv-scope .vcbtn.pin.on{background:rgba(251,191,36,.18);}
-  .dv-scope .vcbtn.edit:hover{background:rgba(120,110,255,.14);color:#a5b4fc;}
-  .dv-scope .vcbtn.del{color:var(--dv-red);} .dv-scope .vcbtn.del:hover{background:rgba(248,113,113,.14);}
-
-  .dv-scope .vempty{grid-column:1/-1;text-align:center;padding:70px 20px;color:var(--dv-tx3);}
-  .dv-scope .vempty .ic{font-size:38px;margin-bottom:14px;}
-
-  /* --dv--- modal --dv--- */
-  .dv-scope .voverlay{position:fixed;inset:0;background:rgba(5,4,15,.6);backdrop-filter:blur(3px);display:none;
-    align-items:center;justify-content:center;z-index:100;padding:20px;}
-  .dv-scope .voverlay.open{display:flex;}
-  .dv-scope .vmodal{background:var(--dv-panel);border:1px solid var(--dv-bd2);border-radius:18px;width:100%;max-width:520px;
-    max-height:86vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.5);}
-  .dv-scope .vmodal-hd{padding:16px 20px;border-bottom:1px solid var(--dv-bd);display:flex;justify-content:space-between;align-items:center;}
-  .dv-scope .vmodal-hd h3{font-size:15px;margin:0;}
-  .dv-scope .vmclose{background:var(--dv-panel2);border:none;color:var(--dv-tx3);width:26px;height:26px;border-radius:8px;cursor:pointer;}
-  .dv-scope .vmodal-body{padding:18px 20px;overflow-y:auto;flex:1;}
-  .dv-scope .vmodal-ft{padding:13px 20px;border-top:1px solid var(--dv-bd);display:flex;justify-content:flex-end;gap:8px;}
-  .dv-scope .vmtabs{display:flex;gap:4px;border-bottom:1px solid var(--dv-bd);margin-bottom:16px;}
-  .dv-scope .vmtab{padding:8px 13px;font-size:11.5px;font-weight:700;color:var(--dv-tx3);cursor:pointer;border-bottom:2px solid transparent;}
-  .dv-scope .vmtab.active{color:#a5b4fc;border-bottom-color:var(--dv-ac1);}
-  .dv-scope .vmpanel{display:none;} .dv-scope .vmpanel.active{display:block;}
-  .dv-scope .vfg{margin-bottom:13px;}
-  .dv-scope .vfl{font-size:11px;font-weight:700;color:var(--dv-tx2);display:block;margin-bottom:5px;}
-  .dv-scope .vfi{width:100%;background:var(--dv-panel2);border:1px solid var(--dv-bd);border-radius:9px;padding:9px 11px;
-    color:var(--dv-tx1);font-size:12.5px;font-family:inherit;}
-  .dv-scope .vfi.mono{font-family:var(--dv-mono);}
-  .dv-scope textarea.vfi{resize:vertical;}
-  .dv-scope .vfields-edit{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
-  .dv-scope .vfield-edit-row{display:flex;gap:7px;align-items:center;background:var(--dv-panel2);border:1px solid var(--dv-bd);
-    border-radius:10px;padding:7px 9px;}
-  .dv-scope .vfield-edit-row input{flex:1;background:none;border:none;outline:none;color:var(--dv-tx1);font-size:12px;font-family:inherit;min-width:0;}
-  .dv-scope .vfield-edit-row input.mono{font-family:var(--dv-mono);}
-  .dv-scope .vfrm{background:rgba(248,113,113,.12);border:none;color:var(--dv-red);width:22px;height:22px;border-radius:6px;
-    cursor:pointer;flex-shrink:0;}
-  .dv-scope .vaddfield{border:1px dashed var(--dv-bd3);background:none;color:var(--dv-ac1);font-size:11.5px;font-weight:700;
-    padding:8px;border-radius:9px;cursor:pointer;width:100%;}
-  .dv-scope .vgen-row{display:flex;gap:8px;align-items:center;margin-top:8px;}
-  .dv-scope .vgen-btn{background:rgba(120,110,255,.14);border:1px solid var(--dv-bd2);color:#a5b4fc;font-size:11px;font-weight:700;
-    padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;}
-  .dv-scope .vstrength{display:flex;gap:4px;margin-top:8px;}
-  .dv-scope .vstrength div{flex:1;height:4px;border-radius:2px;background:var(--dv-bd);}
-
-  .dv-scope .vtoast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--dv-panel3);
-    border:1px solid var(--dv-bd2);color:var(--dv-tx1);font-size:12.5px;font-weight:600;padding:10px 18px;border-radius:30px;
-    opacity:0;transition:all .25s;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,.4);pointer-events:none;}
-  .dv-scope .vtoast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-
-  @media(max-width:980px){
-    .dv-scope .side{display:none;}
-    .dv-scope .vstats{grid-template-columns:repeat(2,1fr);}
-  }
-
-  /* ================= GENERIC BADGES ================= */
-  .dv-scope .sbadge{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:6px;white-space:nowrap;}
-  .dv-scope .sbadge.gy{background:rgba(140,140,160,.16);color:#b3b3c2;}
-  .dv-scope .sbadge.bl{background:rgba(99,91,255,.16);color:#a5b4fc;}
-  .dv-scope .sbadge.gr{background:rgba(52,211,153,.16);color:var(--dv-green);}
-  .dv-scope .sbadge.am{background:rgba(251,191,36,.16);color:var(--dv-amber);}
-  .dv-scope .sbadge.rd{background:rgba(248,113,113,.16);color:var(--dv-red);}
-  .dv-scope .sbadge.cy{background:rgba(34,211,238,.16);color:var(--dv-cyan);}
-  .dv-scope .pbar-track{background:var(--dv-panel2);border-radius:20px;height:7px;overflow:hidden;margin:8px 0;}
-  .dv-scope .pbar-fill{height:100%;background:var(--dv-grad);border-radius:20px;}
-
-  /* ================= TABS (admin / workspace-os) ================= */
-  .dv-scope .mtabs-row{display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--dv-bd);flex-wrap:wrap;}
-  .dv-scope .mtab-btn{padding:10px 16px;font-size:12.5px;font-weight:700;color:var(--dv-tx3);cursor:pointer;
-    border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit;}
-  .dv-scope .mtab-btn.active{color:#c4c0ff;border-bottom-color:var(--dv-ac1);}
-  .dv-scope .mtab-panel{display:none;} .dv-scope .mtab-panel.active{display:block;animation:dvFade .15s ease;}
-
-  /* ================= TOGGLE SWITCH ================= */
-  .dv-scope .tgl{width:38px;height:21px;border-radius:20px;background:var(--dv-panel2);border:1px solid var(--dv-bd2);
-    position:relative;cursor:pointer;flex-shrink:0;transition:background .15s;}
-  .dv-scope .tgl.on{background:var(--dv-grad);border-color:transparent;}
-  .dv-scope .tgl::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
-    background:#fff;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.4);}
-  .dv-scope .tgl.on::after{transform:translateX(17px);}
-
-  /* ================= CHIP MULTI-SELECT ================= */
-  .dv-scope .chiprow{display:flex;flex-wrap:wrap;gap:7px;}
-  .dv-scope .dv-chip{font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;border:1px solid var(--dv-bd);
-    background:var(--dv-panel2);color:var(--dv-tx3);cursor:pointer;transition:all .12s;}
-  .dv-scope .dv-chip.on{background:var(--dv-grad);border-color:transparent;color:#fff;}
-
-  /* ================= PROGRESS RING (admin plan&usage) ================= */
-  .dv-scope .ringrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;}
-  .dv-scope .ringcard{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:14px;padding:18px;text-align:center;}
-  .dv-scope .ringcard svg{margin-bottom:8px;}
-  .dv-scope .ringcard .rlbl{font-size:11px;font-weight:700;color:var(--dv-tx2);margin-bottom:2px;}
-  .dv-scope .ringcard .rsub{font-size:10.5px;color:var(--dv-tx3);}
-
-  /* ================= DROPZONE (admin data imports) ================= */
-  .dv-scope .dropzone{border:2px dashed var(--dv-bd2);border-radius:14px;padding:26px;text-align:center;cursor:pointer;
-    transition:all .15s;background:var(--dv-panel2);}
-  .dv-scope .dropzone:hover{border-color:var(--dv-ac1);background:rgba(99,91,255,.06);}
-  .dv-scope .dropzone .dic{font-size:26px;margin-bottom:8px;}
-  .dv-scope .dz-steps{display:flex;gap:0;margin:16px 0;}
-  .dv-scope .dz-step{flex:1;text-align:center;position:relative;padding-bottom:10px;}
-  .dv-scope .dz-step .dot{width:22px;height:22px;border-radius:50%;background:var(--dv-panel2);border:2px solid var(--dv-bd2);
-    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;margin:0 auto 6px;color:var(--dv-tx3);}
-  .dv-scope .dz-step.on .dot{background:var(--dv-grad);border-color:transparent;color:#fff;}
-  .dv-scope .dz-step .dlbl{font-size:10.5px;color:var(--dv-tx3);font-weight:700;}
-  .dv-scope .dz-step.on .dlbl{color:var(--dv-tx1);}
-  .dv-scope .dz-step::after{content:'';position:absolute;top:11px;left:50%;width:100%;height:2px;background:var(--dv-bd2);z-index:-1;}
-  .dv-scope .dz-step:last-child::after{display:none;}
-
-  /* ================= KANBAN ================= */
-  .dv-scope .kanban-wrap{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;}
-  .dv-scope .kcol{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:14px;min-width:260px;flex:1;
-    display:flex;flex-direction:column;max-height:calc(100vh - 210px);}
-  .dv-scope .kcol-hd{padding:13px 14px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--dv-bd);}
-  .dv-scope .kcol-hd .t{font-size:12px;font-weight:800;display:flex;align-items:center;gap:7px;}
-  .dv-scope .kcol-hd .dot{width:8px;height:8px;border-radius:50%;}
-  .dv-scope .kcol-hd .cnt{font-size:10.5px;color:var(--dv-tx3);background:var(--dv-panel2);padding:1px 8px;border-radius:10px;}
-  .dv-scope .kcol-body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:9px;min-height:60px;}
-  .dv-scope .kcol-body.dragover{background:rgba(99,91,255,.07);}
-  .dv-scope .kcol-add{margin:0 10px 10px;border:1px dashed var(--dv-bd3);background:none;color:var(--dv-ac1);font-size:11px;
-    font-weight:700;padding:8px;border-radius:9px;cursor:pointer;}
-  .dv-scope .kcard{background:var(--dv-panel2);border:1px solid var(--dv-bd);border-radius:11px;padding:11px 12px;cursor:grab;transition:all .12s;}
-  .dv-scope .kcard:hover{border-color:var(--dv-bd3);transform:translateY(-1px);}
-  .dv-scope .kcard.dragging{opacity:.35;}
-  .dv-scope .kcard .kt{font-size:12.5px;font-weight:700;margin-bottom:6px;}
-  .dv-scope .kcard .kmeta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;}
-  .dv-scope .kcard .kav{width:20px;height:20px;border-radius:50%;background:var(--dv-grad);color:#fff;font-size:9px;
-    font-weight:800;display:flex;align-items:center;justify-content:center;}
-  .dv-scope .kcard .kx{background:none;border:none;color:var(--dv-tx3);cursor:pointer;font-size:11px;padding:2px;}
-  .dv-scope .kcard .kx:hover{color:var(--dv-red);}
-
-  /* ================= CHAT (channels / dm) ================= */
-  .dv-scope .chat-shell{display:flex;height:calc(100vh - 150px);border:1px solid var(--dv-bd);border-radius:16px;overflow:hidden;background:var(--dv-panel);}
-  .dv-scope .chat-list{width:230px;flex-shrink:0;border-right:1px solid var(--dv-bd);display:flex;flex-direction:column;}
-  .dv-scope .chat-list-hd{padding:13px 14px;border-bottom:1px solid var(--dv-bd);display:flex;justify-content:space-between;align-items:center;}
-  .dv-scope .chat-list-hd b{font-size:12.5px;}
-  .dv-scope .chat-list-body{flex:1;overflow-y:auto;padding:8px;}
-  .dv-scope .cl-item{display:flex;align-items:center;gap:9px;padding:9px;border-radius:10px;cursor:pointer;margin-bottom:2px;}
-  .dv-scope .cl-item:hover{background:rgba(120,110,255,.08);}
-  .dv-scope .cl-item.active{background:rgba(120,110,255,.16);}
-  .dv-scope .cl-av{width:30px;height:30px;border-radius:50%;background:var(--dv-grad);color:#fff;font-size:11px;font-weight:800;
-    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .dv-scope .cl-item .nm{font-size:12px;font-weight:700;} .dv-scope .cl-item .lm{font-size:10.5px;color:var(--dv-tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;}
-  .dv-scope .cl-del{margin-left:auto;background:none;border:none;color:var(--dv-tx3);font-size:11px;cursor:pointer;opacity:0;flex-shrink:0;}
-  .dv-scope .cl-item:hover .cl-del{opacity:1;} .dv-scope .cl-del:hover{color:var(--dv-red);}
-  .dv-scope .chat-main{flex:1;display:flex;flex-direction:column;min-width:0;}
-  .dv-scope .chat-hd{padding:14px 18px;border-bottom:1px solid var(--dv-bd);}
-  .dv-scope .chat-hd b{font-size:13.5px;} .dv-scope .chat-hd div{font-size:11px;color:var(--dv-tx3);}
-  .dv-scope .chat-msgs{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px;}
-  .dv-scope .msg{max-width:70%;}
-  .dv-scope .msg.me{align-self:flex-end;}
-  .dv-scope .msg .mb{background:var(--dv-panel2);border-radius:13px 13px 3px 13px;padding:9px 13px;font-size:12.5px;line-height:1.5;}
-  .dv-scope .msg.me .mb{background:var(--dv-grad);color:#fff;border-radius:13px 13px 13px 3px;}
-  .dv-scope .msg .ma{font-size:10px;color:var(--dv-tx3);margin:4px 4px 0;}
-  .dv-scope .chat-input-row{padding:12px 14px;border-top:1px solid var(--dv-bd);display:flex;gap:8px;}
-  .dv-scope .chat-input-row input{flex:1;background:var(--dv-panel2);border:1px solid var(--dv-bd);border-radius:20px;
-    padding:10px 16px;color:var(--dv-tx1);font-size:12.5px;font-family:inherit;outline:none;}
-  .dv-scope .chat-input-row input:focus{border-color:var(--dv-ac1);}
-  .dv-scope .chat-send{background:var(--dv-grad);border:none;color:#fff;width:38px;height:38px;border-radius:50%;cursor:pointer;flex-shrink:0;}
-
-  /* ================= TIMELINE ================= */
-  .dv-scope .tl-wrap{position:relative;padding-left:26px;}
-  .dv-scope .tl-wrap::before{content:'';position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--dv-bd2);}
-  .dv-scope .tl-item{position:relative;padding-bottom:22px;}
-  .dv-scope .tl-dot{position:absolute;left:-26px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--dv-panel2);
-    border:3px solid var(--dv-ac1);}
-  .dv-scope .tl-item.done .tl-dot{background:var(--dv-green);border-color:var(--dv-green);}
-  .dv-scope .tl-item.late .tl-dot{background:var(--dv-red);border-color:var(--dv-red);}
-  .dv-scope .tl-card{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:13px;padding:13px 16px;}
-  .dv-scope .tl-card .tlt{font-size:13px;font-weight:700;margin-bottom:3px;}
-  .dv-scope .tl-card .tld{font-size:11.5px;color:var(--dv-tx3);}
-  .dv-scope .tl-card .tlft{display:flex;gap:6px;margin-top:9px;}
-
-  /* ================= DASHBOARD ================= */
-  .dv-scope .dash-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;}
-  .dv-scope .dcard{background:var(--dv-panel);border:1px solid var(--dv-bd);border-radius:16px;padding:18px;}
-  .dv-scope .dcard h3{font-size:13px;margin:0 0 12px;}
-  .dv-scope .dact{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid rgba(120,110,255,.08);font-size:12px;}
-  .dv-scope .dact:last-child{border-bottom:none;}
-  .dv-scope .dact .dic{width:26px;height:26px;border-radius:8px;background:var(--dv-panel2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;}
-  .dv-scope .dact .dtxt{color:var(--dv-tx2);} .dv-scope .dact .dtm{color:var(--dv-tx3);font-size:10.5px;margin-top:2px;}
-  .dv-scope .quickadd{display:flex;gap:8px;margin-top:6px;}
-  .dv-scope .quickadd input{flex:1;background:var(--dv-panel2);border:1px solid var(--dv-bd);border-radius:9px;padding:9px 12px;color:var(--dv-tx1);font-size:12px;font-family:inherit;}
-
-  /* ================= PASSWORD GEN ================= */
-  .dv-scope .pwgen-wrap{max-width:560px;}
-  .dv-scope .pwout{background:var(--dv-panel2);border:1px solid var(--dv-bd);border-radius:12px;padding:16px 18px;font-family:var(--dv-mono);
-    font-size:17px;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;word-break:break-all;}
-  .dv-scope .pwslider{width:100%;accent-color:#635bff;}
-  .dv-scope .pwopt-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(120,110,255,.08);font-size:12.5px;}
-  .dv-scope .pwstrength-lbl{font-size:11px;font-weight:800;padding:3px 10px;border-radius:6px;}
-  .dv-scope .pwhist-item{display:flex;justify-content:space-between;align-items:center;background:var(--dv-panel2);border:1px solid var(--dv-bd);
-    border-radius:9px;padding:8px 12px;margin-bottom:6px;font-family:var(--dv-mono);font-size:11.5px;}
-
-  /* ================= GENERIC MODULE MODAL reuse vmodal classes; specific overrides ================= */
-  .dv-scope .mmodal-wide{max-width:640px;}
 
 </style>
 <style id="wsos-v34-professional-fix">
@@ -2678,6 +2292,17 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
     vault: html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="18" rx="3"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5V6"/><path d="M12 18v-2.5"/><path d="M7.5 12H5"/><path d="M19 12h-2.5"/><path d="M9.2 9.2L7.5 7.5"/><path d="M16.5 16.5l-1.7-1.7"/><path d="M14.8 9.2l1.7-1.7"/><path d="M7.5 16.5l1.7-1.7"/></svg>`,
     'workspace-os': html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M9 8h1"/><path d="M14 8h1"/><path d="M9 12h1"/><path d="M14 12h1"/><path d="M10 21v-5h4v5"/></svg>`,
   };
+  const NAV_SECTIONS=[
+    {key:'overview', label:'Overview', ids:['dashboard','workspace-os','ops']},
+    {key:'work', label:'Work', ids:['projects','tasks','timeline','productivity']},
+    {key:'comms', label:'Comms', ids:['messages','dm','tickets','reminders']},
+    {key:'people', label:'People & Finance', ids:['team','billing']},
+    {key:'tools', label:'Tools', ids:['ai-docs','notes','password-generator','vault']},
+  ];
+  const NAV_SECTION_OF={};
+  NAV_SECTIONS.forEach(s=>s.ids.forEach(id=>{NAV_SECTION_OF[id]=s.key;}));
+  const NAV_SECTION_LABEL={};
+  NAV_SECTIONS.forEach(s=>{NAV_SECTION_LABEL[s.key]=s.label;});
   const adminNav=[
     {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'ops', label:'Ops Center', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   const devNav=[
@@ -2810,7 +2435,20 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
             </div>`)}
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>`:null}
 
-        ${orderedSections.mid.map(it=>html`
+        ${(()=>{
+          const secOrder=NAV_SECTIONS.map(s=>s.key).concat(['other']);
+          const grouped=[...orderedSections.mid].sort((a,b)=>{
+            const sa=secOrder.indexOf(NAV_SECTION_OF[a.id]||'other');
+            const sb=secOrder.indexOf(NAV_SECTION_OF[b.id]||'other');
+            if(sa!==sb)return sa-sb;
+            return orderedSections.mid.indexOf(a)-orderedSections.mid.indexOf(b);
+          });
+          return grouped;
+        })().map((it,idx,arr)=>{
+          const secKey=NAV_SECTION_OF[it.id]||'other';
+          const prevSecKey=idx>0?(NAV_SECTION_OF[arr[idx-1].id]||'other'):null;
+          const showHeader=!col&&secKey!==prevSecKey;
+          return html`${showHeader?html`<div key=${'hdr-'+secKey} style=${{fontSize:8,fontWeight:700,color:'rgba(165,180,252,0.35)',textTransform:'uppercase',letterSpacing:'0.08em',padding:idx===0?'4px 10px 2px':'10px 10px 2px'}}>${NAV_SECTION_LABEL[secKey]||''}</div>`:null}
           <div key=${it.id}
             draggable=${!col}
             onDragStart=${()=>{dragSrc.current=it.id;}}
@@ -2841,7 +2479,8 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
                 <button title="Pin to bottom" onClick=${e=>{e.stopPropagation();togglePin(it.id,'bot');}}
                   style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↓</button>
               </div>`:null}
-          </div>`)}
+          </div>`;
+        })}
 
         ${orderedSections.bot.length>0?html`
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>
@@ -4275,6 +3914,21 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
 
   const toggleSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
 
+  const boardStats=useMemo(()=>{
+    const all=safe(tasks);
+    const today=new Date();today.setHours(0,0,0,0);
+    const endOfWeek=new Date(today);endOfWeek.setDate(today.getDate()+7);
+    let overdue=0,dueSoon=0,completed=0,mine=0,unassigned=0;
+    all.forEach(t=>{
+      const isDone=RESOLVED_STAGES.has(t.stage);
+      if(isDone)completed++;
+      if(!isDone&&t.due){const d=new Date(t.due);d.setHours(0,0,0,0);if(d<today)overdue++;else if(d<=endOfWeek)dueSoon++;}
+      if(cu&&t.assignee===cu.id)mine++;
+      if(!t.assignee)unassigned++;
+    });
+    return{total:all.length,overdue,dueSoon,completed,mine,unassigned};
+  },[tasks,cu]);
+
   const PRI_ORD={critical:0,high:1,medium:2,low:3};
   const STAGE_ORD={backlog:0,planning:1,development:2,code_review:3,testing:4,uat:5,release:6,production:7,completed:8,blocked:9};
 
@@ -4430,6 +4084,16 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       </div>
     </div>`:null}
       <div style=${{padding:'8px 18px',borderBottom:'1px solid var(--bd)',background:'var(--sf)',flexShrink:0}}>
+        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,marginBottom:9}}>
+          ${[
+            {label:'Total tasks',val:boardStats.total,icon:'🗂️',tone:'rgba(90,140,255,.14)'},
+            {label:'Overdue',val:boardStats.overdue,icon:'⚠️',tone:'rgba(239,68,68,.16)'},
+            {label:'Due this week',val:boardStats.dueSoon,icon:'📅',tone:'rgba(245,158,11,.14)'},
+            {label:'Completed',val:boardStats.completed,icon:'✅',tone:'rgba(34,197,94,.14)'},
+            {label:'My tasks',val:boardStats.mine,icon:'👤',tone:'rgba(139,92,246,.14)'},
+            {label:'Unassigned',val:boardStats.unassigned,icon:'❔',tone:'rgba(148,163,184,.14)'},
+          ].map(c=>html`<div key=${c.label} style=${{border:'1px solid var(--bd)',background:'linear-gradient(135deg,var(--sf),var(--sf2))',borderRadius:12,padding:'7px 9px',display:'flex',alignItems:'center',gap:9}}><div style=${{width:26,height:26,borderRadius:9,display:'grid',placeItems:'center',background:c.tone,fontSize:13,flexShrink:0}}>${c.icon}</div><div style=${{minWidth:0}}><div style=${{fontSize:15,fontWeight:900,color:'var(--tx)',lineHeight:1}}>${c.val}</div><div style=${{fontSize:9,fontWeight:800,color:'var(--tx2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${c.label}</div></div></div>`)}
+        </div>
         <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
           <div style=${{position:'relative',flex:'1 1 160px',minWidth:130}}>
             <span style=${{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--tx3)',fontSize:13}}>🔍</span>
@@ -8030,7 +7694,7 @@ function TwoFASettingsCard({cu}){
 
 /* ─── WorkspaceSettings ───────────────────────────────────────────────────── */
 
-function WorkspacePlanUsageCard({cu}){
+function WorkspacePlanUsageCard({cu,embedded}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','manager','workspace owner'].includes(roleNorm);
   const [data,setData]=useState(null);
@@ -8073,9 +7737,9 @@ function WorkspacePlanUsageCard({cu}){
       <div style=${{height:8,borderRadius:999,background:'var(--sf2)',border:'1px solid var(--bd)',overflow:'hidden'}}><div style=${{height:'100%',width:pct+'%',background:warn,borderRadius:999,transition:'width .25s ease'}}></div></div>
     </div>`;
   };
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+  return html`<div class=${embedded?'':'card'} style=${embedded?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
-      <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>📊 Workspace Plan & Usage</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Live workspace limits and current usage. This belongs under Settings, not invoice billing.</p></div>
+      ${embedded?html`<div style=${{flex:1}}/>`:html`<div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>📊 Workspace Plan & Usage</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Live workspace limits and current usage. This belongs under Settings, not invoice billing.</p></div>`}
       <button class="btn brd" style=${{fontSize:11,padding:'5px 10px'}} onClick=${load} disabled=${loading}>${loading?'Refreshing…':'↻ Refresh'}</button>
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Workspace plan and usage is available to admins/managers only</div>`:null}
@@ -8089,7 +7753,7 @@ function WorkspacePlanUsageCard({cu}){
 }
 
 
-function WorkspaceOSPolicySettingsCard({cu}){
+function WorkspaceOSPolicySettingsCard({cu,embedded}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const titleCase=s=>String(s||'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -8107,9 +7771,9 @@ function WorkspaceOSPolicySettingsCard({cu}){
   const save=async()=>{setLoading(true);const r=await api.put('/api/workspace-os/settings',cfg,{quiet:true,timeoutMs:10000}).catch(e=>({error:e.message}));setLoading(false);if(r&&r.ok){setCfg({...cfg,...r.settings});setMsg('Attendance policy saved');try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}else setMsg((r&&r.error)||'Policy save failed');setTimeout(()=>setMsg(''),1800);};
   const modeOptions=['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty'];
   const roleOptions=['admin','hr','manager','peopleops','finance'];
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+  return html`<div class=${embedded?'':'card'} style=${embedded?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
-      <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>
+      ${embedded?html`<div style=${{flex:1}}/>`:html`<div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>`}
       ${allowed?html`<button class="btn bp" style=${{fontSize:11,padding:'7px 12px'}} onClick=${save} disabled=${loading}>${loading?'Saving…':'Save policy'}</button>`:null}
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Only Admin/Owner/HR can configure attendance policy.</div>`:html`<div style=${{display:'grid',gridTemplateColumns:'160px 1fr 1fr',gap:12,alignItems:'start'}}>
@@ -8123,7 +7787,7 @@ function WorkspaceOSPolicySettingsCard({cu}){
 }
 
 
-function WorkspaceOSAdminImportsCard({cu}){
+function WorkspaceOSAdminImportsCard({cu,embedded}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const today=new Date();
@@ -8170,9 +7834,9 @@ function WorkspaceOSAdminImportsCard({cu}){
     <input type="file" accept=${accept} multiple=${!!multiple} style=${{display:'none'}} onChange=${e=>onChange(multiple?e.target.files:(e.target.files&&e.target.files[0]))}/>
     <b style=${{fontSize:12,color:'var(--tx)'}}>${label}</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${chosen||sub}</span>
   </label>`;
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
+  return html`<div class=${embedded?'':'card'} style=${embedded?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
     <div style=${{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',marginBottom:14}}>
-      <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>
+      ${embedded?html`<div style=${{flex:1}}/>`:html`<div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>`}
       <div style=${{display:'flex',gap:8}}><a class="btn brd" href="/api/holidays/template" style=${{fontSize:11,padding:'6px 10px'}}>Holiday template</a><a class="btn brd" href="/api/payslips/template" style=${{fontSize:11,padding:'6px 10px'}}>Payslip mapping CSV</a></div>
     </div>
     <div style=${{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:16}}>
@@ -8188,6 +7852,36 @@ function WorkspaceOSAdminImportsCard({cu}){
       </div>
     </div>
     ${msg?html`<div style=${{marginTop:12,padding:'9px 12px',borderRadius:12,background:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.08)':'rgba(22,163,74,.09)',border:'1px solid '+(msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.20)':'rgba(22,163,74,.22)'),fontSize:12,color:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'var(--rd)':'var(--gn)'}}>${msg}</div>`:null}
+  </div>`;
+}
+
+function AdminConsoleTabs({cu}){
+  const TABS=[
+    {key:'plan', label:'Plan & Usage', icon:'📊'},
+    {key:'attendance', label:'Attendance & Holiday Policy', icon:'🕘'},
+    {key:'imports', label:'Data Imports', icon:'🗂'},
+  ];
+  const [tab,setTab]=useState('plan');
+  return html`<div class="card" style=${{marginBottom:16,padding:0,overflow:'hidden',borderColor:'rgba(90,140,255,.22)'}}>
+    <div style=${{padding:'16px 18px 0'}}>
+      <h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4,display:'flex',alignItems:'center',gap:8}}>⚙️ Admin Console</h3>
+      <p style=${{fontSize:12,color:'var(--tx3)',margin:'0 0 14px'}}>Plan & Usage · Attendance & Holiday Policy · Data Imports — merged into one console</p>
+      <div style=${{display:'flex',gap:4,borderBottom:'1px solid var(--bd)'}}>
+        ${TABS.map(t=>html`<button key=${t.key} onClick=${()=>setTab(t.key)}
+          style=${{
+            background:'none',border:'none',cursor:'pointer',
+            padding:'8px 14px',fontSize:12,fontWeight:700,
+            color:tab===t.key?'var(--ac)':'var(--tx3)',
+            borderBottom:tab===t.key?'2px solid var(--ac)':'2px solid transparent',
+            marginBottom:-1,display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'
+          }}>${t.icon} ${t.label}</button>`)}
+      </div>
+    </div>
+    <div style=${{padding:'16px 18px 18px'}}>
+      ${tab==='plan'?html`<${WorkspacePlanUsageCard} cu=${cu} embedded=${true}/>`:null}
+      ${tab==='attendance'?html`<${WorkspaceOSPolicySettingsCard} cu=${cu} embedded=${true}/>`:null}
+      ${tab==='imports'?html`<${WorkspaceOSAdminImportsCard} cu=${cu} embedded=${true}/>`:null}
+    </div>
   </div>`;
 }
 
@@ -8305,11 +7999,7 @@ function WorkspaceSettings({cu,onReload}){
         </div>
       </div>
 
-      <${WorkspacePlanUsageCard} cu=${cu}/>
-
-      <${WorkspaceOSPolicySettingsCard} cu=${cu}/>
-
-      <${WorkspaceOSAdminImportsCard} cu=${cu}/>
+      <${AdminConsoleTabs} cu=${cu}/>
 
       <${WorkspaceRolesSettings} cu=${cu}/>
 
@@ -8467,6 +8157,7 @@ function NotesView({cu}){
   const [tagInput,setTagInput]=useState('');
   const [toolsOpen,setToolsOpen]=useState(false);
   const [viewMode,setViewMode]=useState('focus');
+  const [notebookFilter,setNotebookFilter]=useState(null);
   const [creating,setCreating]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const editorRef=useRef(null);
@@ -8487,9 +8178,11 @@ function NotesView({cu}){
   useEffect(()=>{loadNotes();return()=>clearTimeout(saveTimer.current);},[loadNotes]);
   const active=notes.find(n=>n.id===activeId)||notes[0]||null;
   useEffect(()=>{if(active&&editorRef.current&&editorRef.current.innerHTML!==active.body){editorRef.current.innerHTML=active.body||'';}},[active&&active.id,active&&active.body]);
-  const filtered=notes.filter(n=>{const hay=((n.title||'')+' '+(n.plain_text||'')+' '+(n.notebook||'')+' '+(n.section||'')+' '+toTags(n.tags).join(' ')).toLowerCase();return !q||hay.includes(q.toLowerCase());});
+  const filtered=notes.filter(n=>{const hay=((n.title||'')+' '+(n.plain_text||'')+' '+(n.notebook||'')+' '+(n.section||'')+' '+toTags(n.tags).join(' ')).toLowerCase();if(notebookFilter&&(n.notebook||'Quick Notes')!==notebookFilter)return false;return !q||hay.includes(q.toLowerCase());});
   const notebooks=[...new Set(notes.map(n=>n.notebook||'Quick Notes'))];
   const sections=[...new Set(notes.map(n=>n.section||'General'))];
+  const allTagsCount=new Set(notes.flatMap(n=>toTags(n.tags))).size;
+  const pinnedCount=notes.filter(n=>n.pinned).length;
   const updateLocal=(id,patch)=>setNotes(prev=>prev.map(n=>n.id===id?normalizeNote({...n,...patch,updated:new Date().toISOString()}):n));
   const savePatch=(id,patch,instant=false)=>{
     if(!id||String(id).startsWith('tmp_'))return;
@@ -8549,6 +8242,15 @@ function NotesView({cu}){
       <div class="notes-head">
         <div class="notes-title-row"><div><div class="notes-title">Notes Studio</div><div class="notes-sub">Fast capture · rich canvas · autosave</div></div><button class="btn bp" disabled=${creating} onClick=${()=>createNote('blank')}>＋</button></div>
         <input class="inp notes-mini" value=${q} onInput=${e=>setQ(e.target.value)} placeholder="Search notes, tags, notebooks..." />
+        <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,margin:'8px 0'}}>
+          <div style=${{padding:'6px 8px',borderRadius:9,background:'var(--sf2)',border:'1px solid var(--bd)',borderTop:'2px solid var(--ac)'}}><div style=${{fontSize:14,fontWeight:900,color:'var(--tx)'}}>${notes.length}</div><div style=${{fontSize:8,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.04em'}}>Notes</div></div>
+          <div style=${{padding:'6px 8px',borderRadius:9,background:'var(--sf2)',border:'1px solid var(--bd)',borderTop:'2px solid #facc15'}}><div style=${{fontSize:14,fontWeight:900,color:'var(--tx)'}}>${pinnedCount}</div><div style=${{fontSize:8,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.04em'}}>Pinned</div></div>
+          <div style=${{padding:'6px 8px',borderRadius:9,background:'var(--sf2)',border:'1px solid var(--bd)',borderTop:'2px solid #a78bfa'}}><div style=${{fontSize:14,fontWeight:900,color:'var(--tx)'}}>${allTagsCount}</div><div style=${{fontSize:8,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.04em'}}>Tags</div></div>
+        </div>
+        ${notebooks.length>1?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:2}}>
+          <button class=${'btn notes-mini '+(!notebookFilter?'bp':'')} style=${{padding:'2px 8px',fontSize:9}} onClick=${()=>setNotebookFilter(null)}>All</button>
+          ${notebooks.map(nb=>html`<button key=${nb} class=${'btn notes-mini '+(notebookFilter===nb?'bp':'')} style=${{padding:'2px 8px',fontSize:9}} onClick=${()=>setNotebookFilter(notebookFilter===nb?null:nb)}>${nb}</button>`)}
+        </div>`:null}
         <div class="notes-quick"><button class="btn notes-mini" disabled=${creating} onClick=${()=>createNote('meeting')}>Meeting</button><button class="btn notes-mini" disabled=${creating} onClick=${()=>createNote('daily')}>Daily</button><button class="btn notes-mini" disabled=${creating} onClick=${()=>createNote('idea')}>Idea</button><button class="btn notes-mini" onClick=${()=>setViewMode(viewMode==='wide'?'focus':'wide')}>${viewMode==='wide'?'Focus':'Wide'}</button></div>
         <div class="notes-tabs"><button class=${'btn notes-mini '+(!archived?'bp':'')} onClick=${()=>setArchived(false)}>Active</button><button class=${'btn notes-mini '+(archived?'bp':'')} onClick=${()=>setArchived(true)}>Archive</button><span class="notes-count">${filtered.length} notes</span></div>
       </div>
