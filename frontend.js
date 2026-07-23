@@ -6113,141 +6113,133 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
   const totpConfigured=u.totp_configured||(!!(u.totp_verified));
   const isSelf=u.id===cu.id;
   const isAdminOrSelf=cu.role==='Admin'||cu.role==='Manager'||isSelf;
-  const [showSecurity,setShowSecurity]=useState(false);
 
   return html`
-    <div class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16}}>
-      <div style=${{display:'flex',alignItems:'center',gap:10}}>
-        <${Av} u=${u} size=${38}/>
-        <div style=${{flex:1,minWidth:0}}>
-          <div style=${{fontSize:13,fontWeight:700,color:'var(--tx)',display:'flex',alignItems:'center',gap:6}}>
-            ${u.name}
-            ${isSelf?html`<span style=${{fontSize:9,color:'var(--ac)',background:'var(--ac3)',padding:'2px 6px',borderRadius:4,fontFamily:'monospace'}}>YOU</span>`:null}
-          </div>
-          <div style=${{fontSize:11,color:ROLE_COLORS[u.role]||'var(--tx3)',marginTop:2}}>${u.role}</div>
-        </div>
-      </div>
-      <div style=${{fontSize:12,color:'var(--tx2)',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${u.email}</div>
-      <select class="sel" style=${{width:'100%',padding:'6px 28px 6px 10px'}} value=${u.role}
-        onChange=${e=>api.put('/api/users/'+u.id,{role:e.target.value}).then(()=>reload&&reload())}
-        disabled=${u.id===cu.id&&cu.role==='Admin'}>
-        ${(roleOptions||ROLES).map(r=>html`<option key=${r}>${r}</option>`)}
-      </select>
-      <div style=${{display:'flex',gap:6,marginTop:2}}>
-        <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>setShowSecurity(true)}>🔑 Security</button>
-        ${u.id!==cu.id?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}}
-          onClick=${()=>window.confirm('Remove '+u.name+'?')&&api.del('/api/users/'+u.id).then(()=>reload&&reload())}>🗑 Delete</button>`:null}
-      </div>
-
-      ${showSecurity?html`
-      <div class="ov" onClick=${e=>e.target===e.currentTarget&&setShowSecurity(false)}>
-        <div class="mo fi" style=${{maxWidth:420}}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-            <h2 style=${{fontSize:16,fontWeight:800,color:'var(--tx)',display:'flex',alignItems:'center',gap:8}}>
-              <${Av} u=${u} size=${26}/> ${u.name} · Security
-            </h2>
-            <button class="btn bg" style=${{padding:'6px 10px'}} onClick=${()=>setShowSecurity(false)}>✕</button>
-          </div>
-
-          <div style=${{marginBottom:14}}>
-            <div class="lbl" style=${{marginBottom:6}}>Password</div>
-            ${editPw?html`
-              <div style=${{display:'flex',gap:5,alignItems:'center'}}>
-                <input class="inp" type="text" placeholder="New password" value=${newPw}
-                  style=${{height:32,fontSize:12,flex:1,minWidth:0}}
-                  onInput=${e=>setNewPw(e.target.value)}
-                  onKeyDown=${e=>{if(e.key==='Enter')resetPw();if(e.key==='Escape'){setEditPw(false);setNewPw('');}}}/>
-                <button class="btn bp" style=${{padding:'6px 10px',fontSize:12,flexShrink:0}} onClick=${resetPw} disabled=${saving||!newPw.trim()}>
-                  ${saving?'…':'Save'}
-                </button>
-                <button class="btn bg" style=${{padding:'6px 9px',fontSize:12,flexShrink:0}} onClick=${()=>{setEditPw(false);setNewPw('');}}>✕</button>
-              </div>`:html`
-              <button class="btn bg" style=${{fontSize:12,padding:'6px 10px'}} onClick=${()=>setEditPw(true)}>Reset password</button>`}
-          </div>
-
+    <tr style=${{borderBottom:i<total-1?'1px solid var(--bd)':'none',verticalAlign:'top'}}>
+      <td style=${{padding:'12px 14px'}}>
+        <div style=${{display:'flex',alignItems:'center',gap:10}}>
+          <${Av} u=${u} size=${34}/>
           <div>
-            <div class="lbl" style=${{marginBottom:6}}>Two-factor authentication</div>
-            <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <div style=${{fontSize:13,fontWeight:600,color:'var(--tx)',display:'flex',alignItems:'center',gap:6}}>
+              ${u.name}
+              ${isSelf?html`<span style=${{fontSize:9,color:'var(--ac)',background:'var(--ac3)',padding:'2px 6px',borderRadius:4,fontFamily:'monospace'}}>YOU</span>`:null}
+            </div>
+            <div style=${{fontSize:10,color:ROLE_COLORS[u.role]||'var(--tx3)',marginTop:2}}>${u.role}</div>
+          </div>
+        </div>
+      </td>
+
+      <td style=${{padding:'12px 14px'}}>
+        <span style=${{fontSize:12,color:'var(--tx2)',fontFamily:'monospace'}}>${u.email}</span>
+      </td>
+
+      <!-- Password reset column -->
+      <td style=${{padding:'12px 14px',minWidth:160}}>
+        ${editPw?html`
+          <div style=${{display:'flex',gap:5,alignItems:'center'}}>
+            <input class="inp" type="text" placeholder="New password" value=${newPw}
+              style=${{height:28,fontSize:12,flex:1,minWidth:0}}
+              onInput=${e=>setNewPw(e.target.value)}
+              onKeyDown=${e=>{if(e.key==='Enter')resetPw();if(e.key==='Escape'){setEditPw(false);setNewPw('');}}}/>
+            <button class="btn bp" style=${{padding:'4px 9px',fontSize:11,flexShrink:0}} onClick=${resetPw} disabled=${saving||!newPw.trim()}>
+              ${saving?'…':'Save'}
+            </button>
+            <button class="btn bg" style=${{padding:'4px 8px',fontSize:11,flexShrink:0}} onClick=${()=>{setEditPw(false);setNewPw('');}}>✕</button>
+          </div>`:html`
+          <div>
+            <!-- Action buttons -->
+            <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
               ${isSelf&&!totpConfigured?html`
-                <button class="btn bg" style=${{padding:'6px 10px',fontSize:11,color:'#4ade80',borderColor:'rgba(74,222,128,0.3)'}}
+                <button class="btn bg" style=${{padding:'3px 9px',fontSize:10,color:'#4ade80',borderColor:'rgba(74,222,128,0.3)'}}
                   onClick=${startTotpSetup}>
                   📱 Setup Authenticator
                 </button>`:null}
               ${totpConfigured&&isAdminOrSelf?html`
-                <button class="btn brd" style=${{padding:'6px 10px',fontSize:11}}
+                <button class="btn brd" style=${{padding:'3px 9px',fontSize:10}}
                   onClick=${resetTotp} disabled=${twoFaLoading}>
                   ${twoFaLoading?'…':'↺ Reset 2FA'}
                 </button>`:null}
               ${!totpConfigured&&(cu.role==='Admin'||cu.role==='Manager')?html`
-                <button class=${'btn bg'} style=${{padding:'6px 10px',fontSize:11,color:u.two_fa_enabled?'var(--rd)':'var(--cy)',borderColor:u.two_fa_enabled?'rgba(255,68,68,0.3)':'rgba(34,211,238,0.3)'}}
+                <button class=${'btn bg'} style=${{padding:'3px 9px',fontSize:10,color:u.two_fa_enabled?'var(--rd)':'var(--cy)',borderColor:u.two_fa_enabled?'rgba(255,68,68,0.3)':'rgba(34,211,238,0.3)'}}
                   onClick=${toggleEmailOtp} disabled=${twoFaLoading}>
                   ${twoFaLoading?'…':u.two_fa_enabled?'Disable Email 2FA':'Enable Email 2FA'}
                 </button>`:null}
-              ${!isSelf&&!totpConfigured&&!(cu.role==='Admin'||cu.role==='Manager')?html`<span style=${{fontSize:11,color:'var(--tx3)'}}>No 2FA configured.</span>`:null}
             </div>
-            ${totpMsg?html`<div style=${{fontSize:11,color:totpMsg.startsWith('✓')?'var(--gn)':'var(--rd)',fontWeight:600,marginTop:8}}>${totpMsg}</div>`:null}
-          </div>
-        </div>
-      </div>`:null}
 
-      <!-- TOTP Setup modal -->
-      ${showTotpSetup&&totpData?html`
-    <div class="ov" onClick=${e=>e.target===e.currentTarget&&setShowTotpSetup(false)}>
-      <div class="mo fi" style=${{maxWidth:480}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <div>
-            <h2 style=${{fontSize:17,fontWeight:800,color:'var(--tx)',margin:0,display:'flex',alignItems:'center',gap:8}}>
-              <span style=${{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📱</span>
-              Setup Google Authenticator
-            </h2>
-            <p style=${{fontSize:11,color:'var(--tx3)',marginTop:4}}>Scan the QR code with your authenticator app</p>
-          </div>
-          <button class="btn bg" style=${{padding:'6px 10px'}} onClick=${()=>setShowTotpSetup(false)}>✕</button>
-        </div>
+            ${totpMsg?html`<div style=${{fontSize:10,color:totpMsg.startsWith('✓')?'var(--gn)':'var(--rd)',fontWeight:600}}>${totpMsg}</div>`:null}
 
-        <div style=${{display:'grid',gridTemplateColumns:'auto 1fr',gap:20,marginBottom:20,alignItems:'start'}}>
-          <div style=${{textAlign:'center'}}>
-            <div style=${{background:'white',padding:10,borderRadius:10,border:'1px solid var(--bd)',display:'inline-block',boxShadow:'0 4px 16px rgba(0,0,0,.1)'}}>
-              <${QRCodeDisplay} otpauth=${totpData.otpauth} size=${160}/>
-            </div>
-            <div style=${{fontSize:9,color:'var(--tx3)',marginTop:6}}>Scan with Google Authenticator</div>
-          </div>
-          <div>
-            <div style=${{marginBottom:12}}>
-              <div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:6}}>Manual Entry</div>
-              <div style=${{fontFamily:'monospace',fontSize:12,background:'var(--sf2)',padding:'8px 10px',borderRadius:9,border:'1px solid var(--bd)',letterSpacing:3,wordBreak:'break-all',color:'var(--tx)',userSelect:'all'}}>
-                ${totpData.secret}
+            <!-- TOTP Setup modal inline -->
+            ${showTotpSetup&&totpData?html`
+          <div class="ov" onClick=${e=>e.target===e.currentTarget&&setShowTotpSetup(false)}>
+            <div class="mo fi" style=${{maxWidth:480}}>
+              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+                <div>
+                  <h2 style=${{fontSize:17,fontWeight:800,color:'var(--tx)',margin:0,display:'flex',alignItems:'center',gap:8}}>
+                    <span style=${{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📱</span>
+                    Setup Google Authenticator
+                  </h2>
+                  <p style=${{fontSize:11,color:'var(--tx3)',marginTop:4}}>Scan the QR code with your authenticator app</p>
+                </div>
+                <button class="btn bg" style=${{padding:'6px 10px'}} onClick=${()=>setShowTotpSetup(false)}>✕</button>
               </div>
-              <div style=${{fontSize:9,color:'var(--tx3)',marginTop:4}}>Copy this key if you can't scan the QR code</div>
-            </div>
-            <div style=${{padding:'8px 10px',background:'rgba(29,78,216,0.06)',borderRadius:9,border:'1px solid rgba(29,78,216,0.15)',fontSize:11,color:'var(--tx2)',lineHeight:1.6}}>
-              <b>Steps:</b><br/>
-              1. Open <b>Google Authenticator</b> or <b>Authy</b><br/>
-              2. Tap <b>+</b> → Scan QR code (or enter key manually)<br/>
-              3. Enter the 6-digit code below to confirm
-            </div>
-          </div>
-        </div>
 
-        <div style=${{marginBottom:14}}>
-          <label class="lbl">Enter Code from App to Confirm</label>
-          <input class="inp" type="text" inputMode="numeric" pattern="[0-9]*"
-            value=${totpVerifyToken}
-            onInput=${e=>setTotpVerifyToken(e.target.value.replace(/\D/g,'').slice(0,6))}
-            onKeyDown=${e=>e.key==='Enter'&&confirmTotpSetup()}
-            placeholder="000000"
-            style=${{textAlign:'center',fontSize:22,fontWeight:700,fontFamily:'monospace',letterSpacing:6}}/>
-        </div>
-        ${totpMsg?html`<div style=${{padding:'8px 12px',background:totpMsg.startsWith('✓')?'rgba(74,222,128,0.1)':'rgba(239,68,68,0.08)',border:'1px solid '+(totpMsg.startsWith('✓')?'rgba(74,222,128,0.3)':'rgba(239,68,68,0.2)'),borderRadius:8,fontSize:12,color:totpMsg.startsWith('✓')?'#4ade80':'var(--rd)',marginBottom:12}}>${totpMsg}</div>`:null}
-        <div style=${{display:'flex',gap:9,justifyContent:'flex-end'}}>
-          <button class="btn bg" onClick=${()=>setShowTotpSetup(false)}>Cancel</button>
-          <button class="btn bp" onClick=${confirmTotpSetup} disabled=${totpVerifying||totpVerifyToken.replace(/\s/g,'').length!==6}>
-            ${totpVerifying?html`<span class="spin"></span>`:null} Confirm & Enable
-          </button>
-        </div>
-      </div>
-    </div>`:null}
-    </div>`;
+              <div style=${{display:'grid',gridTemplateColumns:'auto 1fr',gap:20,marginBottom:20,alignItems:'start'}}>
+                <div style=${{textAlign:'center'}}>
+                  <div style=${{background:'white',padding:10,borderRadius:10,border:'1px solid var(--bd)',display:'inline-block',boxShadow:'0 4px 16px rgba(0,0,0,.1)'}}>
+                    <${QRCodeDisplay} otpauth=${totpData.otpauth} size=${160}/>
+                  </div>
+                  <div style=${{fontSize:9,color:'var(--tx3)',marginTop:6}}>Scan with Google Authenticator</div>
+                </div>
+                <div>
+                  <div style=${{marginBottom:12}}>
+                    <div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:6}}>Manual Entry</div>
+                    <div style=${{fontFamily:'monospace',fontSize:12,background:'var(--sf2)',padding:'8px 10px',borderRadius:9,border:'1px solid var(--bd)',letterSpacing:3,wordBreak:'break-all',color:'var(--tx)',userSelect:'all'}}>
+                      ${totpData.secret}
+                    </div>
+                    <div style=${{fontSize:9,color:'var(--tx3)',marginTop:4}}>Copy this key if you can't scan the QR code</div>
+                  </div>
+                  <div style=${{padding:'8px 10px',background:'rgba(29,78,216,0.06)',borderRadius:9,border:'1px solid rgba(29,78,216,0.15)',fontSize:11,color:'var(--tx2)',lineHeight:1.6}}>
+                    <b>Steps:</b><br/>
+                    1. Open <b>Google Authenticator</b> or <b>Authy</b><br/>
+                    2. Tap <b>+</b> → Scan QR code (or enter key manually)<br/>
+                    3. Enter the 6-digit code below to confirm
+                  </div>
+                </div>
+              </div>
+
+              <div style=${{marginBottom:14}}>
+                <label class="lbl">Enter Code from App to Confirm</label>
+                <input class="inp" type="text" inputMode="numeric" pattern="[0-9]*"
+                  value=${totpVerifyToken}
+                  onInput=${e=>setTotpVerifyToken(e.target.value.replace(/\D/g,'').slice(0,6))}
+                  onKeyDown=${e=>e.key==='Enter'&&confirmTotpSetup()}
+                  placeholder="000000"
+                  style=${{textAlign:'center',fontSize:22,fontWeight:700,fontFamily:'monospace',letterSpacing:6}}/>
+              </div>
+              ${totpMsg?html`<div style=${{padding:'8px 12px',background:totpMsg.startsWith('✓')?'rgba(74,222,128,0.1)':'rgba(239,68,68,0.08)',border:'1px solid '+(totpMsg.startsWith('✓')?'rgba(74,222,128,0.3)':'rgba(239,68,68,0.2)'),borderRadius:8,fontSize:12,color:totpMsg.startsWith('✓')?'#4ade80':'var(--rd)',marginBottom:12}}>${totpMsg}</div>`:null}
+              <div style=${{display:'flex',gap:9,justifyContent:'flex-end'}}>
+                <button class="btn bg" onClick=${()=>setShowTotpSetup(false)}>Cancel</button>
+                <button class="btn bp" onClick=${confirmTotpSetup} disabled=${totpVerifying||totpVerifyToken.replace(/\s/g,'').length!==6}>
+                  ${totpVerifying?html`<span class="spin"></span>`:null} Confirm & Enable
+                </button>
+              </div>
+            </div>
+          </div>`:null}
+          </div>`}
+      </td>
+
+      <td style=${{padding:'12px 14px'}}>
+        <select class="sel" style=${{width:130,padding:'6px 28px 6px 10px'}} value=${u.role}
+          onChange=${e=>api.put('/api/users/'+u.id,{role:e.target.value}).then(()=>reload&&reload())}
+          disabled=${u.id===cu.id&&cu.role==='Admin'}>
+          ${(roleOptions||ROLES).map(r=>html`<option key=${r}>${r}</option>`)}
+        </select>
+      </td>
+      <td style=${{padding:'12px 14px'}}>
+        ${u.id!==cu.id?html`<button class="btn brd" style=${{padding:'5px 11px',fontSize:12}}
+          onClick=${()=>window.confirm('Remove '+u.name+'?')&&api.del('/api/users/'+u.id).then(()=>reload&&reload())}>🗑</button>`:null}
+      </td>
+    </tr>`;
 }
 
 function TeamView({users,cu,reload,projects}){
@@ -6259,7 +6251,6 @@ function TeamView({users,cu,reload,projects}){
   const [tName,setTName]=useState('');const [tLead,setTLead]=useState('');const [tMembers,setTMembers]=useState([]);
   const [savingTeam,setSavingTeam]=useState(false);
   const [memberSearch,setMemberSearch]=useState('');
-  const [roleFilter,setRoleFilter]=useState('all');
   const [teamSearch,setTeamSearch]=useState('');
   const [roleOptions,setRoleOptions]=useState(ROLES);
   useEffect(()=>{api.get('/api/workspace/roles',{quiet:true,timeoutMs:12000}).then(r=>{if(r&&r.ok)setRoleOptions([...(r.items||[]).map(x=>x.name)].filter(Boolean));}).catch(()=>{});},[]);
@@ -6319,21 +6310,10 @@ function TeamView({users,cu,reload,projects}){
       console.error('[TeamView] users is not an array:',typeof users,users);
       return [];
     }
-    return userArray.filter(u=>u&&u.id&&u.name&&u.email&&(roleFilter==='all'||u.role===roleFilter)&&(!memberSearch||u.name.toLowerCase().includes(memberSearch.toLowerCase())||u.email.toLowerCase().includes(memberSearch.toLowerCase())));
-  },[users,memberSearch,roleFilter]);
+    return userArray.filter(u=>u&&u.id&&u.name&&u.email&&(!memberSearch||u.name.toLowerCase().includes(memberSearch.toLowerCase())||u.email.toLowerCase().includes(memberSearch.toLowerCase())));
+  },[users,memberSearch]);
   const filteredTeams=useMemo(()=>teams.filter(t=>!teamSearch||t.name.toLowerCase().includes(teamSearch.toLowerCase())),[teams,teamSearch]);
   const ROLE_COLORS={Admin:'var(--ac)',Manager:'var(--gn)',TeamLead:'var(--cy)',Developer:'var(--pu)',Tester:'var(--am)',Viewer:'var(--tx3)'};
-  const rolesInUse=useMemo(()=>{const set=new Set();safe(users).forEach(u=>u&&u.role&&set.add(u.role));return Array.from(set);},[users]);
-  const roleCounts=useMemo(()=>{const c={};safe(users).forEach(u=>{if(u&&u.role)c[u.role]=(c[u.role]||0)+1;});return c;},[users]);
-  const adminCount=safe(users).filter(u=>u&&u.role==='Admin').length;
-  const memberStatCard=(label,val,icon,color,bg)=>html`
-    <div style=${{padding:'16px 18px',borderRadius:16,background:'var(--sf)',border:'1px solid var(--bd)',display:'flex',flexDirection:'column',gap:6}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span style=${{fontSize:10,fontWeight:900,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.5}}>${label}</span>
-        <span style=${{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,background:bg,fontSize:14}}>${icon}</span>
-      </div>
-      <div style=${{fontSize:22,fontWeight:900,color:color||'var(--tx)'}}>${val}</div>
-    </div>`;
 
   return html`<div class="fi" style=${{height:'100%',overflowY:'auto',padding:'18px 22px',boxSizing:'border-box'}}>
         <div style=${{display:'flex',gap:4,marginBottom:18,background:'var(--sf2)',borderRadius:12,padding:4,width:'fit-content',border:'1px solid var(--bd)'}}>
@@ -6345,13 +6325,7 @@ function TeamView({users,cu,reload,projects}){
     </div>
 
     ${tab==='members'?html`
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginBottom:16}}>
-        ${memberStatCard('Team members',safe(users).length,'👥','var(--tx)','rgba(90,140,255,.12)')}
-        ${memberStatCard('Teams',teams.length,'🏷','var(--cy)','rgba(34,211,238,.10)')}
-        ${memberStatCard('Admins',adminCount,'🛡','var(--ac)','rgba(90,140,255,.10)')}
-        ${memberStatCard('Roles in use',rolesInUse.length,'🎭','var(--pu)','rgba(167,139,250,.10)')}
-      </div>
-      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}}>
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
         <div style=${{position:'relative',flex:1,maxWidth:300}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
             style=${{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--tx3)',pointerEvents:'none'}}>
@@ -6360,18 +6334,20 @@ function TeamView({users,cu,reload,projects}){
           <input class="inp" placeholder="Search members by name or email…" value=${memberSearch}
             style=${{paddingLeft:30,height:34,fontSize:12}} onInput=${e=>setMemberSearch(e.target.value)}/>
         </div>
-        <div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>
-          <button class=${'chip '+(roleFilter==='all'?'on':'')} style=${{fontSize:11,padding:'4px 10px'}} onClick=${()=>setRoleFilter('all')}>All ${safe(users).length}</button>
-          ${rolesInUse.map(r=>html`<button key=${r} class=${'chip '+(roleFilter===r?'on':'')} style=${{fontSize:11,padding:'4px 10px'}} onClick=${()=>setRoleFilter(r)}>${r} ${roleCounts[r]||0}</button>`)}
-        </div>
-        <span style=${{fontSize:12,color:'var(--tx3)',flexShrink:0,marginLeft:'auto'}}>${filteredMembers.length} of ${safe(users).length}</span>
+        <span style=${{fontSize:12,color:'var(--tx3)',flexShrink:0}}>${filteredMembers.length} of ${safe(users).length}</span>
         <button class="btn bp" style=${{flexShrink:0}} onClick=${()=>setShowNew(true)}>+ Add Member</button>
       </div>
-      ${filteredMembers.length===0?html`
-        <div style=${{textAlign:'center',padding:'40px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:12,border:'1px dashed var(--bd)'}}>No members match your search.</div>`:html`
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
-        ${filteredMembers.map((u,i)=>html`<${MemberRow} key=${u.id} u=${u} cu=${cu} i=${i} total=${filteredMembers.length} reload=${reload} ROLE_COLORS=${ROLE_COLORS} roleOptions=${roleOptions}/>`)}
-      </div>`}`:null}
+      <div class="card" style=${{padding:0,overflow:'auto'}}>
+        <table style=${{width:'100%',borderCollapse:'collapse'}}>
+          <thead><tr style=${{borderBottom:'1px solid var(--bd)',background:'var(--sf2)'}}>
+            ${['Member','Email','Password & 2FA','Role',''].map((h,i)=>html`<th key=${i} style=${{padding:'9px 15px',textAlign:'left',fontSize:10,fontFamily:'monospace',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.5}}>${h}</th>`)}
+          </tr></thead>
+          <tbody>
+            ${filteredMembers.length===0?html`<tr><td colspan="5" style=${{padding:'20px',textAlign:'center',color:'var(--tx3)',fontSize:12}}>No members match your search.</td></tr>`:null}
+            ${filteredMembers.map((u,i)=>html`<${MemberRow} key=${u.id} u=${u} cu=${cu} i=${i} total=${filteredMembers.length} reload=${reload} ROLE_COLORS=${ROLE_COLORS} roleOptions=${roleOptions}/>`)}
+          </tbody>
+        </table>
+      </div>`:null}
 
     ${tab==='teams'?html`
       <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
@@ -6392,36 +6368,39 @@ function TeamView({users,cu,reload,projects}){
           <div style=${{fontWeight:600,marginBottom:4}}>No teams yet</div>
           <div>Create sub-teams to group members and manage multi-team workflows</div>
         </div>`:null}
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
+      <div style=${{display:'flex',flexDirection:'column',gap:10}}>
         ${filteredTeams.length===0&&teams.length>0?html`
-          <div style=${{gridColumn:'1/-1',textAlign:'center',padding:'20px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>No teams match your search.</div>`:null}
+          <div style=${{textAlign:'center',padding:'20px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>No teams match your search.</div>`:null}
         ${filteredTeams.map(t=>{
           const members=parseIdList(t.member_ids).map(id=>umap[id]).filter(Boolean);
           const lead=t.lead_id?umap[t.lead_id]:null;
           return html`
-          <div key=${t.id} class="card" style=${{display:'flex',flexDirection:'column',gap:10,padding:16}}>
-            <div style=${{display:'flex',alignItems:'center',gap:10}}>
-              <div style=${{width:40,height:40,borderRadius:12,background:'var(--ac3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>🏷</div>
-              <div style=${{flex:1,minWidth:0}}>
-                <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${t.name}</div>
+          <div key=${t.id} class="card" style=${{display:'flex',gap:14,alignItems:'flex-start'}}>
+            <div style=${{width:44,height:44,borderRadius:12,background:'var(--ac3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>🏷</div>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                <span style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${t.name}</span>
                 <span class="tx3-11">${members.length} member${members.length!==1?'s':''}</span>
               </div>
+              ${lead?html`<div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                <span class="tx3-11">Lead:</span>
+                <${Av} u=${lead} size=${20}/>
+                <span style=${{fontSize:12,fontWeight:600,color:'var(--cy)'}}>${lead.name}</span>
+              </div>`:null}
+              <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+                ${members.map(m=>html`
+                  <div key=${m.id} style=${{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',background:'var(--sf2)',borderRadius:20,border:'1px solid var(--bd)'}}>
+                    <${Av} u=${m} size=${18}/>
+                    <div>
+                      <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:500}}>${m.name}</div>
+                      
+                    </div>
+                  </div>`)}
+              </div>
             </div>
-            ${lead?html`<div style=${{display:'flex',alignItems:'center',gap:6}}>
-              <span class="tx3-11">Lead:</span>
-              <${Av} u=${lead} size=${20}/>
-              <span style=${{fontSize:12,fontWeight:600,color:'var(--cy)'}}>${lead.name}</span>
-            </div>`:null}
-            <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
-              ${members.map(m=>html`
-                <div key=${m.id} style=${{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',background:'var(--sf2)',borderRadius:20,border:'1px solid var(--bd)'}}>
-                  <${Av} u=${m} size=${18}/>
-                  <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:500}}>${m.name}</div>
-                </div>`)}
-            </div>
-            <div style=${{display:'flex',gap:6,marginTop:4}}>
-              <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEditTeam(t)}>✏️ Edit</button>
-              <button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>delTeam(t.id)}>🗑 Delete</button>
+            <div style=${{display:'flex',gap:6,flexShrink:0}}>
+              <button class="btn bg" style=${{padding:'6px 10px',fontSize:12}} onClick=${()=>openEditTeam(t)}>✏️ Edit</button>
+              <button class="btn brd" style=${{padding:'6px 10px',fontSize:12,color:'var(--rd)'}} onClick=${()=>delTeam(t.id)}>🗑</button>
             </div>
           </div>`;
         })}
@@ -6526,7 +6505,7 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
   const [internalNote,setInternalNote]=useState('');
   const [savingComment,setSavingComment]=useState(false);
   const [showResolved,setShowResolved]=useState(false);
-  const [viewMode,setViewMode]=useState('grid');
+  const [viewMode,setViewMode]=useState('board');
   const [dragTicketId,setDragTicketId]=useState(null);
   const [copilotOpen,setCopilotOpen]=useState(true);
 
@@ -6743,7 +6722,7 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
       <div style=${{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}>
         ${Object.entries(STATUS_CFG).map(([s,c])=>html`<button key=${s} class=${'chip'+(filterStatus===s?' on':'')} onClick=${()=>setFilterStatus(filterStatus===s?'':s)} style=${{fontSize:11,display:'flex',alignItems:'center',gap:4}}>${c.icon} ${c.label} <span style=${{fontWeight:800,color:c.color}}>${statCounts[s]||0}</span></button>`)}
       </div>
-      <div style=${{display:'flex',gap:7}}><button class=${'chip'+(viewMode==='grid'?' on':'')} onClick=${()=>setViewMode('grid')}>▤ Grid</button><button class=${'chip'+(viewMode==='board'?' on':'')} onClick=${()=>setViewMode('board')}>▦ Board</button><button class=${'chip'+(viewMode==='list'?' on':'')} onClick=${()=>setViewMode('list')}>☰ List</button><button class=${'chip'+(viewMode==='analytics'?' on':'')} onClick=${()=>setViewMode('analytics')}>📊 Analytics</button><button class="btn bp" style=${{fontSize:12}} onClick=${()=>{setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');setShowNew(true);}}>+ New Ticket</button></div>
+      <div style=${{display:'flex',gap:7}}><button class=${'chip'+(viewMode==='board'?' on':'')} onClick=${()=>setViewMode('board')}>▦ Board</button><button class=${'chip'+(viewMode==='list'?' on':'')} onClick=${()=>setViewMode('list')}>☰ List</button><button class=${'chip'+(viewMode==='analytics'?' on':'')} onClick=${()=>setViewMode('analytics')}>📊 Analytics</button><button class="btn bp" style=${{fontSize:12}} onClick=${()=>{setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');setShowNew(true);}}>+ New Ticket</button></div>
     </div>
 
     <div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center',padding:'6px 8px',border:'1px solid var(--bd)',background:'linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.018))',borderRadius:16}}>
@@ -6763,30 +6742,6 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
       <div class="card"><b>Agent workload</b><div style=${{display:'grid',gap:8,marginTop:10}}>${safe(users).slice(0,6).map(u=>{const n=tickets.filter(t=>t.assignee===u.id&&!['closed','resolved'].includes(t.status)).length;return html`<div style=${{display:'flex',alignItems:'center',gap:8}}><${Av} u=${u} size=${22}/><span style=${{fontSize:12,flex:1}}>${u.name}</span><b>${n}</b></div>`})}</div></div>
       <div class="card"><b>SLA heatmap</b><div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginTop:12}}>${['critical','high','medium','low'].map(p=>html`<div style=${{padding:10,borderRadius:12,background:(PRIORITY_CFG[p]||{}).color+'22',textAlign:'center'}}><div>${(PRIORITY_CFG[p]||{}).icon}</div><b>${tickets.filter(t=>t.priority===p&&slaInfo(t).risk==='breach').length}</b><div style=${{fontSize:9,color:'var(--tx3)'}}>${p}</div></div>`)}</div></div>
       <div class="card"><b>Automation ideas</b><div style=${{fontSize:12,color:'var(--tx2)',lineHeight:1.7,marginTop:8}}>• Auto-assign unowned critical tickets<br/>• Escalate SLA breaches<br/>• Auto-close inactive resolved tickets<br/>• Create task from feature ticket</div></div>
-    </div>`:null}
-
-    ${!busy&&viewMode==='grid'?html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
-      ${visibleTickets.map(t=>{
-        const tc=TYPE_CFG[t.type]||TYPE_CFG.bug, pc=PRIORITY_CFG[t.priority]||PRIORITY_CFG.medium, sc=STATUS_CFG[t.status]||STATUS_CFG.open;
-        const assignee=t.assignee?umap[t.assignee]:null;
-        return html`
-        <div key=${t.id} class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16,cursor:'pointer'}} onClick=${()=>openDetail(t)}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-            <span style=${{fontSize:14,fontWeight:800,color:'var(--tx)'}}>${t.title}</span>
-            ${assignee?html`<${Av} u=${assignee} size=${24}/>`:null}
-          </div>
-          <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:pc.color+'22',color:pc.color,fontWeight:800,textTransform:'uppercase'}}>${pc.label}</span>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:sc.color+'22',color:sc.color,fontWeight:800,textTransform:'uppercase'}}>${sc.label}</span>
-          </div>
-          <div style=${{fontSize:11,color:'var(--tx3)'}}>From ${assignee?assignee.name:'Unassigned'}</div>
-          ${t.description?html`<div style=${{fontSize:12,color:'var(--tx2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.description}</div>`:null}
-          <div style=${{display:'flex',gap:6,marginTop:6}} onClick=${e=>e.stopPropagation()}>
-            ${canEdit?html`<button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEdit(t)}>✏️ Edit</button>`:null}
-            ${canDelete?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>del(t.id)}>🗑 Delete</button>`:null}
-          </div>
-        </div>`;
-      })}
     </div>`:null}
 
     ${!busy&&viewMode==='board'?html`<div style=${{display:'grid',gridTemplateColumns:'repeat(5,minmax(210px,1fr))',gap:10,alignItems:'start',overflowX:'auto',paddingBottom:8}}>
@@ -8329,8 +8284,7 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
   const [addMins,setAddMins]=useState(10);
   const [saving,setSaving]=useState(false);
   const [addProjId,setAddProjId]=useState('');
-  const [searchQ,setSearchQ]=useState('');
-  const [filterTab,setFilterTab]=useState('all');
+  const [showCompleted,setShowCompleted]=useState(false);
   const [editReminder,setEditReminder]=useState(null);
   const [editDate,setEditDate]=useState('');
   const [editTime,setEditTime]=useState('');
@@ -8348,7 +8302,6 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
   useEffect(()=>{load();},[load]);
 
   const del=async id=>{await api.del('/api/reminders/'+id);load();onReload&&onReload();};
-  const toggleDone=async r=>{await api.put('/api/reminders/'+r.id,{task_title:r.task_title,remind_at:r.remind_at,minutes_before:r.minutes_before,fired:r.fired?0:1});load();onReload&&onReload();};
 
   const openEdit=(r)=>{
     setEditReminder(r);
@@ -8406,6 +8359,9 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
         <div style=${{fontSize:13,color:'var(--tx2)'}}>Set reminders for your tasks — get notified with sound before they're due.</div>
         <div style=${{display:'flex',gap:8}}>
+          <button class=${'btn '+(showCompleted?'bp':'bg')} style=${{fontSize:12}} onClick=${()=>setShowCompleted(p=>!p)}>
+            ${showCompleted?'Hide Completed':'Show Completed ('+completed.length+')'}
+          </button>
           <button class="btn bp" style=${{fontSize:12}} onClick=${()=>{const now=new Date();setAddDate(now.toISOString().split('T')[0]);setAddTime(now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));setShowAdd(true);}}>+ Add Reminder</button>
         </div>
       </div>
@@ -8533,53 +8489,80 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
           </div>
         </div>`:null}
 
-      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-        <div style=${{position:'relative',flex:1,maxWidth:280}}>
-          <input class="inp" placeholder="Search reminders…" value=${searchQ} onInput=${e=>setSearchQ(e.target.value)} style=${{height:34,fontSize:12}}/>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+        <div>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <span style=${{fontWeight:700,fontSize:13,color:'var(--tx)'}}>⚡ Upcoming</span>
+            <span class="tx3-11">${upcoming.length} reminder${upcoming.length!==1?'s':''}</span>
+          </div>
+          ${busy?html`<div class="spin" style=${{margin:'20px auto',display:'block'}}></div>`:null}
+          ${!busy&&upcoming.length===0?html`
+            <div style=${{textAlign:'center',padding:'28px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>
+              <div style=${{fontSize:28,marginBottom:8}}>✅</div>
+              <div>No upcoming reminders</div>
+            </div>`:null}
+          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
+            ${upcoming.map(r=>{
+              const ft=fmtRem(r.remind_at);
+              return html`
+                <div key=${r.id} style=${{display:'flex',gap:10,padding:'11px 13px',background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)',alignItems:'center'}}>
+                  <div style=${{width:36,height:36,borderRadius:9,background:'rgba(251,191,36,.1)',border:'1px solid rgba(251,191,36,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>⏰</div>
+                  <div style=${{flex:1,minWidth:0}}>
+                    <div style=${{fontSize:12,fontWeight:700,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>${r.task_title}</div>
+                    <div style=${{display:'flex',gap:6,alignItems:'center'}}>
+                      <span style=${{fontSize:10,padding:'1px 6px',borderRadius:4,background:ft.bg,color:ft.cls,fontWeight:700}}>${ft.label}</span>
+                      <span class="mono-10">${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                      ${r.minutes_before>0?html`<span style=${{fontSize:10,color:'var(--am)'}}>🔔 ${r.minutes_before}min before</span>`:null}
+                    </div>
+                  </div>
+                  <button class="btn bg" title="Edit" style=${{fontSize:11,padding:'4px 8px',flexShrink:0,marginRight:4}} onClick=${()=>openEdit(r)}>✏️</button>
+                  <button class="btn brd" style=${{fontSize:10,padding:'4px 8px',flexShrink:0}} onClick=${()=>del(r.id)}>✕</button>
+                </div>`;
+            })}
+          </div>
         </div>
-        <div style=${{display:'flex',gap:4}}>
-          ${[['all','All',reminders.length],['pending','Pending',active.length],['done','Done',completed.length]].map(([v,l,n])=>html`
-            <button key=${v} class=${'chip '+(filterTab===v?'on':'')} onClick=${()=>setFilterTab(v)} style=${{fontSize:11,padding:'4px 10px'}}>${l} ${n}</button>`)}
+        <div>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <span style=${{fontWeight:700,fontSize:13,color:'var(--rd)'}}>🚨 Overdue</span>
+            <span class="tx3-11">${overdue.length} past due</span>
+          </div>
+          ${!busy&&overdue.length===0?html`
+            <div style=${{textAlign:'center',padding:'28px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>
+              <div style=${{fontSize:28,marginBottom:8}}>🎉</div>
+              <div>Nothing overdue!</div>
+            </div>`:null}
+          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
+            ${overdue.map(r=>html`
+              <div key=${r.id} style=${{display:'flex',gap:10,padding:'11px 13px',background:'rgba(248,113,113,.03)',borderRadius:10,border:'1px solid rgba(248,113,113,.15)',alignItems:'center'}}>
+                <div style=${{width:36,height:36,borderRadius:9,background:'rgba(248,113,113,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>⚠️</div>
+                <div style=${{flex:1,minWidth:0}}>
+                  <div style=${{fontSize:12,fontWeight:700,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>${r.task_title}</div>
+                  <span style=${{fontSize:10,color:'var(--rd)',fontFamily:'monospace'}}>${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                </div>
+                <button class="btn brd" style=${{fontSize:10,padding:'4px 8px',flexShrink:0}} onClick=${()=>del(r.id)}>✕</button>
+              </div>`)}
+          </div>
         </div>
       </div>
 
-      ${busy?html`<div class="spin" style=${{margin:'20px auto',display:'block'}}></div>`:null}
-      ${(()=>{
-        const q=searchQ.toLowerCase();
-        const list=reminders.filter(r=>{
-          const matchTab=filterTab==='all'||(filterTab==='pending'&&!r.fired)||(filterTab==='done'&&r.fired);
-          const matchQ=!q||(r.task_title||'').toLowerCase().includes(q);
-          return matchTab&&matchQ;
-        }).sort((a,b)=>new Date(b.remind_at)-new Date(a.remind_at));
-        if(!busy&&list.length===0){
-          return html`<div style=${{textAlign:'center',padding:'36px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:14,border:'1px dashed var(--bd)'}}>
-              <div style=${{fontSize:28,marginBottom:8}}>⏰</div>
-              <div>${q||filterTab!=='all'?'No reminders match your filters.':'No reminders yet.'}</div>
-            </div>`;
-        }
-        return html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
-          ${list.map(r=>{
-            const ft=fmtRem(r.remind_at);
-            const done=!!r.fired;
-            return html`
-              <div key=${r.id} class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:14,opacity:done?.75:1}}>
-                <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                  <span style=${{fontSize:13,fontWeight:700,color:'var(--tx)',textDecoration:done?'line-through':'none',opacity:done?.7:1}}>${r.task_title}</span>
-                  <span style=${{fontSize:10,fontWeight:900,padding:'3px 8px',borderRadius:999,textTransform:'uppercase',background:done?'rgba(74,222,128,.12)':ft.bg,color:done?'var(--gn)':ft.cls,flexShrink:0}}>${done?'Done':ft.label}</span>
+      ${showCompleted&&completed.length>0?html`
+        <div style=${{marginTop:20}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <span style=${{fontWeight:700,fontSize:13,color:'var(--gn)'}}>✅ Completed Reminders</span>
+            <span class="tx3-11">${completed.length} done</span>
+          </div>
+          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
+            ${completed.map(r=>html`
+              <div key=${r.id} style=${{display:'flex',gap:10,padding:'10px 13px',background:'rgba(74,222,128,.04)',borderRadius:10,border:'1px solid rgba(74,222,128,.15)',alignItems:'center',opacity:.75}}>
+                <div style=${{width:32,height:32,borderRadius:8,background:'rgba(74,222,128,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>✅</div>
+                <div style=${{flex:1,minWidth:0}}>
+                  <div style=${{fontSize:12,fontWeight:600,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:'line-through',opacity:.7}}>${r.task_title}</div>
+                  <span class="mono-10">${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
                 </div>
-                <div style=${{fontSize:11,color:'var(--tx3)'}}>
-                  ${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
-                  ${r.minutes_before>0?html` · 🔔 ${r.minutes_before}min before`:null}
-                </div>
-                <div style=${{display:'flex',gap:6,marginTop:4}}>
-                  <button class=${'btn '+(done?'bg':'bp')} style=${{flex:1,fontSize:12,padding:'6px 8px'}} onClick=${()=>toggleDone(r)}>${done?'↺ Mark pending':'✓ Mark done'}</button>
-                  <button class="btn bg" style=${{fontSize:12,padding:'6px 10px'}} onClick=${()=>openEdit(r)}>✏️ Edit</button>
-                  <button class="btn brd" style=${{fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>del(r.id)}>🗑</button>
-                </div>
-              </div>`;
-          })}
-        </div>`;
-      })()}
+                <button class="btn brd" style=${{fontSize:10,padding:'4px 8px',flexShrink:0}} onClick=${()=>del(r.id)}>✕</button>
+              </div>`)}
+          </div>
+        </div>`:null}
 
       ${editReminder?html`
         <div class="ov" onClick=${e=>e.target===e.currentTarget&&setEditReminder(null)}>
@@ -9355,9 +9338,9 @@ function PasswordGeneratorView(){
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ── VAULT VIEW — Spreadsheet-style credential store ───────────────────────────
+// ── VAULT VIEW — Categorized credential store ─────────────────────────────────
 
-// ── Storage helpers ───────────────────────────────────────────────────────────
+// ── Storage helpers (offline/local fallback) ───────────────────────────────────
 function vaultStorageKey(cu){
   if(cu && cu.id && cu.id !== 'offline'){
     try{ localStorage.setItem('project-tracker_last_uid', cu.id); }catch(_){}
@@ -9374,42 +9357,52 @@ async function vaultHashPw(pw){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-// ── Icon map ──────────────────────────────────────────────────────────────────
-const VAULT_ICON_MAP = [
-  { keys:['aws','amazon','s3','ec2','lambda'],         icon:'☁️',  bg:'rgba(255,153,0,.18)',   border:'rgba(255,153,0,1)'    },
-  { keys:['gcp','google','firebase','bigquery'],       icon:'🌐',  bg:'rgba(66,133,244,.18)',  border:'rgba(66,133,244,1)'   },
-  { keys:['azure','microsoft','office365'],            icon:'🔷',  bg:'rgba(0,120,212,.18)',   border:'rgba(0,120,212,1)'    },
-  { keys:['github','gitlab','bitbucket','git'],        icon:'🐙',  bg:'rgba(180,180,180,.14)', border:'rgba(200,200,200,1)'  },
-  { keys:['database','db','mysql','postgres','mongo','redis','sqlite'], icon:'🗃️', bg:'rgba(6,182,212,.18)', border:'rgba(6,182,212,1)' },
-  { keys:['slack','discord','telegram','chat'],        icon:'💬',  bg:'rgba(99,91,255,.18)',   border:'rgba(99,91,255,1)'    },
-  { keys:['stripe','payment','billing','razorpay'],    icon:'💳',  bg:'rgba(99,91,255,.16)',   border:'rgba(99,91,255,1)'    },
-  { keys:['email','smtp','sendgrid','mailgun','mail'],  icon:'📧',  bg:'rgba(90,94,247,.18)',   border:'rgba(90,94,247,1)'    },
-  { keys:['ssh','server','vps','nginx','linux'],        icon:'🖥️',  bg:'rgba(16,185,129,.16)',  border:'rgba(16,185,129,1)'   },
-  { keys:['docker','kubernetes','k8s','container'],    icon:'🐳',  bg:'rgba(9,150,224,.18)',   border:'rgba(9,150,224,1)'    },
-  { keys:['api','token','key','secret','oauth','jwt'],  icon:'🔑',  bg:'rgba(245,158,11,.18)',  border:'rgba(245,158,11,1)'   },
-  { keys:['wallet','crypto','btc','eth','web3'],       icon:'🪙',  bg:'rgba(255,184,0,.18)',   border:'rgba(255,184,0,1)'    },
-  { keys:['openai','claude','gemini','llm','ai','ml'], icon:'🤖',  bg:'rgba(16,163,127,.18)',  border:'rgba(16,163,127,1)'   },
-  { keys:['vpn','sophos','wireguard','openvpn'],       icon:'🛡️',  bg:'rgba(168,85,247,.18)',  border:'rgba(168,85,247,1)'   },
-  { keys:['note','memo','personal','misc'],            icon:'📝',  bg:'rgba(148,163,184,.14)', border:'rgba(148,163,184,1)'  },
-];
-const VAULT_ICON_DEFAULT = { icon:'🗂️', bg:'rgba(90,94,247,.18)', border:'rgba(90,94,247,1)' };
-function vaultGetIcon(title, tags){
-  const hay = ((title||'')+(tags||'')).toLowerCase();
-  for(const e of VAULT_ICON_MAP){ if(e.keys.some(k=>hay.includes(k))) return e; }
-  return VAULT_ICON_DEFAULT;
+// ── Category metadata ────────────────────────────────────────────────────────
+const VAULT_CATEGORIES = ['database','api','server','auth','cloud','other'];
+const VAULT_CAT_META = {
+  database: { label:'Database',        icon:'🗃️', accent:'#a855f7', bg:'rgba(168,85,247,.14)'  },
+  api:      { label:'API / Deployment',icon:'🔌', accent:'#5a5ef7', bg:'rgba(90,94,247,.14)'   },
+  server:   { label:'Server',          icon:'🖥️', accent:'#f59e0b', bg:'rgba(245,158,11,.14)'  },
+  auth:     { label:'Auth / SSO',      icon:'🛡️', accent:'#22c55e', bg:'rgba(34,197,94,.14)'   },
+  cloud:    { label:'Cloud',           icon:'☁️', accent:'#22d3ee', bg:'rgba(34,211,238,.14)'  },
+  other:    { label:'Other',           icon:'🗂️', accent:'#94a3b8', bg:'rgba(148,163,184,.14)' },
+};
+function vaultCatMeta(cat){ return VAULT_CAT_META[cat] || VAULT_CAT_META.other; }
+
+// ── Field normalization ─────────────────────────────────────────────────────
+// New-format cards store `rows` as a plain array of {id,label,value,secret}
+// credential fields. Legacy cards (pre-redesign) stored a spreadsheet:
+// `cols`=[{id,label}] + `rows`=[{_id,_secret,[col.id]:value}]. For those we
+// derive one field per row from the first two columns (the app's own default
+// column set was always Key/Value, which covers the vast majority of legacy
+// cards). Cards with more than two custom columns will only surface the
+// first two here on display — the original cols/rows are left untouched in
+// storage unless the card is actually re-saved through the new editor.
+function vaultNormalizeFields(card){
+  const rows = card.rows||[];
+  if(!rows.length) return [];
+  if(rows[0] && typeof rows[0]==='object' && 'label' in rows[0] && 'value' in rows[0] && !('col_0' in rows[0])){
+    return rows.map(f=>({ id:f.id||vaultNewId(), label:f.label||'', value:f.value||'', secret:!!f.secret }));
+  }
+  const cols = card.cols||[];
+  const c0 = cols[0] && cols[0].id, c1 = cols[1] && cols[1].id;
+  return rows.map(r=>({
+    id: r._id || vaultNewId(),
+    label: c0 ? (r[c0]||'') : '',
+    value: c1 ? (r[c1]||'') : (c0 ? (r[c0]||'') : ''),
+    secret: !!r._secret,
+  })).filter(f=>f.label || f.value);
 }
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const VS = {
   wrap:   { flex:1, display:'flex', flexDirection:'column', height:'100%', overflowY:'auto', overflowX:'hidden', width:'100%', boxSizing:'border-box', scrollbarWidth:'thin', scrollbarColor:'#5a5ef7 rgba(90,94,247,0.08)' },
-  wrapInner: { padding:'24px 28px', maxWidth:1100, width:'100%' },
-  ph:     { display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,gap:12 },
   btnPri: { background:'linear-gradient(135deg,#5a5ef7,#a855f7)',color:'#fff',border:'none',padding:'8px 18px',borderRadius:100,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6,transition:'opacity .15s' },
   btnCan: { background:'none',border:'1px solid var(--bd)',color:'var(--tx2)',fontSize:13,padding:'7px 16px',borderRadius:100,cursor:'pointer',fontFamily:'inherit' },
   moBack: { position:'fixed',inset:0,background:'rgba(0,0,0,.82)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(8px)' },
 };
 
-// ── Password modal ────────────────────────────────────────────────────────────
+// ── Password modal (per-card lock — real SHA-256 hash, unchanged) ─────────────
 function VaultPwModal({title, mode, onConfirm, onClose}){
   // mode: 'set' | 'verify'
   const [pw1,setPw1]=useState('');
@@ -9433,8 +9426,8 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
   return html`
     <div style=${{...VS.moBack,zIndex:2147483000}} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
       <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:16,padding:'26px',width:400,maxWidth:'calc(100vw - 32px)',boxShadow:'0 32px 80px rgba(0,0,0,.6)',position:'relative'}}>
-        <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)',marginBottom:4}}>${mode==='set' ? '🔒 Lock Card' : '🔓 Unlock Card'}</div>
-        <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:18,lineHeight:1.5}}>${mode==='set' ? 'Set a password to protect "'+title+'". This popup is now outside the card so it will not be hidden.' : 'Enter password for "'+title+'"'}</div>
+        <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)',marginBottom:4}}>${mode==='set' ? '🔒 Lock Credential' : '🔓 Unlock Credential'}</div>
+        <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:18,lineHeight:1.5}}>${mode==='set' ? 'Set a password to protect "'+title+'".' : 'Enter password for "'+title+'"'}</div>
         <div style=${{marginBottom:12,position:'relative'}}>
           <input style=${inp} type=${show1?'text':'password'} placeholder="Password" value=${pw1}
             autoComplete="new-password"
@@ -9454,7 +9447,7 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
         ${mode==='set' && html`<div style=${{fontSize:11,color:'var(--tx2)',background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.15)',borderRadius:7,padding:'7px 10px',marginBottom:14}}>⚠️ Cannot be recovered if forgotten.</div>`}
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
-          <button style=${{...VS.btnPri, background: mode==='set' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#5a5ef7,#a855f7)'}} onClick=${submit}>${mode==='set'?'Lock Card':'Unlock'}</button>
+          <button style=${{...VS.btnPri, background: mode==='set' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#5a5ef7,#a855f7)'}} onClick=${submit}>${mode==='set'?'Lock':'Unlock'}</button>
         </div>
       </div>
     </div>`;
@@ -9476,271 +9469,221 @@ function VaultDelModal({title, onConfirm, onClose}){
     </div>`;
 }
 
-// ── Spreadsheet card ──────────────────────────────────────────────────────────
-function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate}){
-  const isLocked = !!card.lockHash;
-  const canSee = !isLocked || isUnlocked;
-  const iconInfo = vaultGetIcon(card.title, card.tags);
-
-  const [title,    setTitle]    = useState(card.title||'');
-  const [tags,     setTags]     = useState(card.tags||'');
-  const [cols,     setCols]     = useState(()=>{
-    if(card.cols && card.cols.length) return card.cols;
-    const raw = card.rows||[];
-    if(!raw.length) return [{id:'c1',label:'Key'},{id:'c2',label:'Value'}];
-    return raw[0] ? Object.keys(raw[0]).filter(k=>!['_secret','_id','secret'].includes(k)).map((k,i)=>({id:'col_'+i,label:k})) : [{id:'c1',label:'Key'},{id:'c2',label:'Value'}];
+// ── Add/Edit credential modal (Details / Fields / Notes tabs) ─────────────────
+function VaultCardModal({card, onClose, onSave}){
+  const [tab,         setTab]        = useState('details');
+  const [title,       setTitle]      = useState(card?card.title||'':'');
+  const [category,    setCategory]   = useState(card?(card.category||'other'):'database');
+  const [description, setDescription]= useState(card?(card.description||''):'');
+  const [tags,        setTags]       = useState(card?(card.tags||''):'');
+  const [expiry,      setExpiry]     = useState(card?(card.expiry||''):'');
+  const [notes,       setNotes]      = useState(card?(card.notes||''):'');
+  const [fields,      setFields]     = useState(()=>{
+    const norm = card ? vaultNormalizeFields(card) : [];
+    return norm.length ? norm : [{id:vaultNewId(),label:'',value:'',secret:true}];
   });
-  const [rows,     setRows]     = useState(()=>{
-    const raw = card.rows||[];
-    if(!raw.length) return [];
-    if(raw[0] && ('k' in raw[0] || 'v' in raw[0])){
-      return raw.map(r=>({ _id: vaultNewId(), _secret: !!r.secret, col_0: r.k||'', col_1: r.v||'' }));
-    }
-    return raw.map(r=>({...r, _id: r._id||vaultNewId()}));
-  });
-  const [editing,  setEditing]  = useState(false);
-  const [showPwMo, setShowPwMo] = useState(null);
-  const [showDel,  setShowDel]  = useState(false);
-  const [showSecretCells, setShowSecretCells] = useState({});
-  const [copyFlash,setCopyFlash]= useState(null);
-  const [saving, setSaving] = useState(false);
-  const [menu, setMenu] = useState(null); // {type:'row'|'col', id, index, x, y}
+  const [genLen,       setGenLen]    = useState(20);
+  const [err,          setErr]       = useState('');
 
-  function push(nextCols, nextRows, nextTitle, nextTags){
-    const c = nextCols  !== undefined ? nextCols  : cols;
-    const r = nextRows  !== undefined ? nextRows  : rows;
-    const t = nextTitle !== undefined ? nextTitle : title;
-    const tg= nextTags  !== undefined ? nextTags  : tags;
-    setSaving(true);
-    onUpdate({...card, title:t, tags:tg, cols:c, rows:r});
-    setTimeout(() => setSaving(false), 800);
+  function updateField(id, patch){ setFields(fs=>fs.map(f=>f.id===id?{...f,...patch}:f)); }
+  function addField(){ setFields(fs=>[...fs,{id:vaultNewId(),label:'',value:'',secret:true}]); }
+  function removeField(id){ setFields(fs=>fs.filter(f=>f.id!==id)); }
+  function generatePassword(){
+    const len = Math.max(8, Math.min(64, parseInt(genLen,10)||20));
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+    let pw=''; for(let i=0;i<len;i++) pw+=chars[Math.floor(Math.random()*chars.length)];
+    setFields(fs=>{
+      if(!fs.length) return [{id:vaultNewId(),label:'Password',value:pw,secret:true}];
+      const next=[...fs];
+      next[next.length-1] = {...next[next.length-1], value:pw, secret:true, label: next[next.length-1].label||'Password'};
+      return next;
+    });
   }
-
-  function emptyRow(){
-    const obj={_id:vaultNewId(),_secret:false};
-    cols.forEach(c=>{obj[c.id]='';});
-    return obj;
-  }
-  function addCol(){ insertColAt(cols.length, 'right'); }
-  function addRow(){ insertRowAt(rows.length); }
-  function updateColLabel(cid,val){
-    const next=cols.map(c=>c.id===cid?{...c,label:val}:c);
-    setCols(next); push(next,undefined,undefined,undefined);
-  }
-  function insertColAt(index, side){
-    const insertAt = Math.max(0, Math.min(cols.length, side==='left'?index:index+1));
-    const id='col_'+Date.now()+Math.random().toString(36).slice(2,5);
-    const nextCols=[...cols.slice(0,insertAt),{id,label:'Column '+(cols.length+1)},...cols.slice(insertAt)];
-    const nextRows=rows.map(r=>({...r,[id]:''}));
-    setCols(nextCols); setRows(nextRows); push(nextCols,nextRows,undefined,undefined); setMenu(null);
-  }
-  function removeCol(cid){
-    if(cols.length<=1) return;
-    const nextCols=cols.filter(c=>c.id!==cid);
-    const nextRows=rows.map(r=>{ const n={...r}; delete n[cid]; return n; });
-    setCols(nextCols); setRows(nextRows); push(nextCols,nextRows,undefined,undefined); setMenu(null);
-  }
-  function moveCol(cid,delta){
-    const i=cols.findIndex(c=>c.id===cid); if(i<0) return;
-    const j=i+delta; if(j<0||j>=cols.length) return;
-    const next=[...cols]; [next[i],next[j]]=[next[j],next[i]];
-    setCols(next); push(next,undefined,undefined,undefined); setMenu(null);
-  }
-  function updateCell(rid,cid,val){
-    const next=rows.map(r=>r._id===rid?{...r,[cid]:val}:r);
-    setRows(next); push(undefined,next,undefined,undefined);
-  }
-  function toggleRowSecret(rid){
-    const next=rows.map(r=>r._id===rid?{...r,_secret:!r._secret}:r);
-    setRows(next); push(undefined,next,undefined,undefined);
-  }
-  function insertRowAt(index){
-    const next=[...rows.slice(0,index),emptyRow(),...rows.slice(index)];
-    setRows(next); push(undefined,next,undefined,undefined); setMenu(null);
-  }
-  function duplicateRow(rid){
-    const i=rows.findIndex(r=>r._id===rid); if(i<0) return;
-    const copy={...rows[i],_id:vaultNewId()};
-    const next=[...rows.slice(0,i+1),copy,...rows.slice(i+1)];
-    setRows(next); push(undefined,next,undefined,undefined); setMenu(null);
-  }
-  function moveRow(rid,delta){
-    const i=rows.findIndex(r=>r._id===rid); if(i<0) return;
-    const j=i+delta; if(j<0||j>=rows.length) return;
-    const next=[...rows]; [next[i],next[j]]=[next[j],next[i]];
-    setRows(next); push(undefined,next,undefined,undefined); setMenu(null);
-  }
-  function removeRow(rid){
-    const next=rows.filter(r=>r._id!==rid);
-    setRows(next); push(undefined,next,undefined,undefined); setMenu(null);
-  }
-  function copyCell(val, colLabel){
-    navigator.clipboard.writeText(val||'').catch(()=>{});
-    setCopyFlash(colLabel+':'+(val||''));
-    setTimeout(()=>setCopyFlash(null),1200);
-    try { api.post('/api/vault/'+card.id+'/audit', {action:'copy', detail: colLabel||'value'}); } catch(_){ }
-  }
-  function revealCell(cellKey, colLabel){
-    setShowSecretCells(s=>({...s,[cellKey]:true}));
-    try { api.post('/api/vault/'+card.id+'/audit', {action:'reveal', detail: colLabel||'secret'}); } catch(_){ }
-  }
-  function openMenu(e,type,id,index){
-    e.preventDefault(); e.stopPropagation();
-    setMenu({type,id,index,x:e.clientX||240,y:e.clientY||240});
+  function submit(){
+    const t = title.trim();
+    if(!t){ setErr('Name is required'); setTab('details'); return; }
+    const cleanFields = fields
+      .filter(f=>f.label.trim() || f.value.trim())
+      .map(f=>({id:f.id, label:f.label.trim(), value:f.value, secret:!!f.secret}));
+    onSave({
+      ...(card||{}),
+      id: card ? card.id : undefined,
+      title: t, category, description: description.trim(),
+      tags: tags.trim(), expiry: expiry||'', notes: notes.trim(),
+      rows: cleanFields, cols: [],
+    });
   }
 
-  const accentColor = iconInfo.border;
-  const stripeColor = iconInfo.border.replace(/[\d.]+\)$/,'1)');
-  const menuBtn = {background:'rgba(255,255,255,.04)',border:'1px solid var(--bd)',borderRadius:6,color:'var(--tx2)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1};
-  const softActionBtn = {background:'rgba(255,255,255,.035)',border:'1px solid rgba(255,255,255,.08)',borderRadius:6,color:'var(--tx3)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
-  const dangerMiniBtn = {background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.18)',borderRadius:6,color:'#f87171',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
-  const menuItem = {display:'block',width:'100%',textAlign:'left',background:'none',border:'none',color:'var(--tx)',fontSize:12,padding:'8px 10px',cursor:'pointer',borderRadius:7,fontFamily:'inherit'};
+  const inp = {
+    width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,
+    padding:'9px 11px',fontSize:12.5,color:'var(--tx)',fontFamily:'inherit',
+    outline:'none',boxSizing:'border-box',
+  };
+  const lbl = { display:'block', fontSize:11, fontWeight:700, color:'var(--tx2)', marginBottom:6 };
+  const fg = { marginBottom:14 };
+  const tabBtn = (active)=>({padding:'9px 14px',fontSize:12,fontWeight:700,color:active?'#a5b4fc':'var(--tx3)',cursor:'pointer',borderBottom:'2px solid '+(active?'#5a5ef7':'transparent'),background:'none',border:'none',borderBottomWidth:2,fontFamily:'inherit'});
 
   return html`
-    <div class="vault-card" onClick=${()=>menu&&setMenu(null)} style=${{
-      border:'1px solid '+accentColor.replace(/[\d.]+\)$/,'.25)'),
-      borderLeft:'4px solid '+stripeColor,
-      boxShadow:'0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03)',
-    }}>
-      <div style=${{height:3,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.6)')+' 60%,transparent 100%)'}}></div>
-      <div class="vault-card-header" style=${{
-        background:'linear-gradient(135deg,'+iconInfo.bg.replace(/[\d.]+\)$/,'0.22)')+' 0%,transparent 65%)',
-        borderBottom:'1px solid '+accentColor.replace(/[\d.]+\)$/,'.15)'),
-      }}>
-        <div class="vault-card-icon" style=${{
-          background:iconInfo.bg.replace(/[\d.]+\)$/,'0.3)'),
-          border:'1.5px solid '+stripeColor,
-          boxShadow:'0 0 16px '+accentColor.replace(/[\d.]+\)$/,'.35)'),
-        }}>${iconInfo.icon}</div>
-        ${editing && html`
-          <input style=${{flex:1,background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:9,padding:'6px 11px',fontSize:14,fontWeight:800,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
-            value=${title} autoFocus
-            onInput=${e=>setTitle(e.target.value)}
-            onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
-            onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
-        ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
-        ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
-        ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
-        <div style=${{display:'flex',gap:6,flexShrink:0}}>
-          ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>Lock</button>`}
-          ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
-          <button class="vault-action-btn danger" onClick=${()=>setShowDel(true)}>Delete</button>
+    <div style=${{...VS.moBack, zIndex:99998}} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:18,width:'100%',maxWidth:520,maxHeight:'86vh',display:'flex',flexDirection:'column',boxShadow:'0 30px 80px rgba(0,0,0,.5)'}}>
+        <div style=${{padding:'16px 20px',borderBottom:'1px solid var(--bd)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)'}}>${card?'Edit credential':'Add credential'}</div>
+          <button style=${{background:'var(--sf2)',border:'none',color:'var(--tx3)',width:26,height:26,borderRadius:8,cursor:'pointer'}} onClick=${onClose}>✕</button>
+        </div>
+        <div style=${{padding:'18px 20px',overflowY:'auto',flex:1}}>
+          <div style=${{display:'flex',gap:4,borderBottom:'1px solid var(--bd)',marginBottom:16}}>
+            <button style=${tabBtn(tab==='details')} onClick=${()=>setTab('details')}>Details</button>
+            <button style=${tabBtn(tab==='fields')} onClick=${()=>setTab('fields')}>Fields</button>
+            <button style=${tabBtn(tab==='notes')} onClick=${()=>setTab('notes')}>Notes</button>
+          </div>
+
+          ${tab==='details' && html`
+            <div>
+              <div style=${fg}><label style=${lbl}>Name</label><input style=${inp} placeholder="e.g. Production Database" value=${title} autoFocus onInput=${e=>{setTitle(e.target.value);setErr('');}}/></div>
+              <div style=${fg}><label style=${lbl}>Category</label>
+                <select style=${inp} value=${category} onChange=${e=>setCategory(e.target.value)}>
+                  ${VAULT_CATEGORIES.map(c=>html`<option key=${c} value=${c}>${vaultCatMeta(c).label}</option>`)}
+                </select>
+              </div>
+              <div style=${fg}><label style=${lbl}>Description</label><input style=${inp} placeholder="What this credential is for" value=${description} onInput=${e=>setDescription(e.target.value)}/></div>
+              <div style=${fg}><label style=${lbl}>Tags (comma separated)</label><input style=${inp} placeholder="prod, deployment, backend" value=${tags} onInput=${e=>setTags(e.target.value)}/></div>
+              <div style=${fg}><label style=${lbl}>Expiry date (optional)</label><input style=${inp} type="date" value=${expiry} onInput=${e=>setExpiry(e.target.value)}/></div>
+              ${err && html`<div style=${{fontSize:12,color:'#f87171'}}>${err}</div>`}
+            </div>`}
+
+          ${tab==='fields' && html`
+            <div>
+              <div style=${{display:'flex',flexDirection:'column',gap:8,marginBottom:10}}>
+                ${fields.map(f=>html`
+                  <div key=${f.id} style=${{display:'flex',gap:7,alignItems:'center',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:10,padding:'7px 9px'}}>
+                    <input style=${{flex:1,background:'none',border:'none',outline:'none',color:'var(--tx)',fontSize:12,fontFamily:'inherit',minWidth:0}}
+                      placeholder="Label (e.g. Password)" value=${f.label}
+                      onInput=${e=>updateField(f.id,{label:e.target.value})}/>
+                    <input style=${{flex:1,background:'none',border:'none',outline:'none',color:'var(--tx)',fontSize:12,fontFamily:'monospace',minWidth:0}}
+                      placeholder="Value" value=${f.value}
+                      onInput=${e=>updateField(f.id,{value:e.target.value})}/>
+                    <button title=${f.secret?'Marked as secret':'Mark as secret'} style=${{background:f.secret?'rgba(245,158,11,.14)':'transparent',border:'1px solid '+(f.secret?'rgba(245,158,11,.3)':'var(--bd)'),borderRadius:6,color:f.secret?'#f59e0b':'var(--tx3)',fontSize:11,width:24,height:24,cursor:'pointer',flexShrink:0}}
+                      onClick=${()=>updateField(f.id,{secret:!f.secret})}>${f.secret?'🔒':'👁'}</button>
+                    <button style=${{background:'rgba(248,113,113,.12)',border:'none',color:'#f87171',width:22,height:22,borderRadius:6,cursor:'pointer',flexShrink:0}} onClick=${()=>removeField(f.id)}>✕</button>
+                  </div>`)}
+              </div>
+              <button style=${{border:'1px dashed var(--bd3, var(--bd))',background:'none',color:'#818cf8',fontSize:11.5,fontWeight:700,padding:8,borderRadius:9,cursor:'pointer',width:'100%',fontFamily:'inherit'}} onClick=${addField}>+ Add field</button>
+              <div style=${{display:'flex',gap:8,alignItems:'center',marginTop:10}}>
+                <input style=${{...inp,width:70}} type="number" min="8" max="64" value=${genLen} onInput=${e=>setGenLen(e.target.value)}/>
+                <button style=${{background:'rgba(90,94,247,.14)',border:'1px solid rgba(90,94,247,.3)',color:'#a5b4fc',fontSize:11,fontWeight:700,padding:'8px 12px',borderRadius:9,cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit'}} onClick=${generatePassword}>🎲 Generate password into last field</button>
+              </div>
+            </div>`}
+
+          ${tab==='notes' && html`
+            <div style=${fg}><label style=${lbl}>Notes</label><textarea style=${{...inp,resize:'vertical'}} rows="7" placeholder="Who owns this, rotation schedule, related tickets…" value=${notes} onInput=${e=>setNotes(e.target.value)}></textarea></div>`}
+        </div>
+        <div style=${{padding:'13px 20px',borderTop:'1px solid var(--bd)',display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
+          <button style=${VS.btnPri} onClick=${submit}>Save credential</button>
         </div>
       </div>
-      ${tags && html`<div style=${{padding:'6px 18px 8px',display:'flex',gap:5,flexWrap:'wrap',borderBottom:'1px solid var(--bd)'}}>${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.08)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.2)'}}>${t}</span>`)}</div>`}
+    </div>`;
+}
 
-      ${isLocked && !isUnlocked && html`
-        <div class="vault-locked-overlay">
-          <div style=${{width:56,height:56,borderRadius:16,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:26}}>🔒</div>
-          <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)',marginBottom:6}}>${title}</div>
-          <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:4}}>This card is password protected.</div>
-          <button class="vault-unlock-btn" onClick=${()=>setShowPwMo('verify')}>Unlock Card</button>
-        </div>`}
+// ── Credential card ────────────────────────────────────────────────────────────
+function VaultCredentialCard({card, isUnlocked, onUnlock, onLock, onEdit, onDelete, onTogglePin}){
+  const isLocked = !!card.lockHash;
+  const canSee = !isLocked || isUnlocked;
+  const fields = vaultNormalizeFields(card);
+  const cat = vaultCatMeta(card.category);
+  const tagsArr = (card.tags||'').split(',').map(s=>s.trim()).filter(Boolean);
 
-      ${canSee && html`
-        <div class="vault-table-wrap">
-          <table class="vault-table">
-            <thead>
-              <tr>
-                <th class="vault-th" style=${{width:42,paddingLeft:10,textAlign:'center'}} title="Right-click row numbers for row actions">#</th>
-                <th class="vault-th" style=${{width:32,textAlign:'center'}}>🔐</th>
-                ${cols.map((col,ci)=>html`
-                  <th key=${col.id} class="vault-th" style=${{minWidth:150}} onContextMenu=${e=>openMenu(e,'col',col.id,ci)}>
-                    <div style=${{display:'flex',alignItems:'center',gap:5}}>
-                      <button style=${softActionBtn} title="Insert column left" onClick=${e=>{e.stopPropagation();insertColAt(ci,'left');}}>+←</button>
-                      <input class="vault-th" style=${{padding:0,border:'none',outline:'none',background:'transparent',minWidth:60,flex:1,cursor:'text'}}
-                        value=${col.label}
-                        onInput=${e=>updateColLabel(col.id,e.target.value)}
-                        onBlur=${()=>push(undefined,undefined,undefined,undefined)}
-                        title="Click to rename column"/>
-                      ${cols.length>1 && html`<button style=${dangerMiniBtn} title="Delete column" onClick=${e=>{e.stopPropagation();removeCol(col.id);}}>✕</button>`}
-                      <button style=${softActionBtn} title="Insert column right" onClick=${e=>{e.stopPropagation();insertColAt(ci,'right');}}>→+</button>
-                    </div>
-                  </th>`)}
-                <th class="vault-th" style=${{width:40,textAlign:'center',borderLeft:'1px solid var(--bd)'}}>
-                  <button title="Add column" style=${{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',fontSize:16,padding:'0',lineHeight:1}} onClick=${addCol}>+</button>
-                </th>
-                <th class="vault-th" style=${{width:32,borderLeft:'1px solid var(--bd)'}}></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((row,ri)=>{
-                const isSecret = !!row._secret;
-                return html`
-                  <tr key=${row._id} class="vault-row" style=${{background:isSecret?'rgba(245,158,11,.035)':'transparent'}}>
-                    <td class="vault-row-num" onContextMenu=${e=>openMenu(e,'row',row._id,ri)} style=${{textAlign:'center',padding:'7px 6px'}} title="Right-click for row options">
-                      <span style=${{fontSize:11,color:'var(--tx3)',fontWeight:800}}>${ri+1}</span>
-                    </td>
-                    <td class="vault-td" style=${{textAlign:'center',padding:'6px',width:32,borderRight:'1px solid var(--bd)'}}>
-                      <button title=${isSecret?'Masked row — click to unmark':'Mark row as masked'}
-                        style=${{background:isSecret?'rgba(245,158,11,.12)':'transparent',border:isSecret?'1px solid rgba(245,158,11,.3)':'1px solid transparent',borderRadius:6,width:24,height:24,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s',margin:'0 auto'}}
-                        onClick=${()=>toggleRowSecret(row._id)}>${isSecret?'🔒':'👁'}</button>
-                    </td>
-                    ${cols.map(col=>{
-                      const val = row[col.id]||'';
-                      const cellKey = row._id + '_' + col.id;
-                      const isShowingThisCell = !!showSecretCells[cellKey];
-                      const hideVal = isSecret && !isShowingThisCell;
-                      const flashKey = col.label+':'+(val||'');
-                      return html`
-                        <td key=${col.id} class="vault-td" style=${{background:'rgba(15,14,23,0.3)',borderLeft:'1px solid rgba(255,255,255,.04)',minWidth:150}}>
-                          ${hideVal && html`
-                            <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                              <button type="button" title="Click to copy hidden value" aria-label="Copy hidden value"
-                                style=${{flex:1,textAlign:'left',background:copyFlash===flashKey?'rgba(34,197,94,.10)':'transparent',border:'1px solid '+(copyFlash===flashKey?'rgba(34,197,94,.26)':'transparent'),borderRadius:7,padding:'4px 7px',cursor:val?'copy':'default',color:copyFlash===flashKey?'#4ade80':'#94a3b8',fontSize:11,fontFamily:'inherit',letterSpacing:copyFlash===flashKey?0:4,transition:'all .15s'}}
-                                onClick=${()=>val && copyCell(val,col.label)}>${copyFlash===flashKey?'✓ Copied':'••••••••'}</button>
-                              <button class="vault-copy-btn" title="Reveal this cell" onClick=${()=>revealCell(cellKey, col.label)}>Show</button>
-                            </div>`}
-                          ${!hideVal && html`
-                            <div style=${{display:'flex',alignItems:'center',gap:5}}>
-                              <input style=${{background:'transparent',border:'none',outline:'none',color:'#e2e8f0',fontSize:13,fontFamily:'inherit',flex:1,minWidth:0}}
-                                value=${val}
-                                placeholder="—"
-                                onInput=${e=>updateCell(row._id,col.id,e.target.value)}
-                                onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
-                              ${val && html`<button class="vault-copy-btn" title="Copy value" style=${{color:copyFlash===flashKey?'#818cf8':'#475569',background:copyFlash===flashKey?'rgba(90,94,247,.15)':'none'}} onClick=${()=>copyCell(val, col.label)}>⧉</button>`}
-                              ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide this cell" onClick=${()=>setShowSecretCells(s=>{const n={...s};delete n[cellKey];return n;})}>🙈</button>`}
-                            </div>`}
-                        </td>`; })}
-                    <td class="vault-td" style=${{textAlign:'center',padding:'6px',width:32,borderRight:'none'}}>
-                      <button title="Delete row" style=${{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',fontSize:12,padding:'3px 5px',borderRadius:5,lineHeight:1}} onClick=${()=>removeRow(row._id)}>✕</button>
-                    </td>
-                  </tr>`; })}
-              <tr>
-                <td colSpan=${cols.length+4} style=${{padding:0}}>
-                  <button class="vault-add-row-btn" onClick=${addRow}>+ Add row</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>`}
+  const [showPwMo, setShowPwMo] = useState(null);
+  const [showDel,  setShowDel]  = useState(false);
+  const [revealed, setRevealed] = useState({});
+  const [copyFlash,setCopyFlash]= useState(null);
 
-      ${menu && html`
-        <div style=${{position:'fixed',left:Math.min(menu.x, window.innerWidth-210),top:Math.min(menu.y, window.innerHeight-240),zIndex:2147482500,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:12,padding:6,width:190,boxShadow:'0 18px 50px rgba(0,0,0,.55)'}} onClick=${e=>e.stopPropagation()}>
-          ${menu.type==='row' && html`
-            <button style=${menuItem} onClick=${()=>insertRowAt(menu.index)}>Insert row above</button>
-            <button style=${menuItem} onClick=${()=>insertRowAt(menu.index+1)}>Insert row below</button>
-            <button style=${menuItem} onClick=${()=>duplicateRow(menu.id)}>Duplicate row</button>
-            <button style=${{...menuItem,color:'#f87171'}} onClick=${()=>removeRow(menu.id)}>Delete row</button>`}
-          ${menu.type==='col' && html`
-            <button style=${menuItem} onClick=${()=>insertColAt(menu.index,'left')}>Insert column left</button>
-            <button style=${menuItem} onClick=${()=>insertColAt(menu.index,'right')}>Insert column right</button>
-            <button style=${{...menuItem,color:'#f87171'}} onClick=${()=>removeCol(menu.id)}>Delete column</button>`}
-        </div>`}
+  const now = new Date();
+  const exp = card.expiry ? new Date(card.expiry) : null;
+  const expValid = exp && !isNaN(exp.getTime());
+  const soon = expValid && (exp-now)/86400000 <= 30;
+
+  function copyField(f){
+    navigator.clipboard.writeText(f.value||'').catch(()=>{});
+    setCopyFlash(f.id);
+    setTimeout(()=>setCopyFlash(null),1500);
+    try { api.post('/api/vault/'+card.id+'/audit', {action:'copy', detail: f.label||'value'}); } catch(_){ }
+  }
+  function toggleReveal(f){
+    const willShow = !revealed[f.id];
+    setRevealed(r=>({...r,[f.id]:willShow}));
+    if(willShow){
+      try { api.post('/api/vault/'+card.id+'/audit', {action:'reveal', detail: f.label||'secret'}); } catch(_){ }
+    }
+  }
+
+  const cardBtn = {flex:1,border:'none',background:'var(--sf2)',color:'var(--tx2)',fontSize:11,fontWeight:700,padding:'8px 0',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:5,fontFamily:'inherit'};
+
+  return html`
+    <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:16,position:'relative',overflow:'hidden',animation:'vaultFadeIn .25s ease both'}}>
+      <div style=${{height:3,background:'linear-gradient(90deg,'+cat.accent+' 0%,'+cat.accent+'55 60%,transparent 100%)'}}></div>
+      <div style=${{padding:'16px 18px 12px'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:9,gap:8}}>
+          <div style=${{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+            <span style=${{fontSize:16}}>${cat.icon}</span>
+            <span style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${card.title||'Untitled'}</span>
+            ${card.pinned && html`<span style=${{fontSize:11}}>📌</span>`}
+            <span style=${{fontSize:9,fontWeight:800,textTransform:'uppercase',letterSpacing:'.05em',padding:'2px 8px',borderRadius:6,background:cat.bg,color:cat.accent}}>${cat.label}</span>
+            ${isLocked && html`<span style=${{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:100,background:isUnlocked?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)')}}>${isUnlocked?'🔓 Unlocked':'🔒 Locked'}</span>`}
+          </div>
+        </div>
+
+        ${card.description && html`<div style=${{fontSize:11.5,color:'var(--tx3)',marginBottom:10,lineHeight:1.5}}>${card.description}</div>`}
+        ${tagsArr.length>0 && html`<div style=${{display:'flex',flexWrap:'wrap',gap:5,marginBottom:11}}>${tagsArr.map(t=>html`<span key=${t} style=${{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:6,background:'var(--sf2)',color:'var(--tx3)'}}>${t}</span>`)}</div>`}
+        ${expValid && html`<div style=${{fontSize:10.5,fontWeight:700,padding:'3px 9px',borderRadius:100,display:'inline-flex',alignItems:'center',gap:4,marginBottom:9,background:soon?'rgba(251,191,36,.13)':'rgba(52,211,153,.13)',color:soon?'#fbbf24':'#34d399'}}>${soon?'⚠':'✓'} Expires ${exp.toLocaleDateString('en-IN',{month:'short',day:'numeric',year:'numeric'})}</div>`}
+
+        ${isLocked && !isUnlocked && html`
+          <div style=${{padding:'30px 10px',textAlign:'center',background:'var(--sf2)',borderRadius:12,marginTop:6}}>
+            <div style=${{width:48,height:48,borderRadius:14,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 10px',fontSize:22}}>🔒</div>
+            <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:12}}>This credential is password protected.</div>
+            <button style=${{...VS.btnPri,padding:'8px 20px'}} onClick=${()=>setShowPwMo('verify')}>Unlock</button>
+          </div>`}
+
+        ${canSee && html`
+          <div style=${{display:'flex',flexDirection:'column',gap:8,marginBottom:4}}>
+            ${fields.length===0 && html`<div style=${{fontSize:11.5,color:'var(--tx3)'}}>No fields yet — click Edit to add credentials.</div>`}
+            ${fields.map(f=>{
+              const hideVal = f.secret && !revealed[f.id];
+              const flashOn = copyFlash===f.id;
+              return html`
+                <div key=${f.id}>
+                  <div style=${{fontSize:10,color:'var(--tx3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.03em',marginBottom:3}}>${f.label||'—'}</div>
+                  <div style=${{display:'flex',alignItems:'center',gap:6,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'6px 8px 6px 11px'}}>
+                    <span style=${{fontFamily:'monospace',fontSize:12,color:hideVal?'var(--tx3)':'var(--tx)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',letterSpacing:hideVal?3:'.2px'}}>${hideVal?'••••••••••':(f.value||'—')}</span>
+                    ${f.secret && html`<button title=${hideVal?'Reveal':'Hide'} style=${{background:'rgba(255,255,255,.05)',border:'none',color:'var(--tx3)',width:22,height:22,borderRadius:6,cursor:'pointer',fontSize:11,flexShrink:0}} onClick=${()=>toggleReveal(f)}>${hideVal?'👁':'🙈'}</button>`}
+                    <button title="Copy" style=${{background:flashOn?'rgba(52,211,153,.18)':'rgba(255,255,255,.05)',border:'none',color:flashOn?'#4ade80':'var(--tx3)',width:22,height:22,borderRadius:6,cursor:'pointer',fontSize:11,flexShrink:0}} onClick=${()=>copyField(f)}>${flashOn?'✓':'📋'}</button>
+                  </div>
+                </div>`;
+            })}
+          </div>
+          <div style=${{fontSize:10.5,color:'var(--tx3)',paddingTop:9,marginTop:5,borderTop:'1px solid var(--bd)'}}>Updated ${card.updated ? new Date(card.updated).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</div>`}
+      </div>
+      <div style=${{display:'flex',gap:5,padding:'9px 18px 12px',borderTop:'1px solid var(--bd)'}}>
+        <button style=${{...cardBtn,color:card.pinned?'#fbbf24':'var(--tx2)',background:card.pinned?'rgba(251,191,36,.1)':'var(--sf2)'}} onClick=${()=>onTogglePin(card)}>📌 ${card.pinned?'Pinned':'Pin'}</button>
+        <button style=${cardBtn} onClick=${()=>onEdit(card)}>✎ Edit</button>
+        ${isLocked && isUnlocked && html`<button style=${cardBtn} onClick=${()=>onLock(card.id)}>Lock</button>`}
+        ${!isLocked && html`<button style=${cardBtn} onClick=${()=>setShowPwMo('set')}>🔒 Lock</button>`}
+        <button style=${{...cardBtn,color:'#f87171'}} onClick=${()=>setShowDel(true)}>🗑 Delete</button>
+      </div>
 
       ${showPwMo && html`
         <${VaultPwModal}
-          title=${title}
+          title=${card.title}
           mode=${showPwMo}
           onConfirm=${h=>{
             if(showPwMo==='verify'){
               if(h===card.lockHash){
                 onUnlock(card.id);
                 setShowPwMo(null);
-                try { api.post('/api/vault/'+card.id+'/audit', {action:'unlock', detail: title||'card'}); } catch(_){ }
+                try { api.post('/api/vault/'+card.id+'/audit', {action:'unlock', detail: card.title||'card'}); } catch(_){ }
               } else { alert('Wrong password'); }
             } else {
-              onUpdate({...card,title,tags,cols,rows,lockHash:h});
+              onEdit({...card, lockHash:h}, true);
               setShowPwMo(null);
             }
           }}
@@ -9748,79 +9691,9 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
 
       ${showDel && html`
         <${VaultDelModal}
-          title=${title}
+          title=${card.title}
           onConfirm=${()=>{ setShowDel(false); onDelete(card.id); }}
           onClose=${()=>setShowDel(false)}/>`}
-    </div>`;
-}
-
-
-// ── New card modal ────────────────────────────────────────────────────────────
-function VaultNewCardModal({onClose, onCreate}){
-  const [title, setTitle] = useState('');
-  const [tags,  setTags]  = useState('');
-  const [err,   setErr]   = useState('');
-  const inp = {
-    width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,
-    padding:'7px 10px',fontSize:13,color:'var(--tx)',fontFamily:'inherit',
-    outline:'none',boxSizing:'border-box',
-  };
-  function submit(){
-    if(!title.trim()){ setErr('Title is required'); return; }
-    const card = {
-      id: vaultNewId(),
-      title: title.trim(),
-      tags: tags.trim(),
-      cols: [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
-      rows: [],
-      lockHash: '',
-    };
-    onCreate(card);
-    onClose();
-  }
-  const icon = vaultGetIcon(title, tags);
-  return html`
-    <div style=${VS.moBack} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style=${{background:'#13151f',border:'1px solid rgba(90,94,247,.25)',borderRadius:20,padding:'28px',width:420,maxWidth:'calc(100vw - 32px)',boxShadow:'0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04)'}}>
-        <div style=${{display:'flex',alignItems:'center',gap:12,marginBottom:22}}>
-          <div style=${{width:44,height:44,borderRadius:13,background:icon.bg,border:'1.5px solid '+icon.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,boxShadow:'0 0 18px '+icon.border.replace(/[\d.]+\)$/,'.3)')}}>${icon.icon}</div>
-          <div>
-            <div style=${{fontSize:16,fontWeight:900,color:'#f1f5f9',letterSpacing:'-.3px'}}>New Vault Card</div>
-            <div style=${{fontSize:12,color:'#64748b',marginTop:1}}>Encrypted credential store</div>
-          </div>
-        </div>
-        <div style=${{marginBottom:8}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Card Title <span style=${{color:'#818cf8'}}>*</span></label>
-          <input style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'}}
-            placeholder="e.g. AWS Production, GitHub Creds…"
-            value=${title} autoFocus autoComplete="off"
-            onFocus=${e=>{e.target.style.borderColor='rgba(129,140,248,.5)';}}
-            onBlur=${e=>{e.target.style.borderColor='rgba(255,255,255,.12)';}}
-            onInput=${e=>{setTitle(e.target.value);setErr('');}}
-            onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
-          ${err && html`<div style=${{fontSize:11,color:'#f87171',marginTop:5}}>${err}</div>`}
-        </div>
-        <div style=${{marginBottom:24}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Tags <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional, comma-separated)</span></label>
-          <input style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'}}
-            placeholder="aws, prod, infra"
-            value=${tags} autoComplete="off"
-            onFocus=${e=>{e.target.style.borderColor='rgba(129,140,248,.5)';}}
-            onBlur=${e=>{e.target.style.borderColor='rgba(255,255,255,.12)';}}
-            onInput=${e=>setTags(e.target.value)}
-            onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
-        </div>
-        <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
-          <button style=${{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'#94a3b8',fontSize:13,padding:'9px 18px',borderRadius:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600,transition:'all .15s'}}
-            onMouseEnter=${e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';}}
-            onMouseLeave=${e=>{e.currentTarget.style.background='rgba(255,255,255,.06)';}}
-            onClick=${onClose}>Cancel</button>
-          <button class="vault-new-btn" onClick=${submit}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Create Card
-          </button>
-        </div>
-      </div>
     </div>`;
 }
 
@@ -9834,9 +9707,12 @@ function VaultView({cu}){
   const [vLoading, setVLoading]= useState(true);
   const [unlocked, setUnlocked]= useState({});
   const [filter,   setFilter]  = useState('');
+  const [sortBy,   setSortBy]  = useState('updated');
+  const [activeCat,setActiveCat]=useState('all');
   const [auditLog, setAuditLog]= useState([]);
   const [auditOpen,setAuditOpen]=useState(false);
-  const [showNew,  setShowNew] = useState(false);
+  const [showModal,setShowModal]=useState(false);
+  const [editCard, setEditCard]=useState(null);
 
   const offlineKey = vaultStorageKey(cu);
 
@@ -9861,7 +9737,9 @@ function VaultView({cu}){
         ...c,
         rows: typeof c.rows==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return [];}}(c.rows)) : (c.rows||[]),
         cols: typeof c.cols==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return null;}}(c.cols)) : (c.cols||null),
-        lockHash: c.lock_hash||c.lockHash||''
+        lockHash: c.lock_hash||c.lockHash||'',
+        category: c.category || 'other',
+        pinned: !!(c.pinned && c.pinned!=='0'),
       })) : [];
       const auditLog = Array.isArray(audit) ? audit : [];
       _vaultCache = { cards, auditLog };
@@ -9875,7 +9753,9 @@ function VaultView({cu}){
     const res = await api.post('/api/vault', {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||''
+      lock_hash: card.lockHash||'',
+      category: card.category||'other', description: card.description||'',
+      expiry: card.expiry||'', pinned: !!card.pinned, notes: card.notes||'',
     });
     vaultClearCache();
     if(res && res.id){
@@ -9886,7 +9766,9 @@ function VaultView({cu}){
     await api.put('/api/vault/'+card.id, {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||''
+      lock_hash: card.lockHash||'',
+      category: card.category||'other', description: card.description||'',
+      expiry: card.expiry||'', pinned: !!card.pinned, notes: card.notes||'',
     });
     vaultClearCache();
   }
@@ -9895,37 +9777,72 @@ function VaultView({cu}){
     vaultClearCache();
   }
 
-  function handleCreate(card){
-    const next=[card,...cards];
-    setCards(next);
-    if(cu&&!cu._offline) apiCreate(card);
-    else vaultPersist(offlineKey,next);
+  function handleSave(cardData){
+    const existing = cardData.id ? cards.find(c=>c.id===cardData.id) : null;
+    if(existing){
+      const updated = {...existing, ...cardData};
+      const next = cards.map(c=>c.id===updated.id?updated:c);
+      setCards(next);
+      if(cu&&!cu._offline) apiUpdate(updated); else vaultPersist(offlineKey,next);
+    } else {
+      const card = {...cardData, id: vaultNewId(), pinned:!!cardData.pinned, lockHash: cardData.lockHash||''};
+      const next = [card, ...cards];
+      setCards(next);
+      if(cu&&!cu._offline) apiCreate(card); else vaultPersist(offlineKey,next);
+    }
+    setShowModal(false); setEditCard(null);
   }
-  function handleUpdate(updated){
-    const next=cards.map(c=>c.id===updated.id?updated:c);
-    setCards(next);
-    if(cu&&!cu._offline) apiUpdate(updated);
-    else vaultPersist(offlineKey,next);
+  // Used both for opening the edit modal (onEdit(card)) and for the inline
+  // lock-hash update coming back from the password modal (onEdit(card, true)).
+  function handleEditOrLockUpdate(card, isLockUpdate){
+    if(isLockUpdate){
+      const next = cards.map(c=>c.id===card.id?card:c);
+      setCards(next);
+      if(cu&&!cu._offline) apiUpdate(card); else vaultPersist(offlineKey,next);
+      return;
+    }
+    setEditCard(card); setShowModal(true);
   }
   function handleDelete(id){
-    const next=cards.filter(c=>c.id!==id);
+    const next = cards.filter(c=>c.id!==id);
     setCards(next);
     setUnlocked(u=>{const n={...u};delete n[id];return n;});
-    if(cu&&!cu._offline) apiDelete(id);
-    else vaultPersist(offlineKey,next);
+    if(cu&&!cu._offline) apiDelete(id); else vaultPersist(offlineKey,next);
   }
   function handleUnlock(id){ setUnlocked(u=>({...u,[id]:true})); }
   function handleLock(id){   setUnlocked(u=>{const n={...u};delete n[id];return n;}); }
+  function handleTogglePin(card){
+    const updated = {...card, pinned: !card.pinned};
+    const next = cards.map(c=>c.id===card.id?updated:c);
+    setCards(next);
+    if(cu&&!cu._offline){
+      apiUpdate(updated);
+      try { api.post('/api/vault/'+card.id+'/audit', {action:'pin', detail: updated.pinned?'pinned':'unpinned'}); } catch(_){ }
+    } else vaultPersist(offlineKey,next);
+  }
 
-  const filtered = cards.filter(c=>{
+  const totalCards = cards.length;
+  const totalCreds = cards.reduce((s,c)=>s+vaultNormalizeFields(c).length,0);
+  const totalProtected = cards.filter(c=>c.lockHash).length;
+  const now = new Date(); const in30 = new Date(now.getTime()+30*86400000);
+  const totalExpiring = cards.filter(c=>{ const e=c.expiry?new Date(c.expiry):null; return e && !isNaN(e.getTime()) && e<=in30; }).length;
+  const totalPinned = cards.filter(c=>c.pinned).length;
+
+  const catCounts = {};
+  cards.forEach(c=>{ const k=c.category||'other'; catCounts[k]=(catCounts[k]||0)+1; });
+
+  let filtered = cards.filter(c=>{
+    if(activeCat!=='all' && (c.category||'other')!==activeCat) return false;
     if(!filter) return true;
-    const hay=(c.title||'')+(c.tags||'')+(c.rows||[]).map(r=>Object.values(r).join(' ')).join(' ');
+    const hay=(c.title||'')+' '+(c.tags||'')+' '+(c.description||'')+' '+vaultNormalizeFields(c).map(f=>f.label+' '+f.value).join(' ');
     return hay.toLowerCase().includes(filter.toLowerCase());
   });
-
-  const totalCreds = cards.reduce((s,c)=>(c.rows||[]).length+s,0);
-  const totalProtected = cards.filter(c=>c.lockHash).length;
-  const totalSecrets = cards.reduce((s,c)=>(c.rows||[]).filter(r=>r._secret).length+s,0);
+  filtered = filtered.slice().sort((a,b)=>{
+    if(!!a.pinned!==!!b.pinned) return a.pinned?-1:1;
+    if(sortBy==='name') return (a.title||'').localeCompare(b.title||'');
+    if(sortBy==='category') return (a.category||'').localeCompare(b.category||'');
+    return 0; // 'updated' — keep server order (already recency-sorted)
+  });
 
   return html`
     <div class="vault-scroll" style=${{...VS.wrap, background:'var(--bg)'}}>
@@ -9938,31 +9855,26 @@ function VaultView({cu}){
             <div style=${{fontSize:16,fontWeight:900,letterSpacing:'-.5px',lineHeight:1.15}}>
               <span style=${{background:'linear-gradient(135deg,#818cf8,#c084fc)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>My Vault</span>
             </div>
-            <div style=${{fontSize:12,color:'var(--tx2)',marginTop:2,fontWeight:500}}>Encrypted credential store · Click any cell to edit</div>
+            <div style=${{fontSize:12,color:'var(--tx2)',marginTop:2,fontWeight:500}}>Encrypted credential store, organised as cards by system</div>
           </div>
         </div>
-        <button class="vault-new-btn" onClick=${()=>setShowNew(true)}>
+        <button class="vault-new-btn" onClick=${()=>{setEditCard(null);setShowModal(true);}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Card
+          Add credential
         </button>
       </div>
 
       <!-- Stats bar -->
       <div style=${{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
         ${[
-          {icon:'🗂️', val:String(cards.length),       lbl:'Total Cards',  accent:'rgba(129,140,248,.15)', border:'rgba(129,140,248,.25)'},
-          {icon:'🔑', val:String(totalCreds),          lbl:'Credentials',  accent:'rgba(34,197,94,.12)',   border:'rgba(34,197,94,.22)'},
-          {icon:'🔒', val:String(totalProtected),      lbl:'Protected',    accent:'rgba(245,158,11,.12)',  border:'rgba(245,158,11,.22)'},
-          {icon:'🕵️', val:String(totalSecrets),        lbl:'Secret Rows',  accent:'rgba(239,68,68,.08)',   border:'rgba(239,68,68,.2)', danger:true},
+          {icon:'🗂️', val:String(totalCards),      lbl:'Total Cards',    accent:'rgba(129,140,248,.25)'},
+          {icon:'🔑', val:String(totalCreds),       lbl:'Credentials',    accent:'rgba(34,197,94,.22)'},
+          {icon:'🔒', val:String(totalProtected),   lbl:'Protected',      accent:'rgba(245,158,11,.22)'},
+          {icon:'⏳', val:String(totalExpiring),    lbl:'Expiring ≤30d',  accent:'rgba(239,68,68,.2)', danger: totalExpiring>0},
+          {icon:'📌', val:String(totalPinned),      lbl:'Pinned',         accent:'rgba(34,211,238,.22)'},
         ].map(s=>html`
-          <div style=${{
-            background:'var(--sf)',border:'1px solid var(--bd)',
-            borderLeft:'3px solid '+s.border,
-            borderRadius:10,padding:'10px 16px',
-            display:'flex',alignItems:'center',gap:12,
-            flex:'1 1 130px',minWidth:110,
-          }}>
-            <div style=${{width:32,height:32,borderRadius:8,background:s.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>${s.icon}</div>
+          <div key=${s.lbl} style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderLeft:'3px solid '+s.accent,borderRadius:10,padding:'10px 16px',display:'flex',alignItems:'center',gap:12,flex:'1 1 120px',minWidth:105}}>
+            <div style=${{width:30,height:30,borderRadius:8,background:s.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>${s.icon}</div>
             <div>
               <div style=${{fontSize:18,fontWeight:800,color:s.danger?'#ef4444':'var(--tx)',lineHeight:1,letterSpacing:'-.3px'}}>${s.val}</div>
               <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:600,marginTop:2}}>${s.lbl}</div>
@@ -9970,19 +9882,31 @@ function VaultView({cu}){
           </div>`)}
       </div>
 
-      <!-- Search & count -->
-      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+      <!-- Search & sort -->
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
         <div class="vault-search-wrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="vault-search"
-            placeholder="Search cards, tags, credentials…"
-            autoComplete="new-password"
-            value=${filter}
-            onInput=${e=>setFilter(e.target.value)}/>
+          <input class="vault-search" placeholder="Search cards, tags, credentials…" autoComplete="new-password" value=${filter} onInput=${e=>setFilter(e.target.value)}/>
         </div>
-        <span style=${{fontSize:11,color:'var(--tx2)',background:'var(--sf)',border:'1px solid var(--bd)',padding:'5px 13px',borderRadius:100,fontWeight:700,whiteSpace:'nowrap'}}>
-          ${String(filtered.length)} / ${String(cards.length)} cards
-        </span>
+        <select style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:9,padding:'8px 12px',color:'var(--tx2)',fontSize:12,fontFamily:'inherit'}} value=${sortBy} onChange=${e=>setSortBy(e.target.value)}>
+          <option value="updated">Recently updated</option>
+          <option value="name">Name A–Z</option>
+          <option value="category">Category</option>
+        </select>
+        <span style=${{fontSize:11,color:'var(--tx2)',background:'var(--sf)',border:'1px solid var(--bd)',padding:'5px 13px',borderRadius:100,fontWeight:700,whiteSpace:'nowrap'}}>${String(filtered.length)} / ${String(cards.length)} cards</span>
+      </div>
+
+      <!-- Category pills -->
+      <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:18}}>
+        ${['all',...VAULT_CATEGORIES].map(c=>{
+          const active = activeCat===c;
+          const meta = c==='all' ? {label:'All', accent:'#818cf8'} : vaultCatMeta(c);
+          const count = c==='all' ? cards.length : (catCounts[c]||0);
+          return html`
+            <div key=${c} onClick=${()=>setActiveCat(c)} style=${{fontSize:11,fontWeight:700,padding:'6px 13px',borderRadius:100,border:'1px solid '+(active?'transparent':'var(--bd)'),background:active?'linear-gradient(135deg,#5a5ef7,#a855f7)':'var(--sf)',color:active?'#fff':'var(--tx3)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+              ${meta.label} <span style=${{fontSize:9.5,background:active?'rgba(255,255,255,.22)':'rgba(255,255,255,.06)',padding:'1px 6px',borderRadius:100}}>${count}</span>
+            </div>`;
+        })}
       </div>
 
       <!-- Body -->
@@ -9994,23 +9918,28 @@ function VaultView({cu}){
       ${!vLoading && filtered.length===0 && html`
         <div style=${{textAlign:'center',padding:'72px 20px',color:'#475569'}}>
           <div style=${{width:64,height:64,borderRadius:20,background:'rgba(90,94,247,.07)',border:'1.5px dashed rgba(90,94,247,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 18px',fontSize:30}}>🗄️</div>
-          <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter?'No cards match your search':'Your vault is empty'}</div>
-          <div style=${{fontSize:13,color:'#334155'}}>${filter?'Try a different search term':'Click New Card to store your first credentials'}</div>
+          <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter||activeCat!=='all'?'No cards match':'Your vault is empty'}</div>
+          <div style=${{fontSize:13,color:'#334155'}}>${filter||activeCat!=='all'?'Try a different search or category':'Click Add credential to store your first card'}</div>
         </div>`}
-      ${!vLoading && filtered.map(c=>html`
-        <${VaultSpreadCard}
-          key=${c.id}
-          card=${c}
-          isUnlocked=${!!unlocked[c.id]}
-          onUnlock=${handleUnlock}
-          onLock=${handleLock}
-          onDelete=${handleDelete}
-          onUpdate=${handleUpdate}/>`)}
+      ${!vLoading && filtered.length>0 && html`
+        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:14}}>
+          ${filtered.map(c=>html`
+            <${VaultCredentialCard}
+              key=${c.id}
+              card=${c}
+              isUnlocked=${!!unlocked[c.id]}
+              onUnlock=${handleUnlock}
+              onLock=${handleLock}
+              onEdit=${handleEditOrLockUpdate}
+              onDelete=${handleDelete}
+              onTogglePin=${handleTogglePin}/>`)}
+        </div>`}
 
-      ${showNew && html`
-        <${VaultNewCardModal}
-          onClose=${()=>setShowNew(false)}
-          onCreate=${handleCreate}/>`}
+      ${showModal && html`
+        <${VaultCardModal}
+          card=${editCard}
+          onClose=${()=>{setShowModal(false);setEditCard(null);}}
+          onSave=${handleSave}/>`}
 
       <!-- ── Audit Log Panel ── -->
       ${!vLoading && !cu._offline && html`
@@ -10020,7 +9949,7 @@ function VaultView({cu}){
               <div style=${{width:30,height:30,borderRadius:8,background:'rgba(99,102,241,.12)',border:'1px solid rgba(99,102,241,.25)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>🔎</div>
               <div>
                 <div style=${{fontSize:13,fontWeight:800,color:'var(--tx)'}}>Access Audit Log</div>
-                <div style=${{fontSize:11,color:'var(--tx2)'}}>Every reveal, copy and unlock is recorded here</div>
+                <div style=${{fontSize:11,color:'var(--tx2)'}}>Every reveal, copy, pin and unlock is recorded here</div>
               </div>
             </div>
             <div style=${{display:'flex',alignItems:'center',gap:8}}>
@@ -10028,9 +9957,7 @@ function VaultView({cu}){
                 ● Fernet AES-128-CBC
               </span>
               <button
-                style=${{fontSize:12,color:'var(--tx2)',background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'5px 14px',cursor:'pointer',fontFamily:'inherit',fontWeight:600,transition:'all .15s'}}
-                onMouseEnter=${e=>{e.currentTarget.style.borderColor='rgba(99,102,241,.4)';}}
-                onMouseLeave=${e=>{e.currentTarget.style.borderColor='var(--bd)';}}
+                style=${{fontSize:12,color:'var(--tx2)',background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'5px 14px',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}
                 onClick=${()=>setAuditOpen(o=>!o)}>
                 ${auditOpen?'Hide':'Show'} log ${auditLog.length?'('+auditLog.length+')':''}
               </button>
@@ -10058,12 +9985,11 @@ function VaultView({cu}){
                         copy:    {label:'Copy',    bg:'rgba(99,102,241,.1)', color:'#818cf8', icon:'📋'},
                         unlock:  {label:'Unlock',  bg:'rgba(34,197,94,.1)',  color:'#22c55e', icon:'🔓'},
                         create:  {label:'Create',  bg:'rgba(59,130,246,.1)', color:'#60a5fa', icon:'✚'},
+                        pin:     {label:'Pin',     bg:'rgba(234,179,8,.1)',  color:'#eab308', icon:'📌'},
                       }[e.action] || {label:e.action, bg:'rgba(255,255,255,.05)', color:'#94a3b8', icon:'•'};
                       const timeStr = e.created ? new Date(e.created).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                       return html`
-                        <tr key=${e.id||i} style=${{borderBottom:'1px solid rgba(255,255,255,.04)',transition:'background .15s'}}
-                          onMouseEnter=${el=>{if(el.currentTarget)el.currentTarget.style.background='rgba(255,255,255,.025)';}}
-                          onMouseLeave=${el=>{if(el.currentTarget)el.currentTarget.style.background='transparent';}}>
+                        <tr key=${e.id||i} style=${{borderBottom:'1px solid rgba(255,255,255,.04)'}}>
                           <td style=${{padding:'8px 14px',whiteSpace:'nowrap'}}>
                             <span style=${{display:'inline-flex',alignItems:'center',gap:5,background:actionMeta.bg,color:actionMeta.color,border:'1px solid '+actionMeta.color+'44',borderRadius:6,padding:'2px 8px',fontWeight:700,fontSize:11}}>
                               ${actionMeta.icon} ${actionMeta.label}
@@ -10082,6 +10008,7 @@ function VaultView({cu}){
     </div>
     </div>`;
 }
+
 
 
 
@@ -10270,7 +10197,6 @@ function BillingInvoicesView({cu}){
   const [filterStatus,setFilterStatus]=useState('all');
   const [searchQ,setSearchQ]=useState('');
   const [draft,setDraft]=useState({customer_name:'',customer_email:'',issue_date:today,due_date:'',status:'draft',notes:'',items:[{description:'Project management services',quantity:1,unit_price:0}]});
-  const [editingId,setEditingId]=useState(null);
   const money=(v,c)=>`${c||profile.currency||summary.currency||'INR'} ${Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const load=useCallback(async()=>{
     setLoading(true);setErr('');
@@ -10306,48 +10232,9 @@ function BillingInvoicesView({cu}){
     }catch(e){setErr('Could not save billing profile');}
     setSaving(false);
   };
-  const resetDraft=()=>{setDraft({customer_name:'',customer_email:'',issue_date:today,due_date:'',status:'draft',notes:'',items:[{description:'Project management services',quantity:1,unit_price:0}]});setEditingId(null);};
-  const openNewInvoice=()=>{resetDraft();setTab('create');};
-  const openEditInvoice=(inv)=>{
-    setEditingId(inv.id);
-    setDraft({
-      customer_name:inv.customer_name||'',customer_email:inv.customer_email||'',
-      issue_date:inv.issue_date||today,due_date:inv.due_date||'',status:inv.status||'draft',
-      notes:inv.notes||'',
-      items:(inv.items&&inv.items.length?inv.items:[{description:'Project management services',quantity:1,unit_price:0}]).map(it=>({description:it.description,quantity:it.quantity,unit_price:it.unit_price}))
-    });
-    setTab('create');
-  };
-  const deleteInvoice=async(inv)=>{
-    if(!window.confirm(`Delete invoice ${inv.invoice_no||''}? This can't be undone.`))return;
-    const prevInvoices=invoices;
-    setInvoices(prev=>prev.filter(x=>x.id!==inv.id));
-    if(String(inv.id).startsWith('tmp_'))return;
-    try{
-      const r=await api.del('/api/billing/invoices/'+inv.id);
-      if(r&&r.error){setInvoices(prevInvoices);setErr(r.error);}
-      else{try{window._pfToast&&window._pfToast('success','Invoice deleted',`${inv.invoice_no||''} was removed.`);}catch{} load();}
-    }catch(e){setInvoices(prevInvoices);setErr('Could not delete invoice');}
-  };
   const createInvoice=async()=>{
     if(!draft.customer_name.trim())return;
     setSaving(true);setErr('');
-    if(editingId){
-      try{
-        const r=await api.put('/api/billing/invoices/'+editingId,{...draft,currency:profile.currency||'INR',tax_rate:taxRate});
-        if(r&&!r.error){
-          setInvoices(prev=>prev.map(x=>x.id===editingId?r:x));
-          try{window._pfToast&&window._pfToast('success','Invoice updated',`${r.invoice_no} saved successfully.`);}catch{}
-          resetDraft();
-          setTab('invoices');
-          load();
-        }else{
-          setErr((r&&r.error)||'Could not update invoice');
-        }
-      }catch(e){setErr('Could not update invoice');}
-      setSaving(false);
-      return;
-    }
     const temp={...draft,id:'tmp_'+Date.now(),invoice_no:nextNo||'INV-0001',currency:profile.currency||'INR',subtotal,tax_total:tax,total,status:draft.status||'draft',created:new Date().toISOString(),items:draft.items};
     setInvoices(prev=>[temp,...prev]);
     setSummary(s=>({...s,invoice_count:Number(s.invoice_count||0)+1,outstanding_total:Number(s.outstanding_total||0)+total}));
@@ -10356,7 +10243,7 @@ function BillingInvoicesView({cu}){
       const r=await api.post('/api/billing/invoices',{...draft,currency:profile.currency||'INR',tax_rate:taxRate});
       if(r&&!r.error){
         setInvoices(prev=>prev.map(x=>x.id===temp.id?r:x));
-        resetDraft();
+        setDraft({customer_name:'',customer_email:'',issue_date:today,due_date:'',status:'draft',notes:'',items:[{description:'Project management services',quantity:1,unit_price:0}]});
         try{window._pfToast&&window._pfToast('success','Invoice created',`${r.invoice_no} saved successfully.`);}catch{}
         setSummary(prev=>({...prev,invoice_count:Number(prev.invoice_count||0)+1,outstanding_total:Number(prev.outstanding_total||0)+Number(r.total||0)}));
       }else{
@@ -10449,7 +10336,7 @@ function BillingInvoicesView({cu}){
       </div>
       <div style=${{display:'flex',gap:8,flexShrink:0}}>
         <button class="btn bg" onClick=${load} disabled=${loading} style=${{gap:6}}>↻ Refresh</button>
-        ${canManageBilling?html`<button class="btn bp" onClick=${openNewInvoice} style=${{gap:6}}>+ New invoice</button>`:null}
+        ${canManageBilling?html`<button class="btn bp" onClick=${()=>setTab('create')} style=${{gap:6}}>+ New invoice</button>`:null}
       </div>
     </div>
 
@@ -10536,27 +10423,35 @@ function BillingInvoicesView({cu}){
         </div>
         <span style=${{marginLeft:'auto',fontSize:12,color:'var(--tx3)'}}>${filteredInvoices.length} invoice${filteredInvoices.length!==1?'s':''}</span>
       </div>
-      <!-- Card grid -->
-      ${filteredInvoices.length?html`
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
-        ${filteredInvoices.map(inv=>html`
-          <div key=${inv.id} class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16}}>
-            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-              <span style=${{fontSize:14,fontWeight:800,color:'var(--tx)'}}>${inv.customer_name||'Customer'}</span>
-              ${statusBadge(inv.status)}
+      <!-- Table -->
+      <div style=${{border:'1px solid var(--bd)',borderRadius:18,overflow:'hidden',background:'var(--sf)'}}>
+        <div style=${{display:'grid',gridTemplateColumns:'140px 1fr 110px 120px 110px 80px',gap:10,padding:'10px 16px',background:'var(--sf2)',borderBottom:'1px solid var(--bd)',fontSize:11,fontWeight:900,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.4}}>
+          <span>Invoice</span><span>Customer</span><span>Date</span><span>Total</span><span>Status</span><span style=${{textAlign:'right'}}>Actions</span>
+        </div>
+        ${filteredInvoices.length?filteredInvoices.map(inv=>html`
+          <div style=${{display:'grid',gridTemplateColumns:'140px 1fr 110px 120px 110px 80px',gap:10,padding:'12px 16px',borderBottom:'1px solid var(--bd)',alignItems:'center',transition:'background .1s'}}
+               onMouseEnter=${e=>e.currentTarget.style.background='var(--sf2)'}
+               onMouseLeave=${e=>e.currentTarget.style.background=''}>
+            <div style=${{fontWeight:900,color:'var(--ac)',fontSize:12}}>${inv.invoice_no}</div>
+            <div>
+              <div style=${{fontSize:12,fontWeight:800,color:'var(--tx)'}}>${inv.customer_name||'Customer'}</div>
+              <div style=${{fontSize:11,color:'var(--tx3)'}}>${inv.customer_email||'No email'}</div>
             </div>
-            <div style=${{fontSize:12,color:'var(--tx3)'}}>${inv.invoice_no} · ${money(inv.total,inv.currency)} · Due ${inv.due_date||'—'}</div>
-            ${inv.notes?html`<div style=${{fontSize:12,color:'var(--tx2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${inv.notes}</div>`:null}
-            <div style=${{display:'flex',gap:6,marginTop:6}}>
-              <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>printInvoice(inv)}>⬇ PDF</button>
-              ${canManageBilling?html`<button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEditInvoice(inv)}>✏️ Edit</button>`:null}
-              ${canManageBilling?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>deleteInvoice(inv)}>🗑 Delete</button>`:null}
+            <div style=${{fontSize:12,color:'var(--tx2)'}}>${inv.issue_date||'—'}</div>
+            <div style=${{fontWeight:900,color:'var(--tx)',fontSize:13}}>${money(inv.total,inv.currency)}</div>
+            <div>
+              <select class="inp" disabled=${!canManageBilling} value=${inv.status||'draft'} onChange=${e=>updateStatus(inv.id,e.target.value)} style=${{height:28,fontSize:11,padding:'2px 6px'}}>
+                <option>draft</option><option>sent</option><option>paid</option><option>overdue</option><option>void</option>
+              </select>
             </div>
-          </div>`)}
-      </div>`:html`
-          <div style=${{padding:'40px 20px',textAlign:'center',color:'var(--tx3)',fontSize:13,border:'1px dashed var(--bd)',borderRadius:16,background:'var(--sf)'}}>
+            <div style=${{display:'flex',gap:4,justifyContent:'flex-end'}}>
+              <button onClick=${()=>printInvoice(inv)} title="Download/Print invoice" style=${{background:'none',border:'1px solid var(--bd)',cursor:'pointer',color:'var(--tx2)',fontSize:12,padding:'4px 7px',borderRadius:7,display:'flex',alignItems:'center',gap:3}}>⬇ PDF</button>
+            </div>
+          </div>`):html`
+          <div style=${{padding:'40px 20px',textAlign:'center',color:'var(--tx3)',fontSize:13}}>
             ${searchQ||filterStatus!=='all'?'No invoices match your filters.':'No invoices created yet.'}
           </div>`}
+      </div>
     </div>`:null}
 
     <!-- COMPANY DETAILS TAB -->
@@ -10586,8 +10481,8 @@ function BillingInvoicesView({cu}){
       <div style=${{padding:24,borderRadius:20,background:'var(--sf)',border:'1px solid var(--bd)'}}>
         <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18}}>
           <div>
-            <div style=${{fontSize:15,fontWeight:900,color:'var(--tx)'}}>${editingId?'Edit invoice':'New invoice'}</div>
-            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:2}}>${editingId?html`Editing <b style=${{color:'var(--ac)'}}>${(invoices.find(i=>i.id===editingId)||{}).invoice_no||''}</b>`:html`Next number: <b style=${{color:'var(--ac)'}}>${nextNo||'auto'}</b>`}</div>
+            <div style=${{fontSize:15,fontWeight:900,color:'var(--tx)'}}>New invoice</div>
+            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:2}}>Next number: <b style=${{color:'var(--ac)'}}>${nextNo||'auto'}</b></div>
           </div>
           <div style=${{textAlign:'right'}}>
             <div style=${{fontSize:11,color:'var(--tx3)',textTransform:'uppercase',fontWeight:900}}>Total due</div>
@@ -10649,8 +10544,8 @@ function BillingInvoicesView({cu}){
           </label>
         </div>
         <div style=${{display:'flex',gap:8,marginTop:18}}>
-          <button class="btn bg" onClick=${()=>{resetDraft();setTab(editingId?'invoices':'overview');}}>Cancel</button>
-          <button class="btn bp" disabled=${saving||!canManageBilling||!draft.customer_name.trim()} onClick=${createInvoice} style=${{flex:1,justifyContent:'center'}}>${saving?(editingId?'Saving…':'Creating invoice…'):(editingId?'Save changes':'Create invoice')}</button>
+          <button class="btn bg" onClick=${()=>setTab('overview')}>Cancel</button>
+          <button class="btn bp" disabled=${saving||!canManageBilling||!draft.customer_name.trim()} onClick=${createInvoice} style=${{flex:1,justifyContent:'center'}}>${saving?'Creating invoice…':'Create invoice'}</button>
         </div>
       </div>
     </div>`:null}

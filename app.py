@@ -3945,10 +3945,14 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS vault_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT DEFAULT '', tags TEXT DEFAULT '', rows TEXT DEFAULT '[]', cols TEXT DEFAULT '[]', lock_hash TEXT DEFAULT '', created TEXT, updated TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_cards_user ON vault_cards(user_id)",
             "ALTER TABLE vault_cards ADD COLUMN cols TEXT DEFAULT '[]'",
-            "ALTER TABLE vault_cards ADD COLUMN category TEXT DEFAULT ''",
-            "ALTER TABLE vault_cards ADD COLUMN pinned INTEGER DEFAULT 0",
-            "ALTER TABLE vault_cards ADD COLUMN expiry TEXT DEFAULT ''",
+            # Categorized-credential vault redesign — additive columns, backward compatible
+            # with existing spreadsheet-style rows (see vaultNormalizeFields on the frontend).
+            "ALTER TABLE vault_cards ADD COLUMN category TEXT DEFAULT 'other'",
             "ALTER TABLE vault_cards ADD COLUMN description TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN expiry TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN pinned INTEGER DEFAULT 0",
+            "ALTER TABLE vault_cards ADD COLUMN notes TEXT DEFAULT ''",
+            "CREATE INDEX IF NOT EXISTS idx_vault_cards_category ON vault_cards(user_id, category)",
             "CREATE TABLE IF NOT EXISTS vault_audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT DEFAULT '', ip TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_user ON vault_audit_log(user_id, created)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_card ON vault_audit_log(card_id)",
@@ -6034,13 +6038,14 @@ def vault_create():
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
         db.execute(
-            "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,category,pinned,expiry,description,created,updated) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,category,description,expiry,pinned,notes,created,updated) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (cid, session["user_id"], d.get("title", ""), d.get("tags", ""),
              encrypted_rows, json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""), d.get("category", ""),
-             1 if d.get("pinned") else 0, d.get("expiry", ""),
-             d.get("description", ""), now, now)
+             d.get("lock_hash", ""),
+             (d.get("category") or "other")[:30], (d.get("description") or "")[:500],
+             (d.get("expiry") or "")[:20], 1 if d.get("pinned") else 0, (d.get("notes") or "")[:4000],
+             now, now)
         )
     _vault_audit(session["user_id"], cid, "create", d.get("title", ""))
     return jsonify({"id": cid, "created": now})
@@ -6053,14 +6058,23 @@ def vault_update(cid):
     plain_rows = json.dumps(d.get("rows", []))
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
+        # Preserve any pre-existing lock_hash when the caller doesn't manage it
+        # (the credential-card edit modal only sends Details/Fields/Notes — the
+        # lock is set/cleared separately via the card's own Lock/Unlock action —
+        # so an update must not silently wipe a legacy per-card lock).
+        if "lock_hash" in d:
+            lock_hash_val = d.get("lock_hash", "")
+        else:
+            existing = db.execute("SELECT lock_hash FROM vault_cards WHERE id=? AND user_id=?", (cid, session["user_id"])).fetchone()
+            lock_hash_val = existing["lock_hash"] if existing else ""
         db.execute(
-            "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,category=?,pinned=?,expiry=?,description=?,updated=? "
+            "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,category=?,description=?,expiry=?,pinned=?,notes=?,updated=? "
             "WHERE id=? AND user_id=?",
             (d.get("title", ""), d.get("tags", ""), encrypted_rows,
              json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""), d.get("category", ""),
-             1 if d.get("pinned") else 0, d.get("expiry", ""),
-             d.get("description", ""),
+             lock_hash_val,
+             (d.get("category") or "other")[:30], (d.get("description") or "")[:500],
+             (d.get("expiry") or "")[:20], 1 if d.get("pinned") else 0, (d.get("notes") or "")[:4000],
              now, cid, session["user_id"])
         )
     return jsonify({"ok": True})
@@ -6110,7 +6124,7 @@ def vault_audit_event(cid):
     d = request.json or {}
     action = (d.get("action") or "").strip()[:50]
     detail = (d.get("detail") or "").strip()[:200]
-    if action not in ("reveal", "copy", "unlock"):
+    if action not in ("reveal", "copy", "unlock", "pin"):
         return jsonify({"error": "Invalid action"}), 400
     # Verify the card belongs to this user before logging
     with get_db() as db:
