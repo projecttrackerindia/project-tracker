@@ -1481,6 +1481,13 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
     {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'ops', label:'Ops Center', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   const devNav=[
     {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+  const NAV_SECTION_MAP={
+    dashboard:'Overview', 'workspace-os':'Overview', ops:'Overview',
+    projects:'Work', tasks:'Work', timeline:'Work', productivity:'Work',
+    messages:'Comms', dm:'Comms', tickets:'Comms', reminders:'Comms',
+    team:'People & Finance', billing:'People & Finance',
+    'ai-docs':'Tools', notes:'Tools', 'password-generator':'Tools', vault:'Tools',
+  };
   const FEATURE_NAV_MAP={
     timesheet:'time_tracking', billing:'billing_invoices', 'ai-docs':'ai_docs',
     vault:'vault', productivity:'advanced_analytics', ops:'advanced_analytics',
@@ -1609,7 +1616,12 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
             </div>`)}
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>`:null}
 
-        ${orderedSections.mid.map(it=>html`
+        ${orderedSections.mid.flatMap((it,__i)=>{
+          const bucket = NAV_SECTION_MAP[it.id]||null;
+          const prevBucket = __i>0 ? (NAV_SECTION_MAP[orderedSections.mid[__i-1].id]||null) : null;
+          const showLabel = !col && bucket && bucket!==prevBucket;
+          const label = showLabel ? html`<div key=${'sec-'+bucket+'-'+it.id} style=${{fontSize:8,fontWeight:700,color:'rgba(165,180,252,0.35)',textTransform:'uppercase',letterSpacing:'0.08em',padding:__i===0?'2px 10px 2px':'10px 10px 2px'}}>${bucket}</div>` : null;
+          const node = html`
           <div key=${it.id}
             draggable=${!col}
             onDragStart=${()=>{dragSrc.current=it.id;}}
@@ -1640,7 +1652,9 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
                 <button title="Pin to bottom" onClick=${e=>{e.stopPropagation();togglePin(it.id,'bot');}}
                   style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↓</button>
               </div>`:null}
-          </div>`)}
+          </div>`;
+          return label ? [label,node] : [node];
+        })}
 
         ${orderedSections.bot.length>0?html`
           <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>
@@ -7021,6 +7035,7 @@ function WorkspaceOSAdminImportsCard({cu}){
   const [pay,setPay]=useState({month:String(today.getMonth()+1).padStart(2,'0'),year:String(today.getFullYear())});
   const [payFiles,setPayFiles]=useState([]);
   const [payMap,setPayMap]=useState(null);
+  const [payStep,setPayStep]=useState(1);
   const [busy,setBusy]=useState('');
   const [msg,setMsg]=useState('');
   if(!allowed)return null;
@@ -7050,15 +7065,20 @@ function WorkspaceOSAdminImportsCard({cu}){
     setBusy('payslips');
     const r=await api.upload('/api/payslips/import',fd).catch(e=>({error:e.message}));
     setBusy('');
-    if(r&&r.ok){setPayFiles([]);setPayMap(null);setMsg(`Payslips uploaded: ${r.uploaded||0}${r.failed?`, ${r.failed} unmatched`:''}`);try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}
+    if(r&&r.ok){setPayFiles([]);setPayMap(null);setPayStep(1);setMsg(`Payslips uploaded: ${r.uploaded||0}${r.failed?`, ${r.failed} unmatched`:''}`);try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}
     else setMsg((r&&r.error)||'Payslip upload failed');
     setTimeout(()=>setMsg(''),3600);
   };
+  const removeFile=(idx)=>setPayFiles(payFiles.filter((_,i)=>i!==idx));
   const dropStyle={border:'1px dashed rgba(90,140,255,.40)',borderRadius:16,padding:16,background:'linear-gradient(135deg,rgba(90,140,255,.08),rgba(168,85,247,.06))'};
   const fileBox=(label,sub,accept,multiple,onChange,chosen)=>html`<label style=${{...dropStyle,display:'flex',flexDirection:'column',gap:8,cursor:'pointer',minHeight:88,justifyContent:'center'}}>
     <input type="file" accept=${accept} multiple=${!!multiple} style=${{display:'none'}} onChange=${e=>onChange(multiple?e.target.files:(e.target.files&&e.target.files[0]))}/>
     <b style=${{fontSize:12,color:'var(--tx)'}}>${label}</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${chosen||sub}</span>
   </label>`;
+  const stepDot=(n,label)=>html`<div style=${{display:'flex',flexDirection:'column',alignItems:'center',flex:1}}>
+    <div style=${{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,background:payStep>=n?'var(--grad-main)':'var(--sf2)',color:payStep>=n?'#fff':'var(--tx3)',border:payStep>=n?'none':'1px solid var(--bd)'}}>${payStep>n?'✓':n}</div>
+    <span style=${{fontSize:10,fontWeight:800,color:payStep>=n?'var(--tx)':'var(--tx3)',marginTop:5}}>${label}</span>
+  </div>`;
   return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
     <div style=${{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',marginBottom:14}}>
       <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>
@@ -7071,9 +7091,31 @@ function WorkspaceOSAdminImportsCard({cu}){
         <div style=${{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'stretch'}}>${fileBox('Choose CSV/XLSX','No file selected','.csv,.xlsx',false,setHolidayFile,holidayFile&&holidayFile.name)}<button class="btn bp" style=${{minWidth:130}} onClick=${importHolidays} disabled=${!!busy}>${busy==='holiday-import'?'Importing…':'Import holidays'}</button></div>
       </div>
       <div style=${dropStyle}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:12}}><div><h4 style=${{fontSize:13,fontWeight:800,margin:0,color:'var(--tx)'}}>Payslips</h4><p style=${{fontSize:11,color:'var(--tx3)',margin:'3px 0 0'}}>Bulk upload PDFs and map safely before publishing to employees.</p></div><button class="btn bp" style=${{fontSize:11,padding:'7px 12px'}} onClick=${uploadPayslips} disabled=${!!busy}>${busy==='payslips'?'Uploading…':'Upload payslips'}</button></div>
-        <div style=${{display:'grid',gridTemplateColumns:'80px 100px 1fr',gap:10,marginBottom:10}}><input class="inp" value=${pay.month} onInput=${e=>setPay({...pay,month:e.target.value})}/><input class="inp" value=${pay.year} onInput=${e=>setPay({...pay,year:e.target.value})}/>${fileBox('Choose payslip PDFs','No PDFs selected','.pdf',true,setPayFiles,payFiles&&payFiles.length?`${payFiles.length} PDF(s) selected`:null)}</div>
-        ${fileBox('Optional mapping CSV','Recommended for 100–1000 employees. Columns: email/user_id, month, year, filename.','.csv',false,setPayMap,payMap&&payMap.name)}
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:14}}><div><h4 style=${{fontSize:13,fontWeight:800,margin:0,color:'var(--tx)'}}>Payslips — bulk upload for all employees</h4><p style=${{fontSize:11,color:'var(--tx3)',margin:'3px 0 0'}}>Step-by-step so a whole month's batch can't be published by accident.</p></div></div>
+        <div style=${{display:'flex',marginBottom:16}}>${stepDot(1,'Period')}${stepDot(2,'Upload')}${stepDot(3,'Confirm')}</div>
+        ${payStep===1?html`<div>
+          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+            <label><span class="lbl">Month</span><input class="inp" value=${pay.month} onInput=${e=>setPay({...pay,month:e.target.value})}/></label>
+            <label><span class="lbl">Year</span><input class="inp" value=${pay.year} onInput=${e=>setPay({...pay,year:e.target.value})}/></label>
+          </div>
+          <button class="btn bp" style=${{width:'100%'}} onClick=${()=>setPayStep(2)}>Continue → choose files</button>
+        </div>`:null}
+        ${payStep===2?html`<div>
+          <p style=${{fontSize:11,color:'var(--tx3)',margin:'0 0 10px'}}>Uploading payslips for <b style=${{color:'var(--tx)'}}>${pay.month}/${pay.year}</b>. Select every employee's PDF at once, or add a mapping CSV for large batches.</p>
+          ${fileBox('Choose payslip PDFs (multi-select)','No PDFs selected yet','.pdf',true,f=>setPayFiles(Array.from(f||[])),payFiles.length?`${payFiles.length} file(s) selected`:null)}
+          ${payFiles.length?html`<div style=${{display:'flex',flexWrap:'wrap',gap:6,margin:'10px 0'}}>${payFiles.map((f,i)=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:6,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:999,padding:'4px 10px',fontSize:11,color:'var(--tx2)'}}>${f.name}<button type="button" style=${{border:'none',background:'none',color:'var(--tx3)',cursor:'pointer',fontSize:12,lineHeight:1}} onClick=${()=>removeFile(i)}>✕</button></span>`)}</div>`:null}
+          <div style=${{marginTop:10}}>${fileBox('Optional mapping CSV','Recommended for 100–1000 employees. Columns: email/user_id, month, year, filename.','.csv',false,setPayMap,payMap&&payMap.name)}</div>
+          <div style=${{display:'flex',gap:8,marginTop:14}}><button class="btn brd" onClick=${()=>setPayStep(1)}>← Back</button><button class="btn bp" style=${{flex:1}} disabled=${!payFiles.length} onClick=${()=>setPayStep(3)}>Continue to confirm (${payFiles.length} file${payFiles.length===1?'':'s'})</button></div>
+        </div>`:null}
+        ${payStep===3?html`<div>
+          <div style=${{background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:14,padding:12,marginBottom:12}}>
+            <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:6}}>Period: <b style=${{color:'var(--tx)'}}>${pay.month}/${pay.year}</b></div>
+            <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:6}}>Files: <b style=${{color:'var(--tx)'}}>${payFiles.length}</b> payslip PDF(s)</div>
+            <div style=${{fontSize:12,color:'var(--tx2)'}}>Mapping: <b style=${{color:'var(--tx)'}}>${payMap?payMap.name:'None — matched by filename'}</b></div>
+          </div>
+          <p style=${{fontSize:11,color:'var(--tx3)',margin:'0 0 12px'}}>Publishing makes each matched payslip visible to that employee under Workspace OS → Payslips.</p>
+          <div style=${{display:'flex',gap:8}}><button class="btn brd" onClick=${()=>setPayStep(2)}>← Back</button><button class="btn bp" style=${{flex:1}} onClick=${uploadPayslips} disabled=${!!busy}>${busy==='payslips'?'Uploading…':`✅ Publish to ${payFiles.length} employee(s)`}</button></div>
+        </div>`:null}
       </div>
     </div>
     ${msg?html`<div style=${{marginTop:12,padding:'9px 12px',borderRadius:12,background:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.08)':'rgba(22,163,74,.09)',border:'1px solid '+(msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.20)':'rgba(22,163,74,.22)'),fontSize:12,color:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'var(--rd)':'var(--gn)'}}>${msg}</div>`:null}
@@ -9362,23 +9404,23 @@ async function vaultHashPw(pw){
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
 const VAULT_ICON_MAP = [
-  { keys:['aws','amazon','s3','ec2','lambda'],         icon:'☁️',  bg:'rgba(255,153,0,.18)',   border:'rgba(255,153,0,1)'    },
-  { keys:['gcp','google','firebase','bigquery'],       icon:'🌐',  bg:'rgba(66,133,244,.18)',  border:'rgba(66,133,244,1)'   },
-  { keys:['azure','microsoft','office365'],            icon:'🔷',  bg:'rgba(0,120,212,.18)',   border:'rgba(0,120,212,1)'    },
-  { keys:['github','gitlab','bitbucket','git'],        icon:'🐙',  bg:'rgba(180,180,180,.14)', border:'rgba(200,200,200,1)'  },
-  { keys:['database','db','mysql','postgres','mongo','redis','sqlite'], icon:'🗃️', bg:'rgba(6,182,212,.18)', border:'rgba(6,182,212,1)' },
-  { keys:['slack','discord','telegram','chat'],        icon:'💬',  bg:'rgba(99,91,255,.18)',   border:'rgba(99,91,255,1)'    },
-  { keys:['stripe','payment','billing','razorpay'],    icon:'💳',  bg:'rgba(99,91,255,.16)',   border:'rgba(99,91,255,1)'    },
-  { keys:['email','smtp','sendgrid','mailgun','mail'],  icon:'📧',  bg:'rgba(90,94,247,.18)',   border:'rgba(90,94,247,1)'    },
-  { keys:['ssh','server','vps','nginx','linux'],        icon:'🖥️',  bg:'rgba(16,185,129,.16)',  border:'rgba(16,185,129,1)'   },
-  { keys:['docker','kubernetes','k8s','container'],    icon:'🐳',  bg:'rgba(9,150,224,.18)',   border:'rgba(9,150,224,1)'    },
-  { keys:['api','token','key','secret','oauth','jwt'],  icon:'🔑',  bg:'rgba(245,158,11,.18)',  border:'rgba(245,158,11,1)'   },
-  { keys:['wallet','crypto','btc','eth','web3'],       icon:'🪙',  bg:'rgba(255,184,0,.18)',   border:'rgba(255,184,0,1)'    },
-  { keys:['openai','claude','gemini','llm','ai','ml'], icon:'🤖',  bg:'rgba(16,163,127,.18)',  border:'rgba(16,163,127,1)'   },
-  { keys:['vpn','sophos','wireguard','openvpn'],       icon:'🛡️',  bg:'rgba(168,85,247,.18)',  border:'rgba(168,85,247,1)'   },
-  { keys:['note','memo','personal','misc'],            icon:'📝',  bg:'rgba(148,163,184,.14)', border:'rgba(148,163,184,1)'  },
+  { keys:['aws','amazon','s3','ec2','lambda'],         icon:'☁️',  bg:'rgba(255,153,0,.18)',   border:'rgba(255,153,0,1)',   cat:'Cloud'    },
+  { keys:['gcp','google','firebase','bigquery'],       icon:'🌐',  bg:'rgba(66,133,244,.18)',  border:'rgba(66,133,244,1)',  cat:'Cloud'    },
+  { keys:['azure','microsoft','office365'],            icon:'🔷',  bg:'rgba(0,120,212,.18)',   border:'rgba(0,120,212,1)',   cat:'Cloud'    },
+  { keys:['github','gitlab','bitbucket','git'],        icon:'🐙',  bg:'rgba(180,180,180,.14)', border:'rgba(200,200,200,1)', cat:'Dev Tools'},
+  { keys:['database','db','mysql','postgres','mongo','redis','sqlite'], icon:'🗃️', bg:'rgba(6,182,212,.18)', border:'rgba(6,182,212,1)', cat:'Database' },
+  { keys:['slack','discord','telegram','chat'],        icon:'💬',  bg:'rgba(99,91,255,.18)',   border:'rgba(99,91,255,1)',   cat:'Comms'    },
+  { keys:['stripe','payment','billing','razorpay'],    icon:'💳',  bg:'rgba(99,91,255,.16)',   border:'rgba(99,91,255,1)',   cat:'Billing'  },
+  { keys:['email','smtp','sendgrid','mailgun','mail'],  icon:'📧',  bg:'rgba(90,94,247,.18)',   border:'rgba(90,94,247,1)',   cat:'Comms'    },
+  { keys:['ssh','server','vps','nginx','linux'],        icon:'🖥️',  bg:'rgba(16,185,129,.16)',  border:'rgba(16,185,129,1)',  cat:'Server'   },
+  { keys:['docker','kubernetes','k8s','container'],    icon:'🐳',  bg:'rgba(9,150,224,.18)',   border:'rgba(9,150,224,1)',   cat:'Server'   },
+  { keys:['api','token','key','secret','oauth','jwt'],  icon:'🔑',  bg:'rgba(245,158,11,.18)',  border:'rgba(245,158,11,1)',  cat:'Auth'     },
+  { keys:['wallet','crypto','btc','eth','web3'],       icon:'🪙',  bg:'rgba(255,184,0,.18)',   border:'rgba(255,184,0,1)',   cat:'Other'    },
+  { keys:['openai','claude','gemini','llm','ai','ml'], icon:'🤖',  bg:'rgba(16,163,127,.18)',  border:'rgba(16,163,127,1)',  cat:'Other'    },
+  { keys:['vpn','sophos','wireguard','openvpn'],       icon:'🛡️',  bg:'rgba(168,85,247,.18)',  border:'rgba(168,85,247,1)',  cat:'Auth'     },
+  { keys:['note','memo','personal','misc'],            icon:'📝',  bg:'rgba(148,163,184,.14)', border:'rgba(148,163,184,1)', cat:'Other'    },
 ];
-const VAULT_ICON_DEFAULT = { icon:'🗂️', bg:'rgba(90,94,247,.18)', border:'rgba(90,94,247,1)' };
+const VAULT_ICON_DEFAULT = { icon:'🗂️', bg:'rgba(90,94,247,.18)', border:'rgba(90,94,247,1)', cat:'Other' };
 function vaultGetIcon(title, tags){
   const hay = ((title||'')+(tags||'')).toLowerCase();
   for(const e of VAULT_ICON_MAP){ if(e.keys.some(k=>hay.includes(k))) return e; }
@@ -9820,6 +9862,7 @@ function VaultView({cu}){
   const [vLoading, setVLoading]= useState(true);
   const [unlocked, setUnlocked]= useState({});
   const [filter,   setFilter]  = useState('');
+  const [catFilter,setCatFilter]=useState('all');
   const [auditLog, setAuditLog]= useState([]);
   const [auditOpen,setAuditOpen]=useState(false);
   const [showNew,  setShowNew] = useState(false);
@@ -9904,10 +9947,15 @@ function VaultView({cu}){
   function handleLock(id){   setUnlocked(u=>{const n={...u};delete n[id];return n;}); }
 
   const filtered = cards.filter(c=>{
+    if(catFilter!=='all' && vaultGetIcon(c.title,c.tags).cat!==catFilter) return false;
     if(!filter) return true;
     const hay=(c.title||'')+(c.tags||'')+(c.rows||[]).map(r=>Object.values(r).join(' ')).join(' ');
     return hay.toLowerCase().includes(filter.toLowerCase());
   });
+
+  const catCounts = {};
+  cards.forEach(c=>{ const cat=vaultGetIcon(c.title,c.tags).cat; catCounts[cat]=(catCounts[cat]||0)+1; });
+  const catList = ['all', ...Object.keys(catCounts).sort()];
 
   const totalCreds = cards.reduce((s,c)=>(c.rows||[]).length+s,0);
   const totalProtected = cards.filter(c=>c.lockHash).length;
@@ -9955,6 +10003,19 @@ function VaultView({cu}){
             </div>
           </div>`)}
       </div>
+
+      <!-- Category pills -->
+      ${catList.length>1?html`
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16}}>
+        ${catList.map(cat=>html`
+          <div key=${cat} onClick=${()=>setCatFilter(cat)}
+            style=${{
+              fontSize:11,fontWeight:700,padding:'6px 13px',borderRadius:100,cursor:'pointer',
+              border:'1px solid '+(catFilter===cat?'transparent':'var(--bd)'),
+              background:catFilter===cat?'linear-gradient(135deg,#5a5ef7,#a855f7)':'var(--sf)',
+              color:catFilter===cat?'#fff':'var(--tx2)',transition:'all .12s',
+            }}>${cat==='all'?'All':cat} <span style=${{opacity:.7}}>${cat==='all'?cards.length:catCounts[cat]}</span></div>`)}
+      </div>`:null}
 
       <!-- Search & count -->
       <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
@@ -11816,8 +11877,7 @@ function App(){
     const raw=String(m.content||'');
     if(raw.includes('CALL_INVITE:'))return;
     const sname=m.sender_name||((data.users||[]).find(u=>String(u.id)===String(m.sender))||{}).name||'Someone';
-    const body=raw.replace(/CALL_[A-Z_]+:[^
-]+/g,'').trim().slice(0,90)||'Sent you a message';
+    const body=raw.replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
     window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body,{peer:String(m.sender||'')});
     showBrowserNotif('💬 '+sname,body,()=>{
       try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){}
