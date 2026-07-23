@@ -6865,133 +6865,141 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
   const totpConfigured=u.totp_configured||(!!(u.totp_verified));
   const isSelf=u.id===cu.id;
   const isAdminOrSelf=cu.role==='Admin'||cu.role==='Manager'||isSelf;
+  const [showSecurity,setShowSecurity]=useState(false);
 
   return html`
-    <tr style=${{borderBottom:i<total-1?'1px solid var(--bd)':'none',verticalAlign:'top'}}>
-      <td style=${{padding:'12px 14px'}}>
-        <div style=${{display:'flex',alignItems:'center',gap:10}}>
-          <${Av} u=${u} size=${34}/>
-          <div>
-            <div style=${{fontSize:13,fontWeight:600,color:'var(--tx)',display:'flex',alignItems:'center',gap:6}}>
-              ${u.name}
-              ${isSelf?html`<span style=${{fontSize:9,color:'var(--ac)',background:'var(--ac3)',padding:'2px 6px',borderRadius:4,fontFamily:'monospace'}}>YOU</span>`:null}
-            </div>
-            <div style=${{fontSize:10,color:ROLE_COLORS[u.role]||'var(--tx3)',marginTop:2}}>${u.role}</div>
+    <div class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16}}>
+      <div style=${{display:'flex',alignItems:'center',gap:10}}>
+        <${Av} u=${u} size=${38}/>
+        <div style=${{flex:1,minWidth:0}}>
+          <div style=${{fontSize:13,fontWeight:700,color:'var(--tx)',display:'flex',alignItems:'center',gap:6}}>
+            ${u.name}
+            ${isSelf?html`<span style=${{fontSize:9,color:'var(--ac)',background:'var(--ac3)',padding:'2px 6px',borderRadius:4,fontFamily:'monospace'}}>YOU</span>`:null}
           </div>
+          <div style=${{fontSize:11,color:ROLE_COLORS[u.role]||'var(--tx3)',marginTop:2}}>${u.role}</div>
         </div>
-      </td>
+      </div>
+      <div style=${{fontSize:12,color:'var(--tx2)',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${u.email}</div>
+      <select class="sel" style=${{width:'100%',padding:'6px 28px 6px 10px'}} value=${u.role}
+        onChange=${e=>api.put('/api/users/'+u.id,{role:e.target.value}).then(()=>reload&&reload())}
+        disabled=${u.id===cu.id&&cu.role==='Admin'}>
+        ${(roleOptions||ROLES).map(r=>html`<option key=${r}>${r}</option>`)}
+      </select>
+      <div style=${{display:'flex',gap:6,marginTop:2}}>
+        <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>setShowSecurity(true)}>🔑 Security</button>
+        ${u.id!==cu.id?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}}
+          onClick=${()=>window.confirm('Remove '+u.name+'?')&&api.del('/api/users/'+u.id).then(()=>reload&&reload())}>🗑 Delete</button>`:null}
+      </div>
 
-      <td style=${{padding:'12px 14px'}}>
-        <span style=${{fontSize:12,color:'var(--tx2)',fontFamily:'monospace'}}>${u.email}</span>
-      </td>
+      ${showSecurity?html`
+      <div class="ov" onClick=${e=>e.target===e.currentTarget&&setShowSecurity(false)}>
+        <div class="mo fi" style=${{maxWidth:420}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <h2 style=${{fontSize:16,fontWeight:800,color:'var(--tx)',display:'flex',alignItems:'center',gap:8}}>
+              <${Av} u=${u} size=${26}/> ${u.name} · Security
+            </h2>
+            <button class="btn bg" style=${{padding:'6px 10px'}} onClick=${()=>setShowSecurity(false)}>✕</button>
+          </div>
 
-      <!-- Password reset column -->
-      <td style=${{padding:'12px 14px',minWidth:160}}>
-        ${editPw?html`
-          <div style=${{display:'flex',gap:5,alignItems:'center'}}>
-            <input class="inp" type="text" placeholder="New password" value=${newPw}
-              style=${{height:28,fontSize:12,flex:1,minWidth:0}}
-              onInput=${e=>setNewPw(e.target.value)}
-              onKeyDown=${e=>{if(e.key==='Enter')resetPw();if(e.key==='Escape'){setEditPw(false);setNewPw('');}}}/>
-            <button class="btn bp" style=${{padding:'4px 9px',fontSize:11,flexShrink:0}} onClick=${resetPw} disabled=${saving||!newPw.trim()}>
-              ${saving?'…':'Save'}
-            </button>
-            <button class="btn bg" style=${{padding:'4px 8px',fontSize:11,flexShrink:0}} onClick=${()=>{setEditPw(false);setNewPw('');}}>✕</button>
-          </div>`:html`
+          <div style=${{marginBottom:14}}>
+            <div class="lbl" style=${{marginBottom:6}}>Password</div>
+            ${editPw?html`
+              <div style=${{display:'flex',gap:5,alignItems:'center'}}>
+                <input class="inp" type="text" placeholder="New password" value=${newPw}
+                  style=${{height:32,fontSize:12,flex:1,minWidth:0}}
+                  onInput=${e=>setNewPw(e.target.value)}
+                  onKeyDown=${e=>{if(e.key==='Enter')resetPw();if(e.key==='Escape'){setEditPw(false);setNewPw('');}}}/>
+                <button class="btn bp" style=${{padding:'6px 10px',fontSize:12,flexShrink:0}} onClick=${resetPw} disabled=${saving||!newPw.trim()}>
+                  ${saving?'…':'Save'}
+                </button>
+                <button class="btn bg" style=${{padding:'6px 9px',fontSize:12,flexShrink:0}} onClick=${()=>{setEditPw(false);setNewPw('');}}>✕</button>
+              </div>`:html`
+              <button class="btn bg" style=${{fontSize:12,padding:'6px 10px'}} onClick=${()=>setEditPw(true)}>Reset password</button>`}
+          </div>
+
           <div>
-            <!-- Action buttons -->
-            <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
+            <div class="lbl" style=${{marginBottom:6}}>Two-factor authentication</div>
+            <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
               ${isSelf&&!totpConfigured?html`
-                <button class="btn bg" style=${{padding:'3px 9px',fontSize:10,color:'#4ade80',borderColor:'rgba(74,222,128,0.3)'}}
+                <button class="btn bg" style=${{padding:'6px 10px',fontSize:11,color:'#4ade80',borderColor:'rgba(74,222,128,0.3)'}}
                   onClick=${startTotpSetup}>
                   📱 Setup Authenticator
                 </button>`:null}
               ${totpConfigured&&isAdminOrSelf?html`
-                <button class="btn brd" style=${{padding:'3px 9px',fontSize:10}}
+                <button class="btn brd" style=${{padding:'6px 10px',fontSize:11}}
                   onClick=${resetTotp} disabled=${twoFaLoading}>
                   ${twoFaLoading?'…':'↺ Reset 2FA'}
                 </button>`:null}
               ${!totpConfigured&&(cu.role==='Admin'||cu.role==='Manager')?html`
-                <button class=${'btn bg'} style=${{padding:'3px 9px',fontSize:10,color:u.two_fa_enabled?'var(--rd)':'var(--cy)',borderColor:u.two_fa_enabled?'rgba(255,68,68,0.3)':'rgba(34,211,238,0.3)'}}
+                <button class=${'btn bg'} style=${{padding:'6px 10px',fontSize:11,color:u.two_fa_enabled?'var(--rd)':'var(--cy)',borderColor:u.two_fa_enabled?'rgba(255,68,68,0.3)':'rgba(34,211,238,0.3)'}}
                   onClick=${toggleEmailOtp} disabled=${twoFaLoading}>
                   ${twoFaLoading?'…':u.two_fa_enabled?'Disable Email 2FA':'Enable Email 2FA'}
                 </button>`:null}
+              ${!isSelf&&!totpConfigured&&!(cu.role==='Admin'||cu.role==='Manager')?html`<span style=${{fontSize:11,color:'var(--tx3)'}}>No 2FA configured.</span>`:null}
             </div>
+            ${totpMsg?html`<div style=${{fontSize:11,color:totpMsg.startsWith('✓')?'var(--gn)':'var(--rd)',fontWeight:600,marginTop:8}}>${totpMsg}</div>`:null}
+          </div>
+        </div>
+      </div>`:null}
 
-            ${totpMsg?html`<div style=${{fontSize:10,color:totpMsg.startsWith('✓')?'var(--gn)':'var(--rd)',fontWeight:600}}>${totpMsg}</div>`:null}
+      <!-- TOTP Setup modal -->
+      ${showTotpSetup&&totpData?html`
+    <div class="ov" onClick=${e=>e.target===e.currentTarget&&setShowTotpSetup(false)}>
+      <div class="mo fi" style=${{maxWidth:480}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+          <div>
+            <h2 style=${{fontSize:17,fontWeight:800,color:'var(--tx)',margin:0,display:'flex',alignItems:'center',gap:8}}>
+              <span style=${{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📱</span>
+              Setup Google Authenticator
+            </h2>
+            <p style=${{fontSize:11,color:'var(--tx3)',marginTop:4}}>Scan the QR code with your authenticator app</p>
+          </div>
+          <button class="btn bg" style=${{padding:'6px 10px'}} onClick=${()=>setShowTotpSetup(false)}>✕</button>
+        </div>
 
-            <!-- TOTP Setup modal inline -->
-            ${showTotpSetup&&totpData?html`
-          <div class="ov" onClick=${e=>e.target===e.currentTarget&&setShowTotpSetup(false)}>
-            <div class="mo fi" style=${{maxWidth:480}}>
-              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-                <div>
-                  <h2 style=${{fontSize:17,fontWeight:800,color:'var(--tx)',margin:0,display:'flex',alignItems:'center',gap:8}}>
-                    <span style=${{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📱</span>
-                    Setup Google Authenticator
-                  </h2>
-                  <p style=${{fontSize:11,color:'var(--tx3)',marginTop:4}}>Scan the QR code with your authenticator app</p>
-                </div>
-                <button class="btn bg" style=${{padding:'6px 10px'}} onClick=${()=>setShowTotpSetup(false)}>✕</button>
-              </div>
-
-              <div style=${{display:'grid',gridTemplateColumns:'auto 1fr',gap:20,marginBottom:20,alignItems:'start'}}>
-                <div style=${{textAlign:'center'}}>
-                  <div style=${{background:'white',padding:10,borderRadius:10,border:'1px solid var(--bd)',display:'inline-block',boxShadow:'0 4px 16px rgba(0,0,0,.1)'}}>
-                    <${QRCodeDisplay} otpauth=${totpData.otpauth} size=${160}/>
-                  </div>
-                  <div style=${{fontSize:9,color:'var(--tx3)',marginTop:6}}>Scan with Google Authenticator</div>
-                </div>
-                <div>
-                  <div style=${{marginBottom:12}}>
-                    <div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:6}}>Manual Entry</div>
-                    <div style=${{fontFamily:'monospace',fontSize:12,background:'var(--sf2)',padding:'8px 10px',borderRadius:9,border:'1px solid var(--bd)',letterSpacing:3,wordBreak:'break-all',color:'var(--tx)',userSelect:'all'}}>
-                      ${totpData.secret}
-                    </div>
-                    <div style=${{fontSize:9,color:'var(--tx3)',marginTop:4}}>Copy this key if you can't scan the QR code</div>
-                  </div>
-                  <div style=${{padding:'8px 10px',background:'rgba(29,78,216,0.06)',borderRadius:9,border:'1px solid rgba(29,78,216,0.15)',fontSize:11,color:'var(--tx2)',lineHeight:1.6}}>
-                    <b>Steps:</b><br/>
-                    1. Open <b>Google Authenticator</b> or <b>Authy</b><br/>
-                    2. Tap <b>+</b> → Scan QR code (or enter key manually)<br/>
-                    3. Enter the 6-digit code below to confirm
-                  </div>
-                </div>
-              </div>
-
-              <div style=${{marginBottom:14}}>
-                <label class="lbl">Enter Code from App to Confirm</label>
-                <input class="inp" type="text" inputMode="numeric" pattern="[0-9]*"
-                  value=${totpVerifyToken}
-                  onInput=${e=>setTotpVerifyToken(e.target.value.replace(/\D/g,'').slice(0,6))}
-                  onKeyDown=${e=>e.key==='Enter'&&confirmTotpSetup()}
-                  placeholder="000000"
-                  style=${{textAlign:'center',fontSize:22,fontWeight:700,fontFamily:'monospace',letterSpacing:6}}/>
-              </div>
-              ${totpMsg?html`<div style=${{padding:'8px 12px',background:totpMsg.startsWith('✓')?'rgba(74,222,128,0.1)':'rgba(239,68,68,0.08)',border:'1px solid '+(totpMsg.startsWith('✓')?'rgba(74,222,128,0.3)':'rgba(239,68,68,0.2)'),borderRadius:8,fontSize:12,color:totpMsg.startsWith('✓')?'#4ade80':'var(--rd)',marginBottom:12}}>${totpMsg}</div>`:null}
-              <div style=${{display:'flex',gap:9,justifyContent:'flex-end'}}>
-                <button class="btn bg" onClick=${()=>setShowTotpSetup(false)}>Cancel</button>
-                <button class="btn bp" onClick=${confirmTotpSetup} disabled=${totpVerifying||totpVerifyToken.replace(/\s/g,'').length!==6}>
-                  ${totpVerifying?html`<span class="spin"></span>`:null} Confirm & Enable
-                </button>
-              </div>
+        <div style=${{display:'grid',gridTemplateColumns:'auto 1fr',gap:20,marginBottom:20,alignItems:'start'}}>
+          <div style=${{textAlign:'center'}}>
+            <div style=${{background:'white',padding:10,borderRadius:10,border:'1px solid var(--bd)',display:'inline-block',boxShadow:'0 4px 16px rgba(0,0,0,.1)'}}>
+              <${QRCodeDisplay} otpauth=${totpData.otpauth} size=${160}/>
             </div>
-          </div>`:null}
-          </div>`}
-      </td>
+            <div style=${{fontSize:9,color:'var(--tx3)',marginTop:6}}>Scan with Google Authenticator</div>
+          </div>
+          <div>
+            <div style=${{marginBottom:12}}>
+              <div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:6}}>Manual Entry</div>
+              <div style=${{fontFamily:'monospace',fontSize:12,background:'var(--sf2)',padding:'8px 10px',borderRadius:9,border:'1px solid var(--bd)',letterSpacing:3,wordBreak:'break-all',color:'var(--tx)',userSelect:'all'}}>
+                ${totpData.secret}
+              </div>
+              <div style=${{fontSize:9,color:'var(--tx3)',marginTop:4}}>Copy this key if you can't scan the QR code</div>
+            </div>
+            <div style=${{padding:'8px 10px',background:'rgba(29,78,216,0.06)',borderRadius:9,border:'1px solid rgba(29,78,216,0.15)',fontSize:11,color:'var(--tx2)',lineHeight:1.6}}>
+              <b>Steps:</b><br/>
+              1. Open <b>Google Authenticator</b> or <b>Authy</b><br/>
+              2. Tap <b>+</b> → Scan QR code (or enter key manually)<br/>
+              3. Enter the 6-digit code below to confirm
+            </div>
+          </div>
+        </div>
 
-      <td style=${{padding:'12px 14px'}}>
-        <select class="sel" style=${{width:130,padding:'6px 28px 6px 10px'}} value=${u.role}
-          onChange=${e=>api.put('/api/users/'+u.id,{role:e.target.value}).then(()=>reload&&reload())}
-          disabled=${u.id===cu.id&&cu.role==='Admin'}>
-          ${(roleOptions||ROLES).map(r=>html`<option key=${r}>${r}</option>`)}
-        </select>
-      </td>
-      <td style=${{padding:'12px 14px'}}>
-        ${u.id!==cu.id?html`<button class="btn brd" style=${{padding:'5px 11px',fontSize:12}}
-          onClick=${()=>window.confirm('Remove '+u.name+'?')&&api.del('/api/users/'+u.id).then(()=>reload&&reload())}>🗑</button>`:null}
-      </td>
-    </tr>`;
+        <div style=${{marginBottom:14}}>
+          <label class="lbl">Enter Code from App to Confirm</label>
+          <input class="inp" type="text" inputMode="numeric" pattern="[0-9]*"
+            value=${totpVerifyToken}
+            onInput=${e=>setTotpVerifyToken(e.target.value.replace(/\D/g,'').slice(0,6))}
+            onKeyDown=${e=>e.key==='Enter'&&confirmTotpSetup()}
+            placeholder="000000"
+            style=${{textAlign:'center',fontSize:22,fontWeight:700,fontFamily:'monospace',letterSpacing:6}}/>
+        </div>
+        ${totpMsg?html`<div style=${{padding:'8px 12px',background:totpMsg.startsWith('✓')?'rgba(74,222,128,0.1)':'rgba(239,68,68,0.08)',border:'1px solid '+(totpMsg.startsWith('✓')?'rgba(74,222,128,0.3)':'rgba(239,68,68,0.2)'),borderRadius:8,fontSize:12,color:totpMsg.startsWith('✓')?'#4ade80':'var(--rd)',marginBottom:12}}>${totpMsg}</div>`:null}
+        <div style=${{display:'flex',gap:9,justifyContent:'flex-end'}}>
+          <button class="btn bg" onClick=${()=>setShowTotpSetup(false)}>Cancel</button>
+          <button class="btn bp" onClick=${confirmTotpSetup} disabled=${totpVerifying||totpVerifyToken.replace(/\s/g,'').length!==6}>
+            ${totpVerifying?html`<span class="spin"></span>`:null} Confirm & Enable
+          </button>
+        </div>
+      </div>
+    </div>`:null}
+    </div>`;
 }
 
 function TeamView({users,cu,reload,projects}){
@@ -7003,6 +7011,7 @@ function TeamView({users,cu,reload,projects}){
   const [tName,setTName]=useState('');const [tLead,setTLead]=useState('');const [tMembers,setTMembers]=useState([]);
   const [savingTeam,setSavingTeam]=useState(false);
   const [memberSearch,setMemberSearch]=useState('');
+  const [roleFilter,setRoleFilter]=useState('all');
   const [teamSearch,setTeamSearch]=useState('');
   const [roleOptions,setRoleOptions]=useState(ROLES);
   useEffect(()=>{api.get('/api/workspace/roles',{quiet:true,timeoutMs:12000}).then(r=>{if(r&&r.ok)setRoleOptions([...(r.items||[]).map(x=>x.name)].filter(Boolean));}).catch(()=>{});},[]);
@@ -7062,10 +7071,21 @@ function TeamView({users,cu,reload,projects}){
       console.error('[TeamView] users is not an array:',typeof users,users);
       return [];
     }
-    return userArray.filter(u=>u&&u.id&&u.name&&u.email&&(!memberSearch||u.name.toLowerCase().includes(memberSearch.toLowerCase())||u.email.toLowerCase().includes(memberSearch.toLowerCase())));
-  },[users,memberSearch]);
+    return userArray.filter(u=>u&&u.id&&u.name&&u.email&&(roleFilter==='all'||u.role===roleFilter)&&(!memberSearch||u.name.toLowerCase().includes(memberSearch.toLowerCase())||u.email.toLowerCase().includes(memberSearch.toLowerCase())));
+  },[users,memberSearch,roleFilter]);
   const filteredTeams=useMemo(()=>teams.filter(t=>!teamSearch||t.name.toLowerCase().includes(teamSearch.toLowerCase())),[teams,teamSearch]);
   const ROLE_COLORS={Admin:'var(--ac)',Manager:'var(--gn)',TeamLead:'var(--cy)',Developer:'var(--pu)',Tester:'var(--am)',Viewer:'var(--tx3)'};
+  const rolesInUse=useMemo(()=>{const set=new Set();safe(users).forEach(u=>u&&u.role&&set.add(u.role));return Array.from(set);},[users]);
+  const roleCounts=useMemo(()=>{const c={};safe(users).forEach(u=>{if(u&&u.role)c[u.role]=(c[u.role]||0)+1;});return c;},[users]);
+  const adminCount=safe(users).filter(u=>u&&u.role==='Admin').length;
+  const memberStatCard=(label,val,icon,color,bg)=>html`
+    <div style=${{padding:'16px 18px',borderRadius:16,background:'var(--sf)',border:'1px solid var(--bd)',display:'flex',flexDirection:'column',gap:6}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style=${{fontSize:10,fontWeight:900,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.5}}>${label}</span>
+        <span style=${{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,background:bg,fontSize:14}}>${icon}</span>
+      </div>
+      <div style=${{fontSize:22,fontWeight:900,color:color||'var(--tx)'}}>${val}</div>
+    </div>`;
 
   return html`<div class="fi" style=${{height:'100%',overflowY:'auto',padding:'18px 22px',boxSizing:'border-box'}}>
         <div style=${{display:'flex',gap:4,marginBottom:18,background:'var(--sf2)',borderRadius:12,padding:4,width:'fit-content',border:'1px solid var(--bd)'}}>
@@ -7077,7 +7097,13 @@ function TeamView({users,cu,reload,projects}){
     </div>
 
     ${tab==='members'?html`
-      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginBottom:16}}>
+        ${memberStatCard('Team members',safe(users).length,'👥','var(--tx)','rgba(90,140,255,.12)')}
+        ${memberStatCard('Teams',teams.length,'🏷','var(--cy)','rgba(34,211,238,.10)')}
+        ${memberStatCard('Admins',adminCount,'🛡','var(--ac)','rgba(90,140,255,.10)')}
+        ${memberStatCard('Roles in use',rolesInUse.length,'🎭','var(--pu)','rgba(167,139,250,.10)')}
+      </div>
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}}>
         <div style=${{position:'relative',flex:1,maxWidth:300}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
             style=${{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--tx3)',pointerEvents:'none'}}>
@@ -7086,20 +7112,18 @@ function TeamView({users,cu,reload,projects}){
           <input class="inp" placeholder="Search members by name or email…" value=${memberSearch}
             style=${{paddingLeft:30,height:34,fontSize:12}} onInput=${e=>setMemberSearch(e.target.value)}/>
         </div>
-        <span style=${{fontSize:12,color:'var(--tx3)',flexShrink:0}}>${filteredMembers.length} of ${safe(users).length}</span>
+        <div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>
+          <button class=${'chip '+(roleFilter==='all'?'on':'')} style=${{fontSize:11,padding:'4px 10px'}} onClick=${()=>setRoleFilter('all')}>All ${safe(users).length}</button>
+          ${rolesInUse.map(r=>html`<button key=${r} class=${'chip '+(roleFilter===r?'on':'')} style=${{fontSize:11,padding:'4px 10px'}} onClick=${()=>setRoleFilter(r)}>${r} ${roleCounts[r]||0}</button>`)}
+        </div>
+        <span style=${{fontSize:12,color:'var(--tx3)',flexShrink:0,marginLeft:'auto'}}>${filteredMembers.length} of ${safe(users).length}</span>
         <button class="btn bp" style=${{flexShrink:0}} onClick=${()=>setShowNew(true)}>+ Add Member</button>
       </div>
-      <div class="card" style=${{padding:0,overflow:'auto'}}>
-        <table style=${{width:'100%',borderCollapse:'collapse'}}>
-          <thead><tr style=${{borderBottom:'1px solid var(--bd)',background:'var(--sf2)'}}>
-            ${['Member','Email','Password & 2FA','Role',''].map((h,i)=>html`<th key=${i} style=${{padding:'9px 15px',textAlign:'left',fontSize:10,fontFamily:'monospace',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.5}}>${h}</th>`)}
-          </tr></thead>
-          <tbody>
-            ${filteredMembers.length===0?html`<tr><td colspan="5" style=${{padding:'20px',textAlign:'center',color:'var(--tx3)',fontSize:12}}>No members match your search.</td></tr>`:null}
-            ${filteredMembers.map((u,i)=>html`<${MemberRow} key=${u.id} u=${u} cu=${cu} i=${i} total=${filteredMembers.length} reload=${reload} ROLE_COLORS=${ROLE_COLORS} roleOptions=${roleOptions}/>`)}
-          </tbody>
-        </table>
-      </div>`:null}
+      ${filteredMembers.length===0?html`
+        <div style=${{textAlign:'center',padding:'40px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:12,border:'1px dashed var(--bd)'}}>No members match your search.</div>`:html`
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
+        ${filteredMembers.map((u,i)=>html`<${MemberRow} key=${u.id} u=${u} cu=${cu} i=${i} total=${filteredMembers.length} reload=${reload} ROLE_COLORS=${ROLE_COLORS} roleOptions=${roleOptions}/>`)}
+      </div>`}`:null}
 
     ${tab==='teams'?html`
       <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
@@ -7120,39 +7144,36 @@ function TeamView({users,cu,reload,projects}){
           <div style=${{fontWeight:600,marginBottom:4}}>No teams yet</div>
           <div>Create sub-teams to group members and manage multi-team workflows</div>
         </div>`:null}
-      <div style=${{display:'flex',flexDirection:'column',gap:10}}>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
         ${filteredTeams.length===0&&teams.length>0?html`
-          <div style=${{textAlign:'center',padding:'20px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>No teams match your search.</div>`:null}
+          <div style=${{gridColumn:'1/-1',textAlign:'center',padding:'20px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>No teams match your search.</div>`:null}
         ${filteredTeams.map(t=>{
           const members=parseIdList(t.member_ids).map(id=>umap[id]).filter(Boolean);
           const lead=t.lead_id?umap[t.lead_id]:null;
           return html`
-          <div key=${t.id} class="card" style=${{display:'flex',gap:14,alignItems:'flex-start'}}>
-            <div style=${{width:44,height:44,borderRadius:12,background:'var(--ac3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>🏷</div>
-            <div style=${{flex:1,minWidth:0}}>
-              <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                <span style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${t.name}</span>
+          <div key=${t.id} class="card" style=${{display:'flex',flexDirection:'column',gap:10,padding:16}}>
+            <div style=${{display:'flex',alignItems:'center',gap:10}}>
+              <div style=${{width:40,height:40,borderRadius:12,background:'var(--ac3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>🏷</div>
+              <div style=${{flex:1,minWidth:0}}>
+                <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${t.name}</div>
                 <span class="tx3-11">${members.length} member${members.length!==1?'s':''}</span>
               </div>
-              ${lead?html`<div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
-                <span class="tx3-11">Lead:</span>
-                <${Av} u=${lead} size=${20}/>
-                <span style=${{fontSize:12,fontWeight:600,color:'var(--cy)'}}>${lead.name}</span>
-              </div>`:null}
-              <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
-                ${members.map(m=>html`
-                  <div key=${m.id} style=${{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',background:'var(--sf2)',borderRadius:20,border:'1px solid var(--bd)'}}>
-                    <${Av} u=${m} size=${18}/>
-                    <div>
-                      <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:500}}>${m.name}</div>
-                      
-                    </div>
-                  </div>`)}
-              </div>
             </div>
-            <div style=${{display:'flex',gap:6,flexShrink:0}}>
-              <button class="btn bg" style=${{padding:'6px 10px',fontSize:12}} onClick=${()=>openEditTeam(t)}>✏️ Edit</button>
-              <button class="btn brd" style=${{padding:'6px 10px',fontSize:12,color:'var(--rd)'}} onClick=${()=>delTeam(t.id)}>🗑</button>
+            ${lead?html`<div style=${{display:'flex',alignItems:'center',gap:6}}>
+              <span class="tx3-11">Lead:</span>
+              <${Av} u=${lead} size=${20}/>
+              <span style=${{fontSize:12,fontWeight:600,color:'var(--cy)'}}>${lead.name}</span>
+            </div>`:null}
+            <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+              ${members.map(m=>html`
+                <div key=${m.id} style=${{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',background:'var(--sf2)',borderRadius:20,border:'1px solid var(--bd)'}}>
+                  <${Av} u=${m} size=${18}/>
+                  <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:500}}>${m.name}</div>
+                </div>`)}
+            </div>
+            <div style=${{display:'flex',gap:6,marginTop:4}}>
+              <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEditTeam(t)}>✏️ Edit</button>
+              <button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>delTeam(t.id)}>🗑 Delete</button>
             </div>
           </div>`;
         })}
@@ -7585,32 +7606,32 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
           <div style=${{marginBottom:14}}>${ticketSearch||filterStatus||filterPriority||filterType||filterAssignee?'Try clearing filters or search text.':'Create a ticket to track bugs, features, and tasks'}</div>
           <button class="btn bp" onClick=${()=>{setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');setShowNew(true);}}>+ Create Ticket</button>
         </div>`:null}
-      <div style=${{display:'flex',flexDirection:'column',gap:8}}>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
         ${visibleTickets.map(t=>{
           const tc=TYPE_CFG[t.type]||TYPE_CFG.bug;
           const pc=PRIORITY_CFG[t.priority]||PRIORITY_CFG.medium;
           const sc=STATUS_CFG[t.status]||STATUS_CFG.open;
           const assignee=t.assignee?umap[t.assignee]:null;
           return html`
-          <div key=${t.id} onClick=${()=>openDetail(t)}
-            style=${{display:'flex',gap:12,padding:'12px 15px',background:'var(--sf)',borderRadius:11,border:'1px solid var(--bd)',alignItems:'center',cursor:'pointer',transition:'all .14s'}}
-            onMouseEnter=${e=>{e.currentTarget.style.borderColor='var(--ac)';e.currentTarget.style.background='var(--sf2)';}}
-            onMouseLeave=${e=>{e.currentTarget.style.borderColor='var(--bd)';e.currentTarget.style.background='var(--sf)';}}>
-                        <div style=${{width:36,height:36,borderRadius:9,background:tc.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:17,flexShrink:0}}>${tc.icon}</div>
-                        <div style=${{flex:1,minWidth:0}}>
-              <div style=${{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
-                <span class="id-badge id-ticket" style=${{fontSize:9,flexShrink:0}}>${t.id}</span>
-                <span style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>${t.title}</span>
-                <span style=${{fontSize:10,padding:'1px 7px',borderRadius:5,background:sc.color+'22',color:sc.color,fontWeight:700,flexShrink:0}}>${sc.icon} ${sc.label}</span>
+          <div key=${t.id} onClick=${()=>openDetail(t)} class="card"
+            style=${{display:'flex',flexDirection:'column',gap:8,padding:16,cursor:'pointer'}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+              <div style=${{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                <div style=${{width:32,height:32,borderRadius:9,background:tc.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>${tc.icon}</div>
+                <span style=${{fontSize:14,fontWeight:800,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.title}</span>
               </div>
-              <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                <span style=${{fontSize:10,padding:'1px 6px',borderRadius:4,background:pc.color+'22',color:pc.color,fontWeight:600}}>${pc.icon} ${pc.label}</span>
-                <span style=${{fontSize:9,color:'var(--tx3)'}}>${tc.label}</span>
-                ${t.project?html`<span style=${{fontSize:9,color:'var(--tx3)'}}>📁 ${(safe(projects).find(p=>p.id===t.project)||{name:t.project}).name}</span>`:null}
-                <span style=${{fontSize:9,color:'var(--tx3)',marginLeft:'auto'}}>${new Date(t.created).toLocaleDateString()}</span>
-              </div>
+              ${assignee?html`<${Av} u=${assignee} size=${24}/>`:null}
             </div>
-                        ${assignee?html`<div style=${{flexShrink:0}}><${Av} u=${assignee} size=${28}/></div>`:null}
+            <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
+              <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:pc.color+'22',color:pc.color,fontWeight:800,textTransform:'uppercase'}}>${pc.icon} ${pc.label}</span>
+              <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:sc.color+'22',color:sc.color,fontWeight:800,textTransform:'uppercase'}}>${sc.icon} ${sc.label}</span>
+            </div>
+            <div style=${{fontSize:11,color:'var(--tx3)'}}>From ${assignee?assignee.name:'Unassigned'} · ${new Date(t.created).toLocaleDateString()}${t.project?html` · 📁 ${(safe(projects).find(p=>p.id===t.project)||{name:t.project}).name}`:null}</div>
+            ${t.description?html`<div style=${{fontSize:12,color:'var(--tx2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.description}</div>`:null}
+            <div style=${{display:'flex',gap:6,marginTop:6}} onClick=${e=>e.stopPropagation()}>
+              ${canEdit?html`<button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEdit(t)}>✏️ Edit</button>`:null}
+              ${canDelete?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>del(t.id)}>🗑 Delete</button>`:null}
+            </div>
           </div>`;})}
       </div>
       ${showNew?FORM:null}
@@ -9134,7 +9155,8 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
   const [addMins,setAddMins]=useState(10);
   const [saving,setSaving]=useState(false);
   const [addProjId,setAddProjId]=useState('');
-  const [showCompleted,setShowCompleted]=useState(false);
+  const [searchQ,setSearchQ]=useState('');
+  const [filterTab,setFilterTab]=useState('all');
   const [editReminder,setEditReminder]=useState(null);
   const [editDate,setEditDate]=useState('');
   const [editTime,setEditTime]=useState('');
@@ -9152,6 +9174,7 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
   useEffect(()=>{load();},[load]);
 
   const del=async id=>{await api.del('/api/reminders/'+id);load();onReload&&onReload();};
+  const toggleDone=async r=>{await api.put('/api/reminders/'+r.id,{task_title:r.task_title,remind_at:r.remind_at,minutes_before:r.minutes_before,fired:r.fired?0:1});load();onReload&&onReload();};
 
   const openEdit=(r)=>{
     setEditReminder(r);
@@ -9209,9 +9232,6 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
         <div style=${{fontSize:13,color:'var(--tx2)'}}>Set reminders for your tasks — get notified with sound before they're due.</div>
         <div style=${{display:'flex',gap:8}}>
-          <button class=${'btn '+(showCompleted?'bp':'bg')} style=${{fontSize:12}} onClick=${()=>setShowCompleted(p=>!p)}>
-            ${showCompleted?'Hide Completed':'Show Completed ('+completed.length+')'}
-          </button>
           <button class="btn bp" style=${{fontSize:12}} onClick=${()=>{const now=new Date();setAddDate(now.toISOString().split('T')[0]);setAddTime(now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));setShowAdd(true);}}>+ Add Reminder</button>
         </div>
       </div>
@@ -9339,80 +9359,53 @@ function RemindersView({cu,tasks,projects,onSetReminder,onReload,initialView}){
           </div>
         </div>`:null}
 
-      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-        <div>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <span style=${{fontWeight:700,fontSize:13,color:'var(--tx)'}}>⚡ Upcoming</span>
-            <span class="tx3-11">${upcoming.length} reminder${upcoming.length!==1?'s':''}</span>
-          </div>
-          ${busy?html`<div class="spin" style=${{margin:'20px auto',display:'block'}}></div>`:null}
-          ${!busy&&upcoming.length===0?html`
-            <div style=${{textAlign:'center',padding:'28px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>
-              <div style=${{fontSize:28,marginBottom:8}}>✅</div>
-              <div>No upcoming reminders</div>
-            </div>`:null}
-          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
-            ${upcoming.map(r=>{
-              const ft=fmtRem(r.remind_at);
-              return html`
-                <div key=${r.id} style=${{display:'flex',gap:10,padding:'11px 13px',background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)',alignItems:'center'}}>
-                  <div style=${{width:36,height:36,borderRadius:9,background:'rgba(251,191,36,.1)',border:'1px solid rgba(251,191,36,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>⏰</div>
-                  <div style=${{flex:1,minWidth:0}}>
-                    <div style=${{fontSize:12,fontWeight:700,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>${r.task_title}</div>
-                    <div style=${{display:'flex',gap:6,alignItems:'center'}}>
-                      <span style=${{fontSize:10,padding:'1px 6px',borderRadius:4,background:ft.bg,color:ft.cls,fontWeight:700}}>${ft.label}</span>
-                      <span class="mono-10">${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
-                      ${r.minutes_before>0?html`<span style=${{fontSize:10,color:'var(--am)'}}>🔔 ${r.minutes_before}min before</span>`:null}
-                    </div>
-                  </div>
-                  <button class="btn bg" title="Edit" style=${{fontSize:11,padding:'4px 8px',flexShrink:0,marginRight:4}} onClick=${()=>openEdit(r)}>✏️</button>
-                  <button class="btn brd" style=${{fontSize:10,padding:'4px 8px',flexShrink:0}} onClick=${()=>del(r.id)}>✕</button>
-                </div>`;
-            })}
-          </div>
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <div style=${{position:'relative',flex:1,maxWidth:280}}>
+          <input class="inp" placeholder="Search reminders…" value=${searchQ} onInput=${e=>setSearchQ(e.target.value)} style=${{height:34,fontSize:12}}/>
         </div>
-        <div>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <span style=${{fontWeight:700,fontSize:13,color:'var(--rd)'}}>🚨 Overdue</span>
-            <span class="tx3-11">${overdue.length} past due</span>
-          </div>
-          ${!busy&&overdue.length===0?html`
-            <div style=${{textAlign:'center',padding:'28px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:10,border:'1px solid var(--bd)'}}>
-              <div style=${{fontSize:28,marginBottom:8}}>🎉</div>
-              <div>Nothing overdue!</div>
-            </div>`:null}
-          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
-            ${overdue.map(r=>html`
-              <div key=${r.id} style=${{display:'flex',gap:10,padding:'11px 13px',background:'rgba(248,113,113,.03)',borderRadius:10,border:'1px solid rgba(248,113,113,.15)',alignItems:'center'}}>
-                <div style=${{width:36,height:36,borderRadius:9,background:'rgba(248,113,113,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>⚠️</div>
-                <div style=${{flex:1,minWidth:0}}>
-                  <div style=${{fontSize:12,fontWeight:700,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>${r.task_title}</div>
-                  <span style=${{fontSize:10,color:'var(--rd)',fontFamily:'monospace'}}>${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
-                </div>
-                <button class="btn brd" style=${{fontSize:10,padding:'4px 8px',flexShrink:0}} onClick=${()=>del(r.id)}>✕</button>
-              </div>`)}
-          </div>
+        <div style=${{display:'flex',gap:4}}>
+          ${[['all','All',reminders.length],['pending','Pending',active.length],['done','Done',completed.length]].map(([v,l,n])=>html`
+            <button key=${v} class=${'chip '+(filterTab===v?'on':'')} onClick=${()=>setFilterTab(v)} style=${{fontSize:11,padding:'4px 10px'}}>${l} ${n}</button>`)}
         </div>
       </div>
 
-      ${showCompleted&&completed.length>0?html`
-        <div style=${{marginTop:20}}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <span style=${{fontWeight:700,fontSize:13,color:'var(--gn)'}}>✅ Completed Reminders</span>
-            <span class="tx3-11">${completed.length} done</span>
-          </div>
-          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
-            ${completed.map(r=>html`
-              <div key=${r.id} style=${{display:'flex',gap:10,padding:'10px 13px',background:'rgba(74,222,128,.04)',borderRadius:10,border:'1px solid rgba(74,222,128,.15)',alignItems:'center',opacity:.75}}>
-                <div style=${{width:32,height:32,borderRadius:8,background:'rgba(74,222,128,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>✅</div>
-                <div style=${{flex:1,minWidth:0}}>
-                  <div style=${{fontSize:12,fontWeight:600,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:'line-through',opacity:.7}}>${r.task_title}</div>
-                  <span class="mono-10">${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+      ${busy?html`<div class="spin" style=${{margin:'20px auto',display:'block'}}></div>`:null}
+      ${(()=>{
+        const q=searchQ.toLowerCase();
+        const list=reminders.filter(r=>{
+          const matchTab=filterTab==='all'||(filterTab==='pending'&&!r.fired)||(filterTab==='done'&&r.fired);
+          const matchQ=!q||(r.task_title||'').toLowerCase().includes(q);
+          return matchTab&&matchQ;
+        }).sort((a,b)=>new Date(b.remind_at)-new Date(a.remind_at));
+        if(!busy&&list.length===0){
+          return html`<div style=${{textAlign:'center',padding:'36px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:14,border:'1px dashed var(--bd)'}}>
+              <div style=${{fontSize:28,marginBottom:8}}>⏰</div>
+              <div>${q||filterTab!=='all'?'No reminders match your filters.':'No reminders yet.'}</div>
+            </div>`;
+        }
+        return html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
+          ${list.map(r=>{
+            const ft=fmtRem(r.remind_at);
+            const done=!!r.fired;
+            return html`
+              <div key=${r.id} class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:14,opacity:done?.75:1}}>
+                <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+                  <span style=${{fontSize:13,fontWeight:700,color:'var(--tx)',textDecoration:done?'line-through':'none',opacity:done?.7:1}}>${r.task_title}</span>
+                  <span style=${{fontSize:10,fontWeight:900,padding:'3px 8px',borderRadius:999,textTransform:'uppercase',background:done?'rgba(74,222,128,.12)':ft.bg,color:done?'var(--gn)':ft.cls,flexShrink:0}}>${done?'Done':ft.label}</span>
                 </div>
-                <button class="btn brd" style=${{fontSize:10,padding:'4px 8px',flexShrink:0}} onClick=${()=>del(r.id)}>✕</button>
-              </div>`)}
-          </div>
-        </div>`:null}
+                <div style=${{fontSize:11,color:'var(--tx3)'}}>
+                  ${new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+                  ${r.minutes_before>0?html` · 🔔 ${r.minutes_before}min before`:null}
+                </div>
+                <div style=${{display:'flex',gap:6,marginTop:4}}>
+                  <button class=${'btn '+(done?'bg':'bp')} style=${{flex:1,fontSize:12,padding:'6px 8px'}} onClick=${()=>toggleDone(r)}>${done?'↺ Mark pending':'✓ Mark done'}</button>
+                  <button class="btn bg" style=${{fontSize:12,padding:'6px 10px'}} onClick=${()=>openEdit(r)}>✏️ Edit</button>
+                  <button class="btn brd" style=${{fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>del(r.id)}>🗑</button>
+                </div>
+              </div>`;
+          })}
+        </div>`;
+      })()}
 
       ${editReminder?html`
         <div class="ov" onClick=${e=>e.target===e.currentTarget&&setEditReminder(null)}>
@@ -11103,6 +11096,7 @@ function BillingInvoicesView({cu}){
   const [filterStatus,setFilterStatus]=useState('all');
   const [searchQ,setSearchQ]=useState('');
   const [draft,setDraft]=useState({customer_name:'',customer_email:'',issue_date:today,due_date:'',status:'draft',notes:'',items:[{description:'Project management services',quantity:1,unit_price:0}]});
+  const [editingId,setEditingId]=useState(null);
   const money=(v,c)=>`${c||profile.currency||summary.currency||'INR'} ${Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const load=useCallback(async()=>{
     setLoading(true);setErr('');
@@ -11138,9 +11132,48 @@ function BillingInvoicesView({cu}){
     }catch(e){setErr('Could not save billing profile');}
     setSaving(false);
   };
+  const resetDraft=()=>{setDraft({customer_name:'',customer_email:'',issue_date:today,due_date:'',status:'draft',notes:'',items:[{description:'Project management services',quantity:1,unit_price:0}]});setEditingId(null);};
+  const openNewInvoice=()=>{resetDraft();setTab('create');};
+  const openEditInvoice=(inv)=>{
+    setEditingId(inv.id);
+    setDraft({
+      customer_name:inv.customer_name||'',customer_email:inv.customer_email||'',
+      issue_date:inv.issue_date||today,due_date:inv.due_date||'',status:inv.status||'draft',
+      notes:inv.notes||'',
+      items:(inv.items&&inv.items.length?inv.items:[{description:'Project management services',quantity:1,unit_price:0}]).map(it=>({description:it.description,quantity:it.quantity,unit_price:it.unit_price}))
+    });
+    setTab('create');
+  };
+  const deleteInvoice=async(inv)=>{
+    if(!window.confirm(`Delete invoice ${inv.invoice_no||''}? This can't be undone.`))return;
+    const prevInvoices=invoices;
+    setInvoices(prev=>prev.filter(x=>x.id!==inv.id));
+    if(String(inv.id).startsWith('tmp_'))return;
+    try{
+      const r=await api.del('/api/billing/invoices/'+inv.id);
+      if(r&&r.error){setInvoices(prevInvoices);setErr(r.error);}
+      else{try{window._pfToast&&window._pfToast('success','Invoice deleted',`${inv.invoice_no||''} was removed.`);}catch{} load();}
+    }catch(e){setInvoices(prevInvoices);setErr('Could not delete invoice');}
+  };
   const createInvoice=async()=>{
     if(!draft.customer_name.trim())return;
     setSaving(true);setErr('');
+    if(editingId){
+      try{
+        const r=await api.put('/api/billing/invoices/'+editingId,{...draft,currency:profile.currency||'INR',tax_rate:taxRate});
+        if(r&&!r.error){
+          setInvoices(prev=>prev.map(x=>x.id===editingId?r:x));
+          try{window._pfToast&&window._pfToast('success','Invoice updated',`${r.invoice_no} saved successfully.`);}catch{}
+          resetDraft();
+          setTab('invoices');
+          load();
+        }else{
+          setErr((r&&r.error)||'Could not update invoice');
+        }
+      }catch(e){setErr('Could not update invoice');}
+      setSaving(false);
+      return;
+    }
     const temp={...draft,id:'tmp_'+Date.now(),invoice_no:nextNo||'INV-0001',currency:profile.currency||'INR',subtotal,tax_total:tax,total,status:draft.status||'draft',created:new Date().toISOString(),items:draft.items};
     setInvoices(prev=>[temp,...prev]);
     setSummary(s=>({...s,invoice_count:Number(s.invoice_count||0)+1,outstanding_total:Number(s.outstanding_total||0)+total}));
@@ -11149,7 +11182,7 @@ function BillingInvoicesView({cu}){
       const r=await api.post('/api/billing/invoices',{...draft,currency:profile.currency||'INR',tax_rate:taxRate});
       if(r&&!r.error){
         setInvoices(prev=>prev.map(x=>x.id===temp.id?r:x));
-        setDraft({customer_name:'',customer_email:'',issue_date:today,due_date:'',status:'draft',notes:'',items:[{description:'Project management services',quantity:1,unit_price:0}]});
+        resetDraft();
         try{window._pfToast&&window._pfToast('success','Invoice created',`${r.invoice_no} saved successfully.`);}catch{}
         setSummary(prev=>({...prev,invoice_count:Number(prev.invoice_count||0)+1,outstanding_total:Number(prev.outstanding_total||0)+Number(r.total||0)}));
       }else{
@@ -11242,7 +11275,7 @@ function BillingInvoicesView({cu}){
       </div>
       <div style=${{display:'flex',gap:8,flexShrink:0}}>
         <button class="btn bg" onClick=${load} disabled=${loading} style=${{gap:6}}>↻ Refresh</button>
-        ${canManageBilling?html`<button class="btn bp" onClick=${()=>setTab('create')} style=${{gap:6}}>+ New invoice</button>`:null}
+        ${canManageBilling?html`<button class="btn bp" onClick=${openNewInvoice} style=${{gap:6}}>+ New invoice</button>`:null}
       </div>
     </div>
 
@@ -11329,35 +11362,27 @@ function BillingInvoicesView({cu}){
         </div>
         <span style=${{marginLeft:'auto',fontSize:12,color:'var(--tx3)'}}>${filteredInvoices.length} invoice${filteredInvoices.length!==1?'s':''}</span>
       </div>
-      <!-- Table -->
-      <div style=${{border:'1px solid var(--bd)',borderRadius:18,overflow:'hidden',background:'var(--sf)'}}>
-        <div style=${{display:'grid',gridTemplateColumns:'140px 1fr 110px 120px 110px 80px',gap:10,padding:'10px 16px',background:'var(--sf2)',borderBottom:'1px solid var(--bd)',fontSize:11,fontWeight:900,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.4}}>
-          <span>Invoice</span><span>Customer</span><span>Date</span><span>Total</span><span>Status</span><span style=${{textAlign:'right'}}>Actions</span>
-        </div>
-        ${filteredInvoices.length?filteredInvoices.map(inv=>html`
-          <div style=${{display:'grid',gridTemplateColumns:'140px 1fr 110px 120px 110px 80px',gap:10,padding:'12px 16px',borderBottom:'1px solid var(--bd)',alignItems:'center',transition:'background .1s'}}
-               onMouseEnter=${e=>e.currentTarget.style.background='var(--sf2)'}
-               onMouseLeave=${e=>e.currentTarget.style.background=''}>
-            <div style=${{fontWeight:900,color:'var(--ac)',fontSize:12}}>${inv.invoice_no}</div>
-            <div>
-              <div style=${{fontSize:12,fontWeight:800,color:'var(--tx)'}}>${inv.customer_name||'Customer'}</div>
-              <div style=${{fontSize:11,color:'var(--tx3)'}}>${inv.customer_email||'No email'}</div>
+      <!-- Card grid -->
+      ${filteredInvoices.length?html`
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
+        ${filteredInvoices.map(inv=>html`
+          <div key=${inv.id} class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+              <span style=${{fontSize:14,fontWeight:800,color:'var(--tx)'}}>${inv.customer_name||'Customer'}</span>
+              ${statusBadge(inv.status)}
             </div>
-            <div style=${{fontSize:12,color:'var(--tx2)'}}>${inv.issue_date||'—'}</div>
-            <div style=${{fontWeight:900,color:'var(--tx)',fontSize:13}}>${money(inv.total,inv.currency)}</div>
-            <div>
-              <select class="inp" disabled=${!canManageBilling} value=${inv.status||'draft'} onChange=${e=>updateStatus(inv.id,e.target.value)} style=${{height:28,fontSize:11,padding:'2px 6px'}}>
-                <option>draft</option><option>sent</option><option>paid</option><option>overdue</option><option>void</option>
-              </select>
+            <div style=${{fontSize:12,color:'var(--tx3)'}}>${inv.invoice_no} · ${money(inv.total,inv.currency)} · Due ${inv.due_date||'—'}</div>
+            ${inv.notes?html`<div style=${{fontSize:12,color:'var(--tx2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${inv.notes}</div>`:null}
+            <div style=${{display:'flex',gap:6,marginTop:6}}>
+              <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>printInvoice(inv)}>⬇ PDF</button>
+              ${canManageBilling?html`<button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEditInvoice(inv)}>✏️ Edit</button>`:null}
+              ${canManageBilling?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>deleteInvoice(inv)}>🗑 Delete</button>`:null}
             </div>
-            <div style=${{display:'flex',gap:4,justifyContent:'flex-end'}}>
-              <button onClick=${()=>printInvoice(inv)} title="Download/Print invoice" style=${{background:'none',border:'1px solid var(--bd)',cursor:'pointer',color:'var(--tx2)',fontSize:12,padding:'4px 7px',borderRadius:7,display:'flex',alignItems:'center',gap:3}}>⬇ PDF</button>
-            </div>
-          </div>`):html`
-          <div style=${{padding:'40px 20px',textAlign:'center',color:'var(--tx3)',fontSize:13}}>
+          </div>`)}
+      </div>`:html`
+          <div style=${{padding:'40px 20px',textAlign:'center',color:'var(--tx3)',fontSize:13,border:'1px dashed var(--bd)',borderRadius:16,background:'var(--sf)'}}>
             ${searchQ||filterStatus!=='all'?'No invoices match your filters.':'No invoices created yet.'}
           </div>`}
-      </div>
     </div>`:null}
 
     <!-- COMPANY DETAILS TAB -->
@@ -11387,8 +11412,8 @@ function BillingInvoicesView({cu}){
       <div style=${{padding:24,borderRadius:20,background:'var(--sf)',border:'1px solid var(--bd)'}}>
         <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18}}>
           <div>
-            <div style=${{fontSize:15,fontWeight:900,color:'var(--tx)'}}>New invoice</div>
-            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:2}}>Next number: <b style=${{color:'var(--ac)'}}>${nextNo||'auto'}</b></div>
+            <div style=${{fontSize:15,fontWeight:900,color:'var(--tx)'}}>${editingId?'Edit invoice':'New invoice'}</div>
+            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:2}}>${editingId?html`Editing <b style=${{color:'var(--ac)'}}>${(invoices.find(i=>i.id===editingId)||{}).invoice_no||''}</b>`:html`Next number: <b style=${{color:'var(--ac)'}}>${nextNo||'auto'}</b>`}</div>
           </div>
           <div style=${{textAlign:'right'}}>
             <div style=${{fontSize:11,color:'var(--tx3)',textTransform:'uppercase',fontWeight:900}}>Total due</div>
@@ -11450,8 +11475,8 @@ function BillingInvoicesView({cu}){
           </label>
         </div>
         <div style=${{display:'flex',gap:8,marginTop:18}}>
-          <button class="btn bg" onClick=${()=>setTab('overview')}>Cancel</button>
-          <button class="btn bp" disabled=${saving||!canManageBilling||!draft.customer_name.trim()} onClick=${createInvoice} style=${{flex:1,justifyContent:'center'}}>${saving?'Creating invoice…':'Create invoice'}</button>
+          <button class="btn bg" onClick=${()=>{resetDraft();setTab(editingId?'invoices':'overview');}}>Cancel</button>
+          <button class="btn bp" disabled=${saving||!canManageBilling||!draft.customer_name.trim()} onClick=${createInvoice} style=${{flex:1,justifyContent:'center'}}>${saving?(editingId?'Saving…':'Creating invoice…'):(editingId?'Save changes':'Create invoice')}</button>
         </div>
       </div>
     </div>`:null}

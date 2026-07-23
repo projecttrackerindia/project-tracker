@@ -3945,14 +3945,6 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS vault_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT DEFAULT '', tags TEXT DEFAULT '', rows TEXT DEFAULT '[]', cols TEXT DEFAULT '[]', lock_hash TEXT DEFAULT '', created TEXT, updated TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_cards_user ON vault_cards(user_id)",
             "ALTER TABLE vault_cards ADD COLUMN cols TEXT DEFAULT '[]'",
-            # Categorized-credential vault redesign — additive columns, backward compatible
-            # with existing spreadsheet-style rows (see vaultNormalizeFields on the frontend).
-            "ALTER TABLE vault_cards ADD COLUMN category TEXT DEFAULT 'other'",
-            "ALTER TABLE vault_cards ADD COLUMN description TEXT DEFAULT ''",
-            "ALTER TABLE vault_cards ADD COLUMN expiry TEXT DEFAULT ''",
-            "ALTER TABLE vault_cards ADD COLUMN pinned INTEGER DEFAULT 0",
-            "ALTER TABLE vault_cards ADD COLUMN notes TEXT DEFAULT ''",
-            "CREATE INDEX IF NOT EXISTS idx_vault_cards_category ON vault_cards(user_id, category)",
             "CREATE TABLE IF NOT EXISTS vault_audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT DEFAULT '', ip TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_user ON vault_audit_log(user_id, created)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_card ON vault_audit_log(card_id)",
@@ -6038,14 +6030,11 @@ def vault_create():
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
         db.execute(
-            "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,category,description,expiry,pinned,notes,created,updated) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,created,updated) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (cid, session["user_id"], d.get("title", ""), d.get("tags", ""),
              encrypted_rows, json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""),
-             (d.get("category") or "other")[:30], (d.get("description") or "")[:500],
-             (d.get("expiry") or "")[:20], 1 if d.get("pinned") else 0, (d.get("notes") or "")[:4000],
-             now, now)
+             d.get("lock_hash", ""), now, now)
         )
     _vault_audit(session["user_id"], cid, "create", d.get("title", ""))
     return jsonify({"id": cid, "created": now})
@@ -6058,24 +6047,12 @@ def vault_update(cid):
     plain_rows = json.dumps(d.get("rows", []))
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
-        # Preserve any pre-existing lock_hash when the caller doesn't manage it
-        # (the credential-card edit modal only sends Details/Fields/Notes — the
-        # lock is set/cleared separately via the card's own Lock/Unlock action —
-        # so an update must not silently wipe a legacy per-card lock).
-        if "lock_hash" in d:
-            lock_hash_val = d.get("lock_hash", "")
-        else:
-            existing = db.execute("SELECT lock_hash FROM vault_cards WHERE id=? AND user_id=?", (cid, session["user_id"])).fetchone()
-            lock_hash_val = existing["lock_hash"] if existing else ""
         db.execute(
-            "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,category=?,description=?,expiry=?,pinned=?,notes=?,updated=? "
+            "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,updated=? "
             "WHERE id=? AND user_id=?",
             (d.get("title", ""), d.get("tags", ""), encrypted_rows,
              json.dumps(d.get("cols") or []),
-             lock_hash_val,
-             (d.get("category") or "other")[:30], (d.get("description") or "")[:500],
-             (d.get("expiry") or "")[:20], 1 if d.get("pinned") else 0, (d.get("notes") or "")[:4000],
-             now, cid, session["user_id"])
+             d.get("lock_hash", ""), now, cid, session["user_id"])
         )
     return jsonify({"ok": True})
 
@@ -6124,7 +6101,7 @@ def vault_audit_event(cid):
     d = request.json or {}
     action = (d.get("action") or "").strip()[:50]
     detail = (d.get("detail") or "").strip()[:200]
-    if action not in ("reveal", "copy", "unlock", "pin"):
+    if action not in ("reveal", "copy", "unlock"):
         return jsonify({"error": "Invalid action"}), 400
     # Verify the card belongs to this user before logging
     with get_db() as db:
@@ -9362,8 +9339,9 @@ def update_reminder(rid):
         remind_at=d.get("remind_at",existing["remind_at"])
         minutes_before=d.get("minutes_before",existing["minutes_before"])
         task_title=d.get("task_title",existing["task_title"])
-        db.execute("UPDATE reminders SET remind_at=?,minutes_before=?,task_title=?,fired=0 WHERE id=? AND user_id=?",
-                   (remind_at,minutes_before,task_title,rid,session["user_id"]))
+        fired = 1 if d.get("fired") else (0 if "fired" in d else existing["fired"])
+        db.execute("UPDATE reminders SET remind_at=?,minutes_before=?,task_title=?,fired=? WHERE id=? AND user_id=?",
+                   (remind_at,minutes_before,task_title,fired,rid,session["user_id"]))
         row=db.execute("SELECT * FROM reminders WHERE id=?",(rid,)).fetchone()
         _enqueue_push(push_notification_to_user, *(db, session["user_id"], "⏰ Reminder updated",
                   f"'{task_title}' has been rescheduled.", "/"))
@@ -12966,6 +12944,8 @@ def billing_save_profile():
         profile = _billing_profile_dict(db.execute("SELECT * FROM workspace_billing_profile WHERE workspace_id=?", (wid(),)).fetchone())
     _cache_delete(f"billing_overview:{wid()}")
     return jsonify(profile)
+
+@app.route("/api/billing/invoices", methods=["POST"])
 @login_required
 def billing_create_invoice():
     if not _billing_admin_required():
@@ -13020,6 +13000,73 @@ def billing_update_invoice_status(invoice_id):
         if not inv: return jsonify({"error":"Invoice not found"}),404
         _cache_delete(f"billing_overview:{wid()}")
         return jsonify(dict(inv))
+
+@app.route("/api/billing/invoices/<invoice_id>", methods=["PUT"])
+@login_required
+def billing_update_invoice(invoice_id):
+    if not _billing_admin_required():
+        return jsonify({"error":"Only workspace admins/managers can update invoices"}),403
+    d = request.json or {}
+    with get_db() as db:
+        _ensure_billing_schema(db)
+        existing = db.execute("SELECT * FROM invoices WHERE id=? AND workspace_id=?", (invoice_id, wid())).fetchone()
+        if not existing:
+            return jsonify({"error":"Invoice not found"}),404
+        profile = _billing_profile_dict(db.execute("SELECT * FROM workspace_billing_profile WHERE workspace_id=?", (wid(),)).fetchone())
+        items = d.get("items")
+        if items is not None:
+            if not items:
+                return jsonify({"error":"At least one invoice line item is required"}),400
+            clean_items=[]; subtotal=0.0
+            for it in items:
+                desc=str(it.get("description") or "").strip()[:240]
+                if not desc: continue
+                try: qty=float(it.get("quantity") or 1)
+                except Exception: qty=1
+                try: price=float(it.get("unit_price") or 0)
+                except Exception: price=0
+                amount=round(qty*price,2); subtotal+=amount
+                clean_items.append((desc, qty, price, amount))
+            if not clean_items:
+                return jsonify({"error":"At least one valid invoice line item is required"}),400
+            tax_rate = float(d.get("tax_rate") if d.get("tax_rate") not in (None,"") else profile.get("tax_rate") or 0)
+            tax_total=round(subtotal*tax_rate/100,2); total=round(subtotal+tax_total,2)
+            db.execute("DELETE FROM invoice_items WHERE invoice_id=?", (invoice_id,))
+            for desc,qty,price,amount in clean_items:
+                db.execute("INSERT INTO invoice_items(id,workspace_id,invoice_id,description,quantity,unit_price,amount) VALUES(?,?,?,?,?,?,?)", (f"ii{secrets.token_hex(8)}", wid(), invoice_id, desc, qty, price, amount))
+        else:
+            subtotal, tax_total, total = existing["subtotal"], existing["tax_total"], existing["total"]
+        status = str(d.get("status") or existing["status"] or "draft").lower()
+        if status not in ("draft","sent","paid","overdue","void"):
+            status = existing["status"] or "draft"
+        db.execute("""UPDATE invoices SET customer_name=?, customer_email=?, issue_date=?, due_date=?, status=?, notes=?, subtotal=?, tax_total=?, total=?, updated=?
+                       WHERE id=? AND workspace_id=?""",
+                   (str(d.get("customer_name") if d.get("customer_name") is not None else existing["customer_name"]).strip(),
+                    str(d.get("customer_email") if d.get("customer_email") is not None else existing["customer_email"]).strip(),
+                    str(d.get("issue_date") if d.get("issue_date") is not None else existing["issue_date"])[:10],
+                    str(d.get("due_date") if d.get("due_date") is not None else existing["due_date"])[:10],
+                    status,
+                    str(d.get("notes") if d.get("notes") is not None else existing["notes"]).strip(),
+                    round(subtotal,2), tax_total, total, ts(), invoice_id, wid()))
+        inv = dict(db.execute("SELECT * FROM invoices WHERE id=? AND workspace_id=?", (invoice_id, wid())).fetchone())
+        inv["items"]=[dict(x) for x in db.execute("SELECT * FROM invoice_items WHERE invoice_id=?", (invoice_id,)).fetchall()]
+    _cache_delete(f"billing_overview:{wid()}")
+    return jsonify(inv)
+
+@app.route("/api/billing/invoices/<invoice_id>", methods=["DELETE"])
+@login_required
+def billing_delete_invoice(invoice_id):
+    if not _billing_admin_required():
+        return jsonify({"error":"Only workspace admins/managers can delete invoices"}),403
+    with get_db() as db:
+        _ensure_billing_schema(db)
+        existing = db.execute("SELECT id FROM invoices WHERE id=? AND workspace_id=?", (invoice_id, wid())).fetchone()
+        if not existing:
+            return jsonify({"error":"Invoice not found"}),404
+        db.execute("DELETE FROM invoice_items WHERE invoice_id=?", (invoice_id,))
+        db.execute("DELETE FROM invoices WHERE id=? AND workspace_id=?", (invoice_id, wid()))
+    _cache_delete(f"billing_overview:{wid()}")
+    return jsonify({"ok": True})
 
 @app.route("/api/billing/create-checkout", methods=["POST"])
 @login_required
