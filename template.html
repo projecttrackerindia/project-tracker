@@ -258,25 +258,26 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   --sb3:#1e1b38;
   --sbt:#7b7898;
   /* ── Primary accent ── */
-  --ac:#5a5ef7;
-  --ac2:#4347f5;
-  --ac3:rgba(90,94,247,0.12);
-  --ac4:rgba(90,94,247,0.06);
+  --ac:#8B5CF6;
+  --ac2:#A78BFA;
+  --ac3:rgba(139,92,246,0.12);
+  --ac4:rgba(139,92,246,0.06);
   --ac-tx:#ffffff;
-  /* ── Semantic ── */
-  --rd:#ef4444;  --rd2:#f87171;
-  --gn:#10b981;  --gn2:#34d399;
-  --am:#f59e0b;  --cy:#06b6d4;
-  --pu:#a855f7;  --or:#f97316;
-  --pk:#ec4899;
+  --ac-ring:rgba(139,92,246,.35);
+  /* ── Semantic (status only — never used as brand accent) ── */
+  --rd:#EF4444;  --rd2:#f87171;
+  --gn:#22C55E;  --gn2:#4ade80;
+  --am:#F59E0B;  --cy:#3B82F6;
+  --pu:#A78BFA;  --or:#F59E0B;
+  --pk:#8B5CF6;
   /* ── Shadows ── */
-  --sh:0 1px 3px rgba(15,14,23,0.06),0 4px 16px rgba(90,94,247,0.06);
-  --sh2:0 8px 40px rgba(15,14,23,0.12),0 2px 8px rgba(90,94,247,0.08);
-  --sh3:0 0 0 1px rgba(90,94,247,0.12);
-  --ap:#a855f7; --ab:#5a5ef7; --apk:#ec4899;
-  --grad-main:linear-gradient(135deg,#5a5ef7,#a855f7);
-  --grad-hero:linear-gradient(135deg,#5a5ef7 0%,#a855f7 50%,#ec4899 100%);
-  --grad-subtle:linear-gradient(135deg,rgba(90,94,247,0.08),rgba(168,85,247,0.05));
+  --sh:0 1px 3px rgba(15,14,23,0.06),0 4px 16px rgba(139,92,246,0.06);
+  --sh2:0 8px 40px rgba(15,14,23,0.12),0 2px 8px rgba(139,92,246,0.08);
+  --sh3:0 0 0 1px rgba(139,92,246,0.12);
+  --ap:#A78BFA; --ab:#8B5CF6; --apk:#8B5CF6;
+  --grad-main:linear-gradient(135deg,#7C3AED,#8B5CF6);
+  --grad-hero:linear-gradient(135deg,#7C3AED 0%,#8B5CF6 100%);
+  --grad-subtle:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(167,139,250,0.05));
 }
 
 /* === LIGHT THEME explicit .lm === */
@@ -285,68 +286,71 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   --sf:#ffffff;
   --sf2:#f5f7ff;
   --sf3:#eaedf8;
-  --bd:rgba(99,102,241,0.13);
-  --bd2:rgba(99,102,241,0.07);
+  --bd:rgba(139,92,246,0.13);
+  --bd2:rgba(139,92,246,0.07);
   --tx:#0f0e17;
   --tx2:#3d3b54;
   --tx3:#9494a8;
-  --sb:#0d0b1e;
+  --sb:#111827;
   --sb2:#13112b;
   --sb3:#1e1b38;
   --sbt:#7b7898;
-  --ac:#5a5ef7;
-  --ac2:#4347f5;
-  --ac3:rgba(90,94,247,0.12);
-  --ac4:rgba(90,94,247,0.06);
+  --ac:#8B5CF6;
+  --ac2:#A78BFA;
+  --ac3:rgba(139,92,246,0.12);
+  --ac4:rgba(139,92,246,0.06);
   --ac-tx:#ffffff;
-  --rd:#ef4444;  --rd2:#f87171;
-  --gn:#10b981;  --gn2:#34d399;
-  --am:#f59e0b;  --cy:#06b6d4;
-  --pu:#a855f7;  --or:#f97316;
-  --pk:#ec4899;
-  --sh:0 1px 3px rgba(15,14,23,0.06),0 4px 16px rgba(90,94,247,0.06);
-  --sh2:0 8px 40px rgba(15,14,23,0.12),0 2px 8px rgba(90,94,247,0.08);
-  --sh3:0 0 0 1px rgba(90,94,247,0.12);
-  --ap:#a855f7; --ab:#5a5ef7; --apk:#ec4899;
-  --grad-main:linear-gradient(135deg,#5a5ef7,#a855f7);
-  --grad-hero:linear-gradient(135deg,#5a5ef7 0%,#a855f7 50%,#ec4899 100%);
-  --grad-subtle:linear-gradient(135deg,rgba(90,94,247,0.08),rgba(168,85,247,0.05));
+  --ac-ring:rgba(139,92,246,.35);
+  --rd:#EF4444;  --rd2:#f87171;
+  --gn:#22C55E;  --gn2:#4ade80;
+  --am:#F59E0B;  --cy:#3B82F6;
+  --pu:#A78BFA;  --or:#F59E0B;
+  --pk:#8B5CF6;
+  --sh:0 1px 3px rgba(15,14,23,0.06),0 4px 16px rgba(139,92,246,0.06);
+  --sh2:0 8px 40px rgba(15,14,23,0.12),0 2px 8px rgba(139,92,246,0.08);
+  --sh3:0 0 0 1px rgba(139,92,246,0.12);
+  --ap:#A78BFA; --ab:#8B5CF6; --apk:#8B5CF6;
+  --grad-main:linear-gradient(135deg,#7C3AED,#8B5CF6);
+  --grad-hero:linear-gradient(135deg,#7C3AED 0%,#8B5CF6 100%);
+  --grad-subtle:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(167,139,250,0.05));
 }
 
-/* === DARK THEME .dm — "Vault" violet workspace (migrated from fsbl-unified-workspace-v29) === */
+/* === DARK THEME .dm — enterprise "Credential Vault" (1Password/Linear-inspired) === */
 .dm{
-  --bg:#0b0a18;            /* vault bg0 */
-  --sf:#161331;            /* vault panel */
-  --sf2:#1b1840;           /* vault panel2 */
-  --sf3:#201c4a;           /* vault panel3 */
-  --bd:rgba(120,110,255,0.14);
-  --bd2:rgba(120,110,255,0.07);
-  --tx:#f4f3fc;
-  --tx2:rgba(226,224,250,0.66);
-  --tx3:rgba(190,188,220,0.45);
-  --sb:#0d0b1f;
-  --sb2:#13112b;
+  --bg:#0B1020;            /* body */
+  --sf:#1B1F3A;            /* card gradient start */
+  --sf2:#171A2F;           /* card gradient end / hover base */
+  --sf3:#222845;           /* hover card */
+  --bd:rgba(255,255,255,.08);
+  --bd2:rgba(255,255,255,.05);
+  --tx:#F8FAFC;
+  --tx2:rgba(248,250,252,0.7);
+  --tx3:#94A3B8;
+  --sb:#111827;            /* sidebar */
+  --sb2:#111827;           /* top navigation */
   --sb3:#1e1b38;
-  --sbt:rgba(190,188,220,0.5);
-  --ac:#635bff;            /* vault ac1 */
-  --ac2:#a855f7;           /* vault ac2 */
-  --ac3:rgba(99,91,255,0.15);
-  --ac4:rgba(99,91,255,0.08);
+  --sbt:#94A3B8;
+  --ac:#8B5CF6;            /* primary accent */
+  --ac2:#A78BFA;           /* hover */
+  --ac3:rgba(139,92,246,0.15);
+  --ac4:rgba(139,92,246,0.08);
   --ac-tx:#ffffff;
-  --rd:#f87171;  --rd2:#fca5a5;
-  --gn:#34d399;  --gn2:#6ee7b7;
-  --am:#fbbf24;  --cy:#22d3ee;
-  --pu:#a855f7;  --or:#fb923c;
-  --pk:#ec4899;
+  --ac-ring:rgba(139,92,246,.35);
+  --rd:#EF4444;  --rd2:#fca5a5;
+  --gn:#22C55E;  --gn2:#6ee7b7;
+  --am:#F59E0B;  --cy:#3B82F6;
+  --pu:#A78BFA;  --or:#F59E0B;
+  --pk:#8B5CF6;
   --sh:0 2px 12px rgba(5,4,15,0.5),0 1px 3px rgba(5,4,15,0.35);
   --sh2:0 8px 40px rgba(5,4,15,0.6),0 4px 16px rgba(5,4,15,0.4);
-  --sh3:0 0 0 1px rgba(120,110,255,0.14);
-  --ap:#a855f7; --ab:#635bff; --apk:#ec4899;
-  --grad-main:linear-gradient(135deg,#635bff,#a855f7);
-  --grad-hero:linear-gradient(135deg,#635bff 0%,#a855f7 50%,#ec4899 100%);
-  --grad-subtle:linear-gradient(135deg,rgba(99,91,255,0.12),rgba(168,85,247,0.08));
+  --sh3:0 0 0 1px rgba(255,255,255,.08);
+  --ap:#A78BFA; --ab:#8B5CF6; --apk:#8B5CF6;
+  --grad-main:linear-gradient(135deg,#7C3AED,#8B5CF6);
+  --grad-hero:linear-gradient(135deg,#7C3AED 0%,#8B5CF6 100%);
+  --grad-subtle:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(167,139,250,0.08));
+  --card-grad:linear-gradient(180deg,#1B1F3A,#171A2F);
 }
-.dm{background-image:radial-gradient(1200px 800px at 15% -10%,rgba(99,91,255,.10),transparent)!important;}
+.dm{background-image:radial-gradient(1200px 800px at 15% -10%,rgba(139,92,246,.08),transparent)!important;}
 
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -396,7 +400,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   .vault-cards-grid{grid-template-columns:repeat(1,minmax(0,1fr));} /* Mobile: 1 up */
 }
 .vault-card{
-  background:var(--sf);
+  background:var(--card-grad, var(--sf));
   border-radius:var(--vault-radius);
   margin-bottom:0;
   overflow:hidden;
@@ -408,24 +412,27 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   max-width:100%;
   width:100%;
   height:var(--vault-card-h);
-  box-shadow:0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03);
+  box-shadow:0 8px 24px rgba(0,0,0,.35);
   border:1px solid var(--bd);
 }
 .vault-card:hover{
   transform:translateY(-3px);
-  box-shadow:0 14px 40px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.05);
+  border-color:rgba(139,92,246,.45);
+  background:var(--sf3);
+  box-shadow:0 14px 32px rgba(0,0,0,.4);
 }
 .vault-card:focus-within{
-  box-shadow:0 0 0 1px rgba(90,94,247,.45), 0 0 32px rgba(90,94,247,.22), 0 14px 40px rgba(0,0,0,.38);
+  box-shadow:0 0 0 1px var(--ac-ring), 0 8px 24px rgba(0,0,0,.35);
 }
-/* Selected / pinned state — 2px border with a soft orange glow, matching
-   the existing amber "pinned" star color used throughout the vault. */
+/* Selected state — single 2px purple border with a soft purple glow.
+   Replaces the previous orange "pinned" highlight so selection uses the
+   one brand accent instead of a status color. */
 .vault-card.is-pinned{
-  border:2px solid rgba(245,158,11,.55);
-  box-shadow:0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(245,158,11,.08), 0 0 24px rgba(245,158,11,.18);
+  border:2px solid #8B5CF6;
+  box-shadow:0 8px 24px rgba(0,0,0,.35), 0 0 0 1px rgba(139,92,246,.15), 0 0 20px rgba(139,92,246,.20);
 }
 .vault-card.is-pinned:hover{
-  box-shadow:0 14px 40px rgba(0,0,0,.38), 0 0 0 1px rgba(245,158,11,.12), 0 0 32px rgba(245,158,11,.24);
+  box-shadow:0 14px 32px rgba(0,0,0,.4), 0 0 0 1px rgba(139,92,246,.2), 0 0 28px rgba(139,92,246,.28);
 }
 .vault-card-body{
   flex:1 1 auto;
@@ -499,7 +506,25 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   flex-shrink:0;
 }
 .vault-fav-btn:hover{background:rgba(255,255,255,.05);color:var(--tx);}
-.vault-fav-btn.active{color:#f59e0b;border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08);}
+.vault-fav-btn.active{color:#A78BFA;border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.10);}
+
+/* ── Glass-style status pill (badges) ──
+   Usage: <span class="glass-pill pill-success|pill-warning|pill-danger|pill-info|pill-accent">Label</span>
+   Background 12% / border 25% / text solid, of the same status color, per design spec. */
+.glass-pill{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 12px;border-radius:999px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap;}
+.pill-success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);color:#22C55E;}
+.pill-warning{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#F59E0B;}
+.pill-danger{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:#EF4444;}
+.pill-info{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);color:#3B82F6;}
+.pill-accent{background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);color:#A78BFA;}
+
+/* ── Buttons — primary / secondary / destructive ── */
+.btn-primary{height:38px;padding:0 16px;border-radius:10px;background:#7C3AED;color:#fff;border:none;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 8px 20px rgba(124,58,237,.25);transition:background .15s ease, transform .15s ease;}
+.btn-primary:hover{background:#8B5CF6;transform:scale(1.02);}
+.btn-secondary{height:38px;padding:0 16px;border-radius:10px;background:var(--sf2);color:var(--tx);border:1px solid var(--bd);font-weight:500;font-size:13px;cursor:pointer;transition:all .15s ease;}
+.btn-secondary:hover{background:var(--sf3);border-color:rgba(139,92,246,.3);}
+.btn-destructive{height:38px;padding:0 16px;border-radius:10px;background:var(--sf2);color:#EF4444;border:1px solid rgba(239,68,68,.35);font-weight:500;font-size:13px;cursor:pointer;transition:all .15s ease;}
+.btn-destructive:hover{background:#EF4444;color:#fff;border-color:#EF4444;}
 
 .vault-action-btn{
   background:var(--sf2);
@@ -11075,7 +11100,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         <div class="vault-card-footer">
           <span style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:600}}>Updated ${vaultTimeAgo(card.updated)}</span>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
-            <button class="vault-action-btn" aria-pressed=${pinned} style=${pinned?{background:'rgba(245,158,11,.14)',borderColor:'rgba(245,158,11,.4)',color:'#f59e0b'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
+            <button class="vault-action-btn" aria-pressed=${pinned} style=${pinned?{background:'rgba(139,92,246,.14)',borderColor:'rgba(139,92,246,.4)',color:'#A78BFA'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
             ${isSimple && html`<button class="vault-action-btn" onClick=${()=>setSheetMode(s=>!s)}>${sheetMode?'✓ Done':'✏️ Edit'}</button>`}
             ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>🔒 Lock</button>`}
             ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
