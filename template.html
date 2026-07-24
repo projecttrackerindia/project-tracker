@@ -366,7 +366,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 /* ── Vault redesign styles ───────────────────────────────── */
 .vault-card{
   background:var(--sf);
-  border-radius:18px;
+  border-radius:16px;
   margin-bottom:0;
   overflow:visible;
   transition:box-shadow .2s, transform .15s;
@@ -383,24 +383,24 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-card-header{
   display:flex;
   align-items:center;
-  gap:12px;
-  padding:16px 20px;
+  gap:10px;
+  padding:14px 18px;
   position:relative;
   flex-wrap:wrap;
-  row-gap:8px;
+  row-gap:7px;
 }
 .vault-card-icon{
-  width:42px;height:42px;border-radius:50%;
+  width:38px;height:38px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
-  font-size:19px;flex-shrink:0;
+  font-size:17px;flex-shrink:0;
 }
 .vault-card-title{
-  font-size:15px;font-weight:800;color:var(--tx);
+  font-size:14px;font-weight:800;color:var(--tx);
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   cursor:text;max-width:100%;
 }
 .vault-tag{
-  font-size:10px;font-weight:700;padding:3px 10px;border-radius:100px;
+  font-size:9.5px;font-weight:700;padding:2px 9px;border-radius:100px;
   letter-spacing:.03em;line-height:1.6;white-space:nowrap;
 }
 .vault-action-btn{
@@ -408,8 +408,8 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   border:1px solid var(--bd);
   border-radius:100px;
   color:var(--tx2);
-  font-size:11.5px;
-  padding:5px 13px;
+  font-size:11px;
+  padding:4px 12px;
   cursor:pointer;
   font-family:inherit;
   display:flex;align-items:center;gap:5px;
@@ -435,7 +435,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 
 /* Field rows (label + value box) inside a card */
 .vault-field-group{
-  margin-bottom:14px;
+  margin-bottom:8px;
 }
 .vault-field-group:last-child{
   margin-bottom:0;
@@ -443,25 +443,25 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-field-label{
   font-size:10px;font-weight:800;color:var(--tx3);
   letter-spacing:.08em;text-transform:uppercase;
-  margin-bottom:6px;
+  margin-bottom:3px;
 }
 .vault-field-box{
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:6px;
   background:var(--sf2);border:1px solid var(--bd);
-  border-radius:10px;padding:10px 12px;
+  border-radius:9px;padding:6px 8px 6px 11px;
   min-width:0;
   transition:border-color .15s;
 }
 .vault-field-box:focus-within{border-color:rgba(90,94,247,.4);}
 .vault-field-value{
-  flex:1;min-width:0;font-size:13px;color:var(--tx);
+  flex:1;min-width:0;font-size:12px;color:var(--tx);
   font-family:monospace;word-break:break-all;line-height:1.5;
 }
 
 /* Card footer */
 .vault-card-footer{
   display:flex;align-items:center;justify-content:space-between;
-  gap:10px;padding:12px 20px;border-top:1px solid var(--bd);
+  gap:8px;padding:9px 18px 12px;border-top:1px solid var(--bd);
   flex-wrap:wrap;margin-top:auto;
 }
 .vault-icon-btn{
@@ -10668,7 +10668,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       <div style=${{height:4,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.75)')+' 70%,transparent 100%)'}}></div>
       <div class="vault-card-header" style=${{
         background:'linear-gradient(135deg,'+iconInfo.bg.replace(/[\d.]+\)$/,'0.22)')+' 0%,transparent 65%)',
-        paddingBottom:6,
+        paddingBottom:4,
       }}>
         <div class="vault-card-icon" style=${{
           background:iconInfo.bg.replace(/[\d.]+\)$/,'0.3)'),
@@ -10692,7 +10692,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         </div>
       </div>
       ${(tags || expInfo) && html`
-      <div style=${{padding:'0 20px 14px',display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+      <div style=${{padding:'0 18px 10px',display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
         ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.1)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.25)'}}>${t}</span>`)}
         ${expInfo && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
       </div>`}
@@ -10706,7 +10706,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         </div>`}
 
       ${canSee && isSimple && !sheetMode && html`
-        <div style=${{padding:'16px 20px'}}>
+        <div style=${{padding:'8px 18px 10px'}}>
           ${rows.length===0 && html`<div style=${{fontSize:12,color:'var(--tx3)',padding:'10px 0'}}>No fields yet — click ✏️ Edit below to add some.</div>`}
           ${rows.map(row=>{
             const label = (row[keyCol.id]||'').trim() || 'Field';
@@ -10729,7 +10729,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
               </div>`; })}
         </div>`}
       ${canSee && isSimple && sheetMode && html`
-        <div style=${{padding:'14px 18px'}}>
+        <div style=${{padding:'8px 18px 10px'}}>
           ${rows.map((row,ri)=>{
             const isSecret = !!row._secret;
             return html`
@@ -11169,7 +11169,7 @@ function VaultView({cu}){
           <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter||categoryFilter!=='all'?'No cards match your filters':'Your vault is empty'}</div>
           <div style=${{fontSize:13,color:'#334155'}}>${filter||categoryFilter!=='all'?'Try a different search or category':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,340px))',gap:16,alignItems:'start'}}>
+      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,380px))',gap:14,alignItems:'start'}}>
       ${filtered.map(c=>html`
         <${VaultSpreadCard}
           key=${c.id}
