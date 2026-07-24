@@ -10373,6 +10373,12 @@ function vaultTimeAgo(iso){
   if(days<7) return days+'d ago';
   return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 }
+// Fields whose *label* looks like a secret get masked by default even if the
+// user never flipped the manual "mask this field" toggle — password, key,
+// token, secret, credential-type fields.
+function vaultIsSecretLabel(label){
+  return /(password|passwd|\bpwd\b|secret|token|api[ _-]?key|private[ _-]?key|access[ _-]?key|client secret|credential)/i.test(label||'');
+}
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const VS = {
@@ -10639,23 +10645,25 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
           ${rows.map(row=>{
             const label = (row[keyCol.id]||'').trim() || 'Field';
             const val = row[valCol.id]||'';
-            const isSecret = !!row._secret;
+            const isSecret = !!row._secret || vaultIsSecretLabel(label);
             const cellKey = row._id + '_' + valCol.id;
             const isShowingThisCell = !!showSecretCells[cellKey];
             const hideVal = isSecret && !isShowingThisCell;
             const flashKey = label+':'+(val||'');
+            const justCopied = copyFlash===flashKey;
             return html`
               <div key=${row._id} style=${{marginBottom:12}}>
                 <div style=${{fontSize:10,fontWeight:800,color:'var(--tx3)',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:5}}>${label}</div>
                 <div style=${{display:'flex',alignItems:'center',gap:6,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'8px 10px'}}>
                   ${hideVal ? html`
-                    <span style=${{flex:1,fontSize:12,color:'#94a3b8',letterSpacing:3,fontFamily:'monospace'}}>••••••••••</span>
-                    <button class="vault-copy-btn" title="Reveal" onClick=${()=>revealCell(cellKey,label)}>👁</button>
-                    <button class="vault-copy-btn" title="Copy" onClick=${()=>val&&copyCell(val,label)}>${copyFlash===flashKey?'✓':'⧉'}</button>
+                    <button type="button" title="Click to copy — value stays hidden" aria-label="Copy hidden value"
+                      style=${{flex:1,textAlign:'left',background:'none',border:'none',padding:0,cursor:val?'copy':'default',fontFamily:'monospace',fontSize:12,letterSpacing:justCopied?0:3,color:justCopied?'#4ade80':'#94a3b8',transition:'all .15s'}}
+                      onClick=${()=>val && copyCell(val,label)}>${justCopied?'✓ Copied to clipboard':'••••••••••'}</button>
+                    <button class="vault-copy-btn" title="Reveal (shows the value on screen)" onClick=${()=>revealCell(cellKey,label)}>👁</button>
                   ` : html`
                     <span style=${{flex:1,fontSize:13,color:'var(--tx)',fontFamily:'monospace',wordBreak:'break-all'}}>${val||'—'}</span>
-                    ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide" onClick=${()=>setShowSecretCells(s=>{const n={...s};delete n[cellKey];return n;})}>🙈</button>`}
-                    ${val && html`<button class="vault-copy-btn" title="Copy" style=${{color:copyFlash===flashKey?'#818cf8':'#475569'}} onClick=${()=>copyCell(val,label)}>${copyFlash===flashKey?'✓':'⧉'}</button>`}
+                    ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide again" onClick=${()=>setShowSecretCells(s=>{const n={...s};delete n[cellKey];return n;})}>🙈</button>`}
+                    ${val && html`<button class="vault-copy-btn" title="Copy" style=${{color:justCopied?'#818cf8':'#475569'}} onClick=${()=>copyCell(val,label)}>${justCopied?'✓':'⧉'}</button>`}
                   `}
                 </div>
               </div>`; })}
