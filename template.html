@@ -10485,6 +10485,8 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   const [pinned, setPinned] = useState(!!card.pinned);
   const [sheetMode, setSheetMode] = useState(false);
   const isSimple = cols.length===2; // plain Key/Value card → shows as clean labeled fields
+  const keyCol = cols[0] || {id:'c1',label:'Key'};
+  const valCol = cols[1] || {id:'c2',label:'Value'};
 
   function push(nextCols, nextRows, nextTitle, nextTags, nextCategory, nextExpires, nextPinned){
     const c = nextCols  !== undefined ? nextCols  : cols;
@@ -10635,10 +10637,10 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         <div style=${{padding:'14px 18px'}}>
           ${rows.length===0 && html`<div style=${{fontSize:12,color:'var(--tx3)',padding:'10px 0'}}>No fields yet — click ✏️ Edit below to add some.</div>`}
           ${rows.map(row=>{
-            const label = (row.col_0||'').trim() || 'Field';
-            const val = row.col_1||'';
+            const label = (row[keyCol.id]||'').trim() || 'Field';
+            const val = row[valCol.id]||'';
             const isSecret = !!row._secret;
-            const cellKey = row._id + '_col_1';
+            const cellKey = row._id + '_' + valCol.id;
             const isShowingThisCell = !!showSecretCells[cellKey];
             const hideVal = isSecret && !isShowingThisCell;
             const flashKey = label+':'+(val||'');
@@ -10658,7 +10660,27 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
                 </div>
               </div>`; })}
         </div>`}
-      ${canSee && (sheetMode || !isSimple) && html`
+      ${canSee && isSimple && sheetMode && html`
+        <div style=${{padding:'14px 18px'}}>
+          ${rows.map((row,ri)=>{
+            const isSecret = !!row._secret;
+            return html`
+              <div key=${row._id} style=${{display:'flex',alignItems:'center',gap:7,marginBottom:8,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'7px 10px'}}>
+                <input style=${{width:120,flexShrink:0,background:'transparent',border:'none',outline:'none',fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:'inherit'}}
+                  placeholder="LABEL" value=${row[keyCol.id]||''}
+                  onInput=${e=>updateCell(row._id,keyCol.id,e.target.value)}
+                  onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
+                <span style=${{width:1,alignSelf:'stretch',background:'var(--bd)'}}></span>
+                <input style=${{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',fontSize:13,color:'var(--tx)',fontFamily:'monospace'}}
+                  placeholder="Value" value=${row[valCol.id]||''}
+                  onInput=${e=>updateCell(row._id,valCol.id,e.target.value)}
+                  onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
+                <button title=${isSecret?'Unmark masked':'Mask this field'} style=${{background:'none',border:'none',cursor:'pointer',color:isSecret?'#f59e0b':'var(--tx3)',fontSize:12,padding:2,flexShrink:0}} onClick=${()=>toggleRowSecret(row._id)}>${isSecret?'🔒':'👁'}</button>
+                <button title="Delete field" style=${{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',fontSize:12,padding:2,flexShrink:0}} onClick=${()=>removeRow(row._id)}>✕</button>
+              </div>`; })}
+          <button class="vault-add-row-btn" onClick=${addRow}>+ Add field</button>
+        </div>`}
+      ${canSee && !isSimple && html`
         <div class="vault-table-wrap">
           <table class="vault-table">
             <thead>
