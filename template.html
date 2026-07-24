@@ -192,7 +192,7 @@ window._pfPushUnsubscribe = async function(){
 <link rel="dns-prefetch" href="https://unpkg.com"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script>
 (function(){
   // Load libs in correct dependency order.
@@ -364,30 +364,52 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-scroll::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#6366f1,#c026d3)}
 
 /* ── Vault redesign styles ───────────────────────────────── */
+.vault-scroll{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+}
 .vault-card{
+  --vault-card-h: 468px;
   background:var(--sf);
-  border-radius:16px;
+  border-radius:14px;
   margin-bottom:0;
-  overflow:visible;
-  transition:box-shadow .2s, transform .15s;
+  overflow:hidden;
+  transition:transform .2s ease, box-shadow .2s ease;
   position:relative;
   display:flex;
   flex-direction:column;
   min-width:0;
   max-width:100%;
   width:100%;
+  height:var(--vault-card-h);
+  box-shadow:0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03);
 }
 .vault-card:hover{
-  box-shadow:0 10px 36px rgba(0,0,0,.16);
+  transform:translateY(-3px);
+  box-shadow:0 14px 40px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.05);
 }
+.vault-card:focus-within{
+  box-shadow:0 0 0 1px rgba(90,94,247,.45), 0 0 32px rgba(90,94,247,.22), 0 14px 40px rgba(0,0,0,.38);
+}
+.vault-card-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(90,94,247,.3) transparent;
+}
+.vault-card-body::-webkit-scrollbar{width:6px}
+.vault-card-body::-webkit-scrollbar-track{background:transparent}
+.vault-card-body::-webkit-scrollbar-thumb{background:rgba(90,94,247,.25);border-radius:3px}
+.vault-card-body::-webkit-scrollbar-thumb:hover{background:rgba(90,94,247,.4)}
 .vault-card-header{
   display:flex;
   align-items:center;
   gap:10px;
-  padding:14px 18px;
+  padding:16px 18px;
   position:relative;
   flex-wrap:wrap;
   row-gap:7px;
+  flex-shrink:0;
 }
 .vault-card-icon{
   width:38px;height:38px;border-radius:50%;
@@ -395,13 +417,15 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   font-size:17px;flex-shrink:0;
 }
 .vault-card-title{
-  font-size:14px;font-weight:800;color:var(--tx);
+  font-size:14px;font-weight:600;color:var(--tx);
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  cursor:text;max-width:100%;
+  cursor:text;max-width:100%;font-family:inherit;
 }
 .vault-tag{
-  font-size:9.5px;font-weight:700;padding:2px 9px;border-radius:100px;
+  font-size:9.5px;font-weight:600;padding:4px 10px;border-radius:100px;
   letter-spacing:.03em;line-height:1.6;white-space:nowrap;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
 }
 .vault-action-btn{
   background:var(--sf2);
@@ -409,12 +433,12 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   border-radius:100px;
   color:var(--tx2);
   font-size:11px;
-  padding:4px 12px;
+  padding:5px 12px;
   cursor:pointer;
   font-family:inherit;
   display:flex;align-items:center;gap:5px;
-  transition:all .15s;
-  font-weight:700;
+  transition:all .2s ease;
+  font-weight:600;
   white-space:nowrap;
 }
 .vault-action-btn:hover{
@@ -435,53 +459,59 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 
 /* Field rows (label + value box) inside a card */
 .vault-field-group{
-  margin-bottom:8px;
+  margin-bottom:10px;
 }
 .vault-field-group:last-child{
   margin-bottom:0;
 }
 .vault-field-label{
-  font-size:10px;font-weight:800;color:var(--tx3);
+  font-size:10px;font-weight:500;color:var(--tx3);
   letter-spacing:.08em;text-transform:uppercase;
-  margin-bottom:3px;
+  margin-bottom:4px;font-family:inherit;
 }
 .vault-field-box{
   display:flex;align-items:center;gap:6px;
   background:var(--sf2);border:1px solid var(--bd);
-  border-radius:9px;padding:6px 8px 6px 11px;
+  border-radius:12px;padding:8px 10px 8px 12px;
   min-width:0;
-  transition:border-color .15s;
+  transition:border-color .2s ease;
 }
 .vault-field-box:focus-within{border-color:rgba(90,94,247,.4);}
 .vault-field-value{
   flex:1;min-width:0;font-size:12px;color:var(--tx);
-  font-family:monospace;word-break:break-all;line-height:1.5;
+  font-weight:400;
+  font-family:monospace;line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 
 /* Card footer */
 .vault-card-footer{
   display:flex;align-items:center;justify-content:space-between;
-  gap:8px;padding:9px 18px 12px;border-top:1px solid var(--bd);
-  flex-wrap:wrap;margin-top:auto;
+  gap:8px;padding:14px 18px;border-top:1px solid var(--bd);
+  flex-wrap:wrap;flex-shrink:0;
 }
 .vault-icon-btn{
   width:28px;height:28px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;
   background:transparent;border:1px solid transparent;
   color:var(--tx3);font-size:13px;cursor:pointer;
-  transition:all .15s;flex-shrink:0;
+  transition:all .2s ease;flex-shrink:0;
 }
 .vault-icon-btn:hover{background:rgba(255,255,255,.05);border-color:var(--bd);color:var(--tx);}
 .vault-icon-btn.danger:hover{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.3);color:#f87171;}
 .vault-icon-btn.active{color:#f59e0b;}
 
-.vault-page-pad{padding:28px 32px;}
+.vault-page-pad{padding:28px 32px;position:relative;}
 
+@media (max-width:900px){
+  .vault-card{--vault-card-h: 440px;}
+}
 @media (max-width:460px){
-  .vault-card-header{padding:14px 16px;gap:9px;}
+  .vault-card{--vault-card-h: 420px;}
+  .vault-card-header{padding:16px 16px;gap:9px;}
   .vault-card-icon{width:36px;height:36px;font-size:16px;}
   .vault-card-title{font-size:14px;}
-  .vault-card-footer{padding:10px 16px;}
+  .vault-card-footer{padding:12px 16px;}
   .vault-page-pad{padding:16px;}
   .vault-cards-grid{grid-template-columns:1fr !important;}
 }
@@ -493,11 +523,12 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   width:100%;
   border-collapse:collapse;
   font-size:13px;
+  table-layout:fixed;
 }
 .vault-th{
   padding:8px 14px;
   font-size:10px;
-  font-weight:700;
+  font-weight:600;
   color:var(--tx2);
   text-transform:uppercase;
   letter-spacing:.08em;
@@ -506,10 +537,11 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   border-top:1px solid var(--bd);
   white-space:nowrap;
   position:relative;
+  font-family:inherit;
 }
 .vault-th input{
   background:transparent;border:none;outline:none;
-  font-size:10px;font-weight:700;color:var(--tx2);
+  font-size:10px;font-weight:600;color:var(--tx2);
   text-transform:uppercase;letter-spacing:.08em;
   font-family:inherit;width:100%;cursor:text;
 }
@@ -522,12 +554,14 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   font-size:13px;
   vertical-align:middle;
   position:relative;
+  max-width:0; /* forces truncation to respect table-layout:fixed column width */
 }
 .vault-td:last-child{border-right:none;}
 .vault-td input{
   background:transparent;border:none;outline:none;
   color:var(--tx);font-size:13px;font-family:inherit;
   width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .vault-td input:focus{color:var(--ac);}
 .vault-td input::placeholder{color:var(--tx3);}
@@ -543,23 +577,25 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   padding:44px 24px;
   text-align:center;
   background:var(--sf2);
-  border-top:1px solid var(--bd);
+  height:100%;
+  box-sizing:border-box;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
 }
 .vault-unlock-btn{
   display:inline-flex;align-items:center;gap:8px;
   background:linear-gradient(135deg,#5a5ef7,#a855f7);
-  color:#fff;border:none;border-radius:9px;
-  padding:10px 24px;font-size:13px;font-weight:700;
+  color:#fff;border:none;border-radius:10px;
+  padding:10px 24px;font-size:13px;font-weight:600;
   cursor:pointer;font-family:inherit;margin-top:14px;
-  transition:opacity .15s;box-shadow:0 4px 16px rgba(90,94,247,.3);
+  transition:opacity .2s ease;box-shadow:0 4px 16px rgba(90,94,247,.3);
 }
 .vault-unlock-btn:hover{opacity:.88;}
 .vault-add-row-btn{
   width:100%;background:none;border:none;
-  padding:8px 14px;font-size:12px;color:var(--tx3);
+  padding:9px 14px;font-size:12px;color:var(--tx3);
   cursor:pointer;font-family:inherit;
   display:flex;align-items:center;gap:6px;
-  font-weight:600;transition:all .15s;
+  font-weight:500;transition:all .2s ease;
   border-top:1px solid var(--bd);
 }
 .vault-add-row-btn:hover{
@@ -567,8 +603,8 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 }
 .vault-copy-btn{
   background:none;border:none;cursor:pointer;
-  color:var(--tx3);padding:3px 5px;
-  border-radius:5px;transition:all .15s;flex-shrink:0;
+  color:var(--tx3);padding:4px 6px;
+  border-radius:6px;transition:all .2s ease;flex-shrink:0;
   line-height:1;display:flex;align-items:center;
 }
 .vault-copy-btn:hover{color:var(--ac);background:rgba(90,94,247,.08);}
@@ -576,34 +612,40 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   position:relative;flex:1;max-width:320px;
 }
 .vault-search-wrap svg{
-  position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
   pointer-events:none;opacity:.5;
 }
 .vault-search{
   background:var(--sf);
   border:1px solid var(--bd);
-  border-radius:9px;
-  padding:7px 12px 7px 34px;
+  border-radius:12px;
+  padding:8px 12px 8px 34px;
   font-size:13px;color:var(--tx);
   font-family:inherit;outline:none;
   width:100%;box-sizing:border-box;
-  transition:border-color .15s,box-shadow .15s;
+  transition:border-color .2s ease,box-shadow .2s ease;
 }
 .vault-search:focus{border-color:rgba(90,94,247,.45);box-shadow:0 0 0 3px rgba(90,94,247,.08);}
 .vault-new-btn{
   background:linear-gradient(135deg,#5a5ef7,#a855f7);
-  color:#fff;border:none;padding:8px 18px;
-  border-radius:9px;font-size:13px;font-weight:700;
+  color:#fff;border:none;padding:9px 18px;
+  border-radius:12px;font-size:13px;font-weight:600;
   cursor:pointer;font-family:inherit;
   display:flex;align-items:center;gap:7px;
-  transition:opacity .15s, box-shadow .15s;white-space:nowrap;
+  transition:opacity .2s ease, box-shadow .2s ease, transform .2s ease;white-space:nowrap;
   flex-shrink:0;box-shadow:0 2px 12px rgba(90,94,247,.3);
 }
-.vault-new-btn:hover{opacity:.9;box-shadow:0 4px 20px rgba(90,94,247,.45);}
+.vault-new-btn:hover{opacity:.9;box-shadow:0 4px 20px rgba(90,94,247,.45);transform:translateY(-1px);}
 @keyframes vaultFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .vault-card{animation:vaultFadeIn .25s ease both;}
-.vault-stat-val{font-size:22px;font-weight:800;color:#f1f5f9;letter-spacing:-.5px;}
-.vault-stat-lbl{font-size:11px;color:#64748b;font-weight:600;}
+.vault-stat-card{
+  padding:16px 18px;border-radius:14px;
+  background:var(--sf);border:1px solid var(--bd);
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.vault-stat-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.22);}
+.vault-stat-val{font-size:26px;font-weight:700;color:#f1f5f9;letter-spacing:-.5px;font-family:'Inter',system-ui,sans-serif;line-height:1;}
+.vault-stat-lbl{font-size:11px;color:#64748b;font-weight:500;letter-spacing:.02em;}
 
 
 input[type=date]{color-scheme:dark}
@@ -10704,7 +10746,6 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
     <div class="vault-card" onClick=${()=>menu&&setMenu(null)} style=${{
       border:'1px solid '+accentColor.replace(/[\d.]+\)$/,'.25)'),
       borderLeft:'4px solid '+stripeColor,
-      boxShadow:'0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03)',
     }}>
       <div style=${{height:4,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.75)')+' 70%,transparent 100%)'}}></div>
       <div class="vault-card-header" style=${{
@@ -10717,7 +10758,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
           boxShadow:'0 0 16px '+accentColor.replace(/[\d.]+\)$/,'.35)'),
         }}>${iconInfo.icon}</div>
         ${editing && html`
-          <input style=${{flex:1,background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:9,padding:'6px 11px',fontSize:14,fontWeight:800,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
+          <input style=${{flex:1,background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:10,padding:'6px 11px',fontSize:14,fontWeight:600,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
             value=${title} autoFocus
             onInput=${e=>setTitle(e.target.value)}
             onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
@@ -10739,15 +10780,16 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       </div>`}
 
       ${canSee && html`
-      <div style=${{padding:'0 18px 10px'}}>
+      <div style=${{padding:'0 18px 12px'}}>
         <textarea
-          style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,padding:'6px 9px',fontSize:12,color:'var(--tx2)',fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:30,boxSizing:'border-box',lineHeight:1.4}}
+          style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:10,padding:'8px 10px',fontSize:12,color:'var(--tx2)',fontFamily:'inherit',fontWeight:400,outline:'none',resize:'vertical',minHeight:30,boxSizing:'border-box',lineHeight:1.4}}
           placeholder="Add a note or description…"
           value=${notes} rows="1"
           onInput=${e=>setNotes(e.target.value)}
           onBlur=${()=>push(undefined,undefined,undefined,undefined,undefined,undefined,undefined,notes)}/>
       </div>`}
 
+      <div class="vault-card-body">
       ${isLocked && !isUnlocked && html`
         <div class="vault-locked-overlay">
           <div style=${{width:56,height:56,borderRadius:16,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:26}}>🔒</div>
@@ -10757,7 +10799,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         </div>`}
 
       ${canSee && isSimple && !sheetMode && html`
-        <div style=${{padding:'8px 18px 10px'}}>
+        <div style=${{padding:'16px 18px'}}>
           ${rows.length===0 && html`<div style=${{fontSize:12,color:'var(--tx3)',padding:'10px 0'}}>No fields yet — click ✏️ Edit below to add some.</div>`}
           ${rows.map(row=>{
             const label = (row[keyCol.id]||'').trim() || 'Field';
@@ -10770,28 +10812,28 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
                 <div class="vault-field-label">${label}</div>
                 <div class="vault-field-box">
                   ${isSecret ? html`
-                    <span class="vault-field-value" style=${{letterSpacing:justCopied?0:3,color:justCopied?'#4ade80':'#94a3b8'}}>${justCopied?'✓ Copied to clipboard':'••••••••••'}</span>
+                    <span class="vault-field-value" title=${justCopied?'':'Value hidden — click copy to use it'} style=${{letterSpacing:justCopied?0:3,color:justCopied?'#4ade80':'#94a3b8'}}>${justCopied?'✓ Copied to clipboard':'••••••••••'}</span>
                     ${val && html`<button class="vault-copy-btn" title="Copy — value stays hidden" style=${{color:justCopied?'#4ade80':'#475569'}} onClick=${()=>copyCell(val,label)}>${justCopied?'✓':'⧉'}</button>`}
                   ` : html`
-                    <span class="vault-field-value">${val||'—'}</span>
+                    <span class="vault-field-value" title=${val||''}>${val||'—'}</span>
                     ${val && html`<button class="vault-copy-btn" title="Copy" style=${{color:justCopied?'#818cf8':'#475569'}} onClick=${()=>copyCell(val,label)}>${justCopied?'✓':'⧉'}</button>`}
                   `}
                 </div>
               </div>`; })}
         </div>`}
       ${canSee && isSimple && sheetMode && html`
-        <div style=${{padding:'8px 18px 10px'}}>
+        <div style=${{padding:'16px 18px'}}>
           ${rows.map((row,ri)=>{
             const isSecret = !!row._secret;
             return html`
               <div key=${row._id} style=${{display:'flex',alignItems:'center',gap:7,marginBottom:8,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'7px 10px'}}>
-                <input style=${{width:120,flexShrink:0,background:'transparent',border:'none',outline:'none',fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:'inherit'}}
+                <input style=${{width:120,flexShrink:0,background:'transparent',border:'none',outline:'none',fontSize:10,fontWeight:500,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:'inherit'}}
                   placeholder="LABEL" value=${row[keyCol.id]||''}
                   onInput=${e=>updateCell(row._id,keyCol.id,e.target.value)}
                   onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
                 <span style=${{width:1,alignSelf:'stretch',background:'var(--bd)'}}></span>
-                <input style=${{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',fontSize:13,color:'var(--tx)',fontFamily:'monospace'}}
-                  placeholder="Value" value=${row[valCol.id]||''}
+                <input style=${{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',fontSize:13,color:'var(--tx)',fontFamily:'monospace',textOverflow:'ellipsis'}}
+                  placeholder="Value" value=${row[valCol.id]||''} title=${row[valCol.id]||''}
                   onInput=${e=>updateCell(row._id,valCol.id,e.target.value)}
                   onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
                 <button title=${isSecret?'Unmark masked':'Mask this field'} style=${{background:'none',border:'none',cursor:'pointer',color:isSecret?'#f59e0b':'var(--tx3)',fontSize:12,padding:2,flexShrink:0}} onClick=${()=>toggleRowSecret(row._id)}>${isSecret?'🔒':'👁'}</button>
@@ -10855,8 +10897,9 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
                             </div>`}
                           ${!hideVal && html`
                             <div style=${{display:'flex',alignItems:'center',gap:5}}>
-                              <input style=${{background:'transparent',border:'none',outline:'none',color:'#e2e8f0',fontSize:13,fontFamily:'inherit',flex:1,minWidth:0}}
+                              <input style=${{background:'transparent',border:'none',outline:'none',color:'#e2e8f0',fontSize:13,fontFamily:'inherit',flex:1,minWidth:0,textOverflow:'ellipsis'}}
                                 value=${val}
+                                title=${val}
                                 placeholder="—"
                                 onInput=${e=>updateCell(row._id,col.id,e.target.value)}
                                 onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
@@ -10876,6 +10919,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
             </tbody>
           </table>
         </div>`}
+      </div>
 
       ${canSee && html`
         <div class="vault-card-footer">
@@ -11203,7 +11247,7 @@ function VaultView({cu}){
   const totalPinned = cards.filter(c=>c.pinned).length;
 
   return html`
-    <div class="vault-scroll" style=${{...VS.wrap, background:'var(--bg)'}}>
+    <div class="vault-scroll" style=${{...VS.wrap, backgroundColor:'var(--bg)', backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)', backgroundSize:'32px 32px'}}>
     <div class="vault-page-pad" style=${{width:'100%', boxSizing:'border-box'}}>
       <!-- Page header -->
       <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:22,gap:16,flexWrap:'wrap'}}>
@@ -11223,7 +11267,7 @@ function VaultView({cu}){
       </div>
 
       <!-- Stats bar (flat colored-top-border cards) -->
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:20}}>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:16,marginBottom:24}}>
         ${[
           {val:cards.length,     lbl:'Total Cards', color:'#818cf8'},
           {val:totalCreds,       lbl:'Credentials',  color:'#4ade80'},
@@ -11231,9 +11275,9 @@ function VaultView({cu}){
           {val:totalExpiring30,  lbl:'Expiring <30d', color:'#f97316'},
           {val:totalPinned,      lbl:'Pinned',         color:'#f472b6'},
         ].map(s=>html`
-          <div style=${{padding:'14px 16px',borderRadius:12,background:'var(--sf)',border:'1px solid var(--bd)',borderTop:'3px solid '+s.color}}>
-            <div style=${{fontSize:20,fontWeight:900,color:'var(--tx)',lineHeight:1}}>${s.val}</div>
-            <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:600,marginTop:5,textTransform:'uppercase',letterSpacing:'.03em'}}>${s.lbl}</div>
+          <div class="vault-stat-card" style=${{borderTop:'3px solid '+s.color}}>
+            <div class="vault-stat-val">${s.val}</div>
+            <div class="vault-stat-lbl" style=${{textTransform:'uppercase',marginTop:6}}>${s.lbl}</div>
           </div>`)}
       </div>
 
@@ -11279,7 +11323,7 @@ function VaultView({cu}){
           <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter||categoryFilter!=='all'?'No cards match your filters':'Your vault is empty'}</div>
           <div style=${{fontSize:13,color:'#334155'}}>${filter||categoryFilter!=='all'?'Try a different search or category':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,380px))',gap:14,alignItems:'start'}}>
+      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:24,alignItems:'stretch'}}>
       ${filtered.map(c=>html`
         <${VaultSpreadCard}
           key=${c.id}
