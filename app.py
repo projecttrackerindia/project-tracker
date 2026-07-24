@@ -1511,24 +1511,80 @@ def _cache_inject_item(workspace_id, bucket, item):
     Older builds referenced this helper but did not define it, which caused
     /api/tasks POST to commit the task and then crash with a 500. Keep this
     function deliberately defensive: cache failure must never fail the API.
+
+    BUG FIX: this previously targeted candidate keys like
+    "appdata:{workspace_id}:projects", which never matches anything —
+    /api/app-data actually caches a per-user dict under
+    "appdata:{ws}:{uid}:{team_id}" (see get_app_data()), with the list living
+    at result["projects"] / result["tasks"] *inside* that dict. Because the
+    old candidate keys never matched, this function was a silent no-op, and
+    newly created items only became visible once the (racy) cache-bust +
+    background re-fetch completed — a re-fetch that could lose the race
+    against another in-flight background refresh and re-cache pre-write data.
+    Now we SCAN for the real appdata keys for this workspace and patch the
+    nested list directly, so the item is visible immediately regardless of
+    that race.
     """
     try:
         if not workspace_id or not bucket or not isinstance(item, dict):
             return
-        # Update the common list cache keys if they already exist. If not, do nothing.
-        candidate_keys = [
-            f"{bucket}:{workspace_id}:",
-            f"appdata:{workspace_id}:tasks",
-            f"appdata:{workspace_id}:projects",
-        ]
-        for key in candidate_keys:
+        iid = item.get('id')
+
+        # 1) Flat list caches, e.g. "projects:{ws}:{team_id}" used by GET /api/projects.
+        flat_prefix = f"{bucket}:{workspace_id}:"
+
+        # 2) Real appdata cache keys: "appdata:{ws}:{uid}:{team_id}" (per-user dict).
+        appdata_prefix = f"appdata:{workspace_id}:"
+
+        def _patch_flat_list(val):
+            if not isinstance(val, list):
+                return None
+            next_val = [x for x in val if not (isinstance(x, dict) and x.get('id') == iid)]
+            next_val.insert(0, item)
+            return next_val
+
+        def _patch_appdata_dict(val):
+            if not isinstance(val, dict) or bucket not in val or not isinstance(val.get(bucket), list):
+                return None
+            next_list = [x for x in val[bucket] if not (isinstance(x, dict) and x.get('id') == iid)]
+            next_list.insert(0, item)
+            new_val = dict(val)
+            new_val[bucket] = next_list
+            return new_val
+
+        keys_to_check = set()
+
+        if _redis_client is not None:
+            try:
+                for pattern in (f"ptcache:{flat_prefix}*", f"ptcache:{appdata_prefix}*"):
+                    cursor = 0
+                    while True:
+                        cursor, batch = _redis_client.scan(cursor, match=pattern, count=200)
+                        keys_to_check.update(k[len("ptcache:"):] if isinstance(k, str) else k.decode()[len("ptcache:"):] for k in batch)
+                        if cursor == 0:
+                            break
+            except Exception:
+                pass
+
+        try:
+            with _CACHE_LOCK:
+                for k in list(_CACHE.keys()):
+                    if k.startswith(flat_prefix) or k.startswith(appdata_prefix):
+                        keys_to_check.add(k)
+        except Exception:
+            pass
+
+        for key in keys_to_check:
             try:
                 val = _cache_get(key)
-                if isinstance(val, list):
-                    iid = item.get('id')
-                    next_val = [x for x in val if not (isinstance(x, dict) and x.get('id') == iid)]
-                    next_val.insert(0, item)
-                    _cache_set(key, next_val)
+                if val is None:
+                    continue
+                if key.startswith(appdata_prefix):
+                    patched = _patch_appdata_dict(val)
+                else:
+                    patched = _patch_flat_list(val)
+                if patched is not None:
+                    _cache_set(key, patched)
             except Exception:
                 pass
     except Exception as e:

@@ -174,6 +174,41 @@ function ptIsTaskDeleted(id){
   const x=ptTaskTombstones();
   return Number(x[String(id)]||0)>Date.now();
 }
+function ptMergeProjectsStable(prevProjects, serverProjects){
+  // Same fix as ptMergeTasksStable below, applied to projects: a stale
+  // /api/app-data response (server-side cache race after create) must never
+  // erase a project the user just created/optimistically confirmed.
+  const now=Date.now();
+  const prev=Array.isArray(prevProjects)?prevProjects:[];
+  const srv=Array.isArray(serverProjects)?serverProjects:[];
+  const byId=new Map();
+  prev.forEach(p=>{if(p&&p.id)byId.set(String(p.id),p);});
+  const out=[]; const seen=new Set();
+  srv.forEach(sp=>{
+    if(!sp||!sp.id)return;
+    const local=byId.get(String(sp.id))||null;
+    const merged={...(local||{}),...sp,_pending:false,_localTs:(local&&local._localTs)||now};
+    seen.add(String(merged.id));
+    out.push(merged);
+  });
+  // Keep optimistic/recent projects while app-data cache catches up (mirrors
+  // the task-vanish fix — don't let stale data erase a just-created project).
+  prev.forEach(p=>{
+    if(!p||!p.id)return;
+    const id=String(p.id);
+    if(seen.has(id))return;
+    const keep = p._pending || (Number(p._localTs||0) && now-Number(p._localTs||0)<180000);
+    if(keep)out.unshift(p);
+  });
+  const final=[]; const fids=new Set();
+  out.forEach(p=>{
+    const id=String(p.id||'');
+    if(id&&fids.has(id))return;
+    if(id)fids.add(id);
+    final.push(p);
+  });
+  return final;
+}
 function ptMergeTasksStable(prevTasks, serverTasks){
   const now=Date.now();
   const prev=Array.isArray(prevTasks)?prevTasks:[];
@@ -11755,7 +11790,7 @@ function App(){
           const teams=Array.isArray(teamsRaw)?teamsRaw:[];
           const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
           const _pm=parseMembers;
-          setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)})),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
+          setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:ptMergeProjectsStable(prev.projects,(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)}))),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
           if(Array.isArray(dmu))setDmUnread(dmu);
           if(Array.isArray(rems)){const now=new Date();setUpcomingReminders(rems.filter(r=>new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));}
         }
@@ -11803,7 +11838,7 @@ function App(){
       const teams=Array.isArray(teamsRaw)?teamsRaw:[];
       const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
       const _pm=parseMembers;
-      setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)})),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
+      setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:ptMergeProjectsStable(prev.projects,(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)}))),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
       setDmUnread(Array.isArray(dmu)?dmu:[]);
       if(ws&&ws.name)setWsName(ws.name);
       if(ws){try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},ws,{workspace_id:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_id_from_me:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_slug:ws.workspace_slug||ws.slug||'',workspace_name:ws.name||ws.workspace_name||''});}catch(_){} setWsDmEnabled(ws.dm_enabled!==0);}
