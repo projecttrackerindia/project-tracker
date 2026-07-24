@@ -422,6 +422,11 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   border-color:var(--ac);
   background:rgba(90,94,247,.06);
 }
+.vault-action-btn.danger{
+  color:#f87171;
+  border-color:rgba(239,68,68,.25);
+  background:rgba(239,68,68,.05);
+}
 .vault-action-btn.danger:hover{
   background:rgba(239,68,68,.07);
   border-color:rgba(239,68,68,.35);
@@ -10660,7 +10665,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       borderLeft:'4px solid '+stripeColor,
       boxShadow:'0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03)',
     }}>
-      <div style=${{height:3,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.6)')+' 60%,transparent 100%)'}}></div>
+      <div style=${{height:4,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.75)')+' 70%,transparent 100%)'}}></div>
       <div class="vault-card-header" style=${{
         background:'linear-gradient(135deg,'+iconInfo.bg.replace(/[\d.]+\)$/,'0.22)')+' 0%,transparent 65%)',
         paddingBottom:6,
@@ -10677,7 +10682,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
             onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
             onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
         ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename" style=${{flex:'0 1 auto'}}>${title||'Untitled'}</span>`}
-        <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'1a',border:'1px solid '+catInfo.color+'44'}}>${catInfo.badge}</span>
+        <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'2a',border:'1px solid '+catInfo.color+'66'}}>${catInfo.badge}</span>
         ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
         ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.14)':'rgba(239,68,68,.14)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
         <div style=${{display:'flex',gap:8,flexShrink:0,marginLeft:'auto',alignItems:'center'}}>
@@ -10824,10 +10829,10 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       ${canSee && html`
         <div class="vault-card-footer">
           <span style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:600}}>Updated ${vaultTimeAgo(card.updated)}</span>
-          <div style=${{display:'flex',gap:4}}>
-            <button class=${'vault-icon-btn'+(pinned?' active':'')} title=${pinned?'Unpin card':'Pin card'} onClick=${togglePin}>★</button>
-            ${isSimple && html`<button class="vault-icon-btn" title=${sheetMode?'Done editing':'Edit fields'} onClick=${()=>setSheetMode(s=>!s)}>${sheetMode?'✓':'✏️'}</button>`}
-            <button class="vault-icon-btn danger" title="Delete card" onClick=${()=>setShowDel(true)}>🗑️</button>
+          <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <button class="vault-action-btn" style=${pinned?{background:'rgba(245,158,11,.14)',borderColor:'rgba(245,158,11,.4)',color:'#f59e0b'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
+            ${isSimple && html`<button class="vault-action-btn" onClick=${()=>setSheetMode(s=>!s)}>${sheetMode?'✓ Done':'✏️ Edit'}</button>`}
+            <button class="vault-action-btn danger" onClick=${()=>setShowDel(true)}>🗑️ Delete</button>
           </div>
         </div>`}
 
