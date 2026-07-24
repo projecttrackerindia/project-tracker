@@ -7801,7 +7801,7 @@ function WorkspacePlanUsageCard({cu}){
 }
 
 
-function WorkspaceOSPolicySettingsCard({cu}){
+function WorkspaceOSPolicySettingsCard({cu,bare}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const titleCase=s=>String(s||'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -7819,10 +7819,10 @@ function WorkspaceOSPolicySettingsCard({cu}){
   const save=async()=>{setLoading(true);const r=await api.put('/api/workspace-os/settings',cfg,{quiet:true,timeoutMs:10000}).catch(e=>({error:e.message}));setLoading(false);if(r&&r.ok){setCfg({...cfg,...r.settings});setMsg('Attendance policy saved');try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}else setMsg((r&&r.error)||'Policy save failed');setTimeout(()=>setMsg(''),1800);};
   const modeOptions=['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty'];
   const roleOptions=['admin','hr','manager','peopleops','finance'];
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+  return html`<div class=${bare?'':'card'} style=${bare?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
-      <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>
-      ${allowed?html`<button class="btn bp" style=${{fontSize:11,padding:'7px 12px'}} onClick=${save} disabled=${loading}>${loading?'Saving…':'Save policy'}</button>`:null}
+      ${bare?html`<div/>`:html`<div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>`}
+      ${allowed?html`<button class="btn bp" style=${{fontSize:11,padding:'7px 12px',marginLeft:'auto'}} onClick=${save} disabled=${loading}>${loading?'Saving…':'Save policy'}</button>`:null}
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Only Admin/Owner/HR can configure attendance policy.</div>`:html`<div style=${{display:'grid',gridTemplateColumns:'160px 1fr 1fr',gap:12,alignItems:'start'}}>
       <label><span class="lbl">Permission hours/month</span><input class="inp" type="number" min="0" step="0.5" value=${cfg.permission_hours_per_month||0} onInput=${e=>setCfg({...cfg,permission_hours_per_month:e.target.value})}/></label>
@@ -7835,7 +7835,7 @@ function WorkspaceOSPolicySettingsCard({cu}){
 }
 
 
-function WorkspaceOSAdminImportsCard({cu}){
+function WorkspaceOSAdminImportsCard({cu,bare}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const today=new Date();
@@ -7882,10 +7882,10 @@ function WorkspaceOSAdminImportsCard({cu}){
     <input type="file" accept=${accept} multiple=${!!multiple} style=${{display:'none'}} onChange=${e=>onChange(multiple?e.target.files:(e.target.files&&e.target.files[0]))}/>
     <b style=${{fontSize:12,color:'var(--tx)'}}>${label}</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${chosen||sub}</span>
   </label>`;
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
+  return html`<div class=${bare?'':'card'} style=${bare?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
     <div style=${{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',marginBottom:14}}>
-      <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>
-      <div style=${{display:'flex',gap:8}}><a class="btn brd" href="/api/holidays/template" style=${{fontSize:11,padding:'6px 10px'}}>Holiday template</a><a class="btn brd" href="/api/payslips/template" style=${{fontSize:11,padding:'6px 10px'}}>Payslip mapping CSV</a></div>
+      ${bare?html`<div/>`:html`<div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>`}
+      <div style=${{display:'flex',gap:8,marginLeft:'auto'}}><a class="btn brd" href="/api/holidays/template" style=${{fontSize:11,padding:'6px 10px'}}>Holiday template</a><a class="btn brd" href="/api/payslips/template" style=${{fontSize:11,padding:'6px 10px'}}>Payslip mapping CSV</a></div>
     </div>
     <div style=${{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:16}}>
       <div style=${dropStyle}>
@@ -7900,6 +7900,106 @@ function WorkspaceOSAdminImportsCard({cu}){
       </div>
     </div>
     ${msg?html`<div style=${{marginTop:12,padding:'9px 12px',borderRadius:12,background:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.08)':'rgba(22,163,74,.09)',border:'1px solid '+(msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'rgba(185,28,28,.20)':'rgba(22,163,74,.22)'),fontSize:12,color:msg.includes('failed')||msg.includes('required')||msg.includes('Choose')?'var(--rd)':'var(--gn)'}}>${msg}</div>`:null}
+  </div>`;
+}
+
+function UsageRing({pct,label,value,color,size}){
+  size=size||96;
+  const r=(size/2)-8, c=2*Math.PI*r, off=c*(1-Math.min(100,Math.max(0,pct))/100);
+  return html`
+    <div style=${{display:'flex',flexDirection:'column',alignItems:'center',gap:10,padding:'18px 14px',borderRadius:16,background:'var(--sf)',border:'1px solid var(--bd)'}}>
+      <div style=${{position:'relative',width:size,height:size}}>
+        <svg width=${size} height=${size} viewBox=${`0 0 ${size} ${size}`} style=${{transform:'rotate(-90deg)'}}>
+          <circle cx=${size/2} cy=${size/2} r=${r} fill="none" stroke="var(--sf2)" strokeWidth="8"/>
+          <circle cx=${size/2} cy=${size/2} r=${r} fill="none" stroke=${color} strokeWidth="8" strokeLinecap="round"
+            strokeDasharray=${c} strokeDashoffset=${off} style=${{transition:'stroke-dashoffset .5s ease'}}/>
+        </svg>
+        <div style=${{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size>80?17:14,fontWeight:900,color:'var(--tx)'}}>${Math.round(pct)}%</div>
+      </div>
+      <div style=${{textAlign:'center'}}>
+        <div style=${{fontSize:12,fontWeight:800,color:'var(--tx)'}}>${label}</div>
+        <div style=${{fontSize:11,color:'var(--tx3)',marginTop:2}}>${value}</div>
+      </div>
+    </div>`;
+}
+
+function AdminConsoleCard({cu}){
+  const [tab,setTab]=useState('usage');
+  const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
+  const allowed=!!cu&&['admin','owner','manager','workspace owner'].includes(roleNorm);
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+  const load=useCallback(async()=>{
+    if(!allowed)return;
+    setLoading(true);setErr('');
+    try{
+      const cached=(()=>{try{return JSON.parse(localStorage.getItem('pt_plan_usage_cache_'+String((cu&&cu.workspace_id)||(cu&&cu.workspace)||'default'))||'null');}catch(_){return null;}})();
+      if(cached&&!data)setData(cached);
+      const r=await api.get('/api/workspace/plan-usage',{quiet:true,timeoutMs:15000});
+      if(r&&r.error){setErr(r.error);}else{setData(r);try{localStorage.setItem('pt_plan_usage_cache_'+String((cu&&cu.workspace_id)||(cu&&cu.workspace)||'default'),JSON.stringify(r));}catch(_){}}
+    }catch(e){setErr('Could not load workspace plan usage.');}
+    setLoading(false);
+  },[allowed,cu&&cu.workspace_id,cu&&cu.workspace]);
+  useEffect(()=>{if(tab==='usage')load();},[load,tab]);
+  const plan=String((data&&data.plan)||'starter').toUpperCase();
+  const usage=(data&&data.usage)||{};
+  const limits=(data&&data.limits)||{};
+  const fmtNum=(v)=>Number(v||0).toLocaleString('en-IN');
+  const fmtStorage=(mb)=>{
+    const n=Number(mb||0);
+    if(n>=1024)return (Math.round((n/1024)*10)/10).toLocaleString('en-IN')+' GB';
+    if(n>0&&n<1)return (Math.round(n*100)/100).toLocaleString('en-IN')+' MB';
+    if(n>0&&n<10)return (Math.round(n*10)/10).toLocaleString('en-IN')+' MB';
+    return fmtNum(Math.round(n))+' MB';
+  };
+  const ringColors=['#818cf8','#22d3ee','#f59e0b','#4ade80','#f472b6','#a78bfa'];
+  const ringDefs=[
+    ['Workspaces','workspaces',null],['Team members','members',null],['Projects','projects',null],
+    ['Tasks','tasks',null],['Invoices','invoices',null],['Storage','storage_mb','storage'],
+  ];
+  const tabs=[['usage','📊','Plan & Usage'],['attendance','🕘','Attendance & Holiday Policy'],['imports','⬆','Data Imports']];
+
+  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+    <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:14,flexWrap:'wrap'}}>
+      <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>⚙️ Admin Console</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Plan & Usage · Attendance & Holiday Policy · Data Imports — merged into one console.</p></div>
+      ${tab==='usage'?html`<button class="btn brd" style=${{fontSize:11,padding:'5px 10px'}} onClick=${load} disabled=${loading}>${loading?'Refreshing…':'↻ Refresh'}</button>`:null}
+    </div>
+
+    <div style=${{display:'flex',gap:4,borderBottom:'1px solid var(--bd)',marginBottom:16}}>
+      ${tabs.map(([v,icon,label])=>html`
+        <button key=${v} onClick=${()=>setTab(v)}
+          style=${{background:'none',border:'none',borderBottom:'2px solid '+(tab===v?'var(--ac)':'transparent'),color:tab===v?'var(--ac)':'var(--tx3)',fontWeight:800,fontSize:12,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>
+          ${icon} ${label}
+        </button>`)}
+    </div>
+
+    ${tab==='usage'?html`
+      ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Workspace plan and usage is available to admins/managers only</div>`:null}
+      ${allowed&&err?html`<div style=${{padding:'7px 10px',borderRadius:10,background:'rgba(185,28,28,.09)',border:'1px solid rgba(185,28,28,.18)',fontSize:12,color:'var(--rd)'}}>${err}</div>`:null}
+      ${allowed&&!err?html`<div>
+        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:14,marginBottom:16}}>
+          ${ringDefs.map(([label,key,kind],i)=>{
+            const used=Number(usage[key]||0), max=Number(limits[key]||0);
+            const unlimited=max>=9999;
+            const pct=unlimited?0:(max?Math.min(100,Math.round((used/max)*100)):0);
+            const value=kind==='storage'?`${fmtStorage(used)} / ${unlimited?'Custom':fmtStorage(max)}`:`${fmtNum(used)} / ${unlimited?'Custom':fmtNum(max)}`;
+            return html`<${UsageRing} key=${key} pct=${unlimited?8:pct} label=${label} value=${value} color=${ringColors[i%ringColors.length]}/>`;
+          })}
+        </div>
+        <div class="card" style=${{background:'var(--sf2)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+          <div>
+            <div style=${{fontSize:13,fontWeight:900,color:'var(--tx)'}}>Plan</div>
+            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:2}}>
+              <span style=${{fontWeight:800,color:'var(--ac)'}}>${plan}</span> plan · Role: ${(data&&data.role)||(cu&&cu.role)||'—'} · Last updated: ${(data&&data.updated_at)||'—'}
+            </div>
+          </div>
+        </div>
+      </div>`:null}
+    `:null}
+
+    ${tab==='attendance'?html`<${WorkspaceOSPolicySettingsCard} cu=${cu} bare=${true}/>`:null}
+    ${tab==='imports'?html`<${WorkspaceOSAdminImportsCard} cu=${cu} bare=${true}/>`:null}
   </div>`;
 }
 
@@ -8017,11 +8117,7 @@ function WorkspaceSettings({cu,onReload}){
         </div>
       </div>
 
-      <${WorkspacePlanUsageCard} cu=${cu}/>
-
-      <${WorkspaceOSPolicySettingsCard} cu=${cu}/>
-
-      <${WorkspaceOSAdminImportsCard} cu=${cu}/>
+      <${AdminConsoleCard} cu=${cu}/>
 
       <${WorkspaceRolesSettings} cu=${cu}/>
 
@@ -10773,25 +10869,26 @@ function VaultView({cu}){
         </button>
       </div>
 
-      <!-- Stats bar -->
-      <div style=${{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
+      <!-- Stats bar (round icon ring cards) -->
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:12,marginBottom:20}}>
         ${[
-          {icon:'🗂️', val:String(cards.length),       lbl:'Total Cards',  accent:'rgba(129,140,248,.15)', border:'rgba(129,140,248,.25)'},
-          {icon:'🔑', val:String(totalCreds),          lbl:'Credentials',  accent:'rgba(34,197,94,.12)',   border:'rgba(34,197,94,.22)'},
-          {icon:'🔒', val:String(totalProtected),      lbl:'Protected',    accent:'rgba(245,158,11,.12)',  border:'rgba(245,158,11,.22)'},
-          {icon:'🕵️', val:String(totalSecrets),        lbl:'Secret Rows',  accent:'rgba(239,68,68,.08)',   border:'rgba(239,68,68,.2)', danger:true},
+          {icon:'🗂️', val:cards.length, pct:cards.length?100:0, lbl:'Total Cards', color:'#818cf8'},
+          {icon:'🔑', val:totalCreds,    pct:cards.length?Math.min(100,Math.round((totalCreds/Math.max(cards.length*4,1))*100)):0, lbl:'Credentials', color:'#4ade80'},
+          {icon:'🔒', val:totalProtected,pct:cards.length?Math.round((totalProtected/cards.length)*100):0, lbl:'Protected', color:'#f59e0b'},
+          {icon:'🕵️', val:totalSecrets,  pct:totalCreds?Math.round((totalSecrets/totalCreds)*100):0, lbl:'Secret Rows', color:'#ef4444'},
         ].map(s=>html`
-          <div style=${{
-            background:'var(--sf)',border:'1px solid var(--bd)',
-            borderLeft:'3px solid '+s.border,
-            borderRadius:10,padding:'10px 16px',
-            display:'flex',alignItems:'center',gap:12,
-            flex:'1 1 130px',minWidth:110,
-          }}>
-            <div style=${{width:32,height:32,borderRadius:8,background:s.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>${s.icon}</div>
-            <div>
-              <div style=${{fontSize:18,fontWeight:800,color:s.danger?'#ef4444':'var(--tx)',lineHeight:1,letterSpacing:'-.3px'}}>${s.val}</div>
-              <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:600,marginTop:2}}>${s.lbl}</div>
+          <div style=${{display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:'14px 10px',borderRadius:16,background:'var(--sf)',border:'1px solid var(--bd)'}}>
+            <div style=${{position:'relative',width:64,height:64}}>
+              <svg width="64" height="64" viewBox="0 0 64 64" style=${{transform:'rotate(-90deg)'}}>
+                <circle cx="32" cy="32" r="24" fill="none" stroke="var(--sf2)" strokeWidth="6"/>
+                <circle cx="32" cy="32" r="24" fill="none" stroke=${s.color} strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray=${2*Math.PI*24} strokeDashoffset=${2*Math.PI*24*(1-Math.min(100,s.pct)/100)} style=${{transition:'stroke-dashoffset .5s ease'}}/>
+              </svg>
+              <div style=${{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>${s.icon}</div>
+            </div>
+            <div style=${{textAlign:'center'}}>
+              <div style=${{fontSize:16,fontWeight:900,color:'var(--tx)',lineHeight:1}}>${s.val}</div>
+              <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:600,marginTop:3}}>${s.lbl}</div>
             </div>
           </div>`)}
       </div>
