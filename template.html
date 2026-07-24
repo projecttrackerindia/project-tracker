@@ -1197,13 +1197,30 @@ function ptIsTaskDeleted(taskId){
   const x=ptTaskTombstones();
   return !!x[String(taskId||'')];
 }
+function ptProjectTombstones(){
+  try{return JSON.parse(localStorage.getItem('pt_project_tombstones')||'{}')||{};}catch(_){return {};}
+}
+function ptSaveProjectTombstones(x){
+  try{localStorage.setItem('pt_project_tombstones',JSON.stringify(x||{}));}catch(_){}
+}
+function ptMarkProjectDeleted(projectId){
+  const x=ptProjectTombstones();
+  x[String(projectId||'')]=Date.now();
+  ptSaveProjectTombstones(x);
+}
+function ptIsProjectDeleted(projectId){
+  const x=ptProjectTombstones();
+  return !!x[String(projectId||'')];
+}
 function ptMergeProjectsStable(prevProjects, serverProjects){
   // Same fix as ptMergeTasksStable below, applied to projects: a stale
   // /api/app-data response (server-side cache race after create) must never
-  // erase a project the user just created/optimistically confirmed. Mirrors frontend.js.
+  // erase a project the user just created/optimistically confirmed. The
+  // ptIsProjectDeleted() tombstone check stops a stale response from
+  // resurrecting a project the user just deleted. Mirrors frontend.js.
   const now=Date.now();
   const prev=Array.isArray(prevProjects)?prevProjects:[];
-  const srv=Array.isArray(serverProjects)?serverProjects:[];
+  const srv=(Array.isArray(serverProjects)?serverProjects:[]).filter(p=>p&&!String(p.deleted_at||'').trim()&&!ptIsProjectDeleted(p.id));
   const byId=new Map();
   prev.forEach(p=>{if(p&&p.id)byId.set(String(p.id),p);});
   const out=[]; const seen=new Set();
@@ -1215,7 +1232,7 @@ function ptMergeProjectsStable(prevProjects, serverProjects){
     out.push(merged);
   });
   prev.forEach(p=>{
-    if(!p||!p.id)return;
+    if(!p||!p.id||String(p.deleted_at||'').trim()||ptIsProjectDeleted(p.id))return;
     const id=String(p.id);
     if(seen.has(id))return;
     const keep = p._pending || (Number(p._localTs||0) && now-Number(p._localTs||0)<180000);
@@ -3487,6 +3504,7 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
     if(!window.confirm('Delete project and all its tasks? Cannot be undone.'))return;
     onClose();
     const pid=project.id;
+    ptMarkProjectDeleted(pid);
     setData&&setData(prev=>({...prev,
       projects:prev.projects.filter(p=>p.id!==pid),
       tasks:prev.tasks.filter(t=>t.project!==pid)

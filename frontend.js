@@ -174,13 +174,33 @@ function ptIsTaskDeleted(id){
   const x=ptTaskTombstones();
   return Number(x[String(id)]||0)>Date.now();
 }
+function ptProjectTombstones(){
+  try{return JSON.parse(localStorage.getItem('pt_project_tombstones')||'{}')||{};}catch(_){return {};}
+}
+function ptSaveProjectTombstones(x){
+  try{localStorage.setItem('pt_project_tombstones',JSON.stringify(x||{}));}catch(_){}
+}
+function ptMarkProjectDeleted(id){
+  if(!id)return;
+  const x=ptProjectTombstones();
+  x[String(id)]=Date.now()+30*60*1000;
+  Object.keys(x).forEach(k=>{if(Number(x[k]||0)<Date.now())delete x[k];});
+  ptSaveProjectTombstones(x);
+}
+function ptIsProjectDeleted(id){
+  if(!id)return false;
+  const x=ptProjectTombstones();
+  return Number(x[String(id)]||0)>Date.now();
+}
 function ptMergeProjectsStable(prevProjects, serverProjects){
   // Same fix as ptMergeTasksStable below, applied to projects: a stale
   // /api/app-data response (server-side cache race after create) must never
-  // erase a project the user just created/optimistically confirmed.
+  // erase a project the user just created/optimistically confirmed. The
+  // ptIsProjectDeleted() tombstone check is the flip side: it stops a stale
+  // response from resurrecting a project the user just deleted.
   const now=Date.now();
   const prev=Array.isArray(prevProjects)?prevProjects:[];
-  const srv=Array.isArray(serverProjects)?serverProjects:[];
+  const srv=(Array.isArray(serverProjects)?serverProjects:[]).filter(p=>p&&!String(p.deleted_at||'').trim()&&!ptIsProjectDeleted(p.id));
   const byId=new Map();
   prev.forEach(p=>{if(p&&p.id)byId.set(String(p.id),p);});
   const out=[]; const seen=new Set();
@@ -194,7 +214,7 @@ function ptMergeProjectsStable(prevProjects, serverProjects){
   // Keep optimistic/recent projects while app-data cache catches up (mirrors
   // the task-vanish fix — don't let stale data erase a just-created project).
   prev.forEach(p=>{
-    if(!p||!p.id)return;
+    if(!p||!p.id||String(p.deleted_at||'').trim()||ptIsProjectDeleted(p.id))return;
     const id=String(p.id);
     if(seen.has(id))return;
     const keep = p._pending || (Number(p._localTs||0) && now-Number(p._localTs||0)<180000);
@@ -2449,6 +2469,7 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
     if(!window.confirm('Delete project and all its tasks? Cannot be undone.'))return;
     onClose();
     const pid=project.id;
+    ptMarkProjectDeleted(pid);
     setData&&setData(prev=>({...prev,
       projects:prev.projects.filter(p=>p.id!==pid),
       tasks:prev.tasks.filter(t=>t.project!==pid)

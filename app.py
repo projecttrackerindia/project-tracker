@@ -1298,11 +1298,16 @@ _CACHE_STALE = 300       # serve stale data up to 5m while refreshing; avoids re
 _CACHE_LOCK  = _cthread.Lock()
 _TASK_DELETE_TOMBSTONES = {}  # workspace_id -> {task_id: expires_at}; protects stale app-data snapshots
 _TASK_DELETE_TOMBSTONE_TTL = 30 * 60
+_PROJECT_DELETE_TOMBSTONES = {}  # workspace_id -> {project_id: expires_at}; same protection for projects
+_PROJECT_DELETE_TOMBSTONE_TTL = 30 * 60
 _CALLS_INCOMING_CACHE = {}
 _CALLS_INCOMING_CACHE_LOCK = _cthread.Lock()
 
 def _task_tombstone_redis_key(workspace_id):
     return f"pttaskdel:{workspace_id}"
+
+def _project_tombstone_redis_key(workspace_id):
+    return f"ptprojdel:{workspace_id}"
 
 def _remember_task_deleted(workspace_id, task_id):
     """Remember deleted tasks across workers using Redis when available."""
@@ -1322,6 +1327,35 @@ def _remember_task_deleted(workspace_id, task_id):
                 rk=_task_tombstone_redis_key(ws)
                 _redis_client.hset(rk, tid, str(exp))
                 _redis_client.expire(rk, int(_TASK_DELETE_TOMBSTONE_TTL + 120))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def _remember_project_deleted(workspace_id, project_id):
+    """Remember deleted projects across workers using Redis when available.
+    Mirrors _remember_task_deleted — this is the fix for deleted projects
+    reappearing: without it, a stale app-data snapshot (built from a DB read
+    that started before the DELETE committed, or served from a cache that
+    wasn't yet busted on another worker) can re-surface the project on the
+    next poll even though it's gone from the database.
+    """
+    try:
+        ws=str(workspace_id or ''); pid=str(project_id or '')
+        if not ws or not pid:
+            return
+        now=_time.time(); exp=now+_PROJECT_DELETE_TOMBSTONE_TTL
+        with _CACHE_LOCK:
+            bucket=_PROJECT_DELETE_TOMBSTONES.setdefault(ws,{})
+            bucket[pid]=exp
+            for k,v in list(bucket.items()):
+                if float(v or 0)<now:
+                    bucket.pop(k,None)
+        if _redis_client is not None:
+            try:
+                rk=_project_tombstone_redis_key(ws)
+                _redis_client.hset(rk, pid, str(exp))
+                _redis_client.expire(rk, int(_PROJECT_DELETE_TOMBSTONE_TTL + 120))
             except Exception:
                 pass
     except Exception:
@@ -1358,20 +1392,58 @@ def _current_task_tombstones(workspace_id):
             pass
     return out
 
+def _current_project_tombstones(workspace_id):
+    ws=str(workspace_id or ''); now=_time.time(); out={}
+    try:
+        with _CACHE_LOCK:
+            bucket=_PROJECT_DELETE_TOMBSTONES.get(ws,{}) or {}
+            for k,v in list(bucket.items()):
+                try: exp=float(v or 0)
+                except Exception: exp=0
+                if exp>=now: out[str(k)]=exp
+                else: bucket.pop(k,None)
+    except Exception:
+        pass
+    if _redis_client is not None and ws:
+        try:
+            rk=_project_tombstone_redis_key(ws)
+            raw=_redis_client.hgetall(rk) or {}
+            expired=[]
+            for k,v in raw.items():
+                if isinstance(k, bytes): k=k.decode('utf-8','ignore')
+                if isinstance(v, bytes): v=v.decode('utf-8','ignore')
+                try: exp=float(v or 0)
+                except Exception: exp=0
+                if exp>=now: out[str(k)]=exp
+                else: expired.append(k)
+            if expired:
+                try: _redis_client.hdel(rk, *expired)
+                except Exception: pass
+        except Exception:
+            pass
+    return out
+
 def _filter_deleted_tombstones(workspace_id, payload):
     try:
         blocked=set(_current_task_tombstones(workspace_id).keys())
-        if not blocked:
+        blocked_projects=set(_current_project_tombstones(workspace_id).keys())
+        if not blocked and not blocked_projects:
             return payload
         def ok_task(t):
             return not (isinstance(t,dict) and str(t.get('id','')) in blocked)
+        def ok_project(p):
+            return not (isinstance(p,dict) and str(p.get('id','')) in blocked_projects)
         if isinstance(payload,dict):
             out=dict(payload)
             if isinstance(out.get('tasks'),list):
                 out['tasks']=[t for t in out.get('tasks',[]) if ok_task(t)]
+            if isinstance(out.get('projects'),list):
+                out['projects']=[p for p in out.get('projects',[]) if ok_project(p)]
             return out
         if isinstance(payload,list):
-            return [t for t in payload if ok_task(t)]
+            # Best-effort: a bare list could be tasks or projects; filter by whichever
+            # id sets are populated so this stays safe for both callers.
+            return [x for x in payload if ok_task(x) and ok_project(x)]
     except Exception:
         return payload
     return payload
@@ -7258,12 +7330,14 @@ def get_projects():
     if not bust:
         data, found = _appdata_cache_get(ws, uid, "projects")
         if found:
+            data = _filter_deleted_tombstones(ws, {"projects": data}).get("projects", data)
             if team_id:
                 return jsonify([p for p in data if p.get("team_id") == team_id])
             return jsonify(data)
         cache_key = f"projects:{ws}:{team_id}"
         cached = _cache_get(cache_key)
         if cached is not None:
+            cached = _filter_deleted_tombstones(ws, {"projects": cached}).get("projects", cached)
             return jsonify(cached)
 
     # bust=1 OR cache cold — always hit DB
@@ -7377,11 +7451,21 @@ def del_project(pid):
         db.execute("DELETE FROM projects WHERE id=? AND workspace_id=?",(pid,workspace_id))
         db.execute("DELETE FROM tasks WHERE project=? AND workspace_id=?",(pid,workspace_id))
         db.execute("DELETE FROM files WHERE project_id=? AND workspace_id=?",(pid,workspace_id))
+    # Tombstone FIRST: even if a stale in-flight read re-caches this project
+    # (e.g. a background SWR refresh that started reading the DB right before
+    # the DELETE committed), _filter_deleted_tombstones() strips it out of
+    # every /api/app-data response for the next 30 minutes. This is the same
+    # fix already applied to task deletion (_remember_task_deleted) — it was
+    # missing here, which is why deleted projects could reappear.
+    _remember_project_deleted(workspace_id, pid)
     # Cache bust AFTER the with-block exits (i.e. after COMMIT).
-    # Busting inside caused a race: concurrent GET /api/projects could query Postgres
-    # while DELETE was still uncommitted, re-cache the stale row, making deleted
-    # projects reappear on next reload().
-    _cache_bust_ws_async(workspace_id)
+    # Synchronous bust (not the async variant): the async version returns
+    # immediately while Redis SCAN/DELETE still runs in a background thread,
+    # so a client's very next /api/app-data poll could land on another worker
+    # that hasn't been busted yet and re-cache the deleted project. Using the
+    # blocking _cache_bust_ws here guarantees every worker's cache is clear
+    # before this request returns — same reasoning as the task-delete fix.
+    _cache_bust_ws(workspace_id)
     _cache_delete(f"projects_all:{workspace_id}")
     _cache_delete(f"projects_last_msgs:{workspace_id}")
     return jsonify({"ok":True})
