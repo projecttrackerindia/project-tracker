@@ -3945,6 +3945,9 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS vault_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT DEFAULT '', tags TEXT DEFAULT '', rows TEXT DEFAULT '[]', cols TEXT DEFAULT '[]', lock_hash TEXT DEFAULT '', created TEXT, updated TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_cards_user ON vault_cards(user_id)",
             "ALTER TABLE vault_cards ADD COLUMN cols TEXT DEFAULT '[]'",
+            "ALTER TABLE vault_cards ADD COLUMN category TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN expires_at TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN pinned INTEGER DEFAULT 0",
             "CREATE TABLE IF NOT EXISTS vault_audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT DEFAULT '', ip TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_user ON vault_audit_log(user_id, created)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_card ON vault_audit_log(card_id)",
@@ -6030,11 +6033,12 @@ def vault_create():
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
         db.execute(
-            "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,created,updated) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,category,expires_at,pinned,created,updated) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (cid, session["user_id"], d.get("title", ""), d.get("tags", ""),
              encrypted_rows, json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""), now, now)
+             d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
+             1 if d.get("pinned") else 0, now, now)
         )
     _vault_audit(session["user_id"], cid, "create", d.get("title", ""))
     return jsonify({"id": cid, "created": now})
@@ -6048,11 +6052,12 @@ def vault_update(cid):
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
         db.execute(
-            "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,updated=? "
+            "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,category=?,expires_at=?,pinned=?,updated=? "
             "WHERE id=? AND user_id=?",
             (d.get("title", ""), d.get("tags", ""), encrypted_rows,
              json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""), now, cid, session["user_id"])
+             d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
+             1 if d.get("pinned") else 0, now, cid, session["user_id"])
         )
     return jsonify({"ok": True})
 
