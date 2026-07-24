@@ -366,14 +366,41 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 /* ── Vault redesign styles ───────────────────────────────── */
 .vault-scroll{
   font-family:'Inter',system-ui,-apple-system,sans-serif;
+  /* Design tokens — single source of truth for spacing/sizing so every
+     credential card renders pixel-identical regardless of its content. */
+  --vault-radius:14px;
+  --vault-pad:18px;
+  --vault-gap-card:24px;
+  --vault-gap-header-badges:12px;
+  --vault-gap-badges-body:18px;
+  --vault-gap-body-items:12px;
+  --vault-header-h:56px;
+  --vault-badgerow-h:32px;
+  --vault-btn-w:120px;
+  --vault-btn-h:36px;
+  --vault-card-h:468px;
+}
+.vault-cards-grid{
+  display:grid;
+  gap:var(--vault-gap-card);
+  align-items:stretch;
+  grid-template-columns:repeat(4,minmax(0,1fr)); /* Desktop: 4 up */
+}
+@media (max-width:1279px){
+  .vault-cards-grid{grid-template-columns:repeat(3,minmax(0,1fr));} /* Laptop: 3 up */
+}
+@media (max-width:899px){
+  .vault-cards-grid{grid-template-columns:repeat(2,minmax(0,1fr));} /* Tablet: 2 up */
+}
+@media (max-width:599px){
+  .vault-cards-grid{grid-template-columns:repeat(1,minmax(0,1fr));} /* Mobile: 1 up */
 }
 .vault-card{
-  --vault-card-h: 468px;
   background:var(--sf);
-  border-radius:14px;
+  border-radius:var(--vault-radius);
   margin-bottom:0;
   overflow:hidden;
-  transition:transform .2s ease, box-shadow .2s ease;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
   position:relative;
   display:flex;
   flex-direction:column;
@@ -382,6 +409,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   width:100%;
   height:var(--vault-card-h);
   box-shadow:0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03);
+  border:1px solid var(--bd);
 }
 .vault-card:hover{
   transform:translateY(-3px);
@@ -390,9 +418,20 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-card:focus-within{
   box-shadow:0 0 0 1px rgba(90,94,247,.45), 0 0 32px rgba(90,94,247,.22), 0 14px 40px rgba(0,0,0,.38);
 }
+/* Selected / pinned state — 2px border with a soft orange glow, matching
+   the existing amber "pinned" star color used throughout the vault. */
+.vault-card.is-pinned{
+  border:2px solid rgba(245,158,11,.55);
+  box-shadow:0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(245,158,11,.08), 0 0 24px rgba(245,158,11,.18);
+}
+.vault-card.is-pinned:hover{
+  box-shadow:0 14px 40px rgba(0,0,0,.38), 0 0 0 1px rgba(245,158,11,.12), 0 0 32px rgba(245,158,11,.24);
+}
 .vault-card-body{
   flex:1 1 auto;
   min-height:0;
+  display:flex;
+  flex-direction:column;
   overflow-y:auto;
   scrollbar-width:thin;
   scrollbar-color:rgba(90,94,247,.3) transparent;
@@ -401,16 +440,33 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-card-body::-webkit-scrollbar-track{background:transparent}
 .vault-card-body::-webkit-scrollbar-thumb{background:rgba(90,94,247,.25);border-radius:3px}
 .vault-card-body::-webkit-scrollbar-thumb:hover{background:rgba(90,94,247,.4)}
+
+/* Header — fixed height regardless of title length or badge count. The
+   icon/title/badges row scrolls horizontally on overflow instead of
+   wrapping, so header height never changes card-to-card. The favorite
+   (star) button is pinned to the top-right corner via absolute position. */
 .vault-card-header{
+  position:relative;
+  height:var(--vault-header-h);
+  flex-shrink:0;
+  padding:0 40px 0 var(--vault-pad);
+  box-sizing:border-box;
+  display:flex;
+  align-items:center;
+}
+.vault-card-header-scroll{
   display:flex;
   align-items:center;
   gap:10px;
-  padding:16px 18px;
-  position:relative;
-  flex-wrap:wrap;
-  row-gap:7px;
-  flex-shrink:0;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  overflow-y:hidden;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+  width:100%;
+  height:100%;
 }
+.vault-card-header-scroll::-webkit-scrollbar{display:none;}
 .vault-card-icon{
   width:38px;height:38px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
@@ -419,32 +475,53 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-card-title{
   font-size:14px;font-weight:600;color:var(--tx);
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  cursor:text;max-width:100%;font-family:inherit;
+  cursor:text;max-width:180px;flex-shrink:0;font-family:inherit;
 }
 .vault-tag{
   font-size:9.5px;font-weight:600;padding:4px 10px;border-radius:100px;
   letter-spacing:.03em;line-height:1.6;white-space:nowrap;
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  flex-shrink:0;
 }
+/* Favorite (star) button — always the same size, always top-right. */
+.vault-fav-btn{
+  position:absolute;
+  top:12px;right:12px;
+  width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:8px;
+  background:transparent;
+  border:1px solid var(--bd);
+  color:var(--tx3);
+  font-size:13px;cursor:pointer;
+  transition:all .2s ease;
+  flex-shrink:0;
+}
+.vault-fav-btn:hover{background:rgba(255,255,255,.05);color:var(--tx);}
+.vault-fav-btn.active{color:#f59e0b;border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08);}
+
 .vault-action-btn{
   background:var(--sf2);
   border:1px solid var(--bd);
   border-radius:100px;
   color:var(--tx2);
   font-size:11px;
-  padding:5px 12px;
+  height:var(--vault-btn-h);
+  padding:0 14px;
   cursor:pointer;
   font-family:inherit;
   display:flex;align-items:center;gap:5px;
   transition:all .2s ease;
   font-weight:600;
   white-space:nowrap;
+  box-sizing:border-box;
 }
 .vault-action-btn:hover{
   color:var(--tx);
   border-color:var(--ac);
   background:rgba(90,94,247,.06);
+  transform:translateY(-2px);
 }
 .vault-action-btn.danger{
   color:#f87171;
@@ -457,9 +534,29 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   color:#ef4444;
 }
 
+/* Badge row — always rendered at a fixed height, even with zero tags, so
+   every card's header/body boundary lines up regardless of content. */
+.vault-badge-row{
+  height:var(--vault-badgerow-h);
+  flex-shrink:0;
+  box-sizing:border-box;
+  padding:0 var(--vault-pad);
+  margin-top:var(--vault-gap-header-badges);
+  margin-bottom:var(--vault-gap-badges-body);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+  flex-wrap:nowrap;
+}
+.vault-badge-row::-webkit-scrollbar{display:none;}
+
 /* Field rows (label + value box) inside a card */
 .vault-field-group{
-  margin-bottom:10px;
+  margin-bottom:var(--vault-gap-body-items);
 }
 .vault-field-group:last-child{
   margin-bottom:0;
@@ -487,7 +584,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 /* Card footer */
 .vault-card-footer{
   display:flex;align-items:center;justify-content:space-between;
-  gap:8px;padding:14px 18px;border-top:1px solid var(--bd);
+  gap:8px;padding:14px var(--vault-pad);border-top:1px solid var(--bd);
   flex-wrap:wrap;flex-shrink:0;
 }
 .vault-icon-btn{
@@ -503,17 +600,39 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 
 .vault-page-pad{padding:28px 32px;position:relative;}
 
-@media (max-width:900px){
-  .vault-card{--vault-card-h: 440px;}
+/* Locked-state body: lock icon, name, description and unlock button are
+   always centered — both horizontally and vertically — no matter the
+   card's height, per the fixed header/badge-row/flexible-body structure. */
+.vault-locked-overlay{
+  flex:1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:var(--vault-gap-body-items);
+  padding:var(--vault-pad) 24px;
+  text-align:center;
+  background:var(--sf2);
+  box-sizing:border-box;
 }
+.vault-unlock-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  width:var(--vault-btn-w);height:var(--vault-btn-h);
+  background:linear-gradient(135deg,#5a5ef7,#a855f7);
+  color:#fff;border:none;border-radius:10px;
+  font-size:13px;font-weight:600;
+  cursor:pointer;font-family:inherit;
+  box-sizing:border-box;
+  transition:opacity .2s ease, transform .2s ease, box-shadow .2s ease;
+  box-shadow:0 4px 16px rgba(90,94,247,.3);
+  animation:vaultUnlockPulse 2.6s ease-in-out infinite;
+}
+.vault-unlock-btn:hover{opacity:.92;transform:translateY(-2px);box-shadow:0 8px 24px rgba(90,94,247,.45);}
+@keyframes vaultUnlockPulse{
+  0%,100%{box-shadow:0 4px 16px rgba(90,94,247,.3);}
+  50%{box-shadow:0 4px 22px rgba(90,94,247,.5);}
+}
+
 @media (max-width:460px){
-  .vault-card{--vault-card-h: 420px;}
-  .vault-card-header{padding:16px 16px;gap:9px;}
-  .vault-card-icon{width:36px;height:36px;font-size:16px;}
-  .vault-card-title{font-size:14px;}
   .vault-card-footer{padding:12px 16px;}
   .vault-page-pad{padding:16px;}
-  .vault-cards-grid{grid-template-columns:1fr !important;}
 }
 .vault-table-wrap{
   overflow-x:auto;
@@ -573,23 +692,6 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   vertical-align:middle;user-select:none;text-align:right;
   width:20px;white-space:nowrap;
 }
-.vault-locked-overlay{
-  padding:44px 24px;
-  text-align:center;
-  background:var(--sf2);
-  height:100%;
-  box-sizing:border-box;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-}
-.vault-unlock-btn{
-  display:inline-flex;align-items:center;gap:8px;
-  background:linear-gradient(135deg,#5a5ef7,#a855f7);
-  color:#fff;border:none;border-radius:10px;
-  padding:10px 24px;font-size:13px;font-weight:600;
-  cursor:pointer;font-family:inherit;margin-top:14px;
-  transition:opacity .2s ease;box-shadow:0 4px 16px rgba(90,94,247,.3);
-}
-.vault-unlock-btn:hover{opacity:.88;}
 .vault-add-row-btn{
   width:100%;background:none;border:none;
   padding:9px 14px;font-size:12px;color:var(--tx3);
@@ -10794,41 +10896,38 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   const menuItem = {display:'block',width:'100%',textAlign:'left',background:'none',border:'none',color:'var(--tx)',fontSize:12,padding:'8px 10px',cursor:'pointer',borderRadius:7,fontFamily:'inherit'};
 
   return html`
-    <div class="vault-card" onClick=${()=>menu&&setMenu(null)} style=${{
-      border:'1px solid '+accentColor.replace(/[\d.]+\)$/,'.25)'),
-      borderLeft:'4px solid '+stripeColor,
+    <div class="vault-card${pinned?' is-pinned':''}" onClick=${()=>menu&&setMenu(null)} style=${{
+      borderColor: pinned ? undefined : accentColor.replace(/[\d.]+\)$/,'.25)'),
+      borderLeftWidth:4,
+      borderLeftColor:stripeColor,
     }}>
       <div style=${{height:4,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.75)')+' 70%,transparent 100%)'}}></div>
       <div class="vault-card-header" style=${{
         background:'linear-gradient(135deg,'+iconInfo.bg.replace(/[\d.]+\)$/,'0.22)')+' 0%,transparent 65%)',
-        paddingBottom:4,
       }}>
-        <div class="vault-card-icon" style=${{
-          background:iconInfo.bg.replace(/[\d.]+\)$/,'0.3)'),
-          border:'1.5px solid '+stripeColor,
-          boxShadow:'0 0 16px '+accentColor.replace(/[\d.]+\)$/,'.35)'),
-        }}>${iconInfo.icon}</div>
-        ${editing && html`
-          <input style=${{flex:1,background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:10,padding:'6px 11px',fontSize:14,fontWeight:600,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
-            value=${title} autoFocus
-            onInput=${e=>setTitle(e.target.value)}
-            onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
-            onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
-        ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename" style=${{flex:'0 1 auto'}}>${title||'Untitled'}</span>`}
-        <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'2a',border:'1px solid '+catInfo.color+'66'}}>${catInfo.badge}</span>
-        ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
-        ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.14)':'rgba(239,68,68,.14)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
-        <div style=${{display:'flex',gap:8,flexShrink:0,marginLeft:'auto',alignItems:'center'}}>
-          <button class=${'vault-icon-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin'} onClick=${togglePin} style=${{fontSize:13,border:'1px solid '+(pinned?'rgba(245,158,11,.35)':'var(--bd)')}}>★</button>
-          ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>🔒 Lock</button>`}
-          ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
+        <div class="vault-card-header-scroll">
+          <div class="vault-card-icon" style=${{
+            background:iconInfo.bg.replace(/[\d.]+\)$/,'0.3)'),
+            border:'1.5px solid '+stripeColor,
+            boxShadow:'0 0 16px '+accentColor.replace(/[\d.]+\)$/,'.35)'),
+          }}>${iconInfo.icon}</div>
+          ${editing && html`
+            <input style=${{flex:'0 0 140px',background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:10,padding:'6px 11px',fontSize:14,fontWeight:600,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
+              value=${title} autoFocus
+              onInput=${e=>setTitle(e.target.value)}
+              onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
+              onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
+          ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
+          <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'2a',border:'1px solid '+catInfo.color+'66'}}>${catInfo.badge}</span>
+          ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
+          ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.14)':'rgba(239,68,68,.14)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
         </div>
+        <button class=${'vault-fav-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin as favorite'} aria-label=${pinned?'Unpin card':'Pin card as favorite'} aria-pressed=${pinned} onClick=${e=>{e.stopPropagation();togglePin();}}>★</button>
       </div>
-      ${(tags || expInfo) && html`
-      <div style=${{padding:'0 18px 10px',display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+      <div class="vault-badge-row">
         ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.1)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.25)'}}>${t}</span>`)}
         ${expInfo && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
-      </div>`}
+      </div>
 
       ${canSee && html`
       <div style=${{padding:'0 18px 12px'}}>
@@ -10843,10 +10942,10 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       <div class="vault-card-body">
       ${isLocked && !isUnlocked && html`
         <div class="vault-locked-overlay">
-          <div style=${{width:56,height:56,borderRadius:16,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:26}}>🔒</div>
-          <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)',marginBottom:6}}>${title}</div>
-          <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:4}}>This card is password protected.</div>
-          <button class="vault-unlock-btn" onClick=${()=>setShowPwMo('verify')}>Unlock Card</button>
+          <div style=${{width:56,height:56,borderRadius:16,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,flexShrink:0}}>🔒</div>
+          <div style=${{fontSize:14,fontWeight:600,color:'var(--tx)'}}>${title}</div>
+          <div style=${{fontSize:13,fontWeight:400,color:'var(--tx2)'}}>This card is password protected.</div>
+          <button class="vault-unlock-btn" aria-label=${'Unlock '+(title||'card')} onClick=${()=>setShowPwMo('verify')}>Unlock Card</button>
         </div>`}
 
       ${canSee && isSimple && !sheetMode && html`
@@ -10976,9 +11075,11 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
         <div class="vault-card-footer">
           <span style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:600}}>Updated ${vaultTimeAgo(card.updated)}</span>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
-            <button class="vault-action-btn" style=${pinned?{background:'rgba(245,158,11,.14)',borderColor:'rgba(245,158,11,.4)',color:'#f59e0b'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
+            <button class="vault-action-btn" aria-pressed=${pinned} style=${pinned?{background:'rgba(245,158,11,.14)',borderColor:'rgba(245,158,11,.4)',color:'#f59e0b'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
             ${isSimple && html`<button class="vault-action-btn" onClick=${()=>setSheetMode(s=>!s)}>${sheetMode?'✓ Done':'✏️ Edit'}</button>`}
-            <button class="vault-action-btn danger" onClick=${()=>setShowDel(true)}>🗑️ Delete</button>
+            ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>🔒 Lock</button>`}
+            ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
+            <button class="vault-action-btn danger" aria-label=${'Delete '+(title||'card')} onClick=${()=>setShowDel(true)}>🗑️ Delete</button>
           </div>
         </div>`}
 
@@ -11354,7 +11455,7 @@ function VaultView({cu}){
       </div>
 
       <!-- Category filter chips -->
-      <div style=${{display:'flex',gap:7,flexWrap:'wrap',marginBottom:20}}>
+      <div style=${{display:'flex',gap:7,flexWrap:'wrap',marginBottom:24}}>
         <button onClick=${()=>setCategoryFilter('all')}
           style=${{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:100,cursor:'pointer',fontFamily:'inherit',background:categoryFilter==='all'?'var(--ac)':'var(--sf)',color:categoryFilter==='all'?'#fff':'var(--tx2)',border:'1px solid '+(categoryFilter==='all'?'var(--ac)':'var(--bd)')}}>All ${cards.length}</button>
         ${VAULT_CATEGORY_LIST.map(c=>html`
@@ -11374,7 +11475,7 @@ function VaultView({cu}){
           <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter||categoryFilter!=='all'?'No cards match your filters':'Your vault is empty'}</div>
           <div style=${{fontSize:13,color:'#334155'}}>${filter||categoryFilter!=='all'?'Try a different search or category':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:24,alignItems:'stretch'}}>
+      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid">
       ${filtered.map(c=>html`
         <${VaultSpreadCard}
           key=${c.id}
