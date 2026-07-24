@@ -374,6 +374,8 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   display:flex;
   flex-direction:column;
   min-width:0;
+  max-width:100%;
+  width:100%;
 }
 .vault-card:hover{
   box-shadow:0 10px 36px rgba(0,0,0,.16);
@@ -11162,7 +11164,7 @@ function VaultView({cu}){
           <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter||categoryFilter!=='all'?'No cards match your filters':'Your vault is empty'}</div>
           <div style=${{fontSize:13,color:'#334155'}}>${filter||categoryFilter!=='all'?'Try a different search or category':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:16,alignItems:'start'}}>
+      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid" style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,340px))',gap:16,alignItems:'start'}}>
       ${filtered.map(c=>html`
         <${VaultSpreadCard}
           key=${c.id}
