@@ -10367,6 +10367,34 @@ async function vaultHashPw(pw){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('project-tracker::'+pw));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
+function vaultGenPassword(len){
+  len = len || 16;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  let out = '';
+  for(let i=0;i<len;i++) out += chars[arr[i]%chars.length];
+  return out;
+}
+function vaultPwStrength(pw){
+  if(!pw) return {score:0, pct:0, label:'', color:'#475569'};
+  let score = 0;
+  if(pw.length>=8) score++;
+  if(pw.length>=12) score++;
+  if(/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if(/\d/.test(pw)) score++;
+  if(/[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [
+    {label:'Weak',   color:'#ef4444'},
+    {label:'Weak',   color:'#ef4444'},
+    {label:'Fair',   color:'#f59e0b'},
+    {label:'Good',   color:'#eab308'},
+    {label:'Strong', color:'#4ade80'},
+    {label:'Strong', color:'#4ade80'},
+  ];
+  const lvl = levels[Math.min(score, levels.length-1)];
+  return {score, pct: Math.min(100, (score/5)*100), label:lvl.label, color:lvl.color};
+}
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
 const VAULT_ICON_MAP = [
@@ -10555,11 +10583,14 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   const [expiresAt, setExpiresAt] = useState(card.expires_at || card.expiresAt || '');
   const [pinned, setPinned] = useState(!!card.pinned);
   const [sheetMode, setSheetMode] = useState(false);
+  const [notes, setNotes] = useState(card.notes || '');
+  const revealTimers = useRef({}); // cellKey -> timeout id, for 15s auto-remask
+  useEffect(()=>()=>{ Object.values(revealTimers.current).forEach(clearTimeout); }, []);
   const isSimple = cols.length===2; // plain Key/Value card → shows as clean labeled fields
   const keyCol = cols[0] || {id:'c1',label:'Key'};
   const valCol = cols[1] || {id:'c2',label:'Value'};
 
-  function push(nextCols, nextRows, nextTitle, nextTags, nextCategory, nextExpires, nextPinned){
+  function push(nextCols, nextRows, nextTitle, nextTags, nextCategory, nextExpires, nextPinned, nextNotes){
     const c = nextCols  !== undefined ? nextCols  : cols;
     const r = nextRows  !== undefined ? nextRows  : rows;
     const t = nextTitle !== undefined ? nextTitle : title;
@@ -10567,8 +10598,9 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
     const cat=nextCategory!== undefined ? nextCategory : category;
     const exp=nextExpires !== undefined ? nextExpires : expiresAt;
     const pin=nextPinned  !== undefined ? nextPinned  : pinned;
+    const nt =nextNotes   !== undefined ? nextNotes   : notes;
     setSaving(true);
-    onUpdate({...card, title:t, tags:tg, cols:c, rows:r, category:cat, expires_at:exp, pinned:pin});
+    onUpdate({...card, title:t, tags:tg, cols:c, rows:r, category:cat, expires_at:exp, pinned:pin, notes:nt});
     setTimeout(() => setSaving(false), 800);
   }
   function togglePin(){
@@ -10644,6 +10676,15 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   function revealCell(cellKey, colLabel){
     setShowSecretCells(s=>({...s,[cellKey]:true}));
     try { api.post('/api/vault/'+card.id+'/audit', {action:'reveal', detail: colLabel||'secret'}); } catch(_){ }
+    if(revealTimers.current[cellKey]) clearTimeout(revealTimers.current[cellKey]);
+    revealTimers.current[cellKey] = setTimeout(()=>{
+      setShowSecretCells(s=>{ if(!s[cellKey]) return s; const n={...s}; delete n[cellKey]; return n; });
+      delete revealTimers.current[cellKey];
+    }, 15000);
+  }
+  function hideCell(cellKey){
+    if(revealTimers.current[cellKey]){ clearTimeout(revealTimers.current[cellKey]); delete revealTimers.current[cellKey]; }
+    setShowSecretCells(s=>{ const n={...s}; delete n[cellKey]; return n; });
   }
   function openMenu(e,type,id,index){
     e.preventDefault(); e.stopPropagation();
@@ -10695,6 +10736,16 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       <div style=${{padding:'0 18px 10px',display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
         ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.1)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.25)'}}>${t}</span>`)}
         ${expInfo && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
+      </div>`}
+
+      ${canSee && html`
+      <div style=${{padding:'0 18px 10px'}}>
+        <textarea
+          style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,padding:'6px 9px',fontSize:12,color:'var(--tx2)',fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:30,boxSizing:'border-box',lineHeight:1.4}}
+          placeholder="Add a note or description…"
+          value=${notes} rows="1"
+          onInput=${e=>setNotes(e.target.value)}
+          onBlur=${()=>push(undefined,undefined,undefined,undefined,undefined,undefined,undefined,notes)}/>
       </div>`}
 
       ${isLocked && !isUnlocked && html`
@@ -10810,7 +10861,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
                                 onInput=${e=>updateCell(row._id,col.id,e.target.value)}
                                 onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
                               ${val && html`<button class="vault-copy-btn" title="Copy value" style=${{color:copyFlash===flashKey?'#818cf8':'#475569',background:copyFlash===flashKey?'rgba(90,94,247,.15)':'none'}} onClick=${()=>copyCell(val, col.label)}>⧉</button>`}
-                              ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide this cell" onClick=${()=>setShowSecretCells(s=>{const n={...s};delete n[cellKey];return n;})}>🙈</button>`}
+                              ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide this cell" onClick=${()=>hideCell(cellKey)}>🙈</button>`}
                             </div>`}
                         </td>`; })}
                     <td class="vault-td" style=${{textAlign:'center',padding:'6px',width:32,borderRight:'none'}}>
@@ -10882,23 +10933,37 @@ function VaultNewCardModal({onClose, onCreate}){
   const [tags,  setTags]  = useState('');
   const [category, setCategory] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [notes, setNotes] = useState('');
+  const [fields, setFields] = useState(()=>[{id:vaultNewId(), label:'', value:'', secret:false, show:false}]);
   const [err,   setErr]   = useState('');
-  const inp = {
-    width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,
-    padding:'7px 10px',fontSize:13,color:'var(--tx)',fontFamily:'inherit',
-    outline:'none',boxSizing:'border-box',
-  };
+  const darkInp = {width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'};
+  const lbl = {display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7};
+
+  function addField(){ setFields(f=>[...f,{id:vaultNewId(), label:'', value:'', secret:false, show:false}]); }
+  function removeField(id){ setFields(f=>f.filter(x=>x.id!==id)); }
+  function updateField(id, patch){ setFields(f=>f.map(x=>x.id===id?{...x,...patch}:x)); }
+  function genPassword(id){ updateField(id, {value: vaultGenPassword(16), secret:true, show:true}); }
+
   function submit(){
     if(!title.trim()){ setErr('Title is required'); return; }
+    const validFields = fields.filter(f=>f.label.trim() || f.value.trim());
+    const cols = [{id:'c1',label:'Key'},{id:'c2',label:'Value'}];
+    const rows = validFields.map(f=>({
+      _id: vaultNewId(),
+      c1: f.label.trim() || 'Field',
+      c2: f.value,
+      _secret: !!f.secret || vaultIsSecretLabel(f.label),
+    }));
     const card = {
       id: vaultNewId(),
       title: title.trim(),
       tags: tags.trim(),
       category: category,
       expires_at: expiresAt,
+      notes: notes.trim(),
       pinned: false,
-      cols: [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
-      rows: [],
+      cols: rows.length ? cols : [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
+      rows: rows,
       lockHash: '',
     };
     onCreate(card);
@@ -10907,7 +10972,7 @@ function VaultNewCardModal({onClose, onCreate}){
   const icon = vaultGetIcon(title, tags);
   return html`
     <div style=${VS.moBack} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style=${{background:'#13151f',border:'1px solid rgba(90,94,247,.25)',borderRadius:20,padding:'28px',width:420,maxWidth:'calc(100vw - 32px)',boxShadow:'0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04)'}}>
+      <div style=${{background:'#13151f',border:'1px solid rgba(90,94,247,.25)',borderRadius:20,padding:'28px',width:460,maxWidth:'calc(100vw - 32px)',maxHeight:'calc(100vh - 48px)',overflowY:'auto',boxShadow:'0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04)'}}>
         <div style=${{display:'flex',alignItems:'center',gap:12,marginBottom:22}}>
           <div style=${{width:44,height:44,borderRadius:13,background:icon.bg,border:'1.5px solid '+icon.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,boxShadow:'0 0 18px '+icon.border.replace(/[\d.]+\)$/,'.3)')}}>${icon.icon}</div>
           <div>
@@ -10916,8 +10981,8 @@ function VaultNewCardModal({onClose, onCreate}){
           </div>
         </div>
         <div style=${{marginBottom:8}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Card Title <span style=${{color:'#818cf8'}}>*</span></label>
-          <input style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'}}
+          <label style=${lbl}>Card Title <span style=${{color:'#818cf8'}}>*</span></label>
+          <input style=${darkInp}
             placeholder="e.g. AWS Production, GitHub Creds…"
             value=${title} autoFocus autoComplete="off"
             onFocus=${e=>{e.target.style.borderColor='rgba(129,140,248,.5)';}}
@@ -10926,9 +10991,9 @@ function VaultNewCardModal({onClose, onCreate}){
             onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
           ${err && html`<div style=${{fontSize:11,color:'#f87171',marginTop:5}}>${err}</div>`}
         </div>
-        <div style=${{marginBottom:24}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Tags <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional, comma-separated)</span></label>
-          <input style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'}}
+        <div style=${{marginBottom:18}}>
+          <label style=${lbl}>Tags <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional, comma-separated)</span></label>
+          <input style=${darkInp}
             placeholder="aws, prod, infra"
             value=${tags} autoComplete="off"
             onFocus=${e=>{e.target.style.borderColor='rgba(129,140,248,.5)';}}
@@ -10936,21 +11001,64 @@ function VaultNewCardModal({onClose, onCreate}){
             onInput=${e=>setTags(e.target.value)}
             onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
         </div>
-        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:24}}>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:18}}>
           <div>
-            <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Category</label>
-            <select style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+            <label style=${lbl}>Category</label>
+            <select style=${darkInp}
               value=${category} onChange=${e=>setCategory(e.target.value)}>
               <option value="">Auto-detect</option>
               ${VAULT_CATEGORY_LIST.map(c=>html`<option key=${c.key} value=${c.key}>${c.label}</option>`)}
             </select>
           </div>
           <div>
-            <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Expiry Date <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional)</span></label>
-            <input type="date" style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
+            <label style=${lbl}>Expiry Date <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional)</span></label>
+            <input type="date" style=${darkInp}
               value=${expiresAt} onChange=${e=>setExpiresAt(e.target.value)}/>
           </div>
         </div>
+
+        <div style=${{marginBottom:18}}>
+          <label style=${lbl}>Fields <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional — add credentials now or later)</span></label>
+          ${fields.map((f,fi)=>{
+            const strength = f.secret ? vaultPwStrength(f.value) : null;
+            return html`
+              <div key=${f.id} style=${{marginBottom:8,background:'rgba(255,255,255,.035)',border:'1px solid rgba(255,255,255,.08)',borderRadius:10,padding:'8px 9px'}}>
+                <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                  <input style=${{...darkInp,padding:'6px 8px',fontSize:12,width:120,flex:'0 0 120px'}}
+                    placeholder="Label" value=${f.label} autoComplete="off"
+                    onInput=${e=>updateField(f.id,{label:e.target.value})}/>
+                  <input style=${{...darkInp,padding:'6px 8px',fontSize:12,flex:1,fontFamily:f.secret?'monospace':'inherit'}}
+                    type=${f.secret && !f.show ? 'password' : 'text'}
+                    placeholder="Value" value=${f.value} autoComplete="new-password"
+                    onInput=${e=>updateField(f.id,{value:e.target.value})}/>
+                  <button type="button" title="Generate password" style=${{background:'rgba(90,94,247,.12)',border:'1px solid rgba(90,94,247,.3)',borderRadius:7,color:'#a5a9ff',fontSize:12,padding:'6px 8px',cursor:'pointer',flexShrink:0}}
+                    onClick=${()=>genPassword(f.id)}>🎲</button>
+                  <button type="button" title=${f.secret?'Marked as secret':'Mark as secret'} style=${{background:f.secret?'rgba(245,158,11,.14)':'rgba(255,255,255,.05)',border:'1px solid '+(f.secret?'rgba(245,158,11,.35)':'rgba(255,255,255,.1)'),borderRadius:7,color:f.secret?'#f59e0b':'#64748b',fontSize:12,padding:'6px 8px',cursor:'pointer',flexShrink:0}}
+                    onClick=${()=>updateField(f.id,{secret:!f.secret})}>${f.secret?'🔒':'👁'}</button>
+                  ${fields.length>1 && html`<button type="button" title="Remove field" style=${{background:'none',border:'none',color:'#64748b',fontSize:13,padding:'4px 4px',cursor:'pointer',flexShrink:0}} onClick=${()=>removeField(f.id)}>✕</button>`}
+                </div>
+                ${f.secret && f.value && html`
+                  <div style=${{display:'flex',alignItems:'center',gap:8}}>
+                    <div style=${{flex:1,height:4,background:'rgba(255,255,255,.08)',borderRadius:100,overflow:'hidden'}}>
+                      <div style=${{width:strength.pct+'%',height:'100%',background:strength.color,borderRadius:100,transition:'width .15s'}}></div>
+                    </div>
+                    <span style=${{fontSize:10,fontWeight:700,color:strength.color}}>${strength.label}</span>
+                    <button type="button" style=${{background:'none',border:'none',color:'#64748b',fontSize:10,cursor:'pointer',padding:0}} onClick=${()=>updateField(f.id,{show:!f.show})}>${f.show?'Hide':'Show'}</button>
+                  </div>`}
+              </div>`;
+          })}
+          <button type="button" style=${{background:'rgba(255,255,255,.05)',border:'1px dashed rgba(255,255,255,.15)',borderRadius:9,color:'#94a3b8',fontSize:12,padding:'7px 10px',cursor:'pointer',fontFamily:'inherit',width:'100%'}}
+            onClick=${addField}>+ Add field</button>
+        </div>
+
+        <div style=${{marginBottom:24}}>
+          <label style=${lbl}>Notes <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional)</span></label>
+          <textarea style=${{...darkInp,minHeight:56,resize:'vertical',lineHeight:1.4}}
+            placeholder="Any additional context for this card…"
+            value=${notes}
+            onInput=${e=>setNotes(e.target.value)}></textarea>
+        </div>
+
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button style=${{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'#94a3b8',fontSize:13,padding:'9px 18px',borderRadius:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600,transition:'all .15s'}}
             onMouseEnter=${e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';}}
@@ -11019,7 +11127,8 @@ function VaultView({cu}){
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
       lock_hash: card.lockHash||'',
-      category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned
+      category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned,
+      notes: card.notes||''
     });
     vaultClearCache();
     if(res && res.id){
@@ -11031,7 +11140,8 @@ function VaultView({cu}){
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
       lock_hash: card.lockHash||'',
-      category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned
+      category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned,
+      notes: card.notes||''
     });
     vaultClearCache();
   }
