@@ -1308,6 +1308,27 @@ function ptInstantCacheGet(key,fallback){
 function ptInstantCacheSet(key,data){
   try{const payload=JSON.stringify({at:Date.now(),data});sessionStorage.setItem(ptInstantCacheKey(key),payload);localStorage.setItem(ptInstantCacheKey(key),payload);}catch(_){}
 }
+// Patches every cached '/api/app-data...' entry (base + team-scoped variants) in place so
+// that load()'s stale-while-revalidate step can't resurrect notification state we've just
+// changed optimistically (e.g. "mark all read") before the fresh network response lands.
+function ptPatchAppDataNotifsCache(mutator){
+  try{
+    const scan=(store)=>{
+      const keys=[];
+      for(let i=0;i<store.length;i++){const k=store.key(i);if(k&&k.startsWith('pt_instant_cache:/api/app-data'))keys.push(k);}
+      keys.forEach(k=>{
+        try{
+          const raw=store.getItem(k);if(!raw)return;
+          const parsed=JSON.parse(raw);
+          if(!parsed||!parsed.data||!Array.isArray(parsed.data.notifications))return;
+          const nextData={...parsed.data,notifications:mutator(parsed.data.notifications)};
+          store.setItem(k,JSON.stringify({at:Date.now(),data:nextData}));
+        }catch(_){}
+      });
+    };
+    scan(sessionStorage);scan(localStorage);
+  }catch(_){}
+}
 
 function ptTaskTombstones(){
   try{return JSON.parse(localStorage.getItem('pt_task_tombstones')||'{}')||{};}catch(_){return {};}
@@ -2875,7 +2896,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
 }
 
 /* ─── Header ──────────────────────────────────────────────────────────────── */
-function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewReminders,notifs,onNotifClick,onMarkAllRead,onClearAll,activeTeam,teams,setTeamCtx}){
+function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewReminders,notifs,onNotifClick,onMarkAllRead,markingAllRead,onClearAll,activeTeam,teams,setTeamCtx}){
   const [showNP,setShowNP]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
   const [uploadMsg,setUploadMsg]=useState('');
@@ -3018,7 +3039,7 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
                 <div style=${{padding:'10px 13px 8px',borderBottom:'1px solid var(--bd)',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
                   <span style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em'}}>Notifications ${unread>0?html`<span style=${{color:'var(--ac)',fontSize:11}}>(${unread})</span>`:null}</span>
                   <div style=${{display:'flex',gap:5}}>
-                    ${unread>0?html`<button class="btn bg" style=${{fontSize:10,padding:'2px 7px',height:20}} onClick=${onMarkAllRead}>✓ Mark all read</button>`:null}
+                    <button class="btn bg" style=${{fontSize:10,padding:'2px 7px',height:20,opacity:(unread===0||markingAllRead)?.45:1,cursor:(unread===0||markingAllRead)?'not-allowed':'pointer'}} disabled=${unread===0||markingAllRead} onClick=${onMarkAllRead}>${markingAllRead?'Marking…':'✓ Mark all read'}</button>
                     <button class="btn brd" style=${{fontSize:10,padding:'2px 7px',height:20}} onClick=${()=>{onClearAll&&onClearAll();setShowNP(false);}}>Clear all</button>
                   </div>
                 </div>
@@ -7042,7 +7063,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
 }
 
 /* ─── NotifsView ──────────────────────────────────────────────────────────── */
-function NotifsView({notifs,reload,setData,onNavigate}){
+function NotifsView({notifs,reload,setData,onNavigate,onMarkAllRead,markingAllRead}){
   const NT={
     task_assigned:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,c:'var(--ac)',nav:'tasks',label:'View Tasks'}, status_change:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>`,c:'var(--cy)',nav:'tasks',label:'View Tasks'}, comment:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,c:'var(--pu)',nav:'tasks',label:'View Tasks'}, deadline:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,c:'var(--am)',nav:'tasks',label:'View Tasks'}, dm:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>`,c:'#06b6d4',nav:'dm',label:'Open Messages'}, project_added:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/></svg>`,c:'#10b981',nav:'projects',label:'View Projects'}, reminder:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,c:'#f59e0b',nav:'tasks',label:'View Tasks'}, call:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.28a2 2 0 0 1 1.99-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6.29 6.29l1.24-.82a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,c:'#22c55e',nav:'dashboard',label:'Join Instant Meet'}, };
   const unread=safe(notifs).filter(n=>!n.read).length;
@@ -7051,16 +7072,11 @@ function NotifsView({notifs,reload,setData,onNavigate}){
     if(onNavigate){onNavigate(n);}
     reload();
   };
-  const clearAll=async()=>{
-    // Optimistic update — instantly mark all as read in UI, no visible lag
-    if(setData)setData(prev=>({...prev,notifs:(prev.notifs||[]).map(n=>({...n,read:1}))}));
-    api.put('/api/notifications/read-all',{}).then(()=>reload()).catch(()=>reload());
-  };
   return html`<div class="fi" style=${{height:'100%',overflowY:'auto',padding:'18px 22px',boxSizing:'border-box'}}>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
       <span style=${{fontSize:13,color:'var(--tx2)'}}>${unread>0?html`<b style=${{color:'var(--ac)'}}>${unread}</b> unread`:'All caught up!'}</span>
       <div style=${{display:'flex',gap:8}}>
-        ${unread>0?html`<button class="btn bg" style=${{fontSize:12}} onClick=${clearAll}>✓ Mark all read</button>`:null}
+        <button class="btn bg" style=${{fontSize:12,opacity:(unread===0||markingAllRead)?.45:1,cursor:(unread===0||markingAllRead)?'not-allowed':'pointer'}} disabled=${unread===0||markingAllRead} onClick=${onMarkAllRead}>${markingAllRead?'Marking…':'✓ Mark all read'}</button>
         ${notifs.length>0?html`<button class="btn brd" style=${{fontSize:12,color:'var(--rd)'}}
           onClick=${()=>{if(window.confirm('Clear all notifications?'))api.del('/api/notifications/all').then(reload);}}>🗑 Clear all</button>`:null}
       </div>
@@ -13288,6 +13304,39 @@ function App(){
     }catch(e){console.error('[Load] Error:',e);}
   },[cu,teamCtx]);
 
+  // Shared "mark all notifications as read" handler used by both the header bell
+  // dropdown and the full NotifsView page. Deliberately does NOT call load() —
+  // load() does stale-while-revalidate from ptInstantCacheGet, which would
+  // synchronously repaint the old unread notifications over the top of this
+  // optimistic update before the fresh network response lands. Instead this:
+  //  1) snapshots current notifs for rollback
+  //  2) optimistically flips every notif to read in state (instant UI update)
+  //  3) patches the cached /api/app-data payload so a later load() can't resurrect them
+  //  4) persists via PUT /api/notifications/read-all
+  //  5) rolls back state + cache and shows an error toast if the request fails
+  const [markingAllRead,setMarkingAllRead]=useState(false);
+  const markAllNotificationsRead=useCallback(async()=>{
+    const prevNotifs=safe(data&&data.notifs);
+    const hasUnread=prevNotifs.some(n=>!n.read);
+    if(!hasUnread||markingAllRead)return;
+    setMarkingAllRead(true);
+    const toRead=arr=>safe(arr).map(n=>n.read?n:{...n,read:1});
+    setData(prev=>({...prev,notifs:toRead(prev.notifs)}));
+    ptPatchAppDataNotifsCache(toRead);
+    try{
+      const res=await api.put('/api/notifications/read-all',{});
+      if(res&&res.ok===false)throw new Error(res.error||'Request failed');
+      try{window._pfToast&&window._pfToast('success','All notifications marked as read.');}catch(_){}
+    }catch(e){
+      // Roll back optimistic UI + cache so state, badge, and DB stay in sync on failure
+      setData(prev=>({...prev,notifs:prevNotifs}));
+      ptPatchAppDataNotifsCache(()=>prevNotifs);
+      try{window._pfToast&&window._pfToast('error','Failed to mark notifications as read',(e&&e.message)||'Please try again.');}catch(_){}
+    }finally{
+      setMarkingAllRead(false);
+    }
+  },[data&&data.notifs,markingAllRead]);
+
   useEffect(()=>{
     // Try to get current user; if backend is unreachable, enter offline mode
     // so Vault and Password Generator still work without a server
@@ -13738,7 +13787,8 @@ function App(){
             setData(prev=>({...prev,notifs:prev.notifs.filter(x=>x.id!==n.id)}));
             routeToNotification(n);
           }}
-          onMarkAllRead=${async()=>{setData(prev=>({...prev,notifs:(prev.notifs||[]).map(n=>({...n,read:1}))}));await api.put('/api/notifications/read-all',{});load();}}
+          onMarkAllRead=${markAllNotificationsRead}
+          markingAllRead=${markingAllRead}
           onClearAll=${async()=>{await api.del('/api/notifications/all');load();}}
         />
         <div style=${{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
@@ -13767,7 +13817,7 @@ function App(){
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
             ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
-            ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification}/>`:null}
+            ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}
             ${baseView==='team'&&hasOpsAccess(cu)?html`<${TeamView} users=${data.users} cu=${cu} reload=${load} projects=${data.projects}/>`:null}
             ${baseView==='settings'&&hasOpsAccess(cu)?html`<${WorkspaceSettings} cu=${cu} onReload=${load}/>`:null}
