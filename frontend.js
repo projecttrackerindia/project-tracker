@@ -5559,10 +5559,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       }
       if(msg&&msg.type==='dm_created'&&data&&data.message){
         let m=data.message;
-        const peer=(m.sender===cu.id)?m.recipient:m.sender;
-        const belongs=peer===toId || data.sender===toId || data.recipient===toId;
+        const peer=(String(m.sender)===String(cu.id))?m.recipient:m.sender;
+        const belongs=String(peer)===String(toId) || String(data.sender)===String(toId) || String(data.recipient)===String(toId);
         if(belongs){
-          if(m.sender!==cu.id)m={...m,read:1};
+          if(String(m.sender)!==String(cu.id))m={...m,read:1};
           setMsgThreadId(toId);
           setLoadingThread('');
           setMsgs(prev=>{
@@ -5582,7 +5582,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
             const withoutTmp=base.filter(x=>!(String(x.id||'').startsWith('tmpdm')&&x.content===m.content&&x.sender===m.sender) && !(String(x.id||'').startsWith('srvtmp')&&x.content===m.content&&x.sender===m.sender));
             const next=mergePendingReactionState(toId,[...withoutTmp,{...m,_pending:false}]);
             setThreadMessages(toId,next,false);
-            if(m.sender!==cu.id)playSound('notif');
+            if(String(m.sender)!==String(cu.id))playSound('notif');
             return normalizeDmList(next);
           });
           onDmRead(toId);
@@ -12036,6 +12036,15 @@ function App(){
     let latestBusy=false;
     const pullLatest=async()=>{
       if(latestBusy)return;
+      // SCALABILITY / correctness: when SSE is healthy it already delivers dm_created
+      // events instantly (see the es.onmessage handler). Running this poll anyway
+      // just races that delivery for the same message id, which is harmless (both
+      // paths dedupe via window.__ptSeenDmIds) but is pure wasted load once SSE is
+      // up. Mirrors the same readyState/isSseHealthy check the active-thread
+      // fallback poller uses.
+      const sseOpen=(window.__ptSSEActive&&window.__ptSSEActive.readyState===1)||
+                    (window.ptPollManager&&window.ptPollManager.isSseHealthy&&window.ptPollManager.isSseHealthy());
+      if(sseOpen)return;
       latestBusy=true;
       try{
         const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:30000});
