@@ -10943,7 +10943,12 @@ function WorkspaceOSView({cu,users=[]}){
   const activityCatalog=[]; // Timesheet dropdown must show real current work only; use Manual activity name for ad-hoc work.
   const workItems=useMemo(()=>{
     const seen=new Set(); const arr=[];
-    const openStages=new Set(['','backlog','todo','to do','open','active','in progress','in-progress','pending','blocked','review','qa','testing','new']);
+    // Match the backend's logic (_workspace_os_visible_work_items): exclude only
+    // genuinely closed/done items, don't require the stage to match a specific
+    // "open" name. The previous allow-list silently hid tasks/tickets that used
+    // any custom stage name (e.g. "Assigned", "Ongoing", "In Development") even
+    // though the backend had already scoped them to this user and kept them.
+    const closedStages=new Set(['completed','complete','production','done','closed','resolved','cancelled','archived']);
     const push=(x,type)=>{
       if(!x)return;
       const rawId=String(x.id||'').trim();
@@ -10952,7 +10957,7 @@ function WorkspaceOSView({cu,users=[]}){
       const itemType=x.item_type||type||'task';
       const stage=String(x.stage||x.status||'').toLowerCase();
       if(!id||!title||seen.has(itemType+':'+id))return;
-      if(stage && !openStages.has(stage))return;
+      if(stage && closedStages.has(stage))return;
       seen.add(itemType+':'+id);
       arr.push({...x,id,title,item_type:itemType,project_id:x.project_id||x.project||'',project_name:x.project_name||x.project_title||''});
     };
