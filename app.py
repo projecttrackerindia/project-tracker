@@ -12739,16 +12739,59 @@ ADMIN_HTML              = _load_template('adminpanel.html')
 # while that was happening, tiny endpoints like /api/presence queued for 30-60s.
 # Run migrations explicitly with `python migrate.py` or set RUN_STARTUP_MIGRATIONS=1
 # for a one-off deploy/job. Web workers only create local directories and start.
-try:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    os.makedirs(JS_DIR, exist_ok=True)
-    if os.environ.get("RUN_STARTUP_MIGRATIONS", "0").lower() in ("1", "true", "yes"):
+#
+# BUG FIX: RUN_STARTUP_MIGRATIONS=1 has a habit of getting left set in Railway's
+# env vars after a one-off migration deploy, which silently brings back exactly
+# the problem described above — every gunicorn worker (we've seen 4 in
+# production) independently runs ~170 sequential ALTER/CREATE statements at
+# boot, all but the first worker's being no-op "already exists" churn. That's
+# real DB load and connection-pool pressure at the worst possible moment (cold
+# start, pool not yet warm). Rather than relying on someone remembering to
+# unset the env var, take a Postgres advisory lock first so only ONE worker
+# per deploy actually does the migration work; the rest see the lock is held
+# and skip immediately. Safe even if this fails open (e.g. DB not reachable
+# yet) — it just falls back to the old behavior for that worker.
+_STARTUP_MIGRATION_LOCK_KEY = 727272727
+
+def _run_startup_migrations_once():
+    lock_conn = None
+    try:
+        from pg8000.native import Connection as _PGConn
+        lock_conn = _PGConn(**_parse_db_url(DATABASE_URL))
+        got = lock_conn.run(f"SELECT pg_try_advisory_lock({_STARTUP_MIGRATION_LOCK_KEY})")
+        acquired = bool(got and got[0] and got[0][0])
+    except Exception as _lock_e:
+        print(f"  ⚠ Startup migration lock unavailable ({_lock_e}); running migrations anyway")
+        acquired = True  # fail open — never block boot on the lock itself
+
+    if not acquired:
+        print("  [startup migrations] another worker already holds the lock — skipping")
+        try:
+            if lock_conn: lock_conn.close()
+        except Exception:
+            pass
+        return
+
+    try:
         init_db()
         ensure_timelog_schema()
         ensure_ticket_timesheet_enhancements()
         _ensure_logout_column()
         _close_ddl_conn()
+    finally:
+        try:
+            if lock_conn:
+                lock_conn.run(f"SELECT pg_advisory_unlock({_STARTUP_MIGRATION_LOCK_KEY})")
+                lock_conn.close()
+        except Exception:
+            pass
+
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(JS_DIR, exist_ok=True)
+    if os.environ.get("RUN_STARTUP_MIGRATIONS", "0").lower() in ("1", "true", "yes"):
+        _run_startup_migrations_once()
     if os.environ.get("PREWARM_POOL", "0").lower() in ("1", "true", "yes"):
         _prewarm_pool(int(os.environ.get("PREWARM_POOL_SIZE", "2")))
 except Exception as _ie:
