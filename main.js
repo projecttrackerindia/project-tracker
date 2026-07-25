@@ -6955,21 +6955,17 @@ function WorkspacePlanUsageCard({cu}){
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState('');
-  const load=useCallback(async()=>{
+  const load=useCallback(async(force=false)=>{
     if(!allowed)return;
     setLoading(true);setErr('');
     try{
       const cached=(()=>{try{return JSON.parse(localStorage.getItem('pt_plan_usage_cache_'+String((cu&&cu.workspace_id)||(cu&&cu.workspace)||'default'))||'null');}catch(_){return null;}})();
       if(cached&&!data)setData(cached);
-      const r=await api.get('/api/workspace/plan-usage',
-  '/api/bootstrap',
-  '/api/workspace-os/bootstrap',
-  '/api/dm/summary',
-  '/api/activity/summary',{quiet:true,timeoutMs:15000});
+      const r=await api.get('/api/workspace/plan-usage'+(force?'?force=1':''),{quiet:true,timeoutMs:15000});
       if(r&&r.error){setErr(r.error);}else{setData(r);try{localStorage.setItem('pt_plan_usage_cache_'+String((cu&&cu.workspace_id)||(cu&&cu.workspace)||'default'),JSON.stringify(r));}catch(_){}}
     }catch(e){setErr('Could not load workspace plan usage.');}
     setLoading(false);
-  },[allowed,cu&&cu.workspace_id,cu&&cu.workspace]);
+  },[allowed,cu&&cu.workspace_id,cu&&cu.workspace,data]);
   useEffect(()=>{load();},[load]);
   const plan=String((data&&data.plan)||'starter').toUpperCase();
   const usage=(data&&data.usage)||{};
@@ -6995,7 +6991,7 @@ function WorkspacePlanUsageCard({cu}){
   return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
       <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>📊 Workspace Plan & Usage</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Live workspace limits and current usage. This belongs under Settings, not invoice billing.</p></div>
-      <button class="btn brd" style=${{fontSize:11,padding:'5px 10px'}} onClick=${load} disabled=${loading}>${loading?'Refreshing…':'↻ Refresh'}</button>
+      <button class="btn brd" style=${{fontSize:11,padding:'5px 10px'}} onClick=${()=>load(true)} disabled=${loading}>${loading?'Refreshing…':'↻ Refresh'}</button>
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Workspace plan and usage is available to admins/managers only</div>`:null}
     ${allowed&&err?html`<div style=${{padding:'7px 10px',borderRadius:10,background:'rgba(185,28,28,.09)',border:'1px solid rgba(185,28,28,.18)',fontSize:12,color:'var(--rd)'}}>${err}</div>`:null}

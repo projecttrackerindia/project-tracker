@@ -16066,6 +16066,26 @@ def _workspace_os_schema_known_ready():
 def _runtime_schema_warm_enabled():
     return os.environ.get("RUN_RUNTIME_SCHEMA_WARMUP", "0").lower() in ("1", "true", "yes") or os.environ.get("RUN_STARTUP_MIGRATIONS", "0").lower() in ("1", "true", "yes")
 
+def _ensure_org_profiles_table_fast(db):
+    """Create just the org_profiles table if it's missing.
+
+    ensure_workspace_os_schema() runs DDL for ~10 tables and is deliberately gated
+    behind RUN_STARTUP_MIGRATIONS because that full pass was causing Railway 499s
+    when triggered from a live request. org_profiles is a single small table
+    though, so profile save/read should not have to wait for a full migration run
+    just because that flag was never set. Safe to call on every request: it's a
+    single CREATE TABLE IF NOT EXISTS, so it's a no-op once the table exists.
+    """
+    db.execute("""CREATE TABLE IF NOT EXISTS org_profiles (
+        user_id TEXT PRIMARY KEY, workspace_id TEXT, department TEXT DEFAULT '',
+        designation TEXT DEFAULT '', manager_id TEXT DEFAULT '', employment_type TEXT DEFAULT 'full-time',
+        location TEXT DEFAULT '', updated TEXT, employee_id TEXT DEFAULT '', band TEXT DEFAULT '',
+        functional_area TEXT DEFAULT '', job_level TEXT DEFAULT '', hod_user_id TEXT DEFAULT '',
+        date_of_joining TEXT DEFAULT '', dob_visibility TEXT DEFAULT 'private', salutation TEXT DEFAULT '',
+        middle_name TEXT DEFAULT '', dob TEXT DEFAULT '', personal_phone TEXT DEFAULT '',
+        emergency_contact TEXT DEFAULT '', custom_role TEXT DEFAULT '')""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_org_profiles_ws_user ON org_profiles(workspace_id, user_id)")
+
 def _workspace_os_schema_warm_async():
     """Start Workspace OS DDL in the background only for explicit migration runs.
     Production web workers must not execute CREATE/ALTER/INDEX work from user
@@ -16942,7 +16962,13 @@ def api_update_org_profile(uid):
         if _runtime_schema_warm_enabled():
             ensure_workspace_os_schema()
         else:
-            return jsonify({"error":"Profile schema is not ready. Run migrate.py once with RUN_STARTUP_MIGRATIONS=1."}), 503
+            try:
+                with get_db() as _db1:
+                    _ensure_org_profiles_table_fast(_db1)
+                    _db1.commit()
+                _invalidate_profile_col_cache()
+            except Exception:
+                return jsonify({"error":"Profile schema is not ready. Run migrate.py once with RUN_STARTUP_MIGRATIONS=1."}), 503
     can_manage = _role_can_manage_people()
     is_self = str(uid) == str(session.get("user_id"))
     if not can_manage and not is_self:
@@ -16971,7 +16997,12 @@ def api_update_org_profile(uid):
                 ensure_workspace_os_schema(); _invalidate_profile_col_cache()
                 cols = _cached_table_columns(db, "org_profiles")
             else:
-                return jsonify({"error":"Profile schema is not ready. Run migrate.py once with RUN_STARTUP_MIGRATIONS=1."}), 503
+                try:
+                    _ensure_org_profiles_table_fast(db)
+                    _invalidate_profile_col_cache()
+                    cols = _cached_table_columns(db, "org_profiles")
+                except Exception:
+                    return jsonify({"error":"Profile schema is not ready. Run migrate.py once with RUN_STARTUP_MIGRATIONS=1."}), 503
         if not cols:
             return jsonify({"error":"Profile table is not ready. Please retry."}), 503
         vals = {k: v for k, v in vals.items() if k in cols}
