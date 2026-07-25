@@ -10137,7 +10137,7 @@ function VaultView({cu}){
           ${auditOpen && html`
             <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:12,overflow:'hidden'}}>
               ${auditLog.length===0 && html`
-                <div style=${{padding:'28px',textAlign:'center',color:'#475569',fontSize:13}}>
+                <div style=${{padding:'28px',textAlign:'center',color:'var(--tx3)',fontSize:13}}>
                   No audit events yet — reveal or copy a secret to generate entries.
                 </div>`}
               ${auditLog.length>0 && html`
@@ -10145,7 +10145,7 @@ function VaultView({cu}){
                   <thead>
                     <tr style=${{background:'rgba(255,255,255,.03)',borderBottom:'1px solid var(--bd)'}}>
                       ${['Action','Card','Detail','Time','IP'].map(h=>html`
-                        <th key=${h} style=${{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#64748b',letterSpacing:.3,whiteSpace:'nowrap'}}>${h}</th>`)}
+                        <th key=${h} style=${{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'var(--tx3)',letterSpacing:.3,whiteSpace:'nowrap'}}>${h}</th>`)}
                     </tr>
                   </thead>
                   <tbody>
@@ -10155,6 +10155,7 @@ function VaultView({cu}){
                         copy:    {label:'Copy',    bg:'rgba(99,102,241,.1)', color:'#818cf8', icon:'📋'},
                         unlock:  {label:'Unlock',  bg:'rgba(34,197,94,.1)',  color:'#22c55e', icon:'🔓'},
                         create:  {label:'Create',  bg:'rgba(59,130,246,.1)', color:'#60a5fa', icon:'✚'},
+                        delete:  {label:'Delete',  bg:'rgba(244,63,94,.1)',  color:'#f43f5e', icon:'🗑'},
                       }[e.action] || {label:e.action, bg:'rgba(255,255,255,.05)', color:'#94a3b8', icon:'•'};
                       const timeStr = e.created ? new Date(e.created).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                       return html`
@@ -10166,10 +10167,10 @@ function VaultView({cu}){
                               ${actionMeta.icon} ${actionMeta.label}
                             </span>
                           </td>
-                          <td style=${{padding:'8px 14px',color:'#cbd5e1',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.card_title||e.card_id||'—'}</td>
-                          <td style=${{padding:'8px 14px',color:'#94a3b8',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.detail||'—'}</td>
-                          <td style=${{padding:'8px 14px',color:'#64748b',whiteSpace:'nowrap'}}>${timeStr}</td>
-                          <td style=${{padding:'8px 14px',color:'#475569',fontFamily:'monospace',fontSize:11}}>${e.ip||'—'}</td>
+                          <td style=${{padding:'8px 14px',color:'var(--tx)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.card_title||e.card_id||'—'}</td>
+                          <td style=${{padding:'8px 14px',color:'var(--tx2)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.detail||'—'}</td>
+                          <td style=${{padding:'8px 14px',color:'var(--tx3)',whiteSpace:'nowrap'}}>${timeStr}</td>
+                          <td style=${{padding:'8px 14px',color:'var(--tx3)',fontFamily:'monospace',fontSize:11}}>${e.ip||'—'}</td>
                         </tr>`;
                     })}
                   </tbody>

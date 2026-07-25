@@ -4117,6 +4117,10 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS vault_audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT DEFAULT '', ip TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_user ON vault_audit_log(user_id, created)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_card ON vault_audit_log(card_id)",
+            # Snapshot the card's title into the audit row itself at write-time, so
+            # the log stays readable after the card is renamed OR deleted (deleting
+            # a card must never delete its own history — see vault_delete).
+            "ALTER TABLE vault_audit_log ADD COLUMN card_title TEXT DEFAULT ''",
             # Performance indexes for high-frequency polling queries
             "CREATE INDEX IF NOT EXISTS idx_users_ws_active ON users(workspace_id, last_active)",
             "CREATE INDEX IF NOT EXISTS idx_users_id ON users(id)",
@@ -6226,7 +6230,7 @@ def vault_create():
              d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
              1 if d.get("pinned") else 0, d.get("notes", ""), now, now)
         )
-    _vault_audit(session["user_id"], cid, "create", d.get("title", ""))
+    _vault_audit(session["user_id"], cid, "create", d.get("title", ""), card_title=d.get("title", ""))
     return jsonify({"id": cid, "created": now})
 
 @app.route("/api/vault/<cid>", methods=["PUT"])
@@ -6251,21 +6255,35 @@ def vault_update(cid):
 @login_required
 def vault_delete(cid):
     with get_db() as db:
+        row = db.execute(
+            "SELECT title FROM vault_cards WHERE id=? AND user_id=?",
+            (cid, session["user_id"])
+        ).fetchone()
+        title = dict(row).get("title", "") if row else ""
         db.execute("DELETE FROM vault_cards WHERE id=? AND user_id=?", (cid, session["user_id"]))
-        db.execute("DELETE FROM vault_audit_log WHERE card_id=? AND user_id=?", (cid, session["user_id"]))
+        # NOTE: audit history is intentionally NOT deleted here. The whole point
+        # of an access audit log is that it survives the thing it's auditing —
+        # wiping it on delete would let someone destroy their own trail.
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    _vault_audit(session["user_id"], cid, "delete", title, ip, card_title=title)
     return jsonify({"ok": True})
 
 # ── Vault Audit Log ────────────────────────────────────────────────────────────
-def _vault_audit(user_id, card_id, action, detail="", ip=""):
-    """Insert a vault audit log entry. Non-blocking — swallows errors."""
+def _vault_audit(user_id, card_id, action, detail="", ip="", card_title=""):
+    """Insert a vault audit log entry. Non-blocking — swallows errors.
+
+    card_title is snapshotted onto the row itself (not just looked up via a
+    JOIN to vault_cards) so the log still shows a readable name after the
+    card is later renamed or deleted.
+    """
     try:
         aid = "va" + secrets.token_hex(6)
         now = ts()
         with get_db() as db:
             db.execute(
-                "INSERT INTO vault_audit_log (id,user_id,card_id,action,detail,ip,created) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (aid, user_id, card_id, action, detail[:200], ip[:60], now)
+                "INSERT INTO vault_audit_log (id,user_id,card_id,action,detail,ip,created,card_title) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (aid, user_id, card_id, action, detail[:200], ip[:60], now, (card_title or "")[:200])
             )
     except Exception as e:
         log.warning("[vault_audit] non-fatal: %s", e)
@@ -6278,7 +6296,7 @@ def vault_audit_list():
         with get_db() as db:
             rows = db.execute(
                 "SELECT a.id, a.card_id, a.action, a.detail, a.ip, a.created, "
-                "       v.title AS card_title "
+                "       COALESCE(NULLIF(a.card_title, ''), v.title, '(deleted card)') AS card_title "
                 "FROM vault_audit_log a "
                 "LEFT JOIN vault_cards v ON a.card_id = v.id "
                 "WHERE a.user_id=? ORDER BY a.created DESC LIMIT 50",
@@ -6318,13 +6336,14 @@ def vault_audit_event(cid):
     # Verify the card belongs to this user before logging
     with get_db() as db:
         card = db.execute(
-            "SELECT id FROM vault_cards WHERE id=? AND user_id=?",
+            "SELECT id, title FROM vault_cards WHERE id=? AND user_id=?",
             (cid, session["user_id"])
         ).fetchone()
     if not card:
         return jsonify({"error": "Not found"}), 404
+    card_title = dict(card).get("title", "")
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
-    _vault_audit(session["user_id"], cid, action, detail, ip)
+    _vault_audit(session["user_id"], cid, action, detail, ip, card_title=card_title)
     return jsonify({"ok": True})
 
 # ── Workspace ─────────────────────────────────────────────────────────────────
