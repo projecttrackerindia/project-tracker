@@ -188,6 +188,36 @@ def _sql_compat(sql, params=()):
                 "p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, created=EXCLUDED.created")
     return _pg_params(sql, params)
 
+# ── Transient connection-desync detection ───────────────────────────────────
+# PgBouncer (transaction pool mode) can hand a client's next statement to a
+# DIFFERENT real Postgres backend than the one that served its previous
+# statement, since it only guarantees backend affinity for the duration of one
+# transaction, not for the lifetime of the client socket. Our app-side pool
+# (_PG_POOL) reuses the same pg8000 connection object across many separate
+# HTTP requests, so when that swap happens between two requests, pg8000 can
+# reference a prepared statement/portal that existed on the OLD backend but
+# not the new one — surfacing as SQLSTATE 26000 "unnamed prepared statement
+# does not exist" (seen in production on /api/vault). The connection itself
+# isn't actually broken going forward, it's just desynced for this one
+# request; discarding it and retrying once on a fresh connection clears it up
+# invisibly instead of bubbling a 503 up to the user.
+_TRANSIENT_PG_SQLSTATES = {
+    "26000",  # invalid_sql_statement_name — "prepared statement does not exist"
+    "34000",  # invalid_cursor_name
+    "08000", "08003", "08001", "08004", "08006",  # connection_exception family
+    "57P01", "57P02", "57P03",  # admin_shutdown / crash_shutdown / cannot_connect_now
+}
+
+def _is_transient_pg_error(e):
+    args0 = e.args[0] if getattr(e, "args", None) else None
+    if isinstance(args0, dict):
+        if args0.get("C") in _TRANSIENT_PG_SQLSTATES:
+            return True
+        msg = str(args0.get("M", "")).lower()
+        if "prepared statement" in msg or "portal" in msg:
+            return True
+    return False
+
 class _Row(dict):
     """dict subclass: supports row['col'] and row[int_index] like sqlite3.Row."""
     def __init__(self, columns, values):
@@ -227,7 +257,15 @@ class _DB:
     def __init__(self, conn):
         self._conn = conn
     def execute(self, sql, params=()):
-        return _Cursor(self._conn).execute(sql, params)
+        try:
+            return _Cursor(self._conn).execute(sql, params)
+        except Exception as e:
+            if not _is_transient_pg_error(e):
+                raise
+            log.warning("[_DB.execute] transient pg/PgBouncer desync, retrying once on a fresh connection: %s", e)
+            _discard_pool_conn(self._conn)
+            self._conn = _get_pool_conn()
+            return _Cursor(self._conn).execute(sql, params)
     def executescript(self, sql):
         """Run semicolon-separated DDL statements (used by init_db)."""
         stmts = [s.strip() for s in sql.split(";") if s.strip()]
