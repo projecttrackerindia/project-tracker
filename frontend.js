@@ -4399,23 +4399,53 @@ function MessagesView({projects,users,cu,tasks}){
   const orderSetRef=useRef(false);
 
   const allProjectsLoadedRef=useRef(false);
-  useEffect(()=>{
-    if(allProjectsLoadedRef.current)return;
+  const allProjectsRetryRef=useRef(0);
+  const loadAllProjects=useCallback(()=>{
     api.get('/api/projects/all').then(d=>{
-      if(Array.isArray(d)&&d.length){
+      if(Array.isArray(d)){
+        // Accept the response even if empty — an empty workspace is valid and
+        // should not be treated as a failure that blocks future updates.
         allProjectsLoadedRef.current=true;
+        allProjectsRetryRef.current=0;
         setAllProjects(d);
-        // If stableOrder not yet set, use creation order (alphabetical) as stable base
-        if(!orderSetRef.current){
+        if(!orderSetRef.current&&d.length){
           orderSetRef.current=true;
           // Sort by name initially — overwritten when first message timestamps arrive
           const initial={};
           d.forEach(p=>{initial[p.id]=p.created||'';});
           setStableOrder(initial);
         }
+      }else{
+        // Request failed (e.g. transient 5xx/pool exhaustion) — d is
+        // {ok:false,...}, not an array. Previously this silently gave up
+        // forever, leaving the sidebar stuck on stale/placeholder data
+        // (including projects with a blank name) until a full page reload.
+        // Retry with capped backoff instead.
+        const attempt=allProjectsRetryRef.current+1;
+        allProjectsRetryRef.current=attempt;
+        if(attempt<=5){
+          setTimeout(loadAllProjects,Math.min(2000*attempt,15000));
+        }
       }
     });
   },[]);
+
+  useEffect(()=>{
+    loadAllProjects();
+  },[loadAllProjects]);
+
+  // Re-sync whenever a project is created/updated elsewhere (SSE), so a
+  // rename or a brand-new channel shows up here without needing a remount.
+  useEffect(()=>{
+    const onRealtime=(e)=>{
+      const t=(e&&e.detail&&e.detail.type)||'';
+      if(['project_updated','project_added','project.created','project.updated'].includes(t)){
+        loadAllProjects();
+      }
+    };
+    window.addEventListener('pt:realtime',onRealtime);
+    return()=>window.removeEventListener('pt:realtime',onRealtime);
+  },[loadAllProjects]);
 
   useEffect(()=>{
     const fetchTs=async()=>{
