@@ -1655,6 +1655,16 @@ def _cache_bust(workspace_id, *tables):
     BUG FIX: same dual-layer clear as _cache_bust_ws. Previously returned
     after Redis delete, leaving local _CACHE dict stale on the writing worker.
     """
+    # BUG FIX (stale DM/notification badge on refresh): /api/bootstrap caches its
+    # payload (including dm_unread) under "bootstrap:{ws}:{uid}:v2" for 30s. That key
+    # never contains "appdata"/"dm_unread"/"notifications", so neither the Redis SCAN
+    # patterns nor the local-dict substring check below ever matched it — meaning a
+    # read/send never invalidated bootstrap, and a page refresh within that 30s window
+    # kept serving the old unread count until the TTL happened to expire on its own.
+    # Bootstrap's users+dm_unread are sourced straight from the appdata cache, so treat
+    # it as dependent on "appdata" and bust it in lockstep.
+    bust_bootstrap = "appdata" in tables
+
     if _redis_client is not None:
         try:
             keys_to_delete = set()
@@ -1663,6 +1673,8 @@ def _cache_bust(workspace_id, *tables):
                 patterns.append(f"ptcache:{t}:{workspace_id}*")
                 if t != "appdata":
                     patterns.append(f"ptcache:appdata:{workspace_id}*")
+            if bust_bootstrap:
+                patterns.append(f"ptcache:bootstrap:{workspace_id}*")
             for pattern in set(patterns):
                 cursor = 0
                 while True:
@@ -1679,6 +1691,9 @@ def _cache_bust(workspace_id, *tables):
     with _CACHE_LOCK:
         for key in list(_CACHE.keys()):
             if workspace_id in key:
+                if bust_bootstrap and key.startswith("bootstrap:"):
+                    _CACHE.pop(key, None)
+                    continue
                 for t in tables:
                     if t in key:
                         _CACHE.pop(key, None)
@@ -4066,6 +4081,10 @@ def init_db():
                 id TEXT PRIMARY KEY, workspace_id TEXT, message_id TEXT,
                 user_id TEXT, emoji TEXT, ts TEXT,
                 UNIQUE(workspace_id, message_id, user_id, emoji));
+            CREATE TABLE IF NOT EXISTS dm_favorites (
+                id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT,
+                peer_id TEXT, created TEXT,
+                UNIQUE(workspace_id, user_id, peer_id));
             CREATE TABLE IF NOT EXISTS notifications (
                 id TEXT PRIMARY KEY, workspace_id TEXT, type TEXT, content TEXT,
                 user_id TEXT, read INTEGER DEFAULT 0, ts TEXT,
@@ -4199,6 +4218,10 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_dm_sender_ws ON direct_messages(workspace_id, sender, recipient, read)",
             "CREATE TABLE IF NOT EXISTS dm_reactions (id TEXT PRIMARY KEY, workspace_id TEXT, message_id TEXT, user_id TEXT, emoji TEXT, ts TEXT, UNIQUE(workspace_id, message_id, user_id, emoji))",
             "CREATE INDEX IF NOT EXISTS idx_dm_reactions_msg ON dm_reactions(workspace_id, message_id)",
+            # Favorite/pinned DM contacts — inspired by reference UI showing a heart
+            # toggle on a contact card and a "Favourite's" section in the nav sidebar.
+            "CREATE TABLE IF NOT EXISTS dm_favorites (id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT, peer_id TEXT, created TEXT, UNIQUE(workspace_id, user_id, peer_id))",
+            "CREATE INDEX IF NOT EXISTS idx_dm_favorites_user ON dm_favorites(workspace_id, user_id)",
             "ALTER TABLE direct_messages ADD COLUMN edited INTEGER DEFAULT 0",
             "ALTER TABLE direct_messages ADD COLUMN deleted INTEGER DEFAULT 0",
             "ALTER TABLE direct_messages ADD COLUMN pinned INTEGER DEFAULT 0",
@@ -9046,6 +9069,57 @@ def react_dm():
     # Do not bust appdata cache for reactions; it caused stale poll/refetch races and slow UI.
     _sse_publish(ws_id, "dm_reaction", {"message_id": msg_id, "sender": msg["sender"], "recipient": msg["recipient"], "emoji": emoji, "user_id": me, "action": action, "message": data})
     return jsonify({"message_id":msg_id,"action":action,"message":data})
+
+@app.route("/api/dm/favorites", methods=["GET"])
+@login_required
+def list_dm_favorites():
+    """Return the current user's favorited DM contacts (most recently favorited first)."""
+    ws_id = wid(); me = session["user_id"]
+    with get_db(autocommit=True) as db:
+        rows = db.execute(
+            "SELECT peer_id FROM dm_favorites WHERE workspace_id=? AND user_id=? ORDER BY created DESC",
+            (ws_id, me)
+        ).fetchall()
+    return jsonify({"ok": True, "favorites": [r["peer_id"] for r in rows]})
+
+@app.route("/api/dm/favorite", methods=["POST"])
+@login_required
+def toggle_dm_favorite():
+    """Toggle whether a teammate is starred/favorited in the current user's DM list.
+
+    Mirrors the heart-toggle pattern on a contact card: a lightweight per-user
+    preference, not shared with the rest of the workspace.
+    """
+    d = request.json or {}
+    peer_id = (d.get("peer_id") or "").strip()
+    if not peer_id:
+        return jsonify({"error": "Missing peer_id"}), 400
+    ws_id = wid(); me = session["user_id"]
+    if peer_id == me:
+        return jsonify({"error": "Cannot favorite yourself"}), 400
+    with get_db() as db:
+        peer = db.execute(
+            "SELECT id FROM users WHERE id=? AND workspace_id=? AND COALESCE(deleted_at,'')=''",
+            (peer_id, ws_id)
+        ).fetchone()
+        if not peer:
+            return jsonify({"error": "User not found"}), 404
+        existing = db.execute(
+            "SELECT id FROM dm_favorites WHERE workspace_id=? AND user_id=? AND peer_id=?",
+            (ws_id, me, peer_id)
+        ).fetchone()
+        if existing:
+            db.execute("DELETE FROM dm_favorites WHERE id=?", (existing["id"],))
+            favorited = False
+        else:
+            fid = f"fav{int(datetime.now().timestamp()*1000)}{secrets.token_hex(2)}"
+            db.execute(
+                "INSERT OR IGNORE INTO dm_favorites(id,workspace_id,user_id,peer_id,created) VALUES (?,?,?,?,?)",
+                (fid, ws_id, me, peer_id, ts())
+            )
+            favorited = True
+    # Per-user preference — no need to bust the workspace-wide appdata/bootstrap cache.
+    return jsonify({"ok": True, "peer_id": peer_id, "favorited": favorited})
 
 @app.route("/api/dm",methods=["POST"])
 @login_required

@@ -6098,6 +6098,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   const [menuFor,setMenuFor]=useState('');
   const [menuPos,setMenuPos]=useState(null);
   const [msgSearch,setMsgSearch]=useState('');
+  const [dmFavorites,setDmFavorites]=useState(()=>new Set());
   const [previewImage,setPreviewImage]=useState('');
   const [remoteTyping,setRemoteTyping]=useState(false);
   const [recording,setRecording]=useState(false);
@@ -6775,6 +6776,28 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   };
   const startEdit=(m)=>{setMenuFor('');setEditingId(m.id);setReplyTo(null);setTxt(m.content||'');};
   useEffect(()=>{window._pfSetDmContext=setDmContext;},[]);
+  // Load starred/favorite DM contacts once on mount (per-user preference, small list).
+  useEffect(()=>{
+    api.get('/api/dm/favorites',{quiet:true}).then(r=>{
+      if(r&&Array.isArray(r.favorites))setDmFavorites(new Set(r.favorites.map(String)));
+    }).catch(()=>{});
+  },[]);
+  const toggleFavorite=async(peerId)=>{
+    if(!peerId)return;
+    const id=String(peerId);
+    const wasFav=dmFavorites.has(id);
+    // Optimistic toggle so the heart responds instantly; rolled back on failure.
+    setDmFavorites(prev=>{const next=new Set(prev);wasFav?next.delete(id):next.add(id);return next;});
+    try{
+      const r=await api.post('/api/dm/favorite',{peer_id:id});
+      if(r&&typeof r.favorited==='boolean'){
+        setDmFavorites(prev=>{const next=new Set(prev);r.favorited?next.add(id):next.delete(id);return next;});
+      }
+    }catch(e){
+      console.warn('[DM] favorite toggle failed',e);
+      setDmFavorites(prev=>{const next=new Set(prev);wasFav?next.add(id):next.delete(id);return next;});
+    }
+  };
   const sendTyping=()=>{
     // Typing indicator is intentionally local-only. The previous network POST on
     // keypress created /api/dm/typing 499 storms and delayed real sends.
@@ -6869,6 +6892,8 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     }
   },[toId,resolvePeerId,switchToUser]);
   const filtered=others.filter(u=>u.name.toLowerCase().includes(search.toLowerCase()));
+  const favoritedFiltered=filtered.filter(u=>dmFavorites.has(String(u.id)));
+  const restFiltered=filtered.filter(u=>!dmFavorites.has(String(u.id)));
   const toUser=safe(users).find(u=>String(u.id)===String(toId));
   const visibleMsgs=(String(msgThreadId)===String(toId))?normalizeDmList(msgs.filter(m=>(String(m.sender)===String(cu.id)&&String(m.recipient)===String(toId))||(String(m.sender)===String(toId)&&String(m.recipient)===String(cu.id)))):[];
   const displayMsgs=msgSearch.trim()?visibleMsgs.filter(m=>String(m.content||'').toLowerCase().includes(msgSearch.toLowerCase())):visibleMsgs;
@@ -6967,6 +6992,31 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       })
       .catch(e=>{console.warn('[DM] call response failed',e);if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');});
   };
+  // Single contact-row renderer shared by the Favourites and All sections, so a
+  // teammate always looks/behaves identically regardless of which section they're in.
+  // The heart toggle is a <span role="button"> (not a nested <button>) since it sits
+  // inside the row's own <button>, and nested <button> elements are invalid HTML.
+  const renderDmContactRow=(u)=>{
+    const unr=unreadFor(u.id);const isA=String(toId)===String(u.id);const lm=lastMsgMap[String(u.id)]||lastMsgMap[u.id];const isFav=dmFavorites.has(String(u.id));
+    return html`
+      <button key=${u.id} data-dm-peer=${u.id} type="button" onPointerDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onMouseDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onClick=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} style=${{display:'flex',alignItems:'center',gap:9,width:'100%',padding:'8px 10px',border:'none',borderRadius:9,cursor:'pointer',marginBottom:2,background:isA?'rgba(99,102,241,.14)':'transparent',transition:'all .14s'}}>
+        <div style=${{position:'relative',flexShrink:0}}>
+          <${Av} u=${u} size=${32}/>
+          <div style=${{position:'absolute',bottom:0,right:0,width:10,height:10,borderRadius:'50%',background:presenceColor(u.id),border:'2px solid var(--bg)',boxShadow:presenceShadow(u.id),transition:'background .3s,box-shadow .3s'}}></div>
+        </div>
+        <div style=${{flex:1,minWidth:0,textAlign:'left'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:4}}>
+            <div style=${{fontSize:13,fontWeight:unr>0?700:600,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>${u.name}</div>
+            ${lm?html`<span style=${{fontSize:9,color:'var(--tx3)',flexShrink:0,whiteSpace:'nowrap'}}>${lm.time_label||ago(lm.ts)}</span>`:null}
+          </div>
+          ${lm?html`<div style=${{fontSize:11,color:unr>0?'var(--tx2)':'var(--tx3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:unr>0?600:400,marginTop:1}}>${String(lm.sender)===String(cu.id)?'You: ':''}<span>${(lm.content||'').replace(/\n/g,' ')}</span></div>`:null}
+        </div>
+        <span role="button" tabIndex="0" title=${isFav?'Remove from favourites':'Add to favourites'} onClick=${e=>{e.preventDefault();e.stopPropagation();toggleFavorite(u.id);}} onPointerDown=${e=>e.stopPropagation()} onMouseDown=${e=>e.stopPropagation()} style=${{border:'none',background:'none',cursor:'pointer',padding:2,flexShrink:0,color:isFav?'#f472b6':'var(--tx3)',display:'flex',alignItems:'center',opacity:isFav?1:.55}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill=${isFav?'currentColor':'none'} stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        </span>
+        ${unr>0?html`<span style=${{background:'var(--ac)',color:'#fff',borderRadius:10,fontSize:10,padding:'2px 6px',fontFamily:'monospace',fontWeight:700,flexShrink:0}}>${unr}</span>`:null}
+      </button>`;
+  };
   return html`<style>@keyframes dmMenuPop{from{opacity:0;transform:translateY(-6px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmPickerPop{from{opacity:0;transform:translateY(8px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmBubbleIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes callPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.45)}70%{box-shadow:0 0 0 28px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}</style>${incomingCall?html`<div style=${{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:'radial-gradient(circle at 50% 22%,rgba(34,197,94,.18),rgba(2,6,23,.94) 42%,rgba(0,0,0,.98))',backdropFilter:'blur(14px)'}}>
     <div style=${{position:'absolute',top:22,left:26,fontSize:13,fontWeight:800,color:'#fff',letterSpacing:.5,opacity:.85}}>Project Tracker Call</div>
     <div style=${{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',textAlign:'center',padding:24}}>
@@ -6984,21 +7034,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     <div style=${{width:190,borderRight:'1px solid var(--bd)',display:'flex',flexDirection:'column',flexShrink:0}}>
       <div style=${{padding:'11px 12px',borderBottom:'1px solid var(--bd)'}}><div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:8}}>Direct Messages</div><input class="inp" style=${{fontSize:12,padding:'6px 10px'}} placeholder="Search..." value=${search} onInput=${e=>setSearch(e.target.value)}/></div>
       <div style=${{flex:1,overflowY:'auto',padding:6}}>
-        ${filtered.map(u=>{const unr=unreadFor(u.id);const isA=String(toId)===String(u.id);const lm=lastMsgMap[String(u.id)]||lastMsgMap[u.id];return html`
-          <button key=${u.id} data-dm-peer=${u.id} type="button" onPointerDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onMouseDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onClick=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} style=${{display:'flex',alignItems:'center',gap:9,width:'100%',padding:'8px 10px',border:'none',borderRadius:9,cursor:'pointer',marginBottom:2,background:isA?'rgba(99,102,241,.14)':'transparent',transition:'all .14s'}}>
-            <div style=${{position:'relative',flexShrink:0}}>
-              <${Av} u=${u} size=${32}/>
-              <div style=${{position:'absolute',bottom:0,right:0,width:10,height:10,borderRadius:'50%',background:presenceColor(u.id),border:'2px solid var(--bg)',boxShadow:presenceShadow(u.id),transition:'background .3s,box-shadow .3s'}}></div>
-            </div>
-            <div style=${{flex:1,minWidth:0,textAlign:'left'}}>
-              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:4}}>
-                <div style=${{fontSize:13,fontWeight:unr>0?700:600,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>${u.name}</div>
-                ${lm?html`<span style=${{fontSize:9,color:'var(--tx3)',flexShrink:0,whiteSpace:'nowrap'}}>${lm.time_label||ago(lm.ts)}</span>`:null}
-              </div>
-              ${lm?html`<div style=${{fontSize:11,color:unr>0?'var(--tx2)':'var(--tx3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:unr>0?600:400,marginTop:1}}>${String(lm.sender)===String(cu.id)?'You: ':''}<span>${(lm.content||'').replace(/\n/g,' ')}</span></div>`:null}
-            </div>
-            ${unr>0?html`<span style=${{background:'var(--ac)',color:'#fff',borderRadius:10,fontSize:10,padding:'2px 6px',fontFamily:'monospace',fontWeight:700,flexShrink:0}}>${unr}</span>`:null}
-          </button>`;})}
+        ${favoritedFiltered.length?html`<div style=${{fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,padding:'6px 10px 4px'}}>⭐ Favourites</div>`:null}
+        ${favoritedFiltered.map(u=>renderDmContactRow(u))}
+        ${favoritedFiltered.length?html`<div style=${{fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,padding:'10px 10px 4px'}}>All</div>`:null}
+        ${restFiltered.map(u=>renderDmContactRow(u))}
       </div>
     </div>
     <div style=${{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
@@ -7011,7 +7050,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
           <div>
             <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${toUser.name}</div>
             <div style=${{fontSize:11,color:remoteTyping?'var(--ac)':(hasOnline(toUser.id)?'#22c55e':(hasAway(toUser.id)?'#f59e0b':'var(--tx3)')),fontWeight:500}}>${remoteTyping?'typing…':presenceText(toUser.id)}</div>
-          </div>`:html`<span style=${{color:'var(--tx3)'}}>Select someone to chat</span>`}
+          </div>
+          <span role="button" tabIndex="0" title=${dmFavorites.has(String(toUser.id))?'Remove from favourites':'Add to favourites'} onClick=${()=>toggleFavorite(toUser.id)} style=${{border:'1px solid var(--bd)',background:'var(--sf)',borderRadius:'50%',width:28,height:28,cursor:'pointer',color:dmFavorites.has(String(toUser.id))?'#f472b6':'var(--tx3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill=${dmFavorites.has(String(toUser.id))?'currentColor':'none'} stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          </span>`:html`<span style=${{color:'var(--tx3)'}}>Select someone to chat</span>`}
         <input class="inp" placeholder="Search in conversation..." value=${msgSearch} onInput=${e=>setMsgSearch(e.target.value)} style=${{marginLeft:'auto',width:190,height:30,fontSize:12}}/>
       </div>
       ${pinnedMsgs.length?html`<div style=${{padding:'7px 16px',borderBottom:'1px solid var(--bd)',background:'rgba(245,158,11,.08)',display:'flex',gap:8,alignItems:'center',fontSize:12,color:'var(--tx2)'}}><b>📌 Pinned</b><span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${pinnedMsgs[0].content}</span></div>`:null}
