@@ -269,8 +269,25 @@ class _PooledDB(_DB):
             try:
                 if exc_type: self._conn.run("ROLLBACK")
                 else: self._conn.run("COMMIT")
-            except Exception: pass
-        # Return to pool instead of closing — this is the key perf improvement
+            except Exception:
+                # ROLLBACK/COMMIT itself failed — the connection's wire protocol
+                # state can no longer be trusted (e.g. a desynced extended-query
+                # sequence after a "prepared statement does not exist" error).
+                # Close it instead of pooling it: putting a broken connection
+                # back into _PG_POOL means the very next *unrelated* request
+                # that borrows it fails too, with a confusing unrelated-looking
+                # error. This was the actual cause of cascading 500s across
+                # /api/vault, /api/projects/all, /api/projects/last-messages, etc.
+                _discard_pool_conn(self._conn)
+                return False
+        if exc_type is not None:
+            # The query itself raised (DatabaseError, protocol desync, etc.).
+            # Even though ROLLBACK above may have "succeeded", don't trust this
+            # connection's state for reuse — discard it so the pool only ever
+            # hands out known-good connections.
+            _discard_pool_conn(self._conn)
+            return False
+        # Healthy path — return to pool instead of closing (the perf improvement).
         _return_pool_conn(self._conn)
         return False
 
