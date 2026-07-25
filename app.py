@@ -6156,11 +6156,21 @@ def me():
 @app.route("/api/vault", methods=["GET"])
 @login_required
 def vault_list():
-    with get_db() as db:
-        records = db.execute(
-            "SELECT * FROM vault_cards WHERE user_id=? ORDER BY created DESC",
-            (session["user_id"],)
-        ).fetchall()
+    try:
+        with get_db() as db:
+            records = db.execute(
+                "SELECT * FROM vault_cards WHERE user_id=? ORDER BY created DESC",
+                (session["user_id"],)
+            ).fetchall()
+    except RuntimeError as e:
+        # DB connection pool momentarily exhausted (see _get_pool_conn). This is
+        # transient under load — surface it as a retryable 503 instead of a bare
+        # 500 so the frontend/monitoring can distinguish it from a real bug.
+        log.warning("[vault_list] pool exhausted: %s", e)
+        resp = jsonify({"error": "Vault is temporarily busy, please retry", "retryable": True})
+        resp.status_code = 503
+        resp.headers["Retry-After"] = "2"
+        return resp
     result = []
     for r in records:
         card = dict(r)
@@ -6237,15 +6247,27 @@ def _vault_audit(user_id, card_id, action, detail="", ip=""):
 @login_required
 def vault_audit_list():
     """Return the 50 most recent vault audit events for the current user."""
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT a.id, a.card_id, a.action, a.detail, a.ip, a.created, "
-            "       v.title AS card_title "
-            "FROM vault_audit_log a "
-            "LEFT JOIN vault_cards v ON a.card_id = v.id "
-            "WHERE a.user_id=? ORDER BY a.created DESC LIMIT 50",
-            (session["user_id"],)
-        ).fetchall()
+    try:
+        with get_db() as db:
+            rows = db.execute(
+                "SELECT a.id, a.card_id, a.action, a.detail, a.ip, a.created, "
+                "       v.title AS card_title "
+                "FROM vault_audit_log a "
+                "LEFT JOIN vault_cards v ON a.card_id = v.id "
+                "WHERE a.user_id=? ORDER BY a.created DESC LIMIT 50",
+                (session["user_id"],)
+            ).fetchall()
+    except RuntimeError as e:
+        # Same transient pool-exhaustion case as vault_list. The audit log is
+        # secondary/non-critical data — fail fast (503) rather than let the
+        # request hang until the client-side fetch timeout aborts it (which is
+        # what produced the 14s/499 in production logs and blanked the vault
+        # view because the frontend awaited both calls together).
+        log.warning("[vault_audit_list] pool exhausted: %s", e)
+        resp = jsonify({"error": "Audit log is temporarily busy, please retry", "retryable": True})
+        resp.status_code = 503
+        resp.headers["Retry-After"] = "2"
+        return resp
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/vault/<cid>/audit", methods=["POST"])

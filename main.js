@@ -9872,7 +9872,14 @@ function VaultView({cu}){
       return;
     }
     setVLoading(true);
-    Promise.all([api.get('/api/vault'), api.get('/api/vault/audit')]).then(([data, audit])=>{
+    // Use allSettled (not all): the two calls are independent — if /api/vault/audit
+    // times out or 500s under load, we should still render the cards from /api/vault
+    // (and vice versa) instead of leaving the whole Vault view blank.
+    Promise.allSettled([api.get('/api/vault'), api.get('/api/vault/audit')]).then(([dataRes, auditRes])=>{
+      const data = dataRes.status === 'fulfilled' ? dataRes.value : [];
+      const audit = auditRes.status === 'fulfilled' ? auditRes.value : [];
+      if (dataRes.status === 'rejected') console.warn('[vault] failed to load cards:', dataRes.reason);
+      if (auditRes.status === 'rejected') console.warn('[vault] failed to load audit log:', auditRes.reason);
       const cards = Array.isArray(data) ? data.map(c=>({
         ...c,
         rows: typeof c.rows==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return [];}}(c.rows)) : (c.rows||[]),
@@ -9880,11 +9887,15 @@ function VaultView({cu}){
         lockHash: c.lock_hash||c.lockHash||''
       })) : [];
       const auditLog = Array.isArray(audit) ? audit : [];
-      _vaultCache = { cards, auditLog };
+      // Don't cache a partial/failed load — only cache when both calls succeeded,
+      // so the next tab switch retries rather than sticking with an empty result.
+      if (dataRes.status === 'fulfilled' && auditRes.status === 'fulfilled') {
+        _vaultCache = { cards, auditLog };
+      }
       setCards(cards);
       setAuditLog(auditLog);
       setVLoading(false);
-    }).catch(()=>{ setVLoading(false); });
+    });
   }, [cu && cu.id]);
 
   async function apiCreate(card){
