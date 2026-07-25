@@ -5497,8 +5497,8 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       }
       if(msg&&msg.type==='dm_created'&&data&&data.message){
         const m=data.message;
-        const peer=(m.sender===cu.id)?m.recipient:m.sender;
-        const belongs=peer===toId || data.sender===toId || data.recipient===toId;
+        const peer=(String(m.sender)===String(cu.id))?m.recipient:m.sender;
+        const belongs=String(peer)===String(toId) || String(data.sender)===String(toId) || String(data.recipient)===String(toId);
         if(belongs){
           setMsgThreadId(toId);
           setLoadingThread('');
@@ -5516,10 +5516,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
               setThreadMessages(toId,next,false);
               return next;
             }
-            const withoutTmp=base.filter(x=>!(String(x.id||'').startsWith('tmpdm')&&x.content===m.content&&x.sender===m.sender) && !(String(x.id||'').startsWith('srvtmp')&&x.content===m.content&&x.sender===m.sender));
+            const withoutTmp=base.filter(x=>!(String(x.id||'').startsWith('tmpdm')&&x.content===m.content&&String(x.sender)===String(m.sender)) && !(String(x.id||'').startsWith('srvtmp')&&x.content===m.content&&String(x.sender)===String(m.sender)));
             const next=mergePendingReactionState(toId,[...withoutTmp,{...m,_pending:false}]);
             setThreadMessages(toId,next,false);
-            if(m.sender!==cu.id&&!msg.soundPlayed)playSound('notif');
+            if(String(m.sender)!==String(cu.id)&&!msg.soundPlayed)playSound('notif');
             return normalizeDmList(next);
           });
           onDmRead(toId);
@@ -11897,10 +11897,13 @@ function App(){
         // prevents delayed/fake alerts that open before the message is visible.
         // FIX 02: Use the shared handleNewDmMessage helper to avoid double-fire
         // (SSE path + poll path previously both fired toasts independently with a race window)
-        api.get('/api/dm/latest-unread',{quiet:true}).then(latest=>{
-          if(!Array.isArray(latest))return;
-          latest.slice().reverse().forEach(m=>handleNewDmMessage(m,true));
-        }).catch(()=>{});
+        const sseOpen=window.__ptSSEActive&&window.__ptSSEActive.readyState===EventSource.OPEN;
+        if(!sseOpen){
+          api.get('/api/dm/latest-unread',{quiet:true}).then(latest=>{
+            if(!Array.isArray(latest))return;
+            latest.slice().reverse().forEach(m=>handleNewDmMessage(m,true));
+          }).catch(()=>{});
+        }
 
         // ── Notifications ──────────────────────────────────────────
         const notifs=result.notifications;
