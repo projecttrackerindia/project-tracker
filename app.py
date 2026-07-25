@@ -1128,8 +1128,19 @@ def get_db(autocommit=False):
 import queue as _queue, threading as _poollock
 # Pool sized for: gunicorn workers × gevent greenlets per worker.
 # With POOL_SIZE env var support so Railway can tune without redeploy.
+#
+# IMPORTANT: this pool sits IN FRONT OF PgBouncer, not in front of raw Postgres.
+# PgBouncer (transaction pool mode) already absorbs bursts cheaply and reports
+# up to 2,000 client slots and 140 real server connections per replica — this
+# app-side Queue was previously capped at 12, meaning the app throttled itself
+# to ~6% of what PgBouncer can actually give it. A burst of concurrent
+# requests (e.g. several task PUTs + app-data + DM polls firing at once) could
+# exhaust those 12 local slots and start returning 500s (e.g. /api/projects/all,
+# /api/projects/last-messages), even though PgBouncer/Postgres had hundreds of
+# free connections to give out. Raised to give real headroom while still
+# leaving PgBouncer/Postgres margin for other services and the other replica.
 import os as _os_pool
-_PG_POOL_SIZE = int(_os_pool.environ.get("PG_POOL_SIZE", "12"))  # 2 workers × 8 threads = 16 slots; 12 covers peak without exhausting Postgres
+_PG_POOL_SIZE = int(_os_pool.environ.get("PG_POOL_SIZE", "40"))  # was 12 — PgBouncer has 140 server / 2000 client slots per replica, so 12 was needlessly conservative
 _PG_POOL      = _queue.Queue(maxsize=_PG_POOL_SIZE)
 _PG_POOL_LOCK = _poollock.Lock()
 _PG_CREATED   = 0      # number of live PostgreSQL sessions owned by this worker
@@ -1189,10 +1200,19 @@ def _get_pool_conn():
             raise
 
     try:
-        return _PG_POOL.get(timeout=float(_os_pool.environ.get("PG_POOL_WAIT_SECONDS", "3")))  # fail fast; 8s wait cascaded into 499 storms
+        # 8s wait: PgBouncer (transaction pool mode) sits behind this pool and
+        # has substantial spare capacity (140 server / 2000 client slots per
+        # replica), so a queued borrow here is cheap and usually resolves in
+        # well under a second. The old 3s "fail fast" timeout was tuned for a
+        # world where Postgres itself was the scarce resource; now that
+        # PgBouncer is fronting Postgres, it's safer to let a request wait a
+        # little longer than to bounce it back to the client as a 500.
+        return _PG_POOL.get(timeout=float(_os_pool.environ.get("PG_POOL_WAIT_SECONDS", "8")))
     except _queue.Empty:
         raise RuntimeError(
-            "Database connection pool exhausted; reduce frontend polling or increase PG_POOL_SIZE/Postgres max_connections"
+            "Database connection pool exhausted after PG_POOL_WAIT_SECONDS; "
+            "consider raising PG_POOL_SIZE (app-side) — PgBouncer/Postgres "
+            "capacity is not the bottleneck here"
         )
 
 def _validate_conn(conn):
