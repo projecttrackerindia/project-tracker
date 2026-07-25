@@ -6171,6 +6171,16 @@ def vault_list():
         resp.status_code = 503
         resp.headers["Retry-After"] = "2"
         return resp
+    except Exception as e:
+        # Anything else (bad query, missing column/table on an old schema, a
+        # driver-level error, etc.) — log the FULL traceback so the real cause
+        # shows up in Railway logs instead of just a bare "500", and fail soft
+        # with a retryable 503 rather than crashing the whole Vault view.
+        log.exception("[vault_list] unexpected error: %s", e)
+        resp = jsonify({"error": "Vault could not be loaded, please retry", "retryable": True})
+        resp.status_code = 503
+        resp.headers["Retry-After"] = "2"
+        return resp
     result = []
     for r in records:
         card = dict(r)
@@ -6268,6 +6278,15 @@ def vault_audit_list():
         resp.status_code = 503
         resp.headers["Retry-After"] = "2"
         return resp
+    except Exception as e:
+        # Genuinely unexpected error (bad query, schema drift, driver issue).
+        # Log the full traceback so it's visible in Railway logs — this is
+        # exactly what produced the bare, unexplained "500 in 30ms" seen in
+        # production. The audit trail is non-critical secondary data, so
+        # degrade to an empty list (200) instead of erroring the whole
+        # Vault view over history that isn't essential to using the vault.
+        log.exception("[vault_audit_list] unexpected error: %s", e)
+        return jsonify([])
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/vault/<cid>/audit", methods=["POST"])
