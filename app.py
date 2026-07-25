@@ -265,6 +265,11 @@ class _DB:
             log.warning("[_DB.execute] transient pg/PgBouncer desync, retrying once on a fresh connection: %s", e)
             _discard_pool_conn(self._conn)
             self._conn = _get_pool_conn()
+            if not getattr(self, "_autocommit", False):
+                try:
+                    self._conn.run("BEGIN")
+                except Exception:
+                    pass  # best-effort; COMMIT/ROLLBACK in __exit__ no-ops harmlessly if this failed
             return _Cursor(self._conn).execute(sql, params)
     def executescript(self, sql):
         """Run semicolon-separated DDL statements (used by init_db)."""
@@ -1172,10 +1177,39 @@ CLRS=["#7c3aed","#2563eb","#059669","#d97706","#dc2626","#ec4899","#0891b2","#5a
 
 def get_db(autocommit=False):
     """Get a DB wrapper using the connection pool for performance.
-    Falls back to a fresh connection if pool is exhausted."""
+    Falls back to a fresh connection if pool is exhausted.
+
+    For non-autocommit callers this also opens an explicit transaction (BEGIN)
+    immediately, rather than relying only on the COMMIT/ROLLBACK already sent
+    in _PooledDB.__exit__. Root cause this fixes: pg8000's execute_unnamed()
+    sends a single logical query as THREE separate round trips — Parse+Sync,
+    Describe+Sync, Bind+Execute+Sync — each ending in its own ReadyForQuery.
+    PgBouncer (transaction pool mode) decides per-ReadyForQuery whether it's
+    safe to reassign this client's real Postgres backend to someone else, and
+    without an open transaction, Postgres reports "idle" after each of those
+    three phases — so PgBouncer can (and, in production, did) swap the
+    backend mid-query. A later phase then references an unnamed prepared
+    statement that only exists on the backend an earlier phase used, which is
+    exactly the SQLSTATE 26000 "unnamed prepared statement does not exist"
+    seen on /api/vault, and is the most likely explanation for occasionally
+    getting back a stale/mismatched result for an unrelated query on a reused
+    pooled connection (e.g. one refresh showing a different vault card than
+    the last). An explicit BEGIN here keeps every ReadyForQuery in this held
+    connection reporting "in transaction", which PgBouncer honors as backend
+    affinity for as long as the connection is checked out.
+    """
     conn = _get_pool_conn()
     conn.autocommit = autocommit
-    # Wrap with a pool-returning _DB
+    if not autocommit:
+        try:
+            conn.run("BEGIN")
+        except Exception:
+            # Connection was already dead/desynced before we even used it —
+            # discard it and try exactly once more on a fresh connection.
+            _discard_pool_conn(conn)
+            conn = _get_pool_conn()
+            conn.autocommit = autocommit
+            conn.run("BEGIN")
     return _PooledDB(conn, autocommit=autocommit)
 
 # ── pg8000 connection pool — pre-warmed, sized for gthread workers ──────────
