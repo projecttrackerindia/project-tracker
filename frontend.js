@@ -12030,6 +12030,15 @@ function App(){
 
   const prevDmsRef=useRef([]);
   const notifiedDmIdsRef=useRef(new Set());
+  // BUGFIX: /api/dm/latest-unread returns messages that are *unread*, not messages
+  // that are *new since this page load*. Those are not the same thing — a message
+  // can have been delivered (and already toasted) in a previous session and still
+  // show read=0 simply because the user never opened that DM thread. Without a
+  // baseline, the very first pullLatest() call on every page refresh treated all
+  // of those old-but-unread rows as brand new and re-toasted every one of them.
+  // dmBaselineSeededRef gates that: the first pull only seeds the "already
+  // notified" dedupe sets silently; toasts fire only for ids seen after that.
+  const dmBaselineSeededRef=useRef(false);
   useEffect(()=>{
     if(!cu)return;
     api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{if(d&&Array.isArray(d.dm_unread)){prevDmsRef.current=d.dm_unread;setDmUnread(d.dm_unread);}if(d&&Array.isArray(d.notifications))setData(prev=>({...prev,notifs:d.notifications}));}).catch(()=>{});
@@ -12049,6 +12058,12 @@ function App(){
       try{
         const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:30000});
         if(Array.isArray(latest)){
+          // First call after a page load/refresh: these "unread" rows may already
+          // have been notified in a prior session (unread just means "not opened",
+          // not "not yet shown to the user"). Seed the dedupe sets silently instead
+          // of toasting a backlog of old messages every time the page reloads.
+          const isBaselinePull=!dmBaselineSeededRef.current;
+          dmBaselineSeededRef.current=true;
           latest.slice().reverse().forEach(m=>{
             if(!m||!m.id||notifiedDmIdsRef.current.has(m.id))return;
             if(String(m.recipient||'')!==String(cu.id)||String(m.sender||'')===String(cu.id))return;
@@ -12056,6 +12071,21 @@ function App(){
             if(window.__ptSeenDmIds.has(m.id)){ notifiedDmIdsRef.current.add(m.id); return; }
             notifiedDmIdsRef.current.add(m.id);
             window.__ptSeenDmIds.add(m.id);
+            if(isBaselinePull){
+              // Still hydrate the DM panel cache so unread messages show up if the
+              // user opens the thread, just don't fire a toast/sound/notification.
+              try{
+                const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
+                if(peer){
+                  window._pfDmIncoming=window._pfDmIncoming||{};
+                  window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
+                  if(!window._pfDmIncoming[peer].find(x=>String(x.id)===String(m.id))){
+                    window._pfDmIncoming[peer].push(m);
+                  }
+                }
+              }catch(_){}
+              return;
+            }
             // Inject the real message immediately into the DM panel. This avoids
             // fake alerts that open before the message is visible.
             // Cache latest-unread messages globally so DirectMessages can pre-populate instantly
