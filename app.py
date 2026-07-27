@@ -530,7 +530,14 @@ def _ultra_early_realtime_499_guard():
         if isinstance(cached, dict):
             cached["fast_mode"] = True
             return jsonify(cached)
-        return jsonify({"dm_unread": [], "notifications": [], "fast_mode": True})
+        # BUG FIX: no warm cache yet (first poll for this session, or the
+        # entry expired/was busted after a new DM/notification). Previously
+        # this returned a hardcoded {dm_unread: [], notifications: []} stub,
+        # which made unified_poll() — the only code that ever populates
+        # poll_stale — permanently unreachable. Fall through instead so the
+        # real handler runs, returns live data, and warms the cache for the
+        # next fast-path hit.
+        return None
     if (method, path) == ("GET", "/api/dm/previews"):
         # Return the real stale preview map shape, not {previews: []}; otherwise
         # the sidebar loses last-message data even though the request is "fixed".
@@ -540,13 +547,25 @@ def _ultra_early_realtime_499_guard():
             stale = _cache_get(f"dm_previews_stale:{ws}:{uid}") if ws and uid else None
         except Exception:
             stale = None
-        return jsonify(stale if isinstance(stale, dict) else {})
-    if (method, path) in (("GET", "/api/dm/latest-unread"), ("GET", "/api/dm/unread")):
-        return jsonify([])
-    if (method, path) == ("GET", "/api/calls/incoming"):
-        return jsonify({"ok": True, "calls": [], "fast_mode": True})
-    if (method, path) == ("GET", "/api/reminders/due"):
-        return jsonify({"ok": True, "items": [], "reminders": [], "fast_mode": True})
+        if isinstance(stale, dict):
+            return jsonify(stale)
+        # BUG FIX: dm_previews_stale is only ever written by dm_previews()
+        # itself (via _dm_previews_refresh). Returning a hardcoded {} here on
+        # every cache-miss made that view — and therefore its own cache
+        # writer — permanently unreachable, so sidebar DM previews never
+        # loaded. Fall through so the real view can run once and warm both
+        # caches for subsequent fast-path hits.
+        return None
+    # BUG FIX: /api/dm/latest-unread, /api/dm/unread, /api/calls/incoming and
+    # /api/reminders/due previously returned a hardcoded empty payload
+    # unconditionally, which made their real (DB-backed, already
+    # cache-guarded) view functions permanently unreachable — so incoming
+    # call invites, unread DM fallback polling, and due reminders never
+    # showed up. These routes already implement their own short-TTL caching
+    # internally, so it's safe to just let the request through.
+    if (method, path) in (("GET", "/api/dm/latest-unread"), ("GET", "/api/dm/unread"),
+                           ("GET", "/api/calls/incoming"), ("GET", "/api/reminders/due")):
+        return None
 
     # Incremental DM refresh can be safely empty. Full first loads may continue
     # into the real route so a user opening a conversation can still fetch history.
@@ -1664,6 +1683,11 @@ def _cache_bust(workspace_id, *tables):
     # Bootstrap's users+dm_unread are sourced straight from the appdata cache, so treat
     # it as dependent on "appdata" and bust it in lockstep.
     bust_bootstrap = "appdata" in tables
+    # poll_stale/dm_previews are only warmed by /api/poll and /api/dm/previews
+    # themselves and never expire fast enough on their own (300s / 30s+300s)
+    # to reflect a message that just arrived — bust them whenever the data
+    # they're derived from changes.
+    bust_poll_previews = bool({"dm_unread", "notifications", "notifs", "appdata"} & set(tables))
 
     if _redis_client is not None:
         try:
@@ -1675,6 +1699,10 @@ def _cache_bust(workspace_id, *tables):
                     patterns.append(f"ptcache:appdata:{workspace_id}*")
             if bust_bootstrap:
                 patterns.append(f"ptcache:bootstrap:{workspace_id}*")
+            if bust_poll_previews:
+                patterns.append(f"ptcache:poll_stale:{workspace_id}*")
+                patterns.append(f"ptcache:dm_previews:{workspace_id}*")
+                patterns.append(f"ptcache:dm_previews_stale:{workspace_id}*")
             for pattern in set(patterns):
                 cursor = 0
                 while True:
@@ -1692,6 +1720,9 @@ def _cache_bust(workspace_id, *tables):
         for key in list(_CACHE.keys()):
             if workspace_id in key:
                 if bust_bootstrap and key.startswith("bootstrap:"):
+                    _CACHE.pop(key, None)
+                    continue
+                if bust_poll_previews and (key.startswith("poll_stale:") or key.startswith("dm_previews:") or key.startswith("dm_previews_stale:")):
                     _CACHE.pop(key, None)
                     continue
                 for t in tables:
@@ -3473,12 +3504,38 @@ def send_task_completed_email(user_email, user_name, task_title, completer_name,
 
 def _due_date_email_checker():
     """Background thread: checks every hour for tasks due in ~24h or overdue.
-    Sends one email per task per day using a simple in-memory dedup set.
-    Resets at midnight UTC so users get re-notified the next day if still open."""
+    Sends one email per task per day.
+
+    BUG FIX (duplicate due-date emails): this thread is started once per
+    gunicorn worker process (module-level `.start()` below runs on import,
+    and app.py is imported once per worker). With WEB_CONCURRENCY workers —
+    and again every time gunicorn recycles a worker via --max-requests — a
+    fresh process means a fresh in-memory `_notified_due`/`_notified_over`
+    set, so the old per-process dedup did NOT stop multiple workers (or a
+    restarted worker) from independently emailing the same task. `_claim()`
+    below uses a Redis SETNX so only the first process to see a given
+    task+day wins, regardless of how many workers/restarts are running.
+    Falls back to the old in-process set only when Redis isn't configured
+    (single-process/dev mode), where the duplication can't occur anyway.
+    """
     import time as _t
-    _notified_due   = set()   # task IDs already sent due-soon email today
-    _notified_over  = set()   # task IDs already sent overdue email today
+    _notified_due   = set()   # per-process fallback dedup (Redis unavailable)
+    _notified_over  = set()   # per-process fallback dedup (Redis unavailable)
     _last_reset_day = None
+
+    def _claim(kind, tid, day_str):
+        """Atomically claim task+kind+day. Returns True only for the first
+        caller across ALL worker processes; False for every subsequent one."""
+        if _redis_client is not None:
+            try:
+                return bool(_redis_client.set(f"duenotif:{kind}:{tid}:{day_str}", "1", nx=True, ex=90000))
+            except Exception:
+                pass
+        local_set = _notified_due if kind == "due" else _notified_over
+        if tid in local_set:
+            return False
+        local_set.add(tid)
+        return True
 
     while True:
         try:
@@ -3527,8 +3584,7 @@ def _due_date_email_checker():
                 due_day = due[:10]  # "YYYY-MM-DD"
 
                 # Overdue: due date has passed
-                if due_day < today_str and tid not in _notified_over:
-                    _notified_over.add(tid)
+                if due_day < today_str and _claim("over", tid, today_str):
                     uid_row = row[3] if isinstance(row, (list, tuple)) else row.get("assignee", "")
                     # In-app notification
                     if _should_notify(uid_row, "deadline", "inapp"):
@@ -3549,8 +3605,7 @@ def _due_date_email_checker():
                             args=(email, name, title, due_day, tid, ws), daemon=True).start()
 
                 # Due soon: due date is tomorrow
-                elif due_day == tomorrow_str and tid not in _notified_due:
-                    _notified_due.add(tid)
+                elif due_day == tomorrow_str and _claim("due", tid, today_str):
                     uid_row = row[3] if isinstance(row, (list, tuple)) else row.get("assignee", "")
                     # In-app notification
                     if _should_notify(uid_row, "deadline", "inapp"):
@@ -9246,17 +9301,18 @@ def send_dm():
         except Exception as e:
             log.warning("[DM] slack dm failed: %s", e)
 
-    # SCALABILITY: Route side-effects through the JobQueue abstraction.
-    # When ASYNC_BACKEND=rq and REDIS_URL is set (production), _job_queue.enqueue()
-    # pushes to the RQ "notifications" queue and worker.py processes it out-of-process.
-    # This means the HTTP response is returned in <10 ms regardless of email/SSE latency.
-    # When running locally (no Redis / ASYNC_BACKEND=thread), _job_queue.enqueue() falls
-    # back to the ThreadPoolExecutor inside scaling_runtime — no behaviour change.
-    try:
-        _job_queue.enqueue(_dm_after_commit, queue_name="notifications")
-    except Exception:
-        # Last resort: plain daemon thread (original behaviour, never blocks the response).
-        threading.Thread(target=_dm_after_commit, daemon=True).start()
+    # BUG FIX: _dm_after_commit is a closure defined inside this view function
+    # (it captures row/preview/sender_name from the enclosing scope). Python's
+    # pickle module cannot serialize a nested/local function — a hard
+    # requirement for handing work to RQ/worker.py — so _job_queue.enqueue()
+    # here raised on every single call and silently fell back to the plain
+    # thread below. DM notifications were never actually getting the
+    # out-of-process handling this comment used to describe; they always ran
+    # in-process anyway, just after paying the cost of a failed pickle
+    # attempt first. Use the bounded in-process push pool (same one every
+    # other fire-and-forget notification in this file already uses) instead
+    # of pretending this goes through RQ.
+    _enqueue_push(_dm_after_commit)
     resp=jsonify(row)
     resp.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
     return resp
