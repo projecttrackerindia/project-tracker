@@ -13478,6 +13478,15 @@ function App(){
 
   const prevDmsRef=useRef([]);
   const notifiedDmIdsRef=useRef(new Set());
+  // BUGFIX: /api/dm/latest-unread returns messages that are *unread*, not messages
+  // that are *new since this page load*. Those are not the same thing — a message
+  // can have been delivered (and already toasted) in a previous session and still
+  // show read=0 simply because the user never opened that DM thread. This effect
+  // used to call pullLatest() immediately on every mount with no baseline check,
+  // so every refresh re-toasted the entire backlog of unread DMs. dmBaselineSeededRef
+  // gates that: the first pull after mount only seeds the "already notified" dedupe
+  // sets silently; toasts fire only for ids seen after that.
+  const dmBaselineSeededRef=useRef(false);
   useEffect(()=>{
     if(!cu)return;
     api.get('/api/dm/unread').then(d=>{if(Array.isArray(d)){prevDmsRef.current=d;setDmUnread(d);}}).catch(()=>{});
@@ -13488,6 +13497,8 @@ function App(){
       try{
         const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:7000});
         if(Array.isArray(latest)){
+          const isBaselinePull=!dmBaselineSeededRef.current;
+          dmBaselineSeededRef.current=true;
           latest.slice().reverse().forEach(m=>{
             if(!m||!m.id||notifiedDmIdsRef.current.has(m.id))return;
             if(String(m.recipient||'')!==String(cu.id)||String(m.sender||'')===String(cu.id))return;
@@ -13508,6 +13519,10 @@ function App(){
                 }
               }
             }catch(_){}
+            if(isBaselinePull){
+              // Backlog from before this page load: hydrate state only, don't toast.
+              return;
+            }
             window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'dm_created',soundPlayed:true,data:{id:m.id,sender:m.sender,recipient:m.recipient,message:m}}}));
             const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
             const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
