@@ -8528,21 +8528,56 @@ def get_dm(other_id):
     me = session["user_id"]
     ws_id = wid()
     since = request.args.get("since", "").strip()
-
-    # Short-lived cache for full conversation loads (no ?since param).
-    # SSE events trigger client-side reloads which pass ?since= (incremental),
-    # so the cache is only hit for initial opens and page refreshes.
-    if not since:
-        dm_cache_key = f"dm_thread:{ws_id}:{me}:{other_id}"
-        cached_thread = _cache_get(dm_cache_key)
-        if cached_thread is not None:
-            return jsonify(cached_thread)
+    dm_cache_key = f"dm_thread:{ws_id}:{me}:{other_id}"
 
     try:
         # NOTE: must use get_db() (autocommit=False) so the UPDATE that marks messages as
         # read is actually committed. get_db(autocommit=True) skips COMMIT, so read status
         # never persists and unread badges/delivered indicators are permanently wrong.
         with get_db() as db:
+            # Mark messages as read unconditionally, BEFORE any cache lookup.
+            # Previously the cached-thread short-circuit below returned early on every
+            # cache hit, so opening an already-cached conversation skipped this UPDATE
+            # entirely and the unread badge never cleared. Read-marking must never be
+            # gated behind a cache check.
+            _unread_check = db.execute(
+                "SELECT COUNT(*) AS cnt FROM direct_messages "
+                "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
+                (ws_id, other_id, me)
+            ).fetchone()
+            _unread_pending = (_unread_check["cnt"] if _unread_check else 0) or 0
+            if _unread_pending:
+                cur = db.execute(
+                    "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
+                    "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
+                    (ts(), ws_id, other_id, me)
+                )
+                unread_count = cur.rowcount if cur.rowcount is not None else 0
+            else:
+                unread_count = 0
+
+            if unread_count:
+                # The cached thread snapshot (if any) still shows these messages as
+                # unread, and the badge caches are now stale — bust both so the badge
+                # and the thread view can't keep serving pre-read data.
+                _bust_dm_thread(ws_id, me, other_id)
+                _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
+                try:
+                    # Notify the sender immediately so their outgoing messages change from
+                    # delivered single-tick to read double-tick without waiting for a reload.
+                    _sse_publish(ws_id, "dm_seen", {"reader": me, "sender": other_id, "seen_at": ts(), "count": unread_count})
+                except Exception as e:
+                    log.warning("[DM] seen SSE failed: %s", e)
+
+            # Short-lived cache for full conversation loads (no ?since param), used only
+            # to serve message content quickly — never to short-circuit read-marking above.
+            # SSE events trigger client-side reloads which pass ?since= (incremental),
+            # so the cache is only hit for initial opens and page refreshes.
+            if not since:
+                cached_thread = _cache_get(dm_cache_key)
+                if cached_thread is not None:
+                    return jsonify(cached_thread)
+
             if since:
                 # Incremental: only messages newer than the client's last known ts.
                 # ts column stores ISO-8601 strings — lexicographic comparison works
@@ -8590,40 +8625,11 @@ def get_dm(other_id):
                 ).fetchall()
                 rows = list(reversed(rows))  # restore chronological order
 
-            # Check for unread before executing the UPDATE — avoids a write
-            # round-trip when the conversation is already fully read, keeping
-            # the full-thread cache warm during incremental ?since= polls.
-            _unread_check = db.execute(
-                "SELECT COUNT(*) AS cnt FROM direct_messages "
-                "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
-                (ws_id, other_id, me)
-            ).fetchone()
-            _unread_pending = (_unread_check["cnt"] if _unread_check else 0) or 0
-            if _unread_pending:
-                cur = db.execute(
-                    "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
-                    "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
-                    (ts(), ws_id, other_id, me)
-                )
-                unread_count = cur.rowcount if cur.rowcount is not None else 0
-            else:
-                unread_count = 0
-
             data = _attach_dm_reactions(db, ws_id, rows)
 
     except Exception as e:
         log.error("[DM] get_dm failed for %s → %s: %s", me, other_id, e, exc_info=True)
         return jsonify({"error": "Failed to load conversation", "detail": str(e)}), 500
-
-    # Only bust caches if we actually just marked messages as read
-    if unread_count:
-        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
-        try:
-            # Notify the sender immediately so their outgoing messages change from
-            # delivered single-tick to read double-tick without waiting for a reload.
-            _sse_publish(ws_id, "dm_seen", {"reader": me, "sender": other_id, "seen_at": ts(), "count": unread_count})
-        except Exception as e:
-            log.warning("[DM] seen SSE failed: %s", e)
 
     # Cache the full conversation so page refreshes and re-opens are instant
     if not since:
