@@ -6391,7 +6391,7 @@ def vault_update(cid):
     plain_rows = json.dumps(d.get("rows", []))
     encrypted_rows = vault_encrypt(plain_rows)
     with get_db() as db:
-        db.execute(
+        cur = db.execute(
             "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,category=?,expires_at=?,pinned=?,notes=?,updated=? "
             "WHERE id=? AND user_id=?",
             (d.get("title", ""), d.get("tags", ""), encrypted_rows,
@@ -6399,21 +6399,35 @@ def vault_update(cid):
              d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
              1 if d.get("pinned") else 0, d.get("notes", ""), now, cid, session["user_id"])
         )
-    # Return the authoritative saved record (not just {"ok": True}) so the frontend
-    # can reconcile its optimistic state with the real DB values — in particular
-    # `updated` (server timestamp) and `expires_at`, which previously only ever
-    # lived in the request payload and were never echoed back, so the UI kept
-    # showing whatever stale values it started with even after a successful save.
+        # BUG FIX: previously this endpoint always returned {"ok": True, ...} built
+        # straight from the request payload, even if the UPDATE matched zero rows
+        # (wrong/stale id, ownership mismatch, a dropped write under pool pressure).
+        # The frontend would show the edit as saved, but the next load re-fetched
+        # the untouched DB row and the expiration date / notes appeared to silently
+        # revert. Checking rowcount and re-reading the row we just wrote makes a
+        # failed save fail loudly instead of pretending to succeed.
+        matched = cur.rowcount if cur.rowcount is not None else 0
+        if not matched:
+            return jsonify({"ok": False, "error": "Vault card not found"}), 404
+        row = db.execute(
+            "SELECT id,title,tags,category,expires_at,pinned,notes,updated FROM vault_cards "
+            "WHERE id=? AND user_id=?", (cid, session["user_id"])
+        ).fetchone()
+    # Return the authoritative saved record read back from the DB (not values
+    # echoed from the request) so the frontend reconciles its optimistic state
+    # with what was actually persisted — in particular `updated` (server
+    # timestamp) and `expires_at`.
+    row = dict(row) if row else {}
     return jsonify({
         "ok": True,
         "id": cid,
-        "title": d.get("title", ""),
-        "tags": d.get("tags", ""),
-        "category": d.get("category", ""),
-        "expires_at": d.get("expires_at", ""),
-        "pinned": bool(d.get("pinned")),
-        "notes": d.get("notes", ""),
-        "updated": now,
+        "title": row.get("title", d.get("title", "")),
+        "tags": row.get("tags", d.get("tags", "")),
+        "category": row.get("category", d.get("category", "")),
+        "expires_at": row.get("expires_at", d.get("expires_at", "")),
+        "pinned": bool(row.get("pinned", d.get("pinned"))),
+        "notes": row.get("notes", d.get("notes", "")),
+        "updated": row.get("updated", now),
     })
 
 @app.route("/api/vault/<cid>", methods=["DELETE"])
@@ -8571,7 +8585,32 @@ def get_dm(other_id):
             else:
                 unread_count = 0
 
-            if unread_count:
+            # BUG FIX (badge stuck showing stale/inflated unread count, e.g. "11" with
+            # no unread conversations): opening a conversation used to only mark
+            # direct_messages.read=1. The corresponding row(s) in `notifications`
+            # (type='dm', created alongside every incoming DM — see the send-message
+            # handler) were left read=0 forever, relying entirely on a client-side
+            # best-effort loop (onDmRead in the frontend) that DELETEs notifications
+            # found in whatever page of /api/poll happened to already be loaded in
+            # local state. Any notification not in that local page (older message,
+            # missed poll, network hiccup on the DELETE call) stayed unread in the DB
+            # permanently and kept inflating the header badge total
+            # (unread notifications + dm_unread) even after every DM was read.
+            # Marking them read here — authoritatively, server-side, every time a
+            # conversation is opened — closes that gap regardless of client state,
+            # and also self-heals any notifications orphaned by this bug previously.
+            # The broader type/entity_type set mirrors the one already used by
+            # dm_route_target() to recognize this notification family.
+            notif_cur = db.execute(
+                "UPDATE notifications SET read=1 "
+                "WHERE workspace_id=? AND user_id=? AND COALESCE(sender_id,'')=? AND read=0 "
+                "AND (type IN ('dm','direct_message','message_received','new_message') "
+                "OR entity_type IN ('dm','direct_message','message','chat'))",
+                (ws_id, me, other_id)
+            )
+            notif_count = notif_cur.rowcount if notif_cur.rowcount is not None else 0
+
+            if unread_count or notif_count:
                 # The cached thread snapshot (if any) still shows these messages as
                 # unread, and the badge caches are now stale — bust both so the badge
                 # and the thread view can't keep serving pre-read data.
@@ -8583,6 +8622,11 @@ def get_dm(other_id):
                     _sse_publish(ws_id, "dm_seen", {"reader": me, "sender": other_id, "seen_at": ts(), "count": unread_count})
                 except Exception as e:
                     log.warning("[DM] seen SSE failed: %s", e)
+                if notif_count:
+                    try:
+                        _sse_publish(ws_id, "notification_updated", {"reason": "dm_read", "sender": other_id, "recipient": me})
+                    except Exception as e:
+                        log.warning("[DM] notification_updated SSE failed: %s", e)
 
             # Short-lived cache for full conversation loads (no ?since param), used only
             # to serve message content quickly — never to short-circuit read-marking above.

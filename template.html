@@ -13711,7 +13711,13 @@ function App(){
     setDmUnread(prev=>prev.filter(x=>peerOf(x)!==sidS));
     setData(prev=>{
       const notifs=Array.isArray(prev.notifs)?prev.notifs:[];
-      const isDmFrom=n=>String(n&&n.type||'').toLowerCase()==='dm'&&(String(n.sender_id||n.sender||n.from_user_id||n.user_id||'')===sidS);
+      const dmTypes=new Set(['dm','direct_message','message_received','new_message']);
+      const dmEntityTypes=new Set(['dm','direct_message','message','chat']);
+      const isDmFrom=n=>{
+        const t=String(n&&n.type||'').toLowerCase();
+        const et=String(n&&n.entity_type||'').toLowerCase();
+        return (dmTypes.has(t)||dmEntityTypes.has(et))&&(String(n.sender_id||n.sender||n.from_user_id||n.user_id||'')===sidS);
+      };
       const toDelete=notifs.filter(isDmFrom);
       toDelete.forEach(n=>{api.del('/api/notifications/'+n.id).catch(()=>{});});
       return {...prev,notifs:notifs.filter(n=>!isDmFrom(n))};
