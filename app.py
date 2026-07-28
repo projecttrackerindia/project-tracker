@@ -6399,7 +6399,22 @@ def vault_update(cid):
              d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
              1 if d.get("pinned") else 0, d.get("notes", ""), now, cid, session["user_id"])
         )
-    return jsonify({"ok": True})
+    # Return the authoritative saved record (not just {"ok": True}) so the frontend
+    # can reconcile its optimistic state with the real DB values — in particular
+    # `updated` (server timestamp) and `expires_at`, which previously only ever
+    # lived in the request payload and were never echoed back, so the UI kept
+    # showing whatever stale values it started with even after a successful save.
+    return jsonify({
+        "ok": True,
+        "id": cid,
+        "title": d.get("title", ""),
+        "tags": d.get("tags", ""),
+        "category": d.get("category", ""),
+        "expires_at": d.get("expires_at", ""),
+        "pinned": bool(d.get("pinned")),
+        "notes": d.get("notes", ""),
+        "updated": now,
+    })
 
 @app.route("/api/vault/<cid>", methods=["DELETE"])
 @login_required
@@ -6965,7 +6980,7 @@ def _fetch_app_data_from_db(ws, team_id, uid):
         ).fetchall()]
         dm_unread = [dict(r) for r in db.execute(
             "SELECT sender, COUNT(*) as cnt FROM direct_messages "
-            "WHERE workspace_id=? AND recipient=? AND read=0 GROUP BY sender",
+            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
             (ws, uid)
         ).fetchall()]
         ws_row = db.execute("SELECT * FROM workspaces WHERE id=?", (ws,)).fetchone()
@@ -10532,7 +10547,7 @@ def unified_poll():
         if not found_dm:
             rows = db.execute(
                 "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-                "WHERE workspace_id=? AND recipient=? AND read=0 GROUP BY sender",
+                "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
                 (ws, uid)
             ).fetchall()
             dm_unread = [dict(r) for r in rows]

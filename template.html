@@ -10914,6 +10914,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   const [pinned, setPinned] = useState(!!card.pinned);
   const [sheetMode, setSheetMode] = useState(false);
   const [notes, setNotes] = useState(card.notes || '');
+  const [showExpiryEdit, setShowExpiryEdit] = useState(false);
   const revealTimers = useRef({}); // cellKey -> timeout id, for 15s auto-remask
   useEffect(()=>()=>{ Object.values(revealTimers.current).forEach(clearTimeout); }, []);
   const isSimple = cols.length===2; // plain Key/Value card → shows as clean labeled fields
@@ -10930,7 +10931,12 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
     const pin=nextPinned  !== undefined ? nextPinned  : pinned;
     const nt =nextNotes   !== undefined ? nextNotes   : notes;
     setSaving(true);
-    onUpdate({...card, title:t, tags:tg, cols:c, rows:r, category:cat, expires_at:exp, pinned:pin, notes:nt});
+    // Stamp `updated` locally so the footer's relative timestamp ("Updated just
+    // now") reflects this edit immediately. The PUT below still returns the
+    // server's authoritative timestamp, which the parent reconciles once it
+    // resolves — this optimistic value just avoids a stale-looking UI in the
+    // meantime.
+    onUpdate({...card, title:t, tags:tg, cols:c, rows:r, category:cat, expires_at:exp, pinned:pin, notes:nt, updated:new Date().toISOString()});
     setTimeout(() => setSaving(false), 800);
   }
   function togglePin(){
@@ -11061,8 +11067,18 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       </div>
       <div class="vault-badge-row">
         ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.1)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.25)'}}>${t}</span>`)}
-        ${expInfo && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
+        ${expInfo && canSee && html`<button type="button" title="Click to edit expiry date" class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border,cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label} ✎</button>`}
+        ${expInfo && !canSee && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
+        ${!expInfo && canSee && html`<button type="button" title="Set an expiry date" class="vault-tag" style=${{color:'var(--tx3)',background:'rgba(255,255,255,.04)',border:'1px dashed var(--bd)',cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>+ Set expiry</button>`}
       </div>
+      ${showExpiryEdit && canSee && html`
+      <div style=${{display:'flex',alignItems:'center',gap:6,padding:'0 18px 12px'}} onClick=${e=>e.stopPropagation()}>
+        <input type="date" style=${{flex:1,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'6px 9px',fontSize:12,color:'var(--tx)',fontFamily:'inherit',outline:'none',colorScheme:'dark'}}
+          value=${expiresAt||''}
+          onChange=${e=>{setExpiresAt(e.target.value);push(undefined,undefined,undefined,undefined,undefined,e.target.value,undefined);}}/>
+        ${expiresAt && html`<button type="button" title="Remove expiry date" style=${{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:8,color:'#f87171',fontSize:11,padding:'6px 9px',cursor:'pointer',fontFamily:'inherit',flexShrink:0}} onClick=${()=>{setExpiresAt('');push(undefined,undefined,undefined,undefined,undefined,'',undefined);}}>Clear</button>`}
+        <button type="button" title="Done" style=${{background:'var(--sf3)',border:'1px solid var(--bd)',borderRadius:8,color:'var(--tx2)',fontSize:11,padding:'6px 9px',cursor:'pointer',fontFamily:'inherit',flexShrink:0}} onClick=${()=>setShowExpiryEdit(false)}>Done</button>
+      </div>`}
 
       ${canSee && html`
       <div style=${{padding:'0 18px 12px'}}>
@@ -11485,7 +11501,7 @@ function VaultView({cu}){
     }
   }
   async function apiUpdate(card){
-    await api.put('/api/vault/'+card.id, {
+    const res = await api.put('/api/vault/'+card.id, {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
       lock_hash: card.lockHash||'',
@@ -11493,6 +11509,13 @@ function VaultView({cu}){
       notes: card.notes||''
     });
     vaultClearCache();
+    // Reconcile with the server's authoritative `updated` (and expires_at) once
+    // the save confirms — the optimistic client-side timestamp set in push()
+    // above is close enough for the interim, but this replaces it with the
+    // real DB value so the relative-time display never drifts from the truth.
+    if(res && res.ok && res.updated){
+      setCards(prev=>prev.map(c=>c.id===card.id?{...c,updated:res.updated,expires_at:res.expires_at}:c));
+    }
   }
   async function apiDelete(id){
     await api.del('/api/vault/'+id);
