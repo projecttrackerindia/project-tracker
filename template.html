@@ -372,7 +372,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   font-family:'Inter',system-ui,-apple-system,sans-serif;
   /* Design tokens — single source of truth for spacing/sizing so every
      credential card renders pixel-identical regardless of its content. */
-  --vault-radius:14px;
+  --vault-radius:20px;
   --vault-pad:18px;
   --vault-gap-card:24px;
   --vault-gap-header-badges:12px;
@@ -400,11 +400,13 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   .vault-cards-grid{grid-template-columns:repeat(1,minmax(0,1fr));} /* Mobile: 1 up */
 }
 .vault-card{
-  background:var(--card-grad, var(--sf));
+  background:linear-gradient(180deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.015) 100%),var(--card-grad, var(--sf));
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
   border-radius:var(--vault-radius);
   margin-bottom:0;
   overflow:hidden;
-  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  transition:transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s cubic-bezier(.22,1,.36,1), border-color .28s cubic-bezier(.22,1,.36,1), background .28s ease;
   position:relative;
   display:flex;
   flex-direction:column;
@@ -412,14 +414,14 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   max-width:100%;
   width:100%;
   height:var(--vault-card-h);
-  box-shadow:0 8px 24px rgba(0,0,0,.35);
-  border:1px solid var(--bd);
+  box-shadow:0 8px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  cursor:default;
 }
 .vault-card:hover{
-  transform:translateY(-3px);
-  border-color:rgba(139,92,246,.45);
-  background:var(--sf3);
-  box-shadow:0 14px 32px rgba(0,0,0,.4);
+  transform:translateY(-4px);
+  border-color:rgba(139,92,246,.5);
+  box-shadow:0 20px 42px rgba(0,0,0,.45), 0 0 0 1px rgba(139,92,246,.12), 0 0 32px rgba(139,92,246,.18), inset 0 1px 0 rgba(255,255,255,.06);
 }
 .vault-card:focus-within{
   box-shadow:0 0 0 1px var(--ac-ring), 0 8px 24px rgba(0,0,0,.35);
@@ -460,6 +462,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   box-sizing:border-box;
   display:flex;
   align-items:center;
+  transition:background .28s ease;
 }
 .vault-card-header-scroll{
   display:flex;
@@ -478,7 +481,9 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   width:38px;height:38px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
   font-size:17px;flex-shrink:0;
+  transition:transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s ease;
 }
+.vault-card:hover .vault-card-icon{transform:scale(1.06);}
 .vault-card-title{
   font-size:14px;font-weight:600;color:var(--tx);
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -631,29 +636,74 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-locked-overlay{
   flex:1;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:var(--vault-gap-body-items);
-  padding:var(--vault-pad) 24px;
+  gap:10px;
+  padding:20px 22px;
   text-align:center;
-  background:var(--sf2);
+  background:radial-gradient(circle at 50% 18%,rgba(139,92,246,.07) 0%,transparent 60%),var(--sf2);
   box-sizing:border-box;
 }
+/* Security pulse — animated ring behind the shield glyph, replaces the
+   old static floating lock icon with a subtle "actively encrypted" feel. */
+.vault-security-viz{
+  position:relative;
+  width:64px;height:64px;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+  margin-bottom:2px;
+}
+.vault-security-viz .ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:1.5px solid var(--vault-accent,#8B5CF6);
+  opacity:.35;
+  animation:vaultPulseRing 2.4s cubic-bezier(.22,1,.36,1) infinite;
+}
+.vault-security-viz .ring.r2{animation-delay:.8s;}
+.vault-security-viz .core{
+  position:relative;z-index:1;
+  width:44px;height:44px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:19px;
+  background:linear-gradient(150deg,rgba(139,92,246,.22),rgba(139,92,246,.06));
+  border:1px solid rgba(139,92,246,.4);
+  box-shadow:0 0 20px rgba(139,92,246,.25), inset 0 1px 0 rgba(255,255,255,.08);
+}
+@keyframes vaultPulseRing{
+  0%{transform:scale(.72);opacity:.55;}
+  100%{transform:scale(1.55);opacity:0;}
+}
+/* Masked credential preview — shows field shape (Username/Password/Last
+   Updated) without leaking any real value while the card is locked. */
+.vault-preview-rows{
+  width:100%;
+  display:flex;flex-direction:column;gap:7px;
+  margin-top:2px;
+}
+.vault-preview-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:9px;
+  padding:6px 11px;
+  text-align:left;
+}
+.vault-preview-row .lbl{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);}
+.vault-preview-row .val{font-size:11.5px;font-family:monospace;color:#64748b;letter-spacing:2px;}
+.vault-preview-row .val.meta{font-family:inherit;letter-spacing:0;color:var(--tx3);font-size:11px;}
 .vault-unlock-btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  width:var(--vault-btn-w);height:var(--vault-btn-h);
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:34px;padding:0 18px;
   background:linear-gradient(135deg,#5a5ef7,#a855f7);
-  color:#fff;border:none;border-radius:10px;
-  font-size:13px;font-weight:600;
+  color:#fff;border:none;border-radius:100px;
+  font-size:12.5px;font-weight:600;letter-spacing:.01em;
   cursor:pointer;font-family:inherit;
   box-sizing:border-box;
-  transition:opacity .2s ease, transform .2s ease, box-shadow .2s ease;
+  transition:transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, filter .25s ease;
   box-shadow:0 4px 16px rgba(90,94,247,.3);
-  animation:vaultUnlockPulse 2.6s ease-in-out infinite;
+  margin-top:4px;
 }
-.vault-unlock-btn:hover{opacity:.92;transform:translateY(-2px);box-shadow:0 8px 24px rgba(90,94,247,.45);}
-@keyframes vaultUnlockPulse{
-  0%,100%{box-shadow:0 4px 16px rgba(90,94,247,.3);}
-  50%{box-shadow:0 4px 22px rgba(90,94,247,.5);}
-}
+.vault-unlock-btn:hover{filter:brightness(1.08);transform:translateY(-2px);box-shadow:0 10px 28px rgba(90,94,247,.5),0 0 0 1px rgba(168,85,247,.25);}
+.vault-unlock-btn .arrow{transition:transform .25s cubic-bezier(.22,1,.36,1);}
+.vault-unlock-btn:hover .arrow{transform:translateX(3px);}
 
 @media (max-width:460px){
   .vault-card-footer{padding:12px 16px;}
@@ -10701,11 +10751,12 @@ function vaultGetIcon(title, tags){
 
 // ── Category, expiry & relative-time helpers (My Vault redesign) ──────────────
 const VAULT_CATEGORIES = {
-  database: {key:'database', label:'Database', badge:'DATABASE', color:'#22d3ee'},
+  database: {key:'database', label:'Database', badge:'DATABASE', color:'#10b981'},
   api:      {key:'api',      label:'API',      badge:'API',      color:'#a78bfa'},
-  server:   {key:'server',   label:'Server',   badge:'SERVER',   color:'#f59e0b'},
-  auth:     {key:'auth',     label:'Auth',     badge:'AUTH',     color:'#4ade80'},
-  cloud:    {key:'cloud',    label:'Cloud',    badge:'CLOUD',    color:'#f472b6'},
+  server:   {key:'server',   label:'Server',   badge:'SERVER',   color:'#3b82f6'},
+  auth:     {key:'auth',     label:'Auth',     badge:'AUTH',     color:'#f472b6'},
+  cloud:    {key:'cloud',    label:'Cloud',    badge:'CLOUD',    color:'#f97316'},
+  network:  {key:'network',  label:'Network',  badge:'NETWORK',  color:'#22d3ee'},
   other:    {key:'other',    label:'Other',    badge:'OTHER',    color:'#94a3b8'},
 };
 const VAULT_CATEGORY_LIST = Object.values(VAULT_CATEGORIES);
@@ -10713,6 +10764,7 @@ function vaultAutoCategory(title, tags){
   const s = ((title||'')+' '+(tags||'')).toLowerCase();
   if(/(database|postgres|mysql|mongo|redis|\bdb\b|sql)/.test(s)) return 'database';
   if(/(api|token|webhook|endpoint|deploy)/.test(s)) return 'api';
+  if(/(vpn|network|firewall|\bdns\b|router|switch|sophos|proxy)/.test(s)) return 'network';
   if(/(server|ssh|smtp|relay|host|ftp)/.test(s)) return 'server';
   if(/(auth|sso|oauth|login|okta|client secret)/.test(s)) return 'auth';
   if(/(aws|azure|\bgcp\b|cloud|s3|storage bucket)/.test(s)) return 'cloud';
@@ -11003,7 +11055,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
           ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
           <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'2a',border:'1px solid '+catInfo.color+'66'}}>${catInfo.badge}</span>
           ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
-          ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.14)':'rgba(239,68,68,.14)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
+          ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.14)':'rgba(239,68,68,.14)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
         </div>
         <button class=${'vault-fav-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin as favorite'} aria-label=${pinned?'Unpin card':'Pin card as favorite'} aria-pressed=${pinned} onClick=${e=>{e.stopPropagation();togglePin();}}>★</button>
       </div>
@@ -11024,11 +11076,29 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
 
       <div class="vault-card-body">
       ${isLocked && !isUnlocked && html`
-        <div class="vault-locked-overlay">
-          <div style=${{width:56,height:56,borderRadius:16,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,flexShrink:0}}>🔒</div>
+        <div class="vault-locked-overlay" style=${{'--vault-accent':accentColor}}>
+          <div class="vault-security-viz">
+            <div class="ring"></div>
+            <div class="ring r2"></div>
+            <div class="core">🛡️</div>
+          </div>
           <div style=${{fontSize:14,fontWeight:600,color:'var(--tx)'}}>${title}</div>
-          <div style=${{fontSize:13,fontWeight:400,color:'var(--tx2)'}}>This card is password protected.</div>
-          <button class="vault-unlock-btn" aria-label=${'Unlock '+(title||'card')} onClick=${()=>setShowPwMo('verify')}>Unlock Card</button>
+          <div style=${{fontSize:12,fontWeight:400,color:'var(--tx2)'}}>This card is password protected.</div>
+          <div class="vault-preview-rows">
+            <div class="vault-preview-row">
+              <span class="lbl">${(rows[0]&&(rows[0][keyCol.id]||'').trim())||'Username'}</span>
+              <span class="val">••••••••••••</span>
+            </div>
+            <div class="vault-preview-row">
+              <span class="lbl">${(rows[1]&&(rows[1][keyCol.id]||'').trim())||'Password'}</span>
+              <span class="val">••••••••••••</span>
+            </div>
+            <div class="vault-preview-row">
+              <span class="lbl">Last Updated</span>
+              <span class="val meta">${vaultTimeAgo(card.updated)}</span>
+            </div>
+          </div>
+          <button class="vault-unlock-btn" aria-label=${'Unlock '+(title||'card')} onClick=${()=>setShowPwMo('verify')}>View Credentials <span class="arrow">→</span></button>
         </div>`}
 
       ${canSee && isSimple && !sheetMode && html`
@@ -13096,7 +13166,25 @@ function App(){
             }
             if(['dm','dm_created','dm_reaction','dm_updated','dm_deleted','dm_pinned','dm_seen','dm_typing','call_status'].includes(msg.type)){
               if(!__ptMsgForMe(msg)) return;
-              if(msg.type!=='dm_typing'&&msg.type!=='dm_seen')api.get('/api/dm/unread').then(d=>{if(Array.isArray(d))setDmUnread(d);}).catch(()=>{});
+              // Notification-badge rule: only an INCOMING message (someone else sent
+              // it TO me) can ever change my unread count. __ptMsgForMe() above is
+              // intentionally broad (true for my own outgoing sends too, since
+              // sender===me), because other logic below still needs to react to it
+              // — e.g. caching the message locally. But the unread-count refetch must
+              // be gated on "I am the recipient of a message from someone else", not
+              // merely "this event mentions me", or sending a DM would needlessly
+              // re-poll /api/dm/unread and risk the badge flickering/inflating.
+              const __ptIsIncomingForMe=(()=>{
+                try{
+                  const me=String(cu&&cu.id||'');
+                  const d=(msg&&msg.data)||{};
+                  const x=(d&&d.message)||d||{};
+                  const recipient=String(x.recipient||d.recipient||d.user_id||d.to||d.target_id||'');
+                  const sender=String(x.sender||d.sender||d.sender_id||d.from_user_id||'');
+                  return !!me && recipient===me && sender!==me;
+                }catch(_){return false;}
+              })();
+              if(__ptIsIncomingForMe&&msg.type!=='dm_typing'&&msg.type!=='dm_seen')api.get('/api/dm/unread').then(d=>{if(Array.isArray(d))setDmUnread(d);}).catch(()=>{});
               // Cache incoming DM messages globally so DirectMessages can pre-populate instantly
               // on mount without waiting for the loadMsgs network call to complete.
               try{
