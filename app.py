@@ -7570,6 +7570,36 @@ def _appdata_cache_get(ws, uid, key):
     """Read a single app-data field from Redis or local SWR cache.
     This lets chat/notification/presence fallbacks return without opening a
     separate DB connection immediately after /api/app-data has warmed cache.
+
+    BUG FIX (stale DM unread badge across gunicorn workers): when Redis is
+    healthy but simply has no matching key for this user (the normal case
+    right after _cache_bust() clears it because a DM was just marked read,
+    or a new DM/notification just arrived), this used to fall straight
+    through to the local in-process _CACHE dict below. Each gunicorn worker
+    keeps its own _CACHE, and _cache_bust() only clears the dict belonging
+    to the worker that handled the write (see its own "each worker has its
+    own _CACHE" comment) — so any *other* worker could still be holding a
+    pre-bust snapshot in memory and would keep serving it, unaware anything
+    changed, for up to _CACHE_STALE (300s).
+
+    This function backs /api/poll — the endpoint the DM badge polls every
+    ~15-60s and refreshes from on every DM/notification SSE event — as well
+    as /api/projects, /api/tasks, /api/tickets and /api/reminders. With
+    WEB_CONCURRENCY=2 (the default in start.sh) requests round-robin across
+    two workers, so roughly half of all polls after reading/receiving a DM
+    could return the stale, pre-change dm_unread count for up to five
+    minutes: the badge stays stuck (or shows a wrong count) even though the
+    conversation was just read, and a page refresh only "fixes" it if the
+    new request happens to land back on the worker that has fresh data.
+
+    /api/app-data already solved this exact problem for its own cache reads
+    with a "_redis_miss" sentinel (see its inline comment): a Redis lookup
+    that completes without raising and finds nothing is an *authoritative*
+    miss, not a signal to fall back to a different, possibly-stale cache
+    layer. That fix never made it into this shared helper — apply the same
+    rule here. The local dict is now only consulted when Redis itself is
+    unavailable or raised (a genuine connectivity blip), which is the one
+    case where per-worker memory is an acceptable fallback.
     """
     prefix = f"appdata:{ws}:{uid}"
     now = _time.time()
@@ -7585,8 +7615,12 @@ def _appdata_cache_get(ws, uid, key):
                 entry = _json.loads(raw)
                 if now - entry.get("ts", 0) < _CACHE_STALE and key in entry.get("val", {}):
                     return entry["val"][key], True
+            # Redis responded with no error but no fresh matching entry —
+            # authoritative miss. Do NOT fall through to the local dict,
+            # which may hold a stale pre-bust copy from another worker.
+            return None, False
         except Exception:
-            pass
+            pass  # Redis blip/timeout — fall through to local dict as backup
     for ckey, entry in list(_CACHE.items()):
         if ckey.startswith(prefix) and not entry.get("refreshing", False):
             age = now - entry["ts"]
