@@ -635,21 +635,23 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
    card's height, per the fixed header/badge-row/flexible-body structure. */
 .vault-locked-overlay{
   flex:1;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;
   gap:10px;
-  padding:20px 22px;
-  text-align:center;
-  background:radial-gradient(circle at 50% 18%,rgba(139,92,246,.07) 0%,transparent 60%),var(--sf2);
+  padding:14px 18px 18px;
+  text-align:left;
+  background:radial-gradient(circle at 8% 0%,rgba(139,92,246,.06) 0%,transparent 55%),var(--sf2);
   box-sizing:border-box;
 }
-/* Security pulse — animated ring behind the shield glyph, replaces the
-   old static floating lock icon with a subtle "actively encrypted" feel. */
+.vault-locked-head{
+  display:flex;align-items:center;gap:9px;width:100%;
+}
+/* Small inline security glyph — replaces the old 64px centered animated
+   ring hero. Keeps a subtle "encrypted" cue without dominating the card. */
 .vault-security-viz{
   position:relative;
-  width:64px;height:64px;
+  width:30px;height:30px;
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
-  margin-bottom:2px;
 }
 .vault-security-viz .ring{
   position:absolute;inset:0;border-radius:50%;
@@ -660,12 +662,12 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-security-viz .ring.r2{animation-delay:.8s;}
 .vault-security-viz .core{
   position:relative;z-index:1;
-  width:44px;height:44px;border-radius:14px;
+  width:26px;height:26px;border-radius:9px;
   display:flex;align-items:center;justify-content:center;
-  font-size:19px;
+  font-size:12px;
   background:linear-gradient(150deg,rgba(139,92,246,.22),rgba(139,92,246,.06));
   border:1px solid rgba(139,92,246,.4);
-  box-shadow:0 0 20px rgba(139,92,246,.25), inset 0 1px 0 rgba(255,255,255,.08);
+  box-shadow:0 0 12px rgba(139,92,246,.22), inset 0 1px 0 rgba(255,255,255,.08);
 }
 @keyframes vaultPulseRing{
   0%{transform:scale(.72);opacity:.55;}
@@ -676,32 +678,34 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-preview-rows{
   width:100%;
   display:flex;flex-direction:column;gap:7px;
-  margin-top:2px;
+  margin-top:0;
 }
 .vault-preview-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:rgba(255,255,255,.03);
   border:1px solid rgba(255,255,255,.06);
   border-radius:9px;
-  padding:6px 11px;
+  padding:7px 11px;
   text-align:left;
 }
 .vault-preview-row .lbl{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);}
 .vault-preview-row .val{font-size:11.5px;font-family:monospace;color:#64748b;letter-spacing:2px;}
 .vault-preview-row .val.meta{font-family:inherit;letter-spacing:0;color:var(--tx3);font-size:11px;}
+/* Unlock is now a compact pill matching the footer action buttons
+   (Pin/Edit/Delete) instead of a large standalone gradient CTA, so the
+   locked card reads as the same dense component, just gated. */
 .vault-unlock-btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  height:34px;padding:0 18px;
-  background:linear-gradient(135deg,#5a5ef7,#a855f7);
-  color:#fff;border:none;border-radius:100px;
-  font-size:12.5px;font-weight:600;letter-spacing:.01em;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  height:var(--vault-btn-h);padding:0 14px;
+  background:rgba(90,94,247,.10);
+  color:#a5a8ff;border:1px solid rgba(90,94,247,.35);border-radius:100px;
+  font-size:11px;font-weight:600;letter-spacing:.01em;
   cursor:pointer;font-family:inherit;
   box-sizing:border-box;
-  transition:transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, filter .25s ease;
-  box-shadow:0 4px 16px rgba(90,94,247,.3);
-  margin-top:4px;
+  transition:all .2s ease;
+  margin-top:2px;
 }
-.vault-unlock-btn:hover{filter:brightness(1.08);transform:translateY(-2px);box-shadow:0 10px 28px rgba(90,94,247,.5),0 0 0 1px rgba(168,85,247,.25);}
+.vault-unlock-btn:hover{background:rgba(90,94,247,.18);border-color:rgba(90,94,247,.55);color:#c2c4ff;transform:translateY(-2px);}
 .vault-unlock-btn .arrow{transition:transform .25s cubic-bezier(.22,1,.36,1);}
 .vault-unlock-btn:hover .arrow{transform:translateX(3px);}
 
@@ -11093,13 +11097,16 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
       <div class="vault-card-body">
       ${isLocked && !isUnlocked && html`
         <div class="vault-locked-overlay" style=${{'--vault-accent':accentColor}}>
-          <div class="vault-security-viz">
-            <div class="ring"></div>
-            <div class="ring r2"></div>
-            <div class="core">🛡️</div>
+          <div class="vault-locked-head">
+            <div class="vault-security-viz">
+              <div class="ring"></div>
+              <div class="ring r2"></div>
+              <div class="core">🛡️</div>
+            </div>
+            <div style=${{minWidth:0}}>
+              <div style=${{fontSize:12.5,fontWeight:400,color:'var(--tx2)'}}>Password protected — click Unlock to view</div>
+            </div>
           </div>
-          <div style=${{fontSize:14,fontWeight:600,color:'var(--tx)'}}>${title}</div>
-          <div style=${{fontSize:12,fontWeight:400,color:'var(--tx2)'}}>This card is password protected.</div>
           <div class="vault-preview-rows">
             <div class="vault-preview-row">
               <span class="lbl">${(rows[0]&&(rows[0][keyCol.id]||'').trim())||'Username'}</span>
@@ -11114,7 +11121,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
               <span class="val meta">${vaultTimeAgo(card.updated)}</span>
             </div>
           </div>
-          <button class="vault-unlock-btn" aria-label=${'Unlock '+(title||'card')} onClick=${()=>setShowPwMo('verify')}>View Credentials <span class="arrow">→</span></button>
+          <button class="vault-unlock-btn" aria-label=${'Unlock '+(title||'card')} onClick=${()=>setShowPwMo('verify')}>🔓 Unlock <span class="arrow">→</span></button>
         </div>`}
 
       ${canSee && isSimple && !sheetMode && html`
@@ -12872,6 +12879,21 @@ function App(){
     try{localStorage.setItem('pf_team_ctx',id||'');}catch{}
   },[cu]);
   const [dmUnread,setDmUnread]=useState([]);
+  // BUG FIX (DM badge count "coming back" minutes after being cleared): pollOnce()
+  // below is created inside a useEffect keyed on [cu,addToast] — it is NOT
+  // re-created when dmUnread changes. Every subsequent tick (SSE-unhealthy
+  // fallback poll, ~every 30s, or on stream reconnect) called
+  // `updateBadge(unread + dmUnread.reduce(...))` using the dmUnread ARRAY VALUE
+  // captured in that one closure at mount time — e.g. still 11 from before the
+  // user ever opened/read anything. Reading was clearing the real `dmUnread`
+  // state (and the on-screen sidebar badge, which renders from state directly
+  // and was never wrong), but a few polls later this stale closure repainted
+  // the OS/tab badge with the old total, making it look like unread DMs had
+  // reappeared. A ref always holds the current value regardless of which
+  // closure captured it, with no need to add dmUnread to the effect's deps
+  // (which would tear down/resubscribe the poll manager on every change).
+  const dmUnreadRef=useRef([]);
+  useEffect(()=>{ dmUnreadRef.current=dmUnread; },[dmUnread]);
   useEffect(()=>{
     // Notification fallback only: older push payloads sometimes open plain /dm,
     // or the user is already sitting on /dm with another thread selected.
@@ -13685,7 +13707,7 @@ function App(){
         prevNotifIdsRef.current=new Set(d.map(n=>n.id));
         setData(prev=>({...prev,notifs:d}));
         const unread=d.filter(n=>!n.read).length;
-        const dmTotal=dmUnread.reduce((a,x)=>a+(x.cnt||0),0);
+        const dmTotal=dmUnreadRef.current.reduce((a,x)=>a+(x.cnt||0),0);
         updateBadge(unread+dmTotal);
       });
     };
@@ -13695,7 +13717,7 @@ function App(){
         prevNotifIdsRef.current=new Set(d.map(n=>n.id));
         setData(prev=>({...prev,notifs:d}));
         const unread=d.filter(n=>!n.read).length;
-        updateBadge(unread+dmUnread.reduce((a,x)=>a+(x.cnt||0),0));
+        updateBadge(unread+dmUnreadRef.current.reduce((a,x)=>a+(x.cnt||0),0));
       }
     });
 
