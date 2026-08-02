@@ -12995,9 +12995,18 @@ def root_app():
     if request.method == "HEAD":
         return Response(status=200, headers={"Cache-Control": "no-store"})
     return _serve_html()
+from flask import Response
+import os
+
 @app.route("/google60b5dffceec0e8f7.html")
 def google_site_verification():
-    return send_from_directory(_BASE, "google60b5dffceec0e8f7.html")
+    file_path = os.path.join(os.path.dirname(__file__), "google60b5dffceec0e8f7.html")
+
+    if not os.path.exists(file_path):
+        return Response(f"File not found: {file_path}", status=404)
+
+    with open(file_path, "r") as f:
+        return Response(f.read(), mimetype="text/html")
 @app.route("/<path:path>")
 def catch_all(path):
     """Catch-all route for SPA client-side routing."""
