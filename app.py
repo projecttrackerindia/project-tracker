@@ -12995,7 +12995,9 @@ def root_app():
     if request.method == "HEAD":
         return Response(status=200, headers={"Cache-Control": "no-store"})
     return _serve_html()
-
+@app.route("/google60b5dffceec0e8f7.html")
+def google_site_verification():
+    return send_from_directory(BASE_DIR, "google60b5dffceec0e8f7.html")
 @app.route("/<path:path>")
 def catch_all(path):
     """Catch-all route for SPA client-side routing."""
