@@ -12997,7 +12997,7 @@ def root_app():
     return _serve_html()
 @app.route("/google60b5dffceec0e8f7.html")
 def google_site_verification():
-    return send_from_directory(BASE_DIR, "google60b5dffceec0e8f7.html")
+    return send_from_directory(_BASE, "google60b5dffceec0e8f7.html")
 @app.route("/<path:path>")
 def catch_all(path):
     """Catch-all route for SPA client-side routing."""
