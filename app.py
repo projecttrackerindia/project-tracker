@@ -9449,6 +9449,58 @@ def _get_dm_message_with_reactions(db, ws_id, mid):
 
 
 
+@app.route("/api/dm/debug-unread/<other_id>")
+@login_required
+def dm_debug_unread(other_id):
+    """TEMPORARY diagnostic endpoint — read-only, no writes, no cache.
+
+    Added to track down a DM badge that stays stuck at a nonzero count no
+    matter how many times the conversation is opened. Dumps the raw rows
+    direct_messages so we can see exactly why get_dm()'s mark-as-read
+    UPDATE (WHERE workspace_id=? AND sender=? AND recipient=? AND read=0)
+    isn't matching them — e.g. an id/workspace mismatch that wouldn't be
+    visible from the app UI. Safe to remove once the real bug is found:
+    it only returns rows already scoped to the caller's own session
+    (their own user_id, their own workspace_id), no other user's data.
+    """
+    me = session["user_id"]
+    ws_id = wid()
+    with get_db() as db:
+        # Every raw row between me and other_id, unfiltered by read status,
+        # so we can see the actual stored id/workspace values and read flags.
+        rows = db.execute(
+            "SELECT id, workspace_id, sender, recipient, read, "
+            "COALESCE(deleted,0) AS deleted, ts, "
+            "LEFT(COALESCE(content,''), 40) AS content_preview "
+            "FROM direct_messages "
+            "WHERE (sender=? AND recipient=?) OR (sender=? AND recipient=?) "
+            "ORDER BY ts DESC LIMIT 30",
+            (other_id, me, me, other_id)
+        ).fetchall()
+        rows = [dict(r) for r in rows]
+        # Exactly the query get_dm() uses to decide whether there's anything
+        # to mark read, so we can see whether IT thinks there are 0 or 11.
+        unread_check = db.execute(
+            "SELECT COUNT(*) AS cnt FROM direct_messages "
+            "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
+            (ws_id, other_id, me)
+        ).fetchone()
+        # Exactly the query dm_unread()/poll uses.
+        poll_count = db.execute(
+            "SELECT COUNT(*) AS cnt FROM direct_messages "
+            "WHERE workspace_id=? AND recipient=? AND sender=? AND read=0 AND COALESCE(deleted,0)=0",
+            (ws_id, me, other_id)
+        ).fetchone()
+    return jsonify({
+        "my_user_id": me,
+        "my_workspace_id": ws_id,
+        "other_id": other_id,
+        "get_dm_unread_check_count": dict(unread_check)["cnt"] if unread_check else None,
+        "poll_dm_unread_count": dict(poll_count)["cnt"] if poll_count else None,
+        "rows": rows,
+    })
+
+
 @app.route("/api/dm/route-target")
 @login_required
 def dm_route_target():
