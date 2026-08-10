@@ -7130,7 +7130,43 @@ def get_app_data():
     This means after the first load, every subsequent poll returns in <5ms.
     Multi-worker note: bust=1 forces a fresh DB read on the receiving worker
     and re-warms that worker's cache, solving cross-worker stale data issues.
+
+    BUG FIX (DM sidebar badge resurrects after reading messages, especially
+    noticeable right after any action that calls reload()/load() — e.g.
+    right after assigning a project's team): every one of this endpoint's
+    ~10 return points below can serve dm_unread straight from the appdata
+    cache, which can legitimately be up to five minutes old (_CACHE_STALE).
+    /api/poll was already fixed to never trust a cached dm_unread — this
+    endpoint has the exact same field, cached the exact same way, and the
+    frontend's setDmUnread(d.dm_unread) after every /api/app-data response
+    (see load() in main.js) means a stale cached copy here unconditionally
+    overwrites whatever correct value the client already had. Rather than
+    patch all 10 return sites individually (easy to miss one on the next
+    edit), _etag_response is shadowed for the rest of this function so
+    every exit path gets a live dm_unread substituted in before the
+    response leaves — same live query dm_unread()/poll already use, cheap
+    and indexed, so this doesn't reintroduce the cost this endpoint's
+    caching exists to avoid; only the one field that was actually reported
+    stuck bypasses the cache.
     """
+    _cached_etag_response = globals()['_etag_response']
+    def _etag_response(payload):
+        try:
+            if isinstance(payload, dict) and 'dm_unread' in payload and not payload.get('partial'):
+                _ws_for_dm = wid()
+                _uid_for_dm = session.get('user_id')
+                if _ws_for_dm and _uid_for_dm:
+                    with get_db() as _dmdb:
+                        _dm_rows = _dmdb.execute(
+                            "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
+                            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
+                            (_ws_for_dm, _uid_for_dm)
+                        ).fetchall()
+                    payload = dict(payload)
+                    payload['dm_unread'] = [dict(r) for r in _dm_rows]
+        except Exception:
+            pass  # never let this diagnostic-adjacent fix break a real response
+        return _cached_etag_response(payload)
     requested_ws = (request.args.get("workspace_id") or "").strip()
     ws      = wid()
     uid     = session["user_id"]
@@ -7410,8 +7446,28 @@ def api_bootstrap():
     """
     wsid = wid(); uid = session.get("user_id")
     cache_key = f"bootstrap:{wsid}:{uid}:v2"
+    # BUG FIX: same DM-badge-resurrects issue as /api/app-data and /api/poll —
+    # dm_unread here is sourced from bootstrap's own 30s cache AND from the
+    # appdata cache underneath it (up to 5 min stale), and the frontend calls
+    # setDmUnread(r.dm_unread) on every bootstrap response too. Always replace
+    # it with a live, cheap, indexed count before either return below.
+    def _fresh_dm_unread_for_bootstrap():
+        try:
+            with get_db() as _dmdb:
+                _rows = _dmdb.execute(
+                    "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
+                    "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
+                    (wsid, uid)
+                ).fetchall()
+            return [dict(r) for r in _rows]
+        except Exception:
+            return None
     cached = _cache_get(cache_key)
     if cached:
+        _fresh = _fresh_dm_unread_for_bootstrap()
+        if _fresh is not None:
+            cached = dict(cached)
+            cached["dm_unread"] = _fresh
         return _etag_response(cached)
     out = {"ok": True, "me": {}, "workspace": {"id": wsid}, "counts": {}, "entitlements": {},
            "users": [], "dm_unread": []}
@@ -7490,7 +7546,8 @@ def api_bootstrap():
             pass
 
     out["users"] = _appdata_users
-    out["dm_unread"] = _appdata_dm_unread
+    _fresh = _fresh_dm_unread_for_bootstrap()
+    out["dm_unread"] = _fresh if _fresh is not None else _appdata_dm_unread
 
     # Cache bootstrap for 30s so rapid re-renders are free.
     # Bust key is v2 (changed from v1) so stale entries with the heavy DB queries don't get served.
