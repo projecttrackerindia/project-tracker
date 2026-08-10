@@ -8212,6 +8212,22 @@ function ReminderModal({task,onClose,onSaved}){
 /* ─── Notification Utilities ──────────────────────────────────────────────── */
 const NOTIF_ICON="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ccircle cx='32' cy='32' r='9' fill='white'/%3E%3Ccircle cx='32' cy='11' r='6' fill='white' opacity='.95'/%3E%3Ccircle cx='51' cy='43' r='6' fill='white' opacity='.95'/%3E%3Ccircle cx='13' cy='43' r='6' fill='white' opacity='.95'/%3E%3Cline x1='32' y1='17' x2='32' y2='23' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3Cline x1='46' y1='40' x2='40' y2='36' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3Cline x1='18' y1='40' x2='24' y2='36' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E";
 
+// BUG FIX (app/tab badge count roughly 2x the real unread total): every incoming
+// DM writes BOTH a `direct_messages` row (counted in dm_unread/dmTotal) AND a
+// `notifications` row with type 'dm' (counted in the plain notifs.filter(!read)
+// count). Summing both counted the same unread DM twice. This mirrors the type/
+// entity_type set the server already uses (see get_dm() in app.py) to recognize
+// the DM notification family, and strips those out of the "other notifications"
+// count before adding dmTotal back in exactly once.
+const DM_NOTIF_TYPES=new Set(['dm','direct_message','message_received','new_message']);
+const DM_NOTIF_ENTITY_TYPES=new Set(['dm','direct_message','message','chat']);
+const isDmNotif=n=>{
+  const t=String((n&&n.type)||'').toLowerCase();
+  const et=String((n&&n.entity_type)||'').toLowerCase();
+  return DM_NOTIF_TYPES.has(t)||DM_NOTIF_ENTITY_TYPES.has(et);
+};
+const countNonDmUnread=notifs=>safe(notifs).filter(n=>!n.read&&!isDmNotif(n)).length;
+
 function updateBadge(count){
   try{
     if(navigator.setAppBadge){
@@ -11907,7 +11923,7 @@ function App(){
         if(prevNotifIdsRef.current===null){
           prevNotifIdsRef.current=new Set(notifs.map(n=>n.id));
           setData(prev=>({...prev,notifs}));
-          const unread=notifs.filter(n=>!n.read).length;
+          const unread=countNonDmUnread(notifs);
           const dmTotal=(result.dm_unread||[]).reduce((a,x)=>a+(x.cnt||0),0);
           updateBadge(unread+dmTotal);
           return;
@@ -11926,7 +11942,7 @@ function App(){
         });
         prevNotifIdsRef.current=new Set(notifs.map(n=>n.id));
         setData(prev=>({...prev,notifs}));
-        const unread=notifs.filter(n=>!n.read).length;
+        const unread=countNonDmUnread(notifs);
         const dmTotal=(Array.isArray(dms)?dms:dmUnread).reduce((a,x)=>a+(x.cnt||0),0);
         updateBadge(unread+dmTotal);
       });
@@ -12023,7 +12039,7 @@ function App(){
   },[cu,load]);
 
   useEffect(()=>{
-    const unread=safe(data.notifs).filter(n=>!n.read).length;
+    const unread=countNonDmUnread(data.notifs);
     const dmTotal=dmUnread.reduce((a,x)=>a+(x.cnt||0),0);
     updateBadge(unread+dmTotal);
   },[data.notifs,dmUnread]);
