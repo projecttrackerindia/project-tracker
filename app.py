@@ -7805,9 +7805,16 @@ def del_project(pid):
     _cache_delete(f"projects_all:{workspace_id}")
     _cache_delete(f"projects_last_msgs:{workspace_id}")
     return jsonify({"ok":True})
+# BUG FIX: this route was missing its @app.route decorator entirely, so it
+# was never registered with Flask. POST /api/projects/bulk-assign-team fell
+# through to the wildcard /api/projects/<pid> DELETE-only route above (path
+# matches with pid="bulk-assign-team"), which only accepts DELETE — hence
+# the 405 Method Not Allowed on every attempt to assign a team.
+@app.route("/api/projects/bulk-assign-team", methods=["POST"])
 @login_required
 def bulk_assign_team():
     """Assign a team_id to multiple projects at once."""
+    workspace_id = wid()
     d=request.json or {}
     team_id=d.get("team_id","")
     project_ids=d.get("project_ids",[])
@@ -7818,8 +7825,16 @@ def bulk_assign_team():
         if not cu or cu["role"] not in ("Admin","Manager"):
             return jsonify({"error":"Only Admin or Manager can assign teams to projects."}),403
         for pid in project_ids:
-            db.execute("UPDATE projects SET team_id=? WHERE id=? AND workspace_id=?",(team_id,pid,wid()))
-        return jsonify({"ok":True,"updated":len(project_ids)})
+            db.execute("UPDATE projects SET team_id=? WHERE id=? AND workspace_id=?",(team_id,pid,workspace_id))
+    # Same cache-bust pattern as del_project() right above: bust AFTER the
+    # with-block exits (i.e. after COMMIT), synchronous (not the async
+    # variant) so every worker is guaranteed clear before this request
+    # returns — otherwise the very next /api/app-data poll could land on a
+    # worker that hasn't been busted yet and show the old team assignment.
+    _cache_bust_ws(workspace_id)
+    _cache_delete(f"projects_all:{workspace_id}")
+    _cache_delete(f"projects_last_msgs:{workspace_id}")
+    return jsonify({"ok":True,"updated":len(project_ids)})
 
 # ── Tasks ─────────────────────────────────────────────────────────────────────
 @app.route("/api/tasks")
