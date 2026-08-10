@@ -256,11 +256,46 @@ class _DB:
     """Context-manager wrapper matching 'with get_db() as db:' pattern."""
     def __init__(self, conn):
         self._conn = conn
+        self._writes_committed_this_txn = 0  # see BUG FIX note in execute() below
     def execute(self, sql, params=()):
+        is_write = sql.lstrip()[:6].upper() in ("INSERT", "UPDATE", "DELETE")
         try:
-            return _Cursor(self._conn).execute(sql, params)
+            result = _Cursor(self._conn).execute(sql, params)
+            if is_write:
+                self._writes_committed_this_txn += 1
+            return result
         except Exception as e:
             if not _is_transient_pg_error(e):
+                raise
+            # BUG FIX (DM/notification read=1 UPDATEs silently vanish, no error
+            # ever shown to the user): this retry used to ALWAYS discard the
+            # current connection and silently swap to a brand-new one with a
+            # fresh BEGIN, then only re-run the one statement that failed.
+            # That's safe when nothing has been WRITTEN yet this transaction
+            # (nothing to lose — a prior SELECT's rows are already returned to
+            # the caller either way). But if an INSERT/UPDATE/DELETE had
+            # already run successfully on the old connection this request —
+            # e.g. get_dm()'s "UPDATE direct_messages SET read=1 ..." — that
+            # write was NEVER committed (mid-transaction) and the old
+            # connection is discarded, so swapping connections silently threw
+            # it away. The request still finished and returned 200, because
+            # the retried statement (e.g. the later SELECT of messages)
+            # succeeded on the new connection — so nothing ever looked wrong,
+            # but the read=1 never persisted. This is exactly why some DM
+            # threads had a mix of read=1 and permanently-stuck read=0 rows
+            # with no errors in the logs. Once a write has already happened
+            # this transaction, it's no longer safe to swap-and-silently-
+            # continue: re-raise instead so the caller's own try/except fails
+            # the whole request honestly (500) and the client can retry the
+            # full operation, rather than reporting success while quietly
+            # losing part of the transaction.
+            if self._writes_committed_this_txn > 0:
+                log.error(
+                    "[_DB.execute] transient pg/PgBouncer desync after %d write(s) already ran "
+                    "this transaction — refusing to silently swap connections (would discard "
+                    "those writes). Failing the request instead: %s",
+                    self._writes_committed_this_txn, e
+                )
                 raise
             log.warning("[_DB.execute] transient pg/PgBouncer desync, retrying once on a fresh connection: %s", e)
             _discard_pool_conn(self._conn)
@@ -270,7 +305,10 @@ class _DB:
                     self._conn.run("BEGIN")
                 except Exception:
                     pass  # best-effort; COMMIT/ROLLBACK in __exit__ no-ops harmlessly if this failed
-            return _Cursor(self._conn).execute(sql, params)
+            result = _Cursor(self._conn).execute(sql, params)
+            if is_write:
+                self._writes_committed_this_txn += 1
+            return result
     def executescript(self, sql):
         """Run semicolon-separated DDL statements (used by init_db)."""
         stmts = [s.strip() for s in sql.split(";") if s.strip()]
@@ -9571,6 +9609,46 @@ def dm_debug_unread(other_id):
         "poll_dm_unread_count": dict(poll_count)["cnt"] if poll_count else None,
         "rows": rows,
     })
+
+
+@app.route("/api/dm/debug-force-mark-read/<other_id>", methods=["POST"])
+@login_required
+def dm_debug_force_mark_read(other_id):
+    """TEMPORARY one-time repair endpoint — same scope/safety as
+    dm_debug_unread above (own session's own conversation only).
+
+    Root cause of the stuck-unread bug: _DB.execute()'s transient-PG-error
+    retry used to silently discard whatever writes had already run earlier
+    in the same transaction whenever a later statement hit a PgBouncer
+    desync (see the BUG FIX comment on _DB.execute()). That's fixed now, so
+    new read-marking attempts will persist correctly (or fail loudly and
+    retry, instead of silently vanishing) — but rows that already got
+    caught by the old bug are stuck read=0 forever, because nothing ever
+    prompts a re-check once the client-side badge already looks wrong.
+    This does the same UPDATE get_dm() does, once, directly, to clear an
+    existing backlog without waiting on chance timing.
+    """
+    me = session["user_id"]
+    ws_id = wid()
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
+            "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
+            (ts(), ws_id, other_id, me)
+        )
+        marked = cur.rowcount if cur.rowcount is not None else 0
+        notif_cur = db.execute(
+            "UPDATE notifications SET read=1 "
+            "WHERE workspace_id=? AND user_id=? AND COALESCE(sender_id,'')=? AND read=0 "
+            "AND (type IN ('dm','direct_message','message_received','new_message') "
+            "OR entity_type IN ('dm','direct_message','message','chat'))",
+            (ws_id, me, other_id)
+        )
+        notifs_marked = notif_cur.rowcount if notif_cur.rowcount is not None else 0
+    if marked or notifs_marked:
+        _bust_dm_thread(ws_id, me, other_id)
+        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
+    return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
 
 
 @app.route("/api/dm/route-target")
