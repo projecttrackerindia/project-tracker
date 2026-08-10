@@ -528,6 +528,32 @@ def _ultra_early_realtime_499_guard():
         except Exception:
             cached = None
         if isinstance(cached, dict):
+            # BUG FIX (DM sidebar badge clears to 0, then resurrects minutes
+            # later): this fast path used to return the cached dm_unread
+            # verbatim. poll_stale can be repopulated with a stale (pre-read)
+            # dm_unread snapshot by a request that started its DB read just
+            # before get_dm() committed the read=1 UPDATE but wrote its
+            # result to cache just after get_dm()'s cache-bust ran — that
+            # stale write then sat here and got served as-is on every poll
+            # for up to 5 minutes (_CACHE_STALE), which is exactly the
+            # "goes to 0, then jumps back up" symptom. dm_unread is a tiny,
+            # indexed, single-table query (see idx_dm_unread_covering) — same
+            # reasoning /api/dm/unread already uses to never cache it — so
+            # re-check it live on every poll instead of trusting the cached
+            # copy. Notifications stay on the cheap cached path; only the
+            # field that was actually reported stuck gets the live read.
+            try:
+                if ws and uid:
+                    with get_db() as db:
+                        rows = db.execute(
+                            "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
+                            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
+                            (ws, uid)
+                        ).fetchall()
+                    cached = dict(cached)
+                    cached["dm_unread"] = [dict(r) for r in rows]
+            except Exception:
+                pass  # fall back to serving the cached snapshot below rather than failing the poll
             cached["fast_mode"] = True
             return jsonify(cached)
         # BUG FIX: no warm cache yet (first poll for this session, or the
@@ -10607,28 +10633,36 @@ def unified_poll():
     every 20s) with one call every 20s — halves the per-user DB connection
     usage for the most frequent polling operations.
 
-    Cache strategy: serves from the appdata cache (populated by /api/app-data)
-    when fresh. Falls back to a single DB connection for both queries when
-    the cache is cold, keeping the benefit of one connection vs two.
+    Cache strategy: notifications serve from the appdata cache (populated by
+    /api/app-data) when fresh, falling back to DB on a cache miss.
+
+    dm_unread is ALWAYS read fresh from the DB — never from the appdata
+    cache. This is intentional, not an oversight.
+
+    BUG FIX (DM sidebar badge clears to 0, then resurrects to the old count
+    a poll or two later): the appdata cache backing this endpoint can be
+    repopulated with a stale dm_unread snapshot by a request that started
+    its DB read *before* get_dm() committed the read=1 UPDATE but didn't
+    write its result to cache until *after* get_dm()'s _cache_bust() ran.
+    That stale write then wins and sits in cache for up to five minutes
+    (_CACHE_STALE), so the badge appears to "come back" on the very next
+    poll that happens to hit the now-repopulated-but-wrong cache entry.
+    /api/dm/unread already avoids this by always hitting the DB directly
+    (see its own docstring) — do the same here so /api/poll can't be the
+    vector for the same resurrection, and a wrong read self-corrects on
+    the next ~poll cycle instead of sticking for the full cache TTL.
     """
     ws, uid = wid(), session["user_id"]
 
-    # Try appdata cache for both — zero DB connections needed when warm
-    dm_unread, found_dm     = _appdata_cache_get(ws, uid, "dm_unread")
-    notifs,    found_notifs = _appdata_cache_get(ws, uid, "notifications")
-
-    if found_dm and found_notifs:
-        return jsonify({"dm_unread": dm_unread, "notifications": notifs})
-
-    # One DB connection for whichever parts are cache-cold
     with get_db() as db:
-        if not found_dm:
-            rows = db.execute(
-                "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-                "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
-                (ws, uid)
-            ).fetchall()
-            dm_unread = [dict(r) for r in rows]
+        rows = db.execute(
+            "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
+            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
+            (ws, uid)
+        ).fetchall()
+        dm_unread = [dict(r) for r in rows]
+
+        notifs, found_notifs = _appdata_cache_get(ws, uid, "notifications")
         if not found_notifs:
             rows = db.execute(
                 "SELECT * FROM notifications WHERE workspace_id=? AND user_id=? "
