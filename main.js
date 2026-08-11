@@ -276,6 +276,20 @@ const _apiRequest = async (u, opts = {}) => {
   const timeoutMs = opts.timeoutMs || (method === 'GET' ? 10000 : 15000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  // BUG FIX: api._abort() (called on logout, see logout() in the App
+  // component) aborts the shared _apiAbortCtrl — but until now no fetch()
+  // call was ever wired to that controller's signal, only to this
+  // function-local timeout-only one. So logout's "cancel every in-flight
+  // request" comment was never actually true: a poll/app-data/bootstrap
+  // request that was in flight when the user logged out would keep
+  // running, and if it happened to resolve (even with a 401, or with a
+  // stale pre-logout snapshot that raced the session teardown) after the
+  // next login's own fresh fetches had already populated state, its
+  // .then()/.catch() handler could silently overwrite the new session's
+  // correct data. Chain this request's own controller to the shared one so
+  // api._abort() actually cancels it.
+  if (_apiAbortCtrl.signal.aborted) ctrl.abort();
+  else _apiAbortCtrl.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
   try {
     const headers = { ...(opts.headers || {}) };
     if (method !== 'GET' && method !== 'HEAD') {
@@ -11974,6 +11988,20 @@ function App(){
     // 2. Clear state immediately so UI shows nothing (prevents flash of dashboard)
     window._pfCurrentUser=null;
     setCu(null);setData({users:[],projects:[],tasks:[],notifs:[]});setDmUnread([]);
+    // BUG FIX: the "instant cache" (ptInstantCacheGet/Set, see main.js top)
+    // writes app-data/bootstrap/tickets/etc. snapshots to localStorage AND
+    // sessionStorage purely keyed by URL — not by user or workspace — so it
+    // survives a logout entirely. The next login (same browser) would paint
+    // that old snapshot as its *initial* state (see initialAppCache/cachedApp
+    // in load() below) before the network response replaces it, and if that
+    // network response is ever skipped or delayed, the stale snapshot is
+    // all the user ever sees — with no error, just data that looks wrong
+    // (e.g. a workspace member missing because they joined after the
+    // snapshot was taken). Clear it on the way out so every login always
+    // starts from a real network fetch.
+    ['/api/app-data','/api/bootstrap','/api/workspace-os/bootstrap','/api/tickets','/api/timelogs',
+     '/api/timesheet/weeks/current','/api/workspace/roles','/api/workspace/plan-usage',
+     '/api/dm/summary','/api/activity/summary'].forEach(k=>{try{ptInstantCacheDel(k);}catch(_){}});
     // 3. Unsubscribe from push notifications (best-effort)
     if(window._pfPushUnsubscribe) window._pfPushUnsubscribe().catch(()=>{});
     // 4. AWAIT logout endpoint — critical: do NOT fire-and-forget.
