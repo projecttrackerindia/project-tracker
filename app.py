@@ -9611,7 +9611,7 @@ def dm_debug_unread(other_id):
     })
 
 
-@app.route("/api/dm/debug-force-mark-read/<other_id>", methods=["POST"])
+@app.route("/api/dm/debug-force-mark-read/<other_id>", methods=["GET", "POST"])
 @login_required
 def dm_debug_force_mark_read(other_id):
     """TEMPORARY one-time repair endpoint — same scope/safety as
