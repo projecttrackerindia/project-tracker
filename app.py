@@ -1280,11 +1280,33 @@ def get_db(autocommit=False):
     the last). An explicit BEGIN here keeps every ReadyForQuery in this held
     connection reporting "in transaction", which PgBouncer honors as backend
     affinity for as long as the connection is checked out.
+
+    BUG FIX (unrelated request fails immediately with Postgres 25P02 "current
+    transaction is aborted, commands ignored until end of transaction
+    block", on the very first statement of a brand new, otherwise-correct
+    request like create_ticket()): a connection can be returned to the pool
+    while Postgres still considers it inside an ABORTED transaction — e.g. a
+    caller that runs raw SQL via _raw_pg() with this connection's leftover
+    autocommit=False from a previous get_db() borrow, hits an error, and the
+    transaction is never explicitly rolled back before the connection goes
+    back into _PG_POOL. The next borrower's `conn.run("BEGIN")` does NOT
+    reveal this: issuing BEGIN while already inside an aborted transaction is
+    just a Postgres WARNING, not an error pg8000 raises — so the dead-
+    connection check above silently passes, and the very first real query
+    this new request runs is the one that finally surfaces 25P02, even
+    though that query and this request did nothing wrong. A ROLLBACK before
+    BEGIN unconditionally clears any inherited transaction state (aborted or
+    merely left open) — on a healthy idle connection this is a harmless
+    no-op warning ("no transaction in progress"), so it's safe to always run.
     """
     conn = _get_pool_conn()
     conn.autocommit = autocommit
     if not autocommit:
         try:
+            try:
+                conn.run("ROLLBACK")
+            except Exception:
+                pass  # healthy connections warn-and-ignore here; only BEGIN below needs to succeed
             conn.run("BEGIN")
         except Exception:
             # Connection was already dead/desynced before we even used it —
@@ -1292,6 +1314,10 @@ def get_db(autocommit=False):
             _discard_pool_conn(conn)
             conn = _get_pool_conn()
             conn.autocommit = autocommit
+            try:
+                conn.run("ROLLBACK")
+            except Exception:
+                pass
             conn.run("BEGIN")
     return _PooledDB(conn, autocommit=autocommit)
 
@@ -1425,11 +1451,31 @@ def _prewarm_pool(n=max(1, min(2, _PG_POOL_SIZE))):
 def _raw_pg(sql, params=(), fetch=False):
     """Execute SQL via pooled pg8000 native connection, bypassing _DB wrapper.
     Returns rows if fetch=True, else None. Raises on error.
-    Retries once with a fresh connection if the pool gave a stale socket."""
+    Retries once with a fresh connection if the pool gave a stale socket.
+
+    BUG FIX (unrelated later requests fail immediately with Postgres 25P02
+    "current transaction is aborted"): this used to run its query without
+    ever touching conn.autocommit or issuing COMMIT. Pooled connection
+    objects are reused across borrows, so a connection last used by
+    get_db()'s autocommit=False path still had that setting on it here —
+    meaning this function's query ran inside an implicit transaction that
+    was never committed before _return_pool_conn() put it back in the pool.
+    The connection then sat in the pool "idle in transaction" from
+    Postgres's point of view. Whichever request borrowed it next ran fine
+    at first (BEGIN on top of an already-open transaction is just a
+    Postgres warning, not an error — see the matching fix in get_db()), but
+    if anything in that unrelated request's own work then hit any error,
+    it aborted this leftover transaction too, and every statement after
+    that in that request failed with 25P02 — including totally unrelated,
+    correct code. Force autocommit so each call here is fully self-
+    contained: no transaction is left open for the next borrower under any
+    outcome.
+    """
     pg_sql, pdict = _pg_params(sql, params)
 
     for attempt in range(2):
         conn = _get_pool_conn()
+        conn.autocommit = True
         try:
             rows = conn.run(pg_sql, **pdict) if pdict else conn.run(pg_sql)
             cols = [c["name"] for c in (conn.columns or [])]
