@@ -7818,6 +7818,18 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
     critical:{icon:'🔴',color:'#ef4444',label:'Critical'}, high:{icon:'🟠',color:'#f97316',label:'High'}, medium:{icon:'🟡',color:'#eab308',label:'Medium'}, low:{icon:'🟢',color:'#22c55e',label:'Low'}, };
   const STATUS_CFG={
     open:{icon:'🔵',color:'var(--cy)',label:'Open'}, in_review:{icon:'🟣',color:'var(--pu)',label:'In Review'}, waiting_for_customer:{icon:'⏳',color:'#f59e0b',label:'Waiting for customer'}, in_progress:{icon:'🟡',color:'var(--am)',label:'In Progress'}, 'in-progress':{icon:'🟡',color:'var(--am)',label:'In Progress'}, review:{icon:'🟣',color:'var(--pu)',label:'In Review'}, resolved:{icon:'🟢',color:'var(--gn)',label:'Resolved'}, closed:{icon:'⚫',color:'var(--tx3)',label:'Closed'}, };
+  // BUG FIX ("In Progress" — and "In Review" — appearing twice in the status
+  // dropdown/filter chips): STATUS_CFG intentionally keeps both 'in_progress'
+  // and legacy 'in-progress' (and both 'in_review' and legacy 'review') as
+  // separate keys so OLD tickets stored with either spelling still resolve to
+  // a correct icon/color/label wherever a ticket's own .status is looked up.
+  // But anywhere that builds a list of *selectable options* (the New Ticket
+  // status <select>, the status filter chips) was iterating
+  // Object.entries(STATUS_CFG) directly, which surfaces both aliases as if
+  // they were different statuses. STATUS_OPTIONS is the deduped, canonical
+  // list — matching TICKET_STATUS_FLOW in app.py — for anywhere that needs
+  // one option per real status rather than a raw dump of every lookup key.
+  const STATUS_OPTIONS=['open','in_review','waiting_for_customer','in_progress','resolved','closed'].map(v=>[v,STATUS_CFG[v]]);
 
   const statCounts=Object.keys(STATUS_CFG).reduce((a,s)=>{a[s]=tickets.filter(t=>t.status===s).length;return a;},{});
   const myTicketsCount=tickets.filter(t=>t.assignee===cu.id&&t.status!=='closed'&&t.status!=='resolved').length;
@@ -7864,7 +7876,7 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
             <div>
               <label class="lbl">Status</label>
               <select class="inp" value=${nStatus} onChange=${e=>setNStatus(e.target.value)}>
-                ${Object.entries(STATUS_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+                ${STATUS_OPTIONS.map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
               </select>
             </div>
           </div>
@@ -7904,7 +7916,7 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
               <span style=${{fontSize:11,padding:'2px 8px',borderRadius:6,background:(PRIORITY_CFG[detailTicket.priority]||PRIORITY_CFG.medium).color+'22',color:(PRIORITY_CFG[detailTicket.priority]||PRIORITY_CFG.medium).color,fontWeight:700}}>${(PRIORITY_CFG[detailTicket.priority]||PRIORITY_CFG.medium).label}</span>
               <select value=${detailTicket.status} onChange=${e=>quickStatus(detailTicket,e.target.value)}
                 style=${{fontSize:11,padding:'2px 8px',borderRadius:6,background:'var(--sf2)',border:'1px solid var(--bd)',color:'var(--tx)',cursor:'pointer'}}>
-                ${Object.entries(STATUS_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+                ${STATUS_OPTIONS.map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
               </select>
             </div>
             <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
@@ -7971,7 +7983,7 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
 
             <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
         <div style=${{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}>
-          ${Object.entries(STATUS_CFG).map(([s,c])=>html`
+          ${STATUS_OPTIONS.map(([s,c])=>html`
             <button key=${s} class=${'chip'+(filterStatus===s?' on':'')} onClick=${()=>setFilterStatus(filterStatus===s?'':s)}
               style=${{fontSize:11,display:'flex',alignItems:'center',gap:4}}>
               ${c.icon} ${c.label} <span style=${{fontWeight:700,color:c.color}}>${statCounts[s]||0}</span>

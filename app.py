@@ -13618,24 +13618,59 @@ def _table_exists(db, table_name):
 def _table_columns(db, table_name):
     """Return column names for a table without throwing. Works for SQLite and PostgreSQL.
     This prevents count widgets from returning 0 just because production uses PG
-    or older deployments do not have optional columns like deleted_at yet."""
+    or older deployments do not have optional columns like deleted_at yet.
+
+    BUG FIX (every ticket creation failed with Postgres 25P02 "current
+    transaction is aborted", 100% of the time, not intermittently): this
+    used to try SQLite's "PRAGMA table_info(...)" FIRST. That syntax is a
+    guaranteed error on Postgres — there is no PRAGMA statement — so on
+    every single call in production the first try/except here caught a
+    real (not transient) DatabaseError and swallowed it with a bare
+    `pass`. But swallowing the *Python* exception doesn't un-abort the
+    *Postgres transaction* — once one statement in a transaction errors,
+    Postgres refuses every subsequent statement until an explicit
+    ROLLBACK, no matter how many Python try/excepts sit between them. So
+    the very next line's "fallback" information_schema query — running in
+    that same now-aborted transaction — failed too (also swallowed,
+    returning an empty set), and if this was called from inside a caller's
+    own `with get_db() as db:` block (like create_ticket()), every
+    statement that caller ran *after* this function returned was doomed as
+    well, which is exactly the INSERT that kept 500ing. A SAVEPOINT lets
+    us cleanly undo just the failed attempt's effect on the transaction —
+    "ROLLBACK TO SAVEPOINT" — so the caller's transaction is exactly as
+    healthy afterward as if this function had never touched it, regardless
+    of which branch (PRAGMA vs information_schema) actually applies to the
+    current database.
+    """
     table_name = str(table_name or "")
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", table_name):
         return set()
     try:
+        db.execute("SAVEPOINT pt_table_columns")
+    except Exception:
+        pass  # SQLite (or any backend without SAVEPOINT support) — fine, nothing to protect against there
+    try:
         rows = db.execute("PRAGMA table_info(" + table_name + ")").fetchall()
         cols = {str(r["name"]) for r in rows if "name" in r.keys()}
         if cols:
+            try: db.execute("RELEASE SAVEPOINT pt_table_columns")
+            except Exception: pass
             return cols
     except Exception:
-        pass
+        try: db.execute("ROLLBACK TO SAVEPOINT pt_table_columns")
+        except Exception: pass
     try:
         rows = db.execute(
             "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?",
             (table_name,)
         ).fetchall()
-        return {str(r["column_name"]) for r in rows if "column_name" in r.keys()}
+        cols = {str(r["column_name"]) for r in rows if "column_name" in r.keys()}
+        try: db.execute("RELEASE SAVEPOINT pt_table_columns")
+        except Exception: pass
+        return cols
     except Exception:
+        try: db.execute("ROLLBACK TO SAVEPOINT pt_table_columns")
+        except Exception: pass
         return set()
 
 _PROFILE_COL_CACHE = {}
