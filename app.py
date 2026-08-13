@@ -10193,6 +10193,18 @@ def create_reminder():
         _enqueue_push(push_notification_to_user, db, session["user_id"], "⏰ Reminder set",
             f"{d.get('task_title','Reminder')} — you'll be notified before the time.", "/")
         result=dict(row)
+    # BUG FIX (reminder created successfully but its notification never
+    # fires): due_reminders() checks the cached "reminders" appdata field
+    # first and only falls back to a live DB read on a cache miss. Without
+    # this bust, a freshly created reminder was invisible to that cached
+    # check for however long the appdata cache entry had left to live
+    # (up to several minutes) — so a reminder created for "5 minutes from
+    # now" could have its entire due window pass while the due-check was
+    # still looking at a snapshot from before it existed, silently never
+    # firing at all. _cache_bust(..., "reminders") also busts "appdata"
+    # (every table bust does, by design), so the very next due-check sees
+    # this reminder immediately.
+    _cache_bust(wid(), "reminders")
     _sse_publish(wid(), "reminder_updated", {"id": rid, "action": "created"})
     return jsonify(result)
 
@@ -10212,14 +10224,18 @@ def update_reminder(rid):
         row=db.execute("SELECT * FROM reminders WHERE id=?",(rid,)).fetchone()
         _enqueue_push(push_notification_to_user, *(db, session["user_id"], "⏰ Reminder updated",
                   f"'{task_title}' has been rescheduled.", "/"))
-        return jsonify(dict(row))
+        result=dict(row)
+    _cache_bust(wid(), "reminders")  # same reasoning as create_reminder — a rescheduled time must be visible immediately
+    _sse_publish(wid(), "reminder_updated", {"id": rid, "action": "updated"})
+    return jsonify(result)
 
 @app.route("/api/reminders/<rid>", methods=["DELETE"])
 @login_required
 def delete_reminder(rid):
     with get_db() as db:
         db.execute("DELETE FROM reminders WHERE id=? AND user_id=?",(rid,session["user_id"]))
-        return jsonify({"ok":True})
+    _cache_bust(wid(), "reminders")
+    return jsonify({"ok":True})
 
 # ── Teams ─────────────────────────────────────────────────────────────────────
 @app.route("/api/teams", methods=["GET"])

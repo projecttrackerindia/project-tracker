@@ -13866,11 +13866,39 @@ function App(){
   },[data.notifs,dmUnread]);
 
   const firedEarlyRef=useRef(new Set());
+  // BUG FIX (5-minute-before reminder notification never triggers): two
+  // compounding bugs in this effect.
+  //
+  // 1. STALE CLOSURE — `const rems=upcomingReminders` read the component's
+  //    upcomingReminders binding at the moment THIS effect last ran (its
+  //    deps are only [cu,addToast], so it runs once per login, not per
+  //    render). load()'s own setUpcomingReminders calls happen in a
+  //    completely separate effect/closure and never update what this
+  //    effect's checkDue() sees — so on any session where upcomingReminders
+  //    was still [] when this effect first ran (very common: this effect
+  //    can fire before the first app-data load resolves), the early-warning
+  //    loop below had nothing to iterate, ever, for the rest of that
+  //    session. Fixed by reading from a ref that's kept in sync with the
+  //    live state on every render, instead of the closed-over variable.
+  //
+  // 2. NARROW WINDOW vs COARSE INTERVAL — the old check only fired when
+  //    "now" landed within a ±60s window of the exact warnAt instant, but
+  //    this loop only ran every 180s. A 120s-wide window inside a 180s
+  //    cycle has real gaps: it's mathematically possible (and, empirically,
+  //    what was being reported) for every poll to land just outside the
+  //    window on both sides of it, skipping the notification entirely.
+  //    Fixed by firing as soon as "now" has passed warnAt (and not yet
+  //    passed the reminder's actual time) — a one-sided threshold instead
+  //    of a narrow window, so ANY poll after warnAt catches it exactly once
+  //    (firedEarlyRef still de-dupes). Also shortened the poll interval
+  //    itself so the maximum possible delay is much smaller regardless.
+  const upcomingRemindersRef=useRef(upcomingReminders);
+  useEffect(()=>{upcomingRemindersRef.current=upcomingReminders;},[upcomingReminders]);
   useEffect(()=>{
     if(!cu)return;
     const checkDue=async()=>{
       const due=await api.get('/api/reminders/due',{quiet:true,timeoutMs:12000}).catch(()=>[]);
-      const rems=upcomingReminders;
+      const rems=upcomingRemindersRef.current;
       if(Array.isArray(due)&&due.length>0){
         due.forEach(r=>{
           addToast('reminder','⏰ Reminder: '+r.task_title,'Click to view');
@@ -13888,9 +13916,8 @@ function App(){
           const minsBefore=r.minutes_before||0;
           if(minsBefore>0){
             const warnAt=new Date(remAt.getTime()-minsBefore*60000);
-            const diff=warnAt-now;
             const earlyKey='early-'+r.id+'-'+minsBefore;
-            if(diff>=-60000&&diff<=60000&&!firedEarlyRef.current.has(earlyKey)){
+            if(now>=warnAt&&now<remAt&&!firedEarlyRef.current.has(earlyKey)){
               firedEarlyRef.current.add(earlyKey);
               addToast('reminder','⏰ Coming up in '+minsBefore+'min',r.task_title);
               showBrowserNotif('⏰ Reminder in '+minsBefore+' min',r.task_title,()=>{
@@ -13905,7 +13932,7 @@ function App(){
       }
     };
     checkDue();
-    const id=setInterval(()=>{if(!document.hidden)checkDue();},180000); // SSE handles most updates; fallback only
+    const id=setInterval(()=>{if(!document.hidden)checkDue();},45000); // was 180000 — too coarse for a 60s-wide-or-narrower warning window
     return()=>clearInterval(id);
   },[cu,addToast]);
 
