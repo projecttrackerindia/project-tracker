@@ -1298,6 +1298,21 @@ def get_db(autocommit=False):
     BEGIN unconditionally clears any inherited transaction state (aborted or
     merely left open) — on a healthy idle connection this is a harmless
     no-op warning ("no transaction in progress"), so it's safe to always run.
+
+    BUG FIX, take 2: ROLLBACK+BEGIN only proved this connection isn't stuck
+    in an aborted *transaction*. It does nothing for a genuine wire-protocol
+    desync (PgBouncer swapped the backend mid multi-round-trip query) —
+    that can leave misaligned bytes sitting in the socket buffer, and
+    ROLLBACK/BEGIN (simple, single-round-trip commands) can "succeed"
+    without ever touching those bytes, so this check was blind to exactly
+    the failure mode it exists to catch (confirmed in production: a struct-
+    unpacking error deep in pg8000's message parser — "unpack_from requires
+    a buffer of at least 77 bytes... actual buffer size is 73" — on a
+    connection that had just cleanly passed BEGIN). A cheap canary query
+    (SELECT 1, which round-trips through the same Parse/Describe/Bind path
+    real queries use) actually exercises the read path and will surface a
+    desync immediately, so we can discard and retry before ever handing
+    this connection to real application code.
     """
     conn = _get_pool_conn()
     conn.autocommit = autocommit
@@ -1308,6 +1323,7 @@ def get_db(autocommit=False):
             except Exception:
                 pass  # healthy connections warn-and-ignore here; only BEGIN below needs to succeed
             conn.run("BEGIN")
+            conn.run("SELECT 1")  # canary — proves the read path isn't desynced
         except Exception:
             # Connection was already dead/desynced before we even used it —
             # discard it and try exactly once more on a fresh connection.
@@ -1319,6 +1335,30 @@ def get_db(autocommit=False):
             except Exception:
                 pass
             conn.run("BEGIN")
+            conn.run("SELECT 1")
+    else:
+        # autocommit=True callers (mostly heavy read-only aggregators like
+        # _fetch_app_data_from_db) used to get ZERO verification before use —
+        # this is where the struct-unpacking desync was actually first
+        # observed in production. No BEGIN here (that would change autocommit
+        # semantics for callers that intentionally want each statement to
+        # persist independently), but a canary still confirms the connection
+        # is actually healthy before we hand it out, same reasoning as above.
+        try:
+            conn.run("ROLLBACK")
+        except Exception:
+            pass
+        try:
+            conn.run("SELECT 1")
+        except Exception:
+            _discard_pool_conn(conn)
+            conn = _get_pool_conn()
+            conn.autocommit = autocommit
+            try:
+                conn.run("ROLLBACK")
+            except Exception:
+                pass
+            conn.run("SELECT 1")
     return _PooledDB(conn, autocommit=autocommit)
 
 # ── pg8000 connection pool — pre-warmed, sized for gthread workers ──────────
@@ -1453,36 +1493,45 @@ def _raw_pg(sql, params=(), fetch=False):
     Returns rows if fetch=True, else None. Raises on error.
     Retries once with a fresh connection if the pool gave a stale socket.
 
-    BUG FIX (unrelated later requests fail immediately with Postgres 25P02
-    "current transaction is aborted"): this used to run its query without
-    ever touching conn.autocommit or issuing COMMIT. Pooled connection
-    objects are reused across borrows, so a connection last used by
-    get_db()'s autocommit=False path still had that setting on it here —
-    meaning this function's query ran inside an implicit transaction that
-    was never committed before _return_pool_conn() put it back in the pool.
-    The connection then sat in the pool "idle in transaction" from
-    Postgres's point of view. Whichever request borrowed it next ran fine
-    at first (BEGIN on top of an already-open transaction is just a
-    Postgres warning, not an error — see the matching fix in get_db()), but
-    if anything in that unrelated request's own work then hit any error,
-    it aborted this leftover transaction too, and every statement after
-    that in that request failed with 25P02 — including totally unrelated,
-    correct code. Force autocommit so each call here is fully self-
-    contained: no transaction is left open for the next borrower under any
-    outcome.
+    BUG FIX, take 2 (the take-1 fix — plain autocommit=True — was incomplete):
+    autocommit=True stops this function from ever LEAVING a transaction open
+    for the next borrower (the original bug), but it also means pg8000 sends
+    this query's Parse+Sync / Describe+Sync / Bind+Execute+Sync as three
+    separate round trips with NO enclosing transaction — which is exactly
+    the condition get_db()'s own docstring describes as letting PgBouncer
+    (transaction pool mode) swap this connection's real Postgres backend
+    mid-query, producing the same '26000 unnamed prepared statement does
+    not exist' / '25P02 transaction aborted' errors this whole file has
+    already fought elsewhere (see get_db()). So: explicit BEGIN before,
+    explicit COMMIT/ROLLBACK after, exactly like get_db()/_PooledDB — this
+    is the only combination that is BOTH backend-affinity-safe during the
+    query AND guaranteed not to leave anything open when the connection
+    goes back into the pool, regardless of outcome. A defensive ROLLBACK
+    before BEGIN also guards against inheriting stale state from anything
+    else that mismanaged this same pooled connection previously.
     """
     pg_sql, pdict = _pg_params(sql, params)
 
     for attempt in range(2):
         conn = _get_pool_conn()
-        conn.autocommit = True
+        conn.autocommit = False
         try:
+            try:
+                conn.run("ROLLBACK")
+            except Exception:
+                pass
+            conn.run("BEGIN")
             rows = conn.run(pg_sql, **pdict) if pdict else conn.run(pg_sql)
             cols = [c["name"] for c in (conn.columns or [])]
             result = [dict(zip(cols, r)) for r in (rows or [])] if fetch else None
+            conn.run("COMMIT")
             _return_pool_conn(conn)
             return result
         except Exception as _e:
+            try:
+                conn.run("ROLLBACK")
+            except Exception:
+                pass
             _discard_pool_conn(conn)
             if attempt == 1:
                 raise
