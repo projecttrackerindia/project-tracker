@@ -12883,6 +12883,22 @@ function App(){
           if(fromNotif){try{sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}}
           _setView('dm');
         }
+      } else {
+        // BUG FIX (refresh sometimes lands on Direct Messages instead of the
+        // page the user was actually on): if a DM notification was ever
+        // clicked/received earlier in this browser session, pt_dm_resolve_next /
+        // pt_dm_notification_target / pt_open_dm_user stay set in sessionStorage
+        // (they're only cleared by navigating within the app — see _setView's
+        // base!=='dm' branch). Navigation state (which tab you're on) must be
+        // independent of notification state. Since the real URL on this reload
+        // is unambiguously NOT /dm, proactively clear any leftover DM-routing
+        // flags here too, so they can never cause a later automatic jump into
+        // the DM view on this page load.
+        try{
+          sessionStorage.removeItem('pt_dm_resolve_next');
+          sessionStorage.removeItem('pt_dm_notification_target');
+          sessionStorage.removeItem('pt_dm_route_opened_at');
+        }catch(_){}
       }
     }catch(e){}
   },[_setView]);
@@ -13526,12 +13542,18 @@ function App(){
   const [markingAllRead,setMarkingAllRead]=useState(false);
   const markAllNotificationsRead=useCallback(async()=>{
     const prevNotifs=safe(data&&data.notifs);
-    const hasUnread=prevNotifs.some(n=>!n.read);
+    const prevDmUnread=dmUnreadRef.current;
+    const hasUnread=prevNotifs.some(n=>!n.read)||prevDmUnread.some(x=>(x.cnt||0)>0);
     if(!hasUnread||markingAllRead)return;
     setMarkingAllRead(true);
     const toRead=arr=>safe(arr).map(n=>n.read?n:{...n,read:1});
     setData(prev=>({...prev,notifs:toRead(prev.notifs)}));
     ptPatchAppDataNotifsCache(toRead);
+    // BUG FIX: the DM badge is server-side state separate from `notifs` (see
+    // dm_unread()/backend read-all fix above) — clear it optimistically too,
+    // or "Mark all as read" would leave the Direct Messages badge showing
+    // its old count until the next poll happened to overwrite it.
+    setDmUnread([]);
     try{
       const res=await api.put('/api/notifications/read-all',{});
       if(res&&res.ok===false)throw new Error(res.error||'Request failed');
@@ -13540,6 +13562,7 @@ function App(){
       // Roll back optimistic UI + cache so state, badge, and DB stay in sync on failure
       setData(prev=>({...prev,notifs:prevNotifs}));
       ptPatchAppDataNotifsCache(()=>prevNotifs);
+      setDmUnread(prevDmUnread);
       try{window._pfToast&&window._pfToast('error','Failed to mark notifications as read',(e&&e.message)||'Please try again.');}catch(_){}
     }finally{
       setMarkingAllRead(false);
@@ -13740,7 +13763,14 @@ function App(){
         });
         prevNotifIdsRef.current=new Set(d.map(n=>n.id));
         setData(prev=>({...prev,notifs:d}));
-        const unread=d.filter(n=>!n.read).length;
+        // BUG FIX (OS/tab badge showing a bigger number than actual unread items):
+        // every DM creates BOTH a direct_messages row (counted by dmTotal below,
+        // via /api/dm/unread) AND a paired `notifications` row with type='dm'
+        // (created alongside it — see send_dm's _dm_after_commit). Counting all
+        // `!n.read` notifications here double-counted every unread DM: once as a
+        // notification, once again via dmTotal. Exclude type='dm' notifications
+        // from this tally since dmTotal already represents them.
+        const unread=d.filter(n=>!n.read&&n.type!=='dm').length;
         const dmTotal=dmUnreadRef.current.reduce((a,x)=>a+(x.cnt||0),0);
         updateBadge(unread+dmTotal);
       });
@@ -13750,7 +13780,9 @@ function App(){
       if(Array.isArray(d)){
         prevNotifIdsRef.current=new Set(d.map(n=>n.id));
         setData(prev=>({...prev,notifs:d}));
-        const unread=d.filter(n=>!n.read).length;
+        // Same double-count fix as above: dm-type notifications are already
+        // represented in dmTotal, so exclude them here.
+        const unread=d.filter(n=>!n.read&&n.type!=='dm').length;
         updateBadge(unread+dmUnreadRef.current.reduce((a,x)=>a+(x.cnt||0),0));
       }
     });
@@ -13860,7 +13892,9 @@ function App(){
   },[cu,load]);
 
   useEffect(()=>{
-    const unread=safe(data.notifs).filter(n=>!n.read).length;
+    // Same double-count fix as the pollOnce badge updates above: dm-type
+    // notifications are already represented in dmTotal via /api/dm/unread.
+    const unread=safe(data.notifs).filter(n=>!n.read&&n.type!=='dm').length;
     const dmTotal=dmUnread.reduce((a,x)=>a+(x.cnt||0),0);
     updateBadge(unread+dmTotal);
   },[data.notifs,dmUnread]);

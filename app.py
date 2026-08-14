@@ -11143,7 +11143,18 @@ def notifs_read_all():
     ws, uid = wid(), session["user_id"]
     with get_db() as db:
         db.execute("UPDATE notifications SET read=1 WHERE workspace_id=? AND user_id=?", (ws, uid))
-    _cache_bust(ws, "notifications", "notifs", "appdata")
+        # BUG FIX (DM badge survives "Mark all as read" and comes back after refresh):
+        # this endpoint used to only touch the `notifications` table. The Direct
+        # Messages badge is computed separately from direct_messages.read (see
+        # dm_unread()), so "Mark all as read" never actually cleared it — the
+        # sidebar/tab badge kept showing the same stale count after a refresh.
+        # Mark every unread incoming DM read too so the DM badge genuinely hits 0.
+        db.execute(
+            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
+            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0",
+            (ts(), ws, uid)
+        )
+    _cache_bust(ws, "notifications", "notifs", "dm_unread", "appdata")
     return jsonify({"ok": True})
 
 @app.route("/api/notifications/all",methods=["DELETE"])
