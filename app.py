@@ -16942,19 +16942,31 @@ def _attendance_row_with_events(db, row):
 
 
 def _insert_attendance_event(db, workspace_id, user_id, attendance_id, work_date, event_type, event_time, work_mode="", from_mode="", to_mode="", note=""):
+    # SAVEPOINT so a failure here (genuine bug or transient DB hiccup) can't
+    # poison the caller's transaction and silently revert the actual
+    # attendance_logs check-in/check-out write that already succeeded —
+    # same reasoning as _auto_log_attendance_hours below.
+    try:
+        db.execute("SAVEPOINT pt_attendance_event")
+    except Exception:
+        pass
     try:
         eid = "aev" + secrets.token_hex(8)
         db.execute(
             "INSERT INTO attendance_events(id,workspace_id,user_id,attendance_id,work_date,event_type,event_time,work_mode,from_mode,to_mode,note,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (eid, workspace_id, user_id, attendance_id, work_date, event_type, event_time, work_mode or "", from_mode or "", to_mode or "", note or "", ts())
         )
+        try: db.execute("RELEASE SAVEPOINT pt_attendance_event")
+        except Exception: pass
     except Exception as e:
+        try: db.execute("ROLLBACK TO SAVEPOINT pt_attendance_event")
+        except Exception: pass
         try: log.warning("[attendance_events] insert failed type=%s err=%s", event_type, e)
         except Exception: pass
 
 
 def _auto_log_attendance_hours(db, workspace_id, user_id, work_date, check_in_ts, check_out_ts, work_mode=""):
-    """Create a time_logs entry from an attendance check-in/check-out pair.
+    """Create/update a time_logs entry from an attendance check-in/check-out pair.
 
     FUNCTIONAL GAP FIX: Attendance (check-in/check-out) and Timesheet
     (time_logs, what the dashboard's "Hours Logged" chart and the
@@ -16964,27 +16976,39 @@ def _auto_log_attendance_hours(db, workspace_id, user_id, work_date, check_in_ts
     checked in and out. This runs on check-out to create one, computed
     from the actual elapsed time between check-in and check-out.
 
+    Multiple check-in/check-out sessions in the same day (now a supported
+    flow — see the re-check-in fix in api_attendance_today) ADD to that
+    day's auto-logged hours rather than overwriting the previous session's
+    contribution, so stepping out and back in doesn't lose earlier hours.
+
     Deliberately best-effort: never let a timesheet-logging hiccup fail
     the check-out request itself (attendance is the primary action here).
-    One entry per attendance day — if this work_date already has an
-    auto-generated entry (e.g. a mode switch triggered a second checkout
-    same day), update it in place rather than creating a duplicate.
+    Wrapped in its own SAVEPOINT so that if anything here does fail (a
+    genuine bug, or a transient DB hiccup), it can't poison the caller's
+    transaction the way the old _table_columns bug did — see that
+    function's own fix notes for exactly what that failure mode looks
+    like from the outside (an unrelated, correct write silently reverted).
     """
+    try:
+        db.execute("SAVEPOINT pt_auto_attendance_log")
+    except Exception:
+        pass
     try:
         t_in = datetime.fromisoformat(str(check_in_ts))
         t_out = datetime.fromisoformat(str(check_out_ts))
-        hours = round(max(0.0, (t_out - t_in).total_seconds() / 3600.0), 2)
-        if hours <= 0:
+        session_hours = round(max(0.0, (t_out - t_in).total_seconds() / 3600.0), 2)
+        if session_hours <= 0:
             return
         cols = _cached_table_columns(db, "time_logs")
         existing = db.execute(
-            "SELECT id FROM time_logs WHERE workspace_id=? AND user_id=? AND date=? AND comments=?",
+            "SELECT id, hours FROM time_logs WHERE workspace_id=? AND user_id=? AND date=? AND comments=?",
             (workspace_id, user_id, work_date, "Auto-logged from attendance")
         ).fetchone()
+        total_hours = round((float(existing["hours"] or 0) if existing else 0.0) + session_hours, 2)
         row = {
             "workspace_id": workspace_id, "user_id": user_id, "date": work_date,
             "task_name": f"Attendance ({work_mode or 'office'})", "project_id": "", "task_id": "",
-            "hours": hours, "minutes": 0, "comments": "Auto-logged from attendance",
+            "hours": total_hours, "minutes": 0, "comments": "Auto-logged from attendance",
             "status": "draft", "billable": 0,
             "start_time": str(check_in_ts), "end_time": str(check_out_ts),
         }
@@ -16999,8 +17023,12 @@ def _auto_log_attendance_hours(db, workspace_id, user_id, work_date, check_in_ts
             use = [k for k in row.keys() if k in cols]
             db.execute("INSERT INTO time_logs(" + ",".join(use) + ") VALUES (" + ",".join(["?"] * len(use)) + ")",
                        tuple(row[k] for k in use))
+        try: db.execute("RELEASE SAVEPOINT pt_auto_attendance_log")
+        except Exception: pass
         _cache_bust(workspace_id, "timelogs", "appdata")
     except Exception as e:
+        try: db.execute("ROLLBACK TO SAVEPOINT pt_auto_attendance_log")
+        except Exception: pass
         try: log.warning("[auto attendance timelog] failed for user=%s date=%s: %s", user_id, work_date, e)
         except Exception: pass
 
@@ -17500,10 +17528,23 @@ def api_attendance_today():
                     db.execute("UPDATE attendance_logs SET check_in=?, work_mode=?, status='checked_in', note=?, updated=? WHERE id=?", (now, work_mode, note or row["note"], now, aid))
                     _insert_attendance_event(db, wsid, uid, aid, today, "check_in", now, work_mode=work_mode, note=note)
                 elif row["check_out"]:
-                    # A new login after check-out is a same-day mode update, not a duplicate row.
-                    db.execute("UPDATE attendance_logs SET work_mode=?, note=?, updated=? WHERE id=?", (work_mode or current_mode, note or row["note"], now, aid))
-                    if work_mode and work_mode != current_mode:
-                        _insert_attendance_event(db, wsid, uid, aid, today, "mode_change", now, work_mode=work_mode, from_mode=current_mode, to_mode=work_mode, note=note)
+                    # BUG FIX ("Check In" button silently does nothing after an
+                    # earlier check-out the same day): this branch used to only
+                    # update work_mode/note, never actually re-opening the
+                    # session — check_out stayed set and status stayed
+                    # 'checked_out', so the button's optimistic UI update got
+                    # immediately overwritten back to "checked out" by the
+                    # server's response, and every subsequent click repeated
+                    # the same no-op. This is a genuine new session (someone
+                    # stepped out and is back, or checked out by mistake), so
+                    # actually reopen it: clear check_out, flip status back to
+                    # checked_in. The prior session's exact times are not
+                    # lost — they're still in the full attendance_events
+                    # timeline (used by the calendar detail view) even though
+                    # the attendance_logs summary row now reflects the
+                    # current open session.
+                    db.execute("UPDATE attendance_logs SET check_in=?, check_out='', work_mode=?, status='checked_in', note=?, updated=? WHERE id=?", (now, work_mode or current_mode, note or row["note"], now, aid))
+                    _insert_attendance_event(db, wsid, uid, aid, today, "check_in", now, work_mode=work_mode or current_mode, note=note or "Re-checked in after earlier check-out")
             row = db.execute("SELECT * FROM attendance_logs WHERE id=?", (aid,)).fetchone()
         attendance = _attendance_row_with_events(db, row)
         db.commit()
