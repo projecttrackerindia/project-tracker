@@ -2705,11 +2705,11 @@ def send_email(to_email, subject, body_html, workspace_id=None):
         return False
 
 
-def _send_task_assigned_email_safe(user_email, user_name, task_title, assigner_name, task_id, workspace_id):
+def _send_task_assigned_email_safe(user_email, user_name, task_title, assigner_name, task_id, workspace_id, priority="medium"):
     """Thread target wrapper so task-create requests never hide email errors."""
     try:
-        log.info("[TaskEmail] assignment email queued to=%s task=%s ws=%s", _mask_email(user_email), task_id, workspace_id)
-        ok = send_task_assigned_email(user_email, user_name, task_title, assigner_name, task_id, workspace_id)
+        log.info("[TaskEmail] assignment email queued to=%s task=%s ws=%s priority=%s", _mask_email(user_email), task_id, workspace_id, priority)
+        ok = send_task_assigned_email(user_email, user_name, task_title, assigner_name, task_id, workspace_id, priority)
         log.info("[TaskEmail] assignment email result=%s to=%s task=%s", ok, _mask_email(user_email), task_id)
         return ok
     except Exception as e:
@@ -2717,7 +2717,7 @@ def _send_task_assigned_email_safe(user_email, user_name, task_title, assigner_n
         return False
 
 
-def _start_task_assigned_email_thread(user_email, user_name, task_title, assigner_name, task_id, workspace_id):
+def _start_task_assigned_email_thread(user_email, user_name, task_title, assigner_name, task_id, workspace_id, priority="medium"):
     """Start task-assignment email thread with copied primitive args."""
     to_addr = _clean_email_addr(user_email)
     if not to_addr:
@@ -2725,7 +2725,7 @@ def _start_task_assigned_email_thread(user_email, user_name, task_title, assigne
         return None
     th = threading.Thread(
         target=_send_task_assigned_email_safe,
-        args=(to_addr, str(user_name or 'there'), str(task_title or 'Task'), str(assigner_name or 'Someone'), str(task_id or ''), str(workspace_id or '')),
+        args=(to_addr, str(user_name or 'there'), str(task_title or 'Task'), str(assigner_name or 'Someone'), str(task_id or ''), str(workspace_id or ''), str(priority or 'medium')),
         daemon=True,
     )
     th.start()
@@ -2855,6 +2855,7 @@ def _queue_task_assignment_email_for_created_task(task_or_id, creator_user_id=No
                 if creator:
                     creator_name = _row_value(creator, 'name', 'Someone')
             title = str(task.get('title') or 'Task')
+            priority = str(task.get('priority') or 'medium')
 
         if not _task_assignment_email_claim_once(ws, tid):
             log.info("[TaskEmail] duplicate suppressed source=%s task=%s ws=%s", source, tid, ws)
@@ -2863,7 +2864,7 @@ def _queue_task_assignment_email_for_created_task(task_or_id, creator_user_id=No
 
         log.warning("[TaskEmail] DISPATCH source=%s to=%s task=%s assignee_ref=%r ws=%s", source, _mask_email(assignee_email), tid, assignee_ref, ws)
         _email_audit('dispatched', source=source, task=tid, to=_mask_email(assignee_email), ws=ws)
-        th = _start_task_assigned_email_thread(assignee_email, assignee_name, title, creator_name, tid, ws)
+        th = _start_task_assigned_email_thread(assignee_email, assignee_name, title, creator_name, tid, ws, priority)
         if not th:
             _email_audit('dispatch_failed_no_thread', source=source, task=tid, ws=ws)
             _task_assignment_email_release_claim(ws, tid)
@@ -3206,12 +3207,30 @@ def _progress_bar(pct: int, accent: str) -> str:
 
 # ── Individual send functions ──────────────────────────────────────────────────
 
-def send_task_assigned_email(user_email, user_name, task_title, assigner_name, task_id, workspace_id):
+def send_task_assigned_email(user_email, user_name, task_title, assigner_name, task_id, workspace_id, priority="medium"):
     """Futuristic task-assigned email with assignment animation indicators."""
     accent  = "#6366f1"
     subject = f"📋 New Task Assigned: {task_title}"
     safe_user     = _email_escape(user_name)
     safe_assigner = _email_escape(assigner_name)
+    # BUG FIX: "Priority" in this email was a hardcoded literal string
+    # ("Normal") in two places below — it never looked at the task's actual
+    # priority at all, so marking a task Critical/High/Low made no
+    # difference to what the email said. This wasn't a caching or timing
+    # bug like the others — the function didn't even accept a priority
+    # argument, so there was nothing to be stale; it was simply never wired
+    # up. Now threaded through from the real task row (see
+    # _queue_task_assignment_email_for_created_task, which loads the task
+    # and passes task['priority'] all the way down to here).
+    prio_key = str(priority or "medium").strip().lower()
+    prio_meta = {
+        "critical": ("🔴", "Critical", "#ef4444"),
+        "high":     ("🟠", "High",     "#f97316"),
+        "medium":   ("🟡", "Medium",   "#f59e0b"),
+        "normal":   ("🟡", "Medium",   "#f59e0b"),
+        "low":      ("🟢", "Low",      "#10b981"),
+    }
+    prio_icon, prio_label, prio_color = prio_meta.get(prio_key, ("🟡", "Medium", "#f59e0b"))
 
     body = f"""
       <!-- Greeting -->
@@ -3225,14 +3244,14 @@ def send_task_assigned_email(user_email, user_name, task_title, assigner_name, t
         Time to make it happen! 🚀
       </p>
 
-      {_task_card(task_title, accent, [("Assigned by", assigner_name), ("Status", "New · Awaiting action"), ("Priority", "Normal")])}
+      {_task_card(task_title, accent, [("Assigned by", assigner_name), ("Status", "New · Awaiting action"), ("Priority", prio_label)])}
 
       <!-- Stat pills -->
       <table role="presentation" class="pt-cols" width="100%"
              cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;">
         <tr>
           {_stat_pill("🎯", "Action required", "Start now", accent)}
-          {_stat_pill("⚡", "Priority", "Normal", "#f59e0b")}
+          {_stat_pill(prio_icon, "Priority", prio_label, prio_color)}
         </tr>
       </table>
 
