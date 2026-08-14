@@ -14680,7 +14680,8 @@ def create_webhook():
 @app.route("/api/webhooks/<wh_id>", methods=["PUT"])
 @login_required
 def update_webhook(wh_id):
-    row = get_db().execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
+    with get_db() as db:
+        row = db.execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
     d = request.get_json(force=True)
@@ -14691,7 +14692,8 @@ def update_webhook(wh_id):
 @app.route("/api/webhooks/<wh_id>", methods=["DELETE"])
 @login_required
 def delete_webhook(wh_id):
-    row = get_db().execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
+    with get_db() as db:
+        row = db.execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
     _raw_pg("DELETE FROM webhooks WHERE id=?", (wh_id,))
@@ -14701,16 +14703,18 @@ def delete_webhook(wh_id):
 @app.route("/api/webhooks/<wh_id>/logs", methods=["GET"])
 @login_required
 def webhook_logs(wh_id):
-    row = get_db().execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
-    if not row:
-        return jsonify(error="Not found"), 404
-    rows = get_db().execute("SELECT * FROM webhook_logs WHERE webhook_id=? ORDER BY created DESC LIMIT 50", (wh_id,)).fetchall()
+    with get_db() as db:
+        row = db.execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
+        if not row:
+            return jsonify(error="Not found"), 404
+        rows = db.execute("SELECT * FROM webhook_logs WHERE webhook_id=? ORDER BY created DESC LIMIT 50", (wh_id,)).fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/webhooks/<wh_id>/test", methods=["POST"])
 @login_required
 def test_webhook(wh_id):
-    row = get_db().execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
+    with get_db() as db:
+        row = db.execute("SELECT id FROM webhooks WHERE id=? AND workspace_id=?", (wh_id, wid())).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
     _fire_webhooks(wid(), "ping", {"message":"Test delivery from Project Tracker"})
@@ -14723,8 +14727,8 @@ def test_webhook(wh_id):
 @login_required
 def list_custom_fields():
     entity = request.args.get("entity","task")
-    db  = get_db()
-    rows = db.execute("SELECT * FROM custom_fields WHERE workspace_id=? AND entity_type=? ORDER BY created", (wid(), entity)).fetchall()
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM custom_fields WHERE workspace_id=? AND entity_type=? ORDER BY created", (wid(), entity)).fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/custom-fields", methods=["POST"])
@@ -14741,6 +14745,7 @@ def create_custom_field():
     _raw_pg("INSERT INTO custom_fields VALUES (?,?,?,?,?,?,?,?)",
             (fid, wid(), d.get("entity_type","task"), name, ftype,
              json.dumps(d.get("options",[])), int(d.get("required",0)), ts()))
+    _cache_bust(wid(), "custom_fields")
     return jsonify(id=fid, name=name, field_type=ftype)
 
 @app.route("/api/custom-fields/<fid>", methods=["DELETE"])
@@ -14748,13 +14753,14 @@ def create_custom_field():
 def delete_custom_field(fid):
     _raw_pg("DELETE FROM custom_fields WHERE id=? AND workspace_id=?", (fid, wid()))
     _raw_pg("DELETE FROM custom_field_values WHERE field_id=? AND workspace_id=?", (fid, wid()))
+    _cache_bust(wid(), "custom_fields")
     return jsonify(ok=True)
 
 @app.route("/api/custom-field-values/<entity_id>", methods=["GET"])
 @login_required
 def get_field_values(entity_id):
-    db   = get_db()
-    rows = db.execute("SELECT field_id, value FROM custom_field_values WHERE entity_id=? AND workspace_id=?", (entity_id, wid())).fetchall()
+    with get_db() as db:
+        rows = db.execute("SELECT field_id, value FROM custom_field_values WHERE entity_id=? AND workspace_id=?", (entity_id, wid())).fetchall()
     return jsonify({r["field_id"]: r["value"] for r in rows})
 
 @app.route("/api/custom-field-values/<entity_id>", methods=["POST"])
@@ -14762,13 +14768,15 @@ def get_field_values(entity_id):
 def set_field_values(entity_id):
     d   = request.get_json(force=True)
     now = ts()
-    for fid, val in d.items():
-        existing = get_db().execute("SELECT id FROM custom_field_values WHERE field_id=? AND entity_id=? AND workspace_id=?", (fid, entity_id, wid())).fetchone()
-        if existing:
-            _raw_pg("UPDATE custom_field_values SET value=?,updated=? WHERE id=?", (str(val), now, existing["id"]))
-        else:
-            _raw_pg("INSERT INTO custom_field_values VALUES (?,?,?,?,?,?,?)",
-                    (secrets.token_hex(6), wid(), fid, entity_id, str(val), now, now))
+    with get_db() as db:
+        for fid, val in d.items():
+            existing = db.execute("SELECT id FROM custom_field_values WHERE field_id=? AND entity_id=? AND workspace_id=?", (fid, entity_id, wid())).fetchone()
+            if existing:
+                db.execute("UPDATE custom_field_values SET value=?,updated=? WHERE id=?", (str(val), now, existing["id"]))
+            else:
+                db.execute("INSERT INTO custom_field_values VALUES (?,?,?,?,?,?,?)",
+                        (secrets.token_hex(6), wid(), fid, entity_id, str(val), now, now))
+    _cache_bust(wid(), "custom_field_values")
     return jsonify(ok=True)
 
 # ═══════════════════════════════════════════════════════════════
@@ -14780,7 +14788,6 @@ def list_time_entries():
     task_id = request.args.get("task_id","")
     user_filter = request.args.get("user_id","")
     since = request.args.get("since","")
-    db   = get_db()
     sql  = "SELECT te.*, u.name as user_name FROM time_entries te LEFT JOIN users u ON te.user_id=u.id WHERE te.workspace_id=?"
     params = [wid()]
     if task_id:
@@ -14790,7 +14797,8 @@ def list_time_entries():
     if since:
         sql += " AND te.date>=?"; params.append(since)
     sql += " ORDER BY te.date DESC, te.created DESC LIMIT 500"
-    rows = db.execute(sql, params).fetchall()
+    with get_db() as db:
+        rows = db.execute(sql, params).fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/time-entries", methods=["POST"])
@@ -14806,26 +14814,31 @@ def create_time_entry():
              d.get("date", now_ist().strftime("%Y-%m-%d")), ts(), ts()))
     if task_id:
         _fire_webhooks(wid(), "time.logged", {"task_id":task_id,"minutes":minutes})
+    _cache_bust(wid(), "time_entries")
     return jsonify(id=tid, minutes=minutes, created=True), 201
 
 @app.route("/api/time-entries/<eid>", methods=["PUT"])
 @login_required
 def update_time_entry(eid):
-    row = get_db().execute("SELECT id FROM time_entries WHERE id=? AND workspace_id=?", (eid, wid())).fetchone()
+    with get_db() as db:
+        row = db.execute("SELECT id FROM time_entries WHERE id=? AND workspace_id=?", (eid, wid())).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
     d = request.get_json(force=True)
     _raw_pg("UPDATE time_entries SET description=?,minutes=?,billable=?,date=?,updated=? WHERE id=?",
             (d.get("description",""), max(1,int(d.get("minutes",1))), int(d.get("billable",1)), d.get("date",""), ts(), eid))
+    _cache_bust(wid(), "time_entries")
     return jsonify(ok=True)
 
 @app.route("/api/time-entries/<eid>", methods=["DELETE"])
 @login_required
 def delete_time_entry(eid):
-    row = get_db().execute("SELECT id FROM time_entries WHERE id=? AND workspace_id=?", (eid, wid())).fetchone()
+    with get_db() as db:
+        row = db.execute("SELECT id FROM time_entries WHERE id=? AND workspace_id=?", (eid, wid())).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
     _raw_pg("DELETE FROM time_entries WHERE id=?", (eid,))
+    _cache_bust(wid(), "time_entries")
     return jsonify(ok=True)
 
 @app.route("/api/time-entries/summary", methods=["GET"])
@@ -16940,6 +16953,58 @@ def _insert_attendance_event(db, workspace_id, user_id, attendance_id, work_date
         except Exception: pass
 
 
+def _auto_log_attendance_hours(db, workspace_id, user_id, work_date, check_in_ts, check_out_ts, work_mode=""):
+    """Create a time_logs entry from an attendance check-in/check-out pair.
+
+    FUNCTIONAL GAP FIX: Attendance (check-in/check-out) and Timesheet
+    (time_logs, what the dashboard's "Hours Logged" chart and the
+    Workspace OS timesheet actually read from) were two entirely
+    disconnected features — checking out never created any timesheet
+    record, so "Hours Logged" stayed at 0 no matter how many times someone
+    checked in and out. This runs on check-out to create one, computed
+    from the actual elapsed time between check-in and check-out.
+
+    Deliberately best-effort: never let a timesheet-logging hiccup fail
+    the check-out request itself (attendance is the primary action here).
+    One entry per attendance day — if this work_date already has an
+    auto-generated entry (e.g. a mode switch triggered a second checkout
+    same day), update it in place rather than creating a duplicate.
+    """
+    try:
+        t_in = datetime.fromisoformat(str(check_in_ts))
+        t_out = datetime.fromisoformat(str(check_out_ts))
+        hours = round(max(0.0, (t_out - t_in).total_seconds() / 3600.0), 2)
+        if hours <= 0:
+            return
+        cols = _cached_table_columns(db, "time_logs")
+        existing = db.execute(
+            "SELECT id FROM time_logs WHERE workspace_id=? AND user_id=? AND date=? AND comments=?",
+            (workspace_id, user_id, work_date, "Auto-logged from attendance")
+        ).fetchone()
+        row = {
+            "workspace_id": workspace_id, "user_id": user_id, "date": work_date,
+            "task_name": f"Attendance ({work_mode or 'office'})", "project_id": "", "task_id": "",
+            "hours": hours, "minutes": 0, "comments": "Auto-logged from attendance",
+            "status": "draft", "billable": 0,
+            "start_time": str(check_in_ts), "end_time": str(check_out_ts),
+        }
+        if existing:
+            sets = [k + "=?" for k in row.keys() if k in cols]
+            vals = [row[k] for k in row.keys() if k in cols]
+            if sets:
+                db.execute("UPDATE time_logs SET " + ",".join(sets) + " WHERE id=?", tuple(vals) + (existing["id"],))
+        else:
+            row["id"] = "tl" + secrets.token_hex(8)
+            row["created"] = ts()
+            use = [k for k in row.keys() if k in cols]
+            db.execute("INSERT INTO time_logs(" + ",".join(use) + ") VALUES (" + ",".join(["?"] * len(use)) + ")",
+                       tuple(row[k] for k in use))
+        _cache_bust(workspace_id, "timelogs", "appdata")
+    except Exception as e:
+        try: log.warning("[auto attendance timelog] failed for user=%s date=%s: %s", user_id, work_date, e)
+        except Exception: pass
+
+
 def _profile_row_for_user(db, workspace_id, user_id, include_sensitive=False):
     """Shared employee/profile summary used by Profile page, Org Chart and Workspace OS.
     This is intentionally schema-tolerant: older production DBs may not yet have
@@ -17420,6 +17485,8 @@ def api_attendance_today():
                 if not row["check_out"]:
                     db.execute("UPDATE attendance_logs SET check_out=?, status='checked_out', work_mode=?, note=?, updated=? WHERE id=?", (now, work_mode or current_mode, note or row["note"], now, aid))
                     _insert_attendance_event(db, wsid, uid, aid, today, "check_out", now, work_mode=work_mode or current_mode, note=note)
+                    if row["check_in"]:
+                        _auto_log_attendance_hours(db, wsid, uid, today, row["check_in"], now, work_mode or current_mode)
             elif action == "break":
                 mins = int(d.get("break_minutes") or 0)
                 db.execute("UPDATE attendance_logs SET break_minutes=?, note=?, updated=? WHERE id=?", (max(0, mins), note or row["note"], now, aid))
