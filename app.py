@@ -9765,6 +9765,62 @@ def dm_debug_force_mark_read(other_id):
     return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
 
 
+@app.route("/api/dm/debug-unread-all")
+@login_required
+def dm_debug_unread_all():
+    """TEMPORARY diagnostic — same scope/safety as dm_debug_unread above,
+    read-only. Breaks the badge's total down by which peer it's coming
+    from, across every conversation at once, instead of checking one
+    peer at a time. Use this first when the badge shows a number you
+    can't otherwise account for — it'll show exactly which conversation(s)
+    are contributing to it."""
+    me = session["user_id"]
+    ws_id = wid()
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT dm.sender, u.name AS sender_name, COUNT(*) AS cnt, "
+            "MIN(dm.ts) AS oldest, MAX(dm.ts) AS newest "
+            "FROM direct_messages dm LEFT JOIN users u ON u.id = dm.sender "
+            "WHERE dm.workspace_id=? AND dm.recipient=? AND dm.read=0 AND COALESCE(dm.deleted,0)=0 "
+            "GROUP BY dm.sender, u.name ORDER BY cnt DESC",
+            (ws_id, me)
+        ).fetchall()
+        breakdown = [dict(r) for r in rows]
+        total = sum(r["cnt"] for r in breakdown)
+    return jsonify({"my_user_id": me, "my_workspace_id": ws_id, "total_unread": total, "by_sender": breakdown})
+
+
+@app.route("/api/dm/debug-force-mark-read-all", methods=["GET", "POST"])
+@login_required
+def dm_debug_force_mark_read_all():
+    """TEMPORARY one-time repair endpoint — same scope/safety as
+    dm_debug_force_mark_read above, extended to every conversation the
+    caller has, not just one peer at a time. For clearing out backlog
+    left by the historical transaction-abort bug across multiple
+    conversations at once, rather than requiring a separate hit per peer.
+    """
+    me = session["user_id"]
+    ws_id = wid()
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
+            "WHERE workspace_id=? AND recipient=? AND read=0",
+            (ts(), ws_id, me)
+        )
+        marked = cur.rowcount if cur.rowcount is not None else 0
+        notif_cur = db.execute(
+            "UPDATE notifications SET read=1 "
+            "WHERE workspace_id=? AND user_id=? AND read=0 "
+            "AND (type IN ('dm','direct_message','message_received','new_message') "
+            "OR entity_type IN ('dm','direct_message','message','chat'))",
+            (ws_id, me)
+        )
+        notifs_marked = notif_cur.rowcount if notif_cur.rowcount is not None else 0
+    if marked or notifs_marked:
+        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
+    return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
+
+
 @app.route("/api/dm/route-target")
 @login_required
 def dm_route_target():
@@ -11143,18 +11199,7 @@ def notifs_read_all():
     ws, uid = wid(), session["user_id"]
     with get_db() as db:
         db.execute("UPDATE notifications SET read=1 WHERE workspace_id=? AND user_id=?", (ws, uid))
-        # BUG FIX (DM badge survives "Mark all as read" and comes back after refresh):
-        # this endpoint used to only touch the `notifications` table. The Direct
-        # Messages badge is computed separately from direct_messages.read (see
-        # dm_unread()), so "Mark all as read" never actually cleared it — the
-        # sidebar/tab badge kept showing the same stale count after a refresh.
-        # Mark every unread incoming DM read too so the DM badge genuinely hits 0.
-        db.execute(
-            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
-            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0",
-            (ts(), ws, uid)
-        )
-    _cache_bust(ws, "notifications", "notifs", "dm_unread", "appdata")
+    _cache_bust(ws, "notifications", "notifs", "appdata")
     return jsonify({"ok": True})
 
 @app.route("/api/notifications/all",methods=["DELETE"])
