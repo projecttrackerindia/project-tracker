@@ -12949,6 +12949,25 @@ function App(){
     try{localStorage.setItem('pf_team_ctx',id||'');}catch{}
   },[cu]);
   const [dmUnread,setDmUnread]=useState([]);
+  // BUG FIX (DM badge still shows old counts after refresh/sign-in, or
+  // after messages were already read): dmUnread is set from FIVE different
+  // places — app-data, poll, bootstrap, a direct /api/dm/unread fetch, and
+  // an SSE-triggered refetch — and under normal use several of these fire
+  // close together (visible in production logs: overlapping /api/dm/unread
+  // calls within the same second, plus a slow /api/app-data resolving
+  // afterward). Network responses don't arrive in the order they were
+  // sent — a slow request fired BEFORE you read a message can resolve
+  // AFTER a fast request fired AFTER you read it, and silently overwrite
+  // the correct, fresher count with a stale one, purely due to timing.
+  // dmUnreadSeqRef is a monotonic counter: every fetch captures the
+  // sequence number at the moment it STARTS, and its response is only
+  // applied if no newer fetch has started since — discarding stale,
+  // superseded responses regardless of which one happens to resolve last.
+  const dmUnreadSeqRef=useRef(0);
+  const applyDmUnread=useCallback((value,mySeq)=>{
+    if(mySeq!==dmUnreadSeqRef.current)return; // a newer fetch has since started — this one is stale, ignore it
+    setDmUnread(Array.isArray(value)?value:[]);
+  },[]);
   // BUG FIX (DM badge count "coming back" minutes after being cleared): pollOnce()
   // below is created inside a useEffect keyed on [cu,addToast] — it is NOT
   // re-created when dmUnread changes. Every subsequent tick (SSE-unhealthy
@@ -13299,7 +13318,7 @@ function App(){
                   return !!me && recipient===me && sender!==me;
                 }catch(_){return false;}
               })();
-              if(__ptIsIncomingForMe&&msg.type!=='dm_typing'&&msg.type!=='dm_seen')api.get('/api/dm/unread').then(d=>{if(Array.isArray(d))setDmUnread(d);}).catch(()=>{});
+              if(__ptIsIncomingForMe&&msg.type!=='dm_typing'&&msg.type!=='dm_seen'){const _dmSeq2=++dmUnreadSeqRef.current;api.get('/api/dm/unread').then(d=>applyDmUnread(d,_dmSeq2)).catch(()=>{});}
               // Cache incoming DM messages globally so DirectMessages can pre-populate instantly
               // on mount without waiting for the loadMsgs network call to complete.
               try{
@@ -13483,6 +13502,7 @@ function App(){
   const load=useCallback(async(overrideTeamCtx, bust=false)=>{
     if(!cu)return;
     const tCtx=overrideTeamCtx!==undefined?overrideTeamCtx:teamCtx;
+    const _dmSeq=++dmUnreadSeqRef.current; // claim this fetch's sequence slot before any network call starts
     try{
       // Single combined request instead of 9 parallel calls.
       // bust=true forces a fresh DB read on the server, bypassing stale worker caches.
@@ -13501,7 +13521,14 @@ function App(){
           const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
           const _pm=parseMembers;
           setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:ptMergeProjectsStable(prev.projects,(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)}))),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
-          if(Array.isArray(dmu))setDmUnread(dmu);
+          // BUG FIX: this used to also paint dmUnread straight from the
+          // (possibly stale) localStorage instant-cache here. Every other
+          // field repainted from cache is low-risk if briefly stale (a
+          // project list flickering old-then-new is harmless) — dm_unread
+          // specifically is exactly the field people notice and report as
+          // "still showing unread after I already read it", so it's worth
+          // the small delay of just waiting for the real network response
+          // a few lines down instead of ever painting a cached guess.
           if(Array.isArray(rems)){const now=new Date();setUpcomingReminders(rems.filter(r=>new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));}
         }
         if(ws&&ws.name)setWsName(ws.name);
@@ -13542,7 +13569,7 @@ function App(){
       const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
       const _pm=parseMembers;
       setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:ptMergeProjectsStable(prev.projects,(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)}))),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
-      setDmUnread(Array.isArray(dmu)?dmu:[]);
+      applyDmUnread(dmu,_dmSeq);
       if(ws&&ws.name)setWsName(ws.name);
       if(ws){try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},ws,{workspace_id:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_id_from_me:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_slug:ws.workspace_slug||ws.slug||'',workspace_name:ws.name||ws.workspace_name||''});}catch(_){} setWsDmEnabled(ws.dm_enabled!==0);}
       if(Array.isArray(rems)){const now=new Date();setUpcomingReminders(rems.filter(r=>new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));}
@@ -13692,7 +13719,7 @@ function App(){
   const dmBaselineSeededRef=useRef(false);
   useEffect(()=>{
     if(!cu)return;
-    api.get('/api/dm/unread').then(d=>{if(Array.isArray(d)){prevDmsRef.current=d;setDmUnread(d);}}).catch(()=>{});
+    {const _dmSeq3=++dmUnreadSeqRef.current;api.get('/api/dm/unread').then(d=>{if(Array.isArray(d)){prevDmsRef.current=d;}applyDmUnread(d,_dmSeq3);}).catch(()=>{});}
     let latestBusy=false;
     const pullLatest=async()=>{
       if(latestBusy)return;
@@ -13736,8 +13763,10 @@ function App(){
             }
           });
         }
+        const _dmSeq4=++dmUnreadSeqRef.current;
         const d=await api.get('/api/dm/unread',{quiet:true,timeoutMs:12000});
-        if(Array.isArray(d)){prevDmsRef.current=d;setDmUnread(d);}
+        if(Array.isArray(d)){prevDmsRef.current=d;}
+        applyDmUnread(d,_dmSeq4);
       }catch(e){}
       finally{latestBusy=false;}
     };

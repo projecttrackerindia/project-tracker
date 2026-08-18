@@ -1182,7 +1182,24 @@ def _workspace_access_config_cached(workspace_id):
     cached = _cache_get(key)
     if cached:
         return cached
-    out = {"payment_status": "active", "features": {}}
+    # BUG FIX ("sometimes Vault just doesn't work", 403 "Feature not
+    # available on this workspace plan" despite the workspace genuinely
+    # having it enabled): on any error computing this workspace's real
+    # feature flags — including exactly the kind of transient PgBouncer/
+    # connection hiccup fixed elsewhere in this file — this used to fall
+    # back to features={} and then CACHE that empty result for 5 minutes.
+    # That silently blocked every feature-gated endpoint (Vault and
+    # whatever else is in FEATURE_API_PREFIXES) workspace-wide for anyone
+    # who hit it during that window, even though the real entitlement was
+    # fine — a transient read failure was being treated as "this workspace
+    # has no paid features" and then remembered as if it were true. Now:
+    # on error, return a "features unknown" sentinel (None, distinct from
+    # a real {} for a workspace that genuinely has nothing enabled) and
+    # never cache it, so the very next request gets a clean attempt
+    # instead of inheriting a wrong answer for 5 minutes. The enforcement
+    # hook below treats "unknown" as "don't block" — a failed entitlement
+    # check should never be the reason a paying customer can't use a
+    # feature they're actually entitled to.
     try:
         with get_db(autocommit=True) as db:
             meta = _workspace_commercial_meta(db, workspace_id)
@@ -1190,7 +1207,7 @@ def _workspace_access_config_cached(workspace_id):
             out = {"payment_status": str(meta.get("payment_status") or "active").lower(),
                    "features": cfg.get("features", {}) or {}}
     except Exception:
-        pass
+        return {"payment_status": "active", "features": None}
     _cache_set(key, out, int(os.environ.get("ACCESS_CONFIG_CACHE_TTL", "300")))
     return out
 
@@ -1206,7 +1223,9 @@ def enforce_plan_entitlements_and_payment_status():
         payment = str(access.get("payment_status") or "active").lower()
         if request.method in ("POST", "PUT", "PATCH", "DELETE") and payment in ("restricted", "suspended", "cancelled"):
             return jsonify({"error": "Workspace is restricted by billing status. Contact your workspace admin or Project Tracker support."}), 402
-        features = access.get("features", {}) or {}
+        features = access.get("features")
+        if features is None:
+            return None  # couldn't determine entitlements this request — fail open, never block on an unknown
         for feature_key, prefixes in FEATURE_API_PREFIXES:
             if any(path.startswith(p) for p in prefixes) and not bool(features.get(feature_key)):
                 return jsonify({"error": "Feature not available on this workspace plan", "feature": feature_key, "upgrade_required": True}), 403
