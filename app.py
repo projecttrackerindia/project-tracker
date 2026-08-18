@@ -514,6 +514,50 @@ def _is_realtime_fast_path(path: str) -> bool:
         return True
     return bool(re.match(r"^/api/dm/[^/]+$", path))
 
+def _fresh_dm_unread(db, ws_id, uid):
+    """The one, single, shared source of truth for the DM unread badge.
+
+    Used by every endpoint that can influence the badge (/api/poll,
+    /api/app-data, /api/bootstrap, /api/dm/unread) — previously each of
+    those had its own hand-copied version of this same query, which meant
+    a fix applied to one didn't apply to the others. This is that
+    consolidated into one place, plus one addition (see below) that
+    should make manual repair-endpoint visits unnecessary going forward.
+
+    SELF-HEAL: if I've already sent this sender a message more recently
+    than one of their messages that's still marked unread, that's not a
+    message I'm still waiting to read — I have plainly already seen and
+    responded to that part of the conversation. This is exactly the kind
+    of stuck-unread backlog the historical transaction-abort bug left
+    behind (see _table_columns and _DB.execute fix notes elsewhere in this
+    file): real conversations where both sides kept messaging normally,
+    but a handful of older messages never got their read=1 write recorded.
+    Auto-clearing them here, on every live read of this count, means the
+    fix applies itself the next time anyone loads the app — no more
+    one-conversation-at-a-time (or even all-at-once) manual repair visits.
+    This is deliberately conservative: it only clears messages that are
+    OLDER than a reply the recipient demonstrably already sent, never
+    anything from an active, unreplied thread.
+    """
+    try:
+        db.execute(
+            "UPDATE direct_messages AS incoming SET read=1 "
+            "WHERE incoming.workspace_id=? AND incoming.recipient=? AND incoming.read=0 "
+            "AND EXISTS (SELECT 1 FROM direct_messages AS my_reply "
+            "  WHERE my_reply.workspace_id=incoming.workspace_id "
+            "  AND my_reply.sender=incoming.recipient AND my_reply.recipient=incoming.sender "
+            "  AND my_reply.ts>incoming.ts)",
+            (ws_id, uid)
+        )
+    except Exception:
+        pass  # best-effort self-heal; never let this block the real count below
+    rows = db.execute(
+        "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
+        "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
+        (ws_id, uid)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
 @app.before_request
 def _ultra_early_realtime_499_guard():
     path = request.path.rstrip("/") or "/"
@@ -583,13 +627,9 @@ def _ultra_early_realtime_499_guard():
             try:
                 if ws and uid:
                     with get_db() as db:
-                        rows = db.execute(
-                            "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-                            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
-                            (ws, uid)
-                        ).fetchall()
+                        dm_unread_live = _fresh_dm_unread(db, ws, uid)
                     cached = dict(cached)
-                    cached["dm_unread"] = [dict(r) for r in rows]
+                    cached["dm_unread"] = dm_unread_live
             except Exception:
                 pass  # fall back to serving the cached snapshot below rather than failing the poll
             cached["fast_mode"] = True
@@ -7309,13 +7349,8 @@ def get_app_data():
                 _uid_for_dm = session.get('user_id')
                 if _ws_for_dm and _uid_for_dm:
                     with get_db() as _dmdb:
-                        _dm_rows = _dmdb.execute(
-                            "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-                            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
-                            (_ws_for_dm, _uid_for_dm)
-                        ).fetchall()
-                    payload = dict(payload)
-                    payload['dm_unread'] = [dict(r) for r in _dm_rows]
+                        payload = dict(payload)
+                        payload['dm_unread'] = _fresh_dm_unread(_dmdb, _ws_for_dm, _uid_for_dm)
         except Exception:
             pass  # never let this diagnostic-adjacent fix break a real response
         return _cached_etag_response(payload)
@@ -7606,12 +7641,7 @@ def api_bootstrap():
     def _fresh_dm_unread_for_bootstrap():
         try:
             with get_db() as _dmdb:
-                _rows = _dmdb.execute(
-                    "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-                    "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
-                    (wsid, uid)
-                ).fetchall()
-            return [dict(r) for r in _rows]
+                return _fresh_dm_unread(_dmdb, wsid, uid)
         except Exception:
             return None
     cached = _cache_get(cache_key)
@@ -11043,12 +11073,7 @@ def unified_poll():
     ws, uid = wid(), session["user_id"]
 
     with get_db() as db:
-        rows = db.execute(
-            "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-            "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
-            (ws, uid)
-        ).fetchall()
-        dm_unread = [dict(r) for r in rows]
+        dm_unread = _fresh_dm_unread(db, ws, uid)
 
         notifs, found_notifs = _appdata_cache_get(ws, uid, "notifications")
         if not found_notifs:
