@@ -9630,6 +9630,24 @@ def send_dm():
         row["client_msg_id"]=client_msg_id
     preview=content[:60]+("..." if len(content)>60 else "")
 
+    # STRICTER FIX: previously the self-heal in _fresh_dm_unread only ran the
+    # next time something *read* the unread count (next poll/app-data/etc),
+    # so there was an unavoidable lag — send a reply, badge doesn't update
+    # until the next poll cycle. Sending a reply is the single strongest
+    # possible signal that everything earlier in this conversation has been
+    # seen, so heal it immediately, in the same request, before the sender
+    # even gets their response back — not on a delay.
+    try:
+        with get_db() as _heal_db:
+            _heal_db.execute(
+                "UPDATE direct_messages SET read=1 "
+                "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0 AND ts<?",
+                (ws_id, recipient, me, now)
+            )
+        _cache_bust(ws_id, "dm_unread", "appdata")
+    except Exception:
+        pass  # best-effort — the general self-heal in _fresh_dm_unread still catches this on the next read either way
+
     def _dm_after_commit(row=row, preview=preview, sender_name=sender_name):
         try:
             _bust_dm_thread(ws_id, me, recipient)

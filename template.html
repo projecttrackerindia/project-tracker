@@ -6124,7 +6124,22 @@ const playSound=(type='notif')=>{
     }
   }catch(e){}
 };
-function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId=null,onClearInitial,onlineUsers=new Set(),awayUsers=new Set()}){
+// PERF/UX FIX ("cursor shaking" / glitchy feeling while typing a DM, worse
+// the longer the tab stays open): this component was a plain function,
+// re-rendered from scratch on every parent re-render — including every
+// presence/poll/reminder tick (as often as every 15-45s), even while
+// actively typing in the message box below. It's a large component (the
+// full conversation list + message thread), so each of those unrelated
+// re-renders was real, visible work competing with keystrokes — that's
+// the stutter/jank being described, not an actual visual "shake" bug.
+// React.memo skips re-rendering when props are equal, but the default
+// shallow comparison doesn't help here because dmUnread/users/onlineUsers/
+// awayUsers get brand-new array/Set references on every poll even when
+// their actual contents haven't changed. The comparator below checks
+// actual content instead of reference identity, so a poll that returns
+// the same unread counts and the same online users — the overwhelming
+// majority of them — now correctly skips this whole subtree.
+const DirectMessages=React.memo(function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId=null,onClearInitial,onlineUsers=new Set(),awayUsers=new Set()}){
   const isAdminOrManager=cu&&(cu.role==='Admin'||cu.role==='Manager');
   if(!dmEnabled&&!isAdminOrManager) return html`
     <div style=${{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12,color:'var(--tx3)'}}>
@@ -7174,7 +7189,28 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       </div>
     </div>
   </div>`;
-}
+}, (prev, next) => {
+  // Return true = props are "equal enough" to skip re-rendering.
+  if (prev.cu?.id !== next.cu?.id) return false;
+  if (prev.dmEnabled !== next.dmEnabled) return false;
+  if (prev.initialUserId !== next.initialUserId) return false;
+  // onDmRead/onClearInitial are callbacks — comparing them would defeat the
+  // point (they often get new references per render even when the logic
+  // they perform hasn't changed), so they're deliberately excluded here.
+  const usersA = prev.users || [], usersB = next.users || [];
+  if (usersA.length !== usersB.length) return false;
+  if (usersA.length && usersA.map(u => u.id).join(',') !== usersB.map(u => u.id).join(',')) return false;
+  const dmA = prev.dmUnread || [], dmB = next.dmUnread || [];
+  if (dmA.length !== dmB.length) return false;
+  if (dmA.length) {
+    const keyOf = arr => arr.map(x => (x.sender || x.peer_id || x.user_id) + ':' + (x.cnt || 0)).sort().join(',');
+    if (keyOf(dmA) !== keyOf(dmB)) return false;
+  }
+  const setKey = s => s ? Array.from(s).sort().join(',') : '';
+  if (setKey(prev.onlineUsers) !== setKey(next.onlineUsers)) return false;
+  if (setKey(prev.awayUsers) !== setKey(next.awayUsers)) return false;
+  return true;
+});
 
 /* ─── NotifsView ──────────────────────────────────────────────────────────── */
 function NotifsView({notifs,reload,setData,onNavigate,onMarkAllRead,markingAllRead}){
