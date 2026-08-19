@@ -380,22 +380,27 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-scroll::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#5a5ef7,#a855f7);border-radius:4px}
 .vault-scroll::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#6366f1,#c026d3)}
 
-/* ── Vault redesign styles ───────────────────────────────── */
+/* ── Vault redesign styles — premium enterprise credential cards ───────────
+   Design tokens: deep navy #0B1020 (page), slate #151B2E (card), soft blue
+   #5B7CFF / violet #8B5CF6 / emerald #22C55E as environment accents used
+   sparingly (badges, hairlines, icons) rather than filling the card. */
 .vault-scroll{
   font-family:'Inter',system-ui,-apple-system,sans-serif;
-  /* Design tokens — single source of truth for spacing/sizing so every
-     credential card renders pixel-identical regardless of its content. */
-  --vault-radius:20px;
-  --vault-pad:18px;
-  --vault-gap-card:24px;
-  --vault-gap-header-badges:12px;
-  --vault-gap-badges-body:18px;
-  --vault-gap-body-items:12px;
-  --vault-header-h:56px;
-  --vault-badgerow-h:32px;
+  --vault-slate:#151B2E;
+  --vault-slate2:#131829;
+  --vault-line:rgba(255,255,255,.07);
+  --vault-line-hover:rgba(255,255,255,.13);
+  --vault-radius:12px;
+  --vault-pad:16px;
+  --vault-gap-card:18px;
+  --vault-gap-header-badges:10px;
+  --vault-gap-badges-body:14px;
+  --vault-gap-body-items:8px;
+  --vault-header-h:52px;
+  --vault-badgerow-h:28px;
   --vault-btn-w:120px;
-  --vault-btn-h:36px;
-  --vault-card-h:468px;
+  --vault-btn-h:30px;
+  --vault-card-h:420px;
 }
 .vault-cards-grid{
   display:grid;
@@ -413,13 +418,11 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   .vault-cards-grid{grid-template-columns:repeat(1,minmax(0,1fr));} /* Mobile: 1 up */
 }
 .vault-card{
-  background:linear-gradient(180deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.015) 100%),var(--card-grad, var(--sf));
-  backdrop-filter:blur(18px) saturate(140%);
-  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  background:var(--vault-slate);
   border-radius:var(--vault-radius);
   margin-bottom:0;
   overflow:hidden;
-  transition:transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s cubic-bezier(.22,1,.36,1), border-color .28s cubic-bezier(.22,1,.36,1), background .28s ease;
+  transition:border-color .18s ease, box-shadow .18s ease;
   position:relative;
   display:flex;
   flex-direction:column;
@@ -427,32 +430,22 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   max-width:100%;
   width:100%;
   height:var(--vault-card-h);
-  /* BUG FIX (light theme): both the shadow and border used to be fixed
-     dark-mode-only values (a heavy black shadow tuned for a dark canvas,
-     and a white-tinted border that's invisible on a white card). Using the
-     theme shadow token and var(--bd) makes both track light/dark properly —
-     var(--sh2) is already tuned softer for light and heavier for dark. */
-  box-shadow:var(--sh2), inset 0 1px 0 rgba(255,255,255,.04);
-  border:1px solid var(--bd);
+  box-shadow:0 1px 2px rgba(0,0,0,.24);
+  border:1px solid var(--vault-line);
+  border-top:2px solid var(--vault-accent, var(--vault-line));
   cursor:default;
 }
 .vault-card:hover{
-  transform:translateY(-4px);
-  border-color:rgba(139,92,246,.5);
-  box-shadow:var(--sh2), 0 0 0 1px rgba(139,92,246,.12), 0 0 32px rgba(139,92,246,.18), inset 0 1px 0 rgba(255,255,255,.06);
+  border-color:var(--vault-line-hover);
+  border-top-color:var(--vault-accent, var(--vault-line-hover));
+  box-shadow:0 4px 16px rgba(0,0,0,.28);
 }
 .vault-card:focus-within{
-  box-shadow:0 0 0 1px var(--ac-ring), var(--sh2);
+  box-shadow:0 0 0 1px var(--ac-ring);
 }
-/* Selected state — single 2px purple border with a soft purple glow.
-   Replaces the previous orange "pinned" highlight so selection uses the
-   one brand accent instead of a status color. */
+/* Pinned/favorited — a quiet filled star is the only cue; no glow border. */
 .vault-card.is-pinned{
-  border:2px solid #8B5CF6;
-  box-shadow:0 8px 24px rgba(0,0,0,.35), 0 0 0 1px rgba(139,92,246,.15), 0 0 20px rgba(139,92,246,.20);
-}
-.vault-card.is-pinned:hover{
-  box-shadow:0 14px 32px rgba(0,0,0,.4), 0 0 0 1px rgba(139,92,246,.2), 0 0 28px rgba(139,92,246,.28);
+  border-color:rgba(255,255,255,.14);
 }
 .vault-card-body{
   flex:1 1 auto;
@@ -461,12 +454,12 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   flex-direction:column;
   overflow-y:auto;
   scrollbar-width:thin;
-  scrollbar-color:rgba(90,94,247,.3) transparent;
+  scrollbar-color:rgba(255,255,255,.14) transparent;
 }
-.vault-card-body::-webkit-scrollbar{width:6px}
+.vault-card-body::-webkit-scrollbar{width:5px}
 .vault-card-body::-webkit-scrollbar-track{background:transparent}
-.vault-card-body::-webkit-scrollbar-thumb{background:rgba(90,94,247,.25);border-radius:3px}
-.vault-card-body::-webkit-scrollbar-thumb:hover{background:rgba(90,94,247,.4)}
+.vault-card-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
+.vault-card-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
 
 /* Header — fixed height regardless of title length or badge count. The
    icon/title/badges row scrolls horizontally on overflow instead of
@@ -476,16 +469,15 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   position:relative;
   height:var(--vault-header-h);
   flex-shrink:0;
-  padding:0 40px 0 var(--vault-pad);
+  padding:0 38px 0 var(--vault-pad);
   box-sizing:border-box;
   display:flex;
   align-items:center;
-  transition:background .28s ease;
 }
 .vault-card-header-scroll{
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:9px;
   flex-wrap:nowrap;
   overflow-x:auto;
   overflow-y:hidden;
@@ -496,40 +488,38 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 }
 .vault-card-header-scroll::-webkit-scrollbar{display:none;}
 .vault-card-icon{
-  width:38px;height:38px;border-radius:50%;
+  width:30px;height:30px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;
-  font-size:17px;flex-shrink:0;
-  transition:transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s ease;
+  font-size:14px;flex-shrink:0;
+  background:var(--vault-accent-wash,rgba(255,255,255,.06));
+  border:1px solid var(--vault-accent-border,var(--vault-line));
 }
-.vault-card:hover .vault-card-icon{transform:scale(1.06);}
 .vault-card-title{
-  font-size:14px;font-weight:600;color:var(--tx);
-  letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  cursor:text;max-width:180px;flex-shrink:0;font-family:inherit;
+  font-size:13.5px;font-weight:700;color:var(--tx);
+  letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  cursor:text;max-width:170px;flex-shrink:0;font-family:inherit;
 }
 .vault-tag{
-  font-size:9.5px;font-weight:600;padding:4px 10px;border-radius:100px;
-  letter-spacing:.03em;line-height:1.6;white-space:nowrap;
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:5px;
+  letter-spacing:.04em;line-height:1.6;white-space:nowrap;
   flex-shrink:0;
 }
 /* Favorite (star) button — always the same size, always top-right. */
 .vault-fav-btn{
   position:absolute;
-  top:12px;right:12px;
-  width:28px;height:28px;
+  top:11px;right:11px;
+  width:24px;height:24px;
   display:flex;align-items:center;justify-content:center;
-  border-radius:8px;
+  border-radius:6px;
   background:transparent;
-  border:1px solid var(--bd);
+  border:1px solid transparent;
   color:var(--tx3);
-  font-size:13px;cursor:pointer;
-  transition:all .2s ease;
+  font-size:12px;cursor:pointer;
+  transition:color .15s ease, border-color .15s ease;
   flex-shrink:0;
 }
-.vault-fav-btn:hover{background:rgba(255,255,255,.05);color:var(--tx);}
-.vault-fav-btn.active{color:#A78BFA;border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.10);}
+.vault-fav-btn:hover{border-color:var(--vault-line);color:var(--tx2);}
+.vault-fav-btn.active{color:#F59E0B;}
 
 /* ── Glass-style status pill (badges) ──
    Usage: <span class="glass-pill pill-success|pill-warning|pill-danger|pill-info|pill-accent">Label</span>
@@ -550,34 +540,32 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .btn-destructive:hover{background:#EF4444;color:#fff;border-color:#EF4444;}
 
 .vault-action-btn{
-  background:var(--sf2);
-  border:1px solid var(--bd);
-  border-radius:100px;
+  background:transparent;
+  border:1px solid var(--vault-line);
+  border-radius:7px;
   color:var(--tx2);
   font-size:11px;
   height:var(--vault-btn-h);
-  padding:0 14px;
+  padding:0 11px;
   cursor:pointer;
   font-family:inherit;
   display:flex;align-items:center;gap:5px;
-  transition:all .2s ease;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
   font-weight:600;
   white-space:nowrap;
   box-sizing:border-box;
 }
 .vault-action-btn:hover{
   color:var(--tx);
-  border-color:var(--ac);
-  background:rgba(90,94,247,.06);
-  transform:translateY(-2px);
+  border-color:var(--vault-line-hover);
+  background:rgba(255,255,255,.04);
 }
 .vault-action-btn.danger{
   color:#f87171;
-  border-color:rgba(239,68,68,.25);
-  background:rgba(239,68,68,.05);
+  border-color:rgba(239,68,68,.2);
 }
 .vault-action-btn.danger:hover{
-  background:rgba(239,68,68,.07);
+  background:rgba(239,68,68,.08);
   border-color:rgba(239,68,68,.35);
   color:#ef4444;
 }
@@ -610,18 +598,18 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   margin-bottom:0;
 }
 .vault-field-label{
-  font-size:10px;font-weight:500;color:var(--tx3);
-  letter-spacing:.08em;text-transform:uppercase;
+  font-size:9.5px;font-weight:600;color:var(--tx3);
+  letter-spacing:.07em;text-transform:uppercase;
   margin-bottom:4px;font-family:inherit;
 }
 .vault-field-box{
   display:flex;align-items:center;gap:6px;
-  background:var(--sf2);border:1px solid var(--bd);
-  border-radius:12px;padding:8px 10px 8px 12px;
+  background:var(--vault-slate2);border:1px solid var(--vault-line);
+  border-radius:8px;padding:7px 9px 7px 11px;
   min-width:0;
-  transition:border-color .2s ease;
+  transition:border-color .15s ease;
 }
-.vault-field-box:focus-within{border-color:rgba(90,94,247,.4);}
+.vault-field-box:focus-within{border-color:rgba(255,255,255,.18);}
 .vault-field-value{
   flex:1;min-width:0;font-size:12px;color:var(--tx);
   font-weight:400;
@@ -632,100 +620,86 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 /* Card footer */
 .vault-card-footer{
   display:flex;align-items:center;justify-content:space-between;
-  gap:8px;padding:14px var(--vault-pad);border-top:1px solid var(--bd);
+  gap:8px;padding:12px var(--vault-pad);border-top:1px solid var(--vault-line);
   flex-wrap:wrap;flex-shrink:0;
 }
 .vault-icon-btn{
-  width:28px;height:28px;border-radius:8px;
+  width:26px;height:26px;border-radius:7px;
   display:flex;align-items:center;justify-content:center;
   background:transparent;border:1px solid transparent;
-  color:var(--tx3);font-size:13px;cursor:pointer;
-  transition:all .2s ease;flex-shrink:0;
+  color:var(--tx3);font-size:12px;cursor:pointer;
+  transition:all .15s ease;flex-shrink:0;
 }
-.vault-icon-btn:hover{background:rgba(255,255,255,.05);border-color:var(--bd);color:var(--tx);}
+.vault-icon-btn:hover{background:rgba(255,255,255,.04);border-color:var(--vault-line);color:var(--tx);}
 .vault-icon-btn.danger:hover{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.3);color:#f87171;}
 .vault-icon-btn.active{color:#f59e0b;}
 
 .vault-page-pad{padding:28px 32px;position:relative;}
 
-/* Locked-state body: lock icon, name, description and unlock button are
-   always centered — both horizontally and vertically — no matter the
-   card's height, per the fixed header/badge-row/flexible-body structure. */
+/* Locked-state body: icon, status line, masked preview and Unlock action
+   are left-aligned and compact — no animation, no radial wash. */
 .vault-locked-overlay{
   flex:1;
   display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;
-  gap:10px;
-  padding:14px 18px 18px;
+  gap:9px;
+  padding:12px 16px 16px;
   text-align:left;
-  background:radial-gradient(circle at 8% 0%,rgba(139,92,246,.06) 0%,transparent 55%),var(--sf2);
+  background:var(--vault-slate2);
   box-sizing:border-box;
 }
 .vault-locked-head{
-  display:flex;align-items:center;gap:9px;width:100%;
+  display:flex;align-items:center;gap:8px;width:100%;
 }
-/* Small inline security glyph — replaces the old 64px centered animated
-   ring hero. Keeps a subtle "encrypted" cue without dominating the card. */
+/* Small flat security glyph — a static rounded-square lock icon, no
+   animation, tinted by the card's category accent at low opacity. */
 .vault-security-viz{
   position:relative;
-  width:30px;height:30px;
+  width:26px;height:26px;
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
 }
-.vault-security-viz .ring{
-  position:absolute;inset:0;border-radius:50%;
-  border:1.5px solid var(--vault-accent,#8B5CF6);
-  opacity:.35;
-  animation:vaultPulseRing 2.4s cubic-bezier(.22,1,.36,1) infinite;
-}
-.vault-security-viz .ring.r2{animation-delay:.8s;}
 .vault-security-viz .core{
   position:relative;z-index:1;
-  width:26px;height:26px;border-radius:9px;
+  width:26px;height:26px;border-radius:7px;
   display:flex;align-items:center;justify-content:center;
-  font-size:12px;
-  background:linear-gradient(150deg,rgba(139,92,246,.22),rgba(139,92,246,.06));
-  border:1px solid rgba(139,92,246,.4);
-  box-shadow:0 0 12px rgba(139,92,246,.22), inset 0 1px 0 rgba(255,255,255,.08);
-}
-@keyframes vaultPulseRing{
-  0%{transform:scale(.72);opacity:.55;}
-  100%{transform:scale(1.55);opacity:0;}
+  font-size:11px;
+  background:var(--vault-accent-wash,rgba(255,255,255,.06));
+  border:1px solid var(--vault-accent-border,var(--vault-line));
 }
 /* Masked credential preview — shows field shape (Username/Password/Last
    Updated) without leaking any real value while the card is locked. */
 .vault-preview-rows{
   width:100%;
-  display:flex;flex-direction:column;gap:7px;
+  display:flex;flex-direction:column;gap:6px;
   margin-top:0;
 }
 .vault-preview-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
-  background:var(--sf2);
-  border:1px solid var(--bd2);
-  border-radius:9px;
-  padding:7px 11px;
+  background:var(--vault-slate);
+  border:1px solid var(--vault-line);
+  border-radius:7px;
+  padding:7px 10px;
   text-align:left;
 }
 .vault-preview-row .lbl{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);}
-.vault-preview-row .val{font-size:11.5px;font-family:monospace;color:var(--tx3);letter-spacing:2px;}
+.vault-preview-row .val{font-size:11.5px;font-family:monospace;color:var(--tx3);letter-spacing:2px;display:inline-flex;align-items:center;gap:5px;}
 .vault-preview-row .val.meta{font-family:inherit;letter-spacing:0;color:var(--tx3);font-size:11px;}
-/* Unlock is now a compact pill matching the footer action buttons
-   (Pin/Edit/Delete) instead of a large standalone gradient CTA, so the
-   locked card reads as the same dense component, just gated. */
+/* Unlock — compact pill matching the footer action buttons, tinted by the
+   card's category accent instead of a flashy standalone gradient CTA. */
 .vault-unlock-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:5px;
-  height:var(--vault-btn-h);padding:0 14px;
-  background:rgba(90,94,247,.10);
-  color:#a5a8ff;border:1px solid rgba(90,94,247,.35);border-radius:100px;
+  height:var(--vault-btn-h);padding:0 13px;
+  background:var(--vault-accent-wash,rgba(255,255,255,.06));
+  color:var(--vault-accent,var(--tx2));border:1px solid var(--vault-accent-border,var(--vault-line));border-radius:7px;
   font-size:11px;font-weight:600;letter-spacing:.01em;
   cursor:pointer;font-family:inherit;
   box-sizing:border-box;
-  transition:all .2s ease;
-  margin-top:2px;
+  transition:background .15s ease, border-color .15s ease;
+  margin-top:1px;
 }
-.vault-unlock-btn:hover{background:rgba(90,94,247,.18);border-color:rgba(90,94,247,.55);color:#c2c4ff;transform:translateY(-2px);}
-.vault-unlock-btn .arrow{transition:transform .25s cubic-bezier(.22,1,.36,1);}
-.vault-unlock-btn:hover .arrow{transform:translateX(3px);}
+.vault-unlock-btn:hover{background:var(--vault-accent-wash-strong,rgba(255,255,255,.1));}
+.vault-unlock-btn .arrow{transition:transform .2s ease;}
+.vault-unlock-btn:hover .arrow{transform:translateX(2px);}
 
 @media (max-width:460px){
   .vault-card-footer{padding:12px 16px;}
@@ -10835,13 +10809,13 @@ function vaultGetIcon(title, tags){
 
 // ── Category, expiry & relative-time helpers (My Vault redesign) ──────────────
 const VAULT_CATEGORIES = {
-  database: {key:'database', label:'Database', badge:'DATABASE', color:'#10b981'},
-  api:      {key:'api',      label:'API',      badge:'API',      color:'#a78bfa'},
-  server:   {key:'server',   label:'Server',   badge:'SERVER',   color:'#3b82f6'},
-  auth:     {key:'auth',     label:'Auth',     badge:'AUTH',     color:'#f472b6'},
-  cloud:    {key:'cloud',    label:'Cloud',    badge:'CLOUD',    color:'#f97316'},
-  network:  {key:'network',  label:'Network',  badge:'NETWORK',  color:'#22d3ee'},
-  other:    {key:'other',    label:'Other',    badge:'OTHER',    color:'#94a3b8'},
+  database: {key:'database', label:'Database', badge:'DATABASE', color:'#22C55E'},
+  api:      {key:'api',      label:'API',      badge:'API',      color:'#A78BFA'},
+  server:   {key:'server',   label:'Server',   badge:'SERVER',   color:'#5B7CFF'},
+  auth:     {key:'auth',     label:'Auth',     badge:'AUTH',     color:'#8B5CF6'},
+  cloud:    {key:'cloud',    label:'Cloud',    badge:'CLOUD',    color:'#F59E0B'},
+  network:  {key:'network',  label:'Network',  badge:'NETWORK',  color:'#22D3EE'},
+  other:    {key:'other',    label:'Other',    badge:'OTHER',    color:'#2DD4BF'},
 };
 const VAULT_CATEGORY_LIST = Object.values(VAULT_CATEGORIES);
 function vaultAutoCategory(title, tags){
@@ -11113,44 +11087,42 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
 
   const catInfo = vaultCategoryInfo({title, tags, category});
   const expInfo = vaultExpiryInfo(expiresAt);
-  const accentColor = iconInfo.border;
-  const stripeColor = iconInfo.border.replace(/[\d.]+\)$/,'1)');
+  // Single accent per card, driven by category (matches the small badge the
+  // user already sees), applied sparingly via CSS custom properties rather
+  // than filling backgrounds or borders. Icon glyph selection (iconInfo)
+  // stays independent — only its color now follows the category accent.
+  const accentColor = catInfo.color;
+  const accentVars = {
+    '--vault-accent': accentColor,
+    '--vault-accent-wash': accentColor+'1a',
+    '--vault-accent-wash-strong': accentColor+'2e',
+    '--vault-accent-border': accentColor+'40',
+  };
   const menuBtn = {background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:6,color:'var(--tx2)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1};
   const softActionBtn = {background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:6,color:'var(--tx3)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
   const dangerMiniBtn = {background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.18)',borderRadius:6,color:'var(--rd2)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
   const menuItem = {display:'block',width:'100%',textAlign:'left',background:'none',border:'none',color:'var(--tx)',fontSize:12,padding:'8px 10px',cursor:'pointer',borderRadius:7,fontFamily:'inherit'};
 
   return html`
-    <div class="vault-card${pinned?' is-pinned':''}" onClick=${()=>menu&&setMenu(null)} style=${{
-      borderColor: pinned ? undefined : accentColor.replace(/[\d.]+\)$/,'.25)'),
-      borderLeftWidth:4,
-      borderLeftColor:stripeColor,
-    }}>
-      <div style=${{height:4,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.75)')+' 70%,transparent 100%)'}}></div>
-      <div class="vault-card-header" style=${{
-        background:'linear-gradient(135deg,'+iconInfo.bg.replace(/[\d.]+\)$/,'0.22)')+' 0%,transparent 65%)',
-      }}>
+    <div class="vault-card${pinned?' is-pinned':''}" onClick=${()=>menu&&setMenu(null)} style=${accentVars}>
+      <div class="vault-card-header">
         <div class="vault-card-header-scroll">
-          <div class="vault-card-icon" style=${{
-            background:iconInfo.bg.replace(/[\d.]+\)$/,'0.3)'),
-            border:'1.5px solid '+stripeColor,
-            boxShadow:'0 0 16px '+accentColor.replace(/[\d.]+\)$/,'.35)'),
-          }}>${iconInfo.icon}</div>
+          <div class="vault-card-icon">${iconInfo.icon}</div>
           ${editing && html`
-            <input style=${{flex:'0 0 140px',background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:10,padding:'6px 11px',fontSize:14,fontWeight:600,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
+            <input style=${{flex:'0 0 140px',background:'var(--vault-slate2)',border:'1px solid var(--vault-line-hover)',borderRadius:8,padding:'6px 11px',fontSize:13.5,fontWeight:700,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
               value=${title} autoFocus
               onInput=${e=>setTitle(e.target.value)}
               onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
               onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
           ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
-          <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'2a',border:'1px solid '+catInfo.color+'66'}}>${catInfo.badge}</span>
-          ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'var(--gn2)',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
-          ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.14)':'rgba(239,68,68,.14)',color:isUnlocked?'var(--gn2)':'var(--rd2)',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
+          <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'1a',border:'1px solid '+catInfo.color+'40'}}>${catInfo.badge}</span>
+          ${saving && html`<span class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx3)',border:'1px solid var(--vault-line)'}}>Saving…</span>`}
+          ${isLocked && html`<span class="vault-tag" style=${{display:'inline-flex',alignItems:'center',gap:4,background:isUnlocked?'rgba(34,197,94,.12)':'rgba(255,255,255,.05)',color:isUnlocked?'#4ADE80':'var(--tx3)',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'var(--vault-line)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
         </div>
         <button class=${'vault-fav-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin as favorite'} aria-label=${pinned?'Unpin card':'Pin card as favorite'} aria-pressed=${pinned} onClick=${e=>{e.stopPropagation();togglePin();}}>★</button>
       </div>
       <div class="vault-badge-row">
-        ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.1)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.25)'}}>${t}</span>`)}
+        ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx2)',border:'1px solid var(--vault-line)'}}>${t}</span>`)}
         ${expInfo && canSee && html`<button type="button" title="Click to edit expiry date" class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border,cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label} ✎</button>`}
         ${expInfo && !canSee && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
         ${!expInfo && canSee && html`<button type="button" title="Set an expiry date" class="vault-tag" style=${{color:'var(--tx3)',background:'rgba(255,255,255,.04)',border:'1px dashed var(--bd)',cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>+ Set expiry</button>`}
@@ -11176,25 +11148,23 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
 
       <div class="vault-card-body">
       ${isLocked && !isUnlocked && html`
-        <div class="vault-locked-overlay" style=${{'--vault-accent':accentColor}}>
+        <div class="vault-locked-overlay">
           <div class="vault-locked-head">
             <div class="vault-security-viz">
-              <div class="ring"></div>
-              <div class="ring r2"></div>
-              <div class="core">🛡️</div>
+              <div class="core">🔒</div>
             </div>
             <div style=${{minWidth:0}}>
-              <div style=${{fontSize:12.5,fontWeight:400,color:'var(--tx2)'}}>Password protected — click Unlock to view</div>
+              <div style=${{fontSize:12,fontWeight:500,color:'var(--tx2)'}}>Password protected — click Unlock to view</div>
             </div>
           </div>
           <div class="vault-preview-rows">
             <div class="vault-preview-row">
               <span class="lbl">${(rows[0]&&(rows[0][keyCol.id]||'').trim())||'Username'}</span>
-              <span class="val">••••••••••••</span>
+              <span class="val">🔒 ••••••••••</span>
             </div>
             <div class="vault-preview-row">
               <span class="lbl">${(rows[1]&&(rows[1][keyCol.id]||'').trim())||'Password'}</span>
-              <span class="val">••••••••••••</span>
+              <span class="val">🔒 ••••••••••</span>
             </div>
             <div class="vault-preview-row">
               <span class="lbl">Last Updated</span>
