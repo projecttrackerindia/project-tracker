@@ -6139,7 +6139,7 @@ const playSound=(type='notif')=>{
 // actual content instead of reference identity, so a poll that returns
 // the same unread counts and the same online users — the overwhelming
 // majority of them — now correctly skips this whole subtree.
-const DirectMessages=React.memo(function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId=null,onClearInitial,onlineUsers=new Set(),awayUsers=new Set()}){
+const DirectMessages=React.memo(function DirectMessages({cu,users,dmUnread,onDmRead,onDmReadAll,markingAllDmsRead=false,dmEnabled=true,initialUserId=null,onClearInitial,onlineUsers=new Set(),awayUsers=new Set()}){
   const isAdminOrManager=cu&&(cu.role==='Admin'||cu.role==='Manager');
   if(!dmEnabled&&!isAdminOrManager) return html`
     <div style=${{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12,color:'var(--tx3)'}}>
@@ -7119,7 +7119,17 @@ const DirectMessages=React.memo(function DirectMessages({cu,users,dmUnread,onDmR
     </div>
   </div>`:null}<div class="fi" style=${{display:'flex',height:'100%',overflow:'hidden'}}>
     <div style=${{width:190,borderRight:'1px solid var(--bd)',display:'flex',flexDirection:'column',flexShrink:0}}>
-      <div style=${{padding:'11px 12px',borderBottom:'1px solid var(--bd)'}}><div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:8}}>Direct Messages</div><input class="inp" style=${{fontSize:12,padding:'6px 10px'}} placeholder="Search..." value=${search} onInput=${e=>setSearch(e.target.value)}/></div>
+      <div style=${{padding:'11px 12px',borderBottom:'1px solid var(--bd)'}}>
+        <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+          <div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7}}>Direct Messages</div>
+          ${(()=>{const totalUnreadHere=(dmUnread||[]).reduce((a,x)=>a+(x.cnt||0),0);return totalUnreadHere>0&&onDmReadAll?html`
+            <button class="btn bg" title="Mark every unread conversation as read" aria-label="Mark all direct messages as read"
+              style=${{fontSize:10,padding:'2px 7px',height:20,opacity:markingAllDmsRead?.6:1,cursor:markingAllDmsRead?'not-allowed':'pointer'}}
+              disabled=${markingAllDmsRead} onClick=${onDmReadAll}>${markingAllDmsRead?'Marking…':'✓ Mark all read'}</button>
+          `:null;})()}
+        </div>
+        <input class="inp" style=${{fontSize:12,padding:'6px 10px'}} placeholder="Search..." value=${search} onInput=${e=>setSearch(e.target.value)}/>
+      </div>
       <div style=${{flex:1,overflowY:'auto',padding:6}}>
         ${favoritedFiltered.length?html`<div style=${{fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,padding:'6px 10px 4px'}}>⭐ Favourites</div>`:null}
         ${favoritedFiltered.map(u=>renderDmContactRow(u))}
@@ -7194,9 +7204,11 @@ const DirectMessages=React.memo(function DirectMessages({cu,users,dmUnread,onDmR
   if (prev.cu?.id !== next.cu?.id) return false;
   if (prev.dmEnabled !== next.dmEnabled) return false;
   if (prev.initialUserId !== next.initialUserId) return false;
-  // onDmRead/onClearInitial are callbacks — comparing them would defeat the
-  // point (they often get new references per render even when the logic
-  // they perform hasn't changed), so they're deliberately excluded here.
+  if (prev.markingAllDmsRead !== next.markingAllDmsRead) return false;
+  // onDmRead/onDmReadAll/onClearInitial are callbacks — comparing them would
+  // defeat the point (they often get new references per render even when
+  // the logic they perform hasn't changed), so they're deliberately
+  // excluded here.
   const usersA = prev.users || [], usersB = next.users || [];
   if (usersA.length !== usersB.length) return false;
   if (usersA.length && usersA.map(u => u.id).join(',') !== usersB.map(u => u.id).join(',')) return false;
@@ -13298,6 +13310,17 @@ function App(){
                 showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('dm:'+String(n.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
               }
             }
+            if(msg.type==='dm_read_all'){
+              // Multi-tab/multi-device sync (spec item 9): another tab/session
+              // for this SAME user ran "Mark all as read" — clear the badge
+              // here too instead of waiting for this tab's own next poll.
+              try{
+                const targetUser=String((msg.data&&msg.data.user_id)||'');
+                if(targetUser&&targetUser===String(cu&&cu.id||'')){
+                  setDmUnread([]);
+                }
+              }catch(_){}
+            }
             if(['dm','dm_created','dm_reaction','dm_updated','dm_deleted','dm_pinned','dm_seen','dm_typing','call_status'].includes(msg.type)){
               if(!__ptMsgForMe(msg)) return;
               // Notification-badge rule: only an INCOMING message (someone else sent
@@ -13844,6 +13867,26 @@ function App(){
       return {...prev,notifs:notifs.filter(n=>!isDmFrom(n))};
     });
   },[]);
+  // "Mark all as read" for Direct Messages — spec item 11/23. Same
+  // optimistic-then-persist-then-reconcile-on-failure shape as
+  // markAllNotificationsRead above, applied to dmUnread instead of notifs.
+  const [markingAllDmsRead,setMarkingAllDmsRead]=useState(false);
+  const onDmReadAll=useCallback(async()=>{
+    const prevDmUnread=dmUnreadRef.current;
+    if(!prevDmUnread.length||markingAllDmsRead)return;
+    setMarkingAllDmsRead(true);
+    setDmUnread([]);
+    try{
+      const res=await api.post('/api/dm/read-all',{});
+      if(res&&res.ok===false)throw new Error(res.error||'Request failed');
+      try{window._pfToast&&window._pfToast('success','All messages marked as read.');}catch(_){}
+    }catch(e){
+      setDmUnread(prevDmUnread); // reconcile: revert optimistic clear so the badge never lies about backend state
+      try{window._pfToast&&window._pfToast('error','Failed to mark messages as read',(e&&e.message)||'Please try again.');}catch(_){}
+    }finally{
+      setMarkingAllDmsRead(false);
+    }
+  },[markingAllDmsRead]);
   const logout=async()=>{
     // 1. Abort all in-flight API requests FIRST — stops polls, cancels app-data
     api._abort();
@@ -14137,7 +14180,7 @@ function App(){
               onClearInitialTask=${()=>setInitialTaskId(null)}
             />`:null}
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
-            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
+            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} onDmReadAll=${onDmReadAll} markingAllDmsRead=${markingAllDmsRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}

@@ -9888,6 +9888,45 @@ def dm_debug_force_mark_read_all():
     return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
 
 
+@app.route("/api/dm/read-all", methods=["POST"])
+@login_required
+def dm_mark_all_read():
+    """Mark every unread DM (across every conversation) as read for the
+    current user, in one action — the messaging-spec's "Mark all as read".
+
+    Security: me/ws_id come only from the authenticated session, never
+    from the request body — a user can only ever mark their OWN received
+    messages read, matching the same rule enforced everywhere else DMs are
+    read-marked (get_dm(), etc).
+    """
+    me = session["user_id"]
+    ws_id = wid()
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
+            "WHERE workspace_id=? AND recipient=? AND read=0",
+            (ts(), ws_id, me)
+        )
+        marked = cur.rowcount if cur.rowcount is not None else 0
+        notif_cur = db.execute(
+            "UPDATE notifications SET read=1 "
+            "WHERE workspace_id=? AND user_id=? AND read=0 "
+            "AND (type IN ('dm','direct_message','message_received','new_message') "
+            "OR entity_type IN ('dm','direct_message','message','chat'))",
+            (ws_id, me)
+        )
+        notifs_marked = notif_cur.rowcount if notif_cur.rowcount is not None else 0
+    if marked or notifs_marked:
+        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
+        # Multi-tab/multi-device sync (spec item 9): broadcast so every other
+        # open tab/session for this same user clears its badge too, not just
+        # this one. Workspace-wide broadcast (matches every other _sse_publish
+        # call in this file) — the frontend filters to "is this me" itself,
+        # the same way it already does for every other DM realtime event.
+        _sse_publish(ws_id, "dm_read_all", {"user_id": me})
+    return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
+
+
 @app.route("/api/dm/route-target")
 @login_required
 def dm_route_target():
