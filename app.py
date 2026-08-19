@@ -496,9 +496,6 @@ _REALTIME_FAST_ENDPOINTS = {
     ("GET", "/api/presence"),
     ("POST", "/api/presence"),
     ("GET", "/api/poll"),
-    ("GET", "/api/dm/previews"),
-    ("GET", "/api/dm/latest-unread"),
-    ("GET", "/api/dm/unread"),
     ("GET", "/api/calls/incoming"),
     ("GET", "/api/reminders/due"),
     # FIX: avatar conditional requests (304) were taking 700ms because before_request
@@ -510,53 +507,7 @@ _REALTIME_FAST_PATHS = {p for _, p in _REALTIME_FAST_ENDPOINTS}
 
 def _is_realtime_fast_path(path: str) -> bool:
     path = (path or "").rstrip("/") or "/"
-    if path in _REALTIME_FAST_PATHS or path == "/api/stream":
-        return True
-    return bool(re.match(r"^/api/dm/[^/]+$", path))
-
-def _fresh_dm_unread(db, ws_id, uid):
-    """The one, single, shared source of truth for the DM unread badge.
-
-    Used by every endpoint that can influence the badge (/api/poll,
-    /api/app-data, /api/bootstrap, /api/dm/unread) — previously each of
-    those had its own hand-copied version of this same query, which meant
-    a fix applied to one didn't apply to the others. This is that
-    consolidated into one place, plus one addition (see below) that
-    should make manual repair-endpoint visits unnecessary going forward.
-
-    SELF-HEAL: if I've already sent this sender a message more recently
-    than one of their messages that's still marked unread, that's not a
-    message I'm still waiting to read — I have plainly already seen and
-    responded to that part of the conversation. This is exactly the kind
-    of stuck-unread backlog the historical transaction-abort bug left
-    behind (see _table_columns and _DB.execute fix notes elsewhere in this
-    file): real conversations where both sides kept messaging normally,
-    but a handful of older messages never got their read=1 write recorded.
-    Auto-clearing them here, on every live read of this count, means the
-    fix applies itself the next time anyone loads the app — no more
-    one-conversation-at-a-time (or even all-at-once) manual repair visits.
-    This is deliberately conservative: it only clears messages that are
-    OLDER than a reply the recipient demonstrably already sent, never
-    anything from an active, unreplied thread.
-    """
-    try:
-        db.execute(
-            "UPDATE direct_messages AS incoming SET read=1 "
-            "WHERE incoming.workspace_id=? AND incoming.recipient=? AND incoming.read=0 "
-            "AND EXISTS (SELECT 1 FROM direct_messages AS my_reply "
-            "  WHERE my_reply.workspace_id=incoming.workspace_id "
-            "  AND my_reply.sender=incoming.recipient AND my_reply.recipient=incoming.sender "
-            "  AND my_reply.ts>incoming.ts)",
-            (ws_id, uid)
-        )
-    except Exception:
-        pass  # best-effort self-heal; never let this block the real count below
-    rows = db.execute(
-        "SELECT sender, COUNT(*) AS cnt FROM direct_messages "
-        "WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender",
-        (ws_id, uid)
-    ).fetchall()
-    return [dict(r) for r in rows]
+    return path in _REALTIME_FAST_PATHS or path == "/api/stream"
 
 @app.before_request
 def _ultra_early_realtime_499_guard():
@@ -610,71 +561,24 @@ def _ultra_early_realtime_499_guard():
         except Exception:
             cached = None
         if isinstance(cached, dict):
-            # BUG FIX (DM sidebar badge clears to 0, then resurrects minutes
-            # later): this fast path used to return the cached dm_unread
-            # verbatim. poll_stale can be repopulated with a stale (pre-read)
-            # dm_unread snapshot by a request that started its DB read just
-            # before get_dm() committed the read=1 UPDATE but wrote its
-            # result to cache just after get_dm()'s cache-bust ran — that
-            # stale write then sat here and got served as-is on every poll
-            # for up to 5 minutes (_CACHE_STALE), which is exactly the
-            # "goes to 0, then jumps back up" symptom. dm_unread is a tiny,
-            # indexed, single-table query (see idx_dm_unread_covering) — same
-            # reasoning /api/dm/unread already uses to never cache it — so
-            # re-check it live on every poll instead of trusting the cached
-            # copy. Notifications stay on the cheap cached path; only the
-            # field that was actually reported stuck gets the live read.
-            try:
-                if ws and uid:
-                    with get_db() as db:
-                        dm_unread_live = _fresh_dm_unread(db, ws, uid)
-                    cached = dict(cached)
-                    cached["dm_unread"] = dm_unread_live
-            except Exception:
-                pass  # fall back to serving the cached snapshot below rather than failing the poll
             cached["fast_mode"] = True
             return jsonify(cached)
         # BUG FIX: no warm cache yet (first poll for this session, or the
-        # entry expired/was busted after a new DM/notification). Previously
-        # this returned a hardcoded {dm_unread: [], notifications: []} stub,
-        # which made unified_poll() — the only code that ever populates
-        # poll_stale — permanently unreachable. Fall through instead so the
-        # real handler runs, returns live data, and warms the cache for the
-        # next fast-path hit.
+        # entry expired/was busted after a new notification). Previously
+        # this returned a hardcoded {notifications: []} stub, which made
+        # unified_poll() — the only code that ever populates poll_stale —
+        # permanently unreachable. Fall through instead so the real handler
+        # runs, returns live data, and warms the cache for the next
+        # fast-path hit.
         return None
-    if (method, path) == ("GET", "/api/dm/previews"):
-        # Return the real stale preview map shape, not {previews: []}; otherwise
-        # the sidebar loses last-message data even though the request is "fixed".
-        ws = str(session.get("workspace_id") or "")
-        stale = None
-        try:
-            stale = _cache_get(f"dm_previews_stale:{ws}:{uid}") if ws and uid else None
-        except Exception:
-            stale = None
-        if isinstance(stale, dict):
-            return jsonify(stale)
-        # BUG FIX: dm_previews_stale is only ever written by dm_previews()
-        # itself (via _dm_previews_refresh). Returning a hardcoded {} here on
-        # every cache-miss made that view — and therefore its own cache
-        # writer — permanently unreachable, so sidebar DM previews never
-        # loaded. Fall through so the real view can run once and warm both
-        # caches for subsequent fast-path hits.
-        return None
-    # BUG FIX: /api/dm/latest-unread, /api/dm/unread, /api/calls/incoming and
-    # /api/reminders/due previously returned a hardcoded empty payload
-    # unconditionally, which made their real (DB-backed, already
-    # cache-guarded) view functions permanently unreachable — so incoming
-    # call invites, unread DM fallback polling, and due reminders never
-    # showed up. These routes already implement their own short-TTL caching
+    # BUG FIX: /api/calls/incoming and /api/reminders/due previously returned
+    # a hardcoded empty payload unconditionally, which made their real
+    # (DB-backed, already cache-guarded) view functions permanently
+    # unreachable — so incoming call invites and due reminders never showed
+    # up. These routes already implement their own short-TTL caching
     # internally, so it's safe to just let the request through.
-    if (method, path) in (("GET", "/api/dm/latest-unread"), ("GET", "/api/dm/unread"),
-                           ("GET", "/api/calls/incoming"), ("GET", "/api/reminders/due")):
+    if (method, path) in (("GET", "/api/calls/incoming"), ("GET", "/api/reminders/due")):
         return None
-
-    # Incremental DM refresh can be safely empty. Full first loads may continue
-    # into the real route so a user opening a conversation can still fetch history.
-    if method == "GET" and re.match(r"^/api/dm/[^/]+$", path) and request.args.get("since"):
-        return jsonify([])
     return None
 
 
@@ -694,7 +598,7 @@ def _session_identity_payload():
         "role": session.get("role", ""),
         "avatar": session.get("avatar", ""),
         "color": session.get("color", ""),
-        "workspace_dashboard_url": f"/fsbl/{wsid}/dashboard" if wsid else "",
+        "workspace_dashboard_url": f"/fsbl/{wsid}/ai" if wsid else "",
     }
 
 @app.before_request
@@ -4214,7 +4118,7 @@ def push_notification_to_user(db_ignored, user_id, title, body, nav_url="/", tag
     except Exception:
         _sender = ""
     payload = {"title": title, "body": body, "url": nav_url, "tag": tag or title,
-               "kind": "dm" if _nav.startswith("/dm") or "action=dm" in _nav else "",
+               "kind": "",
                "sender": _sender}
     dead_ids = []
     for sub in (subs or []):
@@ -4369,14 +4273,14 @@ def init_db():
             CREATE TABLE IF NOT EXISTS direct_messages (
                 id TEXT PRIMARY KEY, workspace_id TEXT, sender TEXT,
                 recipient TEXT, content TEXT, read INTEGER DEFAULT 0, ts TEXT);
+            -- NOTE: kept as internal storage for the /api/calls/* video-call
+            -- invite signaling flow (CALL_INVITE messages), which reuses this
+            -- table even though the user-facing Direct Messages feature and
+            -- its /api/dm/* endpoints have been removed. Do not drop.
             CREATE TABLE IF NOT EXISTS dm_reactions (
                 id TEXT PRIMARY KEY, workspace_id TEXT, message_id TEXT,
                 user_id TEXT, emoji TEXT, ts TEXT,
                 UNIQUE(workspace_id, message_id, user_id, emoji));
-            CREATE TABLE IF NOT EXISTS dm_favorites (
-                id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT,
-                peer_id TEXT, created TEXT,
-                UNIQUE(workspace_id, user_id, peer_id));
             CREATE TABLE IF NOT EXISTS notifications (
                 id TEXT PRIMARY KEY, workspace_id TEXT, type TEXT, content TEXT,
                 user_id TEXT, read INTEGER DEFAULT 0, ts TEXT,
@@ -4512,8 +4416,6 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_dm_reactions_msg ON dm_reactions(workspace_id, message_id)",
             # Favorite/pinned DM contacts — inspired by reference UI showing a heart
             # toggle on a contact card and a "Favourite's" section in the nav sidebar.
-            "CREATE TABLE IF NOT EXISTS dm_favorites (id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT, peer_id TEXT, created TEXT, UNIQUE(workspace_id, user_id, peer_id))",
-            "CREATE INDEX IF NOT EXISTS idx_dm_favorites_user ON dm_favorites(workspace_id, user_id)",
             "ALTER TABLE direct_messages ADD COLUMN edited INTEGER DEFAULT 0",
             "ALTER TABLE direct_messages ADD COLUMN deleted INTEGER DEFAULT 0",
             "ALTER TABLE direct_messages ADD COLUMN pinned INTEGER DEFAULT 0",
@@ -5205,7 +5107,7 @@ def login():
             if ws_row:
                 import re as _re
                 slug = ws_row["workspace_slug"] or _re.sub(r"[^a-z0-9]+", "-", ws_row["name"].lower().strip()).strip("-") or "workspace"
-                result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/dashboard"
+                result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/ai"
                 result["workspace_slug"] = slug
         except Exception:
             pass
@@ -5660,7 +5562,7 @@ def totp_verify_login():
             ).fetchone()
             if ws_row:
                 slug = ws_row["workspace_slug"] or                        _re_t.sub(r"[^a-z0-9]+", "-", ws_row["name"].lower().strip()).strip("-") or                        "workspace"
-                result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/dashboard"
+                result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/ai"
                 result["workspace_slug"] = slug
         except Exception:
             pass
@@ -6072,7 +5974,7 @@ def accept_workspace_invite():
         slug = "".join(c2 for c2 in ws_name.lower().replace(" ","-") if c2.isalnum() or c2=="-")[:30] or ws_id
     _register_session(uid, ws_id, session_id)
     _audit("invite_accepted", email, f"Joined workspace {ws_id} as {role}")
-    return jsonify({"ok": True, "workspace_dashboard_url": f"/{slug}/{ws_id}/dashboard"})
+    return jsonify({"ok": True, "workspace_dashboard_url": f"/{slug}/{ws_id}/ai"})
 
 @app.route("/api/workspace/invites", methods=["GET"])
 @login_required
@@ -6218,7 +6120,7 @@ def domain_join_request():
             _set_logged_out_at(new_uid, "")
             _register_session(new_uid, ws_id_req, session_id)
             _audit("domain_join", email, f"Auto-joined {ws_id_req} via domain {domain}")
-            return jsonify({"ok": True, "workspace_dashboard_url": f"/{slug}/{ws_id_req}/dashboard"})
+            return jsonify({"ok": True, "workspace_dashboard_url": f"/{slug}/{ws_id_req}/ai"})
         else:
             # Notify admins
             _audit("domain_join_request", email, f"Requested access to {ws_id_req} via domain {domain}")
@@ -6286,7 +6188,7 @@ def register():
             result = {"id":uid,"workspace_id":ws_id,"name":d["name"],"email":d["email"],
                       "role":d.get("role","Developer"),"avatar":av,"color":c}
             if slug:
-                result["workspace_dashboard_url"] = f"/{slug}/{ws_id}/dashboard"
+                result["workspace_dashboard_url"] = f"/{slug}/{ws_id}/ai"
             return jsonify(result)
     except Exception as e:
         if "UNIQUE" in str(e): return jsonify({"error":"Email already registered"}),400
@@ -6511,7 +6413,7 @@ def me():
         ws_slug = u.get("_ws_slug","")
         if ws_name or ws_slug:
             slug = ws_slug or _re.sub(r"[^a-z0-9]+", "-", ws_name.lower().strip()).strip("-") or "workspace"
-            result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/dashboard"
+            result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/ai"
             result["workspace_slug"] = slug
             result["workspace_id_from_me"] = u["workspace_id"]
             result["workspace_name"] = ws_name or ""
@@ -6544,7 +6446,7 @@ def me():
                 ws_row = db.execute("SELECT name, workspace_slug FROM workspaces WHERE id=?", (u["workspace_id"],)).fetchone()
                 if ws_row:
                     slug = ws_row["workspace_slug"] or _re.sub(r"[^a-z0-9]+", "-", (ws_row["name"] or "").lower().strip()).strip("-") or "workspace"
-                    result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/dashboard"
+                    result["workspace_dashboard_url"] = f"/{slug}/{u['workspace_id']}/ai"
                     result["workspace_slug"] = slug
                     result["workspace_id_from_me"] = u["workspace_id"]
                     result["workspace_name"] = ws_row["name"] or ""
@@ -8874,294 +8776,6 @@ def _attach_dm_reactions(db, ws_id, messages):
         m["reactions"]=list(grouped.get(m.get("id"), {}).values())
     return out
 
-@app.route("/api/dm/<other_id>")
-@login_required
-def get_dm(other_id):
-    """Return DM conversation between the current user and other_id.
-
-    Supports incremental fetch via ?since=<timestamp_ms>.
-    Clients should store the ts of the newest message they have and pass
-    it on subsequent polls so only new messages are transferred.
-    Example: GET /api/dm/u123?since=1715000000000
-
-    On the first load (no since param) the last 150 messages are returned
-    so older conversation history is available immediately while still bounding response size.
-    """
-    me = session["user_id"]
-    ws_id = wid()
-    since = request.args.get("since", "").strip()
-    dm_cache_key = f"dm_thread:{ws_id}:{me}:{other_id}"
-
-    try:
-        # NOTE: must use get_db() (autocommit=False) so the UPDATE that marks messages as
-        # read is actually committed. get_db(autocommit=True) skips COMMIT, so read status
-        # never persists and unread badges/delivered indicators are permanently wrong.
-        with get_db() as db:
-            # Mark messages as read unconditionally, BEFORE any cache lookup.
-            # Previously the cached-thread short-circuit below returned early on every
-            # cache hit, so opening an already-cached conversation skipped this UPDATE
-            # entirely and the unread badge never cleared. Read-marking must never be
-            # gated behind a cache check.
-            _unread_check = db.execute(
-                "SELECT COUNT(*) AS cnt FROM direct_messages "
-                "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
-                (ws_id, other_id, me)
-            ).fetchone()
-            _unread_pending = (_unread_check["cnt"] if _unread_check else 0) or 0
-            if _unread_pending:
-                cur = db.execute(
-                    "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
-                    "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
-                    (ts(), ws_id, other_id, me)
-                )
-                unread_count = cur.rowcount if cur.rowcount is not None else 0
-            else:
-                unread_count = 0
-
-            # BUG FIX (badge stuck showing stale/inflated unread count, e.g. "11" with
-            # no unread conversations): opening a conversation used to only mark
-            # direct_messages.read=1. The corresponding row(s) in `notifications`
-            # (type='dm', created alongside every incoming DM — see the send-message
-            # handler) were left read=0 forever, relying entirely on a client-side
-            # best-effort loop (onDmRead in the frontend) that DELETEs notifications
-            # found in whatever page of /api/poll happened to already be loaded in
-            # local state. Any notification not in that local page (older message,
-            # missed poll, network hiccup on the DELETE call) stayed unread in the DB
-            # permanently and kept inflating the header badge total
-            # (unread notifications + dm_unread) even after every DM was read.
-            # Marking them read here — authoritatively, server-side, every time a
-            # conversation is opened — closes that gap regardless of client state,
-            # and also self-heals any notifications orphaned by this bug previously.
-            # The broader type/entity_type set mirrors the one already used by
-            # dm_route_target() to recognize this notification family.
-            notif_cur = db.execute(
-                "UPDATE notifications SET read=1 "
-                "WHERE workspace_id=? AND user_id=? AND COALESCE(sender_id,'')=? AND read=0 "
-                "AND (type IN ('dm','direct_message','message_received','new_message') "
-                "OR entity_type IN ('dm','direct_message','message','chat'))",
-                (ws_id, me, other_id)
-            )
-            notif_count = notif_cur.rowcount if notif_cur.rowcount is not None else 0
-
-            if unread_count or notif_count:
-                # The cached thread snapshot (if any) still shows these messages as
-                # unread, and the badge caches are now stale — bust both so the badge
-                # and the thread view can't keep serving pre-read data.
-                _bust_dm_thread(ws_id, me, other_id)
-                _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
-                try:
-                    # Notify the sender immediately so their outgoing messages change from
-                    # delivered single-tick to read double-tick without waiting for a reload.
-                    _sse_publish(ws_id, "dm_seen", {"reader": me, "sender": other_id, "seen_at": ts(), "count": unread_count})
-                except Exception as e:
-                    log.warning("[DM] seen SSE failed: %s", e)
-                if notif_count:
-                    try:
-                        _sse_publish(ws_id, "notification_updated", {"reason": "dm_read", "sender": other_id, "recipient": me})
-                    except Exception as e:
-                        log.warning("[DM] notification_updated SSE failed: %s", e)
-
-            # Short-lived cache for full conversation loads (no ?since param), used only
-            # to serve message content quickly — never to short-circuit read-marking above.
-            # SSE events trigger client-side reloads which pass ?since= (incremental),
-            # so the cache is only hit for initial opens and page refreshes.
-            if not since:
-                cached_thread = _cache_get(dm_cache_key)
-                if cached_thread is not None:
-                    return jsonify(cached_thread)
-
-            if since:
-                # Incremental: only messages newer than the client's last known ts.
-                # ts column stores ISO-8601 strings — lexicographic comparison works
-                # because they are zero-padded. Clients pass epoch-ms; convert here.
-                try:
-                    since_ms = int(since)
-                    # direct_messages.ts is stored in IST as YYYY-MM-DDTHH:MM:SS+05:30.
-                    # Convert epoch-ms back to the same sortable format.
-                    # Use timezone-aware fromtimestamp (replaces deprecated utcfromtimestamp).
-                    since_dt = datetime.fromtimestamp(since_ms / 1000, tz=timezone.utc).replace(tzinfo=None) + IST_OFFSET
-                    since_str = since_dt.strftime('%Y-%m-%dT%H:%M:%S') + '+05:30'
-                except (ValueError, TypeError):
-                    since_str = since  # caller passed an ISO string directly
-
-                # UNION ALL lets each branch hit idx_dm_conversation directly without
-                # the OR-merge that forced two index scans to be combined. ~2-3x faster.
-                # COALESCE(deleted,0)=0 filters out soft-deleted messages.
-                rows = db.execute(
-                    """SELECT * FROM direct_messages
-                       WHERE workspace_id=? AND sender=? AND recipient=? AND ts > ?
-                         AND COALESCE(deleted,0)=0
-                       UNION ALL
-                       SELECT * FROM direct_messages
-                       WHERE workspace_id=? AND sender=? AND recipient=? AND ts > ?
-                         AND COALESCE(deleted,0)=0
-                       ORDER BY ts
-                       LIMIT 500""",
-                    (ws_id, me, other_id, since_str, ws_id, other_id, me, since_str)
-                ).fetchall()
-            else:
-                # Full load — UNION ALL avoids the OR-merge index scan penalty.
-                # COALESCE(deleted,0)=0 filters out soft-deleted messages.
-                rows = db.execute(
-                    """SELECT * FROM (
-                         SELECT * FROM direct_messages
-                         WHERE workspace_id=? AND sender=? AND recipient=?
-                           AND COALESCE(deleted,0)=0
-                         UNION ALL
-                         SELECT * FROM direct_messages
-                         WHERE workspace_id=? AND sender=? AND recipient=?
-                           AND COALESCE(deleted,0)=0
-                       ) ORDER BY ts DESC
-                       LIMIT 150""",
-                    (ws_id, me, other_id, ws_id, other_id, me)
-                ).fetchall()
-                rows = list(reversed(rows))  # restore chronological order
-
-            data = _attach_dm_reactions(db, ws_id, rows)
-
-    except Exception as e:
-        log.error("[DM] get_dm failed for %s → %s: %s", me, other_id, e, exc_info=True)
-        return jsonify({"error": "Failed to load conversation", "detail": str(e)}), 500
-
-    # Cache the full conversation so page refreshes and re-opens are instant
-    if not since:
-        _cache_set(f"dm_thread:{ws_id}:{me}:{other_id}", data)
-        _cache_set(f"dm_thread_stale:{ws_id}:{me}:{other_id}", data, ttl=300)
-
-    return jsonify(data)
-
-
-
-def _create_google_meet_event(access_token, title, attendee_emails=None):
-    """Create a real Google Meet link using Google Calendar API.
-
-    Requires the current session to have a Google OAuth access token with
-    https://www.googleapis.com/auth/calendar.events scope.
-    """
-    attendee_emails = [e for e in (attendee_emails or []) if e]
-    from datetime import timezone, timedelta
-    start_dt = datetime.now(timezone.utc)
-    end_dt = start_dt + timedelta(hours=1)
-    payload = {
-        "summary": title or "Workspace call",
-        "description": "Started from the Project Tracker Direct Messages call button.",
-        "start": {"dateTime": start_dt.isoformat()},
-        "end": {"dateTime": end_dt.isoformat()},
-        "attendees": [{"email": e} for e in attendee_emails],
-        "conferenceData": {
-            "createRequest": {
-                "requestId": f"meet-{secrets.token_hex(12)}",
-                "conferenceSolutionKey": {"type": "hangoutsMeet"}
-            }
-        }
-    }
-    body = _json_mod.dumps(payload).encode("utf-8")
-    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all"
-    req = _urlrequest.Request(url, data=body, method="POST", headers={
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    })
-    with _urlrequest.urlopen(req, timeout=15) as resp:
-        event = _json_mod.loads(resp.read())
-    meet_url = event.get("hangoutLink") or ""
-    if not meet_url:
-        for ep in event.get("conferenceData", {}).get("entryPoints", []) or []:
-            if ep.get("entryPointType") == "video" and ep.get("uri"):
-                meet_url = ep.get("uri")
-                break
-    code = ""
-    if meet_url:
-        code = meet_url.rstrip("/").split("/")[-1]
-    return {"event": event, "meetUrl": meet_url, "meetingCode": code}
-
-
-def _create_google_meet_space(access_token):
-    """Create a real Google Meet space using the Google Meet REST API.
-
-    Important UX fix: set accessType=OPEN. Without this, API-created Meet
-    rooms can inherit restricted/default host settings, so both caller and
-    receiver may sit in the lobby waiting for a host. OPEN lets anyone with the
-    generated meeting link join without knocking, which matches the instant
-    ProjectTracker call flow.
-    """
-    if not access_token:
-        raise ValueError("Missing Google OAuth access token")
-    body = _json_mod.dumps({
-        "config": {
-            "accessType": "OPEN",
-            "entryPointAccess": "ALL"
-        }
-    }).encode("utf-8")
-    req = _urlrequest.Request("https://meet.googleapis.com/v2/spaces", data=body, method="POST", headers={
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    })
-    with _urlrequest.urlopen(req, timeout=15) as resp:
-        space = _json_mod.loads(resp.read())
-    meet_url = space.get("meetingUri") or space.get("meetingUrl") or ""
-    return {"space": space, "meetUrl": meet_url, "meetingCode": space.get("meetingCode") or ""}
-
-def _server_google_token():
-    """Return a server-side Google OAuth token for Meet API.
-
-    Supported production config, in this order:
-    1) GOOGLE_MEET_ACCESS_TOKEN / GOOGLE_ACCESS_TOKEN - quick test only; expires.
-    2) GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REFRESH_TOKEN - recommended.
-
-    Google Meet rooms cannot be created with a random/browser-generated URL.
-    The backend must call POST https://meet.googleapis.com/v2/spaces with an
-    OAuth token that has the meetings.space.created scope.
-    """
-    direct = (os.environ.get("GOOGLE_MEET_ACCESS_TOKEN") or os.environ.get("GOOGLE_ACCESS_TOKEN") or "").strip()
-    if direct:
-        return direct
-    cid = (os.environ.get("GOOGLE_CLIENT_ID") or "").strip()
-    secret = (os.environ.get("GOOGLE_CLIENT_SECRET") or "").strip()
-    refresh = (os.environ.get("GOOGLE_REFRESH_TOKEN") or os.environ.get("GOOGLE_MEET_REFRESH_TOKEN") or "").strip()
-    if not (cid and secret and refresh):
-        return ""
-    data = _urlparse.urlencode({
-        "client_id": cid,
-        "client_secret": secret,
-        "refresh_token": refresh,
-        "grant_type": "refresh_token",
-    }).encode("utf-8")
-    req = _urlrequest.Request("https://oauth2.googleapis.com/token", data=data, method="POST", headers={"Content-Type":"application/x-www-form-urlencoded"})
-    with _urlrequest.urlopen(req, timeout=15) as resp:
-        tok = _json_mod.loads(resp.read())
-    return (tok.get("access_token") or "").strip()
-
-
-
-def _workspace_url(workspace_id, page, entity_id="", params=None):
-    """Build workspace-scoped frontend URLs: /<workspace-slug>/<workspace-id>/<page>."""
-    import re as _re
-    try:
-        wsid = str(workspace_id or "").strip()
-        slug = "workspace"
-        if wsid:
-            with get_db() as db:
-                row = db.execute("SELECT name, workspace_slug FROM workspaces WHERE id=?", (wsid,)).fetchone()
-                if row:
-                    slug = (row["workspace_slug"] or _re.sub(r"[^a-z0-9]+", "-", (row["name"] or "").lower().strip()).strip("-") or "workspace")
-        clean_page = str(page or "").strip("/")
-        if wsid:
-            path = f"/{slug}/{wsid}/{clean_page}"
-        else:
-            path = f"/{slug}/{clean_page}"
-        if entity_id:
-            from urllib.parse import quote as _quote
-            path += "/" + _quote(str(entity_id))
-        if params:
-            from urllib.parse import urlencode as _urlencode
-            path += "?" + _urlencode(params)
-        return path
-    except Exception:
-        from urllib.parse import urlencode as _urlencode
-        clean_page = str(page or "").strip("/")
-        q = ("?" + _urlencode(params)) if params else ""
-        return f"/{clean_page}" + (("/" + str(entity_id)) if entity_id else "") + q
-
 @app.route("/api/calls/google-meet", methods=["POST"])
 @login_required
 def create_google_meet_call():
@@ -9493,704 +9107,6 @@ def respond_instant_call():
     _sse_publish(ws_id, "call_status", {"callId": call_id, "status": status, "action": action, "users": users, "sender": me, "recipient": peer_id, "meetUrl": meet_url, "createdAt": now})
     return jsonify({"ok": True, "status": status, "users": users, "meetUrl": meet_url, "message": row})
 
-@app.route("/api/dm/react",methods=["POST"])
-@login_required
-def react_dm():
-    d=request.json or {}
-    msg_id=(d.get("message_id") or "").strip()
-    emoji=(d.get("emoji") or "").strip()
-    allowed={"👍","👎","❤️","😂","🤣","😮","😢","🙏","🔥","👏","👀","🚀","🎉","💯","✅","😍","🤔","🙌","💪","🤝","⭐"}
-    if not msg_id or emoji not in allowed:
-        return jsonify({"error":"Invalid reaction"}),400
-    ws_id=wid(); me=session["user_id"]
-    with get_db() as db:
-        msg=db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?",(msg_id,ws_id)).fetchone()
-        if not msg or (msg["sender"]!=me and msg["recipient"]!=me):
-            return jsonify({"error":"Message not found"}),404
-        existing=db.execute("SELECT id FROM dm_reactions WHERE workspace_id=? AND message_id=? AND user_id=? AND emoji=?",
-                            (ws_id,msg_id,me,emoji)).fetchone()
-        action="added"
-        if existing:
-            db.execute("DELETE FROM dm_reactions WHERE id=?",(existing["id"],))
-            action="removed"
-        else:
-            rid=f"rx{int(datetime.now().timestamp()*1000)}{abs(hash(me+msg_id+emoji))%10000}"
-            db.execute("INSERT OR IGNORE INTO dm_reactions(id,workspace_id,message_id,user_id,emoji,ts) VALUES (?,?,?,?,?,?)",
-                       (rid,ws_id,msg_id,me,emoji,ts()))
-        rows=db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?",(msg_id,ws_id)).fetchall()
-        data=_attach_dm_reactions(db, ws_id, rows)[0] if rows else None
-    # Do not bust appdata cache for reactions; it caused stale poll/refetch races and slow UI.
-    _sse_publish(ws_id, "dm_reaction", {"message_id": msg_id, "sender": msg["sender"], "recipient": msg["recipient"], "emoji": emoji, "user_id": me, "action": action, "message": data})
-    return jsonify({"message_id":msg_id,"action":action,"message":data})
-
-@app.route("/api/dm/favorites", methods=["GET"])
-@login_required
-def list_dm_favorites():
-    """Return the current user's favorited DM contacts (most recently favorited first)."""
-    ws_id = wid(); me = session["user_id"]
-    with get_db(autocommit=True) as db:
-        rows = db.execute(
-            "SELECT peer_id FROM dm_favorites WHERE workspace_id=? AND user_id=? ORDER BY created DESC",
-            (ws_id, me)
-        ).fetchall()
-    return jsonify({"ok": True, "favorites": [r["peer_id"] for r in rows]})
-
-@app.route("/api/dm/favorite", methods=["POST"])
-@login_required
-def toggle_dm_favorite():
-    """Toggle whether a teammate is starred/favorited in the current user's DM list.
-
-    Mirrors the heart-toggle pattern on a contact card: a lightweight per-user
-    preference, not shared with the rest of the workspace.
-    """
-    d = request.json or {}
-    peer_id = (d.get("peer_id") or "").strip()
-    if not peer_id:
-        return jsonify({"error": "Missing peer_id"}), 400
-    ws_id = wid(); me = session["user_id"]
-    if peer_id == me:
-        return jsonify({"error": "Cannot favorite yourself"}), 400
-    with get_db() as db:
-        peer = db.execute(
-            "SELECT id FROM users WHERE id=? AND workspace_id=? AND COALESCE(deleted_at,'')=''",
-            (peer_id, ws_id)
-        ).fetchone()
-        if not peer:
-            return jsonify({"error": "User not found"}), 404
-        existing = db.execute(
-            "SELECT id FROM dm_favorites WHERE workspace_id=? AND user_id=? AND peer_id=?",
-            (ws_id, me, peer_id)
-        ).fetchone()
-        if existing:
-            db.execute("DELETE FROM dm_favorites WHERE id=?", (existing["id"],))
-            favorited = False
-        else:
-            fid = f"fav{int(datetime.now().timestamp()*1000)}{secrets.token_hex(2)}"
-            db.execute(
-                "INSERT OR IGNORE INTO dm_favorites(id,workspace_id,user_id,peer_id,created) VALUES (?,?,?,?,?)",
-                (fid, ws_id, me, peer_id, ts())
-            )
-            favorited = True
-    # Per-user preference — no need to bust the workspace-wide appdata/bootstrap cache.
-    return jsonify({"ok": True, "peer_id": peer_id, "favorited": favorited})
-
-@app.route("/api/dm",methods=["POST"])
-@login_required
-def send_dm():
-    d=request.json or {}
-    content=(d.get("content") or "").strip()
-    recipient=(d.get("recipient") or "").strip()
-    reply_to=(d.get("reply_to") or "").strip()
-    client_msg_id=(d.get("client_msg_id") or "").strip()
-    if not content:
-        return jsonify({"error":"Empty"}),400
-    if not recipient:
-        return jsonify({"error":"Missing recipient"}),400
-
-    ws_id=wid()
-    me=session["user_id"]
-    now=ts()
-    mid=f"dm{int(datetime.now().timestamp()*1000)}{secrets.token_hex(2)}"
-
-    row=None
-    sender_name="Someone"
-    # Single DB transaction: validate users + idempotency + insert. The previous
-    # implementation opened multiple DB connections before returning, which caused
-    # slow first sends and 499/timeout behavior under polling load.
-    with get_db() as db:
-        users_rows=db.execute(
-            "SELECT id,name FROM users WHERE workspace_id=? AND id IN (?,?) AND COALESCE(deleted_at,'')=''",
-            (ws_id, me, recipient)
-        ).fetchall()
-        users_map={r["id"]:r["name"] for r in (users_rows or [])}
-        if recipient not in users_map:
-            return jsonify({"error":"Recipient not found"}),404
-        sender_name=users_map.get(me) or "Someone"
-        if client_msg_id:
-            try:
-                existing=db.execute(
-                    "SELECT * FROM direct_messages WHERE workspace_id=? AND sender=? AND client_msg_id=? LIMIT 1",
-                    (ws_id, me, client_msg_id)
-                ).fetchone()
-                if existing:
-                    row=dict(existing)
-            except Exception:
-                pass
-        if not row:
-            try:
-                result=db.execute("""INSERT INTO direct_messages(
-                               id,workspace_id,sender,recipient,content,read,ts,reply_to,
-                               delivered_at,seen_at,edited,deleted,pinned,client_msg_id
-                           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *""",
-                           (mid,ws_id,me,recipient,content,0,now,reply_to or "",now,"",0,0,0,client_msg_id))
-                r=result.fetchone()
-                if r: row=dict(r)
-            except Exception:
-                try:
-                    db.execute("""INSERT INTO direct_messages(
-                                   id,workspace_id,sender,recipient,content,read,ts,reply_to,
-                                   delivered_at,seen_at,edited,deleted,pinned,client_msg_id
-                               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                               (mid,ws_id,me,recipient,content,0,now,reply_to or "",now,"",0,0,0,client_msg_id))
-                except Exception:
-                    db.execute("""INSERT INTO direct_messages(
-                                   id,workspace_id,sender,recipient,content,read,ts,reply_to,
-                                   delivered_at,seen_at,edited,deleted,pinned
-                               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                               (mid,ws_id,me,recipient,content,0,now,reply_to or "",now,"",0,0,0))
-                row={"id":mid,"workspace_id":ws_id,"sender":me,"recipient":recipient,
-                     "content":content,"read":0,"ts":now,"reply_to":reply_to or "",
-                     "delivered_at":now,"seen_at":"","edited":0,"deleted":0,"pinned":0,
-                     "client_msg_id":client_msg_id}
-
-    if not row:
-        return jsonify({"error":"Failed to send message"}),500
-    if client_msg_id and not row.get("client_msg_id"):
-        row["client_msg_id"]=client_msg_id
-    preview=content[:60]+("..." if len(content)>60 else "")
-
-    # STRICTER FIX: previously the self-heal in _fresh_dm_unread only ran the
-    # next time something *read* the unread count (next poll/app-data/etc),
-    # so there was an unavoidable lag — send a reply, badge doesn't update
-    # until the next poll cycle. Sending a reply is the single strongest
-    # possible signal that everything earlier in this conversation has been
-    # seen, so heal it immediately, in the same request, before the sender
-    # even gets their response back — not on a delay.
-    try:
-        with get_db() as _heal_db:
-            _heal_db.execute(
-                "UPDATE direct_messages SET read=1 "
-                "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0 AND ts<?",
-                (ws_id, recipient, me, now)
-            )
-        _cache_bust(ws_id, "dm_unread", "appdata")
-    except Exception:
-        pass  # best-effort — the general self-heal in _fresh_dm_unread still catches this on the next read either way
-
-    def _dm_after_commit(row=row, preview=preview, sender_name=sender_name):
-        try:
-            _bust_dm_thread(ws_id, me, recipient)
-            _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
-            _sse_publish(ws_id, "dm_created", {"id": row.get("id", mid), "sender": me, "recipient": recipient, "content": preview, "message": row})
-            _sse_publish(ws_id, "web_notification", {"kind": "dm", "recipient": recipient, "sender": me, "title": sender_name, "body": preview, "tag": "dm-" + str(row.get("id", mid)), "url": _workspace_url(ws_id, "dm", params={"user": me})})
-            _sse_publish(ws_id, "notification_updated", {"reason": "dm", "sender": me, "recipient": recipient, "message_id": row.get("id", mid)})
-        except Exception as e:
-            log.warning("[DM] async SSE fanout failed: %s", e)
-        try:
-            # Dedup: skip if a DM notification for this exact message already exists
-            # (prevents duplicates from RQ retries or thread restarts)
-            dm_msg_id = str(row.get("id", mid))
-            with get_db() as db2:
-                already = None
-                try:
-                    already = db2.execute(
-                        "SELECT id FROM notifications WHERE workspace_id=? AND type='dm' AND user_id=? AND entity_id=? LIMIT 1",
-                        (ws_id, recipient, dm_msg_id)
-                    ).fetchone()
-                except Exception:
-                    pass
-                if not already:
-                    nid=f"n{int(datetime.now().timestamp()*1000)}{secrets.token_hex(2)}"
-                    try:
-                        db2.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts,sender_id,entity_id,entity_type) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                                   (nid,ws_id,"dm",f"{sender_name}: {preview}",recipient,0,now,me,dm_msg_id,"dm"))
-                    except Exception:
-                        try:
-                            db2.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts) VALUES (?,?,?,?,?,?,?)",
-                                       (nid,ws_id,"dm",f"{sender_name}: {preview}",recipient,0,now))
-                        except Exception as e:
-                            log.warning("[DM] notification insert failed: %s", e)
-        except Exception as e:
-            log.warning("[DM] notification insert failed: %s", e)
-        try:
-            # Web push — DM notifications use force_push so they bypass the URGENT_PRIORITIES
-            # guard and fire even for normal-priority messages (issue: desktop push was silenced)
-            _enqueue_push(push_notification_to_user, None, recipient, "💬 " + sender_name, preview or "Sent you a message", _workspace_url(ws_id, "dm", params={"user": me}), "dm-" + str(row.get("id", mid)))
-        except Exception as e:
-            log.warning("[DM] web push enqueue failed: %s", e)
-        try:
-            # Slack DM — fires only if workspace enabled + user has Slack connected
-            _maybe_slack_dm(ws_id, recipient,
-                            f"💬 New message from {sender_name}",
-                            preview or "Sent you a message",
-                            f"/dm?user={me}")
-        except Exception as e:
-            log.warning("[DM] slack dm failed: %s", e)
-
-    # BUG FIX: _dm_after_commit is a closure defined inside this view function
-    # (it captures row/preview/sender_name from the enclosing scope). Python's
-    # pickle module cannot serialize a nested/local function — a hard
-    # requirement for handing work to RQ/worker.py — so _job_queue.enqueue()
-    # here raised on every single call and silently fell back to the plain
-    # thread below. DM notifications were never actually getting the
-    # out-of-process handling this comment used to describe; they always ran
-    # in-process anyway, just after paying the cost of a failed pickle
-    # attempt first. Use the bounded in-process push pool (same one every
-    # other fire-and-forget notification in this file already uses) instead
-    # of pretending this goes through RQ.
-    _enqueue_push(_dm_after_commit)
-    resp=jsonify(row)
-    resp.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
-    return resp
-
-
-def _get_dm_message_with_reactions(db, ws_id, mid):
-    rows=db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?",(mid,ws_id)).fetchall()
-    return _attach_dm_reactions(db, ws_id, rows)[0] if rows else None
-
-
-
-@app.route("/api/dm/debug-unread/<other_id>")
-@login_required
-def dm_debug_unread(other_id):
-    """TEMPORARY diagnostic endpoint — read-only, no writes, no cache.
-
-    Added to track down a DM badge that stays stuck at a nonzero count no
-    matter how many times the conversation is opened. Dumps the raw rows
-    direct_messages so we can see exactly why get_dm()'s mark-as-read
-    UPDATE (WHERE workspace_id=? AND sender=? AND recipient=? AND read=0)
-    isn't matching them — e.g. an id/workspace mismatch that wouldn't be
-    visible from the app UI. Safe to remove once the real bug is found:
-    it only returns rows already scoped to the caller's own session
-    (their own user_id, their own workspace_id), no other user's data.
-    """
-    me = session["user_id"]
-    ws_id = wid()
-    with get_db() as db:
-        # Every raw row between me and other_id, unfiltered by read status,
-        # so we can see the actual stored id/workspace values and read flags.
-        rows = db.execute(
-            "SELECT id, workspace_id, sender, recipient, read, "
-            "COALESCE(deleted,0) AS deleted, ts, "
-            "LEFT(COALESCE(content,''), 40) AS content_preview "
-            "FROM direct_messages "
-            "WHERE (sender=? AND recipient=?) OR (sender=? AND recipient=?) "
-            "ORDER BY ts DESC LIMIT 30",
-            (other_id, me, me, other_id)
-        ).fetchall()
-        rows = [dict(r) for r in rows]
-        # Exactly the query get_dm() uses to decide whether there's anything
-        # to mark read, so we can see whether IT thinks there are 0 or 11.
-        unread_check = db.execute(
-            "SELECT COUNT(*) AS cnt FROM direct_messages "
-            "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
-            (ws_id, other_id, me)
-        ).fetchone()
-        # Exactly the query dm_unread()/poll uses.
-        poll_count = db.execute(
-            "SELECT COUNT(*) AS cnt FROM direct_messages "
-            "WHERE workspace_id=? AND recipient=? AND sender=? AND read=0 AND COALESCE(deleted,0)=0",
-            (ws_id, me, other_id)
-        ).fetchone()
-    return jsonify({
-        "my_user_id": me,
-        "my_workspace_id": ws_id,
-        "other_id": other_id,
-        "get_dm_unread_check_count": dict(unread_check)["cnt"] if unread_check else None,
-        "poll_dm_unread_count": dict(poll_count)["cnt"] if poll_count else None,
-        "rows": rows,
-    })
-
-
-@app.route("/api/dm/debug-force-mark-read/<other_id>", methods=["GET", "POST"])
-@login_required
-def dm_debug_force_mark_read(other_id):
-    """TEMPORARY one-time repair endpoint — same scope/safety as
-    dm_debug_unread above (own session's own conversation only).
-
-    Root cause of the stuck-unread bug: _DB.execute()'s transient-PG-error
-    retry used to silently discard whatever writes had already run earlier
-    in the same transaction whenever a later statement hit a PgBouncer
-    desync (see the BUG FIX comment on _DB.execute()). That's fixed now, so
-    new read-marking attempts will persist correctly (or fail loudly and
-    retry, instead of silently vanishing) — but rows that already got
-    caught by the old bug are stuck read=0 forever, because nothing ever
-    prompts a re-check once the client-side badge already looks wrong.
-    This does the same UPDATE get_dm() does, once, directly, to clear an
-    existing backlog without waiting on chance timing.
-    """
-    me = session["user_id"]
-    ws_id = wid()
-    with get_db() as db:
-        cur = db.execute(
-            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
-            "WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
-            (ts(), ws_id, other_id, me)
-        )
-        marked = cur.rowcount if cur.rowcount is not None else 0
-        notif_cur = db.execute(
-            "UPDATE notifications SET read=1 "
-            "WHERE workspace_id=? AND user_id=? AND COALESCE(sender_id,'')=? AND read=0 "
-            "AND (type IN ('dm','direct_message','message_received','new_message') "
-            "OR entity_type IN ('dm','direct_message','message','chat'))",
-            (ws_id, me, other_id)
-        )
-        notifs_marked = notif_cur.rowcount if notif_cur.rowcount is not None else 0
-    if marked or notifs_marked:
-        _bust_dm_thread(ws_id, me, other_id)
-        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
-    return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
-
-
-@app.route("/api/dm/debug-unread-all")
-@login_required
-def dm_debug_unread_all():
-    """TEMPORARY diagnostic — same scope/safety as dm_debug_unread above,
-    read-only. Breaks the badge's total down by which peer it's coming
-    from, across every conversation at once, instead of checking one
-    peer at a time. Use this first when the badge shows a number you
-    can't otherwise account for — it'll show exactly which conversation(s)
-    are contributing to it."""
-    me = session["user_id"]
-    ws_id = wid()
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT dm.sender, u.name AS sender_name, COUNT(*) AS cnt, "
-            "MIN(dm.ts) AS oldest, MAX(dm.ts) AS newest "
-            "FROM direct_messages dm LEFT JOIN users u ON u.id = dm.sender "
-            "WHERE dm.workspace_id=? AND dm.recipient=? AND dm.read=0 AND COALESCE(dm.deleted,0)=0 "
-            "GROUP BY dm.sender, u.name ORDER BY cnt DESC",
-            (ws_id, me)
-        ).fetchall()
-        breakdown = [dict(r) for r in rows]
-        total = sum(r["cnt"] for r in breakdown)
-    return jsonify({"my_user_id": me, "my_workspace_id": ws_id, "total_unread": total, "by_sender": breakdown})
-
-
-@app.route("/api/dm/debug-force-mark-read-all", methods=["GET", "POST"])
-@login_required
-def dm_debug_force_mark_read_all():
-    """TEMPORARY one-time repair endpoint — same scope/safety as
-    dm_debug_force_mark_read above, extended to every conversation the
-    caller has, not just one peer at a time. For clearing out backlog
-    left by the historical transaction-abort bug across multiple
-    conversations at once, rather than requiring a separate hit per peer.
-    """
-    me = session["user_id"]
-    ws_id = wid()
-    with get_db() as db:
-        cur = db.execute(
-            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
-            "WHERE workspace_id=? AND recipient=? AND read=0",
-            (ts(), ws_id, me)
-        )
-        marked = cur.rowcount if cur.rowcount is not None else 0
-        notif_cur = db.execute(
-            "UPDATE notifications SET read=1 "
-            "WHERE workspace_id=? AND user_id=? AND read=0 "
-            "AND (type IN ('dm','direct_message','message_received','new_message') "
-            "OR entity_type IN ('dm','direct_message','message','chat'))",
-            (ws_id, me)
-        )
-        notifs_marked = notif_cur.rowcount if notif_cur.rowcount is not None else 0
-    if marked or notifs_marked:
-        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
-    return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
-
-
-@app.route("/api/dm/read-all", methods=["POST"])
-@login_required
-def dm_mark_all_read():
-    """Mark every unread DM (across every conversation) as read for the
-    current user, in one action — the messaging-spec's "Mark all as read".
-
-    Security: me/ws_id come only from the authenticated session, never
-    from the request body — a user can only ever mark their OWN received
-    messages read, matching the same rule enforced everywhere else DMs are
-    read-marked (get_dm(), etc).
-    """
-    me = session["user_id"]
-    ws_id = wid()
-    with get_db() as db:
-        cur = db.execute(
-            "UPDATE direct_messages SET read=1, seen_at=COALESCE(NULLIF(seen_at,''), ?) "
-            "WHERE workspace_id=? AND recipient=? AND read=0",
-            (ts(), ws_id, me)
-        )
-        marked = cur.rowcount if cur.rowcount is not None else 0
-        notif_cur = db.execute(
-            "UPDATE notifications SET read=1 "
-            "WHERE workspace_id=? AND user_id=? AND read=0 "
-            "AND (type IN ('dm','direct_message','message_received','new_message') "
-            "OR entity_type IN ('dm','direct_message','message','chat'))",
-            (ws_id, me)
-        )
-        notifs_marked = notif_cur.rowcount if notif_cur.rowcount is not None else 0
-    if marked or notifs_marked:
-        _cache_bust(ws_id, "dm_unread", "notifications", "notifs", "appdata")
-        # Multi-tab/multi-device sync (spec item 9): broadcast so every other
-        # open tab/session for this same user clears its badge too, not just
-        # this one. Workspace-wide broadcast (matches every other _sse_publish
-        # call in this file) — the frontend filters to "is this me" itself,
-        # the same way it already does for every other DM realtime event.
-        _sse_publish(ws_id, "dm_read_all", {"user_id": me})
-    return jsonify({"ok": True, "messages_marked_read": marked, "notifications_marked_read": notifs_marked})
-
-
-@app.route("/api/dm/route-target")
-@login_required
-def dm_route_target():
-    """Resolve the exact DM peer for a notification that opened plain /dm.
-
-    This is used only by the frontend after a notification click without ?user=.
-    It first prefers unread DMs. If an older/background fetch already marked the
-    unread row as read, it falls back to the latest DM notification/message for
-    the current user so the click still opens the sender's tab.
-    """
-    ws_id = wid()
-    me = session["user_id"]
-    with get_db() as db:
-        r = db.execute("""
-            SELECT sender AS user, 'unread' AS source, ts
-            FROM direct_messages
-            WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0
-            ORDER BY ts DESC LIMIT 1
-        """, (ws_id, me)).fetchone()
-        if not r:
-            r = db.execute("""
-                SELECT sender AS user, 'latest_dm' AS source, ts
-                FROM direct_messages
-                WHERE workspace_id=? AND recipient=? AND COALESCE(deleted,0)=0
-                ORDER BY ts DESC LIMIT 1
-            """, (ws_id, me)).fetchone()
-        if not r:
-            r = db.execute("""
-                SELECT sender_id AS user, 'notification' AS source, ts
-                FROM notifications
-                WHERE workspace_id=? AND user_id=?
-                  AND (type IN ('dm','direct_message','message_received','new_message') OR entity_type IN ('dm','direct_message','message','chat'))
-                  AND COALESCE(sender_id,'')<>''
-                ORDER BY ts DESC LIMIT 1
-            """, (ws_id, me)).fetchone()
-    return jsonify(dict(r) if r else {"user":"", "source":"none"})
-
-
-def _dm_previews_fetch(ws_id, me):
-    """Run the dm previews DB query and return result dict."""
-    out = {}
-    try:
-        with get_db() as db:
-            rows = db.execute("""
-                SELECT * FROM (
-                  SELECT dm.*,
-                         CASE WHEN dm.sender=? THEN dm.recipient ELSE dm.sender END AS peer_id,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY CASE WHEN dm.sender=? THEN dm.recipient ELSE dm.sender END
-                           ORDER BY dm.ts DESC
-                         ) AS rn
-                  FROM direct_messages dm
-                  WHERE dm.workspace_id=?
-                    AND (dm.sender=? OR dm.recipient=?)
-                    AND COALESCE(dm.deleted,0)=0
-                ) x
-                WHERE rn=1
-                LIMIT 200
-            """, (me, me, ws_id, me, me)).fetchall()
-            for r in rows:
-                d = dict(r)
-                peer = str(d.get("peer_id") or "")
-                if not peer or peer == str(me):
-                    continue
-                out[peer] = {
-                    "content": d.get("content") or "",
-                    "ts": d.get("ts") or "",
-                    "sender": d.get("sender") or "",
-                    "time_label": ""
-                }
-    except Exception as _e:
-        log.warning("[dm_previews] fetch failed: %s", _e)
-    return out
-
-
-def _dm_previews_refresh(ws_id, me, cache_key, stale_key):
-    """Background worker: re-fetch DM previews and update caches."""
-    out = _dm_previews_fetch(ws_id, me)
-    _cache_set(cache_key, out, ttl=30)
-    _cache_set(stale_key, out, ttl=300)
-
-
-@app.route("/api/dm/previews")
-@login_required
-def dm_previews():
-    """Fast sidebar previews for all DM peers without loading full threads.
-
-    499-prevention: adds a per-user stale-while-revalidate cache.
-    The endpoint was previously uncached - every call hit the DB,
-    contributing to PG pool exhaustion and cascading 499s.
-    """
-    ws_id = wid()
-    me = session["user_id"]
-    cache_key = f"dm_previews:{ws_id}:{me}"
-    stale_key = f"dm_previews_stale:{ws_id}:{me}"
-
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        resp = jsonify(cached)
-        resp.headers["Cache-Control"] = "no-store, max-age=0"
-        return resp
-
-    # Return stale immediately and refresh in background to avoid 499
-    stale = _cache_get(stale_key)
-    if stale is not None:
-        _enqueue_push(_dm_previews_refresh, ws_id, me, cache_key, stale_key)
-        resp = jsonify(stale)
-        resp.headers["Cache-Control"] = "no-store, max-age=0"
-        return resp
-
-    # First-ever load: do not block the sidebar on a cold DM query. Return an
-    # empty map immediately and warm the real previews in the background. This
-    # removes the remaining 59s /api/dm/previews 499 path.
-    try:
-        _enqueue_push(_dm_previews_refresh, ws_id, me, cache_key, stale_key)
-    except Exception:
-        pass
-    resp = jsonify({})
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    resp.headers["X-PT-Partial"] = "1"
-    return resp
-
-@app.route("/api/dm/latest-unread")
-@login_required
-def latest_unread_dm():
-    """Return latest unread DM messages for the current user.
-
-    This is a fast fallback for environments where SSE can be delayed by
-    proxies/multiple workers. The frontend polls it every ~2s and injects
-    the actual message into the active DM thread, so users never see fake
-    notifications that open to an empty conversation.
-    """
-    ws_id = wid()
-    me = session["user_id"]
-    with get_db() as db:
-        rows = db.execute("""
-            SELECT dm.*, u.name AS sender_name
-            FROM direct_messages dm
-            LEFT JOIN users u ON u.id = dm.sender AND u.workspace_id = dm.workspace_id
-            WHERE dm.workspace_id=?
-              AND dm.recipient=?
-              AND dm.read=0
-              AND COALESCE(dm.deleted,0)=0
-            ORDER BY dm.ts DESC
-            LIMIT 20
-        """, (ws_id, me)).fetchall()
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["sender_name"] = d.get("sender_name") or "Someone"
-            out.append(d)
-    return jsonify(out)
-
-@app.route("/api/dm/edit",methods=["POST"])
-@login_required
-def edit_dm():
-    d=request.json or {}
-    mid=(d.get("message_id") or "").strip(); content=(d.get("content") or "").strip()
-    if not mid or not content: return jsonify({"error":"Invalid edit"}),400
-    ws_id=wid(); me=session["user_id"]
-    with get_db() as db:
-        msg=db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?",(mid,ws_id)).fetchone()
-        if not msg or msg["sender"]!=me: return jsonify({"error":"Not allowed"}),403
-        db.execute("UPDATE direct_messages SET content=?, edited=1 WHERE id=? AND workspace_id=?",(content,mid,ws_id))
-        data=_get_dm_message_with_reactions(db,ws_id,mid)
-    _sse_publish(ws_id,"dm_updated",{"message":data})
-    return jsonify({"message":data})
-
-@app.route("/api/dm/delete",methods=["POST"])
-@login_required
-def delete_dm_message():
-    d=request.json or {}; mid=(d.get("message_id") or "").strip()
-    if not mid: return jsonify({"error":"Invalid message"}),400
-    ws_id=wid(); me=session["user_id"]
-    with get_db() as db:
-        msg=db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?",(mid,ws_id)).fetchone()
-        if not msg or msg["sender"]!=me: return jsonify({"error":"Not allowed"}),403
-        db.execute("UPDATE direct_messages SET content=?, deleted=1 WHERE id=? AND workspace_id=?",("This message was deleted",mid,ws_id))
-        db.execute("DELETE FROM dm_reactions WHERE workspace_id=? AND message_id=?",(ws_id,mid))
-        data=_get_dm_message_with_reactions(db,ws_id,mid)
-    _sse_publish(ws_id,"dm_deleted",{"message":data})
-    return jsonify({"message":data})
-
-@app.route("/api/dm/pin",methods=["POST"])
-@login_required
-def pin_dm_message():
-    d=request.json or {}; mid=(d.get("message_id") or "").strip(); pinned=1 if d.get("pinned") else 0
-    if not mid: return jsonify({"error":"Invalid message"}),400
-    ws_id=wid(); me=session["user_id"]
-    with get_db() as db:
-        msg=db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?",(mid,ws_id)).fetchone()
-        if not msg or (msg["sender"]!=me and msg["recipient"]!=me): return jsonify({"error":"Not allowed"}),403
-        db.execute("UPDATE direct_messages SET pinned=? WHERE id=? AND workspace_id=?",(pinned,mid,ws_id))
-        data=_get_dm_message_with_reactions(db,ws_id,mid)
-    _sse_publish(ws_id,"dm_pinned",{"message":data})
-    return jsonify({"message":data})
-
-@app.route("/api/dm/typing",methods=["POST"])
-@login_required
-def dm_typing():
-    # Fire-and-forget SSE event so the recipient sees a typing indicator.
-    # The actual HTTP response is returned immediately to avoid 499s.
-    try:
-        d = request.json or {}
-        recipient = (d.get("recipient") or "").strip()
-        ws_id = wid()
-        me = session["user_id"]
-        if recipient and ws_id and me:
-            _enqueue_push(_sse_publish, ws_id, "dm_typing",
-                          {"sender": me, "recipient": recipient, "typing": True})
-    except Exception:
-        pass
-    resp=jsonify({"ok":True})
-    resp.headers["Cache-Control"]="no-store, max-age=0"
-    return resp
-
-@app.route("/api/dm/unread")
-@login_required
-def dm_unread():
-    # Always hit DB for unread counts. Caching this caused a bad UX where a user
-    # opened/read a DM, then the sidebar refreshed and showed the same message as
-    # new again. This endpoint is intentionally tiny (GROUP BY sender only).
-    ws, uid = wid(), session["user_id"]
-    with get_db() as db:
-        rows = db.execute("""SELECT sender,COUNT(*) as cnt FROM direct_messages
-            WHERE workspace_id=? AND recipient=? AND read=0 AND COALESCE(deleted,0)=0 GROUP BY sender""",
-            (ws, uid)).fetchall()
-    resp=jsonify([dict(r) for r in rows])
-    resp.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
-    return resp
-
-
-# ── Workspace slug/id validation helpers ─────────────────────────────────────
-def _canonical_workspace_slug(workspace_id=None):
-    wsid = str(workspace_id or wid() or "")
-    if not wsid:
-        return ""
-    cache_key = f"workspace_slug:{wsid}:v2"
-    cached = _cache_get(cache_key)
-    if cached:
-        return str(cached).strip("/")
-    try:
-        with get_db() as db:
-            row = db.execute("SELECT name, workspace_slug FROM workspaces WHERE id=?", (wsid,)).fetchone()
-        if not row:
-            return ""
-        slug = (row["workspace_slug"] or _slugify(row["name"] or "workspace") or "workspace").strip("/")
-        _cache_set(cache_key, slug, ttl=300)
-        return slug
-    except Exception as e:
-        log.warning("[workspace-route] slug lookup failed for %s: %s", wsid, e)
-        # Last-resort fallback prevents /<slug>/<wsid>/dashboard from hanging
-        # during a DB cold start. The SPA APIs will still enforce auth/data access.
-        return str(request.view_args.get("ws_name", "") if request and request.view_args else "")
-
-def _workspace_alias_ok_strict(workspace_name, workspace_id):
-    if str(workspace_id or "") != str(wid() or ""):
-        return False, jsonify({"error":"Workspace mismatch"}), 403
-    expected = _canonical_workspace_slug(workspace_id)
-    supplied = str(workspace_name or "").strip("/")
-    if expected and supplied and supplied != expected:
-        return False, jsonify({"error":"Workspace slug mismatch", "canonical_slug": expected}), 409
-    return True, None, None
-
 @app.route("/api/workspace/route-guard")
 @login_required
 def workspace_route_guard():
@@ -10255,42 +9171,6 @@ def add_ticket_comment_workspace_alias(workspace_name, workspace_id, tid):
     return add_ticket_comment(tid)
 
 # ── Workspace-scoped API aliases for email/deep-link integrations ───────────
-@app.route("/api/<workspace_name>/<workspace_id>/dm/<other_id>")
-@login_required
-def get_dm_workspace_alias(workspace_name, workspace_id, other_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return get_dm(other_id)
-
-@app.route("/api/<workspace_name>/<workspace_id>/dm/unread")
-@login_required
-def dm_unread_workspace_alias(workspace_name, workspace_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return dm_unread()
-
-@app.route("/api/<workspace_name>/<workspace_id>/dm/previews")
-@login_required
-def dm_previews_workspace_alias(workspace_name, workspace_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return dm_previews()
-
-@app.route("/api/<workspace_name>/<workspace_id>/dm", methods=["POST"])
-@login_required
-def send_dm_workspace_alias(workspace_name, workspace_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return send_dm()
-
-
-# ── Workspace-scoped project/task/ticket/email deep-link API aliases ─────────
-# Canonical shape: /api/<workspaceName>/<workspaceId>/<resource>/...
-# The workspace name is readable only; workspaceId is authoritative.
-
-def _workspace_alias_allowed(workspace_id):
-    return str(workspace_id or "") == str(wid() or "")
-
 @app.route("/api/<workspace_name>/<workspace_id>/projects", methods=["GET"])
 @login_required
 def projects_workspace_alias_all(workspace_name, workspace_id):
@@ -10325,28 +9205,6 @@ def ticket_detail_workspace_alias(workspace_name, workspace_id, tid):
         r=db.execute("SELECT * FROM tickets WHERE id=? AND workspace_id=? AND COALESCE(deleted_at,'')=''",(tid,wid())).fetchone()
     return jsonify(dict(r)) if r else (jsonify({"error":"Ticket not found"}),404)
 
-@app.route("/api/<workspace_name>/<workspace_id>/dm/route-target")
-@login_required
-def dm_route_target_workspace_alias(workspace_name, workspace_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return dm_route_target()
-
-@app.route("/api/<workspace_name>/<workspace_id>/dm/latest-unread")
-@login_required
-def latest_unread_dm_workspace_alias(workspace_name, workspace_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return latest_unread_dm()
-
-@app.route("/api/<workspace_name>/<workspace_id>/dm/typing",methods=["POST"])
-@login_required
-def dm_typing_workspace_alias(workspace_name, workspace_id):
-    ok,resp,code=_workspace_alias_ok_strict(workspace_name, workspace_id)
-    if not ok: return resp,code
-    return dm_typing()
-
-# ── Reminders ─────────────────────────────────────────────────────────────────
 @app.route("/api/reminders", methods=["GET"])
 @login_required
 def get_reminders():
@@ -11918,12 +10776,6 @@ self.addEventListener('notificationclick', event => {
   const sender = data.sender || data.peer_id || '';
   const kind = data.kind || '';
   const peerId = data.peer_id || sender || '';
-  try {
-    if ((kind === 'dm' || (url || '').indexOf('/dm') >= 0) && (url || '').indexOf('user=') < 0) {
-      if (peerId) url = '/dm?user=' + encodeURIComponent(peerId) + '&notification=dm';
-      else url = '/dm?notif=dm';
-    }
-  } catch(e) {}
   event.waitUntil((async()=>{
     const allClients = await clients.matchAll({type:'window', includeUncontrolled:true});
     for (const client of allClients) {
@@ -12401,8 +11253,6 @@ def _validate_workspace_url_or_404(ws_name, ws_id):
 @app.route("/<ws_name>/<ws_id>/kanban")
 @app.route("/<ws_name>/<ws_id>/messages")
 @app.route("/<ws_name>/<ws_id>/channels")
-@app.route("/<ws_name>/<ws_id>/dm")
-@app.route("/<ws_name>/<ws_id>/dm/<other_user>")
 @app.route("/<ws_name>/<ws_id>/settings")
 @app.route("/<ws_name>/<ws_id>/billing")
 @app.route("/<ws_name>/<ws_id>/profile")
@@ -18440,32 +17290,6 @@ def api_workspace_os_bootstrap():
         try: log.warning('[workspace-os/bootstrap] fallback: %s', e)
         except Exception: pass
     _cache_set(cache_key, out, 45)
-    return _etag_response(out)
-
-@app.route("/api/dm/summary", methods=["GET"])
-@login_required
-def api_dm_summary():
-    """Combined DM badge payload. Previews are only included when ?previews=1.
-    This replaces repeated unread/latest/previews requests on normal page boot.
-    """
-    wsid = wid(); uid = session.get('user_id')
-    include_previews = str(request.args.get('previews') or '').lower() in ('1','true','yes')
-    out = {"ok": True, "unread": [], "latest_unread": [], "previews": []}
-    try:
-        with get_db(autocommit=True) as db:
-            try:
-                out["unread"] = [dict(x) for x in db.execute("SELECT sender AS sender_id, COUNT(*) AS cnt FROM direct_messages WHERE workspace_id=? AND recipient=? AND COALESCE(read,0)=0 GROUP BY sender LIMIT 100", (wsid, uid)).fetchall()]
-            except Exception: pass
-            try:
-                out["latest_unread"] = [dict(x) for x in db.execute("SELECT * FROM direct_messages WHERE workspace_id=? AND recipient=? AND COALESCE(read,0)=0 ORDER BY ts DESC LIMIT 10", (wsid, uid)).fetchall()]
-            except Exception: pass
-            if include_previews:
-                try:
-                    out["previews"] = [dict(x) for x in db.execute("SELECT * FROM direct_messages WHERE workspace_id=? AND (sender=? OR recipient=?) ORDER BY ts DESC LIMIT 80", (wsid, uid, uid)).fetchall()]
-                except Exception: pass
-    except Exception as e:
-        try: log.warning('[dm/summary] %s', e)
-        except Exception: pass
     return _etag_response(out)
 
 @app.route("/api/activity/summary", methods=["GET"])

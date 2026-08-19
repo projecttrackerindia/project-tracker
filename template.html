@@ -2728,32 +2728,30 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
     'workspace-os': html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M9 8h1"/><path d="M14 8h1"/><path d="M9 12h1"/><path d="M14 12h1"/><path d="M10 21v-5h4v5"/></svg>`,
   };
   const adminNav=[
-    {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'ops', label:'Ops Center', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   const devNav=[
-    {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   // Grouped-sidebar labels (visual grouping only, migrated from the demo's
   // collapsible category headers). Nav order/pin/drag logic is unaffected —
   // a label is simply shown whenever the category changes while iterating.
   const NAV_GROUPS={
-    dashboard:'Overview', 'workspace-os':'Overview', ops:'Overview',
+    ai:'AI', dashboard:'Overview', 'workspace-os':'Overview',
     projects:'Work', tasks:'Work', tickets:'Work', timeline:'Work', productivity:'Work',
-    messages:'Communication', dm:'Communication', reminders:'Communication', notes:'Communication',
+    messages:'Communication', reminders:'Communication', notes:'Communication',
     team:'People', billing:'People',
     'ai-docs':'Tools', 'password-generator':'Tools', vault:'Tools',
   };
   const FEATURE_NAV_MAP={
     timesheet:'time_tracking', billing:'billing_invoices', 'ai-docs':'ai_docs',
-    vault:'vault', productivity:'advanced_analytics', ops:'advanced_analytics',
+    vault:'vault', productivity:'advanced_analytics',
     tickets:'tickets', 'workspace-os':'employee_self_service'
   };
   const isNavFeatureEnabled=(id)=>{
     const key=FEATURE_NAV_MAP[id];
     if(!key)return true;
-    if(id==='ops'&&isAdminManager)return !!featureFlags[key];
     return featureFlags[key]!==false;
   };
   const baseNavItems=(isAdminManager?adminNav:devNav)
-    .filter(it=>it.id!=='dm'||(wsDmEnabled||isAdminManager))
     .filter(it=>isNavFeatureEnabled(it.id));
 
   // ── Sidebar nav reorder + pin ────────────────────────────────────────────
@@ -2815,7 +2813,6 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
       ${!col?html`<span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12,flex:1,paddingRight:hoverNav===it.id&&!col?44:0}}>${it.label}</span>`:null}
       ${it.badge&&!col&&!isOfflineLocked?html`<span style=${{fontSize:8,fontWeight:800,padding:'1px 5px',borderRadius:4,background:'linear-gradient(135deg,#5a5ef7,#a855f7)',color:'#fff',letterSpacing:'.04em',flexShrink:0}}>${it.badge}</span>`:null}
       ${it.id==='notifs'&&unread>0&&!isOfflineLocked?html`<span style=${{position:'absolute',top:6,right:col?6:10,minWidth:16,height:16,borderRadius:8,background:'var(--rd)',color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>${unread>9?'9+':unread}</span>`:null}
-      ${it.id==='dm'&&dmUnread.reduce((a,x)=>a+(x.cnt||0),0)>0&&!isOfflineLocked?html`<span style=${{position:'absolute',top:6,right:col?6:10,minWidth:16,height:16,borderRadius:8,background:'var(--cy)',color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>${dmUnread.reduce((a,x)=>a+(x.cnt||0),0)}</span>`:null}
     </button>`;
   };
 
@@ -4756,6 +4753,145 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
     </div>`;
 }
 
+/* ─── AI Workspace (AI Command Center — the new home page) ────────────────── */
+const AI_QUICK_ACTIONS=[
+  {label:'Create Project',        prompt:'Create a new project. Ask me for the name, description, and target date if you need them.'},
+  {label:'Create Task',           prompt:'Create a new task. Ask me which project, title, priority, and assignee.'},
+  {label:'Team Summary',          prompt:'Give me a summary of what each team member is currently working on.'},
+  {label:'Risk Assessment',       prompt:'Which projects are at risk right now, and why?'},
+  {label:'Deadlines Approaching', prompt:'What deadlines are coming up in the next 7 days?'},
+  {label:'EOD Report',            prompt:'Generate an end-of-day report summarizing all task statuses by project.'},
+  {label:'Blocked Tasks',         prompt:'Which tasks are currently blocked or stuck, and what would unblock them?'},
+  {label:'Sprint Plan',           prompt:'Help me draft a sprint plan from the current backlog.'},
+];
+
+function AIWorkspace({cu,onNav}){
+  const STORAGE_KEY='pt_ai_conversations';
+  const loadConvos=()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');}catch(_){return [];}};
+  const [convos,setConvos]=useState(loadConvos);
+  const [activeId,setActiveId]=useState(()=>{const c=loadConvos();return c.length?c[0].id:null;});
+  const active=convos.find(c=>c.id===activeId)||null;
+  const [input,setInput]=useState('');
+  const [sending,setSending]=useState(false);
+  const [error,setError]=useState('');
+  const scrollRef=useRef(null);
+
+  const persist=(next)=>{setConvos(next);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(_){}};
+
+  useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},[active&&active.messages&&active.messages.length,sending]);
+
+  const newConversation=()=>{
+    const c={id:'c'+Date.now(),title:'New chat',pinned:false,created:new Date().toISOString(),messages:[]};
+    const next=[c,...convos];
+    persist(next);
+    setActiveId(c.id);
+    return c;
+  };
+
+  const renameConversation=(id,title)=>persist(convos.map(c=>c.id===id?{...c,title}:c));
+  const deleteConversation=(id)=>{
+    const next=convos.filter(c=>c.id!==id);
+    persist(next);
+    if(activeId===id)setActiveId(next.length?next[0].id:null);
+  };
+  const togglePin=(id)=>persist(convos.map(c=>c.id===id?{...c,pinned:!c.pinned}:c));
+
+  const send=async(text)=>{
+    const msg=(text!==undefined?text:input).trim();
+    if(!msg||sending)return;
+    setError('');
+    let convo=active;
+    if(!convo)convo=newConversation();
+    const userMsg={role:'user',content:msg,ts:Date.now()};
+    const withUser={...convo,messages:[...convo.messages,userMsg],
+      title:convo.messages.length===0?msg.slice(0,48):convo.title};
+    persist(convos.map(c=>c.id===convo.id?withUser:c).concat(convos.find(c=>c.id===convo.id)?[]:[withUser]));
+    setActiveId(convo.id);
+    setInput('');
+    setSending(true);
+    try{
+      const r=await api.post('/api/ai/chat',{message:msg,history:withUser.messages.map(m=>({role:m.role,content:m.content}))});
+      if(r&&r.error){
+        setError(r.message||'The AI assistant is unavailable right now.');
+      }else{
+        const aiMsg={role:'assistant',content:(r&&r.message)||'',actions:(r&&r.actions)||[],ts:Date.now()};
+        const withReply={...withUser,messages:[...withUser.messages,aiMsg]};
+        setConvos(prev=>{const next=prev.map(c=>c.id===convo.id?withReply:c);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(_){}return next;});
+        if(aiMsg.actions&&aiMsg.actions.some(a=>a.type&&a.type!=='error')&&onNav){/* something changed workspace data */}
+      }
+    }catch(e){
+      setError('Could not reach the AI assistant. Check your connection and try again.');
+    }finally{
+      setSending(false);
+    }
+  };
+
+  const sorted=[...convos].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||new Date(b.created)-new Date(a.created));
+
+  return html`
+    <div style=${{display:'flex',height:'100%',background:'var(--bg)'}}>
+      <div style=${{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
+        <div style=${{padding:'28px 32px 12px'}}>
+          <div style=${{fontSize:22,fontWeight:900,color:'var(--tx)'}}>Good ${(new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening')}${cu&&cu.name?', '+cu.name.split(' ')[0]:''} 👋</div>
+          <div style=${{fontSize:13,color:'var(--tx2)',marginTop:4}}>Ask me anything about your projects, tasks, and team — or pick a quick action below.</div>
+        </div>
+
+        ${(!active||active.messages.length===0)?html`
+          <div style=${{padding:'8px 32px 20px',display:'flex',flexWrap:'wrap',gap:10}}>
+            ${AI_QUICK_ACTIONS.map(qa=>html`
+              <button key=${qa.label} class="btn" style=${{borderRadius:12,padding:'10px 14px',fontSize:12.5,fontWeight:700}}
+                onClick=${()=>send(qa.prompt)}>${qa.label}</button>
+            `)}
+          </div>`:null}
+
+        <div ref=${scrollRef} style=${{flex:1,overflowY:'auto',padding:'0 32px'}}>
+          ${active&&active.messages.map((m,i)=>html`
+            <div key=${i} style=${{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:14}}>
+              <div style=${{maxWidth:640,padding:'12px 16px',borderRadius:16,fontSize:13.5,lineHeight:1.55,whiteSpace:'pre-wrap',
+                background:m.role==='user'?'var(--ac)':'var(--sf)',color:m.role==='user'?'#fff':'var(--tx)',border:m.role==='user'?'none':'1px solid var(--bd)'}}>
+                ${m.content}
+                ${m.actions&&m.actions.length?html`
+                  <div style=${{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+                    ${m.actions.map((a,ai)=>a.type==='error'?null:html`
+                      <div key=${ai} style=${{fontSize:11,fontWeight:700,padding:'6px 10px',borderRadius:8,background:'rgba(16,185,129,0.12)',color:'#10b981'}}>
+                        ✓ ${a.type==='create_task'?`Created task: ${a.title}`:a.type==='create_project'?`Created project: ${a.name}`:a.type==='update_task'?`Updated task ${a.id}`:a.type==='eod_report'?'Generated report':a.type}
+                      </div>
+                    `)}
+                  </div>`:null}
+              </div>
+            </div>
+          `)}
+          ${sending?html`<div style=${{fontSize:12.5,color:'var(--tx2)',padding:'6px 0 16px'}}>AI is thinking…</div>`:null}
+          ${error?html`<div style=${{fontSize:12.5,color:'#ef4444',padding:'6px 0 16px'}}>${error}</div>`:null}
+        </div>
+
+        <div style=${{padding:'16px 32px 24px',borderTop:'1px solid var(--bd)'}}>
+          <form onSubmit=${e=>{e.preventDefault();send();}} style=${{display:'flex',gap:10}}>
+            <input value=${input} onInput=${e=>setInput(e.target.value)} placeholder="Ask AI anything…"
+              style=${{flex:1,padding:'13px 16px',borderRadius:14,border:'1px solid var(--bd)',background:'var(--sf)',color:'var(--tx)',fontSize:13.5}}/>
+            <button class="btn bp" type="submit" disabled=${sending||!input.trim()} style=${{borderRadius:14,padding:'0 22px',fontWeight:800}}>Send</button>
+          </form>
+        </div>
+      </div>
+
+      <div style=${{width:280,borderLeft:'1px solid var(--bd)',padding:'20px 16px',overflowY:'auto',flexShrink:0}}>
+        <button class="btn bp" style=${{width:'100%',borderRadius:12,marginBottom:14,fontWeight:800}} onClick=${()=>newConversation()}>+ New chat</button>
+        ${sorted.map(c=>html`
+          <div key=${c.id} onClick=${()=>setActiveId(c.id)}
+            style=${{padding:'10px 12px',borderRadius:10,marginBottom:6,cursor:'pointer',fontSize:12.5,
+              background:c.id===activeId?'var(--ac3)':'transparent',display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+            <span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--tx)',fontWeight:c.id===activeId?800:600}}>${c.pinned?'📌 ':''}${c.title||'New chat'}</span>
+            <span style=${{display:'flex',gap:4,flexShrink:0}}>
+              <span onClick=${e=>{e.stopPropagation();togglePin(c.id);}} style=${{cursor:'pointer',opacity:.6}} title="Pin">📌</span>
+              <span onClick=${e=>{e.stopPropagation();deleteConversation(c.id);}} style=${{cursor:'pointer',opacity:.6}} title="Delete">✕</span>
+            </span>
+          </div>
+        `)}
+        ${!sorted.length?html`<div style=${{fontSize:12,color:'var(--tx2)'}}>No conversations yet.</div>`:null}
+      </div>
+    </div>`;
+}
+
 /* ─── Dashboard ───────────────────────────────────────────────────────────── */
 function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,tickets:propTickets,dashboardSummary}){
   const t=safe(tasks);const p=safe(projects);const u=safe(users);
@@ -4999,140 +5135,6 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
 }
 
 
-
-/* ─── OpsCommandCenter — production live system view ──────────────────────── */
-function OpsCommandCenter({cu,tasks,projects,users,tickets,notifs,onNav}){
-  const t=safe(tasks), p=safe(projects), u=safe(users), tk=safe(tickets), nf=safe(notifs);
-  const now=new Date();
-  const norm=x=>String(x||'').trim().toLowerCase();
-  const toDate=x=>{if(!x)return null;const d=new Date(x);return isNaN(d.getTime())?null:d;};
-  const daysUntil=x=>{const d=toDate(x);return d?Math.ceil((d-now)/86400000):null;};
-  const sameId=(a,b)=>String(a||'')&&String(a||'')===String(b||'');
-  const getProjectId=x=>x.project_id||x.project||x.pid||'';
-  const getAssignee=x=>x.assignee_id||x.assignee||x.owner_id||x.owner||x.user_id||'';
-  const getPriority=x=>norm(x.priority||x.severity||x.impact);
-  const isDone=x=>['completed','complete','done','closed','resolved'].includes(norm(x.stage||x.status));
-  const isBlocked=x=>Boolean(x.blocked)||['blocked','on hold','waiting','dependency'].includes(norm(x.stage||x.status));
-  const activeTasks=t.filter(x=>!isDone(x));
-  const doneTasks=t.filter(isDone);
-  const overdueTasks=activeTasks.filter(x=>{const d=toDate(x.due||x.due_date||x.deadline);return d&&d<now;});
-  const dueSoonTasks=activeTasks.filter(x=>{const d=daysUntil(x.due||x.due_date||x.deadline);return d!==null&&d>=0&&d<=3;});
-  const blockedTasks=activeTasks.filter(isBlocked);
-  const unassignedTasks=activeTasks.filter(x=>!getAssignee(x));
-  const reviewTasks=activeTasks.filter(x=>['review','in review','qa','testing','approval','waiting approval'].includes(norm(x.stage||x.status)));
-  const reopenedTasks=t.filter(x=>Number(x.reopen_count||x.reopened||0)>0||norm(x.status)==='reopened');
-  const staleTasks=activeTasks.filter(x=>{const d=toDate(x.updated_at||x.modified_at||x.created_at);return d&&((now-d)/86400000)>7;});
-  const openTickets=tk.filter(x=>!['resolved','closed','done'].includes(norm(x.status)));
-  const criticalTickets=openTickets.filter(x=>['critical','urgent','p0','p1','high'].includes(getPriority(x)));
-  const unassignedTickets=openTickets.filter(x=>!getAssignee(x));
-  const ticketBacklog=openTickets.length;
-  const unread=nf.filter(x=>!x.read).length;
-  const urgentNotifs=nf.filter(x=>!x.read&&['critical','urgent','high','deadline','blocked'].includes(norm(x.priority||x.type))).length;
-  const onlineUsers=u.filter(x=>x.online||x.is_online||norm(x.status)==='online'||norm(x.presence)==='online').length;
-  const idleUsers=u.filter(x=>norm(x.status)==='idle'||norm(x.presence)==='idle'||x.idle).length;
-  const offlineUsers=Math.max(0,u.length-onlineUsers-idleUsers);
-  const recentUsers=u.filter(x=>{const d=toDate(x.last_seen||x.last_active||x.updated_at);return d&&((now-d)/3600000)<=24;}).length;
-  const workload=u.map(user=>{
-    const uid=user.id;
-    const userTasks=activeTasks.filter(x=>sameId(getAssignee(x),uid));
-    const userTickets=openTickets.filter(x=>sameId(getAssignee(x),uid));
-    const overdue=userTasks.filter(x=>{const d=toDate(x.due||x.due_date||x.deadline);return d&&d<now;}).length;
-    const blocked=userTasks.filter(isBlocked).length;
-    const lateNight=userTasks.filter(x=>{const d=toDate(x.updated_at||x.created_at);return d&&(d.getHours()>=21||d.getHours()<6);}).length;
-    const total=userTasks.length+userTickets.length;
-    return {id:uid,name:user.name||user.email||uid,tasks:userTasks.length,tickets:userTickets.length,overdue,blocked,lateNight,total};
-  }).sort((a,b)=>b.total-a.total);
-  const avgLoad=workload.length?workload.reduce((s,x)=>s+x.total,0)/workload.length:0;
-  const overloaded=workload.filter(x=>x.total>Math.max(5,avgLoad*1.6)||x.overdue>=3||x.blocked>=2);
-  const underloaded=workload.filter(x=>x.total===0);
-  const projectRows=p.map(pr=>{
-    const pid=pr.id;
-    const pt=t.filter(x=>sameId(getProjectId(x),pid));
-    const open=pt.filter(x=>!isDone(x));
-    const done=pt.filter(isDone);
-    const overdue=open.filter(x=>{const d=toDate(x.due||x.due_date||x.deadline);return d&&d<now;}).length;
-    const blocked=open.filter(isBlocked).length;
-    const unassigned=open.filter(x=>!getAssignee(x)).length;
-    const progress=pt.length?Math.round(done.length*100/pt.length):Number(pr.progress||0);
-    const targetDays=daysUntil(pr.target_date||pr.end_date||pr.deadline);
-    const timelineRisk=targetDays!==null&&targetDays<0&&progress<100?35:targetDays!==null&&targetDays<=7&&progress<70?18:0;
-    const risk=Math.min(100,overdue*16+blocked*22+unassigned*5+timelineRisk+(progress<30&&pt.length?10:0));
-    return {id:pid,name:pr.name||'Untitled project',open:open.length,done:done.length,total:pt.length,overdue,blocked,unassigned,progress,targetDays,risk,color:pr.color||'var(--ac)'};
-  }).sort((a,b)=>b.risk-a.risk||b.open-a.open);
-  const highRiskProjects=projectRows.filter(x=>x.risk>=50);
-  const atRiskProjects=projectRows.filter(x=>x.risk>=25&&x.risk<50);
-  const totalWork=t.length+tk.length;
-  const completionRate=t.length?Math.round(doneTasks.length*100/t.length):0;
-  const health=Math.max(0,Math.min(100,Math.round(100-overdueTasks.length*4-blockedTasks.length*5-criticalTickets.length*7-highRiskProjects.length*6-unassignedTasks.length*1.5-unassignedTickets.length*3-overloaded.length*4)));
-  const deliveryConfidence=Math.max(0,Math.min(100,Math.round(100-highRiskProjects.length*10-atRiskProjects.length*4-overdueTasks.length*3-blockedTasks.length*4)));
-  const slaCompliance=Math.max(0,Math.min(100,Math.round(100-criticalTickets.length*10-overdueTasks.length*3-ticketBacklog*1.5)));
-  const communicationHealth=Math.max(0,Math.min(100,Math.round(100-unread*2-urgentNotifs*8)));
-  const capacityHealth=Math.max(0,Math.min(100,Math.round(100-overloaded.length*12-underloaded.length*2)));
-  const agingBuckets=[
-    ['0-2d',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age<=2;}).length],
-    ['3-7d',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age>2&&age<=7;}).length],
-    ['8-14d',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age>7&&age<=14;}).length],
-    ['15d+',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age>14;}).length]
-  ];
-  const stageCounts=activeTasks.reduce((m,x)=>{const k=x.stage||x.status||'open';m[k]=(m[k]||0)+1;return m;},{});
-  const bottlenecks=Object.entries(stageCounts).sort((a,b)=>b[1]-a[1]).slice(0,4);
-  const focus=[
-    ...criticalTickets.slice(0,3).map(x=>({icon:'🚨',title:x.title||x.subject||'Critical ticket',body:'High-impact ticket requires triage.',nav:'tickets'})),
-    ...blockedTasks.slice(0,3).map(x=>({icon:'🧱',title:x.title||x.name||'Blocked task',body:'Dependency or owner review needed.',nav:'tasks'})),
-    ...overdueTasks.slice(0,3).map(x=>({icon:'⏰',title:x.title||x.name||'Overdue task',body:'Timeline update or reassignment needed.',nav:'tasks'})),
-    ...dueSoonTasks.slice(0,2).map(x=>({icon:'🎯',title:x.title||x.name||'Due soon',body:'Due within the next 3 days.',nav:'tasks'})),
-    ...(unassignedTasks.length?[{icon:'👤',title:'Unassigned tasks',body:`${unassignedTasks.length} active task(s) need an owner.`,nav:'tasks'}]:[]),
-    ...(unassignedTickets.length?[{icon:'🎫',title:'Unassigned tickets',body:`${unassignedTickets.length} ticket(s) need an owner.`,nav:'tickets'}]:[])
-  ].slice(0,8);
-  const riskColor=v=>v>=75?'#22c55e':v>=55?'#f59e0b':'#ef4444';
-  const stat=(label,val,sub,color,nav)=>html`<button onClick=${()=>nav&&onNav(nav)} style=${{textAlign:'left',cursor:nav?'pointer':'default',padding:16,borderRadius:18,background:'linear-gradient(180deg,var(--sf),rgba(255,255,255,.025))',border:'1px solid var(--bd2)',minHeight:106}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style=${{fontSize:10,fontWeight:950,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.35}}>${label}</span><span style=${{width:8,height:8,borderRadius:99,background:color,boxShadow:'0 0 14px '+color}}></span></div><div style=${{fontSize:27,fontWeight:950,color:'var(--tx)',marginTop:8,lineHeight:1}}>${val}</div><div style=${{fontSize:11,color:'var(--tx3)',marginTop:7}}>${sub}</div></button>`;
-  const miniBar=(label,val,color)=>html`<div style=${{margin:'9px 0'}}><div style=${{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:6}}><b style=${{color:'var(--tx2)'}}>${label}</b><b style=${{color}}>${val}%</b></div><div style=${{height:7,borderRadius:99,background:'rgba(255,255,255,.08)',overflow:'hidden'}}><div style=${{width:Math.max(3,Math.min(100,val))+'%',height:'100%',borderRadius:99,background:color}}></div></div></div>`;
-  const panel=(title,body,sub)=>html`<div class="card" style=${{borderRadius:22,minHeight:0}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:10}}><div style=${{fontSize:15,fontWeight:950,color:'var(--tx)'}}>${title}</div>${sub?html`<div style=${{fontSize:9,color:'var(--tx3)',fontWeight:800,textTransform:'uppercase',letterSpacing:.35}}>${sub}</div>`:null}</div>${body}</div>`;
-  return html`
-    <div class="fi ops-command-center" style=${{height:'100%',overflowY:'auto',padding:'16px 20px 28px',display:'flex',flexDirection:'column',gap:14,background:'var(--bg)',color:'var(--tx)'}}>
-      <div style=${{padding:18,borderRadius:24,background:'linear-gradient(135deg,var(--sf),var(--sf2))',border:'1px solid var(--bd2)',display:'flex',alignItems:'center',gap:14}}>
-        <div style=${{width:48,height:48,borderRadius:18,display:'grid',placeItems:'center',background:'rgba(99,102,241,.15)',border:'1px solid rgba(99,102,241,.30)',fontSize:23}}>⌘</div>
-        <div style=${{flex:1,minWidth:0}}><div style=${{fontSize:21,fontWeight:950,color:'var(--tx)'}}>Operations Command Center</div><div style=${{fontSize:12,color:'var(--tx3)',marginTop:3}}>Live operational inputs from projects, tasks, tickets, notifications, team workload, deadlines, and activity. No demo data.</div></div>
-        <button class="btn bp" onClick=${()=>onNav('tasks')} style=${{fontSize:12}}>Open Work Queue</button>
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:12}}>
-        ${stat('Portfolio Health',health+'%',health>=80?'Stable':health>=60?'Needs attention':'Critical',riskColor(health),'ops')}
-        ${stat('Delivery Confidence',deliveryConfidence+'%',`${highRiskProjects.length} high-risk project(s)`,riskColor(deliveryConfidence),'timeline')}
-        ${stat('SLA Compliance',slaCompliance+'%',`${criticalTickets.length} critical ticket(s)`,riskColor(slaCompliance),'tickets')}
-        ${stat('Capacity Health',capacityHealth+'%',`${overloaded.length} overloaded member(s)`,riskColor(capacityHealth),'team')}
-        ${stat('Communication',communicationHealth+'%',`${unread} unread · ${urgentNotifs} urgent`,riskColor(communicationHealth),'dm')}
-        ${stat('Open Work',activeTasks.length,`${overdueTasks.length} overdue · ${blockedTasks.length} blocked`,'var(--ac)','tasks')}
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'minmax(280px,1.1fr) minmax(280px,.9fr)',gap:14}}>
-        ${panel('Today’s Focus',focus.length?html`<div style=${{display:'flex',flexDirection:'column',gap:9}}>${focus.map(a=>html`<div onClick=${()=>onNav(a.nav)} style=${{cursor:'pointer',display:'flex',gap:10,padding:11,borderRadius:16,background:'var(--sf2)',border:'1px solid var(--bd)'}}><div style=${{fontSize:18}}>${a.icon}</div><div style=${{minWidth:0}}><div style=${{fontSize:12,fontWeight:900,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${a.title}</div><div style=${{fontSize:9,color:'var(--tx3)'}}>${a.body}</div></div></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No urgent operational actions right now.</div>`, 'AI-prioritized')}
-        ${panel('Operational Scorecard',html`<div>${miniBar('Delivery confidence',deliveryConfidence,riskColor(deliveryConfidence))}${miniBar('SLA compliance',slaCompliance,riskColor(slaCompliance))}${miniBar('Communication health',communicationHealth,riskColor(communicationHealth))}${miniBar('Capacity balance',capacityHealth,riskColor(capacityHealth))}<div style=${{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8,marginTop:12}}>${[['Done rate',completionRate+'%'],['Total signals',totalWork],['Review queue',reviewTasks.length],['Stale tasks',staleTasks.length]].map(([k,v])=>html`<div style=${{padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)'}}><div style=${{fontSize:9,color:'var(--tx3)',fontWeight:800}}>${k}</div><div style=${{fontSize:18,color:'var(--tx)',fontWeight:950}}>${v}</div></div>`)}</div></div>`, '20-input model')}
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:14}}>
-        ${panel('Delivery Risk Engine',projectRows.length?html`<div style=${{display:'flex',flexDirection:'column',gap:8}}>${projectRows.slice(0,6).map(pr=>html`<div onClick=${()=>onNav('projects')} style=${{cursor:'pointer',padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)',borderLeft:'4px solid '+(pr.risk>=50?'#ef4444':pr.risk>=25?'#f59e0b':'#22c55e')}}><div style=${{display:'flex',justifyContent:'space-between',gap:8}}><b style=${{fontSize:12,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${pr.name}</b><b style=${{fontSize:12,color:pr.risk>=50?'#ef4444':pr.risk>=25?'#f59e0b':'#22c55e'}}>${pr.risk}</b></div><div style=${{fontSize:9,color:'var(--tx3)',marginTop:4}}>Open ${pr.open} · Overdue ${pr.overdue} · Blocked ${pr.blocked} · ${pr.progress}% done</div></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No project risk data available.</div>`, 'computed')}
-        ${panel('Team Capacity Matrix',workload.length?html`<div style=${{display:'flex',flexDirection:'column',gap:8}}>${workload.slice(0,8).map(w=>html`<div style=${{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'center',padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)'}}><div style=${{minWidth:0}}><div style=${{fontSize:12,fontWeight:900,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${w.name}</div><div style=${{fontSize:9,color:'var(--tx3)'}}>Tasks ${w.tasks} · Tickets ${w.tickets} · Overdue ${w.overdue}</div></div><b style=${{color:w.total>Math.max(5,avgLoad*1.6)||w.overdue>=3?'#ef4444':w.total===0?'var(--tx3)':'var(--tx)'}}>${w.total}</b></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No team workload data available.</div>`, `${onlineUsers} online · ${idleUsers} idle`)}
-        ${panel('Task Aging Analysis',html`<div style=${{display:'flex',flexDirection:'column',gap:10}}>${agingBuckets.map(([label,count])=>{const pct=activeTasks.length?Math.round(count*100/activeTasks.length):0;return html`<div><div style=${{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:5}}><b style=${{color:'var(--tx2)'}}>${label}</b><b style=${{color:'var(--tx)'}}>${count}</b></div><div style=${{height:8,borderRadius:99,background:'rgba(255,255,255,.08)',overflow:'hidden'}}><div style=${{width:Math.max(2,pct)+'%',height:'100%',background:label==='15d+'?'#ef4444':label==='8-14d'?'#f59e0b':'var(--ac)'}}></div></div></div>`;})}</div>`, 'open tasks')}
-        ${panel('Bottleneck Detector',bottlenecks.length?html`<div style=${{display:'flex',flexDirection:'column',gap:8}}>${bottlenecks.map(([stage,count])=>html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)'}}><span style=${{fontSize:12,color:'var(--tx2)',fontWeight:850}}>${stage}</span><b style=${{fontSize:15,color:'var(--tx)'}}>${count}</b></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No stage bottlenecks detected.</div>`, 'workflow')}
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
-        ${[
-          ['Real-time activity',`${onlineUsers} online`,`${recentUsers||onlineUsers} active in 24h · ${offlineUsers} offline`,'team'],
-          ['Burnout risk',overloaded.length,`${overloaded.filter(x=>x.lateNight>0).length} with late-night activity`,'team'],
-          ['Deadline prediction',`${dueSoonTasks.length} due soon`,`${overdueTasks.length} already overdue`,'timeline'],
-          ['Communication health',`${unread} unread`,`${urgentNotifs} urgent notification(s)`,'dm'],
-          ['Meeting/action load',reviewTasks.length,'Review / approval queue count','tasks'],
-          ['Backlog grooming',unassignedTasks.length,`${reopenedTasks.length} reopened · ${staleTasks.length} stale`,'tasks'],
-          ['System health signals',nf.filter(x=>['error','api_error','system','incident'].includes(norm(x.type))).length,'Error/incident notifications','dashboard'],
-          ['Smart alerts',urgentNotifs,`${criticalTickets.length} critical tickets grouped`,'dashboard'],
-          ['Operational replay',`${doneTasks.length}/${t.length}`,'Completed vs total task history','tasks'],
-          ['War room trigger',highRiskProjects.length+criticalTickets.length,`${highRiskProjects.length} risky project(s) + ${criticalTickets.length} critical ticket(s)`,'tickets']
-        ].map(([label,val,sub,nav])=>stat(label,val,sub,'var(--ac)',nav))}
-      </div>
-    </div>`;
-}
 
 
 /* ─── TimelineView (Admin/Manager only) ───────────────────────────────────── */
@@ -11861,7 +11863,7 @@ function ptCurrentWorkspaceContext(extra){
 }
 function ptWorkspacePrefixFromPath(){
   try{
-    const VIEWS=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
+    const VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
     const seg=window.location.pathname.split('/').filter(Boolean);
     const vi=seg.findIndex(s=>VIEWS.includes(String(s||'').trim()));
     if(vi>0){
@@ -11896,7 +11898,7 @@ function ptEntityUrl(page,id='',u=null){
 
 function ptRouteInfo(){
   try{
-    const VALID=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
+    const VALID=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
     const seg=window.location.pathname.split('/').filter(Boolean);
     const q=new URLSearchParams(window.location.search||'');
     let idx=0;
@@ -12644,7 +12646,7 @@ function App(){
   const _hadSession=(()=>{try{return localStorage.getItem('pf_had_session')==='1';}catch{return false;}})();
   const [loading,setLoading]=useState(_hadSession);
   // Read initial view from URL path or ?page= param
-  const VALID_VIEWS=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault'];
+  const VALID_VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault'];
   // Also treat /projects/<id> as valid
   useEffect(()=>{
     try{
@@ -12657,7 +12659,7 @@ function App(){
   // Set initial page title based on current URL path
   useEffect(()=>{
     try{
-      const VIEW_T={dashboard:'Dashboard',ops:'Ops Center',projects:'Projects',tasks:'Kanban Board',messages:'Channels',dm:'Direct Messages',tickets:'Tickets',ops:'Ops Center',timeline:'Timeline Tracker',reminders:'Reminders',settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity'};
+      const VIEW_T={ai:'AI Workspace',dashboard:'Dashboard',projects:'Projects',tasks:'Kanban Board',messages:'Channels',tickets:'Tickets',timeline:'Timeline Tracker',reminders:'Reminders',settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity'};
       const ri=ptRouteInfo(); const p=ri.page;
       if(p&&VIEW_T[p]) document.title='Project Tracker — '+VIEW_T[p]+' | AI-Powered Team Collaboration';
       else document.title='Project Tracker — AI-Powered Team Collaboration Platform';
@@ -12670,7 +12672,7 @@ function App(){
       const sp=new URLSearchParams(window.location.search).get('page');
       if(sp&&VALID_VIEWS.includes(sp)) return sp;
     }catch(e){}
-    return 'dashboard';
+    return 'ai';
   });
   // Production hard-sync: the browser URL is the source of truth on first paint.
   // This prevents /tasks or /dashboard from staying stuck on the previous Ops view after cache/hydration.
@@ -12857,13 +12859,13 @@ function App(){
       if(dmPeer){
         try{sessionStorage.setItem('pt_open_dm_user',String(dmPeer));sessionStorage.setItem('pt_dm_notification_target',String(dmPeer));sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_e){}
         setDmTargetUser(String(dmPeer));
-        _setView('dm:'+String(dmPeer));
+        _setView('ai');
         try{history.pushState(null,'',ptDmUrl(String(dmPeer)));}catch(_){}
         const fireDmOpen=()=>{try{if(window.__ptOpenDmPeer)window.__ptOpenDmPeer(String(dmPeer),'notification');window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(dmPeer),source:'notification'}}));}catch(_){}};
         fireDmOpen();
       }else{
         try{sessionStorage.setItem('pt_dm_resolve_next','1');}catch(_e){}
-        _setView('dm');
+        _setView('ai');
       }
       return;
     }
@@ -12924,12 +12926,12 @@ function App(){
         if(target){
           setDmTargetUser(String(target));
           try{sessionStorage.setItem('pt_open_dm_user',String(target));sessionStorage.setItem('pt_dm_notification_target',String(target));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_){}
-          _setView('dm:'+String(target));
+          _setView('ai');
         }else{
           // Plain /dm from sidebar/direct navigation stays unselected. Only a
           // notification-marked /dm?notif=dm may resolve latest unread.
           if(fromNotif){try{sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}}
-          _setView('dm');
+          _setView('ai');
         }
       }
     }catch(e){}
@@ -13021,7 +13023,7 @@ function App(){
           sessionStorage.setItem('pt_dm_notification_target',peer);
           setDmTargetUser(peer);
           try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:peer,source}}));}catch(_){}
-          _setView('dm:'+peer);
+          _setView('ai');
           try{history.replaceState(null,'',ptDmUrl(peer));}catch(_){}
           return peer;
         }
@@ -13054,10 +13056,10 @@ function App(){
           if(user){
             setDmTargetUser(user);
             try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',user);sessionStorage.setItem('pt_dm_notification_target',user);window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user,source:'sw-notification'}}));}catch(_){}
-            _setView('dm:'+user);
+            _setView('ai');
           }else{
             try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}
-            _setView('dm');
+            _setView('ai');
             try{ if(typeof window._pfResolveDmNotifNow==='function') window._pfResolveDmNotifNow('sw-notification'); }catch(_r){}
           }
         }
@@ -13307,7 +13309,7 @@ function App(){
             if(msg.type==='web_notification'&&msg.data){
               const n=msg.data||{};
               if(String(n.recipient||'')===String(cu.id)&&String(n.sender||'')!==String(cu.id)){
-                showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('dm:'+String(n.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
+                showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
               }
             }
             if(msg.type==='dm_read_all'){
@@ -13371,7 +13373,7 @@ function App(){
                     const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
                     const body=raw.replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
                     window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm:'+String(m.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
                     playSound('notif');
                   }
                 }
@@ -13781,7 +13783,7 @@ function App(){
             const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
             if(!String(m.content||'').includes('CALL_INVITE:')){
               window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm:'+String(m.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
               playSound('notif');
             }
           });
@@ -14131,7 +14133,7 @@ function App(){
             if(v==='vault'||v==='password-generator'){_setView(v);}
             return;
           }
-          if(typeof v==='string'&&v.startsWith('dm:')){const uid=v.slice(3);setDmTargetUser(uid);_setView('dm:'+uid);}
+          if(typeof v==='string'&&v.startsWith('dm:')){const uid=v.slice(3);setDmTargetUser(uid);_setView('ai');}
           else _setView(v);
         }} onLogout=${logout} unread=${unread} dmUnread=${dmUnread} col=${col} setCol=${v=>{setCol(v);try{localStorage.setItem('pf_col',v?'1':'0');}catch{}}} wsName=${cu&&cu._offline?'Offline Mode':wsName}
         dark=${dark} setDark=${setDark} wsDmEnabled=${wsDmEnabled} onlineUsers=${onlineUsers}
@@ -14161,16 +14163,7 @@ function App(){
             <div key=${baseView+'-'+(teamCtx||'all')} class="page-enter" style=${{flex:1,overflow: baseView==='vault'?'hidden':'hidden',display:'flex',flexDirection:'column',height:'100%'}}>
             ${baseView==='workspace-os'&&isViewFeatureAllowed('workspace-os')?html`<${WorkspaceOSView} cu=${cu} users=${data.users}/>`:null}
             ${baseView==='dashboard'?html`<${Dashboard} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} onNav=${setView} activeTeam=${activeTeam} teams=${data.teams} setTeamCtx=${setTeamCtx} tickets=${data.tickets||[]} dashboardSummary=${data.dashboardSummary||{}}/>`:null}
-            ${baseView==='ops'&&hasOpsAccess(cu)&&isViewFeatureAllowed('ops')?html`<${OpsCommandCenter} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} tickets=${data.tickets||[]} notifs=${data.notifs||[]} onNav=${setView}/>`:null}
-            ${baseView==='ops'&&!hasOpsAccess(cu)?html`
-              <div style=${{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',padding:24}}>
-                <div style=${{maxWidth:440,textAlign:'center',padding:24,borderRadius:22,background:'var(--sf)',border:'1px solid var(--bd)',boxShadow:'0 20px 70px rgba(0,0,0,.25)'}}>
-                  <div style=${{fontSize:42,marginBottom:10}}>🔐</div>
-                  <div style=${{fontSize:16,fontWeight:900,color:'var(--tx)',marginBottom:8}}>Ops Center is restricted</div>
-                  <div style=${{fontSize:13,color:'var(--tx2)',lineHeight:1.6}}>This workspace-level command center is visible only for Admins, Managers, and Team Leads.</div>
-                  <button class="btn bp" style=${{marginTop:16}} onClick=${()=>setView('dashboard')}>Go to Dashboard</button>
-                </div>
-              </div>`:null}
+            ${baseView==='ai'?html`<${AIWorkspace} cu=${cu} onNav=${setView}/>`:null}
             ${baseView==='projects'?html`<${ProjectsView} projects=${scopedProjects} tasks=${scopedTasks} users=${data.users} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam} initialProjectId=${initialProjectId} onClearInitial=${()=>setInitialProjectId(null)}/>`:null}
             ${baseView==='tasks'?html`<${TasksView} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam}
               initialStage=${taskFilterType==='stage'?taskFilterValue:null}
@@ -14180,7 +14173,6 @@ function App(){
               onClearInitialTask=${()=>setInitialTaskId(null)}
             />`:null}
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
-            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} onDmReadAll=${onDmReadAll} markingAllDmsRead=${markingAllDmsRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}
