@@ -402,6 +402,17 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   --vault-btn-h:30px;
   --vault-card-h:420px;
 }
+/* Light theme: the premium navy/slate palette above is a deliberate dark
+   surface (per design brief) — it does not just invert. In light mode the
+   credential card instead uses the theme's own light surface tokens, same
+   as every other card in the app, so var(--tx)'s near-black text stays
+   readable instead of sitting on a hardcoded dark background. */
+.lm .vault-scroll{
+  --vault-slate:var(--sf);
+  --vault-slate2:var(--sf2);
+  --vault-line:var(--bd);
+  --vault-line-hover:rgba(139,92,246,.28);
+}
 .vault-cards-grid{
   display:grid;
   gap:var(--vault-gap-card);
@@ -10781,6 +10792,39 @@ function vaultPwStrength(pw){
   const lvl = levels[Math.min(score, levels.length-1)];
   return {score, pct: Math.min(100, (score/5)*100), label:lvl.label, color:lvl.color};
 }
+// ── Security Health scan ─────────────────────────────────────────────────
+// Walks every card's secret-flagged fields (passwords/keys/tokens — the
+// same _secret flag the card editor already sets) and flags two things a
+// credential vault should surface on its own rather than making the user
+// open each card to notice: passwords weak enough to guess/brute-force,
+// and the exact same secret value reused across more than one field.
+// Runs entirely over data already loaded into the page (see VaultHashPw —
+// values are masked in the UI, not encrypted at rest in the browser), so
+// this costs nothing extra from the server.
+function vaultSecurityAudit(cards){
+  const entries = [];
+  (cards||[]).forEach(c=>{
+    const vColId = (c.cols && c.cols[1] && c.cols[1].id) || 'c2';
+    (c.rows||[]).forEach(r=>{
+      if(r && r._secret && r[vColId]){
+        entries.push({cardId:c.id, value:r[vColId]});
+      }
+    });
+  });
+  const weakIds = new Set();
+  entries.forEach(e=>{ if(vaultPwStrength(e.value).score<=2) weakIds.add(e.cardId); });
+  const counts = {};
+  entries.forEach(e=>{ counts[e.value]=(counts[e.value]||0)+1; });
+  const reusedIds = new Set();
+  entries.forEach(e=>{ if(counts[e.value]>1) reusedIds.add(e.cardId); });
+  return {
+    weakIds, reusedIds,
+    weakCount: weakIds.size,
+    reusedCount: reusedIds.size,
+    totalSecrets: entries.length,
+    clean: entries.length>0 && weakIds.size===0 && reusedIds.size===0,
+  };
+}
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
 const VAULT_ICON_MAP = [
@@ -10939,7 +10983,7 @@ function VaultDelModal({title, onConfirm, onClose}){
 }
 
 // ── Spreadsheet card ──────────────────────────────────────────────────────────
-function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate}){
+function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, onDelete, onUpdate}){
   const isLocked = !!card.lockHash;
   const canSee = !isLocked || isUnlocked;
   const iconInfo = vaultGetIcon(card.title, card.tags);
@@ -11118,6 +11162,7 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
           <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'1a',border:'1px solid '+catInfo.color+'40'}}>${catInfo.badge}</span>
           ${saving && html`<span class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx3)',border:'1px solid var(--vault-line)'}}>Saving…</span>`}
           ${isLocked && html`<span class="vault-tag" style=${{display:'inline-flex',alignItems:'center',gap:4,background:isUnlocked?'rgba(34,197,94,.12)':'rgba(255,255,255,.05)',color:isUnlocked?'#4ADE80':'var(--tx3)',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'var(--vault-line)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
+          ${(isWeak||isReused) && html`<span class="vault-tag" title=${isWeak&&isReused?'Weak & reused password':isWeak?'Weak password':'Reused password'} style=${{background:'rgba(239,68,68,.12)',color:'#f87171',border:'1px solid rgba(239,68,68,.3)'}}>⚠️ ${isWeak&&isReused?'Weak · Reused':isWeak?'Weak':'Reused'}</span>`}
         </div>
         <button class=${'vault-fav-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin as favorite'} aria-label=${pinned?'Unpin card':'Pin card as favorite'} aria-pressed=${pinned} onClick=${e=>{e.stopPropagation();togglePin();}}>★</button>
       </div>
@@ -11634,6 +11679,7 @@ function VaultView({cu}){
     const info=vaultExpiryInfo(c.expires_at); return info && !info.expired && info.soon;
   }).length;
   const totalPinned = cards.filter(c=>c.pinned).length;
+  const secAudit = useMemo(()=>vaultSecurityAudit(cards),[cards]);
 
   return html`
     <div class="vault-scroll" style=${{...VS.wrap, backgroundColor:'var(--bg)', backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)', backgroundSize:'32px 32px'}}>
@@ -11656,7 +11702,7 @@ function VaultView({cu}){
       </div>
 
       <!-- Stats bar (flat colored-top-border cards) -->
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:16,marginBottom:24}}>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:16,marginBottom:16}}>
         ${[
           {val:cards.length,     lbl:'Total Cards', color:'#818cf8'},
           {val:totalCreds,       lbl:'Credentials',  color:'#4ade80'},
@@ -11668,7 +11714,21 @@ function VaultView({cu}){
             <div class="vault-stat-val">${s.val}</div>
             <div class="vault-stat-lbl" style=${{textTransform:'uppercase',marginTop:6}}>${s.lbl}</div>
           </div>`)}
+        <div class="vault-stat-card" style=${{borderTop:'3px solid '+(secAudit.weakCount+secAudit.reusedCount>0?'#ef4444':'#22C55E')}}>
+          <div class="vault-stat-val" style=${{color:secAudit.weakCount+secAudit.reusedCount>0?'#ef4444':'var(--tx)'}}>${secAudit.weakCount+secAudit.reusedCount>0 ? (secAudit.weakCount+secAudit.reusedCount) : '✓'}</div>
+          <div class="vault-stat-lbl" style=${{textTransform:'uppercase',marginTop:6}}>Security Issues</div>
+        </div>
       </div>
+      ${(secAudit.weakCount>0 || secAudit.reusedCount>0) && html`
+        <div style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.22)',marginBottom:16,fontSize:12.5,color:'#fca5a5',flexWrap:'wrap'}}>
+          <span style=${{fontSize:15}}>⚠️</span>
+          <span>
+            ${secAudit.weakCount>0?`${secAudit.weakCount} card${secAudit.weakCount>1?'s have':' has'} a weak password`:''}
+            ${secAudit.weakCount>0 && secAudit.reusedCount>0?' · ':''}
+            ${secAudit.reusedCount>0?`${secAudit.reusedCount} card${secAudit.reusedCount>1?'s share':' shares'} a reused password`:''}
+            — look for the ⚠️ badge below.
+          </span>
+        </div>`}
 
       <!-- Search, sort & count -->
       <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
@@ -11718,6 +11778,8 @@ function VaultView({cu}){
           key=${c.id}
           card=${c}
           isUnlocked=${!!unlocked[c.id]}
+          isWeak=${secAudit.weakIds.has(c.id)}
+          isReused=${secAudit.reusedIds.has(c.id)}
           onUnlock=${handleUnlock}
           onLock=${handleLock}
           onDelete=${handleDelete}
