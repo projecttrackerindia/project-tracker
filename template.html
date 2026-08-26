@@ -383,13 +383,40 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 /* ── Vault redesign styles — premium enterprise credential cards ───────────
    Design tokens: deep navy #0B1020 (page), slate #151B2E (card), soft blue
    #5B7CFF / violet #8B5CF6 / emerald #22C55E as environment accents used
-   sparingly (badges, hairlines, icons) rather than filling the card. */
+   sparingly (badges, hairlines, icons) rather than filling the card.
+
+   THEME ARCHITECTURE (fix): the block below is the LIGHT-mode definition of
+   every Vault design token. It's written first — with no theme class
+   required — because the app's own :root is already the light palette
+   (see --bg/--sf/--tx above), so Vault now simply inherits the same
+   light-safe tokens every other card in the app already uses. The
+   `.dm .vault-scroll` block underneath is the ONLY place the premium dark
+   navy/slate values live, scoped strictly to dark mode.
+
+   ROOT CAUSE OF THE BUG: this used to be reversed — the hardcoded dark
+   values (#151B2E etc.) lived unconditionally on `.vault-scroll`, and the
+   light override sat behind a `.lm` class selector. But the theme toggle
+   (search `document.body.className=dark?'dm':''`) never adds an `.lm`
+   class — it only ever sets `.dm` or clears the class entirely — so that
+   light override could never match, and the vault cards stayed on the
+   hardcoded dark slate even when the rest of the app switched to light.
+   Keying the dark styles off `.dm` (which the toggle does apply) instead
+   fixes this for both the initial load and instant no-refresh switching. */
 .vault-scroll{
   font-family:'Inter',system-ui,-apple-system,sans-serif;
-  --vault-slate:#151B2E;
-  --vault-slate2:#131829;
-  --vault-line:rgba(255,255,255,.07);
-  --vault-line-hover:rgba(255,255,255,.13);
+  --vault-slate:var(--sf);
+  --vault-slate2:var(--sf2);
+  --vault-line:var(--bd);
+  --vault-line-hover:rgba(139,92,246,.28);
+  --vault-line-focus:rgba(139,92,246,.4);
+  --vault-overlay-hover:rgba(15,14,23,.045);
+  --vault-overlay-strong:rgba(15,14,23,.1);
+  --vault-overlay-strong-hover:rgba(15,14,23,.16);
+  --vault-accent-wash-default:rgba(15,14,23,.05);
+  --vault-accent-border-default:var(--bd);
+  --vault-shadow:0 1px 2px rgba(15,14,23,.07);
+  --vault-shadow-hover:0 4px 16px rgba(15,14,23,.1);
+  --vault-grid-line:rgba(15,14,23,.025);
   --vault-radius:12px;
   --vault-pad:16px;
   --vault-gap-card:18px;
@@ -402,11 +429,26 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   --vault-btn-h:30px;
   --vault-card-h:420px;
 }
-/* Light theme: the premium navy/slate palette above is a deliberate dark
-   surface (per design brief) — it does not just invert. In light mode the
-   credential card instead uses the theme's own light surface tokens, same
-   as every other card in the app, so var(--tx)'s near-black text stays
-   readable instead of sitting on a hardcoded dark background. */
+/* Dark theme: the premium navy/slate palette — a deliberate dark surface
+   per the original design brief, not just an inversion of the light card. */
+.dm .vault-scroll{
+  --vault-slate:#151B2E;
+  --vault-slate2:#131829;
+  --vault-line:rgba(255,255,255,.07);
+  --vault-line-hover:rgba(255,255,255,.13);
+  --vault-line-focus:rgba(255,255,255,.18);
+  --vault-overlay-hover:rgba(255,255,255,.04);
+  --vault-overlay-strong:rgba(255,255,255,.12);
+  --vault-overlay-strong-hover:rgba(255,255,255,.2);
+  --vault-accent-wash-default:rgba(255,255,255,.06);
+  --vault-accent-border-default:var(--vault-line);
+  --vault-shadow:0 1px 2px rgba(0,0,0,.24);
+  --vault-shadow-hover:0 4px 16px rgba(0,0,0,.28);
+  --vault-grid-line:rgba(255,255,255,.025);
+}
+/* Kept as a harmless alias in case `.lm` is ever wired up elsewhere later —
+   both selectors resolve to the same light values as the bare .vault-scroll
+   default above, so this cannot regress anything either way. */
 .lm .vault-scroll{
   --vault-slate:var(--sf);
   --vault-slate2:var(--sf2);
@@ -441,7 +483,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   max-width:100%;
   width:100%;
   height:var(--vault-card-h);
-  box-shadow:0 1px 2px rgba(0,0,0,.24);
+  box-shadow:var(--vault-shadow);
   border:1px solid var(--vault-line);
   border-top:2px solid var(--vault-accent, var(--vault-line));
   cursor:default;
@@ -449,14 +491,14 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-card:hover{
   border-color:var(--vault-line-hover);
   border-top-color:var(--vault-accent, var(--vault-line-hover));
-  box-shadow:0 4px 16px rgba(0,0,0,.28);
+  box-shadow:var(--vault-shadow-hover);
 }
 .vault-card:focus-within{
   box-shadow:0 0 0 1px var(--ac-ring);
 }
 /* Pinned/favorited — a quiet filled star is the only cue; no glow border. */
 .vault-card.is-pinned{
-  border-color:rgba(255,255,255,.14);
+  border-color:var(--vault-overlay-strong);
 }
 .vault-card-body{
   flex:1 1 auto;
@@ -465,12 +507,12 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   flex-direction:column;
   overflow-y:auto;
   scrollbar-width:thin;
-  scrollbar-color:rgba(255,255,255,.14) transparent;
+  scrollbar-color:var(--vault-overlay-strong) transparent;
 }
 .vault-card-body::-webkit-scrollbar{width:5px}
 .vault-card-body::-webkit-scrollbar-track{background:transparent}
-.vault-card-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
-.vault-card-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
+.vault-card-body::-webkit-scrollbar-thumb{background:var(--vault-overlay-strong);border-radius:3px}
+.vault-card-body::-webkit-scrollbar-thumb:hover{background:var(--vault-overlay-strong-hover)}
 
 /* Header — fixed height regardless of title length or badge count. The
    icon/title/badges row scrolls horizontally on overflow instead of
@@ -502,7 +544,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   width:30px;height:30px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;
   font-size:14px;flex-shrink:0;
-  background:var(--vault-accent-wash,rgba(255,255,255,.06));
+  background:var(--vault-accent-wash,var(--vault-accent-wash-default));
   border:1px solid var(--vault-accent-border,var(--vault-line));
 }
 .vault-card-title{
@@ -569,7 +611,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-action-btn:hover{
   color:var(--tx);
   border-color:var(--vault-line-hover);
-  background:rgba(255,255,255,.04);
+  background:var(--vault-overlay-hover);
 }
 .vault-action-btn.danger{
   color:#f87171;
@@ -620,7 +662,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   min-width:0;
   transition:border-color .15s ease;
 }
-.vault-field-box:focus-within{border-color:rgba(255,255,255,.18);}
+.vault-field-box:focus-within{border-color:var(--vault-line-focus);}
 .vault-field-value{
   flex:1;min-width:0;font-size:12px;color:var(--tx);
   font-weight:400;
@@ -641,7 +683,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   color:var(--tx3);font-size:12px;cursor:pointer;
   transition:all .15s ease;flex-shrink:0;
 }
-.vault-icon-btn:hover{background:rgba(255,255,255,.04);border-color:var(--vault-line);color:var(--tx);}
+.vault-icon-btn:hover{background:var(--vault-overlay-hover);border-color:var(--vault-line);color:var(--tx);}
 .vault-icon-btn.danger:hover{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.3);color:#f87171;}
 .vault-icon-btn.active{color:#f59e0b;}
 
@@ -674,7 +716,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   width:26px;height:26px;border-radius:7px;
   display:flex;align-items:center;justify-content:center;
   font-size:11px;
-  background:var(--vault-accent-wash,rgba(255,255,255,.06));
+  background:var(--vault-accent-wash,var(--vault-accent-wash-default));
   border:1px solid var(--vault-accent-border,var(--vault-line));
 }
 /* Masked credential preview — shows field shape (Username/Password/Last
@@ -700,7 +742,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-unlock-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:5px;
   height:var(--vault-btn-h);padding:0 13px;
-  background:var(--vault-accent-wash,rgba(255,255,255,.06));
+  background:var(--vault-accent-wash,var(--vault-accent-wash-default));
   color:var(--vault-accent,var(--tx2));border:1px solid var(--vault-accent-border,var(--vault-line));border-radius:7px;
   font-size:11px;font-weight:600;letter-spacing:.01em;
   cursor:pointer;font-family:inherit;
@@ -708,7 +750,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   transition:background .15s ease, border-color .15s ease;
   margin-top:1px;
 }
-.vault-unlock-btn:hover{background:var(--vault-accent-wash-strong,rgba(255,255,255,.1));}
+.vault-unlock-btn:hover{background:var(--vault-accent-wash-strong,var(--vault-overlay-strong));}
 .vault-unlock-btn .arrow{transition:transform .2s ease;}
 .vault-unlock-btn:hover .arrow{transform:translateX(2px);}
 
@@ -830,6 +872,12 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .vault-stat-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.22);}
 .vault-stat-val{font-size:26px;font-weight:700;color:var(--tx);letter-spacing:-.5px;font-family:'Inter',system-ui,sans-serif;line-height:1;}
 .vault-stat-lbl{font-size:11px;color:var(--tx2);font-weight:500;letter-spacing:.02em;}
+/* Expiry-date input inside a Vault card: scoped to the Vault section (rather
+   than the app-wide input[type=date] rule below, whose light variant never
+   applied — see the .lm note above) so the native picker always matches the
+   Vault's own active theme instead of being hardcoded to dark. */
+.vault-scroll input[type=date]{color-scheme:light}
+.dm .vault-scroll input[type=date]{color-scheme:dark}
 
 
 input[type=date]{color-scheme:dark}
@@ -11160,21 +11208,21 @@ function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, 
               onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
           ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
           <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'1a',border:'1px solid '+catInfo.color+'40'}}>${catInfo.badge}</span>
-          ${saving && html`<span class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx3)',border:'1px solid var(--vault-line)'}}>Saving…</span>`}
-          ${isLocked && html`<span class="vault-tag" style=${{display:'inline-flex',alignItems:'center',gap:4,background:isUnlocked?'rgba(34,197,94,.12)':'rgba(255,255,255,.05)',color:isUnlocked?'#4ADE80':'var(--tx3)',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'var(--vault-line)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
+          ${saving && html`<span class="vault-tag" style=${{background:'var(--vault-overlay-hover)',color:'var(--tx3)',border:'1px solid var(--vault-line)'}}>Saving…</span>`}
+          ${isLocked && html`<span class="vault-tag" style=${{display:'inline-flex',alignItems:'center',gap:4,background:isUnlocked?'rgba(34,197,94,.12)':'var(--vault-overlay-hover)',color:isUnlocked?'#4ADE80':'var(--tx3)',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'var(--vault-line)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
           ${(isWeak||isReused) && html`<span class="vault-tag" title=${isWeak&&isReused?'Weak & reused password':isWeak?'Weak password':'Reused password'} style=${{background:'rgba(239,68,68,.12)',color:'#f87171',border:'1px solid rgba(239,68,68,.3)'}}>⚠️ ${isWeak&&isReused?'Weak · Reused':isWeak?'Weak':'Reused'}</span>`}
         </div>
         <button class=${'vault-fav-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin as favorite'} aria-label=${pinned?'Unpin card':'Pin card as favorite'} aria-pressed=${pinned} onClick=${e=>{e.stopPropagation();togglePin();}}>★</button>
       </div>
       <div class="vault-badge-row">
-        ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx2)',border:'1px solid var(--vault-line)'}}>${t}</span>`)}
+        ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'var(--vault-overlay-hover)',color:'var(--tx2)',border:'1px solid var(--vault-line)'}}>${t}</span>`)}
         ${expInfo && canSee && html`<button type="button" title="Click to edit expiry date" class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border,cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label} ✎</button>`}
         ${expInfo && !canSee && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
-        ${!expInfo && canSee && html`<button type="button" title="Set an expiry date" class="vault-tag" style=${{color:'var(--tx3)',background:'rgba(255,255,255,.04)',border:'1px dashed var(--bd)',cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>+ Set expiry</button>`}
+        ${!expInfo && canSee && html`<button type="button" title="Set an expiry date" class="vault-tag" style=${{color:'var(--tx3)',background:'var(--vault-overlay-hover)',border:'1px dashed var(--bd)',cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>+ Set expiry</button>`}
       </div>
       ${showExpiryEdit && canSee && html`
       <div style=${{display:'flex',alignItems:'center',gap:6,padding:'0 18px 12px'}} onClick=${e=>e.stopPropagation()}>
-        <input type="date" style=${{flex:1,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'6px 9px',fontSize:12,color:'var(--tx)',fontFamily:'inherit',outline:'none',colorScheme:'dark'}}
+        <input type="date" style=${{flex:1,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'6px 9px',fontSize:12,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
           value=${expiresAt||''}
           onChange=${e=>{setExpiresAt(e.target.value);push(undefined,undefined,undefined,undefined,undefined,e.target.value,undefined);}}/>
         ${expiresAt && html`<button type="button" title="Remove expiry date" style=${{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:8,color:'var(--rd2)',fontSize:11,padding:'6px 9px',cursor:'pointer',fontFamily:'inherit',flexShrink:0}} onClick=${()=>{setExpiresAt('');push(undefined,undefined,undefined,undefined,undefined,'',undefined);}}>Clear</button>`}
@@ -11682,7 +11730,7 @@ function VaultView({cu}){
   const secAudit = useMemo(()=>vaultSecurityAudit(cards),[cards]);
 
   return html`
-    <div class="vault-scroll" style=${{...VS.wrap, backgroundColor:'var(--bg)', backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)', backgroundSize:'32px 32px'}}>
+    <div class="vault-scroll" style=${{...VS.wrap, backgroundColor:'var(--bg)', backgroundImage:'linear-gradient(var(--vault-grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--vault-grid-line) 1px,transparent 1px)', backgroundSize:'32px 32px'}}>
     <div class="vault-page-pad" style=${{width:'100%', boxSizing:'border-box'}}>
       <!-- Page header -->
       <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:22,gap:16,flexWrap:'wrap'}}>
@@ -11720,7 +11768,7 @@ function VaultView({cu}){
         </div>
       </div>
       ${(secAudit.weakCount>0 || secAudit.reusedCount>0) && html`
-        <div style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.22)',marginBottom:16,fontSize:12.5,color:'#fca5a5',flexWrap:'wrap'}}>
+        <div style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.22)',marginBottom:16,fontSize:12.5,color:'var(--rd2)',flexWrap:'wrap'}}>
           <span style=${{fontSize:15}}>⚠️</span>
           <span>
             ${secAudit.weakCount>0?`${secAudit.weakCount} card${secAudit.weakCount>1?'s have':' has'} a weak password`:''}
