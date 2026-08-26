@@ -13994,10 +13994,15 @@ function App(){
     }
     // 5. Clear ALL localStorage only AFTER server confirms logout
     try{
+      // Sidebar customization (hidden items, custom order, pinned items) is a
+      // UI preference, not session data — it should survive sign-out/sign-in
+      // on the same browser, so it's explicitly excluded from the wipe below.
+      const NAV_PREF_PREFIXES=['pf_nav_hidden_','pf_nav_order_','pf_nav_pin_top_','pf_nav_pin_bot_'];
+      const isNavPref=k=>NAV_PREF_PREFIXES.some(p=>k.startsWith(p));
       const keysToRemove=['pf_had_session','pf_dark','pf_col','pf_perms','pf_accent','pfLastSeen'];
       keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
       Object.keys(localStorage).forEach(k=>{
-        if(k.startsWith('vw_ai_recents_')||k.startsWith('pf_')){
+        if((k.startsWith('vw_ai_recents_')||k.startsWith('pf_'))&&!isNavPref(k)){
           try{localStorage.removeItem(k);}catch{}
         }
       });
