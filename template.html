@@ -13801,7 +13801,7 @@ function App(){
   // task/project mutation — so this extra interval was both redundant and
   // doubling DB load (2 extra queries every 30s per connected user).
   useEffect(()=>{
-    document.body.className=dark?'dm':'';
+    document.body.className=dark?'dm':'lm';
     try{
       const saved=JSON.parse(localStorage.getItem('pf_accent')||'null');
       if(saved&&saved.ac){

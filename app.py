@@ -9145,7 +9145,7 @@ def workspace_route_guard():
     workspace_id = (request.args.get("workspace_id") or "").strip()
     rest = (request.args.get("rest") or "dashboard").strip("/") or "dashboard"
     if workspace_id and workspace_id != wid():
-        return jsonify({"ok": False, "error": "Workspace mismatch", "redirect": f"/{_canonical_workspace_slug()}/{wid()}/dashboard"}), 403
+        return jsonify({"ok": False, "error": "Workspace mismatch", "redirect": f"/{_canonical_workspace_slug(wid())}/{wid()}/dashboard"}), 403
     expected = _canonical_workspace_slug(wid())
     canonical = f"/{expected}/{wid()}/{rest}"
     return jsonify({"ok": True, "workspace_id": wid(), "canonical_slug": expected, "canonical_url": canonical, "redirect": canonical if supplied_slug and expected and supplied_slug != expected else ""})
@@ -11253,6 +11253,20 @@ def _render_workspace_not_found_page(*, status=404, reason="The workspace URL is
 </body>
 </html>"""
     return Response(html, status=status, mimetype="text/html")
+
+def _canonical_workspace_slug(ws_id):
+    """Return the canonical URL slug for a workspace id, or None if the
+    workspace does not exist. Falls back to a slugified workspace name
+    when no explicit workspace_slug has been saved."""
+    if not ws_id:
+        return None
+    with get_db() as db:
+        ws = db.execute(
+            "SELECT name, workspace_slug FROM workspaces WHERE id=?", (ws_id,)
+        ).fetchone()
+    if not ws:
+        return None
+    return ws["workspace_slug"] or _slugify(ws["name"] or "")
 
 def _validate_workspace_url_or_404(ws_name, ws_id):
     """Strictly validate workspace slug + workspace id together.
