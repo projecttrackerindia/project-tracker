@@ -8756,6 +8756,34 @@ def send_message():
     return jsonify(row)
 
 # ── Direct Messages ───────────────────────────────────────────────────────────
+def _fresh_dm_unread(db, ws, uid):
+    """Live, cheap, indexed per-sender unread DM count.
+
+    BUG FIX (/api/poll returning 500): this function was called from
+    unified_poll() (/api/poll), get_app_data() (/api/app-data), and the
+    workspace bootstrap route, but it was never actually defined anywhere —
+    only a same-named-but-different `_fresh_dm_unread_for_bootstrap` nested
+    helper existed. Every call from unified_poll() therefore raised
+    `NameError: name '_fresh_dm_unread' is not defined` with no try/except
+    around it, so /api/poll 500'd on every single request. app-data and the
+    bootstrap route happened to wrap their calls in try/except, so they
+    silently swallowed the same NameError and fell back to a stale cached
+    dm_unread instead of crashing — which is the exact "badge resurrects"
+    symptom described in their docstrings, and was really this missing
+    function all along.
+
+    Uses idx_dm_unread_covering (workspace_id, recipient, read, sender), so
+    this is a pure index scan — safe to call on every poll without ever
+    touching the appdata cache (see /api/poll's docstring for why dm_unread
+    must always be read live here).
+    """
+    rows = db.execute(
+        "SELECT sender, COUNT(*) as cnt FROM direct_messages "
+        "WHERE workspace_id=? AND recipient=? AND read=0 GROUP BY sender",
+        (ws, uid)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
 def _attach_dm_reactions(db, ws_id, messages):
     """Attach grouped reaction counts/users to each DM row."""
     out=[dict(r) for r in messages]
