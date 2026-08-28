@@ -1136,6 +1136,11 @@ textarea.inp{resize:vertical;min-height:66px;line-height:1.5}
 .sb-grp-lbl{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:rgba(165,180,252,0.4);padding:10px 10px 4px;}
 .lm .sb-grp-lbl{color:rgba(91,60,180,0.48);}
 
+/* Tasks list-view table header — was a flat black overlay that read fine in
+   dark mode but produced low-contrast gray-on-gray text in light mode. */
+.ttbl-head{background:rgba(0,0,0,0.35);}
+.lm .ttbl-head{background:rgba(139,92,246,0.07);}
+
 /* Empty state */
 .pt-empty{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--tx3);}
 .pt-empty .ic{font-size:34px;margin-bottom:12px;opacity:.7;}
@@ -4757,18 +4762,18 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
           <div class="card" style=${{padding:0,overflow:'hidden'}}>
             <table style=${{width:'100%',borderCollapse:'collapse'}}>
               <thead>
-                <tr style=${{borderBottom:'2px solid var(--bd)',background:'rgba(0,0,0,0.35)'}}>
+                <tr class="ttbl-head" style=${{borderBottom:'2px solid var(--bd)'}}>
                   ${[
                     {k:'id', lbl:'ID', s:null}, {k:'type', lbl:'Type', s:null}, {k:'title', lbl:'Title', s:null}, {k:'project', lbl:'Project', s:null}, {k:'assignee',lbl:'Assignee', s:'assignee'}, {k:'priority',lbl:'Priority', s:'priority'}, {k:'stage', lbl:'Stage', s:'stage'}, {k:'due', lbl:'Due', s:'due'}, {k:'pct', lbl:'%', s:'pct'}, {k:'pts', lbl:'Pts', s:null}, ].map(h=>{
                     const isA=sortCol===h.s;const can=!!h.s;
                     return html`<th key=${h.k}
                       onClick=${can?()=>toggleSort(h.s):null}
-                      style=${{padding:'10px 13px',textAlign:'left',fontSize:10,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:.5,userSelect:'none',cursor:can?'pointer':'default',whiteSpace:'nowrap',color:isA?'var(--ac2)':'var(--tx3)',borderBottom:isA?'2px solid var(--ac)':'2px solid transparent',transition:'all .15s',background:isA?'rgba(99,102,241,.07)':'',position:'relative'}}>
+                      style=${{padding:'10px 13px',textAlign:'left',fontSize:10,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:.5,userSelect:'none',cursor:can?'pointer':'default',whiteSpace:'nowrap',color:isA?'var(--ac2)':'var(--tx2)',borderBottom:isA?'2px solid var(--ac)':'2px solid transparent',transition:'all .15s',background:isA?'rgba(99,102,241,.07)':'',position:'relative'}}>
                       <div style=${{display:'flex',alignItems:'center',gap:5}}>
                         <span>${h.lbl}</span>
                         ${can?html`<span style=${{display:'flex',flexDirection:'column',lineHeight:.8,fontSize:8,gap:1}}>
-                          <span style=${{color:isA&&sortDir==='asc'?'var(--ac2)':'var(--tx3)',opacity:isA&&sortDir==='asc'?1:.4}}>▲</span>
-                          <span style=${{color:isA&&sortDir==='desc'?'var(--ac2)':'var(--tx3)',opacity:isA&&sortDir==='desc'?1:.4}}>▼</span>
+                          <span style=${{color:isA&&sortDir==='asc'?'var(--ac2)':'var(--tx2)',opacity:isA&&sortDir==='asc'?1:.55}}>▲</span>
+                          <span style=${{color:isA&&sortDir==='desc'?'var(--ac2)':'var(--tx2)',opacity:isA&&sortDir==='desc'?1:.55}}>▼</span>
                         </span>`:null}
                       </div>
                     </th>`;
