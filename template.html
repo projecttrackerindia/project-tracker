@@ -298,10 +298,10 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
   --tx:#0f0e17;
   --tx2:#3d3b54;
   --tx3:#9494a8;
-  --sb:#111827;
-  --sb2:#13112b;
-  --sb3:#1e1b38;
-  --sbt:#7b7898;
+  --sb:#ffffff;
+  --sb2:#f5f7ff;
+  --sb3:#eaedf8;
+  --sbt:#4b4768;
   --ac:#8B5CF6;
   --ac2:#A78BFA;
   --ac3:rgba(139,92,246,0.12);
@@ -1134,6 +1134,7 @@ textarea.inp{resize:vertical;min-height:66px;line-height:1.5}
 
 /* Sidebar grouped-section header (visual grouping only — nav logic unchanged) */
 .sb-grp-lbl{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:rgba(165,180,252,0.4);padding:10px 10px 4px;}
+.lm .sb-grp-lbl{color:rgba(91,60,180,0.48);}
 
 /* Empty state */
 .pt-empty{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--tx3);}
@@ -2702,6 +2703,41 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
   const isAdminManager=hasOpsAccess(cu);
   const baseView=(view||'dashboard').split(':')[0];
 
+  // ── Sidebar theme tokens ──────────────────────────────────────────────
+  // The sidebar used to be hardcoded to the dark palette regardless of the
+  // app's light/dark theme. These tokens pick an appropriate value for
+  // whichever mode is active (`dark` is passed down from the app root).
+  const sbBg=dark
+    ?'linear-gradient(180deg,#0d0b1e 0%,#13112b 60%,#0d0b1e 100%)'
+    :'linear-gradient(180deg,#ffffff 0%,#f5f7ff 60%,#ffffff 100%)';
+  const sbBorderColor=dark?'rgba(90,94,247,0.18)':'rgba(139,92,246,0.16)';
+  const sbBorderSoft=dark?'rgba(90,94,247,0.12)':'rgba(139,92,246,0.10)';
+  const sbDivider=dark?'rgba(90,94,247,0.15)':'rgba(139,92,246,0.14)';
+  const sbShadow=dark
+    ?'2px 0 32px rgba(10,8,30,0.45),inset -1px 0 0 rgba(90,94,247,0.08)'
+    :'2px 0 24px rgba(15,14,23,0.08),inset -1px 0 0 rgba(139,92,246,0.06)';
+  const sbTextStrong=dark?'#ffffff':'#0f0e17';
+  const sbWorkspaceLabel=dark?'rgba(203,213,225,0.6)':'#8b87a3';
+  const sbMyTeamLabel=dark?'rgba(255,255,255,.3)':'rgba(15,14,23,.35)';
+  const sbGroupLabel=dark?'rgba(165,180,252,0.35)':'rgba(91,60,180,0.45)';
+  const sbNavText=dark?'rgba(200,195,240,0.65)':'#4b4768';
+  const sbNavTextLocked=dark?'rgba(200,195,240,0.25)':'rgba(75,71,104,0.35)';
+  const sbNavHoverBg=dark?'rgba(90,94,247,0.10)':'rgba(139,92,246,0.08)';
+  const sbNavActiveBg=dark?'rgba(90,94,247,0.18)':'rgba(139,92,246,0.14)';
+  const sbFooterText=dark?'rgba(203,213,225,0.65)':'#635f7a';
+  const sbFooterHoverBg=dark?'rgba(90,94,247,0.12)':'rgba(139,92,246,0.10)';
+  const sbFooterHoverColor=dark?'#a5b4fc':'#7C3AED';
+  const sbSettingsInactiveColor=dark?'rgba(255,255,255,.35)':'rgba(15,14,23,.4)';
+  const sbSignoutColor=dark?'rgba(203,213,225,0.55)':'#7c7893';
+  const sbPinBtnColor=dark?'#a5b4fc':'#6d28d9';
+  const collapseBtnBg=dark?'#0d0b1e':'#ffffff';
+  const collapseBtnBorder=dark?'rgba(90,94,247,0.2)':'rgba(139,92,246,0.22)';
+  const collapseBtnColor=dark?'rgba(255,255,255,.35)':'rgba(15,14,23,.4)';
+  const collapseBtnHoverBg=dark?'#1a1a1a':'#f5f7ff';
+  const collapseBtnHoverColor=dark?'rgba(255,255,255,.8)':'#0f0e17';
+  const collapseBtnLeaveBg=dark?'#0f172a':'#ffffff';
+  const collapseBtnLeaveColor=dark?'rgba(148,163,184,0.5)':'rgba(15,14,23,.4)';
+
   const NAV_ICONS={
     dashboard:    html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`, projects:     html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`, tasks:        html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`, messages:     html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`, tickets:      html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.5a1.5 1.5 0 0 0 0 3V15a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1.5a1.5 1.5 0 0 0 0-3V9z"/><line x1="9" y1="7" x2="9" y2="17" strokeDasharray="2 2"/></svg>`, timeline:     html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="8" y1="18" x2="14" y2="18"/></svg>`, productivity: html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>`, reminders:    html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`, team:         html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`, dm:           html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
     'ai-docs':    html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="10" cy="13" r="2"/><path d="M20 21l-4.35-4.35"/></svg>`,
@@ -2800,16 +2836,16 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
         display:'flex',alignItems:'center',gap:col?0:10,width:'100%',
         padding:col?'10px 0':'9px 10px',borderRadius:9,border:'none',
         cursor:isOfflineLocked?'not-allowed':'pointer',
-        background:baseView===it.id?'rgba(90,94,247,0.18)':'transparent',
-        color:isOfflineLocked?'rgba(200,195,240,0.25)':(baseView===it.id?'#a5b4fc':'rgba(200,195,240,0.65)'),
+        background:baseView===it.id?sbNavActiveBg:'transparent',
+        color:isOfflineLocked?sbNavTextLocked:(baseView===it.id?sbFooterHoverColor:sbNavText),
         fontSize:12,fontWeight:baseView===it.id?700:500,transition:'all .12s',textAlign:'left',
         borderLeft:baseView===it.id&&!col?'2px solid #818cf8':'2px solid transparent',
         justifyContent:col?'center':'flex-start',position:'relative',
         opacity:isOfflineLocked?0.35:1,
         boxShadow:baseView===it.id?'inset 0 0 0 1px rgba(129,140,248,0.15),0 0 20px rgba(90,94,247,0.1)':'none'
       }}
-      onMouseEnter=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background='rgba(90,94,247,0.10)';e.currentTarget.style.color='#a5b4fc';}}}
-      onMouseLeave=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(200,195,240,0.65)';}}}>
+      onMouseEnter=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background=sbNavHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}}
+      onMouseLeave=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbNavText;}}}>
       <span style=${{flexShrink:0,width:col?'auto':18,display:'flex',alignItems:'center',justifyContent:'center',opacity:baseView===it.id?1:.8}}>${NAV_ICONS[it.id]||null}</span>
       ${!col?html`<span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12,flex:1,paddingRight:hoverNav===it.id&&!col?44:0}}>${it.label}</span>`:null}
       ${it.badge&&!col&&!isOfflineLocked?html`<span style=${{fontSize:8,fontWeight:800,padding:'1px 5px',borderRadius:4,background:'linear-gradient(135deg,#5a5ef7,#a855f7)',color:'#fff',letterSpacing:'.04em',flexShrink:0}}>${it.badge}</span>`:null}
@@ -2834,35 +2870,35 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
   return html`
     <aside style=${{
       width:W,minWidth:W,maxWidth:W,
-      background:'linear-gradient(180deg,#0d0b1e 0%,#13112b 60%,#0d0b1e 100%)',
+      background:sbBg,
       display:'flex',flexDirection:'column',
       height:'100vh',flexShrink:0,overflow:'visible',
-      borderRight:'1px solid rgba(90,94,247,0.18)',
+      borderRight:'1px solid '+sbBorderColor,
       transition:'width .2s ease,min-width .2s ease,max-width .2s ease',
       position:'relative',
-      boxShadow:'2px 0 32px rgba(10,8,30,0.45),inset -1px 0 0 rgba(90,94,247,0.08)'
+      boxShadow:sbShadow
     }}>
 
             <div style=${{
-        padding:col?'14px 0':'12px 14px', display:'flex',alignItems:'center', gap:8,flexShrink:0, borderBottom:'1px solid rgba(90,94,247,0.12)', justifyContent:col?'center':'flex-start', minHeight:38
+        padding:col?'14px 0':'12px 14px', display:'flex',alignItems:'center', gap:8,flexShrink:0, borderBottom:'1px solid '+sbBorderSoft, justifyContent:col?'center':'flex-start', minHeight:38
       }}>
         <div style=${{width:28,height:28,borderRadius:8,background:'linear-gradient(135deg,#5a5ef7,#a855f7)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 2px 12px rgba(90,94,247,0.5),0 0 0 1px rgba(255,255,255,0.1)'}}>
           <svg width="14" height="14" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="9" fill="white"/><circle cx="32" cy="11" r="6" fill="white" opacity=".9"/><circle cx="51" cy="43" r="6" fill="white" opacity=".9"/><circle cx="13" cy="43" r="6" fill="white" opacity=".9"/><line x1="32" y1="17" x2="32" y2="23" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><line x1="46" y1="40" x2="40" y2="36" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><line x1="18" y1="40" x2="24" y2="36" stroke="white" strokeWidth="3.5" strokeLinecap="round"/></svg>
         </div>
         ${!col?html`<div style=${{flex:1,minWidth:0}}>
-          <div style=${{fontSize:12,fontWeight:700,color:'#ffffff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${wsName||'Project Tracker'}</div>
+          <div style=${{fontSize:12,fontWeight:700,color:sbTextStrong,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${wsName||'Project Tracker'}</div>
           ${activeTeam?html`<div style=${{fontSize:10,color:'var(--ac)',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
-            ${!isAdminManager?html`<span style=${{color:'rgba(255,255,255,.3)',fontWeight:400}}>My Team</span>`:null}
+            ${!isAdminManager?html`<span style=${{color:sbMyTeamLabel,fontWeight:400}}>My Team</span>`:null}
             ${activeTeam.name}
           </div>`
-          :html`<div style=${{fontSize:10,color:'rgba(203,213,225,0.6)'}}>Workspace</div>`}
+          :html`<div style=${{fontSize:10,color:sbWorkspaceLabel}}>Workspace</div>`}
         </div>`:null}
       </div>
 
             <nav style=${{flex:1,overflowY:'auto',padding:'8px 6px',display:'flex',flexDirection:'column',gap:2}}>
 
         ${orderedSections.top.length>0?html`
-          ${!col?html`<div style=${{fontSize:8,fontWeight:700,color:'rgba(165,180,252,0.35)',textTransform:'uppercase',letterSpacing:'0.08em',padding:'4px 10px 2px'}}>Pinned</div>`:null}
+          ${!col?html`<div style=${{fontSize:8,fontWeight:700,color:sbGroupLabel,textTransform:'uppercase',letterSpacing:'0.08em',padding:'4px 10px 2px'}}>Pinned</div>`:null}
           ${orderedSections.top.map(it=>html`
             <div key=${it.id} style=${{position:'relative'}}
               onMouseEnter=${()=>setHoverNav(it.id)} onMouseLeave=${()=>setHoverNav(null)}>
@@ -2873,7 +2909,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
                     style=${{background:'rgba(239,68,68,0.25)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#f87171',fontSize:9,lineHeight:'14px'}}>✕</button>
                 </div>`:null}
             </div>`)}
-          <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>`:null}
+          <div style=${{height:1,background:sbDivider,margin:'3px 8px 3px'}}></div>`:null}
 
         ${midWithGroups.map(({it,showGrp,g})=>html`
           ${showGrp&&!col?html`<div key=${'grp-'+g} class="sb-grp-lbl">${g}</div>`:null}
@@ -2903,14 +2939,14 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
             ${hoverNav===it.id&&!col?html`
               <div style=${{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',display:'flex',gap:2,zIndex:20}}>
                 <button title="Pin to top" onClick=${e=>{e.stopPropagation();togglePin(it.id,'top');}}
-                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↑</button>
+                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:sbPinBtnColor,fontSize:9,lineHeight:'14px'}}>↑</button>
                 <button title="Pin to bottom" onClick=${e=>{e.stopPropagation();togglePin(it.id,'bot');}}
-                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↓</button>
+                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:sbPinBtnColor,fontSize:9,lineHeight:'14px'}}>↓</button>
               </div>`:null}
           </div>`)}
 
         ${orderedSections.bot.length>0?html`
-          <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>
+          <div style=${{height:1,background:sbDivider,margin:'3px 8px 3px'}}></div>
           ${orderedSections.bot.map(it=>html`
             <div key=${it.id} style=${{position:'relative'}}
               onMouseEnter=${()=>setHoverNav(it.id)} onMouseLeave=${()=>setHoverNav(null)}>
@@ -2924,19 +2960,19 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
 
       </nav>
 
-            <div style=${{padding:'8px 6px',borderTop:'1px solid rgba(90,94,247,0.12)',display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
+            <div style=${{padding:'8px 6px',borderTop:'1px solid '+sbBorderSoft,display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
 
         <button title=${dark?'Light Mode':'Dark Mode'} onClick=${()=>{setDark(d=>{const n=!d;try{localStorage.setItem('pf_dark',n?'1':'0');}catch{}return n;})}}
-          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:'rgba(203,213,225,0.65)',transition:'all .12s',justifyContent:col?'center':'flex-start'}}
-          onMouseEnter=${e=>{e.currentTarget.style.background='rgba(90,94,247,0.12)';e.currentTarget.style.color='#a5b4fc';}}
-          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(203,213,225,0.65)';}}>
+          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:sbFooterText,transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+          onMouseEnter=${e=>{e.currentTarget.style.background=sbFooterHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}
+          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbFooterText;}}>
           <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,display:'flex',alignItems:'center',justifyContent:'center'}}>${themeIcon}</span>
           ${!col?html`<span style=${{fontSize:12}}>${dark?'Light Mode':'Dark Mode'}</span>`:null}
         </button>
         <button title=${col?'Customize sidebar':''} onClick=${()=>setShowCustomize(true)}
-          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:'rgba(203,213,225,0.65)',transition:'all .12s',justifyContent:col?'center':'flex-start'}}
-          onMouseEnter=${e=>{e.currentTarget.style.background='rgba(90,94,247,0.12)';e.currentTarget.style.color='#a5b4fc';}}
-          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(203,213,225,0.65)';}}>
+          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:sbFooterText,transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+          onMouseEnter=${e=>{e.currentTarget.style.background=sbFooterHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}
+          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbFooterText;}}>
           <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,display:'flex',alignItems:'center',justifyContent:'center'}}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="16" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
           </span>
@@ -2944,16 +2980,16 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
         </button>
         ${(cu&&(cu.role==='Admin'||cu.role==='Manager'||cu.role==='TeamLead'))?html`
           <button title=${col?'Settings':''} onClick=${()=>setView('settings')}
-            style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer', background:baseView==='settings'?'rgba(37,99,235,0.18)':'transparent', color:baseView==='settings'?'var(--ac)':'rgba(255,255,255,.35)', transition:'all .12s',justifyContent:col?'center':'flex-start'}}
-            onMouseEnter=${e=>{if(baseView!=='settings'){e.currentTarget.style.background='rgba(90,94,247,0.12)';e.currentTarget.style.color='#a5b4fc';}}}
-            onMouseLeave=${e=>{if(baseView!=='settings'){e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(255,255,255,.35)';}}}>
+            style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer', background:baseView==='settings'?'rgba(37,99,235,0.18)':'transparent', color:baseView==='settings'?'var(--ac)':sbSettingsInactiveColor, transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+            onMouseEnter=${e=>{if(baseView!=='settings'){e.currentTarget.style.background=sbFooterHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}}
+            onMouseLeave=${e=>{if(baseView!=='settings'){e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbSettingsInactiveColor;}}}>
             <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,textAlign:'center'}}>⚙️</span>
             ${!col?html`<span style=${{fontSize:12}}>Settings</span>`:null}
           </button>`:null}
         <button title=${col?'Sign out':''} onClick=${onLogout}
-          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:'rgba(203,213,225,0.55)',transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:sbSignoutColor,transition:'all .12s',justifyContent:col?'center':'flex-start'}}
           onMouseEnter=${e=>{e.currentTarget.style.background='rgba(239,68,68,.1)';e.currentTarget.style.color='#f87171';}}
-          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(203,213,225,0.55)';}}>
+          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbSignoutColor;}}>
           <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,textAlign:'center'}}>↪</span>
           ${!col?html`<span style=${{fontSize:12}}>Sign out</span>`:null}
         </button>
@@ -2962,9 +2998,9 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
       ${!col?html`<div style=${{position:'absolute',bottom:100,left:-40,width:120,height:120,borderRadius:'50%',background:'radial-gradient(circle,rgba(90,94,247,0.12) 0%,transparent 70%)',pointerEvents:'none',zIndex:0}}></div>`:null}
       <button title=${col?'Expand sidebar':'Collapse sidebar'} onClick=${()=>setCol(c=>!c)}
         style=${{
-          position:'absolute', left:col?64:200, top:'50%', transform:'translateY(-50%)', zIndex:200, width:14, height:40, background:'#0d0b1e', border:'1px solid rgba(90,94,247,0.2)', borderLeft:'none', borderRadius:'0 6px 6px 0', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,.35)', transition:'left .2s ease, background .12s, color .12s', padding:0, }}
-        onMouseEnter=${e=>{e.currentTarget.style.background='#1a1a1a';e.currentTarget.style.color='rgba(255,255,255,.8)';}}
-        onMouseLeave=${e=>{e.currentTarget.style.background='#0f172a';e.currentTarget.style.color='rgba(148,163,184,0.5)';}}>
+          position:'absolute', left:col?64:200, top:'50%', transform:'translateY(-50%)', zIndex:200, width:14, height:40, background:collapseBtnBg, border:'1px solid '+collapseBtnBorder, borderLeft:'none', borderRadius:'0 6px 6px 0', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:collapseBtnColor, transition:'left .2s ease, background .12s, color .12s', padding:0, }}
+        onMouseEnter=${e=>{e.currentTarget.style.background=collapseBtnHoverBg;e.currentTarget.style.color=collapseBtnHoverColor;}}
+        onMouseLeave=${e=>{e.currentTarget.style.background=collapseBtnLeaveBg;e.currentTarget.style.color=collapseBtnLeaveColor;}}>
         <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           ${col
             ?html`<polyline points="2 2 6 6 2 10"/>`
