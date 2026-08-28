@@ -1640,7 +1640,7 @@ function SP({s}){
 function PB({p}){
   const d=PRIS[p]||{label:p,color:'#94a3b8',sym:'·'};
   const isC=p==='critical';
-  return html`<span class="badge" style=${{color:d.color,background:d.color+'22',boxShadow:isC?'0 0 6px '+d.color+'55':'none',animation:isC?'pulse 1.5s infinite':'none'}}>${d.sym} ${d.label}</span>`;
+  return html`<span class="badge" style=${{color:d.color,background:d.color+'22',boxShadow:isC?'0 0 6px '+d.color+'55':'none',animation:isC?'pulse 1.5s infinite':'none',whiteSpace:'nowrap',flexShrink:0}}>${d.sym} ${d.label}</span>`;
 }
 function Prog({pct,color}){
   return html`<div class="prog"><div class="progf" style=${{width:Math.min(100,Math.max(0,pct||0))+'%',background:color||'var(--ac)'}}></div></div>`;
@@ -4005,7 +4005,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
   const [color,setColor]=useState('#2563eb');const [members,setMembers]=useState([]);const [err,setErr]=useState('');
   const [search,setSearch]=useState('');
   const [sortBy,setSortBy]=useState('newest');
-  const [viewMode,setViewMode]=useState('grid');
+  const [viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem('pf_projects_view')||'grid';}catch{return 'grid';}});
   const [projTeam,setProjTeam]=useState('');
 
   useEffect(()=>{if(detail){
@@ -4130,9 +4130,9 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
 
                 <div style=${{display:'flex',background:'var(--sf2)',borderRadius:7,padding:2,gap:1,flexShrink:0}}>
           <button class=${'tb'+(viewMode==='grid'?' act':'')} style=${{fontSize:12,padding:'2px 8px'}}
-            onClick=${()=>setViewMode('grid')} title="Card view">⊞</button>
+            onClick=${()=>{setViewMode('grid');try{localStorage.setItem('pf_projects_view','grid');}catch{}}} title="Card view">⊞</button>
           <button class=${'tb'+(viewMode==='compact'?' act':'')} style=${{fontSize:12,padding:'2px 8px'}}
-            onClick=${()=>setViewMode('compact')} title="Compact list">☰</button>
+            onClick=${()=>{setViewMode('compact');try{localStorage.setItem('pf_projects_view','compact');}catch{}}} title="Compact list">☰</button>
         </div>
 
         ${search?html`<button class="btn bg" style=${{fontSize:11,padding:'3px 8px',flexShrink:0}}
@@ -4315,7 +4315,7 @@ const STAGE_PCT={backlog:0,planning:10,development:35,code_review:55,testing:70,
 function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
 
 function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initialStage,initialPriority,initialAssignee,initialTaskId,onClearInitialTask,teams,activeTeam}){
-  const [mode,setMode]=useState('kanban');
+  const [mode,setMode]=useState(()=>{try{return localStorage.getItem('pf_tasks_view')||'kanban';}catch{return 'kanban';}});
   const [pid,setPid]=useState('all');
   const [teamF,setTeamF]=useState('all');
   const [priF,setPriF]=useState(initialPriority||'all');
@@ -4588,8 +4588,8 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
             </div>`:null}
           ${activeFilters>0?html`<button class="btn bam" style=${{padding:'7px 11px',fontSize:11}} onClick=${clearAll}>✕ Clear</button>`:null}
                     <div style=${{display:'flex',background:'var(--sf2)',borderRadius:9,padding:3,gap:2,flex:'0 0 auto'}}>
-            <button class=${'tb'+(mode==='kanban'?' act':'')} onClick=${()=>setMode('kanban')}>⊞ Board</button>
-            <button class=${'tb'+(mode==='list'?' act':'')} onClick=${()=>setMode('list')}>☰ List</button>
+            <button class=${'tb'+(mode==='kanban'?' act':'')} onClick=${()=>{setMode('kanban');try{localStorage.setItem('pf_tasks_view','kanban');}catch{}}}>⊞ Board</button>
+            <button class=${'tb'+(mode==='list'?' act':'')} onClick=${()=>{setMode('list');try{localStorage.setItem('pf_tasks_view','list');}catch{}}}>☰ List</button>
           </div>
           <input ref=${csvRef} type="file" accept=".csv" style=${{display:'none'}} onChange=${importCsv}/>
           ${cu&&(cu.role==='Admin'||cu.role==='Manager'||cu.role==='TeamLead')?html`
@@ -4697,10 +4697,10 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
                     const isOverdue=tk.due&&new Date(tk.due)<new Date()&&tk.stage!=='completed';
                     const isDueToday=tk.due&&fmtD(tk.due)===fmtD(new Date().toISOString().split('T')[0]);
                     return html`<div key=${tk.id} class="tkc" onClick=${()=>setEditT(tk)}>
-                      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-                        <div style=${{display:'flex',alignItems:'center',gap:4}}>
+                      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,gap:6}}>
+                        <div style=${{display:'flex',alignItems:'center',gap:4,minWidth:0,flex:'1 1 auto',overflow:'hidden'}}>
                           <span style=${{width:10,height:10,borderRadius:2,display:'inline-block',flexShrink:0,background:TYPE_COLORS[tk.task_type||'task']||'#1d4ed8'}}></span>
-                          <span style=${{fontSize:9,fontWeight:700,fontFamily:'monospace',padding:'1px 6px',borderRadius:4,background:TYPE_BG[tk.task_type||'task']||'rgba(29,78,216,0.10)',color:TYPE_COLORS[tk.task_type||'task']||'#1d4ed8',border:'1px solid '+(TYPE_BORDER[tk.task_type||'task']||'rgba(29,78,216,0.2)')}}>${tk.id}</span>
+                          <span title=${tk.id} style=${{fontSize:9,fontWeight:700,fontFamily:'monospace',padding:'1px 6px',borderRadius:4,background:TYPE_BG[tk.task_type||'task']||'rgba(29,78,216,0.10)',color:TYPE_COLORS[tk.task_type||'task']||'#1d4ed8',border:'1px solid '+(TYPE_BORDER[tk.task_type||'task']||'rgba(29,78,216,0.2)'),whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',minWidth:0}}>${tk.id}</span>
                         </div>
                         <${PB} p=${tk.priority}/>
                       </div>
