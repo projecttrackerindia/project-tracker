@@ -768,6 +768,9 @@ function AuthScreen({onLogin}){
       else{setSuccessMsg('Welcome back, '+r.name);setPhase('success');setTimeout(()=>onLogin(r),1900);}
     } else {
       if(!name||!email||!pw){setErr('All fields required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){setErr('Please enter a valid email address.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
+      if(pw.length<8){setErr('Password must be at least 8 characters.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
+      if(pw.length>72){setErr('Password must be at most 72 characters.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(regMode==='create'&&!wsName){setErr('Workspace name is required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(regMode==='join'&&!inviteCode){setErr('Enter the invite code.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       const r=await api.post('/api/auth/register',{mode:regMode,workspace_name:wsName,invite_code:inviteCode,name,email,password:pw,role,birth_date:birthDate});
@@ -977,7 +980,7 @@ function AuthScreen({onLogin}){
           ${regMode==='create'?html`
             <div style=${{marginBottom:16,animation:'ap-slideDown 0.2s ease both'}}>
               <${LBL}>Workspace Name</${LBL}>
-              <input class="ap-inp" placeholder="e.g. Acme Corp" value=${wsName} onInput=${e=>setWsName(e.target.value)}/>
+              <input class="ap-inp" placeholder="e.g. Acme Corp" value=${wsName} maxLength=120 onInput=${e=>setWsName(e.target.value)}/>
             </div>`:null}
           ${regMode==='join'?html`
             <div style=${{marginBottom:16,padding:'14px 16px',background:'rgba(90,140,255,0.06)',borderRadius:13,border:'1px solid rgba(90,140,255,0.18)',animation:'ap-slideDown 0.2s ease both'}}>
@@ -990,7 +993,7 @@ function AuthScreen({onLogin}){
           ${tab==='register'?html`
             <div>
               <${LBL}>Full Name</${LBL}>
-              <input class="ap-inp" placeholder="Alice Chen" value=${name} onInput=${e=>setName(e.target.value)}/>
+              <input class="ap-inp" placeholder="Alice Chen" value=${name} maxLength=120 onInput=${e=>setName(e.target.value)}/>
             </div>
             <div>
               <${LBL}>Birthday optional</${LBL}>
@@ -1009,6 +1012,7 @@ function AuthScreen({onLogin}){
             <div style=${{position:'relative'}}>
               <input class="ap-inp" style=${{paddingRight:48}} type=${showPw?'text':'password'}
                 placeholder="••••••••••" value=${pw} autoComplete="current-password"
+                minLength=${tab==='register'?8:undefined} maxLength=72
                 onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
               <button onClick=${()=>setShowPw(!showPw)}
                 style=${{position:'absolute',right:14,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:14,lineHeight:1,padding:2,transition:'color 0.2s'}}
@@ -1017,6 +1021,7 @@ function AuthScreen({onLogin}){
                 ${showPw?'🙈':'👁'}
               </button>
             </div>
+            ${tab==='register'?html`<div style=${{fontSize:10,color:'rgba(175,170,210,0.42)',marginTop:6}}>8–72 characters.</div>`:null}
           </div>
 
           ${tab==='register'?html`
@@ -4280,7 +4285,7 @@ function ProductivityView({cu,tasks,projects,users,dashboardSummary}){
       </div>    </div>`;
 }
 function renderMd(text){
-  return text.replace(/[*][*](.*?)[*][*]/g,'<b>$1</b>');
+  return escapeHtml(text).replace(/[*][*](.*?)[*][*]/g,'<b>$1</b>');
 }
 
 function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}

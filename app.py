@@ -40,8 +40,8 @@ try:
     _FERNET_OK = True
 except ImportError:
     _FERNET_OK = False
-    print("  ⚠ 'cryptography' package not installed — vault rows stored unencrypted.\n"
-          "    Fix: pip install cryptography")
+    log.warning("[VAULT] 'cryptography' package not installed — vault rows stored unencrypted. "
+                "Fix: pip install cryptography")
 
 _vault_fernet_instance = None
 
@@ -59,7 +59,7 @@ def _get_vault_fernet():
             _vault_fernet_instance = _Fernet(env_key.encode() if isinstance(env_key, str) else env_key)
             return _vault_fernet_instance
         except Exception as e:
-            print(f"  ⚠ VAULT_ENCRYPTION_KEY env var is invalid: {e} — generating a new key")
+            log.warning(f"[VAULT] VAULT_ENCRYPTION_KEY env var is invalid: {e} — generating a new key")
     # 2) Fall back to a persisted key file
     key_path = os.path.join(DATA_DIR, ".vault_enc_key")
     if os.path.exists(key_path):
@@ -75,9 +75,9 @@ def _get_vault_fernet():
     try:
         with open(key_path, "wb") as _kf:
             _kf.write(k)
-        print(f"  ✓ New vault encryption key generated and saved to {key_path}")
+        log.info(f"[VAULT] New vault encryption key generated and saved to {key_path}")
     except Exception as e:
-        print(f"  ⚠ Could not persist vault key ({e}) — key lives in memory only (restarts will lose it!)")
+        log.warning(f"[VAULT] Could not persist vault key ({e}) — key lives in memory only (restarts will lose it!)")
     _vault_fernet_instance = _Fernet(k)
     return _vault_fernet_instance
 
@@ -321,7 +321,7 @@ class _DB:
                         "relation already", "index already"]
                 if any(x in msg for x in safe):
                     continue
-                print(f"  executescript error on: {stmt[:80]!r}: {e}")
+                log.warning(f"[DB] executescript error on: {stmt[:80]!r}: {e}")
                 raise
     def commit(self):
         if not getattr(self._conn, 'autocommit', False):
@@ -1717,11 +1717,11 @@ try:
             socket_timeout=2,
         )
         _redis_client.ping()   # fail fast if unreachable
-        print("  [cache] Redis connected — shared cross-worker cache active")
+        log.info("[cache] Redis connected — shared cross-worker cache active")
     else:
-        print("  [cache] REDIS_URL not set — using in-process dict cache")
+        log.info("[cache] REDIS_URL not set — using in-process dict cache")
 except Exception as _re:
-    print(f"  [cache] Redis unavailable ({_re}) — falling back to in-process cache")
+    log.warning(f"[cache] Redis unavailable ({_re}) — falling back to in-process cache")
     _redis_client = None
 
 def _cache_get(key):
@@ -2050,15 +2050,15 @@ def _run_ddl(sql):
             if _DDL_CONN is None:
                 _DDL_CONN = pg8000.native.Connection(**_parse_db_url(DATABASE_URL))
             _DDL_CONN.run(sql)
-            print(f"  [DDL OK] {sql[:80]!r}")
+            log.debug(f"[DDL OK] {sql[:80]!r}")
         except Exception as e:
             msg = str(e).lower()
             ok_msgs = ["already exists", "duplicate", "column already",
                        "relation already", "index already"]
             if any(x in msg for x in ok_msgs):
-                print(f"  [DDL skip — already exists] {sql[:60]!r}")
+                log.debug(f"[DDL skip — already exists] {sql[:60]!r}")
             else:
-                print(f"  [DDL WARN] {sql[:60]!r}: {type(e).__name__}: {e}")
+                log.warning(f"[DDL WARN] {sql[:60]!r}: {type(e).__name__}: {e}")
                 # Reset connection on real errors
                 try: _DDL_CONN.close()
                 except: pass
@@ -2151,7 +2151,14 @@ def ensure_ticket_timesheet_enhancements():
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_time_rates_entity ON time_rates(workspace_id, entity_type, entity_id)",
         "CREATE TABLE IF NOT EXISTS time_off_requests (id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT, start_date TEXT, end_date TEXT, reason TEXT DEFAULT '', status TEXT DEFAULT 'pending', approver_id TEXT DEFAULT '', created TEXT, updated TEXT)",
         "CREATE TABLE IF NOT EXISTS holiday_calendars (id TEXT PRIMARY KEY, workspace_id TEXT, holiday_date TEXT, name TEXT, created TEXT)",
-        "CREATE TABLE IF NOT EXISTS customer_enquiries (id TEXT PRIMARY KEY, workspace_id TEXT, type TEXT, title TEXT, description TEXT DEFAULT '', status TEXT DEFAULT 'new', priority TEXT DEFAULT 'medium', requester_id TEXT DEFAULT '', owner_note TEXT DEFAULT '', created TEXT, updated TEXT)"
+        "CREATE TABLE IF NOT EXISTS customer_enquiries (id TEXT PRIMARY KEY, workspace_id TEXT, type TEXT, title TEXT, description TEXT DEFAULT '', status TEXT DEFAULT 'new', priority TEXT DEFAULT 'medium', requester_id TEXT DEFAULT '', owner_note TEXT DEFAULT '', created TEXT, updated TEXT)",
+        # Enforce uniqueness at the DB level too (defense-in-depth alongside the
+        # app-level pre-insert checks in register()/add_user()/update_user()).
+        # Uses the safe _run_ddl() path — if legacy duplicate data already
+        # exists, this logs a [DDL WARN] instead of blocking app startup, so an
+        # admin can dedupe and the index will pick up on the next deploy.
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_invite_code_unique ON workspaces(invite_code)"
     ]:
         _run_ddl(ddl)
 
@@ -2237,6 +2244,43 @@ def verify_pw(plain, hashed):
         return hashed == hashlib.sha256(plain.encode()).hexdigest()
     except ImportError:
         return hashed == hashlib.sha256(plain.encode()).hexdigest()
+
+# ── Input validation (registration / account creation / account edits) ──────
+PASSWORD_MIN_LEN = 8
+# bcrypt silently truncates/ignores any bytes past 72 — without this cap a
+# 200-character password and its first-72-bytes-identical sibling would hash
+# identically, which is surprising and slightly weakens the scheme. Reject
+# instead of silently truncating.
+PASSWORD_MAX_LEN = 72
+NAME_MAX_LEN = 120
+WORKSPACE_NAME_MAX_LEN = 120
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+def normalize_email(raw):
+    """Lowercase + trim. Must be applied at every write site so email
+    comparisons (login, uniqueness) are consistent regardless of how the
+    user typed it in the sign-up form."""
+    return str(raw or "").strip().lower()
+
+def validate_email_format(email):
+    return bool(_EMAIL_RE.match(email or ""))
+
+def validate_password(pw):
+    """Returns (ok, error_message)."""
+    pw = pw or ""
+    if len(pw) < PASSWORD_MIN_LEN:
+        return False, f"Password must be at least {PASSWORD_MIN_LEN} characters."
+    if len(pw.encode("utf-8")) > PASSWORD_MAX_LEN:
+        return False, f"Password must be at most {PASSWORD_MAX_LEN} characters."
+    return True, ""
+
+def validate_display_name(name, field_label="Name"):
+    name = (name or "").strip()
+    if not name:
+        return False, f"{field_label} is required."
+    if len(name) > NAME_MAX_LEN:
+        return False, f"{field_label} must be at most {NAME_MAX_LEN} characters."
+    return True, ""
 
 # ── OTP Store (in-memory, auto-expiring) ─────────────────────────────────────
 import threading as _threading
@@ -4108,7 +4152,7 @@ def push_notification_to_user(db_ignored, user_id, title, body, nav_url="/", tag
             "SELECT * FROM push_subscriptions WHERE user_id=?", (user_id,), fetch=True
         )
     except Exception as e:
-        print(f"push_notification DB error: {e}")
+        log.error(f"push_notification DB error: {e}")
         return
     _nav = str(nav_url or "")
     _sender = ""
@@ -4624,7 +4668,7 @@ def init_db():
                 else:
                     db.execute("UPDATE users SET avatar=? WHERE id=?", (initials, uid))
         except Exception as e:
-            print(f"Avatar cleanup migration error: {e}")
+            log.error(f"Avatar cleanup migration error: {e}")
         try: db.execute("""CREATE TABLE IF NOT EXISTS subtasks (
             id TEXT PRIMARY KEY, workspace_id TEXT, task_id TEXT,
             title TEXT, done INTEGER DEFAULT 0, assignee TEXT DEFAULT '', created TEXT)""")
@@ -5050,7 +5094,7 @@ def _clear_attempts(key):
 @app.route("/api/auth/login",methods=["POST"])
 def login():
     d=request.json or {}
-    email=d.get("email","").strip().lower()
+    email=normalize_email(d.get("email",""))
     password=d.get("password","")
     # Rate-limit: block brute force after 5 wrong attempts per 60s
     rl_key = f"login:{request.remote_addr}:{email}"
@@ -5457,7 +5501,7 @@ def _totp_qr_base64(secret, email, issuer="Project Tracker"):
         mat = _qr_make_matrix(otpauth_url)
         return _qr_to_png_base64(mat, cell=8, border=4)
     except Exception as e:
-        print(f"[QR] Pure-Python QR failed: {e} — trying segno")
+        log.warning(f"[QR] Pure-Python QR failed: {e} — trying segno")
     # Try segno if installed
     try:
         import segno, io
@@ -5472,7 +5516,7 @@ def _totp_qr_base64(secret, email, issuer="Project Tracker"):
         svg = _qr_to_svg(mat2, cell=10, border=4)
         return 'data:image/svg+xml;base64,' + base64.b64encode(svg.encode()).decode()
     except Exception as e2:
-        print(f"[QR] SVG fallback also failed: {e2}")
+        log.error(f"[QR] SVG fallback also failed: {e2}")
     return None
 
 
@@ -6135,18 +6179,52 @@ def register():
     mode=d.get("mode","create")  # 'create' or 'join'
     if not d.get("name") or not d.get("email") or not d.get("password"):
         return jsonify({"error":"All fields required"}),400
+
+    name = str(d.get("name") or "").strip()
+    ok, err = validate_display_name(name, "Name")
+    if not ok: return jsonify({"error": err}), 400
+
+    email = normalize_email(d.get("email"))
+    if not validate_email_format(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    ok, err = validate_password(d.get("password"))
+    if not ok: return jsonify({"error": err}), 400
+
     uid=f"u{int(datetime.now().timestamp()*1000)}"
-    av="".join(w[0] for w in d["name"].split())[:2].upper()
+    av="".join(w[0] for w in name.split())[:2].upper()
     c=random.choice(CLRS)
     ws_id=None
     if mode=="create":
-        if not d.get("workspace_name"):
+        workspace_name = str(d.get("workspace_name") or "").strip()
+        if not workspace_name:
             return jsonify({"error":"Workspace name required"}),400
+        if len(workspace_name) > WORKSPACE_NAME_MAX_LEN:
+            return jsonify({"error": f"Workspace name must be at most {WORKSPACE_NAME_MAX_LEN} characters."}), 400
         ws_id=f"ws{int(datetime.now().timestamp()*1000)}"
-        invite=secrets.token_hex(4).upper()
         with get_db() as db:
+            # Strict duplicate check: block creating a workspace whose name
+            # already exists (case/whitespace-insensitive), so two clicks or
+            # two people don't silently end up with indistinguishable workspaces.
+            dupe = db.execute(
+                "SELECT id FROM workspaces WHERE LOWER(TRIM(name))=?",
+                (workspace_name.lower(),)
+            ).fetchone()
+            if dupe:
+                return jsonify({"error": "A workspace with this name already exists. Please choose a different name."}), 400
+            # Generate a unique invite code — retry on the (rare) collision
+            # instead of silently allowing two workspaces to share one code,
+            # which would let a "join by code" request land in the wrong workspace.
+            invite = None
+            for _attempt in range(5):
+                candidate = secrets.token_hex(4).upper()
+                if not db.execute("SELECT 1 FROM workspaces WHERE invite_code=?", (candidate,)).fetchone():
+                    invite = candidate
+                    break
+            if invite is None:
+                return jsonify({"error": "Could not generate a unique invite code. Please try again."}), 500
             db.execute("INSERT INTO workspaces VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                       (ws_id,d["workspace_name"],invite,uid,None,ts(),None,587,None,None,None,1))
+                       (ws_id,workspace_name,invite,uid,None,ts(),None,587,None,None,None,1))
     elif mode=="join":
         code=d.get("invite_code","").strip().upper()
         with get_db() as db:
@@ -6157,6 +6235,12 @@ def register():
         return jsonify({"error":"Invalid mode"}),400
     try:
         with get_db() as db:
+            # Strict duplicate-account check (belt-and-braces alongside the
+            # UNIQUE index on users.email — gives a clean error message
+            # instead of a raw DB exception).
+            existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+            if existing:
+                return jsonify({"error": "Email already registered"}), 400
             # Send email verification token
             verify_token = secrets.token_urlsafe(32)
             from datetime import timedelta
@@ -6165,7 +6249,7 @@ def register():
             birth_date = str(d.get("birth_date") or "").strip()[:10]
             db.execute(
                 "INSERT INTO users(id,workspace_id,name,email,password,role,avatar,color,created,email_verified,email_verify_token,email_verify_expires,birth_date,birth_date_visibility) VALUES(?,?,?,?,?,?,?,?,?,0,?,?,?,?)",
-                (uid, ws_id, d["name"], d["email"], hash_pw(d["password"]),
+                (uid, ws_id, name, email, hash_pw(d["password"]),
                  d.get("role","Developer"), av, c, login_ts, verify_token, verify_expires, birth_date, "private"))
             session.permanent = True
             session["user_id"] = uid
@@ -6176,16 +6260,16 @@ def register():
             session["session_id"] = session_id
             _set_logged_out_at(uid, "")
             # Send verification email (non-blocking)
-            _send_verification_email(d["email"], d["name"], verify_token)
+            _send_verification_email(email, name, verify_token)
             _register_session(uid, ws_id, session_id)
-            _audit("user_register", uid, f"{d['name']} ({d['email']}) registered via {mode}")
+            _audit("user_register", uid, f"{name} ({email}) registered via {mode}")
             # Build workspace dashboard URL
             ws_row = db.execute("SELECT name,workspace_slug FROM workspaces WHERE id=?", (ws_id,)).fetchone()
             slug = ""
             if ws_row:
                 import re as _re
                 slug = ws_row["workspace_slug"] or _re.sub(r"[^a-z0-9]+", "-", (ws_row["name"] or "").lower().strip()).strip("-") or "workspace"
-            result = {"id":uid,"workspace_id":ws_id,"name":d["name"],"email":d["email"],
+            result = {"id":uid,"workspace_id":ws_id,"name":name,"email":email,
                       "role":d.get("role","Developer"),"avatar":av,"color":c}
             if slug:
                 result["workspace_dashboard_url"] = f"/{slug}/{ws_id}/ai"
@@ -6193,6 +6277,7 @@ def register():
     except Exception as e:
         if "UNIQUE" in str(e): return jsonify({"error":"Email already registered"}),400
         return jsonify({"error":str(e)}),500
+
 
 def _presence_from_redis(ws):
     """Return online/away sets without scanning 50k presence keys.
@@ -6830,20 +6915,32 @@ def add_user():
     d=request.json or {}
     if not d.get("name") or not d.get("email") or not d.get("password"):
         return jsonify({"error":"All fields required"}),400
+    name = str(d.get("name") or "").strip()
+    ok, err = validate_display_name(name, "Name")
+    if not ok: return jsonify({"error": err}), 400
+    email = normalize_email(d.get("email"))
+    if not validate_email_format(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    ok, err = validate_password(d.get("password"))
+    if not ok: return jsonify({"error": err}), 400
     uid=f"u{int(datetime.now().timestamp()*1000)}"
-    av="".join(w[0] for w in d["name"].split())[:2].upper()
+    av="".join(w[0] for w in name.split())[:2].upper()
     c=random.choice(CLRS)
     try:
         with get_db() as db:
+            existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+            if existing:
+                return jsonify({"error": "Email already in use"}), 400
             db.execute("INSERT INTO users (id,workspace_id,name,email,password,role,avatar,color,created,avatar_data) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                       (uid,wid(),d["name"],d["email"],hash_pw(d["password"]),
+                       (uid,wid(),name,email,hash_pw(d["password"]),
                         d.get("role","Developer"),av,c,ts(),None))
         _cache_bust_ws_async(wid())
-        return jsonify({"id":uid,"workspace_id":wid(),"name":d["name"],
-                        "email":d["email"],"role":d.get("role","Developer"),"avatar":av,"color":c})
+        return jsonify({"id":uid,"workspace_id":wid(),"name":name,
+                        "email":email,"role":d.get("role","Developer"),"avatar":av,"color":c})
     except Exception as e:
         if "UNIQUE" in str(e): return jsonify({"error":"Email already in use"}),400
         return jsonify({"error":str(e)}),500
+
 
 
 @app.route("/api/profile", methods=["PUT"])
@@ -6937,42 +7034,60 @@ def update_notif_prefs_api():
 @require_role("Admin", "Manager")
 def update_user(uid):
     d=request.json or {}
-    with get_db() as db:
-        changed_self_cache = False
-        if "role" in d:
-            db.execute("UPDATE users SET role=? WHERE id=? AND workspace_id=?",(d["role"],uid,wid()))
-            changed_self_cache = True
-        if "name" in d:
-            av="".join(w[0] for w in d["name"].split())[:2].upper()
-            db.execute("UPDATE users SET name=?,avatar=? WHERE id=? AND workspace_id=?",(d["name"],av,uid,wid()))
-            changed_self_cache = True
-        if "email" in d:
-            db.execute("UPDATE users SET email=? WHERE id=? AND workspace_id=?",(d["email"],uid,wid()))
-            changed_self_cache = True
-        if "password" in d:
-            db.execute("UPDATE users SET password=? WHERE id=? AND workspace_id=?",(hash_pw(d["password"]),uid,wid()))
-            changed_self_cache = True
-        if "avatar_data" in d:
-            db.execute("UPDATE users SET avatar_data=? WHERE id=? AND workspace_id=?",(d["avatar_data"],uid,wid()))
-            changed_self_cache = True
-            # Warm avatar blob cache immediately so next /api/users/<uid>/avatar
-            # doesn't hit DB and instead serves from Redis in <5ms.
-            try:
-                _cache_set(f"avatar_blob:{wid()}:{uid}:v2", d["avatar_data"] or "", 3600)
-            except Exception:
-                pass
-        if changed_self_cache:
-            _evict_me_cache(uid)
-        u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
-        if u:
-            caller=db.execute("SELECT role FROM users WHERE id=?",(session["user_id"],)).fetchone()
-            caller_role=caller["role"] if caller else "Developer"
-            result=dict(u)
-            result.pop("password",None)
-            result.pop("plain_password",None)  # never expose plaintext passwords
-            _cache_bust_ws_async(wid())
-            return jsonify(result)
-        return jsonify({})
+    if "name" in d:
+        ok, err = validate_display_name(d.get("name"), "Name")
+        if not ok: return jsonify({"error": err}), 400
+    if "email" in d:
+        d["email"] = normalize_email(d.get("email"))
+        if not validate_email_format(d["email"]):
+            return jsonify({"error": "Please enter a valid email address."}), 400
+    if "password" in d:
+        ok, err = validate_password(d.get("password"))
+        if not ok: return jsonify({"error": err}), 400
+    try:
+        with get_db() as db:
+            changed_self_cache = False
+            if "role" in d:
+                db.execute("UPDATE users SET role=? WHERE id=? AND workspace_id=?",(d["role"],uid,wid()))
+                changed_self_cache = True
+            if "name" in d:
+                name = str(d["name"]).strip()
+                av="".join(w[0] for w in name.split())[:2].upper()
+                db.execute("UPDATE users SET name=?,avatar=? WHERE id=? AND workspace_id=?",(name,av,uid,wid()))
+                changed_self_cache = True
+            if "email" in d:
+                dupe = db.execute("SELECT id FROM users WHERE email=? AND id<>?", (d["email"], uid)).fetchone()
+                if dupe:
+                    return jsonify({"error": "Email already in use"}), 400
+                db.execute("UPDATE users SET email=? WHERE id=? AND workspace_id=?",(d["email"],uid,wid()))
+                changed_self_cache = True
+            if "password" in d:
+                db.execute("UPDATE users SET password=? WHERE id=? AND workspace_id=?",(hash_pw(d["password"]),uid,wid()))
+                changed_self_cache = True
+            if "avatar_data" in d:
+                db.execute("UPDATE users SET avatar_data=? WHERE id=? AND workspace_id=?",(d["avatar_data"],uid,wid()))
+                changed_self_cache = True
+                # Warm avatar blob cache immediately so next /api/users/<uid>/avatar
+                # doesn't hit DB and instead serves from Redis in <5ms.
+                try:
+                    _cache_set(f"avatar_blob:{wid()}:{uid}:v2", d["avatar_data"] or "", 3600)
+                except Exception:
+                    pass
+            if changed_self_cache:
+                _evict_me_cache(uid)
+            u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
+            if u:
+                caller=db.execute("SELECT role FROM users WHERE id=?",(session["user_id"],)).fetchone()
+                caller_role=caller["role"] if caller else "Developer"
+                result=dict(u)
+                result.pop("password",None)
+                result.pop("plain_password",None)  # never expose plaintext passwords
+                _cache_bust_ws_async(wid())
+                return jsonify(result)
+            return jsonify({})
+    except Exception as e:
+        if "UNIQUE" in str(e): return jsonify({"error":"Email already in use"}),400
+        return jsonify({"error":str(e)}),500
 
 @app.route("/api/users/<uid>",methods=["DELETE"])
 @login_required
@@ -8038,10 +8153,20 @@ def get_tasks():
             proj_ids = [p["id"] for p in team_projects]
             placeholders_p = ",".join("?" * len(proj_ids)) if proj_ids else "''"
             placeholders_m = ",".join("?" * len(member_ids)) if member_ids else "''"
+            # STRICT team scoping: a task explicitly tagged to a *different*
+            # team (task.team_id set and != this team) must never show up here,
+            # even if its assignee or project also happens to overlap with this
+            # team. The project/assignee fallback only applies to legacy tasks
+            # that have no team_id set at all — previously this was a plain OR,
+            # which leaked other teams' tasks into this view whenever a member
+            # or project was shared across teams.
             sql = f"""SELECT * FROM tasks WHERE workspace_id=? AND COALESCE(deleted_at,'')='' AND (
-                team_id=? OR
-                {f"project IN ({placeholders_p})" if proj_ids else "1=0"} OR
-                {f"assignee IN ({placeholders_m})" if member_ids else "1=0"}
+                team_id=? OR (
+                    COALESCE(team_id,'')='' AND (
+                        {f"project IN ({placeholders_p})" if proj_ids else "1=0"} OR
+                        {f"assignee IN ({placeholders_m})" if member_ids else "1=0"}
+                    )
+                )
             ) ORDER BY created DESC LIMIT 500"""
             params = [wid(), team_id] + proj_ids + member_ids
             result = [dict(r) for r in db.execute(sql, params).fetchall()]
@@ -9386,7 +9511,13 @@ def team_dashboard(tid):
         if not team: return jsonify({"error":"Not found"}),404
         member_ids=json.loads(team["member_ids"] or "[]")
         all_tasks=db.execute("SELECT * FROM tasks WHERE workspace_id=?",(wid(),)).fetchall()
-        team_tasks=[t for t in all_tasks if t["assignee"] in member_ids or (t["team_id"] if "team_id" in t.keys() else "")==tid]
+        # STRICT team scoping — see the matching fix in get_tasks() for why this
+        # can no longer be a plain OR: a task tagged to a *different* team must
+        # never show up here just because its assignee also happens to sit on
+        # this team's roster.
+        def _task_team_id(t):
+            return t["team_id"] if "team_id" in t.keys() else ""
+        team_tasks=[t for t in all_tasks if _task_team_id(t)==tid or (not _task_team_id(t) and t["assignee"] in member_ids)]
         proj_ids=list({t["project"] for t in team_tasks if t["project"]})
         projects=[]
         for pid in proj_ids:
@@ -12495,7 +12626,7 @@ def _load_template(filename, fallback=''):
         with open(path, 'r', encoding='utf-8') as _f:
             return _f.read()
     except FileNotFoundError:
-        print(f"  ⚠ Template not found: {filename}")
+        log.warning(f"Template not found: {filename}")
         return fallback
 
 HTML                    = _load_template('template.html')
@@ -12565,11 +12696,11 @@ def _run_startup_migrations_once():
         got = lock_conn.run(f"SELECT pg_try_advisory_lock({_STARTUP_MIGRATION_LOCK_KEY})")
         acquired = bool(got and got[0] and got[0][0])
     except Exception as _lock_e:
-        print(f"  ⚠ Startup migration lock unavailable ({_lock_e}); running migrations anyway")
+        log.warning(f"Startup migration lock unavailable ({_lock_e}); running migrations anyway")
         acquired = True  # fail open — never block boot on the lock itself
 
     if not acquired:
-        print("  [startup migrations] another worker already holds the lock — skipping")
+        log.info("[startup migrations] another worker already holds the lock — skipping")
         try:
             if lock_conn: lock_conn.close()
         except Exception:
@@ -12600,7 +12731,7 @@ try:
         _prewarm_pool(int(os.environ.get("PREWARM_POOL_SIZE", "2")))
 except Exception as _ie:
     import traceback
-    print(f"  ⚠ Init error: {_ie}")
+    log.error(f"Init error: {_ie}")
     traceback.print_exc()
 def find_free_port(preferred=5000):
     for port in range(preferred, preferred+10):
@@ -13720,7 +13851,7 @@ def _fire_webhooks(workspace_id, event, payload):
             fail_inc = "" if 200 <= status_code < 300 else ", fail_count=fail_count+1"
             _raw_pg(f"UPDATE webhooks SET last_triggered=? {fail_inc} WHERE id=?", (ts(), hook["id"]))
     except Exception as e:
-        print(f"Webhook fire error: {e}")
+        log.error(f"Webhook fire error: {e}")
 
 @app.route("/api/webhooks", methods=["GET"])
 @login_required
