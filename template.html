@@ -5692,7 +5692,8 @@ const REACTION_EMOJIS=['👍','❤️','😂','😮','😢','🔥','👏','🙏'
 const emojiHover=(ev,on)=>{const el=ev.currentTarget;if(!el)return;const rect=el.getBoundingClientRect();const cx=rect.left+rect.width/2;const cy=rect.top+rect.height/2;const dx=((ev.clientX||cx)-cx)/Math.max(1,rect.width);const dy=((ev.clientY||cy)-cy)/Math.max(1,rect.height);el.style.transform=on?`translate(${dx*5}px, ${-8+dy*3}px) scale(1.48) rotate(${dx*7}deg)`:'translate(0,0) scale(1) rotate(0deg)';el.style.zIndex=on?'3':'1';el.style.filter=on?'drop-shadow(0 10px 14px rgba(0,0,0,.38)) saturate(1.35)':'saturate(1.05)';};
 const emojiMove=(ev)=>emojiHover(ev,true);
 const isImageAttachment=(content)=>/\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(content||''));
-function MessagesView({projects,users,cu,tasks}){
+function MessagesView({projects,users,cu,tasks,activeTeam}){
+  const teamIdQS=activeTeam&&activeTeam.id?('?team_id='+encodeURIComponent(activeTeam.id)):'';
   const [allProjects,setAllProjects]=useState(safe(projects));
   const [lastMsgTs,setLastMsgTs]=useState({});
   const [stableOrder,setStableOrder]=useState(null); // null = not yet fetched
@@ -5701,7 +5702,12 @@ function MessagesView({projects,users,cu,tasks}){
   const allProjectsLoadedRef=useRef(false);
   useEffect(()=>{
     if(allProjectsLoadedRef.current)return;
-    api.get('/api/projects/all').then(d=>{
+    // BUG FIX: this used to call /api/projects/all with no team_id, which
+    // returns every project in the whole workspace — so switching to
+    // Channels showed other teams' project channels (and their message
+    // activity/unread badges) alongside your own. Scope it to the team
+    // currently in view, same as Projects/Tasks/Tickets already do.
+    api.get('/api/projects/all'+teamIdQS).then(d=>{
       if(Array.isArray(d)&&d.length){
         allProjectsLoadedRef.current=true;
         setAllProjects(d);
@@ -5719,7 +5725,11 @@ function MessagesView({projects,users,cu,tasks}){
 
   useEffect(()=>{
     const fetchTs=async()=>{
-      const d=await api.get('/api/projects/last-messages');
+      // Same team scoping fix as /api/projects/all above — without it this
+      // flooded the unread map with channels you never opened (other
+      // teams' projects), each defaulting to lastSeen='' and so always
+      // looking "new", making a plain refresh look like it invented badges.
+      const d=await api.get('/api/projects/last-messages'+teamIdQS);
       if(d&&typeof d==='object'){
         setLastMsgTs(d);
         if(!orderSetRef.current){
@@ -14054,6 +14064,52 @@ function App(){
 
   useEffect(()=>{if(cu)requestNotifPermission();},[cu]);
 
+  // ── Inactivity auto-logout ──────────────────────────────────────────────
+  // Requirement: keep the user signed in indefinitely WHILE active, but log
+  // them out automatically (forcing a manual login again) after 30 minutes
+  // with no real interaction — not just no page reload.
+  //
+  // Real user interaction (mouse/keyboard/touch/scroll) throttle-pings
+  // POST /api/auth/heartbeat, which is the ONLY thing that refreshes
+  // session["last_activity"] server-side (see login_required in app.py).
+  // Background polling (/api/poll, SSE, the 60s channel/DM refresh timers)
+  // deliberately does NOT count as activity, so a tab left open but idle
+  // still gets logged out by the server on its next request even though
+  // it's still quietly polling.
+  //
+  // The client-side timer below is just a UX nicety so an idle tab shows
+  // the login screen immediately at the 30-minute mark instead of waiting
+  // for the next API call to bounce with a 401.
+  useEffect(()=>{
+    if(!cu)return;
+    const IDLE_LIMIT_MS=30*60*1000;
+    const HEARTBEAT_MIN_GAP_MS=60*1000; // don't ping more than once a minute
+    let lastHeartbeatAt=0;
+    let idleTimer=null;
+    const sendHeartbeat=()=>{
+      const now=Date.now();
+      if(now-lastHeartbeatAt<HEARTBEAT_MIN_GAP_MS)return;
+      lastHeartbeatAt=now;
+      api.post('/api/auth/heartbeat',{},{quiet:true}).catch(()=>{});
+    };
+    const resetIdleTimer=()=>{
+      if(idleTimer)clearTimeout(idleTimer);
+      idleTimer=setTimeout(()=>{
+        try{window._pfToast&&window._pfToast('info','Signed out','You were signed out after 30 minutes of inactivity.');}catch(_){}
+        logout();
+      },IDLE_LIMIT_MS);
+    };
+    const onActivity=()=>{sendHeartbeat();resetIdleTimer();};
+    const events=['mousedown','mousemove','keydown','wheel','touchstart','scroll'];
+    events.forEach(ev=>window.addEventListener(ev,onActivity,{passive:true}));
+    sendHeartbeat();
+    resetIdleTimer();
+    return()=>{
+      events.forEach(ev=>window.removeEventListener(ev,onActivity));
+      if(idleTimer)clearTimeout(idleTimer);
+    };
+  },[cu]);
+
   const triggerPollRef = useRef(null);
   useEffect(()=>{
     window._pfOnVisible = ()=>{
@@ -14303,7 +14359,7 @@ function App(){
               initialTaskId=${initialTaskId}
               onClearInitialTask=${()=>setInitialTaskId(null)}
             />`:null}
-            ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
+            ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} activeTeam=${activeTeam} key=${'msgs-'+(teamCtx||'all')}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}

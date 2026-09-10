@@ -4803,11 +4803,21 @@ def _evict_me_cache(uid):
     except Exception:
         pass
 
+INACTIVITY_TIMEOUT_SECONDS = 30 * 60  # auto-logout after 30 min with no real user activity
+
 def login_required(f):
     @wraps(f)
     def d(*a,**kw):
         if "user_id" not in session:
             return jsonify({"error":"Unauthorized"}),401
+        # Inactivity timeout: last_activity is only refreshed by genuine user
+        # interaction (see /api/auth/heartbeat), not by background polling/SSE,
+        # so a tab left open but idle for 30 min gets logged out server-side
+        # even though it keeps polling.
+        last_activity = session.get("last_activity")
+        if last_activity is not None and (time.time() - last_activity) > INACTIVITY_TIMEOUT_SECONDS:
+            session.clear()
+            return jsonify({"error": "Session expired due to inactivity. Please log in again."}), 401
         uid = session["user_id"]
         login_at = session.get("login_at", "")
         if login_at:
@@ -5030,6 +5040,7 @@ def google_callback():
         # Clear any stale session data first (prevents 401 loop after logout→Google login)
         session.clear()
         session.permanent = True
+        session["last_activity"] = time.time()
         session["user_id"]      = user["id"]
         session["workspace_id"] = user["workspace_id"]
         session["role"]         = user.get("role", "")
@@ -5123,6 +5134,7 @@ def login():
         _clear_attempts(rl_key)  # reset limiter on success
         login_ts = ts()
         session.permanent=True
+        session["last_activity"] = time.time()
         session["user_id"]=u["id"]
         session["workspace_id"]=u["workspace_id"]
         session["role"]=u.get("role","")  # cache role in session
@@ -5584,6 +5596,7 @@ def totp_verify_login():
             return jsonify({"error": "Invalid authenticator code. Try again."}), 401
         login_ts = ts()
         session.permanent = True
+        session["last_activity"] = time.time()
         session["user_id"] = u["id"]
         session["workspace_id"] = u["workspace_id"]
         session["login_at"] = login_ts   # needed for remote logout detection
@@ -5625,6 +5638,19 @@ def totp_reset():
         db.execute("UPDATE users SET totp_secret='', totp_verified=0, two_fa_enabled=0 WHERE id=? AND workspace_id=?",
                    (target_id, wid()))
         return jsonify({"ok": True, "message": "TOTP reset. User can now set up a new authenticator."})
+
+@app.route("/api/auth/heartbeat", methods=["POST"])
+@login_required
+def auth_heartbeat():
+    """Called by the client only in response to real user interaction
+    (mouse/keyboard/touch), never on a plain timer or background poll — this
+    is what keeps a session alive. If the browser tab is left idle, this
+    endpoint simply stops being called and login_required's inactivity check
+    logs the session out after INACTIVITY_TIMEOUT_SECONDS.
+    """
+    session["last_activity"] = time.time()
+    session.modified = True
+    return jsonify({"ok": True, "timeout_seconds": INACTIVITY_TIMEOUT_SECONDS})
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
@@ -6005,6 +6031,7 @@ def accept_workspace_invite():
         login_ts = ts()
         session.clear()
         session.permanent = True
+        session["last_activity"] = time.time()
         session["user_id"] = uid
         session["workspace_id"] = ws_id
         session["role"] = role
@@ -6155,6 +6182,7 @@ def domain_join_request():
             login_ts = ts()
             session.clear()
             session.permanent = True
+            session["last_activity"] = time.time()
             session["user_id"] = new_uid
             session["workspace_id"] = ws_id_req
             session["role"] = role
@@ -6252,6 +6280,7 @@ def register():
                 (uid, ws_id, name, email, hash_pw(d["password"]),
                  d.get("role","Developer"), av, c, login_ts, verify_token, verify_expires, birth_date, "private"))
             session.permanent = True
+            session["last_activity"] = time.time()
             session["user_id"] = uid
             session["workspace_id"] = ws_id
             session["role"] = d.get("role","Developer")
@@ -7162,15 +7191,29 @@ def get_user_avatar(uid):
 @app.route("/api/projects/all")
 @login_required
 def get_all_projects():
-    """Return ALL workspace projects — used by Channels so everyone can see all project status."""
-    # C1: Cache with 60s TTL — mutations bust via _cache_bust_ws
+    """Return workspace projects for Channels.
+
+    BUG FIX: this used to return every project in the whole workspace with no
+    team_id filter, regardless of which team the caller was viewing — so a
+    member of Team A would see Team B's project channels (and their message
+    activity) in the Channels list. Now it takes the same ?team_id= param as
+    /api/projects and applies the same filter, so Channels only ever shows
+    projects for the team currently in view (or the whole workspace when no
+    team is selected, e.g. for an admin with "All Teams").
+    """
     ws = wid()
-    cache_key = f"projects_all:{ws}"
+    team_id = request.args.get("team_id", "")
+    # C1: Cache with 60s TTL — mutations bust via _cache_bust_ws. Keyed by
+    # team_id too now, so one team's cached list can never leak into another's.
+    cache_key = f"projects_all:{ws}:{team_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return jsonify(cached)
     with get_db() as db:
-        rows=db.execute("SELECT * FROM projects WHERE workspace_id=? ORDER BY created DESC",(ws,)).fetchall()
+        if team_id:
+            rows=db.execute("SELECT * FROM projects WHERE workspace_id=? AND team_id=? ORDER BY created DESC",(ws,team_id)).fetchall()
+        else:
+            rows=db.execute("SELECT * FROM projects WHERE workspace_id=? ORDER BY created DESC",(ws,)).fetchall()
         result = [dict(r) for r in rows]
     _cache_set(cache_key, result, 60)
     return jsonify(result)
@@ -7178,17 +7221,31 @@ def get_all_projects():
 @app.route("/api/projects/last-messages")
 @login_required
 def get_projects_last_messages():
-    """Return the latest message timestamp per project — used to sort channels by activity."""
-    # C3: Cache with 30s TTL — messages are high-frequency but slight staleness is acceptable
+    """Return the latest message timestamp per project — used to sort channels by activity.
+
+    BUG FIX: same cross-team leak as /api/projects/all above — this used to
+    scan messages for the ENTIRE workspace with no team filter. Now it only
+    returns timestamps for projects that belong to the given team (joining
+    against projects), so a foreign team's message activity can no longer
+    make an unrelated channel look unread.
+    """
     ws = wid()
-    cache_key = f"projects_last_msgs:{ws}"
+    team_id = request.args.get("team_id", "")
+    cache_key = f"projects_last_msgs:{ws}:{team_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return jsonify(cached)
     with get_db() as db:
-        rows=db.execute(
-            "SELECT project, MAX(ts) as last_ts FROM messages WHERE workspace_id=? GROUP BY project",
-            (ws,)).fetchall()
+        if team_id:
+            rows=db.execute(
+                "SELECT m.project AS project, MAX(m.ts) as last_ts "
+                "FROM messages m JOIN projects p ON p.id=m.project AND p.workspace_id=m.workspace_id "
+                "WHERE m.workspace_id=? AND p.team_id=? GROUP BY m.project",
+                (ws, team_id)).fetchall()
+        else:
+            rows=db.execute(
+                "SELECT project, MAX(ts) as last_ts FROM messages WHERE workspace_id=? GROUP BY project",
+                (ws,)).fetchall()
         result = {r["project"]: r["last_ts"] for r in rows}
     _cache_set(cache_key, result, 30)
     return jsonify(result)
@@ -8000,8 +8057,12 @@ def create_project():
         # background SWR refresh to overwrite state and make the new project disappear.
         # Targeted bust: projects and appdata only. Tasks cache untouched (no tasks yet).
         _cache_bust(wid(), "projects", "notifications", "notifs", "appdata")
-        _cache_delete(f"projects_all:{wid()}")
-        _cache_delete(f"projects_last_msgs:{wid()}")
+        # projects_all/projects_last_msgs are now keyed per-team
+        # (projects_all:{ws}:{team_id}) so a bare _cache_delete on the old
+        # exact "projects_all:{ws}" key would silently miss every team-scoped
+        # entry. _cache_bust_ws does a substring scan/delete across both
+        # Redis and the local dict, so it still catches all of them.
+        _cache_bust_ws(wid())
         # Push SSE event so connected clients update immediately without waiting for next poll
         _sse_publish(wid(), "project_updated", {"id": pid, "action": "created"})
         return jsonify(dict(p))
@@ -8044,7 +8105,10 @@ def update_project(pid):
     # Targeted bust: projects and appdata. Member/name changes don't affect
     # task, notification, or DM caches.
     _cache_bust(wid(), "projects", "notifications", "notifs", "appdata")
-    _cache_delete(f"projects_all:{wid()}")
+    # See create_project() above: projects_all/projects_last_msgs are now
+    # per-team keys, so use the substring-based bust instead of the old
+    # exact-key _cache_delete (which would miss every team-scoped entry).
+    _cache_bust_ws(wid())
     # Notify connected clients via SSE so they reload without waiting 30s
     _sse_publish(wid(), "project_updated", {"id": pid, "action": "updated"})
     return jsonify(dict(updated))
@@ -8076,9 +8140,9 @@ def del_project(pid):
     # that hasn't been busted yet and re-cache the deleted project. Using the
     # blocking _cache_bust_ws here guarantees every worker's cache is clear
     # before this request returns — same reasoning as the task-delete fix.
+    # _cache_bust_ws already clears projects_all/projects_last_msgs for every
+    # team_id variant (substring match), so no separate _cache_delete needed.
     _cache_bust_ws(workspace_id)
-    _cache_delete(f"projects_all:{workspace_id}")
-    _cache_delete(f"projects_last_msgs:{workspace_id}")
     return jsonify({"ok":True})
 # BUG FIX: this route was missing its @app.route decorator entirely, so it
 # was never registered with Flask. POST /api/projects/bulk-assign-team fell
@@ -8106,9 +8170,9 @@ def bulk_assign_team():
     # variant) so every worker is guaranteed clear before this request
     # returns — otherwise the very next /api/app-data poll could land on a
     # worker that hasn't been busted yet and show the old team assignment.
+    # _cache_bust_ws already clears projects_all/projects_last_msgs for every
+    # team_id variant (substring match), so no separate _cache_delete needed.
     _cache_bust_ws(workspace_id)
-    _cache_delete(f"projects_all:{workspace_id}")
-    _cache_delete(f"projects_last_msgs:{workspace_id}")
     return jsonify({"ok":True,"updated":len(project_ids)})
 
 # ── Tasks ─────────────────────────────────────────────────────────────────────
@@ -11184,6 +11248,7 @@ def ws_sso_callback(ws_name, ws_id):
         db.execute("UPDATE users SET last_active=? WHERE id=?", (ts(), uid))
 
     session.permanent = True
+    session["last_activity"] = time.time()
     session["user_id"]      = uid
     session["workspace_id"] = ws_id
     session["role"]         = u["role"] if u else "Developer"
