@@ -1511,6 +1511,20 @@ const _apiRequest = async (u, opts = {}) => {
   const timeoutMs = opts.timeoutMs || (method === 'GET' ? 15000 : 30000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  // BUG FIX: api._abort() (called on logout, see logout() in the App
+  // component) aborts the shared _apiAbortCtrl — but until now no fetch()
+  // call was ever wired to that controller's signal, only to this
+  // function-local timeout-only one. So logout's "cancel every in-flight
+  // request" comment was never actually true: a poll/app-data/bootstrap
+  // request that was in flight when the user logged out would keep
+  // running, and if it happened to resolve (even with a 401, or with a
+  // stale pre-logout snapshot that raced the session teardown) after the
+  // next login's own fresh fetches had already populated state, its
+  // .then()/.catch() handler could silently overwrite the new session's
+  // correct data. Chain this request's own controller to the shared one so
+  // api._abort() actually cancels it.
+  if (_apiAbortCtrl.signal.aborted) ctrl.abort();
+  else _apiAbortCtrl.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
   try {
     const headers = { ...(opts.headers || {}) };
     if (method !== 'GET' && method !== 'HEAD') {

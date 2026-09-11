@@ -525,6 +525,16 @@ def _ultra_early_realtime_499_guard():
     if "user_id" not in session:
         return None
 
+    # FIX (idle-timeout bypass): these are exactly the endpoints the SPA polls
+    # continuously in the background (poll/presence/reminders), so if they
+    # short-circuit login_required entirely, a session that should have died
+    # from 30-min inactivity or a remote logout keeps looking valid forever as
+    # long as the tab is only receiving background responses. Check first —
+    # this is a session-dict read plus (usually) a cached lookup, so it stays
+    # cheap enough for this fast path.
+    if _session_is_expired_and_clear():
+        return None  # fall through to the real, login_required-protected route, which will now correctly 401
+
     uid = str(session.get("user_id") or "")
 
     if (method, path) == ("POST", "/api/presence"):
@@ -605,6 +615,14 @@ def _session_identity_payload():
 def _ultra_fast_identity_profile_guard():
     if "user_id" not in session:
         return None
+    # FIX (idle-timeout bypass): /api/auth/me is the SPA's "am I logged in"
+    # bootstrap call and was being served straight from the me:{uid} cache
+    # here, before login_required ever ran — so a session already expired by
+    # 30-min inactivity (or invalidated by a logout elsewhere) could still
+    # report the user as logged in. Same reasoning for the profile fast paths
+    # below.
+    if _session_is_expired_and_clear():
+        return None  # fall through to the real route, which will now correctly 401
     path = request.path.rstrip("/") or "/"
     method = request.method.upper()
     uid = str(session.get("user_id") or "")
@@ -4805,36 +4823,57 @@ def _evict_me_cache(uid):
 
 INACTIVITY_TIMEOUT_SECONDS = 30 * 60  # auto-logout after 30 min with no real user activity
 
+def _session_inactivity_expired():
+    """True if the current session's last_activity is older than the idle limit.
+    last_activity is only refreshed by genuine user interaction (see
+    /api/auth/heartbeat), not by background polling/SSE, so a tab left open
+    but idle for 30 min should be treated as logged out server-side even
+    though it keeps polling."""
+    last_activity = session.get("last_activity")
+    return last_activity is not None and (time.time() - last_activity) > INACTIVITY_TIMEOUT_SECONDS
+
+def _session_remote_logged_out():
+    """True if this session was issued before the user's most recent logout
+    (i.e. it was invalidated from another tab/device, or by our own prior
+    /api/auth/logout call)."""
+    uid = session.get("user_id")
+    login_at = session.get("login_at", "")
+    if not (uid and login_at):
+        return False
+    cached_logout = _get_logged_out_at(uid)
+    if cached_logout is None:
+        # Not cached — fetch from DB once, then cache it
+        try:
+            rows = _raw_pg("SELECT logged_out_at FROM users WHERE id=?", (uid,), fetch=True)
+            cached_logout = rows[0].get("logged_out_at","") if rows else ""
+            _set_logged_out_at(uid, cached_logout)
+        except Exception:
+            cached_logout = ""
+    return bool(cached_logout and login_at < cached_logout)
+
+def _session_is_expired_and_clear():
+    """Shared check used by both login_required and the ultra-fast before_request
+    guards. Those guards previously answered /api/auth/me, /api/poll, /api/presence
+    etc. straight from cache/session BEFORE login_required ever ran, so a session
+    that should have died from 30-min inactivity or a remote logout kept looking
+    valid on every background-polled endpoint. Returns True (and clears the
+    session) if either condition applies."""
+    if _session_inactivity_expired() or _session_remote_logged_out():
+        session.clear()
+        return True
+    return False
+
 def login_required(f):
     @wraps(f)
     def d(*a,**kw):
         if "user_id" not in session:
             return jsonify({"error":"Unauthorized"}),401
-        # Inactivity timeout: last_activity is only refreshed by genuine user
-        # interaction (see /api/auth/heartbeat), not by background polling/SSE,
-        # so a tab left open but idle for 30 min gets logged out server-side
-        # even though it keeps polling.
-        last_activity = session.get("last_activity")
-        if last_activity is not None and (time.time() - last_activity) > INACTIVITY_TIMEOUT_SECONDS:
+        if _session_inactivity_expired():
             session.clear()
             return jsonify({"error": "Session expired due to inactivity. Please log in again."}), 401
-        uid = session["user_id"]
-        login_at = session.get("login_at", "")
-        if login_at:
-            # Check if this session has been remotely invalidated
-            cached_logout = _get_logged_out_at(uid)
-            if cached_logout is None:
-                # Not cached — fetch from DB once, then cache it
-                try:
-                    rows = _raw_pg("SELECT logged_out_at FROM users WHERE id=?", (uid,), fetch=True)
-                    cached_logout = rows[0].get("logged_out_at","") if rows else ""
-                    _set_logged_out_at(uid, cached_logout)
-                except Exception:
-                    cached_logout = ""
-            # If user logged out after this session was created → reject
-            if cached_logout and login_at < cached_logout:
-                session.clear()
-                return jsonify({"error":"Session expired. Please log in again."}),401
+        if _session_remote_logged_out():
+            session.clear()
+            return jsonify({"error":"Session expired. Please log in again."}),401
         return f(*a,**kw)
     return d
 
@@ -6494,6 +6533,12 @@ def meet_notify():
 @app.route("/api/auth/me")
 def me():
     if "user_id" not in session: return jsonify({"error":"Not logged in"}),401
+    # Defense-in-depth: normally _ultra_fast_identity_profile_guard already
+    # catches an expired/logged-out session before this route is even reached,
+    # but this route has no @login_required, so re-check here directly in
+    # case that guard is ever bypassed (e.g. a Redis blip during its own check).
+    if _session_is_expired_and_clear():
+        return jsonify({"error": "Session expired. Please log in again."}), 401
     uid = session["user_id"]
 
     # Cache auth/me for 30s per user — it's polled constantly and almost
