@@ -12239,9 +12239,16 @@ function App(){
     }
     // 5. Clear ALL localStorage only AFTER server confirms logout
     try{
-      const keysToRemove=['pf_had_session','pf_dark','pf_col','pf_perms','pf_accent'];
+      // pf_dark (theme) and pf_col (sidebar collapsed state) intentionally excluded —
+      // both are personal display preferences, not session data, so they should
+      // survive sign-out instead of resetting on every login.
+      const keysToRemove=['pf_had_session','pf_perms','pf_accent'];
       keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
+      // Personal display preferences (theme, sidebar collapsed state) must survive
+      // this blanket 'pf_' wipe too, or they silently reset on every sign-out.
+      const KEEP_ON_LOGOUT=new Set(['pf_dark','pf_col']);
       Object.keys(localStorage).forEach(k=>{
+        if(KEEP_ON_LOGOUT.has(k))return;
         if(k.startsWith('vw_ai_recents_')||k.startsWith('pf_')){
           try{localStorage.removeItem(k);}catch{}
         }
