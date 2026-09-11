@@ -2561,7 +2561,7 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
                 <label class="lbl">Assign to Team <span style=${{fontWeight:400,color:'var(--tx3)',fontSize:10}}>(auto-adds team members)</span></label>
                 <select class="sel" value=${projTeamId} onChange=${e=>handleTeamChange(e.target.value)}>
                   <option value="">— No team —</option>
-                  ${safe(teams).map(t=>html`<option key=${t.id} value=${t.id}>${t.name} (${parseIdList(t.member_ids).length} members)</option>`)}
+                  ${safe(teams).map(t=>html`<option key=${t.id} value=${t.id}>${t.name} (${parseIdList(t.member_ids).filter(id=>safe(allUsers).some(u=>u.id===id)).length} members)</option>`)}
                 </select>
               </div>
               <div><label class="lbl">Members</label><${MemberPicker} allUsers=${allUsers} selected=${members} onChange=${setMembers}/></div>
@@ -2983,7 +2983,13 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
                 <select class="sel" value=${projTeam} onChange=${e=>setProjTeam(e.target.value)}>
                   <option value="">— No team —</option>
                   ${safe(teams).map(t=>{
-                    const mids=parseIdList(t.member_ids);
+                    // BUG FIX ("team strength" showing a stale headcount):
+                    // t.member_ids can still list ids of users who were
+                    // later removed from the workspace (deleting a user
+                    // never pruned them out of every team's member_ids —
+                    // see del_user() in app.py). Count only ids that still
+                    // resolve to a real, current user.
+                    const mids=parseIdList(t.member_ids).filter(id=>safe(users).some(u=>u.id===id));
                     return html`<option key=${t.id} value=${t.id}>${t.name} (${mids.length} member${mids.length!==1?'s':''})</option>`;
                   })}
                 </select>

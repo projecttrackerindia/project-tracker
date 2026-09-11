@@ -7172,6 +7172,35 @@ def del_user(uid):
         db.execute("DELETE FROM users WHERE id=? AND workspace_id=?",(uid,wid()))
         name_str = f"{u['name']} ({u['email']})" if u else uid
         _audit("user_deleted", uid, f"{name_str} removed from workspace {wid()}")
+
+        # BUG FIX (stale "team strength" / member counts after removing a
+        # user): deleting a user only ever removed their row from `users` —
+        # every team's member_ids JSON array (and lead_id) and every
+        # project's members JSON array kept the deleted user's id forever.
+        # So e.g. the "Assign to Team" dropdown ("<name> (N members)") kept
+        # showing the old headcount indefinitely, even though only the
+        # remaining real users should count. Prune the deleted id everywhere
+        # it's referenced.
+        try:
+            teams = db.execute("SELECT id, member_ids, lead_id FROM teams WHERE workspace_id=?", (wid(),)).fetchall()
+            for t in teams:
+                mids = json.loads(t["member_ids"] or "[]")
+                new_lead = "" if t["lead_id"] == uid else t["lead_id"]
+                if uid in mids or new_lead != t["lead_id"]:
+                    mids = [m for m in mids if m != uid]
+                    db.execute("UPDATE teams SET member_ids=?, lead_id=? WHERE id=?",
+                               (json.dumps(mids), new_lead, t["id"]))
+        except Exception:
+            pass
+        try:
+            projs = db.execute("SELECT id, members FROM projects WHERE workspace_id=?", (wid(),)).fetchall()
+            for p in projs:
+                pmids = json.loads(p["members"] or "[]")
+                if uid in pmids:
+                    pmids = [m for m in pmids if m != uid]
+                    db.execute("UPDATE projects SET members=? WHERE id=?", (json.dumps(pmids), p["id"]))
+        except Exception:
+            pass
     _cache_bust_ws_async(wid())
     return jsonify({"ok":True})
 
@@ -10214,17 +10243,50 @@ def required_hours():
 
 # [Calling/WebRTC mechanism removed — use Google Meet or external tools]
 
+def _parse_reminder_dt(s):
+    """Parse a remind_at value into an aware UTC datetime for real comparison.
+
+    BUG FIX (reminders fire ~4.5h before the picked time): reminders are
+    created by the frontend via Date.prototype.toISOString(), which always
+    ends in 'Z' (UTC) — see create_reminder(). due_reminders() used to compare
+    that raw string directly against ts() (IST wall-clock, '+05:30' suffix)
+    with a plain string '<=' — no actual datetime parsing at all. 'Z' and
+    '+05:30' don't sort the way real instants compare, so this was
+    effectively treating the reminder's UTC clock digits as IST digits,
+    making it look "due" once IST-now's digits caught up to UTC-target's
+    digits — i.e. about 4.5-5.5 hours before the real target moment.
+    """
+    if not s:
+        return None
+    try:
+        s2 = s.strip()
+        if s2.endswith("Z"):
+            s2 = s2[:-1] + "+00:00"
+        d = datetime.fromisoformat(s2)
+        if d.tzinfo is None:
+            # No offset at all — shouldn't happen for frontend-created
+            # reminders (always toISOString()), but be defensive and assume
+            # IST, matching what ts()/now_ist() use elsewhere in this file.
+            d = d.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+        return d.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+def _reminder_is_due(r, now_utc):
+    dt = _parse_reminder_dt(r.get("remind_at", ""))
+    return dt is not None and dt <= now_utc
+
 @app.route("/api/reminders/due", methods=["GET"])
 @login_required
 def due_reminders():
     """Return reminders due now. Checks appdata cache first; only hits DB to mark fired."""
     ws, uid = wid(), session["user_id"]
-    now_str = ts()
+    now_utc = datetime.now(timezone.utc)
     # Get all reminders from cache
     cached_reminders, found = _appdata_cache_get(ws, uid, "reminders")
     if found:
         due = [r for r in cached_reminders
-               if not r.get("fired") and r.get("remind_at","") <= now_str]
+               if not r.get("fired") and _reminder_is_due(r, now_utc)]
         if due:
             ids = [r["id"] for r in due]
             try:
@@ -10234,10 +10296,16 @@ def due_reminders():
                 _cache_bust(ws, "reminders")
             except Exception: pass
         return jsonify(due)
-    # Fallback: hit DB directly
+    # Fallback: hit DB directly. Fetch all un-fired reminders for this user
+    # (a small set) and filter with _reminder_is_due() in Python rather than
+    # a raw SQL string comparison — remind_at is stored as whatever ISO
+    # string the client sent (always UTC 'Z' from toISOString()), which
+    # can't be compared correctly against any single fixed-format "now"
+    # string in SQL.
     with get_db() as db:
-        rows = db.execute("""SELECT * FROM reminders WHERE workspace_id=? AND user_id=?
-            AND fired=0 AND remind_at <= ?""", (ws, uid, now_str)).fetchall()
+        rows = [dict(r) for r in db.execute("""SELECT * FROM reminders WHERE workspace_id=? AND user_id=?
+            AND fired=0""", (ws, uid)).fetchall()]
+        rows = [r for r in rows if _reminder_is_due(r, now_utc)]
         ids  = [r["id"] for r in rows]
         if ids:
             db.execute(f"UPDATE reminders SET fired=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
