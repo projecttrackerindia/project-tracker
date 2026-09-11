@@ -3718,15 +3718,19 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
           ${p.map(proj=>{
             const pt=t.filter(x=>x.project===proj.id);
             const pc=pt.length?Math.round(pt.reduce((a,x)=>a+(x.pct||0),0)/pt.length):(proj.progress||0);
-            return html`<div key=${proj.id} style=${{marginBottom:11}}>
+            return {proj,pc};
+          }).sort((a,b)=>a.pc-b.pc).map(({proj,pc})=>{
+            const done=pc>=100;
+            const barColor=done?'var(--gn)':'var(--ac)';
+            return html`<div key=${proj.id} style=${{marginBottom:11,opacity:done?0.6:1}}>
               <div style=${{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                <div style=${{display:'flex',alignItems:'center',gap:6}}>
-                  <div style=${{width:7,height:7,borderRadius:2,background:proj.color}}></div>
+                <div style=${{display:'flex',alignItems:'center',gap:7}}>
+                  ${done?html`<span style=${{fontSize:10,fontWeight:700,color:'var(--gn)',width:7,textAlign:'center',flexShrink:0}}>✓</span>`:html`<div style=${{width:6,height:6,borderRadius:'50%',background:'var(--ac)',flexShrink:0}}></div>`}
                   <span style=${{fontSize:13,color:'var(--tx)',fontWeight:500}}>${proj.name}</span>
                 </div>
-                <span style=${{fontSize:11,color:'var(--tx2)',fontFamily:'monospace'}}>${pc}%</span>
+                <span style=${{fontSize:11,color:done?'var(--gn)':'var(--tx2)',fontFamily:'monospace',fontVariantNumeric:'tabular-nums',minWidth:32,textAlign:'right',flexShrink:0}}>${pc}%</span>
               </div>
-              <${Prog} pct=${pc} color=${proj.color}/>
+              <${Prog} pct=${pc} color=${barColor}/>
             </div>`;
           })}
           </div>
