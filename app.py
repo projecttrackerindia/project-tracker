@@ -8609,10 +8609,14 @@ def update_task(tid):
         # Log activity events
         new_stage_val = d.get("stage", old_stage)
         new_assignee_val = d.get("assignee", old_assignee)
+        old_priority = t["priority"]
+        old_due = t["due"]
+        changed_assignee_name = None
         if new_stage_val != old_stage:
             log_task_event(db, wid(), tid, session["user_id"], "stage_change", old_stage, new_stage_val)
         if new_assignee_val != old_assignee and new_assignee_val:
             assignee_name = (db.execute("SELECT name FROM users WHERE id=?", (new_assignee_val,)).fetchone() or {}).get("name","?")
+            changed_assignee_name = assignee_name
             log_task_event(db, wid(), tid, session["user_id"], "assigned", old_assignee or "", assignee_name)
             # Email the newly assigned person (including self-assignment)
             new_assignee_row = db.execute("SELECT name,email FROM users WHERE id=?", (new_assignee_val,)).fetchone()
@@ -8648,6 +8652,28 @@ def update_task(tid):
                 db.execute("INSERT INTO messages(id,workspace_id,sender,project,content,ts,is_system) VALUES (?,?,?,?,?,?,?)",
                            (sysmid,wid(),"system",t["project"],
                             f"⚡ **{aname}** moved **{t['title']}** → {d['stage'].title()}",ts(),1))
+        # FEATURE: the project channel only ever showed stage moves and
+        # comments — a priority change, due-date change, or reassignment
+        # never posted anything there, so watchers had no way to see it
+        # without opening the task directly. Post one consolidated system
+        # message per edit covering whichever of these actually changed.
+        if t["project"]:
+            field_changes = []
+            new_priority_val = d.get("priority", old_priority)
+            if new_priority_val != old_priority:
+                field_changes.append(f"priority {old_priority or '—'} → {new_priority_val or '—'}")
+            new_due_val = d.get("due", old_due)
+            if new_due_val != old_due:
+                field_changes.append(f"due date {old_due or '—'} → {new_due_val or '—'}")
+            if changed_assignee_name:
+                field_changes.append(f"assigned to {changed_assignee_name}")
+            if field_changes:
+                actor3=db.execute("SELECT name FROM users WHERE id=?",(session["user_id"],)).fetchone()
+                aname3=actor3["name"] if actor3 else "Someone"
+                sysmid3=f"m{int(datetime.now().timestamp()*1000)+1}"
+                db.execute("INSERT INTO messages(id,workspace_id,sender,project,content,ts,is_system) VALUES (?,?,?,?,?,?,?)",
+                           (sysmid3,wid(),"system",t["project"],
+                            f"✎ **{aname3}** updated **{t['title']}** — "+"; ".join(field_changes),ts(),1))
         # General task edit notification — assignee only, and only when stage did not already notify.
         if (not d.get("stage") or d.get("stage") == old_stage) and t["assignee"] and t["assignee"] != session.get("user_id"):
             actor=db.execute("SELECT name FROM users WHERE id=?",(session["user_id"],)).fetchone()
@@ -8706,9 +8732,20 @@ def update_task(tid):
         _cache_bust(wid(), "tasks", "notifications", "notifs", "appdata")
         updated_task = dict(db.execute("SELECT * FROM tasks WHERE id=? AND workspace_id=?",(tid,wid())).fetchone())
         # Push SSE — all workspace clients get the new stage/assignee immediately
+        # BUG FIX (comment shows in the project channel but not in the task's
+        # own Comments tab): this event previously only carried stage/project,
+        # and the client's realtime handler does an in-place field merge into
+        # its cached tasks[] array rather than a full re-fetch. Since
+        # `comments` was never in the payload, a task reopened from that
+        # cached array kept showing whatever comments it had before the edit
+        # — even though the DB (and the channel message inserted above, which
+        # is always fetched fresh) already had the new comment. Include
+        # comments/assignee so the client's merge picks them up too.
         _sse_publish(wid(), "task_updated", {"id": tid, "action": "updated",
                                               "stage": updated_task.get("stage",""),
-                                              "project": updated_task.get("project","")})
+                                              "project": updated_task.get("project",""),
+                                              "assignee": updated_task.get("assignee",""),
+                                              "comments": updated_task.get("comments","[]")})
         return jsonify(updated_task)
 
 

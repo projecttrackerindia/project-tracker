@@ -5719,17 +5719,25 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
   const [stableOrder,setStableOrder]=useState(null); // null = not yet fetched
   const orderSetRef=useRef(false);
 
-  const allProjectsLoadedRef=useRef(false);
+  const allProjectsLoadedForTeamRef=useRef(undefined); // which team_id (or '' for none) we've already fetched
   useEffect(()=>{
-    if(allProjectsLoadedRef.current)return;
+    const teamKey=(activeTeam&&activeTeam.id)||'';
+    if(allProjectsLoadedForTeamRef.current===teamKey)return;
     // BUG FIX: this used to call /api/projects/all with no team_id, which
     // returns every project in the whole workspace — so switching to
     // Channels showed other teams' project channels (and their message
     // activity/unread badges) alongside your own. Scope it to the team
     // currently in view, same as Projects/Tasks/Tickets already do.
+    // FURTHER FIX: this only ran once ([] deps) — if activeTeam loaded
+    // asynchronously (still null/undefined on first render), that very
+    // first fetch went out unscoped anyway and never refetched once the
+    // real team arrived, so every project's last-message timestamp — and
+    // therefore its unread badge — stayed based on the whole workspace,
+    // showing "unread" for channels you'd never even seen. Re-run whenever
+    // the resolved team actually changes (including undefined -> defined).
     api.get('/api/projects/all'+teamIdQS).then(d=>{
       if(Array.isArray(d)&&d.length){
-        allProjectsLoadedRef.current=true;
+        allProjectsLoadedForTeamRef.current=teamKey;
         setAllProjects(d);
         // If stableOrder not yet set, use creation order (alphabetical) as stable base
         if(!orderSetRef.current){
@@ -5741,7 +5749,7 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
         }
       }
     });
-  },[]);
+  },[activeTeam&&activeTeam.id]);
 
   useEffect(()=>{
     const fetchTs=async()=>{
@@ -5787,7 +5795,16 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     fetchTs();
     const id=setInterval(fetchTs,60000); // SSE handles message updates; fallback only
     return()=>clearInterval(id);
-  },[]);
+    // BUG FIX: [] deps meant this effect (and the closure captured by its
+    // setInterval) only ever used the teamIdQS value from the very first
+    // render. If activeTeam was still null/undefined at that point (it
+    // loads asynchronously), every poll for the rest of the session kept
+    // fetching last-message timestamps for the WHOLE workspace instead of
+    // the current team — so projects you'd never opened in Channels (and
+    // had no lastSeen entry for) permanently showed an unread badge, since
+    // any timestamp is "newer" than an empty lastSeen. Re-create the
+    // effect (and its interval) whenever the resolved team actually changes.
+  },[activeTeam&&activeTeam.id]);
 
   const [pid,setPid]=useState('');
   const pidRef=useRef('');
@@ -13451,7 +13468,7 @@ function App(){
                 setData&&setData(prev=>{
                   const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
                   if(d.action==='deleted'||msg.type==='task.deleted'){ptMarkTaskDeleted(d.id);return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};}
-                  return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now()}:t)};
+                  return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t)};
                 });
               }
               return;
@@ -14155,7 +14172,7 @@ function App(){
           setData&&setData(prev=>{
             const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
             if(d.action==='deleted'||msg.type==='task.deleted'){ptMarkTaskDeleted(d.id);return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};}
-            return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now()}:t)};
+            return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t)};
           });
         }
         return;
@@ -14249,7 +14266,17 @@ function App(){
       }
     };
     checkDue();
-    const id=setInterval(()=>{if(!document.hidden)checkDue();},45000); // was 180000 — too coarse for a 60s-wide-or-narrower warning window
+    // BUG FIX (reminders only give sound/notification while this tab is
+    // focused): the interval used to skip checkDue() entirely whenever
+    // document.hidden was true — i.e. whenever this tab wasn't the one
+    // currently in focus (working in another tab/app, or the window
+    // minimized). That defeats the entire point of a reminder, which needs
+    // to alert you precisely while you're NOT looking at this tab. The
+    // reminder was never lost — due_reminders() still returned it once you
+    // switched back — but nothing fired until then, which read as "only
+    // works when I'm on that page." Browsers throttle background-tab
+    // intervals somewhat, but still run them, so drop the visibility gate.
+    const id=setInterval(checkDue,45000); // was 180000 — too coarse for a 60s-wide-or-narrower warning window
     return()=>clearInterval(id);
   },[cu,addToast]);
 

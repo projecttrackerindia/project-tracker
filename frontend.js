@@ -4417,7 +4417,8 @@ const REACTION_EMOJIS=['👍','❤️','😂','😮','😢','🔥','👏','🙏'
 const emojiHover=(ev,on)=>{const el=ev.currentTarget;if(!el)return;const rect=el.getBoundingClientRect();const cx=rect.left+rect.width/2;const cy=rect.top+rect.height/2;const dx=((ev.clientX||cx)-cx)/Math.max(1,rect.width);const dy=((ev.clientY||cy)-cy)/Math.max(1,rect.height);el.style.transform=on?`translate(${dx*5}px, ${-8+dy*3}px) scale(1.48) rotate(${dx*7}deg)`:'translate(0,0) scale(1) rotate(0deg)';el.style.zIndex=on?'3':'1';el.style.filter=on?'drop-shadow(0 10px 14px rgba(0,0,0,.38)) saturate(1.35)':'saturate(1.05)';};
 const emojiMove=(ev)=>emojiHover(ev,true);
 const isImageAttachment=(content)=>/\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(content||''));
-function MessagesView({projects,users,cu,tasks}){
+function MessagesView({projects,users,cu,tasks,activeTeam}){
+  const teamIdQS=activeTeam&&activeTeam.id?('?team_id='+encodeURIComponent(activeTeam.id)):'';
   const [allProjects,setAllProjects]=useState(safe(projects));
   const [lastMsgTs,setLastMsgTs]=useState({});
   const [stableOrder,setStableOrder]=useState(null); // null = not yet fetched
@@ -4426,7 +4427,7 @@ function MessagesView({projects,users,cu,tasks}){
   const allProjectsLoadedRef=useRef(false);
   const allProjectsRetryRef=useRef(0);
   const loadAllProjects=useCallback(()=>{
-    api.get('/api/projects/all').then(d=>{
+    api.get('/api/projects/all'+teamIdQS).then(d=>{
       if(Array.isArray(d)){
         // Accept the response even if empty — an empty workspace is valid and
         // should not be treated as a failure that blocks future updates.
@@ -4474,7 +4475,7 @@ function MessagesView({projects,users,cu,tasks}){
 
   useEffect(()=>{
     const fetchTs=async()=>{
-      const d=await api.get('/api/projects/last-messages');
+      const d=await api.get('/api/projects/last-messages'+teamIdQS);
       if(d&&typeof d==='object'){
         setLastMsgTs(d);
         if(!orderSetRef.current){
@@ -11611,7 +11612,7 @@ function App(){
                   const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
                   if(d.action==='deleted'||msg.type==='task.deleted'){ptMarkTaskDeleted(d.id);return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};}
                   if(d.task)return {...prev,tasks:ptMergeTasksStable(tasks,[{...d.task,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])};
-                  const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.client_task_key?{client_task_key:d.client_task_key}:{}),...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}:t);
+                  const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.client_task_key?{client_task_key:d.client_task_key}:{}),...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}:t);
                   // If this is a 'created' event and the task isn't in the list yet (POST still in flight),
                   // schedule a bust reload to fetch the confirmed task from DB
                   if(d.action==='created'&&!tasks.some(t=>String(t.id)===String(d.id))&&!tasks.some(t=>t._pending)){
@@ -12270,7 +12271,7 @@ function App(){
           setData&&setData(prev=>{
             const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
             if(d.action==='deleted'||msg.type==='task.deleted')return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};
-            const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now()}:t);
+            const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t);
             // If this is a 'created' event and task isn't in the list, schedule a bust load
             if(d.action==='created'&&!tasks.some(t=>String(t.id)===String(d.id))&&!tasks.some(t=>t._pending)){
               setTimeout(()=>load(undefined,{bust:true}),800);
@@ -12355,7 +12356,7 @@ function App(){
       }
     };
     checkDue();
-    const id=setInterval(()=>{if(!document.hidden)checkDue();},30000); // SSE handles most updates; fallback only
+    const id=setInterval(checkDue,30000); // BUG FIX: was gated on !document.hidden, so reminders never fired while this tab was backgrounded — see template.html for full rationale
     return()=>clearInterval(id);
   },[cu,addToast]);
 
@@ -12494,7 +12495,7 @@ function App(){
               onClearInitialTask=${()=>setInitialTaskId(null)}
               onlineUsers=${onlineUsers}
             />`:null}
-            ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
+            ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} activeTeam=${activeTeam} key=${'msgs-'+(teamCtx||'all')}/>`:null}
             ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification}/>`:null}

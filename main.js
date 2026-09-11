@@ -4393,7 +4393,8 @@ const REACTION_EMOJIS=['👍','❤️','😂','😮','😢','🔥','👏','🙏'
 const emojiHover=(ev,on)=>{const el=ev.currentTarget;if(!el)return;const rect=el.getBoundingClientRect();const cx=rect.left+rect.width/2;const cy=rect.top+rect.height/2;const dx=((ev.clientX||cx)-cx)/Math.max(1,rect.width);const dy=((ev.clientY||cy)-cy)/Math.max(1,rect.height);el.style.transform=on?`translate(${dx*5}px, ${-8+dy*3}px) scale(1.48) rotate(${dx*7}deg)`:'translate(0,0) scale(1) rotate(0deg)';el.style.zIndex=on?'3':'1';el.style.filter=on?'drop-shadow(0 10px 14px rgba(0,0,0,.38)) saturate(1.35)':'saturate(1.05)';};
 const emojiMove=(ev)=>emojiHover(ev,true);
 const isImageAttachment=(content)=>/\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(content||''));
-function MessagesView({projects,users,cu,tasks}){
+function MessagesView({projects,users,cu,tasks,activeTeam}){
+  const teamIdQS=activeTeam&&activeTeam.id?('?team_id='+encodeURIComponent(activeTeam.id)):'';
   const [allProjects,setAllProjects]=useState(safe(projects));
   const [lastMsgTs,setLastMsgTs]=useState({});
   const [stableOrder,setStableOrder]=useState(null); // null = not yet fetched
@@ -4402,7 +4403,7 @@ function MessagesView({projects,users,cu,tasks}){
   const allProjectsLoadedRef=useRef(false);
   const allProjectsRetryRef=useRef(0);
   const loadAllProjects=useCallback(()=>{
-    api.get('/api/projects/all').then(d=>{
+    api.get('/api/projects/all'+teamIdQS).then(d=>{
       if(Array.isArray(d)){
         // Accept the response even if empty — an empty workspace is valid and
         // should not be treated as a failure that blocks future updates.
@@ -4450,7 +4451,7 @@ function MessagesView({projects,users,cu,tasks}){
 
   useEffect(()=>{
     const fetchTs=async()=>{
-      const d=await api.get('/api/projects/last-messages');
+      const d=await api.get('/api/projects/last-messages'+teamIdQS);
       if(d&&typeof d==='object'){
         setLastMsgTs(d);
         if(!orderSetRef.current){
@@ -12061,7 +12062,7 @@ function App(){
           setData&&setData(prev=>{
             const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
             if(d.action==='deleted'||msg.type==='task.deleted')return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};
-            return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),_localTs:Date.now()}:t)};
+            return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t)};
           });
         }
         return;
@@ -12124,7 +12125,7 @@ function App(){
     // Startup jitter: delay 10–20 s so reminders/due doesn't fire at t=0 with bootstrap
     const remStartDelay=10000+Math.random()*10000;
     const remStartTimer=setTimeout(()=>checkDue(),remStartDelay);
-    const id=setInterval(()=>{if(!document.hidden)checkDue();},30000); // SSE handles most updates; fallback only
+    const id=setInterval(checkDue,30000); // BUG FIX: was gated on !document.hidden, so reminders never fired while this tab was backgrounded — see template.html for full rationale
     return()=>{clearTimeout(remStartTimer);clearInterval(id);};
   },[cu,addToast]);
 
@@ -12263,7 +12264,7 @@ function App(){
               initialTaskId=${initialTaskId}
               onClearInitialTask=${()=>setInitialTaskId(null)}
             />`:null}
-            ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} key=${'msgs-'+(teamCtx||'all')}/>`:null}
+            ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} activeTeam=${activeTeam} key=${'msgs-'+(teamCtx||'all')}/>`:null}
             <div style=${{display:baseView==='dm'?'flex':'none',flex:1,overflow:'hidden',flexDirection:'column',height:'100%'}}>
               <${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>
             </div>
