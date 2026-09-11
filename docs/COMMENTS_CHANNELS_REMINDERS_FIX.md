@@ -24,25 +24,44 @@ now copies those fields too when present.
 
 ## 2. Channel unread badges showing "1" for channels you'd already read
 
-`MessagesView` computes badges by comparing each project's latest message
-timestamp (`/api/projects/last-messages`) against a per-project "last seen"
-timestamp kept in `localStorage`. In `template.html`, the effect that fetches
-those timestamps (and the one that loads the project list for Channels) had
-an empty dependency array — they only ran once, at mount, using whatever
-`activeTeam` was at that exact instant. `activeTeam` loads asynchronously, so
-if it was still `null` on that first render, the fetch went out **unscoped**
-(whole workspace) and, because the effect never re-ran, stayed unscoped for
-the rest of the session. Any project from another team — which you'd never
-opened in Channels and so have no "last seen" entry for — then permanently
-showed an unread badge, since any timestamp looks "newer" than an empty one.
+There were two separate bugs stacking on top of each other here.
 
-**Fix:** both effects now depend on the resolved team id, so they re-run
-(and re-scope) once `activeTeam` actually loads or changes.
+**2a — team-scoping never re-ran.** `MessagesView` computes badges by
+comparing each project's latest message timestamp (`/api/projects/last-messages`)
+against a per-project "last seen" timestamp kept in `localStorage`. In
+`template.html`, the effect that fetches those timestamps (and the one that
+loads the project list for Channels) had an empty dependency array — they
+only ran once, at mount, using whatever `activeTeam` was at that exact
+instant. `activeTeam` loads asynchronously, so if it was still `null` on that
+first render, the fetch went out **unscoped** (whole workspace) and, because
+the effect never re-ran, stayed unscoped for the rest of the session. Any
+project from another team — which you'd never opened in Channels and so have
+no "last seen" entry for — then permanently showed an unread badge, since any
+timestamp looks "newer" than an empty one.
 
-`main.js` and `frontend.js` never had this team-scoping applied at all (an
-earlier divergence, not something touched in this pass before now) — ported
-the same `teamIdQS` scoping into both, using their existing `activeTeam`
-variable and the `key`-based remount they already do on team switch.
+Fixed by making both effects depend on the resolved team id, so they re-run
+(and re-scope) once `activeTeam` actually loads or changes. `main.js` and
+`frontend.js` never had this team-scoping applied at all (an earlier
+divergence) — ported the same `teamIdQS` scoping into both, using their
+existing `activeTeam` variable and the `key`-based remount they already do on
+team switch.
+
+**2b — every sign-out wiped all read history.** `logout()` explicitly deleted
+the `pfLastSeen` localStorage key — the record of what you've already seen in
+each channel — on every single logout, treating it like session data. It's
+really a per-user preference, the same category as dark mode or sidebar
+customization (which the code already deliberately excludes from this wipe
+with a comment saying they "should survive sign-out/sign-in"). So every
+sign-out + sign-in cycle reset every channel back to "never seen," which is
+exactly what showed up in your screenshot: all 15 channels badged right after
+logging back in.
+
+Fixed by scoping the key per-user (`pfLastSeen:<user id>` instead of a single
+shared `pfLastSeen`) and removing it from logout's wipe list entirely. This
+fixes it in both directions: signing back in as the same user keeps your own
+read history, and a different user logging into the same browser afterward
+no longer inherits someone else's "already read" markers for channels they've
+never actually opened.
 
 ## 3. Channels not showing every project update (priority, due date, etc.)
 

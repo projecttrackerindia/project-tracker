@@ -4530,9 +4530,16 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
   const fileInputRef=useRef(null);
   const [channelUnread,setChannelUnread]=useState({}); // {projectId: count}
   // Persist lastSeen to localStorage so refresh doesn't reset unread counts
-  const _pfLastSeenInit=(()=>{try{return JSON.parse(localStorage.getItem('pfLastSeen')||'{}');}catch{return {};}})();
+  // BUG FIX (all channels show unread again after sign-out/sign-in): logout()
+  // used to wipe the shared 'pfLastSeen' key entirely, on every logout, as if
+  // it were session data — but it's a per-user read-history preference, the
+  // same category as dark-mode or sidebar customization, which are
+  // deliberately kept. Scoping the key by user id fixes it two ways: the
+  // same user signing back in keeps their own read history, and a different
+  // user logging into the same browser afterward doesn't inherit it.
+  const _pfLastSeenInit=(()=>{try{return JSON.parse(localStorage.getItem('pfLastSeen:'+((cu&&cu.id)||''))||'{}');}catch{return {};}})();
   const lastSeenMsgRef=useRef(_pfLastSeenInit);
-  const saveLastSeen=(obj)=>{try{localStorage.setItem('pfLastSeen',JSON.stringify(obj));}catch{}};
+  const saveLastSeen=(obj)=>{try{localStorage.setItem('pfLastSeen:'+((cu&&cu.id)||''),JSON.stringify(obj));}catch{}};
   const [showInfo,setShowInfo]=useState(false);
   const [chanSearch,setChanSearch]=useState('');
   const [newestFirst,setNewestFirst]=useState(false);
@@ -12232,7 +12239,7 @@ function App(){
     }
     // 5. Clear ALL localStorage only AFTER server confirms logout
     try{
-      const keysToRemove=['pf_had_session','pf_dark','pf_col','pf_perms','pf_accent','pfLastSeen'];
+      const keysToRemove=['pf_had_session','pf_dark','pf_col','pf_perms','pf_accent'];
       keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
       Object.keys(localStorage).forEach(k=>{
         if(k.startsWith('vw_ai_recents_')||k.startsWith('pf_')){
