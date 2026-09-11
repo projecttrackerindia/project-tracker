@@ -5183,7 +5183,7 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
             <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',margin:0}}>Project Progress</h3>
             <button class="btn bg" style=${{fontSize:10,padding:'2px 9px',height:22}} onClick=${()=>onNav('projects')}>View All</button>
           </div>
-          <div style=${{flex:1,overflowY:'auto',maxHeight:220}}>
+          <div style=${{flex:1,overflowY:'auto',maxHeight:220,maskImage:'linear-gradient(to bottom,#000 calc(100% - 18px),transparent 100%)',WebkitMaskImage:'linear-gradient(to bottom,#000 calc(100% - 18px),transparent 100%)'}}>
           ${p.map(proj=>{
             const pt=t.filter(x=>x.project===proj.id);
             const pc=pt.length?Math.round(pt.reduce((a,x)=>a+(x.pct||0),0)/pt.length):(proj.progress||0);
