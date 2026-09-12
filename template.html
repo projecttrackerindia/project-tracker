@@ -11124,10 +11124,14 @@ const VS = {
 };
 
 // ── Password modal ────────────────────────────────────────────────────────────
-function VaultPwModal({title, mode, onConfirm, onClose, kind}){
+function VaultPwModal({title, mode, onConfirm, onClose, kind, externalError}){
   // mode: 'set' | 'verify'. kind: label for what's being locked/unlocked —
   // defaults to 'Card' for per-card locks; pass 'Vault' for the whole-vault
   // master password / offline-passphrase gates so the copy reads correctly.
+  // externalError: a server-side failure (e.g. "Incorrect password") passed
+  // in from the caller after onConfirm resolves — shown inside the modal
+  // itself so a failed unlock is never silent just because the modal stays
+  // open (it doesn't auto-close on failure, only on success).
   const noun = kind || 'Card';
   const [pw1,setPw1]=useState('');
   const [pw2,setPw2]=useState('');
@@ -11171,7 +11175,7 @@ function VaultPwModal({title, mode, onConfirm, onClose, kind}){
               onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
             <button style=${eyeBtn} type="button" onClick=${()=>setShow2(!show2)}>${show2?'Hide':'Show'}</button>
           </div>`}
-        ${err && html`<div style=${{fontSize:12,color:'var(--rd2)',marginBottom:10}}>${err}</div>`}
+        ${(err||externalError) && html`<div style=${{fontSize:12,color:'var(--rd2)',marginBottom:10}}>${err||externalError}</div>`}
         ${mode==='set' && html`<div style=${{fontSize:11,color:'var(--tx2)',background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.15)',borderRadius:7,padding:'7px 10px',marginBottom:14}}>⚠️ Cannot be recovered if forgotten.</div>`}
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
@@ -11588,6 +11592,7 @@ function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, 
         <${VaultPwModal}
           title=${title}
           mode=${showPwMo}
+          externalError=${unlockErr}
           onConfirm=${async pw=>{
             if(showPwMo==='verify'){
               const r = await onUnlock(card.id, pw);
@@ -11602,7 +11607,6 @@ function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, 
             }
           }}
           onClose=${()=>{setShowPwMo(null);setUnlockErr('');}}/>`}
-      ${unlockErr && !showPwMo && html`<div style=${{padding:'0 18px 12px',fontSize:11.5,color:'var(--rd2)'}}>⚠ ${unlockErr}</div>`}
 
       ${showDel && html`
         <${VaultDelModal}
@@ -12025,9 +12029,9 @@ function VaultView({cu}){
         title="Offline Vault"
         kind="Vault"
         mode=${offlinePwModal}
+        externalError=${offlineErr}
         onConfirm=${pw=>unlockOffline(pw)}
         onClose=${()=>{}}/>
-      ${offlineErr && html`<div style=${{position:'fixed',bottom:24,color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px'}}>⚠ ${offlineErr}</div>`}
     </div>`;
   }
   // Online: whole-vault master password, if the user has set one up.
@@ -12037,9 +12041,9 @@ function VaultView({cu}){
         title="My Vault"
         kind="Vault"
         mode="verify"
+        externalError=${masterErr}
         onConfirm=${pw=>verifyMaster(pw)}
         onClose=${()=>{}}/>
-      ${masterErr && html`<div style=${{position:'fixed',bottom:24,color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px'}}>⚠ ${masterErr}</div>`}
     </div>`;
   }
   // The backend blocked every /api/vault request outright — this workspace's
@@ -12072,11 +12076,11 @@ function VaultView({cu}){
             <div style=${{fontSize:12,color:'var(--tx2)',marginTop:2,fontWeight:500}}>Encrypted credential store · Click any cell to edit</div>
           </div>
         </div>
-        <button class="vault-new-btn" onClick=${()=>setShowNew(true)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Card
-        </button>
-        <div style=${{display:'flex',gap:8}}>
+        <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <button class="vault-new-btn" onClick=${()=>setShowNew(true)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Card
+          </button>
           ${(!cu||!cu._offline) && html`<button class="vault-action-btn" title=${masterStatus&&masterStatus.enabled?'Change your vault master password':'Set a single password that unlocks your whole vault for the session, instead of one per card'} onClick=${()=>setShowSetMaster(true)}>🛡️ ${masterStatus&&masterStatus.enabled?'Change Master Password':'Set Master Password'}</button>`}
           <button class="vault-action-btn" title="Re-lock the vault now" onClick=${lockVaultNow}>🔒 Lock Vault</button>
         </div>
@@ -12177,9 +12181,9 @@ function VaultView({cu}){
           title="Vault Master Password"
           kind="Vault"
           mode="set"
+          externalError=${masterErr}
           onConfirm=${async pw=>{ const ok=await setMaster(pw); if(ok) setShowSetMaster(false); }}
-          onClose=${()=>setShowSetMaster(false)}/>`}
-      ${showSetMaster && masterErr && html`<div style=${{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px',zIndex:2147483001}}>⚠ ${masterErr}</div>`}
+          onClose=${()=>{setShowSetMaster(false);setMasterErr('');}}/>`}
 
       <!-- ── Audit Log Panel ── -->
       ${!vLoading && !cu._offline && html`
