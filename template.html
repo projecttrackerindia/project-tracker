@@ -11806,6 +11806,12 @@ function VaultView({cu}){
   const [masterStatus, setMasterStatus] = useState(null); // {enabled, unlocked} | null while loading
   const [masterErr, setMasterErr] = useState('');
   const [showSetMaster, setShowSetMaster] = useState(false);
+  // Set when the backend blocks /api/vault entirely because this workspace's
+  // plan doesn't include Vault — previously a blocked response silently fell
+  // through to "vault is empty" (Array.isArray(data) was false, so it mapped
+  // to []), which looked exactly like data loss even though nothing was ever
+  // touched. Now it renders its own clear message instead.
+  const [planBlocked, setPlanBlocked] = useState(false);
 
   // ── Offline mode passphrase ──────────────────────────────────────────────
   // The localStorage blob is now always encrypted (see vaultLoad/vaultPersist)
@@ -11841,6 +11847,12 @@ function VaultView({cu}){
     }
     setVLoading(true);
     Promise.all([api.get('/api/vault'), api.get('/api/vault/audit')]).then(([data, audit])=>{
+      if(data && data.upgrade_required){
+        setPlanBlocked(true);
+        setVLoading(false);
+        return;
+      }
+      setPlanBlocked(false);
       const cards = Array.isArray(data) ? data.map(c=>({
         ...c,
         rows: typeof c.rows==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return [];}}(c.rows)) : (c.rows||[]),
@@ -12028,6 +12040,21 @@ function VaultView({cu}){
         onConfirm=${pw=>verifyMaster(pw)}
         onClose=${()=>{}}/>
       ${masterErr && html`<div style=${{position:'fixed',bottom:24,color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px'}}>⚠ ${masterErr}</div>`}
+    </div>`;
+  }
+  // The backend blocked every /api/vault request outright — this workspace's
+  // plan doesn't include Vault. Show that plainly instead of "vault is empty",
+  // which looked like data loss even though nothing was ever read or touched.
+  if(cu && !cu._offline && planBlocked){
+    return html`<div style=${{...VS.wrap, display:'flex', alignItems:'center', justifyContent:'center', padding:24}}>
+      <div style=${{maxWidth:440,textAlign:'center'}}>
+        <div style=${{width:64,height:64,borderRadius:20,background:'rgba(245,158,11,.1)',border:'1.5px solid rgba(245,158,11,.3)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 18px',fontSize:30}}>🔒</div>
+        <div style=${{fontWeight:800,fontSize:17,color:'var(--tx)',marginBottom:8}}>Vault isn't included in your current plan</div>
+        <div style=${{fontSize:13,color:'var(--tx2)',lineHeight:1.6}}>
+          Your cards haven't gone anywhere — they're safely stored, this view just can't load them until Vault is enabled for this workspace.
+          Ask your workspace admin to upgrade to the Team plan or higher, or enable the Vault add-on.
+        </div>
+      </div>
     </div>`;
   }
 
