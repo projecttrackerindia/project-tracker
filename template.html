@@ -10926,12 +10926,51 @@ function vaultStorageKey(cu){
   try{ const lastUid = localStorage.getItem('project-tracker_last_uid'); if(lastUid) return 'project-tracker_vault_v2_'+lastUid; }catch(_){}
   return 'project-tracker_vault_v2_guest';
 }
-function vaultLoad(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch(_){ return []; } }
-function vaultPersist(key,cards){ try{ localStorage.setItem(key,JSON.stringify(cards)); }catch(_){} }
 function vaultNewId(){ return 'c'+Date.now()+Math.random().toString(36).slice(2,6); }
-async function vaultHashPw(pw){
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('project-tracker::'+pw));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+// ── Offline-mode encryption (AES-GCM, passphrase-derived via PBKDF2) ─────────
+// Previously vaultLoad/vaultPersist read and wrote plain JSON to localStorage —
+// every credential sitting in cleartext on disk for anyone with access to the
+// browser profile (extensions, other local users, a stolen laptop). Now the
+// blob is always encrypted with a key derived from a passphrase the user
+// enters for the offline session; the passphrase itself is never persisted
+// anywhere, only kept in memory for as long as the tab is open.
+async function vaultDeriveLocalKey(passphrase, saltBytes){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:saltBytes, iterations:150000, hash:'SHA-256'},
+    baseKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']
+  );
+}
+function _b64(bytes){ return btoa(Array.from(bytes,b=>String.fromCharCode(b)).join('')); }
+function _unb64(str){ return new Uint8Array(atob(str).split('').map(c=>c.charCodeAt(0))); }
+async function vaultLoad(key, passphrase){
+  let raw; try{ raw = localStorage.getItem(key); }catch(_){ return []; }
+  if(!raw) return [];
+  // Legacy path: pre-encryption data written as plain JSON. Migrate it up
+  // (re-saved encrypted on the next vaultPersist call) rather than losing it.
+  if(raw[0]==='['){ try{ return JSON.parse(raw); }catch(_){ return []; } }
+  if(!passphrase) throw new Error('passphrase required');
+  try{
+    const blob = JSON.parse(raw);
+    const salt = _unb64(blob.salt), iv = _unb64(blob.iv), ct = _unb64(blob.ct);
+    const cryptoKey = await vaultDeriveLocalKey(passphrase, salt);
+    const plainBuf = await crypto.subtle.decrypt({name:'AES-GCM', iv}, cryptoKey, ct);
+    return JSON.parse(new TextDecoder().decode(plainBuf));
+  }catch(e){
+    throw new Error('Incorrect passphrase');
+  }
+}
+async function vaultPersist(key, cards, passphrase){
+  if(!passphrase) return; // never fall back to writing plaintext
+  try{
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cryptoKey = await vaultDeriveLocalKey(passphrase, salt);
+    const ctBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv}, cryptoKey, new TextEncoder().encode(JSON.stringify(cards)));
+    localStorage.setItem(key, JSON.stringify({salt:_b64(salt), iv:_b64(iv), ct:_b64(new Uint8Array(ctBuf))}));
+  }catch(_){}
 }
 function vaultGenPassword(len){
   len = len || 16;
@@ -11085,8 +11124,11 @@ const VS = {
 };
 
 // ── Password modal ────────────────────────────────────────────────────────────
-function VaultPwModal({title, mode, onConfirm, onClose}){
-  // mode: 'set' | 'verify'
+function VaultPwModal({title, mode, onConfirm, onClose, kind}){
+  // mode: 'set' | 'verify'. kind: label for what's being locked/unlocked —
+  // defaults to 'Card' for per-card locks; pass 'Vault' for the whole-vault
+  // master password / offline-passphrase gates so the copy reads correctly.
+  const noun = kind || 'Card';
   const [pw1,setPw1]=useState('');
   const [pw2,setPw2]=useState('');
   const [show1,setShow1]=useState(false);
@@ -11097,7 +11139,11 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
     if(!pw1){ setErr('Enter a password'); return; }
     if(mode==='set' && pw1.length<4){ setErr('Use at least 4 characters'); return; }
     if(mode==='set' && pw1!==pw2){ setErr('Passwords do not match'); return; }
-    vaultHashPw(pw1).then(h=>onConfirm(h)).catch(()=>setErr('Error hashing password'));
+    // The raw password is sent straight to onConfirm now — hashing (bcrypt)
+    // happens server-side for real verification. Previously this hashed with
+    // an unsalted SHA-256 in the browser and the server just stored whatever
+    // hash it was given, so "locked" cards were never actually gated.
+    onConfirm(pw1);
   }
   const inp = {
     width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,
@@ -11108,7 +11154,7 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
   return html`
     <div style=${{...VS.moBack,zIndex:2147483000}} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
       <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:16,padding:'26px',width:400,maxWidth:'calc(100vw - 32px)',boxShadow:'0 32px 80px rgba(0,0,0,.6)',position:'relative'}}>
-        <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)',marginBottom:4}}>${mode==='set' ? '🔒 Lock Card' : '🔓 Unlock Card'}</div>
+        <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)',marginBottom:4}}>${mode==='set' ? '🔒 Lock '+noun : '🔓 Unlock '+noun}</div>
         <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:18,lineHeight:1.5}}>${mode==='set' ? 'Set a password to protect "'+title+'". This popup is now outside the card so it will not be hidden.' : 'Enter password for "'+title+'"'}</div>
         <div style=${{marginBottom:12,position:'relative'}}>
           <input style=${inp} type=${show1?'text':'password'} placeholder="Password" value=${pw1}
@@ -11129,7 +11175,7 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
         ${mode==='set' && html`<div style=${{fontSize:11,color:'var(--tx2)',background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.15)',borderRadius:7,padding:'7px 10px',marginBottom:14}}>⚠️ Cannot be recovered if forgotten.</div>`}
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
-          <button style=${{...VS.btnPri, background: mode==='set' ? 'var(--grad-warn)' : 'var(--grad-vault)'}} onClick=${submit}>${mode==='set'?'Lock Card':'Unlock'}</button>
+          <button style=${{...VS.btnPri, background: mode==='set' ? 'var(--grad-warn)' : 'var(--grad-vault)'}} onClick=${submit}>${mode==='set'?'Lock '+noun:'Unlock'}</button>
         </div>
       </div>
     </div>`;
@@ -11153,9 +11199,10 @@ function VaultDelModal({title, onConfirm, onClose}){
 
 // ── Spreadsheet card ──────────────────────────────────────────────────────────
 function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, onDelete, onUpdate}){
-  const isLocked = !!card.lockHash;
+  const isLocked = !!card.locked;
   const canSee = !isLocked || isUnlocked;
   const iconInfo = vaultGetIcon(card.title, card.tags);
+  const [unlockErr, setUnlockErr] = useState('');
 
   const [title,    setTitle]    = useState(card.title||'');
   const [tags,     setTags]     = useState(card.tags||'');
@@ -11518,6 +11565,7 @@ function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, 
             <button class="vault-action-btn" aria-pressed=${pinned} style=${pinned?{background:'rgba(139,92,246,.14)',borderColor:'rgba(139,92,246,.4)',color:'var(--ac2)'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
             ${isSimple && html`<button class="vault-action-btn" onClick=${()=>setSheetMode(s=>!s)}>${sheetMode?'✓ Done':'✏️ Edit'}</button>`}
             ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>🔒 Lock</button>`}
+            ${isLocked && isUnlocked && html`<button class="vault-action-btn danger" onClick=${()=>{ setUnlockErr(''); onUpdate({...card,title,tags,cols,rows,notes,lockPassword:'',locked:false}); }}>🔓 Remove Lock</button>`}
             ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
             <button class="vault-action-btn danger" aria-label=${'Delete '+(title||'card')} onClick=${()=>setShowDel(true)}>🗑️ Delete</button>
           </div>
@@ -11540,19 +11588,21 @@ function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, 
         <${VaultPwModal}
           title=${title}
           mode=${showPwMo}
-          onConfirm=${h=>{
+          onConfirm=${async pw=>{
             if(showPwMo==='verify'){
-              if(h===card.lockHash){
-                onUnlock(card.id);
-                setShowPwMo(null);
-                try { api.post('/api/vault/'+card.id+'/audit', {action:'unlock', detail: title||'card'}); } catch(_){ }
-              } else { alert('Wrong password'); }
+              const r = await onUnlock(card.id, pw);
+              if(r && r.ok){ setShowPwMo(null); setUnlockErr(''); }
+              else { setUnlockErr((r&&r.error)||'Incorrect password'); }
             } else {
-              onUpdate({...card,title,tags,cols,rows,lockHash:h});
+              // Raw password goes to the server (bcrypt-hashed there) via the
+              // `lockPassword` field — apiUpdate only sends it as `lock_password`
+              // for this one save, then clears it from state immediately after.
+              onUpdate({...card,title,tags,cols,rows,notes,lockPassword:pw,locked:true});
               setShowPwMo(null);
             }
           }}
-          onClose=${()=>setShowPwMo(null)}/>`}
+          onClose=${()=>{setShowPwMo(null);setUnlockErr('');}}/>`}
+      ${unlockErr && !showPwMo && html`<div style=${{padding:'0 18px 12px',fontSize:11.5,color:'var(--rd2)'}}>⚠ ${unlockErr}</div>`}
 
       ${showDel && html`
         <${VaultDelModal}
@@ -11587,6 +11637,26 @@ function VaultNewCardModal({onClose, onCreate}){
   function updateField(id, patch){ setFields(f=>f.map(x=>x.id===id?{...x,...patch}:x)); }
   function genPassword(id){ updateField(id, {value: vaultGenPassword(16), secret:true, show:true}); }
 
+  // Category templates: pre-fill the fields a card of this type usually
+  // needs, so the user isn't starting from one blank Key/Value row every
+  // time. Only applied when the form is still untouched (a single empty
+  // field) — never overwrites something the user already typed.
+  const VAULT_FIELD_TEMPLATES = {
+    database: ['Host','Port','Username','Password','Database Name'],
+    api:      ['Endpoint','API Key','Secret'],
+    server:   ['Host / IP','Username','Password','Port'],
+    auth:     ['Client ID','Client Secret','Redirect URI'],
+    cloud:    ['Access Key ID','Secret Access Key','Region'],
+    network:  ['Address','Username','Password'],
+  };
+  function applyTemplate(catKey){
+    const isUntouched = fields.length===1 && !fields[0].label.trim() && !fields[0].value.trim();
+    if(!isUntouched) return;
+    const labels = VAULT_FIELD_TEMPLATES[catKey];
+    if(!labels) return;
+    setFields(labels.map(l=>({id:vaultNewId(), label:l, value:'', secret:vaultIsSecretLabel(l), show:false})));
+  }
+
   function submit(){
     if(!title.trim()){ setErr('Title is required'); return; }
     const validFields = fields.filter(f=>f.label.trim() || f.value.trim());
@@ -11607,7 +11677,7 @@ function VaultNewCardModal({onClose, onCreate}){
       pinned: false,
       cols: rows.length ? cols : [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
       rows: rows,
-      lockHash: '',
+      locked: false,
     };
     onCreate(card);
     onClose();
@@ -11648,7 +11718,7 @@ function VaultNewCardModal({onClose, onCreate}){
           <div>
             <label style=${lbl}>Category</label>
             <select style=${themedInp}
-              value=${category} onChange=${e=>setCategory(e.target.value)}>
+              value=${category} onChange=${e=>{setCategory(e.target.value);applyTemplate(e.target.value);}}>
               <option value="">Auto-detect</option>
               ${VAULT_CATEGORY_LIST.map(c=>html`<option key=${c.key} value=${c.key}>${c.label}</option>`)}
             </select>
@@ -11729,17 +11799,40 @@ function VaultView({cu}){
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortBy, setSortBy] = useState('updated');
 
+  // ── Whole-vault master password gate ────────────────────────────────────
+  // Additive on top of per-card locks: one password gates the entire view
+  // for the session instead of forcing a separate password per card. Status
+  // is re-checked on mount (a fresh login always starts locked server-side).
+  const [masterStatus, setMasterStatus] = useState(null); // {enabled, unlocked} | null while loading
+  const [masterErr, setMasterErr] = useState('');
+  const [showSetMaster, setShowSetMaster] = useState(false);
+
+  // ── Offline mode passphrase ──────────────────────────────────────────────
+  // The localStorage blob is now always encrypted (see vaultLoad/vaultPersist)
+  // — the passphrase lives only in this component's memory for the session,
+  // never persisted anywhere itself.
+  const [offlinePw, setOfflinePw] = useState('');
+  const [offlinePwModal, setOfflinePwModal] = useState(null); // 'set'|'verify'|null
+  const [offlineErr, setOfflineErr] = useState('');
+
   const offlineKey = vaultStorageKey(cu);
 
-  // Load from cache first, then API (or localStorage if offline)
   useEffect(()=>{
     if(!cu) return;
     if(cu._offline){
-      setCards(vaultLoad(offlineKey));
+      const hasExisting = (()=>{ try{ return !!localStorage.getItem(offlineKey); }catch(_){ return false; } })();
+      setOfflinePwModal(hasExisting ? 'verify' : 'set');
       setVLoading(false);
       return;
     }
-    // Serve from module-level cache — avoids two fetches every time user switches to Vault view
+    api.get('/api/vault/master/status').then(s=>setMasterStatus(s&&!s.error?s:{enabled:false,unlocked:true})).catch(()=>setMasterStatus({enabled:false,unlocked:true}));
+  }, [cu && cu.id]);
+
+  // Load from cache first, then API — once we know the vault isn't gated
+  // (no master password, or already unlocked this session).
+  useEffect(()=>{
+    if(!cu || cu._offline) return;
+    if(!masterStatus || (masterStatus.enabled && !masterStatus.unlocked)) return;
     if(_vaultCache){
       setCards(_vaultCache.cards);
       setAuditLog(_vaultCache.auditLog);
@@ -11752,7 +11845,7 @@ function VaultView({cu}){
         ...c,
         rows: typeof c.rows==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return [];}}(c.rows)) : (c.rows||[]),
         cols: typeof c.cols==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return null;}}(c.cols)) : (c.cols||null),
-        lockHash: c.lock_hash||c.lockHash||''
+        locked: !!c.locked
       })) : [];
       const auditLog = Array.isArray(audit) ? audit : [];
       _vaultCache = { cards, auditLog };
@@ -11760,37 +11853,78 @@ function VaultView({cu}){
       setAuditLog(auditLog);
       setVLoading(false);
     }).catch(()=>{ setVLoading(false); });
-  }, [cu && cu.id]);
+  }, [cu && cu.id, masterStatus]);
+
+  // Offline: once the passphrase is confirmed, actually load the (decrypted) cards.
+  async function unlockOffline(pw){
+    try{
+      const loaded = await vaultLoad(offlineKey, pw);
+      setOfflinePw(pw);
+      setCards(loaded);
+      setOfflinePwModal(null);
+      setOfflineErr('');
+    }catch(e){
+      setOfflineErr(e.message || 'Incorrect passphrase');
+    }
+  }
+
+  async function verifyMaster(pw){
+    setMasterErr('');
+    const r = await api.post('/api/vault/master/verify', {password: pw});
+    if(r && r.ok){ setMasterStatus({enabled:true, unlocked:true}); return true; }
+    setMasterErr((r&&r.error)||'Incorrect password');
+    return false;
+  }
+  async function setMaster(newPw, currentPw){
+    setMasterErr('');
+    const r = await api.post('/api/vault/master/set', {new_password:newPw, current_password:currentPw||''});
+    if(r && r.ok){ setMasterStatus({enabled:true, unlocked:true}); setShowSetMaster(false); return true; }
+    setMasterErr((r&&r.error)||'Could not set master password');
+    return false;
+  }
+  async function lockVaultNow(){
+    if(!cu||cu._offline){ setOfflinePw(''); setCards([]); setOfflinePwModal('verify'); return; }
+    await api.post('/api/vault/master/lock', {});
+    setMasterStatus(s=>({...(s||{}), unlocked:false}));
+    setCards([]); setUnlocked({}); vaultClearCache();
+  }
 
   async function apiCreate(card){
     const res = await api.post('/api/vault', {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||'',
+      lock_password: card.lockPassword||'',
       category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned,
       notes: card.notes||''
     });
     vaultClearCache();
     if(res && res.id){
-      setCards(prev=>prev.map(c=>c.id===card.id?{...c,id:res.id,created:res.created}:c));
+      // Never keep the raw lock password sitting in state once it's been sent.
+      setCards(prev=>prev.map(c=>c.id===card.id?{...c,id:res.id,created:res.created,locked:!!card.lockPassword,lockPassword:undefined}:c));
     }
   }
   async function apiUpdate(card){
-    const res = await api.put('/api/vault/'+card.id, {
+    const payload = {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||'',
       category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned,
       notes: card.notes||''
-    });
+    };
+    // Only include lock_password when this save is explicitly setting/
+    // changing/removing the lock — omitting the key entirely on a normal
+    // content edit tells the server to leave the existing lock untouched
+    // (see vault_update: `"lock_password" in d`).
+    if(Object.prototype.hasOwnProperty.call(card,'lockPassword')) payload.lock_password = card.lockPassword||'';
+    const res = await api.put('/api/vault/'+card.id, payload);
     vaultClearCache();
     // Reconcile with the server's authoritative `updated` (and expires_at) once
     // the save confirms — the optimistic client-side timestamp set in push()
     // above is close enough for the interim, but this replaces it with the
     // real DB value so the relative-time display never drifts from the truth.
-    if(res && res.ok && res.updated){
-      setCards(prev=>prev.map(c=>c.id===card.id?{...c,updated:res.updated,expires_at:res.expires_at}:c));
+    if(res && res.ok){
+      setCards(prev=>prev.map(c=>c.id===card.id?{...c,updated:res.updated,expires_at:res.expires_at,locked:!!res.locked,lockPassword:undefined}:c));
     }
+    return res;
   }
   async function apiDelete(id){
     await api.del('/api/vault/'+id);
@@ -11801,23 +11935,44 @@ function VaultView({cu}){
     const next=[card,...cards];
     setCards(next);
     if(cu&&!cu._offline) apiCreate(card);
-    else vaultPersist(offlineKey,next);
+    else vaultPersist(offlineKey,next,offlinePw);
   }
   function handleUpdate(updated){
     const next=cards.map(c=>c.id===updated.id?updated:c);
     setCards(next);
     if(cu&&!cu._offline) apiUpdate(updated);
-    else vaultPersist(offlineKey,next);
+    else vaultPersist(offlineKey,next,offlinePw);
   }
   function handleDelete(id){
     const next=cards.filter(c=>c.id!==id);
     setCards(next);
     setUnlocked(u=>{const n={...u};delete n[id];return n;});
     if(cu&&!cu._offline) apiDelete(id);
-    else vaultPersist(offlineKey,next);
+    else vaultPersist(offlineKey,next,offlinePw);
   }
-  function handleUnlock(id){ setUnlocked(u=>({...u,[id]:true})); }
-  function handleLock(id){   setUnlocked(u=>{const n={...u};delete n[id];return n;}); }
+  // Real, server-verified unlock — replaces the old client-side hash compare
+  // that never actually gated anything. Returns {ok} or {error} so the card
+  // can show an inline message instead of a jarring native alert().
+  async function handleUnlock(id, password){
+    if(cu&&!cu._offline){
+      const r = await api.post('/api/vault/'+id+'/unlock', {password});
+      if(!r || r.error) return {error:(r&&r.error)||'Incorrect password'};
+      let rows=[]; try{ rows = JSON.parse(r.rows||'[]'); }catch(_){ rows=[]; }
+      setCards(prev=>prev.map(c=>c.id===id?{...c, rows, notes:r.notes||''}:c));
+      setUnlocked(u=>({...u,[id]:true}));
+      return {ok:true};
+    }
+    // Offline cards were already fully decrypted on passphrase entry — the
+    // per-card password is just a UI reveal gate in that mode.
+    setUnlocked(u=>({...u,[id]:true}));
+    return {ok:true};
+  }
+  function handleLock(id){
+    setUnlocked(u=>{const n={...u};delete n[id];return n;});
+    // Defense in depth: don't leave decrypted secrets sitting in memory/state
+    // once the card is re-locked — the next unlock re-fetches them.
+    if(cu&&!cu._offline) setCards(prev=>prev.map(c=>c.id===id&&c.locked?{...c,rows:[],notes:''}:c));
+  }
 
   const cardsWithCat = cards.map(c=>({...c, _cat: vaultCategoryInfo(c).key}));
   const counts = VAULT_CATEGORY_LIST.reduce((m,c)=>{m[c.key]=0;return m;},{});
@@ -11842,13 +11997,39 @@ function VaultView({cu}){
     return new Date(b.updated||0).getTime()-new Date(a.updated||0).getTime();
   });
 
-  const totalCreds = cards.reduce((s,c)=>(c.rows||[]).length+s,0);
-  const totalProtected = cards.filter(c=>c.lockHash).length;
+  const totalCreds = cards.reduce((s,c)=>s+(c.locked ? (c.row_count||0) : (c.rows||[]).length),0);
+  const totalProtected = cards.filter(c=>c.locked).length;
   const totalExpiring30 = cards.filter(c=>{
     const info=vaultExpiryInfo(c.expires_at); return info && !info.expired && info.soon;
   }).length;
   const totalPinned = cards.filter(c=>c.pinned).length;
   const secAudit = useMemo(()=>vaultSecurityAudit(cards),[cards]);
+
+  // ── Gate screens ──────────────────────────────────────────────────────────
+  // Offline: need the passphrase before anything can be decrypted at all.
+  if(cu && cu._offline && offlinePwModal){
+    return html`<div style=${{...VS.wrap, display:'flex', alignItems:'center', justifyContent:'center'}}>
+      <${VaultPwModal}
+        title="Offline Vault"
+        kind="Vault"
+        mode=${offlinePwModal}
+        onConfirm=${pw=>unlockOffline(pw)}
+        onClose=${()=>{}}/>
+      ${offlineErr && html`<div style=${{position:'fixed',bottom:24,color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px'}}>⚠ ${offlineErr}</div>`}
+    </div>`;
+  }
+  // Online: whole-vault master password, if the user has set one up.
+  if(cu && !cu._offline && masterStatus && masterStatus.enabled && !masterStatus.unlocked){
+    return html`<div style=${{...VS.wrap, display:'flex', alignItems:'center', justifyContent:'center'}}>
+      <${VaultPwModal}
+        title="My Vault"
+        kind="Vault"
+        mode="verify"
+        onConfirm=${pw=>verifyMaster(pw)}
+        onClose=${()=>{}}/>
+      ${masterErr && html`<div style=${{position:'fixed',bottom:24,color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px'}}>⚠ ${masterErr}</div>`}
+    </div>`;
+  }
 
   return html`
     <div class="vault-scroll" style=${{...VS.wrap, backgroundColor:'var(--bg)', backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)', backgroundSize:'32px 32px'}}>
@@ -11868,6 +12049,10 @@ function VaultView({cu}){
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New Card
         </button>
+        <div style=${{display:'flex',gap:8}}>
+          ${(!cu||!cu._offline) && html`<button class="vault-action-btn" title=${masterStatus&&masterStatus.enabled?'Change your vault master password':'Set a single password that unlocks your whole vault for the session, instead of one per card'} onClick=${()=>setShowSetMaster(true)}>🛡️ ${masterStatus&&masterStatus.enabled?'Change Master Password':'Set Master Password'}</button>`}
+          <button class="vault-action-btn" title="Re-lock the vault now" onClick=${lockVaultNow}>🔒 Lock Vault</button>
+        </div>
       </div>
 
       <!-- Stats bar (flat colored-top-border cards) -->
@@ -11944,7 +12129,7 @@ function VaultView({cu}){
       ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid">
       ${filtered.map(c=>html`
         <${VaultSpreadCard}
-          key=${c.id}
+          key=${c.id+':'+(unlocked[c.id]?'u':'l')}
           card=${c}
           isUnlocked=${!!unlocked[c.id]}
           isWeak=${secAudit.weakIds.has(c.id)}
@@ -11959,6 +12144,15 @@ function VaultView({cu}){
         <${VaultNewCardModal}
           onClose=${()=>setShowNew(false)}
           onCreate=${handleCreate}/>`}
+
+      ${showSetMaster && html`
+        <${VaultPwModal}
+          title="Vault Master Password"
+          kind="Vault"
+          mode="set"
+          onConfirm=${async pw=>{ const ok=await setMaster(pw); if(ok) setShowSetMaster(false); }}
+          onClose=${()=>setShowSetMaster(false)}/>`}
+      ${showSetMaster && masterErr && html`<div style=${{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',color:'var(--rd2)',fontSize:12,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:8,padding:'8px 14px',zIndex:2147483001}}>⚠ ${masterErr}</div>`}
 
       <!-- ── Audit Log Panel ── -->
       ${!vLoading && !cu._offline && html`
@@ -12005,7 +12199,13 @@ function VaultView({cu}){
                         reveal:  {label:'Reveal',  bg:'rgba(245,158,11,.1)', color:'var(--am)', icon:'👁'},
                         copy:    {label:'Copy',    bg:'rgba(99,102,241,.1)', color:'var(--ac2)', icon:'📋'},
                         unlock:  {label:'Unlock',  bg:'rgba(34,197,94,.1)',  color:'var(--gn)', icon:'🔓'},
+                        unlock_failed: {label:'Unlock failed', bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'⛔'},
                         create:  {label:'Create',  bg:'rgba(59,130,246,.1)', color:'var(--cy)', icon:'✚'},
+                        update:  {label:'Update',  bg:'rgba(148,163,184,.1)', color:'var(--tx2)', icon:'✎'},
+                        delete:  {label:'Delete',  bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'🗑'},
+                        master_set: {label:'Master password set', bg:'rgba(139,92,246,.1)', color:'var(--ac2)', icon:'🛡'},
+                        master_unlock: {label:'Vault unlocked', bg:'rgba(34,197,94,.1)', color:'var(--gn)', icon:'🔓'},
+                        master_unlock_failed: {label:'Vault unlock failed', bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'⛔'},
                       }[e.action] || {label:e.action, bg:'var(--sf2)', color:'var(--tx3)', icon:'•'};
                       const timeStr = e.created ? new Date(e.created).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                       return html`

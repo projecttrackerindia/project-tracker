@@ -43,31 +43,43 @@ except ImportError:
     log.warning("[VAULT] 'cryptography' package not installed — vault rows stored unencrypted. "
                 "Fix: pip install cryptography")
 
-_vault_fernet_instance = None
+_vault_master_key_bytes = None   # raw key bytes behind the master Fernet — used to derive per-user keys
+_vault_fernet_cache = {}         # user_id -> Fernet instance, derived from the master key (LRU-free, small N)
 
-def _get_vault_fernet():
-    """Return a cached Fernet instance, creating/loading the key on first call."""
-    global _vault_fernet_instance
+def _load_vault_master_key_bytes():
+    """Load (or generate) the workspace-wide master key material. This key is
+    never used directly to encrypt vault data anymore — every user gets their
+    own derived key (see _get_vault_fernet_for_user) so that a single leaked
+    key + DB dump doesn't hand over every user's secrets for free. The master
+    key only exists as the root material HKDF derives from."""
+    global _vault_master_key_bytes
     if not _FERNET_OK:
         return None
-    if _vault_fernet_instance is not None:
-        return _vault_fernet_instance
-    # 1) Prefer env var (set this in Railway / Render secrets)
+    if _vault_master_key_bytes is not None:
+        return _vault_master_key_bytes
+    # 1) Prefer env var (set this in Railway / Render secrets) — required in prod
     env_key = os.environ.get("VAULT_ENCRYPTION_KEY", "").strip()
     if env_key:
         try:
-            _vault_fernet_instance = _Fernet(env_key.encode() if isinstance(env_key, str) else env_key)
-            return _vault_fernet_instance
+            key_bytes = env_key.encode() if isinstance(env_key, str) else env_key
+            _Fernet(key_bytes)  # validate shape
+            _vault_master_key_bytes = key_bytes
+            return _vault_master_key_bytes
         except Exception as e:
             log.warning(f"[VAULT] VAULT_ENCRYPTION_KEY env var is invalid: {e} — generating a new key")
-    # 2) Fall back to a persisted key file
+    # 2) Fall back to a persisted key file (dev/local only — flagged loudly because
+    #    a key file living on the same disk/volume as the DB weakens the whole
+    #    point of encryption if that disk is ever exfiltrated as a whole).
     key_path = os.path.join(DATA_DIR, ".vault_enc_key")
     if os.path.exists(key_path):
         try:
             with open(key_path, "rb") as _kf:
                 k = _kf.read().strip()
-            _vault_fernet_instance = _Fernet(k)
-            return _vault_fernet_instance
+            _Fernet(k)
+            log.warning("[VAULT] Using a file-based vault key (%s). Set VAULT_ENCRYPTION_KEY "
+                        "in production so the key isn't stored alongside the database it protects.", key_path)
+            _vault_master_key_bytes = k
+            return _vault_master_key_bytes
         except Exception:
             pass
     # 3) Generate and persist a new key
@@ -78,30 +90,119 @@ def _get_vault_fernet():
         log.info(f"[VAULT] New vault encryption key generated and saved to {key_path}")
     except Exception as e:
         log.warning(f"[VAULT] Could not persist vault key ({e}) — key lives in memory only (restarts will lose it!)")
-    _vault_fernet_instance = _Fernet(k)
-    return _vault_fernet_instance
+    _vault_master_key_bytes = k
+    return _vault_master_key_bytes
 
-def vault_encrypt(plaintext: str) -> str:
-    """Encrypt a plaintext string. Returns a Fernet token string, or the original
-    if the cryptography library is unavailable (graceful degradation)."""
-    f = _get_vault_fernet()
+def _get_vault_fernet_for_user(user_id):
+    """Per-user Fernet instance, HKDF-derived from the master key + user_id.
+    Falls back to None (caller should then fall back to legacy plaintext/shared-key
+    handling) if the cryptography package or master key is unavailable."""
+    if not user_id:
+        return None
+    cached = _vault_fernet_cache.get(user_id)
+    if cached is not None:
+        return cached
+    master = _load_vault_master_key_bytes()
+    if not master:
+        return None
+    digest = hmac.new(master, ("vault-user:" + str(user_id)).encode("utf-8"), hashlib.sha256).digest()
+    derived_key = base64.urlsafe_b64encode(digest)
+    try:
+        f = _Fernet(derived_key)
+    except Exception:
+        return None
+    _vault_fernet_cache[user_id] = f
+    return f
+
+def _get_vault_fernet_legacy():
+    """The single shared-key Fernet instance used by every card before the
+    per-user key derivation above existed. Kept only so old rows encrypted
+    under the shared key keep decrypting after the upgrade."""
+    master = _load_vault_master_key_bytes()
+    if not master:
+        return None
+    try:
+        return _Fernet(master)
+    except Exception:
+        return None
+
+def vault_encrypt(plaintext: str, user_id: str = None) -> str:
+    """Encrypt a plaintext string with the given user's derived key. Returns
+    the original string if encryption is unavailable (graceful degradation —
+    matches the old behavior so a missing `cryptography` package never causes
+    silent data loss)."""
+    if not plaintext:
+        return plaintext
+    f = _get_vault_fernet_for_user(user_id) or _get_vault_fernet_legacy()
     if not f:
         return plaintext
     return f.encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
-def vault_decrypt(token: str) -> str:
-    """Decrypt a Fernet token. Falls back to returning the raw value for any
-    legacy unencrypted rows (so old data keeps working after upgrade)."""
+def vault_decrypt(token: str, user_id: str = None) -> str:
+    """Decrypt a Fernet token. Tries the user's derived key first (current
+    scheme), then the legacy shared master key (data written before the
+    per-user derivation existed), then falls back to returning the raw value
+    for genuinely legacy unencrypted rows — so old data keeps working through
+    both migrations without a manual re-encryption pass."""
     if not token:
         return token
-    f = _get_vault_fernet()
-    if not f:
-        return token
-    try:
-        return f.decrypt(token.encode("utf-8")).decode("utf-8")
-    except Exception:
-        # Could be a pre-encryption legacy value — return as-is
-        return token
+    for f in (_get_vault_fernet_for_user(user_id), _get_vault_fernet_legacy()):
+        if not f:
+            continue
+        try:
+            return f.decrypt(token.encode("utf-8")).decode("utf-8")
+        except Exception:
+            continue
+    # Could be a pre-encryption legacy value — return as-is
+    return token
+
+# ── Vault card lock (per-card password, separate from the account password) ──
+# Previously this was an unsalted SHA-256 hash computed in the BROWSER and
+# never actually checked server-side — the server just stored whatever hash
+# the client sent, and "locked" cards were shipped to the browser fully
+# decrypted regardless, so the lock only hid content in the UI, not from
+# anyone reading the network response. Both problems are fixed by: (1) the
+# raw password is verified here, server-side, via bcrypt, and (2) vault_list
+# below withholds rows/notes entirely for locked cards until this check
+# passes in vault_unlock.
+_VAULT_LEGACY_HASH_PREFIX = "project-tracker::"
+
+def vault_hash_lock(raw_password: str) -> str:
+    if not raw_password:
+        return ""
+    if _bcrypt:
+        return "bc$" + _bcrypt.hashpw(raw_password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+    # No bcrypt available — fall back to the old (weak) scheme rather than crash.
+    return hashlib.sha256((_VAULT_LEGACY_HASH_PREFIX + raw_password).encode("utf-8")).hexdigest()
+
+def vault_verify_lock(raw_password: str, stored_hash: str):
+    """Returns (ok: bool, needs_upgrade: bool). needs_upgrade is True when the
+    check succeeded against a legacy unsalted-SHA-256 hash so the caller can
+    re-hash with bcrypt and persist it, migrating old cards on first unlock."""
+    if not stored_hash:
+        return True, False
+    if stored_hash.startswith("bc$"):
+        if not _bcrypt:
+            return False, False
+        try:
+            return _bcrypt.checkpw(raw_password.encode("utf-8"), stored_hash[3:].encode("utf-8")), False
+        except Exception:
+            return False, False
+    # Legacy path: hash could be either (a) a client-computed SHA-256 of the
+    # password sent straight through as lock_hash by the old frontend, or
+    # (b) the same scheme recomputed here for a raw password. Both compare
+    # the same way since the algorithm and prefix are unchanged.
+    legacy = hashlib.sha256((_VAULT_LEGACY_HASH_PREFIX + raw_password).encode("utf-8")).hexdigest()
+    ok = hmac.compare_digest(legacy, stored_hash or "")
+    return ok, ok  # if it matched, it's a legacy hash worth upgrading
+
+def _vault_master_unlock_ttl_seconds():
+    return int(os.environ.get("VAULT_MASTER_UNLOCK_MINUTES", "30")) * 60
+
+def vault_is_master_unlocked():
+    until = session.get("vault_unlocked_until")
+    return bool(until) and time.time() < float(until)
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify, session, Response, send_file, send_from_directory, redirect, make_response, g
@@ -4463,6 +4564,7 @@ def init_db():
             "ALTER TABLE vault_cards ADD COLUMN expires_at TEXT DEFAULT ''",
             "ALTER TABLE vault_cards ADD COLUMN pinned INTEGER DEFAULT 0",
             "ALTER TABLE vault_cards ADD COLUMN notes TEXT DEFAULT ''",
+            "CREATE TABLE IF NOT EXISTS vault_master (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL, created TEXT, updated TEXT)",
             "CREATE TABLE IF NOT EXISTS vault_audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT DEFAULT '', ip TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_user ON vault_audit_log(user_id, created)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_card ON vault_audit_log(card_id)",
@@ -6617,14 +6719,38 @@ def me():
             return jsonify(result)
 
 # ── Vault ─────────────────────────────────────────────────────────────────────
-# All `rows` data is Fernet-encrypted (AES-128-CBC + HMAC-SHA256) before being
-# stored in the database. vault_encrypt / vault_decrypt are defined near the top
-# of this file. If the `cryptography` package is unavailable the functions are
-# no-ops so the feature degrades gracefully (no silent data loss).
+# `rows` and `notes` are Fernet-encrypted, per-user-derived-key, before being
+# stored (see _get_vault_fernet_for_user near the top of this file). `title`
+# and `tags` are encrypted too, but are still decrypted and returned even for
+# locked cards — same convention every password manager uses (you can browse
+# item names before unlocking; you can't see the secret fields). If the
+# `cryptography` package is unavailable, vault_encrypt/decrypt degrade to
+# plain passthrough so the feature still works (no silent data loss).
+#
+# Locking: a card with a non-empty lock_hash withholds `rows`/`notes` from
+# every response until POST /api/vault/<id>/unlock verifies the password
+# server-side (bcrypt). Earlier versions computed the hash in the browser and
+# shipped the fully-decrypted card to the client regardless of lock state —
+# the lock only hid content in the UI, not from the network response. Fixed
+# here: locked cards simply never leave the server without a verified unlock.
+#
+# A separate, optional whole-vault "master password" (vault_master table) can
+# gate the entire feature per session — see vault_master_* routes below.
+
+def _vault_master_required_response():
+    """403 if this user has a master password set and hasn't unlocked this
+    session yet. Call at the top of every vault card route."""
+    with get_db() as db:
+        row = db.execute("SELECT 1 FROM vault_master WHERE user_id=?", (session["user_id"],)).fetchone()
+    if row and not vault_is_master_unlocked():
+        return jsonify({"error": "Vault is locked", "vault_locked": True}), 423
+    return None
 
 @app.route("/api/vault", methods=["GET"])
 @login_required
 def vault_list():
+    gate = _vault_master_required_response()
+    if gate: return gate
     try:
         with get_db() as db:
             records = db.execute(
@@ -6650,52 +6776,99 @@ def vault_list():
         resp.status_code = 503
         resp.headers["Retry-After"] = "2"
         return resp
+    uid = session["user_id"]
     result = []
     for r in records:
         card = dict(r)
-        # Decrypt rows — vault_decrypt falls back gracefully for legacy plain rows
-        try:
-            card["rows"] = vault_decrypt(card.get("rows") or "[]")
-        except Exception:
+        locked = bool(card.get("lock_hash"))
+        # Title/tags are visible even when locked (browsing item names is
+        # normal password-manager UX) — decrypt gracefully falls back to the
+        # raw value for legacy plaintext rows written before encryption.
+        try: card["title"] = vault_decrypt(card.get("title") or "", uid)
+        except Exception: pass
+        try: card["tags"] = vault_decrypt(card.get("tags") or "", uid)
+        except Exception: pass
+        if locked:
+            # The actual secret content never leaves the server until
+            # /api/vault/<id>/unlock verifies the password. We still count
+            # the rows server-side so summary stats (e.g. "12 credentials")
+            # stay accurate without ever shipping the row content itself.
+            try:
+                card["row_count"] = len(json.loads(vault_decrypt(card.get("rows") or "[]", uid)) or [])
+            except Exception:
+                card["row_count"] = 0
             card["rows"] = "[]"
+            card["notes"] = ""
+        else:
+            try: card["rows"] = vault_decrypt(card.get("rows") or "[]", uid)
+            except Exception: card["rows"] = "[]"
+            try: card["notes"] = vault_decrypt(card.get("notes") or "", uid)
+            except Exception: card["notes"] = ""
+        card["locked"] = locked
+        card.pop("lock_hash", None)  # never ship the hash itself to the client
         result.append(card)
     return jsonify(result)
 
 @app.route("/api/vault", methods=["POST"])
 @login_required
 def vault_create():
+    gate = _vault_master_required_response()
+    if gate: return gate
     d = request.json or {}
     now = ts()
+    uid = session["user_id"]
     cid = "c" + str(int(time.time()*1000)) + secrets.token_hex(3)
-    plain_rows = json.dumps(d.get("rows", []))
-    encrypted_rows = vault_encrypt(plain_rows)
+    encrypted_rows = vault_encrypt(json.dumps(d.get("rows", [])), uid)
+    encrypted_title = vault_encrypt(d.get("title", ""), uid)
+    encrypted_tags = vault_encrypt(d.get("tags", ""), uid)
+    encrypted_notes = vault_encrypt(d.get("notes", ""), uid)
+    # New cards take a raw `lock_password` (hashed server-side with bcrypt) —
+    # never a pre-computed hash from the client.
+    lock_hash = vault_hash_lock(d.get("lock_password", "") or "")
     with get_db() as db:
         db.execute(
             "INSERT INTO vault_cards (id,user_id,title,tags,rows,cols,lock_hash,category,expires_at,pinned,notes,created,updated) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (cid, session["user_id"], d.get("title", ""), d.get("tags", ""),
+            (cid, uid, encrypted_title, encrypted_tags,
              encrypted_rows, json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
-             1 if d.get("pinned") else 0, d.get("notes", ""), now, now)
+             lock_hash, d.get("category", ""), d.get("expires_at", ""),
+             1 if d.get("pinned") else 0, encrypted_notes, now, now)
         )
-    _vault_audit(session["user_id"], cid, "create", d.get("title", ""), card_title=d.get("title", ""))
+    _vault_audit(uid, cid, "create", d.get("title", ""), card_title=d.get("title", ""))
     return jsonify({"id": cid, "created": now})
 
 @app.route("/api/vault/<cid>", methods=["PUT"])
 @login_required
 def vault_update(cid):
+    gate = _vault_master_required_response()
+    if gate: return gate
     d = request.json or {}
     now = ts()
-    plain_rows = json.dumps(d.get("rows", []))
-    encrypted_rows = vault_encrypt(plain_rows)
+    uid = session["user_id"]
+    encrypted_rows = vault_encrypt(json.dumps(d.get("rows", [])), uid)
+    encrypted_title = vault_encrypt(d.get("title", ""), uid)
+    encrypted_tags = vault_encrypt(d.get("tags", ""), uid)
+    encrypted_notes = vault_encrypt(d.get("notes", ""), uid)
     with get_db() as db:
+        existing = db.execute("SELECT lock_hash FROM vault_cards WHERE id=? AND user_id=?", (cid, uid)).fetchone()
+        if not existing:
+            return jsonify({"ok": False, "error": "Vault card not found"}), 404
+        # Only touch the lock if this request is explicitly setting/changing/
+        # removing it (`lock_password` key present). A plain content edit that
+        # doesn't include the key must leave the existing lock untouched —
+        # the client never holds the raw password after the initial set, so
+        # it can't (and shouldn't) resend it on every unrelated save.
+        if "lock_password" in d:
+            lock_hash = vault_hash_lock(d.get("lock_password") or "")
+        else:
+            lock_hash = existing["lock_hash"]
         cur = db.execute(
             "UPDATE vault_cards SET title=?,tags=?,rows=?,cols=?,lock_hash=?,category=?,expires_at=?,pinned=?,notes=?,updated=? "
             "WHERE id=? AND user_id=?",
-            (d.get("title", ""), d.get("tags", ""), encrypted_rows,
+            (encrypted_title, encrypted_tags, encrypted_rows,
              json.dumps(d.get("cols") or []),
-             d.get("lock_hash", ""), d.get("category", ""), d.get("expires_at", ""),
-             1 if d.get("pinned") else 0, d.get("notes", ""), now, cid, session["user_id"])
+             lock_hash, d.get("category", ""), d.get("expires_at", ""),
+             1 if d.get("pinned") else 0, encrypted_notes, now, cid, uid)
         )
         # BUG FIX: previously this endpoint always returned {"ok": True, ...} built
         # straight from the request payload, even if the UPDATE matched zero rows
@@ -6708,41 +6881,150 @@ def vault_update(cid):
         if not matched:
             return jsonify({"ok": False, "error": "Vault card not found"}), 404
         row = db.execute(
-            "SELECT id,title,tags,category,expires_at,pinned,notes,updated FROM vault_cards "
-            "WHERE id=? AND user_id=?", (cid, session["user_id"])
+            "SELECT id,title,tags,category,expires_at,pinned,notes,updated,lock_hash FROM vault_cards "
+            "WHERE id=? AND user_id=?", (cid, uid)
         ).fetchone()
+    _vault_audit(uid, cid, "update", d.get("title", ""), card_title=d.get("title", ""))
     # Return the authoritative saved record read back from the DB (not values
     # echoed from the request) so the frontend reconciles its optimistic state
     # with what was actually persisted — in particular `updated` (server
     # timestamp) and `expires_at`.
     row = dict(row) if row else {}
+    locked = bool(row.get("lock_hash"))
     return jsonify({
         "ok": True,
         "id": cid,
-        "title": row.get("title", d.get("title", "")),
-        "tags": row.get("tags", d.get("tags", "")),
+        "title": vault_decrypt(row.get("title", ""), uid) if row.get("title") else d.get("title", ""),
+        "tags": vault_decrypt(row.get("tags", ""), uid) if row.get("tags") else d.get("tags", ""),
         "category": row.get("category", d.get("category", "")),
         "expires_at": row.get("expires_at", d.get("expires_at", "")),
         "pinned": bool(row.get("pinned", d.get("pinned"))),
-        "notes": row.get("notes", d.get("notes", "")),
+        # Notes are secret content — only echo back if the card isn't locked,
+        # same rule vault_list applies.
+        "notes": ("" if locked else d.get("notes", "")),
+        "locked": locked,
         "updated": row.get("updated", now),
     })
+
+@app.route("/api/vault/<cid>/unlock", methods=["POST"])
+@login_required
+def vault_unlock(cid):
+    """Verify a card's password server-side and, only on success, return its
+    decrypted rows/notes. This is the enforcement point that makes locking
+    real — vault_list never sends this content for a locked card."""
+    gate = _vault_master_required_response()
+    if gate: return gate
+    d = request.json or {}
+    pw = d.get("password", "") or ""
+    uid = session["user_id"]
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    with get_db() as db:
+        row = db.execute("SELECT * FROM vault_cards WHERE id=? AND user_id=?", (cid, uid)).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        card = dict(row)
+        ok, needs_upgrade = vault_verify_lock(pw, card.get("lock_hash") or "")
+        if not ok:
+            _vault_audit(uid, cid, "unlock_failed", "", ip, card_title=vault_decrypt(card.get("title", ""), uid))
+            return jsonify({"error": "Incorrect password"}), 403
+        # Legacy unsalted-SHA-256 hash verified correctly — upgrade it to
+        # bcrypt now that we have the raw password in hand, so this card
+        # never gets checked against the weak scheme again.
+        if needs_upgrade and _bcrypt:
+            db.execute("UPDATE vault_cards SET lock_hash=? WHERE id=? AND user_id=?",
+                       (vault_hash_lock(pw), cid, uid))
+        rows = vault_decrypt(card.get("rows") or "[]", uid)
+        notes = vault_decrypt(card.get("notes") or "", uid)
+    _vault_audit(uid, cid, "unlock", "", ip, card_title=vault_decrypt(card.get("title", ""), uid))
+    return jsonify({"ok": True, "rows": rows, "notes": notes})
 
 @app.route("/api/vault/<cid>", methods=["DELETE"])
 @login_required
 def vault_delete(cid):
+    gate = _vault_master_required_response()
+    if gate: return gate
+    uid = session["user_id"]
     with get_db() as db:
         row = db.execute(
             "SELECT title FROM vault_cards WHERE id=? AND user_id=?",
-            (cid, session["user_id"])
+            (cid, uid)
         ).fetchone()
-        title = dict(row).get("title", "") if row else ""
-        db.execute("DELETE FROM vault_cards WHERE id=? AND user_id=?", (cid, session["user_id"]))
+        title = vault_decrypt(dict(row).get("title", ""), uid) if row else ""
+        db.execute("DELETE FROM vault_cards WHERE id=? AND user_id=?", (cid, uid))
         # NOTE: audit history is intentionally NOT deleted here. The whole point
         # of an access audit log is that it survives the thing it's auditing —
         # wiping it on delete would let someone destroy their own trail.
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
-    _vault_audit(session["user_id"], cid, "delete", title, ip, card_title=title)
+    _vault_audit(uid, cid, "delete", title, ip, card_title=title)
+    return jsonify({"ok": True})
+
+# ── Vault master password (optional whole-vault gate) ─────────────────────────
+# Additive on top of per-card locks — a user can set ONE master password that
+# gates the entire vault for the session (30 min by default), so they aren't
+# stuck remembering/re-entering a different password per card. Per-card locks
+# still work for anything extra-sensitive; this is the "front door" on top.
+
+@app.route("/api/vault/master/status", methods=["GET"])
+@login_required
+def vault_master_status():
+    with get_db() as db:
+        row = db.execute("SELECT 1 FROM vault_master WHERE user_id=?", (session["user_id"],)).fetchone()
+    return jsonify({"enabled": bool(row), "unlocked": vault_is_master_unlocked() if row else True})
+
+@app.route("/api/vault/master/set", methods=["POST"])
+@login_required
+def vault_master_set():
+    """Create or change the master password. Changing an existing one requires
+    the current password (or an already-unlocked session) — never let someone
+    silently overwrite a master password they haven't proven they know."""
+    d = request.json or {}
+    new_pw = (d.get("new_password") or "").strip()
+    if len(new_pw) < 4:
+        return jsonify({"error": "Use at least 4 characters"}), 400
+    uid = session["user_id"]
+    now = ts()
+    with get_db() as db:
+        existing = db.execute("SELECT hash FROM vault_master WHERE user_id=?", (uid,)).fetchone()
+        if existing:
+            if not vault_is_master_unlocked():
+                current_pw = (d.get("current_password") or "").strip()
+                ok, _ = vault_verify_lock(current_pw, dict(existing)["hash"])
+                if not ok:
+                    return jsonify({"error": "Current password is incorrect"}), 403
+            db.execute("UPDATE vault_master SET hash=?, updated=? WHERE user_id=?",
+                       (vault_hash_lock(new_pw), now, uid))
+        else:
+            db.execute("INSERT INTO vault_master (user_id,hash,created,updated) VALUES (?,?,?,?)",
+                       (uid, vault_hash_lock(new_pw), now, now))
+    session["vault_unlocked_until"] = time.time() + _vault_master_unlock_ttl_seconds()
+    _vault_audit(uid, "master", "master_set", card_title="Vault")
+    return jsonify({"ok": True})
+
+@app.route("/api/vault/master/verify", methods=["POST"])
+@login_required
+def vault_master_verify():
+    d = request.json or {}
+    pw = d.get("password", "") or ""
+    uid = session["user_id"]
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    with get_db() as db:
+        row = db.execute("SELECT hash FROM vault_master WHERE user_id=?", (uid,)).fetchone()
+        if not row:
+            return jsonify({"error": "No master password set"}), 400
+        ok, needs_upgrade = vault_verify_lock(pw, dict(row)["hash"])
+        if not ok:
+            _vault_audit(uid, "master", "master_unlock_failed", "", ip, card_title="Vault")
+            return jsonify({"error": "Incorrect password"}), 403
+        if needs_upgrade and _bcrypt:
+            db.execute("UPDATE vault_master SET hash=? WHERE user_id=?", (vault_hash_lock(pw), uid))
+    session["vault_unlocked_until"] = time.time() + _vault_master_unlock_ttl_seconds()
+    _vault_audit(uid, "master", "master_unlock", "", ip, card_title="Vault")
+    return jsonify({"ok": True})
+
+@app.route("/api/vault/master/lock", methods=["POST"])
+@login_required
+def vault_master_lock():
+    session.pop("vault_unlocked_until", None)
     return jsonify({"ok": True})
 
 # ── Vault Audit Log ────────────────────────────────────────────────────────────
