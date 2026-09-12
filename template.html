@@ -11901,8 +11901,23 @@ function VaultView({cu}){
   async function lockVaultNow(){
     if(!cu||cu._offline){ setOfflinePw(''); setCards([]); setOfflinePwModal('verify'); return; }
     await api.post('/api/vault/master/lock', {});
+    await fetchAuditLog();
     setMasterStatus(s=>({...(s||{}), unlocked:false}));
     setCards([]); setUnlocked({}); vaultClearCache();
+  }
+
+  // The initial load populates auditLog once and nothing refreshed it after
+  // that — a card unlock, a create/edit/delete, or a master-password action
+  // all log a real event server-side immediately, but the on-screen log kept
+  // showing whatever was fetched at page-load until you left and came back.
+  // Every action below that produces a loggable event now calls this so the
+  // panel reflects what actually just happened.
+  async function fetchAuditLog(){
+    const audit = await api.get('/api/vault/audit');
+    const log = Array.isArray(audit) ? audit : [];
+    setAuditLog(log);
+    if(_vaultCache) _vaultCache.auditLog = log;
+    return log;
   }
 
   async function apiCreate(card){
@@ -11917,6 +11932,7 @@ function VaultView({cu}){
     if(res && res.id){
       // Never keep the raw lock password sitting in state once it's been sent.
       setCards(prev=>prev.map(c=>c.id===card.id?{...c,id:res.id,created:res.created,locked:!!card.lockPassword,lockPassword:undefined}:c));
+      fetchAuditLog();
     }
   }
   async function apiUpdate(card){
@@ -11939,12 +11955,14 @@ function VaultView({cu}){
     // real DB value so the relative-time display never drifts from the truth.
     if(res && res.ok){
       setCards(prev=>prev.map(c=>c.id===card.id?{...c,updated:res.updated,expires_at:res.expires_at,locked:!!res.locked,lockPassword:undefined}:c));
+      fetchAuditLog();
     }
     return res;
   }
   async function apiDelete(id){
     await api.del('/api/vault/'+id);
     vaultClearCache();
+    fetchAuditLog();
   }
 
   function handleCreate(card){
@@ -11972,6 +11990,7 @@ function VaultView({cu}){
   async function handleUnlock(id, password){
     if(cu&&!cu._offline){
       const r = await api.post('/api/vault/'+id+'/unlock', {password});
+      fetchAuditLog(); // logs both failed and successful attempts — refresh either way
       if(!r || r.error) return {error:(r&&r.error)||'Incorrect password'};
       let rows=[]; try{ rows = JSON.parse(r.rows||'[]'); }catch(_){ rows=[]; }
       setCards(prev=>prev.map(c=>c.id===id?{...c, rows, notes:r.notes||''}:c));
@@ -12237,6 +12256,7 @@ function VaultView({cu}){
                         master_set: {label:'Master password set', bg:'rgba(139,92,246,.1)', color:'var(--ac2)', icon:'🛡'},
                         master_unlock: {label:'Vault unlocked', bg:'rgba(34,197,94,.1)', color:'var(--gn)', icon:'🔓'},
                         master_unlock_failed: {label:'Vault unlock failed', bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'⛔'},
+                        master_lock: {label:'Vault locked', bg:'rgba(148,163,184,.1)', color:'var(--tx2)', icon:'🔒'},
                       }[e.action] || {label:e.action, bg:'var(--sf2)', color:'var(--tx3)', icon:'•'};
                       const timeStr = e.created ? new Date(e.created).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                       return html`

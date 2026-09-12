@@ -6917,7 +6917,7 @@ def vault_unlock(cid):
     d = request.json or {}
     pw = d.get("password", "") or ""
     uid = session["user_id"]
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
     with get_db() as db:
         row = db.execute("SELECT * FROM vault_cards WHERE id=? AND user_id=?", (cid, uid)).fetchone()
         if not row:
@@ -6954,7 +6954,7 @@ def vault_delete(cid):
         # NOTE: audit history is intentionally NOT deleted here. The whole point
         # of an access audit log is that it survives the thing it's auditing —
         # wiping it on delete would let someone destroy their own trail.
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
     _vault_audit(uid, cid, "delete", title, ip, card_title=title)
     return jsonify({"ok": True})
 
@@ -7006,7 +7006,7 @@ def vault_master_verify():
     d = request.json or {}
     pw = d.get("password", "") or ""
     uid = session["user_id"]
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
     with get_db() as db:
         row = db.execute("SELECT hash FROM vault_master WHERE user_id=?", (uid,)).fetchone()
         if not row:
@@ -7025,6 +7025,7 @@ def vault_master_verify():
 @login_required
 def vault_master_lock():
     session.pop("vault_unlocked_until", None)
+    _vault_audit(session["user_id"], "master", "master_lock", card_title="Vault")
     return jsonify({"ok": True})
 
 # ── Vault Audit Log ────────────────────────────────────────────────────────────
@@ -7101,7 +7102,7 @@ def vault_audit_event(cid):
     if not card:
         return jsonify({"error": "Not found"}), 404
     card_title = dict(card).get("title", "")
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
     _vault_audit(session["user_id"], cid, action, detail, ip, card_title=card_title)
     return jsonify({"ok": True})
 
@@ -12359,7 +12360,7 @@ def admin_api_login():
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@project-tracker.in").strip().lower()
     admin_pass  = os.environ.get("ADMIN_PASSWORD", "")
 
-    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
 
     if _admin_check_lockout(client_ip):
         return jsonify({"error": "Too many failed attempts. Try again in 15 minutes."}), 429
