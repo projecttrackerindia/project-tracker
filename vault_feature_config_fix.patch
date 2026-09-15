@@ -1,0 +1,76 @@
+--- project-tracker-main-orig/app.py	2026-09-15 17:14:59.005430073 +0000
++++ project-tracker-main/app.py	2026-09-15 17:15:11.404395375 +0000
+@@ -13955,37 +13955,45 @@
+ def _workspace_feature_config(db, workspace_id):
+     """Return plan-based workspace features plus owner-panel overrides.
+     Overrides are intentionally workspace-specific so plan upgrades/downgrades
+-    instantly reflect while paid add-ons can still be enabled separately."""
++    instantly reflect while paid add-ons can still be enabled separately.
++
++    BUG FIX ("sometimes Vault just doesn't work" despite the add-on/feature-flag
++    override genuinely being enabled): the two reads below used to be wrapped in
++    their own `except Exception: pass`, so a transient failure on either query
++    (e.g. the same pooled-connection hiccup documented around get_db()) silently
++    fell back to bare plan defaults instead of raising. That degraded-but-clean
++    dict then sailed past the caller's (_workspace_access_config_cached) error
++    handling — which only protects against exceptions actually reaching it — and
++    got cached as if it were correct for the full ACCESS_CONFIG_CACHE_TTL. For a
++    workspace where a feature (like vault) is granted via a feature_flags row or
++    an add-on rather than by the plan itself, that meant a single dropped read
++    could wrongly gate that feature workspace-wide for up to 5 minutes. Letting
++    these exceptions propagate lets the caller correctly treat this as "unknown"
++    and skip caching it, instead of caching a wrong answer as a right one."""
+     row = db.execute("SELECT COALESCE(plan,'starter') AS plan FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+     plan = (row["plan"] if row else "starter") or "starter"
+     features = _feature_defaults_for_plan(plan)
+-    try:
+-        rows = db.execute("SELECT flag_name, enabled FROM feature_flags WHERE workspace_id=?", (workspace_id,)).fetchall()
+-        for r in rows:
+-            key = r["flag_name"]
+-            if key in WORKSPACE_FEATURE_CATALOG:
+-                features[key] = bool(r["enabled"])
+-            # Backward-compatible aliases from older code
+-            if key == "billing":
+-                features["billing_invoices"] = bool(r["enabled"])
+-            if key in ("github_integration", "slack_integration"):
+-                features["integrations"] = bool(r["enabled"])
+-            if key == "ai_assistant":
+-                features["ai_docs"] = bool(r["enabled"])
+-            if key == "approval_workflows":
+-                features["incident_approvals"] = bool(r["enabled"])
+-    except Exception:
+-        pass
+-    try:
+-        ws_row = db.execute("SELECT add_ons_json FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+-        for addon_key, enabled in _workspace_addons_from_row(ws_row).items():
+-            if not enabled:
+-                continue
+-            fkey = (ADD_ON_CATALOG.get(addon_key) or {}).get("feature")
+-            if fkey in WORKSPACE_FEATURE_CATALOG:
+-                features[fkey] = True
+-    except Exception:
+-        pass
++    rows = db.execute("SELECT flag_name, enabled FROM feature_flags WHERE workspace_id=?", (workspace_id,)).fetchall()
++    for r in rows:
++        key = r["flag_name"]
++        if key in WORKSPACE_FEATURE_CATALOG:
++            features[key] = bool(r["enabled"])
++        # Backward-compatible aliases from older code
++        if key == "billing":
++            features["billing_invoices"] = bool(r["enabled"])
++        if key in ("github_integration", "slack_integration"):
++            features["integrations"] = bool(r["enabled"])
++        if key == "ai_assistant":
++            features["ai_docs"] = bool(r["enabled"])
++        if key == "approval_workflows":
++            features["incident_approvals"] = bool(r["enabled"])
++    ws_row = db.execute("SELECT add_ons_json FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
++    for addon_key, enabled in _workspace_addons_from_row(ws_row).items():
++        if not enabled:
++            continue
++        fkey = (ADD_ON_CATALOG.get(addon_key) or {}).get("feature")
++        if fkey in WORKSPACE_FEATURE_CATALOG:
++            features[fkey] = True
+     return {
+         "plan": str(plan).lower(),
+         "features": features,
