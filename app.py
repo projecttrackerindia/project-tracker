@@ -6082,6 +6082,21 @@ def _send_workspace_invite_email(to_email, inviter_name, ws_name, token, role, w
     </div></body></html>"""
     threading.Thread(target=send_email, args=(to_email, subject, body, workspace_id), daemon=True).start()
 
+def _member_limit_check(db, workspace_id):
+    """Returns (allowed: bool, message: str, plan: str) — whether this workspace
+    can add one more member under its current plan's limit. Used at every point
+    a new user row can be created inside a workspace (invite, accept, domain-join)
+    so the plan limits shown on the pricing page are actually enforced, not just
+    displayed."""
+    ws_row = db.execute("SELECT plan, custom_limits_json, storage_limit_mb FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+    plan = ((ws_row["plan"] if ws_row and "plan" in ws_row.keys() else "starter") or "starter").lower()
+    limits = _limits_for_plan(plan, ws_row["custom_limits_json"] if ws_row and "custom_limits_json" in ws_row.keys() else "", ws_row["storage_limit_mb"] if ws_row and "storage_limit_mb" in ws_row.keys() else 0)
+    member_cap = int(limits.get("members") or 0)
+    current = _safe_workspace_count(db, "users", workspace_id)
+    if member_cap and current >= member_cap:
+        return False, f"This workspace has reached its {plan.capitalize()} plan limit of {member_cap} members. Ask an owner to upgrade the plan to add more people.", plan
+    return True, "", plan
+
 @app.route("/api/workspace/invite", methods=["POST"])
 @login_required
 def workspace_invite_user():
@@ -6105,6 +6120,9 @@ def workspace_invite_user():
         existing = db.execute("SELECT id FROM users WHERE email=? AND workspace_id=?", (email, ws)).fetchone()
         if existing:
             return jsonify({"error": "User is already a workspace member"}), 409
+        allowed, limit_msg, _plan = _member_limit_check(db, ws)
+        if not allowed:
+            return jsonify({"error": limit_msg}), 403
         # Create or update invite
         from datetime import timedelta
         token = secrets.token_urlsafe(32)
@@ -6139,6 +6157,11 @@ def accept_workspace_invite():
         ws_id = inv["workspace_id"]
         email = inv["email"]
         role  = inv["role"]
+        # Re-check the seat cap at accept time too — the invite may have been
+        # sent days ago and the workspace could be at its plan limit by now.
+        allowed, limit_msg, _plan = _member_limit_check(db, ws_id)
+        if not allowed:
+            return jsonify({"error": limit_msg}), 403
         # Check if user already exists in any workspace
         existing = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         if existing:
@@ -6304,6 +6327,9 @@ def domain_join_request():
         existing = db.execute("SELECT id FROM users WHERE email=? AND workspace_id=?", (email, ws_id_req)).fetchone()
         if existing:
             return jsonify({"error": "You already have an account in this workspace"}), 409
+        allowed, limit_msg, _plan = _member_limit_check(db, ws_id_req)
+        if not allowed:
+            return jsonify({"error": limit_msg}), 403
         requires_approval = bool(ws["domain_join_requires_approval"])
         new_uid = f"u{secrets.token_hex(8)}"
         av = "".join(c2 for c2 in name.split())
@@ -6410,6 +6436,10 @@ def register():
             existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
             if existing:
                 return jsonify({"error": "Email already registered"}), 400
+            if mode == "join":
+                allowed, limit_msg, _plan = _member_limit_check(db, ws_id)
+                if not allowed:
+                    return jsonify({"error": limit_msg}), 403
             # Send email verification token
             verify_token = secrets.token_urlsafe(32)
             from datetime import timedelta
