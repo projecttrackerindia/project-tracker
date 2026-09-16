@@ -4194,11 +4194,11 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
                   onClick=${()=>setDetail(p)}
                   onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='var(--sh)';}}
                   onMouseLeave=${e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='';}}>
-                  <div style=${{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:7}}>
-                    <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',flex:1,marginRight:6,lineHeight:1.3}}>${p.name}</h3>
+                  <div style=${{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:7,minHeight:34}}>
+                    <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',flex:1,marginRight:6,lineHeight:1.3,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}} title=${p.name}>${p.name}</h3>
                     <span class="badge" style=${{background:p.color+'22',color:p.color,flexShrink:0,fontSize:9}}>${pt.length} tasks</span>
                   </div>
-                  <p style=${{fontSize:11,color:'var(--tx2)',lineHeight:1.5,marginBottom:9,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>${p.description||'No description.'}</p>
+                  <p style=${{fontSize:11,color:'var(--tx2)',lineHeight:1.5,marginBottom:9,minHeight:33,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>${p.description||'No description.'}</p>
                   <div style=${{marginBottom:9}}>
                     <div style=${{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                       <span style=${{fontSize:9,color:'var(--tx3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px'}}>Progress</span>
@@ -5824,7 +5824,7 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
   const [showChatEmoji,setShowChatEmoji]=useState(false);
   const [attaching,setAttaching]=useState(false);
   const fileInputRef=useRef(null);
-  const [channelUnread,setChannelUnread]=useState({}); // {projectId: count}
+  const [channelUnread,setChannelUnread]=useState({}); // {projectId: count} — tracked for read-state bookkeeping (cleared on open) but no longer rendered as a live badge in the channel list; see sortedProjects.map below.
   // Persist lastSeen to localStorage so refresh doesn't reset unread counts
   // BUG FIX (all channels show unread again after sign-out/sign-in): logout()
   // used to wipe the shared 'pfLastSeen' key entirely, on every logout, as if
@@ -6106,7 +6106,6 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
               <div style=${{display:'flex',alignItems:'center',gap:7,width:'100%'}}>
                 <div style=${{width:7,height:7,borderRadius:2,background:p.color,flexShrink:0}}></div>
                 <span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,textAlign:'left'}}># ${p.name}</span>
-                ${channelUnread[p.id]>0?html`<span style=${{fontSize:9,fontWeight:800,background:'var(--ac)',color:'#fff',borderRadius:8,padding:'1px 6px',flexShrink:0,minWidth:16,textAlign:'center'}}>${channelUnread[p.id]>9?'9+':channelUnread[p.id]}</span>`:null}
               </div>
             </button>`;
         })}
