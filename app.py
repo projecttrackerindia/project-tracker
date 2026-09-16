@@ -11470,8 +11470,24 @@ def robots_txt():
 
 @app.route("/favicon.ico")
 def favicon():
-    """Return 204 instead of noisy 404 when no favicon asset is deployed."""
-    return Response(status=204, headers={"Cache-Control":"public, max-age=86400"})
+    """Brand favicon (purple→cyan 'PT' mark, matches the in-app UI). Falls back to
+    204 only if the asset is somehow missing from the deploy, so this never 404s."""
+    file_path = os.path.join(os.path.dirname(__file__), "favicon.ico")
+    if not os.path.exists(file_path):
+        return Response(status=204, headers={"Cache-Control": "public, max-age=86400"})
+    return send_from_directory(os.path.dirname(__file__), "favicon.ico", mimetype="image/x-icon", max_age=604800)
+
+@app.route("/logo-<size>.png")
+def brand_logo(size):
+    """Organization/OG logo images referenced by JSON-LD and social previews.
+    Only the exact generated sizes are servable — no arbitrary path lookup."""
+    if size not in ("512", "192"):
+        return jsonify({"error": "Not found"}), 404
+    fn = f"logo-{size}.png"
+    file_path = os.path.join(os.path.dirname(__file__), fn)
+    if not os.path.exists(file_path):
+        return jsonify({"error": "Not found"}), 404
+    return send_from_directory(os.path.dirname(__file__), fn, mimetype="image/png", max_age=604800)
 
 
 @app.route("/static/<path:fn>")
@@ -12413,13 +12429,18 @@ def admin_api_dashboard():
             storage_bytes = int((storage_bytes_row and storage_bytes_row["total"]) or 0)
             plans = db.execute("SELECT COALESCE(plan,'starter') AS plan, COUNT(*) AS c FROM workspaces GROUP BY COALESCE(plan,'starter')").fetchall()
             recent = db.execute("SELECT id, name, plan, created FROM workspaces ORDER BY created DESC LIMIT 8").fetchall()
-            all_ws = db.execute("SELECT id, plan, manual_discount, add_ons_json, payment_status, billing_status FROM workspaces").fetchall()
+            all_ws = db.execute("""
+                SELECT w.id, w.plan, w.manual_discount, w.add_ons_json, w.payment_status, w.billing_status,
+                       COUNT(u.id) AS member_count
+                FROM workspaces w LEFT JOIN users u ON u.workspace_id = w.id
+                GROUP BY w.id, w.plan, w.manual_discount, w.add_ons_json, w.payment_status, w.billing_status
+            """).fetchall()
             estimated_mrr = 0
             payment_counts = {}
             for w in all_ws:
                 payment = str((w["payment_status"] if "payment_status" in w.keys() else w["billing_status"] if "billing_status" in w.keys() else "active") or "active").lower()
                 payment_counts[payment] = payment_counts.get(payment, 0) + 1
-                estimated_mrr += _estimated_workspace_mrr(w["plan"] if "plan" in w.keys() else "starter", _workspace_addons_from_row(w), w["manual_discount"] if "manual_discount" in w.keys() else 0)
+                estimated_mrr += _estimated_workspace_mrr(w["plan"] if "plan" in w.keys() else "starter", _workspace_addons_from_row(w), w["manual_discount"] if "manual_discount" in w.keys() else 0, w["member_count"])
             try:
                 suspended_ws = db.execute("SELECT COUNT(*) AS c FROM workspaces WHERE COALESCE(suspended,0)=1").fetchone()["c"]
             except Exception:
@@ -12439,6 +12460,7 @@ def admin_api_dashboard():
             "estimated_mrr": int(estimated_mrr),
             "addon_catalog": ADD_ON_CATALOG,
             "plan_prices": PLAN_PRICES_INR,
+            "plan_pricing": _load_plan_configs(),
             "recent_workspaces": [dict(r) for r in recent],
         })
     except Exception as e:
@@ -12506,7 +12528,7 @@ def admin_api_workspaces():
                     "commercial": commercial,
                     "payment_status": commercial.get("payment_status", d.get("billing_status", "active")),
                     "health_score": _workspace_health_score(usage, limits, commercial),
-                    "estimated_mrr": _estimated_workspace_mrr(d.get("plan"), commercial.get("add_ons", {}), commercial.get("manual_discount", 0)),
+                    "estimated_mrr": _estimated_workspace_mrr(d.get("plan"), commercial.get("add_ons", {}), commercial.get("manual_discount", 0), usage.get("members", 0)),
                 })
                 out.append(d)
         return jsonify({"ok": True, "workspaces": out})
@@ -12547,12 +12569,13 @@ def admin_api_workspace_detail(ws_id):
             "limits": limits,
             "commercial": commercial,
             "health_score": _workspace_health_score(usage, limits, commercial),
-            "estimated_mrr": _estimated_workspace_mrr((dict(ws)).get("plan"), commercial.get("add_ons", {}), commercial.get("manual_discount", 0)),
+            "estimated_mrr": _estimated_workspace_mrr((dict(ws)).get("plan"), commercial.get("add_ons", {}), commercial.get("manual_discount", 0), usage.get("members", 0)),
             "timeline": timeline,
             "features": feature_cfg["features"],
             "feature_catalog": feature_cfg["catalog"],
             "addons": feature_cfg["addons"],
-            "plan_feature_defaults": PLAN_FEATURE_MATRIX,
+            "plan_feature_defaults": {k: v["features"] for k, v in _load_plan_configs().items()},
+            "plan_pricing": _load_plan_configs(),
             "members": [dict(m) for m in members],
             "tickets": [dict(t) for t in tickets],
         })
@@ -12650,6 +12673,50 @@ def admin_api_audit():
         return jsonify({"ok": True, "logs": [dict(r) for r in rows]})
     except Exception as e:
         return jsonify({"logs": [], "warning": str(e)}), 200
+
+@app.route("/api/admin/plan-config")
+def admin_api_plan_config():
+    """Global pricing/limits/feature matrix for all four plans — the single
+    source of truth the 'Plans & Pricing' tab reads and writes. Distinct from
+    /api/admin/workspace/set-plan, which only assigns a workspace to one of
+    these plans (or applies a one-off override on top of it)."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        cfgs = _load_plan_configs(force=True)
+        return jsonify({
+            "ok": True,
+            "plans": cfgs,
+            "price_labels": {k: _plan_price_label(v) for k, v in cfgs.items()},
+            "feature_catalog": WORKSPACE_FEATURE_CATALOG,
+            "addon_catalog": ADD_ON_CATALOG,
+        })
+    except Exception as e:
+        log.exception("admin plan-config read failed")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/plan-config", methods=["POST"])
+def admin_api_plan_config_save():
+    """Save pricing mode/values, usage limits and/or feature entitlements for one
+    plan. Body: {plan: 'team', mode?, flat_price_inr?, seat_price_inr?, min_seats?,
+    limits?: {...}, features?: {...}}. Only the keys present are changed. Takes
+    effect immediately (cache is invalidated) for every workspace on that plan
+    that doesn't have its own owner-panel override."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    plan_key = str(data.get("plan") or "").lower()
+    if plan_key not in _DEFAULT_PLAN_PRICING:
+        return jsonify({"error": "Unknown plan. Use starter, team, business or enterprise."}), 400
+    try:
+        updated = _save_plan_config(plan_key, data)
+        _audit("plan_config_update", plan_key, f"Updated pricing/limits/features for {plan_key} plan")
+        return jsonify({"ok": True, "plan": plan_key, "config": updated, "price_label": _plan_price_label(updated)})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        log.exception("admin plan-config save failed")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/admin/workspace/set-plan", methods=["POST"])
 def admin_api_set_plan():
@@ -13855,19 +13922,29 @@ def stripe_webhook():
 # Workspace-level commercial limits shown in Settings and on the landing page.
 # Storage values are intentionally capped by plan so the free tier stays sustainable.
 # Values are in MB.
-WORKSPACE_PLAN_USAGE_LIMITS = {
+_DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS = {
     "starter":    {"workspaces": 1, "members": 25,  "projects": 50,  "tasks": 350,  "invoices": 150,  "storage_mb": 1024},
     "team":       {"workspaces": 1, "members": 100, "projects": 250, "tasks": 1500, "invoices": 500,  "storage_mb": 25 * 1024},
     "business":   {"workspaces": 3, "members": 250, "projects": 750, "tasks": 5000, "invoices": 1500, "storage_mb": 100 * 1024},
     "enterprise": {"workspaces": 9999, "members": 9999, "projects": 9999, "tasks": 99999,"invoices": 9999, "storage_mb": 500 * 1024},
 }
+# Kept as a plain module-level name for any older code that reads this directly.
+# _load_plan_configs()[plan]["limits"] is the live, admin-editable source of truth.
+WORKSPACE_PLAN_USAGE_LIMITS = _DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS
 
-PLAN_PRICES_INR = {
-    "starter": 0,
-    "team": 999,
-    "business": 2999,
-    "enterprise": 0,
+# Per-plan pricing defaults (first-boot only — after that, the admin "Plans & Pricing"
+# panel owns these via the platform_plan_config table; see _load_plan_configs).
+#   mode "flat"     — flat_price_inr charged per workspace/month, ignores seat count.
+#   mode "per_seat" — seat_price_inr × max(member_count, min_seats), billed per month.
+#   mode "custom"   — contact-sales; no auto MRR, shown as "Custom" everywhere.
+_DEFAULT_PLAN_PRICING = {
+    "starter":    {"mode": "flat",     "flat_price_inr": 0,    "seat_price_inr": 0,  "min_seats": 1},
+    "team":       {"mode": "per_seat", "flat_price_inr": 999,  "seat_price_inr": 29, "min_seats": 3},
+    "business":   {"mode": "per_seat", "flat_price_inr": 2999, "seat_price_inr": 49, "min_seats": 10},
+    "enterprise": {"mode": "custom",   "flat_price_inr": 0,    "seat_price_inr": 0,  "min_seats": 1},
 }
+# Backward-compatible flat lookup for any legacy direct references.
+PLAN_PRICES_INR = {k: v["flat_price_inr"] for k, v in _DEFAULT_PLAN_PRICING.items()}
 
 PAYMENT_STATUS_FLOW = ("trial", "active", "payment_due", "grace", "restricted", "suspended", "cancelled")
 BILLING_CYCLES = ("monthly", "yearly", "manual")
@@ -13897,7 +13974,7 @@ WORKSPACE_FEATURE_CATALOG = {
     "custom_branding": {"label": "Custom branding", "category": "Enterprise", "addon_price": 999, "description": "Custom branding, customer workspace identity and hosted options."},
 }
 
-PLAN_FEATURE_MATRIX = {
+_DEFAULT_PLAN_FEATURE_MATRIX = {
     "starter": {
         "core_projects": True, "channels_dm": True, "reminders": True, "tickets": True,
         "ticket_sla": False, "ticket_automation": False, "ai_ticket_assistant": False,
@@ -13909,7 +13986,7 @@ PLAN_FEATURE_MATRIX = {
     "team": {
         "core_projects": True, "channels_dm": True, "reminders": True, "tickets": True,
         "ticket_sla": False, "ticket_automation": False, "ai_ticket_assistant": False,
-        "time_tracking": True, "timesheet_approvals": False, "timesheet_billable_rates": False, "timesheet_invoicing": False, "leave_management": False,
+        "time_tracking": True, "timesheet_approvals": True, "timesheet_billable_rates": False, "timesheet_invoicing": False, "leave_management": False,
         "billing_invoices": True, "ai_docs": True, "vault": True,
         "advanced_analytics": False, "integrations": False, "incident_approvals": False,
         "public_api": False, "sso_security": False, "custom_branding": False,
@@ -13924,6 +14001,9 @@ PLAN_FEATURE_MATRIX = {
     },
     "enterprise": {k: True for k in WORKSPACE_FEATURE_CATALOG.keys()},
 }
+# Kept as a plain module-level name for any older code that reads this directly.
+# _load_plan_configs()[plan]["features"] is the live, admin-editable source of truth.
+PLAN_FEATURE_MATRIX = _DEFAULT_PLAN_FEATURE_MATRIX
 
 ADD_ON_CATALOG = {
     "extra_storage_10gb": {"label": "Extra 10 GB storage", "price_inr": 299, "unit": "workspace / month", "limit_key": "storage_mb", "limit_add": 10 * 1024},
@@ -13948,8 +14028,127 @@ ADD_ON_CATALOG = {
     "priority_support": {"label": "Priority support", "price_inr": 1999, "unit": "workspace / month"},
 }
 
+# ═══════════════════════════════════════════════════════════════
+#  DYNAMIC PLAN CONFIG — pricing, limits & features, admin-editable
+# ═══════════════════════════════════════════════════════════════
+# Everything above (_DEFAULT_PLAN_PRICING, _DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS,
+# _DEFAULT_PLAN_FEATURE_MATRIX) is first-boot seed data only. From here on, the
+# platform_plan_config table is the live source of truth, edited from the
+# management panel's "Plans & Pricing" tab. A short in-memory cache avoids a
+# DB round trip on every feature-gate check; saves invalidate it immediately.
+_PLAN_CONFIG_CACHE = {"data": None, "loaded_at": 0}
+_PLAN_CONFIG_CACHE_TTL = 15  # seconds
+
+def _ensure_platform_plan_config_table(db):
+    db.execute("""CREATE TABLE IF NOT EXISTS platform_plan_config (
+        plan_key TEXT PRIMARY KEY,
+        price_mode TEXT DEFAULT 'flat',
+        flat_price_inr INTEGER DEFAULT 0,
+        seat_price_inr INTEGER DEFAULT 0,
+        min_seats INTEGER DEFAULT 1,
+        limits_json TEXT DEFAULT '{}',
+        features_json TEXT DEFAULT '{}',
+        updated TEXT DEFAULT '')""")
+
+def _load_plan_configs(force=False):
+    """Returns {plan_key: {mode, flat_price_inr, seat_price_inr, min_seats, limits, features}}.
+    Always merged over hardcoded defaults, so a missing table/row/key never breaks pricing
+    or feature-gating — it just falls back to the shipped defaults for that piece."""
+    now = time.time()
+    if not force and _PLAN_CONFIG_CACHE["data"] is not None and (now - _PLAN_CONFIG_CACHE["loaded_at"]) < _PLAN_CONFIG_CACHE_TTL:
+        return _PLAN_CONFIG_CACHE["data"]
+    out = {}
+    for plan_key, pricing in _DEFAULT_PLAN_PRICING.items():
+        out[plan_key] = {
+            "mode": pricing["mode"], "flat_price_inr": pricing["flat_price_inr"],
+            "seat_price_inr": pricing["seat_price_inr"], "min_seats": pricing["min_seats"],
+            "limits": dict(_DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS.get(plan_key, {})),
+            "features": dict(_DEFAULT_PLAN_FEATURE_MATRIX.get(plan_key, {})),
+        }
+    try:
+        with get_db() as db:
+            _ensure_platform_plan_config_table(db)
+            rows = db.execute("SELECT * FROM platform_plan_config").fetchall()
+            for r in rows:
+                pk = r["plan_key"]
+                if pk not in out:
+                    continue
+                out[pk]["mode"] = r["price_mode"] or out[pk]["mode"]
+                out[pk]["flat_price_inr"] = int(r["flat_price_inr"] or 0)
+                out[pk]["seat_price_inr"] = int(r["seat_price_inr"] or 0)
+                out[pk]["min_seats"] = max(1, int(r["min_seats"] or 1))
+                try:
+                    lim = json.loads(r["limits_json"] or "{}")
+                    if isinstance(lim, dict) and lim:
+                        out[pk]["limits"].update(lim)
+                except Exception:
+                    pass
+                try:
+                    feat = json.loads(r["features_json"] or "{}")
+                    if isinstance(feat, dict) and feat:
+                        out[pk]["features"].update(feat)
+                except Exception:
+                    pass
+    except Exception:
+        log.exception("plan config load failed; using hardcoded defaults")
+    _PLAN_CONFIG_CACHE["data"] = out
+    _PLAN_CONFIG_CACHE["loaded_at"] = now
+    return out
+
+def _save_plan_config(plan_key, patch):
+    """Admin-panel write path. `patch` may include mode / flat_price_inr / seat_price_inr /
+    min_seats / limits(dict) / features(dict) — only the keys provided are changed."""
+    plan_key = str(plan_key or "").lower()
+    if plan_key not in _DEFAULT_PLAN_PRICING:
+        raise ValueError("Unknown plan: " + plan_key)
+    current = _load_plan_configs(force=True).get(plan_key, {})
+    mode = str(patch.get("mode", current.get("mode", "flat")))
+    if mode not in ("flat", "per_seat", "custom"):
+        raise ValueError("Invalid price mode: " + mode)
+    flat_price = max(0, int(patch.get("flat_price_inr", current.get("flat_price_inr", 0)) or 0))
+    seat_price = max(0, int(patch.get("seat_price_inr", current.get("seat_price_inr", 0)) or 0))
+    min_seats = max(1, int(patch.get("min_seats", current.get("min_seats", 1)) or 1))
+    limits = dict(current.get("limits", {}))
+    if isinstance(patch.get("limits"), dict):
+        for k, v in patch["limits"].items():
+            if k in ("workspaces", "members", "projects", "tasks", "invoices", "storage_mb") and str(v).strip() != "":
+                limits[k] = int(float(v))
+    features = dict(current.get("features", {}))
+    if isinstance(patch.get("features"), dict):
+        for k, v in patch["features"].items():
+            if k in WORKSPACE_FEATURE_CATALOG:
+                features[k] = bool(v)
+    with get_db(autocommit=True) as db:
+        _ensure_platform_plan_config_table(db)
+        db.execute("""INSERT INTO platform_plan_config
+                        (plan_key, price_mode, flat_price_inr, seat_price_inr, min_seats, limits_json, features_json, updated)
+                      VALUES (?,?,?,?,?,?,?,?)
+                      ON CONFLICT(plan_key) DO UPDATE SET
+                        price_mode=excluded.price_mode, flat_price_inr=excluded.flat_price_inr,
+                        seat_price_inr=excluded.seat_price_inr, min_seats=excluded.min_seats,
+                        limits_json=excluded.limits_json, features_json=excluded.features_json,
+                        updated=excluded.updated""",
+                   (plan_key, mode, flat_price, seat_price, min_seats,
+                    json.dumps(limits), json.dumps(features), datetime.utcnow().isoformat()))
+    _PLAN_CONFIG_CACHE["data"] = None  # force reload on next read
+    return _load_plan_configs(force=True)[plan_key]
+
+def _plan_price_label(cfg):
+    """Human-readable price string for a plan config dict, e.g. '₹29/user/mo' or 'Custom'."""
+    mode = cfg.get("mode")
+    if mode == "custom":
+        return "Custom"
+    if mode == "per_seat":
+        return f"₹{int(cfg.get('seat_price_inr') or 0)}/user/mo (min {int(cfg.get('min_seats') or 1)} users)"
+    price = int(cfg.get("flat_price_inr") or 0)
+    return "Free" if price == 0 else f"₹{price}/mo"
+
+
 def _feature_defaults_for_plan(plan):
     plan_key = str(plan or "starter").lower()
+    cfgs = _load_plan_configs()
+    if plan_key in cfgs:
+        return dict(cfgs[plan_key]["features"])
     return dict(PLAN_FEATURE_MATRIX.get(plan_key, PLAN_FEATURE_MATRIX["starter"]))
 
 def _workspace_feature_config(db, workspace_id):
@@ -13997,7 +14196,9 @@ def _limits_for_plan(plan, custom_limits_json='', storage_limit_mb=0):
     """Return commercial limits for a workspace. Admin panel can increase
     storage or other limits after payment without changing global plan defaults."""
     plan_key = str(plan or "starter").lower()
-    limits = dict(WORKSPACE_PLAN_USAGE_LIMITS.get(plan_key, WORKSPACE_PLAN_USAGE_LIMITS["starter"]))
+    cfgs = _load_plan_configs()
+    base_limits = cfgs.get(plan_key, {}).get("limits") or WORKSPACE_PLAN_USAGE_LIMITS.get(plan_key, WORKSPACE_PLAN_USAGE_LIMITS["starter"])
+    limits = dict(base_limits)
     try:
         extra = json.loads(custom_limits_json or "{}") if custom_limits_json else {}
         if isinstance(extra, dict):
@@ -14108,8 +14309,16 @@ def _workspace_health_score(usage, limits, commercial):
         score -= min(15, int((usage or {}).get("tickets") or 0) * 3)
     return max(0, min(100, int(score)))
 
-def _estimated_workspace_mrr(plan, addons=None, discount=0):
-    base = int(PLAN_PRICES_INR.get(str(plan or "starter").lower(), 0) or 0)
+def _estimated_workspace_mrr(plan, addons=None, discount=0, member_count=0):
+    plan_key = str(plan or "starter").lower()
+    cfg = _load_plan_configs().get(plan_key) or {"mode": "flat", "flat_price_inr": 0, "seat_price_inr": 0, "min_seats": 1}
+    if cfg["mode"] == "per_seat":
+        seats = max(int(member_count or 0), int(cfg.get("min_seats") or 1))
+        base = int(cfg.get("seat_price_inr") or 0) * seats
+    elif cfg["mode"] == "custom":
+        base = 0  # contact-sales — no auto-estimated MRR, owner tracks it manually via amount_paid
+    else:
+        base = int(cfg.get("flat_price_inr") or 0)
     addon_total = 0
     for key, enabled in (addons or {}).items():
         if enabled:
