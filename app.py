@@ -4775,9 +4775,22 @@ def init_db():
             "ALTER TABLE workspaces ADD COLUMN domain_join_requires_approval INTEGER DEFAULT 1",
             # ── Phase 2: Workspace URL slug (already exists but ensure column) ──
             "ALTER TABLE workspaces ADD COLUMN custom_url_id TEXT DEFAULT ''",
+            # ── Multi-workspace billing accounts (groundwork) ──
+            # Groups workspaces under one paying "account" so a plan's included-
+            # workspace-count (e.g. Business's 3) can eventually be enforced.
+            # Self-referencing default (account_id = own id) means every existing
+            # workspace today is its own account of size 1 — correct, since there
+            # is not yet any product flow that creates a second workspace under
+            # an existing owner. See _account_workspace_limit_check().
+            "ALTER TABLE workspaces ADD COLUMN account_id TEXT DEFAULT ''",
+            "CREATE INDEX IF NOT EXISTS idx_workspaces_account ON workspaces(account_id)",
         ]:
             try: db.execute(stmt)
             except: pass
+        try:
+            db.execute("UPDATE workspaces SET account_id=id WHERE account_id IS NULL OR account_id=''")
+        except Exception:
+            log.exception("account_id backfill failed")
         try:
             corrupted = db.execute("SELECT id, name, avatar FROM users WHERE avatar LIKE 'data:image%%' OR (length(avatar) > 10 AND avatar !~ '^[A-Z]{1,2}$')").fetchall()
             for row in corrupted:
@@ -6096,6 +6109,34 @@ def _member_limit_check(db, workspace_id):
     if member_cap and current >= member_cap:
         return False, f"This workspace has reached its {plan.capitalize()} plan limit of {member_cap} members. Ask an owner to upgrade the plan to add more people.", plan
     return True, "", plan
+
+def _account_workspace_limit_check(db, owner_workspace_id):
+    """Returns (allowed: bool, message: str) — whether the ACCOUNT that owns
+    owner_workspace_id can create one more workspace under its plan's included-
+    workspace count (e.g. Business's "3 workspaces included").
+
+    Groundwork only: there is currently no product flow that creates a second
+    workspace under an existing owner's account (every signup today creates a
+    brand-new, independent account_id), so nothing calls this yet. It's wired
+    up and correct for the day a "create another workspace" or "link workspace
+    to my account" feature is built — call it right before that INSERT, passing
+    the existing workspace whose account the new one would join."""
+    row = db.execute("SELECT account_id FROM workspaces WHERE id=?", (owner_workspace_id,)).fetchone()
+    account_id = (row["account_id"] if row and "account_id" in row.keys() else "") or owner_workspace_id
+    sibling_plans = db.execute("SELECT plan FROM workspaces WHERE account_id=?", (account_id,)).fetchall()
+    if not sibling_plans:
+        return True, ""
+    # The account's plan is whichever paid plan its workspaces share; fall back
+    # to the first row's plan if they somehow differ (shouldn't happen once a
+    # real "add workspace" flow exists — plan should live on the account, not
+    # per-workspace, at that point).
+    plan = ((sibling_plans[0]["plan"] if "plan" in sibling_plans[0].keys() else "starter") or "starter").lower()
+    limits = _limits_for_plan(plan)
+    ws_cap = int(limits.get("workspaces") or 0)
+    current = len(sibling_plans)
+    if ws_cap and current >= ws_cap:
+        return False, f"This account has reached its {plan.capitalize()} plan limit of {ws_cap} workspaces. Upgrade the plan to add another."
+    return True, ""
 
 @app.route("/api/workspace/invite", methods=["POST"])
 @login_required
@@ -11496,7 +11537,27 @@ def pwa_icon_192():
 
 @app.route("/robots.txt")
 def robots_txt():
-    return Response("User-agent: *\nDisallow:\n", mimetype="text/plain")
+    return Response("User-agent: *\nDisallow:\nSitemap: https://projecttracker.in/sitemap.xml\n", mimetype="text/plain")
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """Static marketing pages only — in-app/workspace routes are behind auth
+    and shouldn't be crawled or indexed."""
+    base = "https://projecttracker.in"
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    pages = [
+        ("/", "1.0"),
+        ("/terms", "0.3"),
+        ("/privacy", "0.3"),
+        ("/security", "0.3"),
+        ("/password-generator", "0.5"),
+    ]
+    urls = "".join(
+        f"<url><loc>{base}{path}</loc><lastmod>{today}</lastmod><priority>{priority}</priority></url>"
+        for path, priority in pages
+    )
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+    return Response(xml, mimetype="application/xml", headers={"Cache-Control": "public, max-age=3600"})
 
 @app.route("/favicon.ico")
 def favicon():
@@ -12723,6 +12784,21 @@ def admin_api_plan_config():
         })
     except Exception as e:
         log.exception("admin plan-config read failed")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/worker-status")
+def admin_api_worker_status():
+    """Is the background worker (`python worker.py`) actually alive right now?
+    Answers this directly from Redis's own RQ worker registry instead of
+    needing to eyeball the Railway dashboard — a worker that crashed or was
+    never started shows zero registered workers here."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        status = _job_queue.worker_status()
+        return jsonify({"ok": True, **status})
+    except Exception as e:
+        log.exception("admin worker-status failed")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/admin/plan-config", methods=["POST"])

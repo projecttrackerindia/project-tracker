@@ -73,6 +73,28 @@ class JobQueue:
             return self.queue.enqueue(fn, *args, **kwargs)
         return _executor.submit(fn, *args, **kwargs)
 
+    def worker_status(self) -> Dict[str, Any]:
+        """Live view of whatever `python worker.py` processes are actually
+        registered with Redis right now — RQ workers self-register and send a
+        heartbeat, so this answers "is the worker service actually running?"
+        directly instead of needing to check the Railway dashboard by hand.
+        Returns {enabled, backend, workers: [{name, state, last_heartbeat}]}."""
+        out: Dict[str, Any] = {"enabled": self.ready, "backend": self.backend, "workers": []}
+        if not self.ready:
+            return out
+        try:
+            from rq import Worker  # type: ignore
+            for w in Worker.all(connection=self.redis):
+                hb = getattr(w, "last_heartbeat", None)
+                out["workers"].append({
+                    "name": w.name,
+                    "state": w.get_state() if hasattr(w, "get_state") else "unknown",
+                    "last_heartbeat": hb.isoformat() if hb else "",
+                })
+        except Exception:
+            pass
+        return out
+
 
 class ObjectStore:
     """S3/R2 object storage helper with local fallback.

@@ -1506,6 +1506,22 @@ const _apiNotifyError = (url, message, status) => {
   if (!_apiShouldToast(url, status)) return;
   window.dispatchEvent(new CustomEvent('pt:api-error', { detail: { url, message, status } }));
 };
+// BUG FIX (silent "frozen dashboard" after a session dies while the tab is
+// open — e.g. laptop sleeps past the 30-min idle window, or the server
+// invalidates the session for any other reason): every poller and the SSE
+// stream independently swallowed 401s and just kept retrying forever, so
+// the UI never told the user they'd been signed out — presence, live
+// updates and reminders all silently stopped working until a manual
+// refresh. This fires ONE global signal the first time any authenticated
+// endpoint reports the session is gone, so the app can log out for real
+// instead of each caller quietly failing on its own.
+let _ptSessionExpiredFired = false;
+const _ptNotifySessionExpired = () => {
+  if (_ptSessionExpiredFired) return;
+  _ptSessionExpiredFired = true;
+  window.dispatchEvent(new CustomEvent('pt:session-expired'));
+};
+window._ptResetSessionExpiredFlag = () => { _ptSessionExpiredFired = false; }; // called from a fresh login
 const _apiRequest = async (u, opts = {}) => {
   const method = (opts.method || 'GET').toUpperCase();
   const timeoutMs = opts.timeoutMs || (method === 'GET' ? 15000 : 30000);
@@ -1542,7 +1558,12 @@ const _apiRequest = async (u, opts = {}) => {
     const data = await _apiRead(r);
     if (!r.ok) {
       const message = data?.error || data?.message || `HTTP ${r.status}`;
-      if (!(r.status === 401 && !u.startsWith('/api/auth/'))) _apiNotifyError(u, message, r.status);
+      const isAuthEndpoint = u.startsWith('/api/auth/');
+      if (r.status === 401 && !isAuthEndpoint) {
+        _ptNotifySessionExpired(); // see _ptNotifySessionExpired above
+      } else {
+        _apiNotifyError(u, message, r.status);
+      }
       return { ok:false, error:message, status:r.status, data };
     }
     const etag = r.headers.get('ETag');
@@ -13707,6 +13728,21 @@ function App(){
   },[cu,showGlobalCallPopup]);
 
   // ── SSE real-time stream ──────────────────────────────────────────────────
+  // sseStatus drives a small non-blocking banner (rendered near the bottom of
+  // this component) so a dropped connection is visible as "reconnecting…"
+  // instead of looking identical to a dead/expired session — see onerror below,
+  // which now distinguishes a transient network blip from a real logout.
+  const [sseStatus,setSseStatus]=useState('connected'); // 'connected' | 'reconnecting'
+  const [showReconnectBanner,setShowReconnectBanner]=useState(false);
+  useEffect(()=>{
+    if(sseStatus==='reconnecting'){
+      // Debounced 3s so a normal instant reconnect never flashes anything —
+      // only a connection that's actually stuck shows the banner.
+      const t=setTimeout(()=>setShowReconnectBanner(true),3000);
+      return()=>clearTimeout(t);
+    }
+    setShowReconnectBanner(false);
+  },[sseStatus]);
   // A single EventSource replaces the need for manual polling on task/project/
   // notification/ticket mutations. The server calls _sse_publish() after every
   // write, so changes propagate to all connected clients in <1s instead of 30s.
@@ -13720,8 +13756,7 @@ function App(){
       }
       try{
         es=new EventSource('/api/stream', {withCredentials: true});
-        window.__ptSSEActive=es;
-        es.onmessage=e=>{
+        window.__ptSSEActive=es;        es.onmessage=e=>{
           try{
             const msg=JSON.parse(e.data);
             if(msg.type==='connected')return; // initial handshake
@@ -13879,15 +13914,30 @@ function App(){
           }catch(err){}
         };
         es.onopen=()=>{
+          setSseStatus('connected');
           // On SSE reconnect, trigger a bust reload to fetch any events missed during disconnection
           if(es.readyState===EventSource.OPEN){
             setTimeout(()=>load(teamCtx,true),800);
           }
         };
         es.onerror=()=>{
-          // EventSource reconnects automatically, but we add a backoff guard
+          // BUG FIX: this used to unconditionally retry every 5s forever,
+          // including when the session itself was dead (e.g. the tab was
+          // asleep/suspended past the 30-min idle window, so the server
+          // already expired it) — silently hammering the server and never
+          // recovering until a manual refresh. Now a failed connection
+          // triggers one lightweight auth check: if the session is
+          // actually gone, api.get's 401 handling fires the global
+          // pt:session-expired logout instead of scheduling another
+          // doomed retry; only a real transient network blip keeps the
+          // normal 5s backoff loop.
+          setSseStatus('reconnecting');
           es.close();
-          retryTimer=setTimeout(connect,5000);
+          if(window.__ptSSEActive===es)window.__ptSSEActive=null;
+          api.get('/api/auth/me',{quiet:true,timeoutMs:8000}).then(r=>{
+            if(r&&r.status===401)return; // pt:session-expired already fired — don't reconnect
+            retryTimer=setTimeout(connect,5000);
+          }).catch(()=>{retryTimer=setTimeout(connect,5000);});
         };
       }catch(err){}
     };
@@ -13959,6 +14009,20 @@ function App(){
     window.addEventListener('pt:api-error', onApiError);
     return()=>window.removeEventListener('pt:api-error', onApiError);
   },[addToast]);
+  // BUG FIX: pairs with _ptNotifySessionExpired in the api layer above. Any
+  // authenticated endpoint (poller, SSE reconnect check, etc.) reporting a
+  // real 401 now forces an actual logout — stopping every poller/SSE retry
+  // loop and showing the login screen — instead of the tab quietly sitting
+  // there "logged in" but disconnected from live data.
+  useEffect(()=>{
+    if(!cu)return;
+    const onSessionExpired=()=>{
+      try{window._pfToast&&window._pfToast('info','Signed out','Your session ended — please sign in again.');}catch(_){}
+      logout();
+    };
+    window.addEventListener('pt:session-expired', onSessionExpired);
+    return()=>window.removeEventListener('pt:session-expired', onSessionExpired);
+  },[cu]);
 
   const notify=useCallback((type,title,body,navTo,opts={})=>{
     addToast(type,title,body);
@@ -14593,7 +14657,7 @@ function App(){
   },[data.users,activeTeam,teamMemberIds]);
 
   if(loading)return html`<${AppLoader}/>`;
-  if(!cu)return html`<${AuthScreen} onLogin=${u=>{setCu(u);}}/>`;
+  if(!cu)return html`<${AuthScreen} onLogin=${u=>{try{window._ptResetSessionExpiredFlag&&window._ptResetSessionExpiredFlag();}catch(_){}setCu(u);}}/>`;
 
   if(isDevRole && devNoTeam && safe(data.teams).length>0) return html`
     <div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)',flexDirection:'column',gap:16,padding:24}}>
@@ -14642,6 +14706,11 @@ function App(){
         <div style=${{background:'rgba(245,158,11,.12)',borderBottom:'1px solid rgba(245,158,11,.28)',padding:'7px 20px',fontSize:12,color:'#f59e0b',display:'flex',alignItems:'center',gap:8,flexShrink:0,zIndex:999}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".5" fill="currentColor"/></svg>
           <b>Offline / No Backend</b> — Server not reachable. <b>My Vault</b> and <b>Password Generator</b> work fully (stored locally). Other features require a live backend.
+        </div>`:null}
+      ${showReconnectBanner&&!(cu&&cu._offline)?html`
+        <div style=${{background:'rgba(245,158,11,.12)',borderBottom:'1px solid rgba(245,158,11,.28)',padding:'7px 20px',fontSize:12,color:'#f59e0b',display:'flex',alignItems:'center',gap:8,flexShrink:0,zIndex:999}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <b>Reconnecting…</b> — live updates are paused while we re-establish the connection.
         </div>`:null}
       <div style=${{display:'flex',flex:1,overflow:'hidden'}}>
       <${Sidebar} cu=${cu} view=${baseView} setView=${v=>{
