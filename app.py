@@ -2527,7 +2527,7 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 # If it is missing or rejected, we try the old verified fallback too so a bad
 # deploy does not silently break task assignment emails.
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', '')
-DEFAULT_RESEND_FROM_EMAIL = os.environ.get('DEFAULT_RESEND_FROM_EMAIL', 'noreply@project-tracker.in')
+DEFAULT_RESEND_FROM_EMAIL = os.environ.get('DEFAULT_RESEND_FROM_EMAIL', 'noreply@projecttracker.in')
 APP_URL = os.environ.get('APP_URL', 'https://projecttracker.in')
 
 
@@ -2565,9 +2565,9 @@ def _current_app_url():
 def _resend_from_candidates():
     """Candidate sender addresses, ordered from configured to backward-compatible.
 
-    The previous working setup used project-tracker.in in many deployments. A
-    later patch suggested projecttracker.in, which breaks delivery if only the
-    old hyphenated domain is verified in Resend. Trying both avoids silent 403s.
+    Confirmed: projecttracker.in is the domain verified for sending in Resend.
+    The old hyphenated project-tracker.in is kept as a last-resort fallback only
+    in case any environment var still references it — it is not expected to work.
     """
     candidates = [
         os.environ.get('RESEND_FROM_EMAIL', '').strip(),
@@ -3332,6 +3332,111 @@ def _progress_bar(pct: int, accent: str) -> str:
 
 
 # ── Individual send functions ──────────────────────────────────────────────────
+
+def _parse_device_label(user_agent: str) -> str:
+    """Best-effort human-readable device label from a User-Agent string, e.g.
+    'Chrome on Windows' or 'Safari on iPhone'. No external dependency —
+    good enough for a security notification, not meant to be exact."""
+    ua = user_agent or ""
+    if "iPhone" in ua: os_label = "iPhone"
+    elif "iPad" in ua: os_label = "iPad"
+    elif "Android" in ua: os_label = "Android"
+    elif "Macintosh" in ua or "Mac OS X" in ua: os_label = "Mac"
+    elif "Windows" in ua: os_label = "Windows"
+    elif "Linux" in ua: os_label = "Linux"
+    else: os_label = "Unknown device"
+    if "Edg/" in ua: browser = "Edge"
+    elif "OPR/" in ua or "Opera" in ua: browser = "Opera"
+    elif "Chrome" in ua and "Chromium" not in ua: browser = "Chrome"
+    elif "CriOS" in ua: browser = "Chrome"
+    elif "FxiOS" in ua or "Firefox" in ua: browser = "Firefox"
+    elif "Safari" in ua and "Chrome" not in ua: browser = "Safari"
+    else: browser = "a browser"
+    return f"{browser} on {os_label}"
+
+def send_new_device_login_email(user_email, user_name, device_label, ip, workspace_id=None):
+    """Security alert: this account was just used to log in from a browser/OS
+    combination we haven't seen for it before."""
+    accent = "#f59e0b"
+    subject = "🔐 New sign-in to your Project Tracker account"
+    safe_user = _email_escape(user_name)
+    login_time = now_ist().strftime("%d %b %Y, %I:%M %p IST")
+    body = f"""
+      <h1 class="pt-h1" style="margin:0 0 10px;font-size:28px;font-weight:900;
+          color:#ffffff;letter-spacing:-.8px;line-height:1.2;">
+        🔐 New sign-in detected
+      </h1>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:rgba(255,255,255,.55);">
+        Hi <strong style="color:#ffffff;">{safe_user}</strong>, your account was just used to sign in
+        from a device we haven't seen before. If this was you, no action is needed.
+      </p>
+      {_task_card("Sign-in details", accent, [
+          ("Device", device_label),
+          ("IP address", ip or "Unknown"),
+          ("Time", login_time),
+      ])}
+      <div style="margin-top:20px;padding:14px 18px;
+                  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);
+                  border-radius:12px;font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;">
+        <span style="color:#ef4444;font-weight:800;">Wasn't you?</span>&nbsp;
+        Change your password immediately and review active sessions in your account settings.
+      </div>"""
+    html = _email_base(
+        subject_label="SECURITY", accent=accent, header_icon="🔐",
+        header_badge="NEW SIGN-IN", inner_html=body,
+        cta_url=f"{_current_app_url()}/?action=settings", cta_text="Review account security →",
+        warning=True,
+    )
+    threading.Thread(target=send_email, args=(user_email, subject, html, workspace_id), daemon=True).start()
+
+def send_welcome_email(user_email, user_name, workspace_name, workspace_id=None, created_workspace=False):
+    """Sent once, right when a brand-new user account is created (new
+    workspace, joined by invite code, invite link, or domain match)."""
+    accent = "#6366f1"
+    subject = f"🎉 Welcome to Project Tracker{', ' + workspace_name if workspace_name else ''}!"
+    safe_user = _email_escape(user_name)
+    safe_ws = _email_escape(workspace_name or "your workspace")
+    intro = (
+        f"You just created <strong style=\"color:#ffffff;\">{safe_ws}</strong> — your new home for projects, "
+        f"tasks, tickets, timesheets and team chat, all in one place."
+        if created_workspace else
+        f"You've joined <strong style=\"color:#ffffff;\">{safe_ws}</strong> on Project Tracker — your team's "
+        f"projects, tasks and conversations are all waiting for you."
+    )
+    body = f"""
+      <h1 class="pt-h1" style="margin:0 0 10px;font-size:30px;font-weight:900;
+          color:#ffffff;letter-spacing:-.8px;line-height:1.2;">
+        🎉 Welcome aboard, {safe_user}!
+      </h1>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:rgba(255,255,255,.55);">
+        {intro}
+      </p>
+      <table role="presentation" class="pt-cols" width="100%"
+             cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px;">
+        <tr>
+          {_stat_pill("📋", "Projects & tasks", "Kanban + timeline", accent)}
+          {_stat_pill("💬", "Team chat", "Channels & DMs", "#10b981")}
+        </tr>
+      </table>
+      {_task_card("Quick start", accent, [
+          ("1. Set up your profile", "Add a photo and set your role"),
+          ("2. Create or open a project", "Kanban, list or timeline view"),
+          ("3. Invite your team", "Share your invite code or link"),
+      ])}
+      <div style="margin-top:20px;padding:14px 18px;
+                  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
+                  border-radius:12px;font-size:12px;color:rgba(255,255,255,.55);line-height:1.6;">
+        <span style="color:{accent};font-weight:800;">💡 Tip</span>&nbsp;
+        You can switch between Kanban, list, and timeline views on any project — try them all to see what fits your team best.
+      </div>"""
+    html = _email_base(
+        subject_label="WELCOME", accent=accent, header_icon="🎉",
+        header_badge="WELCOME", inner_html=body,
+        cta_url=_current_app_url(), cta_text="Open Project Tracker →",
+        celebration=True,
+    )
+    threading.Thread(target=send_email, args=(user_email, subject, html, workspace_id), daemon=True).start()
+
 
 def send_task_assigned_email(user_email, user_name, task_title, assigner_name, task_id, workspace_id, priority="medium"):
     """Futuristic task-assigned email with assignment animation indicators."""
@@ -4784,6 +4889,13 @@ def init_db():
             # an existing owner. See _account_workspace_limit_check().
             "ALTER TABLE workspaces ADD COLUMN account_id TEXT DEFAULT ''",
             "CREATE INDEX IF NOT EXISTS idx_workspaces_account ON workspaces(account_id)",
+            # ── Admin panel 2FA (TOTP) ──
+            """CREATE TABLE IF NOT EXISTS platform_admin_security (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                totp_secret TEXT DEFAULT '',
+                totp_verified INTEGER DEFAULT 0,
+                updated TEXT DEFAULT ''
+            )""",
         ]:
             try: db.execute(stmt)
             except: pass
@@ -5302,8 +5414,10 @@ def login():
         # CRITICAL: clear the logout cache so login_required doesn't reject
         # this new session using a stale cached logout timestamp
         _set_logged_out_at(u["id"], "")
-        _register_session(u["id"], u["workspace_id"], session_id)
+        is_new_device, device_label, login_ip = _register_session(u["id"], u["workspace_id"], session_id)
         _audit("user_login", u["id"], f"{u['name']} ({email}) logged in")
+        if is_new_device:
+            send_new_device_login_email(email, u["name"], device_label, login_ip, u["workspace_id"])
         result = dict(u)
         result.pop("totp_secret", None)
         result.pop("password", None)
@@ -5754,12 +5868,17 @@ def totp_verify_login():
         session["user_id"] = u["id"]
         session["workspace_id"] = u["workspace_id"]
         session["login_at"] = login_ts   # needed for remote logout detection
+        session_id = secrets.token_hex(16)
+        session["session_id"] = session_id
         try:
             db.execute("UPDATE users SET last_active=?, logged_out_at='' WHERE id=?", (login_ts, u["id"]))
         except Exception: pass
         # Clear logout cache so login_required accepts this new session
         _set_logged_out_at(u["id"], "")
+        is_new_device, device_label, login_ip = _register_session(u["id"], u["workspace_id"], session_id)
         _audit("user_login_totp", u["id"], f"{u['name']} logged in via Google Authenticator")
+        if is_new_device:
+            send_new_device_login_email(u["email"], u["name"], device_label, login_ip, u["workspace_id"])
         result = dict(u)
         result.pop("password", None)
         result.pop("totp_secret", None)
@@ -5872,22 +5991,28 @@ def _send_verification_email(user_email, user_name, token, workspace_id=None):
     base = os.environ.get("APP_BASE_URL", "https://your-app.railway.app")
     link = f"{base}/api/auth/verify-email?token={token}"
     subject = "Project Tracker — Verify Your Email"
+    accent = "#6366f1"
+    safe_user = _email_escape(user_name)
     body = f"""
-    <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px;">
-    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
-      <div style="background:#0a1a00;padding:24px 32px;text-align:center;">
-        <h1 style="color:#5a8cff;margin:0;font-size:22px;">Project Tracker</h1>
-      </div>
-      <div style="padding:32px;">
-        <h2 style="color:#111;margin:0 0 8px;">Hi {user_name},</h2>
-        <p style="color:#555;margin:0 0 24px;">Click the button below to verify your email address and activate your account.</p>
-        <div style="text-align:center;margin:0 0 24px;">
-          <a href="{link}" style="display:inline-block;background:#5a8cff;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">Verify Email</a>
-        </div>
-        <p style="color:#888;font-size:12px;">Link expires in 24 hours. If you didn't create an account, ignore this email.</p>
-      </div>
-    </div></body></html>"""
-    threading.Thread(target=send_email, args=(user_email, subject, body, workspace_id), daemon=True).start()
+      <h1 class="pt-h1" style="margin:0 0 10px;font-size:28px;font-weight:900;
+          color:#ffffff;letter-spacing:-.8px;line-height:1.2;">
+        ✉️ Verify your email
+      </h1>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:rgba(255,255,255,.55);">
+        Hi <strong style="color:#ffffff;">{safe_user}</strong>, click below to verify your email address and activate your account.
+      </p>
+      <div style="margin-top:20px;padding:14px 18px;
+                  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
+                  border-radius:12px;font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;">
+        <span style="color:{accent};font-weight:800;">⏱ Expires in 24 hours</span>&nbsp;
+        If you didn't create an account, you can safely ignore this email.
+      </div>"""
+    html = _email_base(
+        subject_label="VERIFY", accent=accent, header_icon="✉️",
+        header_badge="EMAIL VERIFICATION", inner_html=body,
+        cta_url=link, cta_text="Verify Email →",
+    )
+    threading.Thread(target=send_email, args=(user_email, subject, html, workspace_id), daemon=True).start()
 
 @app.route("/api/auth/verify-email")
 def verify_email():
@@ -5930,22 +6055,29 @@ def _send_password_reset_email(user_email, user_name, token, workspace_id=None):
     base = os.environ.get("APP_BASE_URL", "https://your-app.railway.app")
     link = f"{base}/?action=reset-password&token={token}"
     subject = "Project Tracker — Reset Your Password"
+    accent = "#ef4444"
+    safe_user = _email_escape(user_name)
     body = f"""
-    <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px;">
-    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
-      <div style="background:#0a1a00;padding:24px 32px;text-align:center;">
-        <h1 style="color:#5a8cff;margin:0;font-size:22px;">Project Tracker</h1>
-      </div>
-      <div style="padding:32px;">
-        <h2 style="color:#111;margin:0 0 8px;">Hi {user_name},</h2>
-        <p style="color:#555;margin:0 0 24px;">Click the button below to reset your password. This link expires in <b>12 minutes</b>.</p>
-        <div style="text-align:center;margin:0 0 24px;">
-          <a href="{link}" style="display:inline-block;background:#5a8cff;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">Reset Password</a>
-        </div>
-        <p style="color:#888;font-size:12px;">If you didn't request a password reset, you can safely ignore this email.</p>
-      </div>
-    </div></body></html>"""
-    threading.Thread(target=send_email, args=(user_email, subject, body, workspace_id), daemon=True).start()
+      <h1 class="pt-h1" style="margin:0 0 10px;font-size:28px;font-weight:900;
+          color:#ffffff;letter-spacing:-.8px;line-height:1.2;">
+        🔑 Reset your password
+      </h1>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:rgba(255,255,255,.55);">
+        Hi <strong style="color:#ffffff;">{safe_user}</strong>, click below to choose a new password.
+      </p>
+      <div style="margin-top:20px;padding:14px 18px;
+                  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);
+                  border-radius:12px;font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;">
+        <span style="color:{accent};font-weight:800;">⏱ Expires in 12 minutes</span>&nbsp;
+        If you didn't request this, you can safely ignore this email — your password will stay unchanged.
+      </div>"""
+    html = _email_base(
+        subject_label="SECURITY", accent=accent, header_icon="🔑",
+        header_badge="PASSWORD RESET", inner_html=body,
+        cta_url=link, cta_text="Reset Password →",
+        urgent=True,
+    )
+    threading.Thread(target=send_email, args=(user_email, subject, html, workspace_id), daemon=True).start()
 
 @app.route("/api/auth/forgot-password", methods=["POST"])
 def forgot_password():
@@ -5994,31 +6126,32 @@ def reset_password():
 # ── Device / Session Management ───────────────────────────────────────────────
 
 def _register_session(uid, ws_id, session_id):
-    """Record a new login session in user_sessions table."""
+    """Record a new login session in user_sessions table. Returns
+    (is_new_device, device_name, ip) — is_new_device is True only when this
+    user already had at least one other session on file with a different
+    device name (so a brand-new account's very first login never triggers
+    a "new device" alert)."""
     ua = request.headers.get("User-Agent", "")[:300]
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:64]
-    # Simple device name from UA
-    device_name = "Unknown"
-    ua_lower = ua.lower()
-    if "mobile" in ua_lower or "android" in ua_lower:
-        device_name = "Mobile"
-    elif "iphone" in ua_lower or "ipad" in ua_lower:
-        device_name = "iPhone/iPad"
-    elif "windows" in ua_lower:
-        device_name = "Windows PC"
-    elif "mac" in ua_lower:
-        device_name = "Mac"
-    elif "linux" in ua_lower:
-        device_name = "Linux"
+    ip = _client_ip()
+    device_name = _parse_device_label(ua)
     now_str = ts()
+    is_new_device = False
     try:
         with get_db() as db:
+            prior = db.execute(
+                "SELECT COUNT(*) AS c FROM user_sessions WHERE user_id=? AND device_name<>?",
+                (uid, device_name)
+            ).fetchone()
+            has_any = db.execute("SELECT COUNT(*) AS c FROM user_sessions WHERE user_id=?", (uid,)).fetchone()
+            is_new_device = bool(has_any and has_any["c"] and (not prior or prior["c"] == has_any["c"]))
+
             db.execute(
                 "INSERT OR REPLACE INTO user_sessions(id,user_id,workspace_id,device_name,ip,user_agent,login_at,last_seen,is_current) VALUES(?,?,?,?,?,?,?,?,1)",
                 (session_id, uid, ws_id, device_name, ip, ua, now_str, now_str)
             )
     except Exception as e:
         log.warning("[session_mgr] Could not register session: %s", e)
+    return is_new_device, device_name, ip
 
 @app.route("/api/auth/sessions", methods=["GET"])
 @login_required
@@ -6078,22 +6211,32 @@ def _send_workspace_invite_email(to_email, inviter_name, ws_name, token, role, w
     base = os.environ.get("APP_BASE_URL", "https://your-app.railway.app")
     link = f"{base}/?action=accept-invite&token={token}"
     subject = f"You're invited to join {ws_name} on Project Tracker"
+    accent = "#10b981"
+    safe_inviter = _email_escape(inviter_name)
+    safe_ws = _email_escape(ws_name)
+    safe_role = _email_escape(str(role or "member").title())
     body = f"""
-    <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px;">
-    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
-      <div style="background:#0a1a00;padding:24px 32px;text-align:center;">
-        <h1 style="color:#5a8cff;margin:0;font-size:22px;">Project Tracker</h1>
-      </div>
-      <div style="padding:32px;">
-        <h2 style="color:#111;margin:0 0 8px;">{inviter_name} invited you!</h2>
-        <p style="color:#555;margin:0 0 8px;">You've been invited to join the <b>{ws_name}</b> workspace as <b>{role.title()}</b>.</p>
-        <div style="text-align:center;margin:24px 0;">
-          <a href="{link}" style="display:inline-block;background:#5a8cff;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">Accept Invitation</a>
-        </div>
-        <p style="color:#888;font-size:12px;">Invite link expires in 7 days. If you weren't expecting this, ignore it.</p>
-      </div>
-    </div></body></html>"""
-    threading.Thread(target=send_email, args=(to_email, subject, body, workspace_id), daemon=True).start()
+      <h1 class="pt-h1" style="margin:0 0 10px;font-size:28px;font-weight:900;
+          color:#ffffff;letter-spacing:-.8px;line-height:1.2;">
+        🤝 {safe_inviter} invited you!
+      </h1>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:rgba(255,255,255,.55);">
+        You've been invited to join <strong style="color:#ffffff;">{safe_ws}</strong> on Project Tracker.
+      </p>
+      {_task_card("Invitation details", accent, [("Workspace", safe_ws), ("Invited by", safe_inviter), ("Your role", safe_role)])}
+      <div style="margin-top:20px;padding:14px 18px;
+                  background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);
+                  border-radius:12px;font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;">
+        <span style="color:{accent};font-weight:800;">⏱ Expires in 7 days</span>&nbsp;
+        If you weren't expecting this invite, you can safely ignore this email.
+      </div>"""
+    html = _email_base(
+        subject_label="INVITE", accent=accent, header_icon="🤝",
+        header_badge="WORKSPACE INVITE", inner_html=body,
+        cta_url=link, cta_text="Accept Invitation →",
+        celebration=True,
+    )
+    threading.Thread(target=send_email, args=(to_email, subject, html, workspace_id), daemon=True).start()
 
 def _member_limit_check(db, workspace_id):
     """Returns (allowed: bool, message: str, plan: str) — whether this workspace
@@ -6248,8 +6391,11 @@ def accept_workspace_invite():
         ws_row = db.execute("SELECT name FROM workspaces WHERE id=?", (ws_id,)).fetchone()
         ws_name = ws_row["name"] if ws_row else ""
         slug = "".join(c2 for c2 in ws_name.lower().replace(" ","-") if c2.isalnum() or c2=="-")[:30] or ws_id
-    _register_session(uid, ws_id, session_id)
+    is_new_device, device_label, login_ip = _register_session(uid, ws_id, session_id)
     _audit("invite_accepted", email, f"Joined workspace {ws_id} as {role}")
+    if is_new_device:
+        send_new_device_login_email(email, existing["name"] if existing else name, device_label, login_ip, ws_id)
+    send_welcome_email(email, existing["name"] if existing else name, ws_name, ws_id, created_workspace=False)
     return jsonify({"ok": True, "workspace_dashboard_url": f"/{slug}/{ws_id}/ai"})
 
 @app.route("/api/workspace/invites", methods=["GET"])
@@ -6400,6 +6546,7 @@ def domain_join_request():
             _set_logged_out_at(new_uid, "")
             _register_session(new_uid, ws_id_req, session_id)
             _audit("domain_join", email, f"Auto-joined {ws_id_req} via domain {domain}")
+            send_welcome_email(email, name, ws_name, ws_id_req, created_workspace=False)
             return jsonify({"ok": True, "workspace_dashboard_url": f"/{slug}/{ws_id_req}/ai"})
         else:
             # Notify admins
@@ -6502,6 +6649,13 @@ def register():
             _set_logged_out_at(uid, "")
             # Send verification email (non-blocking)
             _send_verification_email(email, name, verify_token)
+            ws_name_for_welcome = ""
+            try:
+                ws_name_row = db.execute("SELECT name FROM workspaces WHERE id=?", (ws_id,)).fetchone()
+                ws_name_for_welcome = (ws_name_row["name"] if ws_name_row else "") or ""
+            except Exception:
+                pass
+            send_welcome_email(email, name, ws_name_for_welcome, ws_id, created_workspace=(mode == "create"))
             _register_session(uid, ws_id, session_id)
             _audit("user_register", uid, f"{name} ({email}) registered via {mode}")
             # Build workspace dashboard URL
@@ -12298,7 +12452,7 @@ def _verify_admin_token(token):
             return False
         if int(exp_s) < int(datetime.utcnow().timestamp()):
             return False
-        admin_email = os.environ.get("ADMIN_EMAIL", "admin@project-tracker.in").strip().lower()
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@projecttracker.in").strip().lower()
         return email.strip().lower() == admin_email
     except Exception:
         return False
@@ -12326,7 +12480,7 @@ def _require_admin():
 def _audit(action, target="", detail=""):
     """Write an entry to audit_log. Fire-and-forget — never raises."""
     try:
-        admin_email = os.environ.get("ADMIN_EMAIL", "admin@project-tracker.in")
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@projecttracker.in")
         entry_id    = secrets.token_hex(8)
         with get_db() as db:
             db.execute(
@@ -12459,12 +12613,16 @@ def admin_panel_page(workspace=None):
 
 @app.route("/api/admin/login", methods=["POST"])
 def admin_api_login():
-    """Super-admin login — returns a short-lived bearer token."""
+    """Super-admin login — returns a short-lived bearer token. If TOTP 2FA is
+    enabled for the admin account (see /api/admin/totp/setup), a correct
+    password alone returns {totp_required: true} instead of a token; the
+    frontend re-submits with totp_token filled in to complete login."""
     data = request.get_json(silent=True) or {}
     email    = (data.get("email") or "").strip().lower()
     password = (data.get("password") or "")
+    totp_token = (data.get("totp_token") or "").strip().replace(" ", "")
 
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@project-tracker.in").strip().lower()
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@projecttracker.in").strip().lower()
     admin_pass  = os.environ.get("ADMIN_PASSWORD", "")
 
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
@@ -12480,20 +12638,99 @@ def admin_api_login():
         remaining = 5 - len(_ADMIN_FAIL_LOG.get(client_ip, []))
         return jsonify({"error": f"Invalid credentials. {max(remaining,0)} attempt(s) remaining before lockout."}), 401
 
+    sec = _admin_totp_status()
+    if sec["enabled"]:
+        if not totp_token:
+            return jsonify({"totp_required": True}), 200
+        if not _totp_verify(sec["secret"], totp_token):
+            _admin_record_failure(client_ip)
+            remaining = 5 - len(_ADMIN_FAIL_LOG.get(client_ip, []))
+            return jsonify({"error": f"Invalid authenticator code. {max(remaining,0)} attempt(s) remaining before lockout."}), 401
+
     _admin_clear_failures(client_ip)
     token = _issue_admin_token(email)
     # Store only as a compatibility fallback; token verification is stateless,
     # so dashboard/API calls will work even when routed to a different worker.
     _ADMIN_TOKENS[token] = datetime.utcnow() + timedelta(hours=8)
-    _audit("admin_login", "system", f"Admin logged in: {email}")
+    _audit("admin_login", "system", f"Admin logged in: {email}" + (" (with 2FA)" if sec["enabled"] else ""))
     return jsonify({"token": token, "expires_in": 8 * 60 * 60})
+
+def _admin_totp_status():
+    """Returns {enabled: bool, secret: str} for the single admin account's 2FA."""
+    try:
+        with get_db() as db:
+            row = db.execute("SELECT totp_secret, totp_verified FROM platform_admin_security WHERE id=1").fetchone()
+            if row and row["totp_verified"] and row["totp_secret"]:
+                return {"enabled": True, "secret": row["totp_secret"]}
+    except Exception:
+        log.exception("admin totp status check failed")
+    return {"enabled": False, "secret": ""}
+
+@app.route("/api/admin/totp/setup", methods=["POST"])
+def admin_api_totp_setup():
+    """Step 1 of enabling admin 2FA: generate a new secret + QR code. Requires
+    an already-valid admin token (i.e. you must be logged in with the
+    password first) — this is bootstrapping 2FA, not bypassing it."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    secret = _totp_generate_secret()
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@projecttracker.in")
+    with get_db(autocommit=True) as db:
+        db.execute("""INSERT INTO platform_admin_security (id, totp_secret, totp_verified, updated) VALUES (1,?,0,?)
+                      ON CONFLICT(id) DO UPDATE SET totp_secret=excluded.totp_secret, totp_verified=0, updated=excluded.updated""",
+                   (secret, datetime.utcnow().isoformat()))
+    qr_b64 = _totp_qr_base64(secret, admin_email, issuer="Project Tracker Admin")
+    return jsonify({"ok": True, "secret": secret, "qr_code": qr_b64})
+
+@app.route("/api/admin/totp/verify-setup", methods=["POST"])
+def admin_api_totp_verify_setup():
+    """Step 2: confirm the admin scanned the QR correctly by verifying one
+    live code, then flip totp_verified=1 so future logins require it."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip().replace(" ", "")
+    with get_db() as db:
+        row = db.execute("SELECT totp_secret FROM platform_admin_security WHERE id=1").fetchone()
+        if not row or not row["totp_secret"]:
+            return jsonify({"error": "Call /api/admin/totp/setup first"}), 400
+        if not _totp_verify(row["totp_secret"], token):
+            return jsonify({"error": "Invalid authenticator code. Try again."}), 401
+        db.execute("UPDATE platform_admin_security SET totp_verified=1, updated=? WHERE id=1", (datetime.utcnow().isoformat(),))
+    _audit("admin_2fa_enabled", "system", "Admin enabled TOTP 2FA")
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/totp/disable", methods=["POST"])
+def admin_api_totp_disable():
+    """Disable admin 2FA. Requires a valid admin token AND the current TOTP
+    code — so a stolen/leaked admin token alone can't turn off the second
+    factor for itself."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip().replace(" ", "")
+    sec = _admin_totp_status()
+    if not sec["enabled"]:
+        return jsonify({"ok": True, "already_disabled": True})
+    if not _totp_verify(sec["secret"], token):
+        return jsonify({"error": "Invalid authenticator code."}), 401
+    with get_db(autocommit=True) as db:
+        db.execute("UPDATE platform_admin_security SET totp_secret='', totp_verified=0, updated=? WHERE id=1", (datetime.utcnow().isoformat(),))
+    _audit("admin_2fa_disabled", "system", "Admin disabled TOTP 2FA")
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/totp/status")
+def admin_api_totp_status_route():
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"ok": True, "enabled": _admin_totp_status()["enabled"]})
 
 @app.route("/api/admin/session")
 def admin_api_session():
     """Validate an existing admin token — called on page load to restore session."""
     if not _require_admin():
         return jsonify({"error": "Unauthorized"}), 401
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@project-tracker.in")
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@projecttracker.in")
     return jsonify({"ok": True, "email": admin_email})
 
 @app.route("/api/admin/logout", methods=["POST"])
