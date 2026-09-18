@@ -5158,6 +5158,35 @@ def _is_session_revoked(sid):
     with _revoked_sessions_lock:
         return sid in _revoked_sessions_cache
 
+def _enforce_single_session(uid, ws_id, login_ts):
+    """Single sign-on enforcement (OTT-style): a fresh login is the ONLY valid
+    session for this user — signing in on any device immediately signs every
+    other device out, no manual 'Log out' click required.
+
+    Call this once per login flow, right after computing login_ts, and make
+    sure session["login_at"] is set to that SAME login_ts. logged_out_at is
+    compared with strict '<', so the new session (login_at == login_ts) stays
+    valid while every older session (login_at < login_ts) is rejected on its
+    very next request.
+    """
+    try:
+        with get_db() as db:
+            db.execute("UPDATE users SET logged_out_at=? WHERE id=?", (login_ts, uid))
+            # Drop old device rows too, so the Active Sessions list doesn't
+            # keep showing devices that are about to be signed out anyway.
+            db.execute("DELETE FROM user_sessions WHERE user_id=?", (uid,))
+    except Exception as e:
+        log.warning("[single_session] DB update failed for uid=%s: %s", uid, e)
+    _set_logged_out_at(uid, login_ts)
+    # Kick any other open tab/device for this user in near-real-time via SSE,
+    # instead of leaving it to notice on its next poll or the ~2min SSE
+    # re-auth cycle (see sse_stream() / _session_still_valid() below).
+    try:
+        _sse_publish(ws_id, "force_logout", {"user_id": uid, "reason": "signed_in_elsewhere"})
+    except Exception:
+        pass
+
+
 def _evict_me_cache(uid):
     """Evict the per-user /api/auth/me cache from Redis and local memory."""
     if not uid:
@@ -5443,11 +5472,8 @@ def google_callback():
         session["session_id"] = session_id
         session["google_access_token"] = access_token
 
-        db.execute(
-            "UPDATE users SET last_active=?, logged_out_at='' WHERE id=?",
-            (login_ts, user["id"])
-        )
-        _set_logged_out_at(user["id"], "")
+        db.execute("UPDATE users SET last_active=? WHERE id=?", (login_ts, user["id"]))
+        _enforce_single_session(user["id"], user["workspace_id"], login_ts)
         _clear_attempts(f"login:{request.remote_addr}:{g_email}")
         _audit("google_login", user["id"], f"{g_name} ({g_email}) signed in via Google")
         _register_session(user["id"], user["workspace_id"], session_id)
@@ -5549,12 +5575,11 @@ def login():
         session_id = secrets.token_hex(16)
         session["session_id"] = session_id
         try:
-            # Clear logged_out_at so this new login is valid
-            db.execute("UPDATE users SET last_active=?, logged_out_at='' WHERE id=?", (login_ts, u["id"]))
+            db.execute("UPDATE users SET last_active=? WHERE id=?", (login_ts, u["id"]))
         except Exception: pass
-        # CRITICAL: clear the logout cache so login_required doesn't reject
-        # this new session using a stale cached logout timestamp
-        _set_logged_out_at(u["id"], "")
+        # Single sign-on: this login is now the ONLY valid session for this
+        # user — kills every other device (see _enforce_single_session).
+        _enforce_single_session(u["id"], u["workspace_id"], login_ts)
         is_new_device, device_label, login_ip = _register_session(u["id"], u["workspace_id"], session_id)
         _audit("user_login", u["id"], f"{u['name']} ({email}) logged in")
         if is_new_device:
@@ -6012,10 +6037,10 @@ def totp_verify_login():
         session_id = secrets.token_hex(16)
         session["session_id"] = session_id
         try:
-            db.execute("UPDATE users SET last_active=?, logged_out_at='' WHERE id=?", (login_ts, u["id"]))
+            db.execute("UPDATE users SET last_active=? WHERE id=?", (login_ts, u["id"]))
         except Exception: pass
-        # Clear logout cache so login_required accepts this new session
-        _set_logged_out_at(u["id"], "")
+        # Single sign-on: kill every other device for this user now.
+        _enforce_single_session(u["id"], u["workspace_id"], login_ts)
         is_new_device, device_label, login_ip = _register_session(u["id"], u["workspace_id"], session_id)
         _audit("user_login_totp", u["id"], f"{u['name']} logged in via Google Authenticator")
         if is_new_device:
@@ -6644,7 +6669,7 @@ def accept_workspace_invite():
         session_id = secrets.token_hex(16)
         session["session_id"] = session_id
         _clear_attempts(f"login:{request.remote_addr}:{email}")
-        _set_logged_out_at(uid, "")
+        _enforce_single_session(uid, ws_id, login_ts)
         ws_row = db.execute("SELECT name FROM workspaces WHERE id=?", (ws_id,)).fetchone()
         ws_name = ws_row["name"] if ws_row else ""
         slug = "".join(c2 for c2 in ws_name.lower().replace(" ","-") if c2.isalnum() or c2=="-")[:30] or ws_id
@@ -6800,7 +6825,7 @@ def domain_join_request():
             session["login_at"] = login_ts
             session_id = secrets.token_hex(16)
             session["session_id"] = session_id
-            _set_logged_out_at(new_uid, "")
+            _enforce_single_session(new_uid, ws_id_req, login_ts)
             _register_session(new_uid, ws_id_req, session_id)
             _audit("domain_join", email, f"Auto-joined {ws_id_req} via domain {domain}")
             send_welcome_email(email, name, ws_name, ws_id_req, created_workspace=False)
@@ -6912,7 +6937,7 @@ def register():
             session["login_at"] = login_ts
             session_id = secrets.token_hex(16)
             session["session_id"] = session_id
-            _set_logged_out_at(uid, "")
+            _enforce_single_session(uid, ws_id, login_ts)
             # Send verification email (non-blocking)
             _send_verification_email(email, name, verify_token)
             ws_name_for_welcome = ""
@@ -15596,7 +15621,7 @@ def _sse_dm_target_users(event_type, data):
         sensitive = {
             "dm", "dm_created", "dm_reaction", "dm_updated", "dm_deleted",
             "dm_pinned", "dm_seen", "dm_typing", "call_status",
-            "web_notification",
+            "web_notification", "force_logout",
         }
         if event_type == "notification_updated" and (d.get("reason") in ("dm", "call")):
             sensitive.add("notification_updated")
@@ -15623,7 +15648,7 @@ def _sse_dm_target_users(event_type, data):
         return targets
     except Exception:
         # Fail closed for privacy-sensitive events.
-        if event_type in {"dm", "dm_created", "dm_reaction", "dm_updated", "dm_deleted", "dm_pinned", "dm_seen", "dm_typing", "call_status", "web_notification"}:
+        if event_type in {"dm", "dm_created", "dm_reaction", "dm_updated", "dm_deleted", "dm_pinned", "dm_seen", "dm_typing", "call_status", "web_notification", "force_logout"}:
             return set()
         return None
 

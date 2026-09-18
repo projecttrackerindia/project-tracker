@@ -14050,6 +14050,16 @@ function App(){
           try{
             const msg=JSON.parse(e.data);
             if(msg.type==='connected')return; // initial handshake
+            if(msg.type==='force_logout'){
+              // Single sign-on: our account was just signed in on another
+              // device, which immediately invalidates this session server-side.
+              // Sign out locally right away instead of waiting for the next
+              // poll/401 to notice (see signOutLocally — must not call the
+              // real logout endpoint here, that would kick the NEW device too).
+              try{window._pfToast&&window._pfToast('info','Signed out','Your account was signed in on another device.');}catch(_){}
+              signOutLocally();
+              return;
+            }
             // Broadcast to all bundles sharing this singleton
             try{window.dispatchEvent(new CustomEvent('pt:realtime',{detail:msg}));}catch(_){}
             const __ptMsgForMe=(m)=>{
@@ -14308,7 +14318,7 @@ function App(){
     if(!cu)return;
     const onSessionExpired=()=>{
       try{window._pfToast&&window._pfToast('info','Signed out','Your session ended — please sign in again.');}catch(_){}
-      logout();
+      signOutLocally();
     };
     window.addEventListener('pt:session-expired', onSessionExpired);
     return()=>window.removeEventListener('pt:session-expired', onSessionExpired);
@@ -14694,6 +14704,34 @@ function App(){
       setMarkingAllDmsRead(false);
     }
   },[markingAllDmsRead]);
+  // Local-only sign-out — used when we're told the session is no longer valid
+  // server-side (SSE force_logout from a login elsewhere in single-session
+  // mode, or a 401 bounce via pt:session-expired). Unlike logout(), this must
+  // NOT call POST /api/auth/logout: that endpoint sets a fresh account-wide
+  // logged_out_at timestamp, which — if this tab called it after already
+  // being superseded by a newer login — would immediately kill that newer
+  // session too (a login/logout ping-pong between devices). The server has
+  // already invalidated us; we just need to clean up the client and leave.
+  const signOutLocally=()=>{
+    api._abort();
+    window._pfCurrentUser=null;
+    setCu(null);setData({users:[],projects:[],tasks:[],notifs:[]});setDmUnread([]);
+    if(window._pfPushUnsubscribe) window._pfPushUnsubscribe().catch(()=>{});
+    try{
+      const NAV_PREF_PREFIXES=['pf_nav_hidden_','pf_nav_order_','pf_nav_pin_top_','pf_nav_pin_bot_'];
+      const isNavPref=k=>NAV_PREF_PREFIXES.some(p=>k.startsWith(p));
+      const keysToRemove=['pf_had_session','pf_perms','pf_accent'];
+      keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
+      const KEEP_ON_LOGOUT=new Set(['pf_dark','pf_col']);
+      Object.keys(localStorage).forEach(k=>{
+        if(KEEP_ON_LOGOUT.has(k))return;
+        if((k.startsWith('vw_ai_recents_')||k.startsWith('pf_'))&&!isNavPref(k)){
+          try{localStorage.removeItem(k);}catch{}
+        }
+      });
+    }catch{}
+    window.location.href='/?action=login';
+  };
   const logout=async()=>{
     // 1. Abort all in-flight API requests FIRST — stops polls, cancels app-data
     api._abort();
