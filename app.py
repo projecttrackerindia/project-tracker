@@ -13431,6 +13431,7 @@ def public_landing():
     # with the deep-link applied; logged-out users see the login screen)
     _APP_ACTIONS = {
         "login", "signin", "sign-in", "signup", "register",
+        "reset-password", "forgot-password",
         "task", "project", "ticket", "dm", "message",
         "reminder", "notification", "dashboard", "settings", "billing",
     }
