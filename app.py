@@ -9250,14 +9250,28 @@ def create_task():
             tid = next_task_id(db, ws)
             inserted = False
             last_insert_error = None
+            # Inherit team_id from the project when the caller didn't supply one
+            # explicitly. Without this fallback, tasks created through flows that
+            # don't pass team_id (bulk import, AI actions, etc.) silently end up
+            # with no team — invisible on every team dashboard even though the
+            # project itself belongs to a team.
+            task_team_id = str(d.get("team_id") or "").strip()
+            proj_ref = d.get("project", "")
+            if not task_team_id and proj_ref:
+                try:
+                    proj_row = db.execute("SELECT team_id FROM projects WHERE id=? AND workspace_id=?", (proj_ref, ws)).fetchone()
+                    if proj_row and proj_row["team_id"]:
+                        task_team_id = proj_row["team_id"]
+                except Exception:
+                    pass
             for _try in range(5):
                 try:
                     db.execute("""INSERT INTO tasks(id,workspace_id,title,description,project,assignee,priority,stage,created,due,pct,comments,team_id,client_task_key,deleted_at)
                                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, '')""",
-                               (tid,ws,title,d.get("description",""),d.get("project",""),
+                               (tid,ws,title,d.get("description",""),proj_ref,
                                 d.get("assignee",""),d.get("priority","medium"),d.get("stage","backlog"),
                                 ts(),d.get("due",""),d.get("pct",0),json.dumps(d.get("comments",[])),
-                                d.get("team_id",""),client_key))
+                                task_team_id,client_key))
                     inserted = True
                     break
                 except Exception as e:
@@ -11429,11 +11443,20 @@ IMPORTANT: Always be helpful and concise. When performing actions, explain what 
             with get_db() as db:
                 if atype=="create_task":
                     tid=next_task_id(db,wid())
-                    db.execute("INSERT INTO tasks(id,workspace_id,title,description,project,assignee,priority,stage,created,due,pct,comments) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    ai_proj_id = act.get("project","")
+                    ai_team_id = ""
+                    if ai_proj_id:
+                        try:
+                            _prow = db.execute("SELECT team_id FROM projects WHERE id=? AND workspace_id=?", (ai_proj_id, wid())).fetchone()
+                            if _prow and _prow["team_id"]:
+                                ai_team_id = _prow["team_id"]
+                        except Exception:
+                            pass
+                    db.execute("INSERT INTO tasks(id,workspace_id,title,description,project,assignee,priority,stage,created,due,pct,comments,team_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                (tid,wid(),act.get("title","New Task"),act.get("description",""),
-                                act.get("project",""),act.get("assignee",""),
+                                ai_proj_id,act.get("assignee",""),
                                 act.get("priority","medium"),act.get("stage","backlog"),
-                                ts(),act.get("due",""),0,"[]"))
+                                ts(),act.get("due",""),0,"[]",ai_team_id))
                     action_results.append({"type":"create_task","id":tid,"title":act.get("title")})
                 elif atype=="update_task":
                     tid=act.get("task_id","")
@@ -11788,9 +11811,17 @@ def import_csv():
                     if u: assignee_id = u["id"]
                     else: assignee_id = ""
                 tid = next_task_id(db, wid())
-                db.execute("INSERT INTO tasks(id,workspace_id,title,description,project,assignee,priority,stage,created,due,pct,comments) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                import_team_id = ""
+                if proj_id:
+                    try:
+                        _prow = db.execute("SELECT team_id FROM projects WHERE id=? AND workspace_id=?", (proj_id, wid())).fetchone()
+                        if _prow and _prow["team_id"]:
+                            import_team_id = _prow["team_id"]
+                    except Exception:
+                        pass
+                db.execute("INSERT INTO tasks(id,workspace_id,title,description,project,assignee,priority,stage,created,due,pct,comments,team_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                            (tid, wid(), title, row.get("description",""), proj_id,
-                            assignee_id, pri, stage, ts(), due, pct, "[]"))
+                            assignee_id, pri, stage, ts(), due, pct, "[]", import_team_id))
                 created_tasks += 1
             except Exception as e:
                 errors.append(f"Row {i+2}: {e}")
@@ -15094,9 +15125,18 @@ def public_create_task():
         return jsonify(error="Unauthorized"), 401
     d = request.get_json(force=True)
     tid = secrets.token_hex(6)
-    _raw_pg("INSERT INTO tasks(id,workspace_id,project_id,title,stage,priority,assignee,due_date,created,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,'')",
-            (tid, ws_id, d.get("project_id",""), d.get("title","Untitled"), d.get("stage","planning"),
-             d.get("priority","medium"), d.get("assignee",""), d.get("due_date",""), ts()))
+    v1_team_id = ""
+    v1_project_id = d.get("project_id","")
+    if v1_project_id:
+        try:
+            _prow = _raw_pg("SELECT team_id FROM projects WHERE id=? AND workspace_id=?", (v1_project_id, ws_id), fetch=True)
+            if _prow and _prow[0].get("team_id"):
+                v1_team_id = _prow[0]["team_id"]
+        except Exception:
+            pass
+    _raw_pg("INSERT INTO tasks(id,workspace_id,project_id,title,stage,priority,assignee,due_date,created,team_id,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,'')",
+            (tid, ws_id, v1_project_id, d.get("title","Untitled"), d.get("stage","planning"),
+             d.get("priority","medium"), d.get("assignee",""), d.get("due_date",""), ts(), v1_team_id))
     _fire_webhooks(ws_id, "task.created", {"id":tid,"title":d.get("title","")})
     return jsonify(id=tid, created=True), 201
 
