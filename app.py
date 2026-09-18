@@ -2444,20 +2444,6 @@ def password_strength_score(pw):
     if re.search(r"[^A-Za-z0-9]", pw): score += 1
     return min(score, 4)
 
-def _mask_email(email):
-    """Partially mask an email for display, e.g. prasanna.daddala@fivestargroup.in
-    -> pr*************a@fivestargroup.in. Confirms identity without fully
-    exposing the address if a screen or link is glimpsed by someone else."""
-    email = email or ""
-    if "@" not in email:
-        return email
-    local, domain = email.split("@", 1)
-    if len(local) <= 2:
-        masked = local[0] + "*" * max(1, len(local) - 1)
-    else:
-        masked = local[0] + "*" * (len(local) - 2) + local[-1]
-    return f"{masked}@{domain}"
-
 def _password_reused(db, user_id, new_pw, current_hash):
     """True if new_pw matches the current password or any of the user's last
     PASSWORD_HISTORY_COUNT passwords."""
@@ -2625,6 +2611,13 @@ RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', '')
 DEFAULT_RESEND_FROM_EMAIL = os.environ.get('DEFAULT_RESEND_FROM_EMAIL', 'noreply@projecttracker.in')
 APP_URL = os.environ.get('APP_URL', 'https://projecttracker.in')
 
+
+# Accounts created on/after this cutoff must verify their email before they
+# can log in (see login()). Accounts created before it are grandfathered —
+# they can still log in unverified, so this change can't silently lock
+# existing people out. Existing unverified users are nudged separately via
+# scripts/send_verification_reminders.py (run once, not on every deploy).
+EMAIL_VERIFICATION_ENFORCED_FROM = "2026-09-18T00:00:00+05:30"
 
 def _mask_email(addr):
     try:
@@ -5490,6 +5483,19 @@ def login():
                 new_hash = hash_pw(password)
                 db.execute("UPDATE users SET password=? WHERE id=?",(new_hash, u["id"]))
             except Exception: pass
+        # ── Email verification gate (new accounts only — see comment on
+        # EMAIL_VERIFICATION_ENFORCED_FROM). Correct password, so this isn't
+        # a brute-force signal: don't touch the rate-limit counter, just
+        # block and tell the frontend it can offer a resend.
+        if (not u.get("email_verified")
+                and (u.get("auth_provider") or "password") == "password"
+                and (u.get("created") or "") >= EMAIL_VERIFICATION_ENFORCED_FROM):
+            _clear_attempts(rl_key)
+            return jsonify({
+                "error": "Please verify your email before signing in. Check your inbox for the verification link.",
+                "verification_required": True,
+                "email": email,
+            }), 403
         # ── Google Authenticator (TOTP) — only 2FA method ────────────────────
         totp_active = u.get("totp_verified") and u.get("totp_secret")
         if totp_active:
@@ -6112,6 +6118,34 @@ def _send_verification_email(user_email, user_name, token, workspace_id=None):
     )
     threading.Thread(target=send_email, args=(user_email, subject, html, workspace_id), daemon=True).start()
 
+@app.route("/api/admin/send-verification-reminders", methods=["POST"])
+@login_required
+@require_role("Admin")
+def send_verification_reminders():
+    """One-off utility for the workspace admin to trigger manually (e.g. once,
+    right after turning on email-verification enforcement) — emails every
+    currently-unverified user in this workspace asking them to verify,
+    rather than leaving grandfathered accounts to find out only if they're
+    ever asked. Not run automatically; call it whenever you want a nudge
+    sent."""
+    from datetime import timedelta
+    sent_to = []
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, name, email FROM users WHERE workspace_id=? AND COALESCE(email_verified,0)=0",
+            (wid(),)
+        ).fetchall()
+        for r in rows:
+            u = dict(r)
+            token = secrets.token_urlsafe(32)
+            expires = (now_ist() + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S') + '+05:30'
+            db.execute("UPDATE users SET email_verify_token=?, email_verify_expires=? WHERE id=?",
+                       (token, expires, u["id"]))
+            _send_verification_email(u["email"], u["name"], token, workspace_id=wid())
+            sent_to.append(u["email"])
+    _audit("verification_reminders_sent", wid(), f"Sent {len(sent_to)} verification reminder(s)")
+    return jsonify({"ok": True, "sent_count": len(sent_to), "sent_to": sent_to})
+
 @app.route("/api/auth/verify-email")
 def verify_email():
     token = request.args.get("token", "").strip()
@@ -6730,6 +6764,10 @@ def domain_join_request():
 @app.route("/api/auth/register",methods=["POST"])
 def register():
     d=request.json or {}
+    # Rate limit by IP: caps mass fake-account creation, invite-code
+    # brute-forcing in 'join' mode, and verification-email flooding.
+    limited = _rate_limit_bucket("register-ip", 8, 600)
+    if limited: return limited
     mode=d.get("mode","create")  # 'create' or 'join'
     if not d.get("name") or not d.get("email") or not d.get("password"):
         return jsonify({"error":"All fields required"}),400
@@ -6741,6 +6779,11 @@ def register():
     email = normalize_email(d.get("email"))
     if not validate_email_format(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
+
+    # Also cap per-email attempts specifically, so a specific address can't
+    # be targeted with repeated verification emails even from rotating IPs.
+    limited = _rate_limit_bucket("register-email", 5, 600, user_part=email)
+    if limited: return limited
 
     ok, err = validate_password(d.get("password"), name=name, email=email)
     if not ok: return jsonify({"error": err}), 400

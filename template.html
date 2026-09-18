@@ -1750,6 +1750,9 @@ function AuthScreen({onLogin}){
   const [resetEmailMasked,setResetEmailMasked]=useState('');
   const [resetLinkError,setResetLinkError]=useState('');
   const [resetChecking,setResetChecking]=useState(true);
+  const [needsVerification,setNeedsVerification]=useState(false);
+  const [resendingVerification,setResendingVerification]=useState(false);
+  const [verificationResent,setVerificationResent]=useState(false);
 
   // On landing on the reset-password screen, verify the token up front so we
   // can (a) show which account is being reset and (b) surface an invalid /
@@ -1828,7 +1831,7 @@ function AuthScreen({onLogin}){
   },[]);
 
   const setTab=(t)=>{
-    setTabRaw(t);setEmail('');setPw('');setErr('');setName('');setWsName('');setInviteCode('');setPhase('idle');
+    setTabRaw(t);setEmail('');setPw('');setErr('');setName('');setWsName('');setInviteCode('');setPhase('idle');setNeedsVerification(false);setVerificationResent(false);
     setAuthMode('normal');setForgotSent(false);setNewPw1('');setNewPw2('');
     try{history.replaceState(null,'','/?action='+t);}catch{}
   };
@@ -2102,11 +2105,12 @@ function AuthScreen({onLogin}){
   },[]);
 
   const go=async()=>{
-    setErr('');setPhase('loading');
+    setErr('');setNeedsVerification(false);setVerificationResent(false);setPhase('loading');
     if(tab==='login'){
       const r=await api.post('/api/auth/login',{email,password:pw});
       if(!r){setErr('Server error. Please try again.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
-      if(r.error){setErr(r.error);setPhase('error');setTimeout(()=>setPhase('idle'),350);}
+      if(r.verification_required){setErr(r.error);setNeedsVerification(true);setPhase('idle');}
+      else if(r.error){setErr(r.error);setPhase('error');setTimeout(()=>setPhase('idle'),350);}
       else if(r.totp_required){setTotpUserId(r.user_id);setTotpUserName(r.name);setTotpStep(true);setPhase('idle');}
       else{setSuccessMsg('Welcome back, '+r.name);setPhase('success');setTimeout(()=>onLogin(r),1900);}
     } else {
@@ -2130,6 +2134,13 @@ function AuthScreen({onLogin}){
     if(!r){setErr('Server error. Please try again.');setPhase('idle');return;}
     if(r.error){setErr(r.error);setTotpToken('');setPhase('idle');}
     else{setSuccessMsg('Verified! Welcome back, '+totpUserName);setPhase('success');setTimeout(()=>onLogin(r),1800);}
+  };
+
+  const resendVerification=async()=>{
+    setResendingVerification(true);
+    const r=await api.post('/api/auth/resend-verification',{email});
+    setResendingVerification(false);
+    if(r&&!r.error) setVerificationResent(true);
   };
 
   const sendResetLink=async()=>{
@@ -2451,6 +2462,17 @@ function AuthScreen({onLogin}){
             <div style=${{display:'flex',alignItems:'flex-start',gap:10,padding:'12px 16px',background:'rgba(255,69,58,0.08)',border:'1px solid rgba(255,69,58,0.22)',borderRadius:12,animation:'ap-slideDown 0.2s ease both'}}>
               <span style=${{fontSize:15,marginTop:1}}>⚠️</span>
               <span style=${{fontSize:13,color:'#ff7a76',lineHeight:1.5}}>${err}</span>
+            </div>`:null}
+
+          ${needsVerification?html`
+            <div style=${{marginTop:-6}}>
+              ${verificationResent?html`
+                <div style=${{fontSize:12.5,color:'rgba(140,255,180,0.85)'}}>✓ Verification email sent — check your inbox.</div>`
+              :html`
+                <button onClick=${resendVerification} disabled=${resendingVerification}
+                  style=${{background:'none',border:'none',cursor:'pointer',color:'rgba(160,185,255,0.9)',fontSize:12.5,fontWeight:700,textDecoration:'underline',padding:0}}>
+                  ${resendingVerification?'Sending…':'Resend verification email'}
+                </button>`}
             </div>`:null}
 
           <!-- CTA — Apple-style shimmer gradient button -->
