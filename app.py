@@ -11679,14 +11679,14 @@ self.addEventListener('notificationclick', event => {
 
 @app.route("/icon-192.png")
 def pwa_icon_192():
-    """Inline PWA icon so production stops logging /icon-192.png 404s."""
-    svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>
-  <rect width="192" height="192" rx="44" fill="url(#g)"/>
-  <path d="M52 98h88M96 54v88" stroke="white" stroke-width="16" stroke-linecap="round" opacity=".96"/>
-  <circle cx="96" cy="96" r="54" fill="none" stroke="white" stroke-width="8" opacity=".26"/>
-</svg>'''
-    return Response(svg, mimetype="image/svg+xml", headers={"Cache-Control":"public, max-age=86400"})
+    """PWA / push-notification icon. Serves the real brand mark (logo-192.png)
+    so it matches favicon.ico and the marketing site instead of the old
+    mismatched inline SVG placeholder."""
+    fn = "logo-192.png"
+    file_path = os.path.join(os.path.dirname(__file__), fn)
+    if not os.path.exists(file_path):
+        return Response(status=204, headers={"Cache-Control": "public, max-age=86400"})
+    return send_from_directory(os.path.dirname(__file__), fn, mimetype="image/png", max_age=604800)
 
 
 @app.route("/robots.txt")
