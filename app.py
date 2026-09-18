@@ -6133,6 +6133,13 @@ def resend_verification():
     email = d.get("email", "").strip().lower()
     if not email:
         return jsonify({"error": "Email required"}), 400
+    # Same rate-limit pattern as forgot-password: caps how many verification
+    # emails one address (or one IP) can trigger, so this can't be used to
+    # flood an inbox or slowly probe which emails have accounts.
+    limited = _rate_limit_bucket("resend-verify-email", 3, 600, user_part=email)
+    if limited: return limited
+    limited = _rate_limit_bucket("resend-verify-ip", 10, 600)
+    if limited: return limited
     with get_db() as db:
         u = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         if not u:
@@ -6183,6 +6190,12 @@ def forgot_password():
     email = d.get("email", "").strip().lower()
     if not email:
         return jsonify({"error": "Email required"}), 400
+    # Rate limit by both email and IP so this can't be used to flood one
+    # inbox with reset emails or to brute-force-enumerate valid accounts.
+    limited = _rate_limit_bucket("forgot-pw-email", 3, 600, user_part=email)
+    if limited: return limited
+    limited = _rate_limit_bucket("forgot-pw-ip", 10, 600)
+    if limited: return limited
     with get_db() as db:
         u = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         if not u:
@@ -6195,6 +6208,44 @@ def forgot_password():
     _send_password_reset_email(email, u["name"], token)
     _audit("forgot_password", email, "Password reset requested")
     return jsonify({"ok": True})
+
+def _send_password_changed_email(user_email, user_name, workspace_id=None, changed_by_admin=False):
+    """Notify the account owner whenever their password changes — via
+    forgot-password reset or an admin-driven change — so if it wasn't them,
+    they find out immediately instead of silently losing access."""
+    subject = "Project Tracker — Your password was changed"
+    accent = "#f59e0b"
+    safe_user = _email_escape(user_name)
+    when_str = now_ist().strftime('%d %b %Y, %I:%M %p IST')
+    context_line = (
+        "It was changed by a workspace admin on your behalf."
+        if changed_by_admin else
+        "It was changed using the 'Reset Password' link sent to this email."
+    )
+    body = f"""
+      <h1 class="pt-h1" style="margin:0 0 10px;font-size:26px;font-weight:900;
+          color:#ffffff;letter-spacing:-.8px;line-height:1.2;">
+        🔒 Your password was changed
+      </h1>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:rgba(255,255,255,.55);">
+        Hi <strong style="color:#ffffff;">{safe_user}</strong>, this confirms your Project Tracker
+        password was changed on {_email_escape(when_str)}. {_email_escape(context_line)}
+      </p>
+      <div style="margin-top:20px;padding:14px 18px;
+                  background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);
+                  border-radius:12px;font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;">
+        <span style="color:{accent};font-weight:800;">Wasn't you?</span>&nbsp;
+        All your sessions have been signed out as a precaution. Contact your workspace admin
+        right away so they can secure your account.
+      </div>"""
+    html = _email_base(
+        subject_label="SECURITY", accent=accent, header_icon="🔒",
+        header_badge="PASSWORD CHANGED", inner_html=body,
+        cta_url=os.environ.get("APP_BASE_URL", "https://your-app.railway.app") + "/?action=login",
+        cta_text="Go to sign in →",
+        warning=True,
+    )
+    threading.Thread(target=send_email, args=(user_email, subject, html, workspace_id), daemon=True).start()
 
 @app.route("/api/auth/reset-password/verify", methods=["GET"])
 def reset_password_verify():
@@ -6240,6 +6291,7 @@ def reset_password():
                    (new_hash, logout_ts, u["id"]))
         _set_logged_out_at(u["id"], logout_ts)
     _audit("password_reset", u["email"], "Password reset via token")
+    _send_password_changed_email(u["email"], u["name"], workspace_id=u["workspace_id"], changed_by_admin=False)
     return jsonify({"ok": True})
 
 # ── Device / Session Management ───────────────────────────────────────────────
@@ -7774,7 +7826,13 @@ def update_user(uid):
                     return jsonify({"error": f"That's a recently used password for this account. Please choose a different one (last {PASSWORD_HISTORY_COUNT})."}), 400
                 if target_row:
                     _record_password_history(db, uid, target_row["password"])
-                db.execute("UPDATE users SET password=? WHERE id=? AND workspace_id=?",(hash_pw(d["password"]),uid,wid()))
+                # Invalidate the target user's existing sessions, same as a
+                # self-service reset — an admin-set password should force a
+                # fresh login too, not leave old sessions silently valid.
+                logout_ts = ts()
+                db.execute("UPDATE users SET password=?, logged_out_at=? WHERE id=? AND workspace_id=?",
+                           (hash_pw(d["password"]), logout_ts, uid, wid()))
+                _set_logged_out_at(uid, logout_ts)
                 changed_self_cache = True
             if "avatar_data" in d:
                 db.execute("UPDATE users SET avatar_data=? WHERE id=? AND workspace_id=?",(d["avatar_data"],uid,wid()))
@@ -7795,6 +7853,8 @@ def update_user(uid):
                 result.pop("password",None)
                 result.pop("plain_password",None)  # never expose plaintext passwords
                 _cache_bust_ws_async(wid())
+                if "password" in d and u.get("email"):
+                    _send_password_changed_email(u["email"], u["name"], workspace_id=wid(), changed_by_admin=True)
                 return jsonify(result)
             return jsonify({})
     except Exception as e:
