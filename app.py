@@ -5158,7 +5158,7 @@ def _is_session_revoked(sid):
     with _revoked_sessions_lock:
         return sid in _revoked_sessions_cache
 
-def _enforce_single_session(uid, ws_id, login_ts):
+def _enforce_single_session(uid, ws_id, login_ts, db=None):
     """Single sign-on enforcement (OTT-style): a fresh login is the ONLY valid
     session for this user — signing in on any device immediately signs every
     other device out, no manual 'Log out' click required.
@@ -5168,13 +5168,28 @@ def _enforce_single_session(uid, ws_id, login_ts):
     compared with strict '<', so the new session (login_at == login_ts) stays
     valid while every older session (login_at < login_ts) is rejected on its
     very next request.
+
+    IMPORTANT: pass the caller's own already-open `db` (the same connection
+    the login route is already using inside its `with get_db() as db:`
+    block) rather than letting this open a second connection. Every login
+    route already writes to this same `users` row on that connection (e.g.
+    last_active) inside an uncommitted transaction — a second connection
+    trying to UPDATE the same row before that transaction commits would just
+    block waiting for the row lock, hanging the request until the client
+    times out. Only open a fresh connection here if the caller genuinely
+    has none open yet.
     """
+    def _do(db):
+        db.execute("UPDATE users SET logged_out_at=? WHERE id=?", (login_ts, uid))
+        # Drop old device rows too, so the Active Sessions list doesn't
+        # keep showing devices that are about to be signed out anyway.
+        db.execute("DELETE FROM user_sessions WHERE user_id=?", (uid,))
     try:
-        with get_db() as db:
-            db.execute("UPDATE users SET logged_out_at=? WHERE id=?", (login_ts, uid))
-            # Drop old device rows too, so the Active Sessions list doesn't
-            # keep showing devices that are about to be signed out anyway.
-            db.execute("DELETE FROM user_sessions WHERE user_id=?", (uid,))
+        if db is not None:
+            _do(db)
+        else:
+            with get_db() as db2:
+                _do(db2)
     except Exception as e:
         log.warning("[single_session] DB update failed for uid=%s: %s", uid, e)
     _set_logged_out_at(uid, login_ts)
@@ -5473,7 +5488,7 @@ def google_callback():
         session["google_access_token"] = access_token
 
         db.execute("UPDATE users SET last_active=? WHERE id=?", (login_ts, user["id"]))
-        _enforce_single_session(user["id"], user["workspace_id"], login_ts)
+        _enforce_single_session(user["id"], user["workspace_id"], login_ts, db)
         _clear_attempts(f"login:{request.remote_addr}:{g_email}")
         _audit("google_login", user["id"], f"{g_name} ({g_email}) signed in via Google")
         _register_session(user["id"], user["workspace_id"], session_id)
@@ -5579,7 +5594,7 @@ def login():
         except Exception: pass
         # Single sign-on: this login is now the ONLY valid session for this
         # user — kills every other device (see _enforce_single_session).
-        _enforce_single_session(u["id"], u["workspace_id"], login_ts)
+        _enforce_single_session(u["id"], u["workspace_id"], login_ts, db)
         is_new_device, device_label, login_ip = _register_session(u["id"], u["workspace_id"], session_id)
         _audit("user_login", u["id"], f"{u['name']} ({email}) logged in")
         if is_new_device:
@@ -6040,7 +6055,7 @@ def totp_verify_login():
             db.execute("UPDATE users SET last_active=? WHERE id=?", (login_ts, u["id"]))
         except Exception: pass
         # Single sign-on: kill every other device for this user now.
-        _enforce_single_session(u["id"], u["workspace_id"], login_ts)
+        _enforce_single_session(u["id"], u["workspace_id"], login_ts, db)
         is_new_device, device_label, login_ip = _register_session(u["id"], u["workspace_id"], session_id)
         _audit("user_login_totp", u["id"], f"{u['name']} logged in via Google Authenticator")
         if is_new_device:
@@ -6669,7 +6684,7 @@ def accept_workspace_invite():
         session_id = secrets.token_hex(16)
         session["session_id"] = session_id
         _clear_attempts(f"login:{request.remote_addr}:{email}")
-        _enforce_single_session(uid, ws_id, login_ts)
+        _enforce_single_session(uid, ws_id, login_ts, db)
         ws_row = db.execute("SELECT name FROM workspaces WHERE id=?", (ws_id,)).fetchone()
         ws_name = ws_row["name"] if ws_row else ""
         slug = "".join(c2 for c2 in ws_name.lower().replace(" ","-") if c2.isalnum() or c2=="-")[:30] or ws_id
@@ -6825,7 +6840,7 @@ def domain_join_request():
             session["login_at"] = login_ts
             session_id = secrets.token_hex(16)
             session["session_id"] = session_id
-            _enforce_single_session(new_uid, ws_id_req, login_ts)
+            _enforce_single_session(new_uid, ws_id_req, login_ts, db)
             _register_session(new_uid, ws_id_req, session_id)
             _audit("domain_join", email, f"Auto-joined {ws_id_req} via domain {domain}")
             send_welcome_email(email, name, ws_name, ws_id_req, created_workspace=False)
@@ -6937,7 +6952,7 @@ def register():
             session["login_at"] = login_ts
             session_id = secrets.token_hex(16)
             session["session_id"] = session_id
-            _enforce_single_session(uid, ws_id, login_ts)
+            _enforce_single_session(uid, ws_id, login_ts, db)
             # Send verification email (non-blocking)
             _send_verification_email(email, name, verify_token)
             ws_name_for_welcome = ""
