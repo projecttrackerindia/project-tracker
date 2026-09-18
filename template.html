@@ -7601,7 +7601,7 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
   const [showSecurity,setShowSecurity]=useState(false);
 
   return html`
-    <div class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16}}>
+    <div class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16,transform:(showSecurity||showTotpSetup)?'none':undefined}}>
       <div style=${{display:'flex',alignItems:'center',gap:10}}>
         <${Av} u=${u} size=${38}/>
         <div style=${{flex:1,minWidth:0}}>
