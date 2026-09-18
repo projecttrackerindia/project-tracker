@@ -1747,6 +1747,68 @@ function AuthScreen({onLogin}){
   const [newPw2,setNewPw2]=useState('');
   const [showNewPw,setShowNewPw]=useState(false);
   const [forgotSent,setForgotSent]=useState(false);
+  const [resetEmailMasked,setResetEmailMasked]=useState('');
+  const [resetLinkError,setResetLinkError]=useState('');
+  const [resetChecking,setResetChecking]=useState(true);
+
+  // On landing on the reset-password screen, verify the token up front so we
+  // can (a) show which account is being reset and (b) surface an invalid /
+  // expired link immediately instead of only after the user types a password.
+  useEffect(()=>{
+    if(authMode!=='reset'||!resetToken){setResetChecking(false);return;}
+    let cancelled=false;
+    (async()=>{
+      try{
+        const r=await fetch('/api/auth/reset-password/verify?token='+encodeURIComponent(resetToken));
+        const d=await r.json().catch(()=>null);
+        if(cancelled) return;
+        if(!d||d.error){setResetLinkError((d&&d.error)||'Invalid or expired reset link.');}
+        else{setResetEmailMasked(d.email_masked||'');}
+      }catch{if(!cancelled)setResetLinkError('Could not verify this reset link. Please try again.');}
+      if(!cancelled)setResetChecking(false);
+    })();
+    return ()=>{cancelled=true;};
+  },[authMode,resetToken]);
+
+  // Mirrors the backend's validate_password policy so people get instant
+  // feedback instead of a round-trip; the server remains the source of truth.
+  const pwPolicyChecks=(pwv)=>([
+    {label:'At least 8 characters',ok:pwv.length>=8},
+    {label:'One uppercase letter',ok:/[A-Z]/.test(pwv)},
+    {label:'One lowercase letter',ok:/[a-z]/.test(pwv)},
+    {label:'One number',ok:/[0-9]/.test(pwv)},
+    {label:'One special character',ok:/[^A-Za-z0-9]/.test(pwv)},
+  ]);
+  const pwStrengthScore=(pwv)=>{
+    if(!pwv) return 0;
+    let s=0;
+    if(pwv.length>=8) s++;
+    if(pwv.length>=12) s++;
+    if(/[a-z]/.test(pwv)&&/[A-Z]/.test(pwv)) s++;
+    if(/[0-9]/.test(pwv)) s++;
+    if(/[^A-Za-z0-9]/.test(pwv)) s++;
+    return Math.min(s,4);
+  };
+  const PwStrengthMeter=({value})=>{
+    const checks=pwPolicyChecks(value);
+    const score=pwStrengthScore(value);
+    const labels=['Too weak','Weak','Fair','Good','Strong'];
+    const colors=['#4b4b5a','#ef4444','#f59e0b','#3b82f6','#22c55e'];
+    if(!value) return null;
+    return html`
+      <div style=${{marginTop:8}}>
+        <div style=${{display:'flex',gap:4,marginBottom:6}}>
+          ${[0,1,2,3].map(i=>html`<div key=${i} style=${{flex:1,height:4,borderRadius:2,background:i<score?colors[score]:'rgba(255,255,255,0.08)',transition:'background .2s'}}></div>`)}
+        </div>
+        <div style=${{fontSize:11,fontWeight:700,color:colors[score],marginBottom:6}}>${labels[score]}</div>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:'4px 10px'}}>
+          ${checks.map(c=>html`
+            <span key=${c.label} style=${{fontSize:10.5,color:c.ok?'rgba(140,255,180,0.85)':'rgba(175,170,210,0.4)'}}>
+              ${c.ok?'✓':'○'} ${c.label}
+            </span>`)}
+        </div>
+      </div>`;
+  };
 
   // Check if Google OAuth is configured on the server
   useEffect(()=>{
@@ -2049,6 +2111,8 @@ function AuthScreen({onLogin}){
       else{setSuccessMsg('Welcome back, '+r.name);setPhase('success');setTimeout(()=>onLogin(r),1900);}
     } else {
       if(!name||!email||!pw){setErr('All fields required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
+      const failedPwCheck=pwPolicyChecks(pw).find(c=>!c.ok);
+      if(failedPwCheck){setErr('Password needs: '+failedPwCheck.label.toLowerCase()+'.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(regMode==='create'&&!wsName){setErr('Workspace name is required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(regMode==='join'&&!inviteCode){setErr('Enter the invite code.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       const r=await api.post('/api/auth/register',{mode:regMode,workspace_name:wsName,invite_code:inviteCode,name,email,password:pw,role,birth_date:birthDate});
@@ -2084,7 +2148,8 @@ function AuthScreen({onLogin}){
   };
 
   const submitNewPassword=async()=>{
-    if(!newPw1||newPw1.length<8){setErr('Password must be at least 8 characters.');return;}
+    const failedCheck=pwPolicyChecks(newPw1).find(c=>!c.ok);
+    if(failedCheck){setErr('Password needs: '+failedCheck.label.toLowerCase()+'.');return;}
     if(newPw1!==newPw2){setErr('Passwords do not match.');return;}
     setErr('');setPhase('loading');
     const r=await api.post('/api/auth/reset-password',{token:resetToken,password:newPw1});
@@ -2307,6 +2372,16 @@ function AuthScreen({onLogin}){
             </div>`:null}
 
           ${authMode==='reset'?html`
+            ${resetChecking?html`
+              <div style=${{padding:'14px 16px',fontSize:13,color:'rgba(175,170,210,0.55)'}}>Verifying your link…</div>`
+            :resetLinkError?html`
+              <div style=${{padding:'14px 16px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:12,fontSize:13,color:'rgba(255,200,200,0.9)',lineHeight:1.6}}>
+                ${resetLinkError}
+              </div>`:html`
+            ${resetEmailMasked?html`
+              <div style=${{padding:'10px 14px',background:'rgba(90,140,255,0.06)',border:'1px solid rgba(90,140,255,0.18)',borderRadius:11,fontSize:12.5,color:'rgba(200,210,255,0.75)',marginBottom:2}}>
+                Resetting password for <b style=${{color:'#f5f5f7'}}>${resetEmailMasked}</b>
+              </div>`:null}
             <div>
               <${LBL}>New Password</${LBL}>
               <div style=${{position:'relative'}}>
@@ -2318,13 +2393,14 @@ function AuthScreen({onLogin}){
                   ${showNewPw?'🙈':'👁'}
                 </button>
               </div>
+              <${PwStrengthMeter} value=${newPw1}/>
             </div>
             <div>
               <${LBL}>Confirm New Password</${LBL}>
               <input class="ap-inp" type=${showNewPw?'text':'password'} placeholder="Re-enter password"
                 value=${newPw2} autoComplete="new-password"
                 onInput=${e=>setNewPw2(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&submitNewPassword()}/>
-            </div>`:authMode==='forgot'?html`
+            </div>`}`:authMode==='forgot'?html`
             ${forgotSent?html`
               <div style=${{padding:'14px 16px',background:'rgba(90,140,255,0.08)',border:'1px solid rgba(90,140,255,0.22)',borderRadius:12,fontSize:13,color:'rgba(220,225,255,0.85)',lineHeight:1.6}}>
                 If an account exists for <b style=${{color:'#f5f5f7'}}>${email}</b>, a password reset link is on its way — check your inbox (it expires in 12 minutes).
@@ -2354,6 +2430,7 @@ function AuthScreen({onLogin}){
                 ${showPw?'🙈':'👁'}
               </button>
             </div>
+            ${tab==='register'?html`<${PwStrengthMeter} value=${pw}/>`:null}
             ${tab==='login'?html`
               <div style=${{textAlign:'right',marginTop:8}}>
                 <a href="#" onClick=${e=>{e.preventDefault();setErr('');setAuthMode('forgot');}}
@@ -2377,7 +2454,7 @@ function AuthScreen({onLogin}){
             </div>`:null}
 
           <!-- CTA — Apple-style shimmer gradient button -->
-          ${!(authMode==='forgot'&&forgotSent)?html`
+          ${!(authMode==='forgot'&&forgotSent)&&!(authMode==='reset'&&(resetChecking||resetLinkError))?html`
           <button class="ap-btn-primary"
             onClick=${authMode==='reset'?submitNewPassword:authMode==='forgot'?sendResetLink:go}
             disabled=${phase==='loading'} style=${{marginTop:4}}>

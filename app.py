@@ -2384,14 +2384,109 @@ def normalize_email(raw):
 def validate_email_format(email):
     return bool(_EMAIL_RE.match(email or ""))
 
-def validate_password(pw):
-    """Returns (ok, error_message)."""
+# Small blocklist of the most commonly breached/guessed passwords (OWASP-style
+# baseline). Not exhaustive — it's a cheap filter to stop the worst choices,
+# not a replacement for the complexity + reuse checks below.
+_COMMON_PASSWORDS = {
+    "password", "password1", "password123", "12345678", "123456789",
+    "1234567890", "qwerty123", "qwertyuiop", "letmein", "welcome",
+    "welcome1", "admin123", "iloveyou", "sunshine", "princess",
+    "football", "monkey123", "dragon123", "abc12345", "trustno1",
+    "changeme", "passw0rd", "p@ssw0rd", "p@ssword", "projecttracker",
+    "companyname", "fivestarbusiness", "letmein123", "123123123",
+}
+
+# Password history: how many previous passwords (per user) are remembered
+# and blocked from reuse.
+PASSWORD_HISTORY_COUNT = 5
+
+def validate_password(pw, name="", email=""):
+    """Returns (ok, error_message). Enforces a baseline complexity policy —
+    NIST 800-63B-ish: reasonable length + mixed character classes + a
+    blocklist, rather than arbitrary rotation rules."""
     pw = pw or ""
     if len(pw) < PASSWORD_MIN_LEN:
         return False, f"Password must be at least {PASSWORD_MIN_LEN} characters."
     if len(pw.encode("utf-8")) > PASSWORD_MAX_LEN:
         return False, f"Password must be at most {PASSWORD_MAX_LEN} characters."
+    if not re.search(r"[a-z]", pw):
+        return False, "Password must include at least one lowercase letter."
+    if not re.search(r"[A-Z]", pw):
+        return False, "Password must include at least one uppercase letter."
+    if not re.search(r"[0-9]", pw):
+        return False, "Password must include at least one number."
+    if not re.search(r"[^A-Za-z0-9]", pw):
+        return False, "Password must include at least one special character (e.g. ! @ # $ %)."
+    if re.search(r"(.)\1{3,}", pw):
+        return False, "Password must not repeat the same character four or more times in a row."
+    if pw.lower() in _COMMON_PASSWORDS:
+        return False, "That password is far too common. Please choose something more unique."
+    # Don't allow the password to just be the person's name or email handle
+    local_part = (email or "").split("@")[0].strip().lower()
+    name_norm = (name or "").strip().lower()
+    pw_low = pw.lower()
+    if local_part and len(local_part) >= 4 and local_part in pw_low:
+        return False, "Password must not contain your email address."
+    if name_norm and len(name_norm) >= 4 and name_norm in pw_low:
+        return False, "Password must not contain your name."
     return True, ""
+
+def password_strength_score(pw):
+    """Rough 0-4 strength score for surfacing a client-side style meter from
+    the same source of truth as validate_password's rules, if ever needed
+    server-side (e.g. in an API response)."""
+    pw = pw or ""
+    score = 0
+    if len(pw) >= 8: score += 1
+    if len(pw) >= 12: score += 1
+    if re.search(r"[a-z]", pw) and re.search(r"[A-Z]", pw): score += 1
+    if re.search(r"[0-9]", pw): score += 1
+    if re.search(r"[^A-Za-z0-9]", pw): score += 1
+    return min(score, 4)
+
+def _mask_email(email):
+    """Partially mask an email for display, e.g. prasanna.daddala@fivestargroup.in
+    -> pr*************a@fivestargroup.in. Confirms identity without fully
+    exposing the address if a screen or link is glimpsed by someone else."""
+    email = email or ""
+    if "@" not in email:
+        return email
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        masked = local[0] + "*" * max(1, len(local) - 1)
+    else:
+        masked = local[0] + "*" * (len(local) - 2) + local[-1]
+    return f"{masked}@{domain}"
+
+def _password_reused(db, user_id, new_pw, current_hash):
+    """True if new_pw matches the current password or any of the user's last
+    PASSWORD_HISTORY_COUNT passwords."""
+    if current_hash and verify_pw(new_pw, current_hash):
+        return True
+    rows = db.execute(
+        "SELECT password_hash FROM password_history WHERE user_id=? ORDER BY created DESC LIMIT ?",
+        (user_id, PASSWORD_HISTORY_COUNT)
+    ).fetchall()
+    for r in rows:
+        old_hash = dict(r).get("password_hash")
+        if old_hash and verify_pw(new_pw, old_hash):
+            return True
+    return False
+
+def _record_password_history(db, user_id, old_hash):
+    """Push old_hash onto the user's password history and trim to the last
+    PASSWORD_HISTORY_COUNT entries. Call this BEFORE overwriting users.password."""
+    if not old_hash:
+        return
+    db.execute("INSERT INTO password_history (id,user_id,password_hash,created) VALUES (?,?,?,?)",
+               (secrets.token_hex(12), user_id, old_hash, ts()))
+    rows = db.execute(
+        "SELECT id FROM password_history WHERE user_id=? ORDER BY created DESC",
+        (user_id,)
+    ).fetchall()
+    stale_ids = [dict(r)["id"] for r in rows[PASSWORD_HISTORY_COUNT:]]
+    for sid in stale_ids:
+        db.execute("DELETE FROM password_history WHERE id=?", (sid,))
 
 def validate_display_name(name, field_label="Name"):
     name = (name or "").strip()
@@ -4516,6 +4611,9 @@ def init_db():
                 google_id TEXT DEFAULT '',
                 google_picture TEXT DEFAULT '',
                 auth_provider TEXT DEFAULT 'password');
+            CREATE TABLE IF NOT EXISTS password_history (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+                password_hash TEXT NOT NULL, created TEXT);
             CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY, workspace_id TEXT, name TEXT, description TEXT,
                 owner TEXT, members TEXT DEFAULT '[]', start_date TEXT,
@@ -6098,6 +6196,23 @@ def forgot_password():
     _audit("forgot_password", email, "Password reset requested")
     return jsonify({"ok": True})
 
+@app.route("/api/auth/reset-password/verify", methods=["GET"])
+def reset_password_verify():
+    """Look up a reset token WITHOUT consuming it, so the reset-password
+    screen can show which account is being reset (masked) and catch an
+    invalid/expired link before the person types a new password."""
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return jsonify({"error": "Token required"}), 400
+    now_str = ts()
+    with get_db() as db:
+        u = db.execute("SELECT email, pw_reset_expires FROM users WHERE pw_reset_token=?", (token,)).fetchone()
+    if not u:
+        return jsonify({"error": "Invalid or expired reset link"}), 400
+    if u["pw_reset_expires"] and u["pw_reset_expires"] < now_str:
+        return jsonify({"error": "Reset link expired. Please request a new one."}), 400
+    return jsonify({"ok": True, "email_masked": _mask_email(u["email"])})
+
 @app.route("/api/auth/reset-password", methods=["POST"])
 def reset_password():
     d = request.json or {}
@@ -6105,8 +6220,6 @@ def reset_password():
     new_pw = d.get("password", "")
     if not token or not new_pw:
         return jsonify({"error": "Token and new password required"}), 400
-    if len(new_pw) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
     now_str = ts()
     with get_db() as db:
         u = db.execute("SELECT * FROM users WHERE pw_reset_token=?", (token,)).fetchone()
@@ -6114,6 +6227,12 @@ def reset_password():
             return jsonify({"error": "Invalid or expired reset link"}), 400
         if u["pw_reset_expires"] and u["pw_reset_expires"] < now_str:
             return jsonify({"error": "Reset link expired. Please request a new one."}), 400
+        ok, err = validate_password(new_pw, name=u["name"], email=u["email"])
+        if not ok:
+            return jsonify({"error": err}), 400
+        if _password_reused(db, u["id"], new_pw, u["password"]):
+            return jsonify({"error": f"Please choose a password you haven't used recently (your last {PASSWORD_HISTORY_COUNT})."}), 400
+        _record_password_history(db, u["id"], u["password"])
         new_hash = hash_pw(new_pw)
         # Invalidate all sessions by updating logged_out_at
         logout_ts = ts()
@@ -6571,7 +6690,7 @@ def register():
     if not validate_email_format(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
 
-    ok, err = validate_password(d.get("password"))
+    ok, err = validate_password(d.get("password"), name=name, email=email)
     if not ok: return jsonify({"error": err}), 400
 
     uid=f"u{int(datetime.now().timestamp()*1000)}"
@@ -7503,7 +7622,7 @@ def add_user():
     email = normalize_email(d.get("email"))
     if not validate_email_format(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
-    ok, err = validate_password(d.get("password"))
+    ok, err = validate_password(d.get("password"), name=name, email=email)
     if not ok: return jsonify({"error": err}), 400
     uid=f"u{int(datetime.now().timestamp()*1000)}"
     av="".join(w[0] for w in name.split())[:2].upper()
@@ -7624,7 +7743,14 @@ def update_user(uid):
         if not validate_email_format(d["email"]):
             return jsonify({"error": "Please enter a valid email address."}), 400
     if "password" in d:
-        ok, err = validate_password(d.get("password"))
+        target_row = None
+        with get_db() as _pdb:
+            target_row = _pdb.execute("SELECT name,email,password FROM users WHERE id=? AND workspace_id=?", (uid, wid())).fetchone()
+        ok, err = validate_password(
+            d.get("password"),
+            name=(target_row["name"] if target_row else ""),
+            email=(target_row["email"] if target_row else ""),
+        )
         if not ok: return jsonify({"error": err}), 400
     try:
         with get_db() as db:
@@ -7644,6 +7770,10 @@ def update_user(uid):
                 db.execute("UPDATE users SET email=? WHERE id=? AND workspace_id=?",(d["email"],uid,wid()))
                 changed_self_cache = True
             if "password" in d:
+                if target_row and _password_reused(db, uid, d["password"], target_row["password"]):
+                    return jsonify({"error": f"That's a recently used password for this account. Please choose a different one (last {PASSWORD_HISTORY_COUNT})."}), 400
+                if target_row:
+                    _record_password_history(db, uid, target_row["password"])
                 db.execute("UPDATE users SET password=? WHERE id=? AND workspace_id=?",(hash_pw(d["password"]),uid,wid()))
                 changed_self_cache = True
             if "avatar_data" in d:
