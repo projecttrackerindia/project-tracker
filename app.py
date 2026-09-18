@@ -7727,7 +7727,7 @@ def add_user():
             existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
             if existing:
                 return jsonify({"error": "Email already in use"}), 400
-            db.execute("INSERT INTO users (id,workspace_id,name,email,password,role,avatar,color,created,avatar_data) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO users (id,workspace_id,name,email,password,role,avatar,color,created,avatar_data,email_verified) VALUES (?,?,?,?,?,?,?,?,?,?,1)",
                        (uid,wid(),name,email,hash_pw(d["password"]),
                         d.get("role","Developer"),av,c,ts(),None))
         _cache_bust_ws_async(wid())
