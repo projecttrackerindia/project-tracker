@@ -5124,6 +5124,40 @@ def _set_logged_out_at(uid, ts_val):
         pass
 
 
+_revoked_sessions_lock = threading.Lock()
+_revoked_sessions_cache = {}  # in-process fallback: {session_id: "1"}
+
+def _set_session_revoked(sid):
+    """Mark a single session_id as revoked (all workers, via Redis when
+    available). Used by the per-device 'Log out' button in Active Sessions —
+    unlike _set_logged_out_at (which invalidates every session for the user),
+    this only kills the one targeted device."""
+    if not sid:
+        return
+    cache_key = f"ptcache:revoked_sid:{sid}"
+    if _redis_client is not None:
+        try:
+            _redis_client.set(cache_key, "1", ex=86400*30)
+            return
+        except Exception:
+            pass
+    with _revoked_sessions_lock:
+        _revoked_sessions_cache[sid] = "1"
+
+def _is_session_revoked(sid):
+    """True if this specific session_id was individually revoked (as opposed
+    to a whole-account logout via logged_out_at)."""
+    if not sid:
+        return False
+    cache_key = f"ptcache:revoked_sid:{sid}"
+    if _redis_client is not None:
+        try:
+            return _redis_client.get(cache_key) is not None
+        except Exception:
+            pass
+    with _revoked_sessions_lock:
+        return sid in _revoked_sessions_cache
+
 def _evict_me_cache(uid):
     """Evict the per-user /api/auth/me cache from Redis and local memory."""
     if not uid:
@@ -5153,11 +5187,14 @@ def _session_inactivity_expired():
 def _session_remote_logged_out():
     """True if this session was issued before the user's most recent logout
     (i.e. it was invalidated from another tab/device, or by our own prior
-    /api/auth/logout call)."""
+    /api/auth/logout call), OR if this exact device's session was
+    individually revoked from the Active Sessions panel."""
     uid = session.get("user_id")
     login_at = session.get("login_at", "")
     if not (uid and login_at):
         return False
+    if _is_session_revoked(session.get("session_id", "")):
+        return True
     cached_logout = _get_logged_out_at(uid)
     if cached_logout is None:
         # Not cached — fetch from DB once, then cache it
@@ -6384,8 +6421,23 @@ def list_sessions():
 @login_required
 def revoke_session(sid):
     uid = session.get("user_id")
+    # Don't let this endpoint be used to revoke the caller's own live session —
+    # the UI already hides the button for is_current, but guard server-side too.
+    # Use /api/auth/sessions/logout-all (or plain logout) to sign this device out.
+    if sid == session.get("session_id", ""):
+        return jsonify({"error": "Use logout to sign out of your current device."}), 400
     with get_db() as db:
+        row = db.execute("SELECT id FROM user_sessions WHERE id=? AND user_id=?", (sid, uid)).fetchone()
         db.execute("DELETE FROM user_sessions WHERE id=? AND user_id=?", (sid, uid))
+    # BUG FIX: previously only the tracking row above was deleted, which just
+    # made the entry vanish from the Active Sessions list without actually
+    # signing that device out — it kept working with a fully valid session,
+    # which is why "Log out" on another device looked like it did something
+    # (the row disappeared) but the other device stayed logged in. Marking the
+    # session_id itself as revoked makes login_required actually reject that
+    # device's next request.
+    if row:
+        _set_session_revoked(sid)
     return jsonify({"ok": True})
 
 @app.route("/api/auth/sessions/logout-all", methods=["POST"])
@@ -15713,6 +15765,8 @@ def sse_stream():
         if not uid:
             return False
         try:
+            if _is_session_revoked(session.get("session_id", "")):
+                return False
             # Fast path: use the existing logout cache (Redis or in-process dict).
             # _get_logged_out_at returns None = not cached, "" = no logout, ts = logout ts.
             cached_logout = _get_logged_out_at(uid)
