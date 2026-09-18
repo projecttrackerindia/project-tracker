@@ -8145,13 +8145,26 @@ def _fetch_app_data_from_db(ws, team_id, uid):
     in_progress_tickets = sum(1 for tk in tickets if str(tk.get("status") or "").lower() in ("in-progress", "in_progress", "progress"))
     my_tickets = sum(1 for tk in tickets if str(tk.get("assignee") or "") == str(uid) and str(tk.get("status") or "").lower() not in ("closed", "resolved"))
     my_active = sum(1 for t in tasks if str(t.get("assignee") or "") == str(uid) and str(t.get("stage") or "").lower() not in ("completed", "done", "closed", "production"))
+    # team_members should reflect the active sub-team's roster when a team is
+    # selected (matching how tasks/projects are already scoped above), not the
+    # whole workspace headcount — otherwise a 2-person team's dashboard shows
+    # the workspace's total user count instead of its own member count.
+    if team_id:
+        active_team_row = next((t for t in teams if str(t.get("id")) == str(team_id)), None)
+        try:
+            team_member_id_set = set(json.loads((active_team_row or {}).get("member_ids") or "[]"))
+        except Exception:
+            team_member_id_set = set()
+        team_members_count = sum(1 for u in users if u.get("id") in team_member_id_set)
+    else:
+        team_members_count = len(users)
     dashboard_summary = {
         "counts": {
             "projects": len(projects),
             "tasks": active,
             "completed": completed,
             "blocked": blocked,
-            "team_members": len(users),
+            "team_members": team_members_count,
             "open_tickets": open_tickets,
             "in_progress_tickets": in_progress_tickets,
             "my_tickets": my_tickets,
