@@ -4698,7 +4698,12 @@ function renderChatContent(text){
   if(meetMatch || /📹\s*Google Meet call/i.test(raw)){
     const url=meetMatch?meetMatch[0]:'';
     const code=(url.split('/').pop()||'').split('?')[0];
-    const link=url?`<a href="${url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;margin-top:10px;padding:9px 13px;border-radius:999px;background:#2563eb;color:#fff;text-decoration:none;font-weight:900;box-shadow:0 8px 20px rgba(37,99,235,.28)">Join Google Meet</a>`:'';
+    // url's path segment is constrained safe by the regex above (meetMatch),
+    // but its optional query string only excludes whitespace/'<' — '"' and
+    // '>' can still reach this href attribute unescaped. Escape defensively,
+    // matching the discipline already used for every other interpolated
+    // value in this function (e.g. the call-invite branch above).
+    const link=url?`<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;margin-top:10px;padding:9px 13px;border-radius:999px;background:#2563eb;color:#fff;text-decoration:none;font-weight:900;box-shadow:0 8px 20px rgba(37,99,235,.28)">Join Google Meet</a>`:'';
     return `<div style="min-width:245px;max-width:340px;border:1px solid rgba(96,165,250,.28);border-radius:16px;padding:13px;background:linear-gradient(135deg,rgba(37,99,235,.16),rgba(124,58,237,.10))"><div style="display:flex;align-items:center;gap:10px;font-weight:900;margin-bottom:5px"><span style="width:32px;height:32px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:#2563eb;color:white">📹</span><span>Google Meet call</span></div><div style="font-size:12px;opacity:.84;line-height:1.45">You are invited to join this call. Click below to open Google Meet.</div>${code?`<div style="font-size:11px;opacity:.72;margin-top:8px;font-family:monospace;word-break:break-all">${code}</div>`:''}${link}</div>`;
   }
   const fileMatch=raw.match(/\/api\/files\/[A-Za-z0-9_-]+/);
