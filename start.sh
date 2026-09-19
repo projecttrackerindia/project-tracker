@@ -17,6 +17,16 @@ esac
 : "${MAX_REQUESTS_JITTER:=100}"
 : "${PG_POOL_SIZE:=40}"
 export PG_POOL_SIZE
+# Run schema migrations on every deploy by default (previously required an
+# operator to remember to set this manually — see app.py's advisory-lock
+# guards on _run_startup_migrations_once()/_boot_v5_migrations() just above
+# where those run, which make this safe even with WEB_CONCURRENCY>1: only one
+# worker per deploy actually executes the DDL, the rest see the lock held and
+# skip immediately. Set RUN_STARTUP_MIGRATIONS=0 explicitly to opt out of a
+# specific deploy (e.g. a pure hotfix where you want to control migration
+# timing separately via `python migrate.py`).
+: "${RUN_STARTUP_MIGRATIONS:=1}"
+export RUN_STARTUP_MIGRATIONS
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONUNBUFFERED=1
 # Remove committed bytecode so Railway cannot run stale app.cpython-*.pyc.

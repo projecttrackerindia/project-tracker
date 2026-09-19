@@ -565,6 +565,36 @@ app.secret_key = get_secret_key()
 # of this app (e.g. an nginx/Cloudflare layer in addition to the platform
 # edge), raise x_for to match the number of trusted hops.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
+# ── Error aggregation (Sentry) ──────────────────────────────────────────────
+# sentry-sdk[flask] has been a listed dependency (requirements.txt) all along
+# but was never actually initialized anywhere — it shipped in every deploy,
+# doing nothing. Without it, a production 500's only trace was a raw
+# traceback dumped into the stdout log stream (see the @app.errorhandler(500)
+# below), with no grouping, dedup, or alerting. Purely additive and optional:
+# with no SENTRY_DSN set, this whole block is a no-op, same as every other
+# optional integration in this file (Redis, S3, Slack, ...).
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk as _sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration as _SentryFlaskIntegration
+        _sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            integrations=[_SentryFlaskIntegration()],
+            environment=os.environ.get("SENTRY_ENVIRONMENT") or os.environ.get("RAILWAY_ENVIRONMENT") or "production",
+            release=os.environ.get("SENTRY_RELEASE", ""),
+            # Sampled, not exhaustive — full tracing on every request would add
+            # meaningful overhead to this app's hot paths (polling, SSE).
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            send_default_pii=False,  # never forward request bodies/user PII automatically
+        )
+        log.info("[SENTRY] Error aggregation initialized.")
+    except Exception as _e:
+        log.warning("[SENTRY] SENTRY_DSN is set but initialization failed: %s", _e)
+else:
+    log.info("[SENTRY] SENTRY_DSN not set — error aggregation disabled (traceback-only logging).")
+
 APP_STARTED_AT = datetime.utcnow()
 _is_https = os.environ.get("HTTPS","").lower() in ("1","true","on") or              os.environ.get("RAILWAY_ENVIRONMENT","") != "" or              os.environ.get("RENDER","") != ""
 app.config.update(
@@ -7012,6 +7042,19 @@ def register():
 
     ok, err = validate_password(d.get("password"), name=name, email=email)
     if not ok: return jsonify({"error": err}), 400
+
+    # Check for an existing account with this email BEFORE creating anything —
+    # in particular, before the 'create' mode branch below creates a new
+    # workspace in its own committed transaction. This check used to run only
+    # after that workspace already existed: a duplicate-email attempt got the
+    # correct 400 error, but the empty, ownerless workspace created moments
+    # earlier was never rolled back and stayed in the database permanently
+    # (security/architecture review finding DATA-01). The later check right
+    # before the user INSERT stays in place as defense-in-depth against a
+    # genuine race between two concurrent registrations for the same email.
+    with get_db() as db:
+        if db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
+            return jsonify({"error": "Email already registered"}), 400
 
     uid=f"u{int(datetime.now().timestamp()*1000)}"
     av="".join(w[0] for w in name.split())[:2].upper()
@@ -14171,7 +14214,51 @@ def _load_template(filename, fallback=''):
         log.warning(f"Template not found: {filename}")
         return fallback
 
-HTML                    = _load_template('template.html')
+# ── frontend.js cache-busting ───────────────────────────────────────────────
+# template.html used to inline the entire ~1MB application directly in a
+# <script> tag, served with Cache-Control: no-store — every page load/
+# navigation re-downloaded and re-parsed the whole app from zero, and the
+# gzip of that 1MB body was done synchronously, in-process, on every request.
+# frontend.js is that same script extracted to an external, cacheable file.
+# The version hash below is computed fresh from frontend.js's actual content
+# at startup and substituted into template.html's script tag, so a new
+# deploy always produces a new URL (?v=<hash>) — old cached copies are simply
+# never requested again, which is what makes it safe to cache the new URL
+# aggressively (see serve_frontend_js below) without reviving the staleness
+# problem the no-cache policy on /static/<path:fn> exists to prevent.
+_FRONTEND_JS_PATH = _os.path.join(_BASE, "frontend.js")
+
+def _compute_frontend_js_version():
+    try:
+        with open(_FRONTEND_JS_PATH, "rb") as _f:
+            return hashlib.sha256(_f.read()).hexdigest()[:12]
+    except Exception:
+        return "dev"
+
+_FRONTEND_JS_VERSION = _compute_frontend_js_version()
+
+HTML                    = _load_template('template.html').replace(
+    '__FRONTEND_JS_VERSION__', _FRONTEND_JS_VERSION)
+
+@app.route("/frontend.js")
+def serve_frontend_js():
+    """Serve the external app bundle template.html now loads via
+    <script src="/frontend.js?v=...">. Only the exact current-version URL is
+    cached long-term/immutably — any other request (a stale bookmarked link,
+    a request with no/an old ?v=) gets the same conservative no-cache
+    treatment /static/<path:fn> uses for JS/CSS, so this can never serve a
+    stale bundle under a URL a browser might still have cached from before."""
+    if not _os.path.isfile(_FRONTEND_JS_PATH):
+        err_js = ("console.error('[Project Tracker] frontend.js not found on server.');")
+        return Response(err_js, mimetype="application/javascript", headers={"Cache-Control": "no-cache"})
+    resp = send_file(_FRONTEND_JS_PATH, mimetype="application/javascript")
+    if request.args.get("v") == _FRONTEND_JS_VERSION:
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
 
 _RE_SCRIPT_TAG = __import__('re').compile(r'<script([^>]*)>', __import__('re').IGNORECASE)
 
@@ -17542,12 +17629,41 @@ def _run_v5_migrations():
 
 # Run v5 schema migrations always (background thread, non-blocking so requests
 # are never queued behind DDL). _run_ddl() silently skips "already exists" errors,
-# so this is safe to call on every restart. The RUN_STARTUP_MIGRATIONS flag is
-# kept for compatibility but is no longer required — columns are added automatically.
+# so this is safe to call on every restart.
+#
+# FIX (architecture review, OPS-02): this comment used to claim the migration
+# ran "always" and that RUN_STARTUP_MIGRATIONS was "no longer required" — but
+# the code below it still gated the whole thing behind that exact flag, so in
+# practice nothing ran automatically and a schema-changing deploy relied on an
+# operator remembering to set the flag (see start.sh, which now sets it by
+# default). Since that flag is now effectively always on, the "four workers
+# racing the same DDL on every deploy" cost this gate originally existed to
+# avoid is real again — so this now takes the same Postgres advisory lock
+# _run_startup_migrations_once() (below) uses, with its own key, so only one
+# worker per deploy actually runs it; the rest skip immediately.
+_V5_MIGRATION_LOCK_KEY = 727272728
+
 def _boot_v5_migrations():
     global _TASK_STABILITY_SCHEMA_DONE
     import time as _btime
     _btime.sleep(3)   # let gunicorn finish binding before touching DDL
+    lock_conn = None
+    try:
+        from pg8000.native import Connection as _PGConn
+        lock_conn = _PGConn(**_parse_db_url(DATABASE_URL))
+        got = lock_conn.run(f"SELECT pg_try_advisory_lock({_V5_MIGRATION_LOCK_KEY})")
+        acquired = bool(got and got[0] and got[0][0])
+    except Exception as _lock_e:
+        log.warning(f"[v5_migrations] lock unavailable ({_lock_e}); running anyway")
+        acquired = True  # fail open — never block boot on the lock itself
+
+    if not acquired:
+        log.info("[v5_migrations] another worker already holds the lock — skipping")
+        try:
+            if lock_conn: lock_conn.close()
+        except Exception:
+            pass
+        return
     try:
         _run_v5_migrations()
         _close_ddl_conn()
@@ -17557,12 +17673,14 @@ def _boot_v5_migrations():
         log.info("[v5_migrations] Schema migration complete")
     except Exception as _v5e:
         log.warning("[v5_migrations] %s", _v5e)
+    finally:
+        try:
+            if lock_conn:
+                lock_conn.run(f"SELECT pg_advisory_unlock({_V5_MIGRATION_LOCK_KEY})")
+                lock_conn.close()
+        except Exception:
+            pass
 
-# Do not run expensive DDL in every Gunicorn worker by default. The previous
-# behavior caused four workers/containers to run the same v5 migration block on
-# every deploy, which matched the 8-11s cold-load logs. Enable explicitly when
-# you deploy a real schema change. Runtime guards still create missing task
-# columns when needed.
 if os.environ.get("RUN_STARTUP_MIGRATIONS", "0").lower() in ("1", "true", "yes"):
     threading.Thread(target=_boot_v5_migrations, daemon=True).start()
 

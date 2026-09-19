@@ -1,0 +1,53 @@
+name: CI
+
+# Baseline CI — there was previously no CI pipeline at all in this repository
+# (architecture review, OPS-01): nothing ran between a commit and a deploy.
+# This is a deliberately modest starting point, not full test coverage:
+# static checks that need no external services (no live Postgres, no Redis).
+# A Postgres-backed integration-test job is real, separately-scoped Next-lane
+# work once actual pytest tests exist to run against it — see
+# docs/AI_ARCHITECTURE.md and the roadmap in the engineering review for that.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile-check every Python file (catches syntax errors)
+        run: |
+          python -m py_compile app.py ai_provider.py intelligence.py \
+            notification_engine.py scaling_runtime.py worker.py migrate.py
+          find blueprints -name '*.py' -print0 | xargs -0 -r python -m py_compile
+
+      - name: Import sanity check
+        # Importing app.py runs its module-level setup, so this catches
+        # anything that raises before a single request could ever be served
+        # — with no DATABASE_URL, DB-touching startup work is expected to log
+        # a warning and continue rather than crash (the app is designed to
+        # boot even with Postgres briefly unreachable), so a clean exit here
+        # is a meaningful signal, not a formality.
+        run: python -c "import app"
+        env:
+          SECRET_KEY: ci-placeholder-secret-key-not-for-production-use-only
+          ADMIN_TOKEN_SECRET: ci-placeholder-admin-token-secret-not-for-prod
+
+      - name: Lint (Ruff — reports only, does not fail the build yet)
+        run: |
+          pip install ruff
+          ruff check --exit-zero app.py ai_provider.py intelligence.py notification_engine.py scaling_runtime.py

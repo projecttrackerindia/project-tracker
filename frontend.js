@@ -1,4 +1,3 @@
-
 (function(){
 'use strict';
 
@@ -18,16 +17,6 @@ window._pfStartApp=function(){
 /* ── bind htm to React.createElement so html`...` works throughout ── */
 const html=htm.bind(React.createElement);
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
-
-/* ─── useDebounce — debounce a value by the given delay (ms) ─── */
-function useDebounce(value, delay) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
 const RC=Recharts;
 
 /* ─── AppLoader — single gradient loading screen (replaces old plain white loader) ── */
@@ -131,48 +120,49 @@ function ptNormalizeProfilePayload(p, fallback={}){
   return x;
 }
 
-function ptInstantCacheScope(){
-  try{
-    const u=window.PT_CURRENT_USER||window._pfCurrentUser||{};
-    const w=(window.PT_WORKSPACE||{}).workspace_id||u.workspace_id||u.workspace_id_from_me||'';
-    const id=u.id||'';
-    return (w||id)?(':'+String(w||'noworkspace')+':'+String(id||'nouser')):'';
-  }catch(_){return '';}
-}
-function ptInstantCacheKey(key){
-  const k=String(key||'');
-  // App-data must be scoped. A global /api/app-data cache from a previous
-  // workspace/user caused dashboards to open with all counters as zero.
-  if(k.startsWith('/api/app-data')) return 'pt_instant_cache'+ptInstantCacheScope()+':'+k;
-  return 'pt_instant_cache:'+k;
-}
+function ptInstantCacheKey(key){return 'pt_instant_cache:'+String(key||'');}
 function ptInstantCacheGet(key,fallback){
-  try{const isApp=String(key||'').startsWith('/api/app-data');const raw=sessionStorage.getItem(ptInstantCacheKey(key))||(!isApp?localStorage.getItem(ptInstantCacheKey(key)):null);if(!raw)return fallback;const p=JSON.parse(raw);const data=p&&p.data!==undefined?p.data:fallback;if(isApp&&data&&data.partial)return fallback;return data;}catch(_){return fallback;}
+  try{const raw=sessionStorage.getItem(ptInstantCacheKey(key))||localStorage.getItem(ptInstantCacheKey(key));if(!raw)return fallback;const p=JSON.parse(raw);const data=p&&p.data!==undefined?p.data:fallback;if(String(key||'').startsWith('/api/app-data')&&data&&data.partial)return fallback;return data;}catch(_){return fallback;}
 }
 function ptInstantCacheSet(key,data){
-  try{const payload=JSON.stringify({at:Date.now(),data});sessionStorage.setItem(ptInstantCacheKey(key),payload);if(!String(key||'').startsWith('/api/app-data'))localStorage.setItem(ptInstantCacheKey(key),payload);}catch(_){}
+  try{const payload=JSON.stringify({at:Date.now(),data});sessionStorage.setItem(ptInstantCacheKey(key),payload);localStorage.setItem(ptInstantCacheKey(key),payload);}catch(_){}
+}
+// Patches every cached '/api/app-data...' entry (base + team-scoped variants) in place so
+// that load()'s stale-while-revalidate step can't resurrect notification state we've just
+// changed optimistically (e.g. "mark all read") before the fresh network response lands.
+function ptPatchAppDataNotifsCache(mutator){
+  try{
+    const scan=(store)=>{
+      const keys=[];
+      for(let i=0;i<store.length;i++){const k=store.key(i);if(k&&k.startsWith('pt_instant_cache:/api/app-data'))keys.push(k);}
+      keys.forEach(k=>{
+        try{
+          const raw=store.getItem(k);if(!raw)return;
+          const parsed=JSON.parse(raw);
+          if(!parsed||!parsed.data||!Array.isArray(parsed.data.notifications))return;
+          const nextData={...parsed.data,notifications:mutator(parsed.data.notifications)};
+          store.setItem(k,JSON.stringify({at:Date.now(),data:nextData}));
+        }catch(_){}
+      });
+    };
+    scan(sessionStorage);scan(localStorage);
+  }catch(_){}
 }
 
-function ptMakeTaskClientKey(){
-  try{return 'ctk_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);}catch(_){return 'ctk_'+String(Date.now());}
-}
 function ptTaskTombstones(){
   try{return JSON.parse(localStorage.getItem('pt_task_tombstones')||'{}')||{};}catch(_){return {};}
 }
 function ptSaveTaskTombstones(x){
   try{localStorage.setItem('pt_task_tombstones',JSON.stringify(x||{}));}catch(_){}
 }
-function ptMarkTaskDeleted(id){
-  if(!id)return;
+function ptMarkTaskDeleted(taskId){
   const x=ptTaskTombstones();
-  x[String(id)]=Date.now()+30*60*1000;
-  Object.keys(x).forEach(k=>{if(Number(x[k]||0)<Date.now())delete x[k];});
+  x[String(taskId||'')]=Date.now();
   ptSaveTaskTombstones(x);
 }
-function ptIsTaskDeleted(id){
-  if(!id)return false;
+function ptIsTaskDeleted(taskId){
   const x=ptTaskTombstones();
-  return Number(x[String(id)]||0)>Date.now();
+  return !!x[String(taskId||'')];
 }
 function ptProjectTombstones(){
   try{return JSON.parse(localStorage.getItem('pt_project_tombstones')||'{}')||{};}catch(_){return {};}
@@ -180,24 +170,21 @@ function ptProjectTombstones(){
 function ptSaveProjectTombstones(x){
   try{localStorage.setItem('pt_project_tombstones',JSON.stringify(x||{}));}catch(_){}
 }
-function ptMarkProjectDeleted(id){
-  if(!id)return;
+function ptMarkProjectDeleted(projectId){
   const x=ptProjectTombstones();
-  x[String(id)]=Date.now()+30*60*1000;
-  Object.keys(x).forEach(k=>{if(Number(x[k]||0)<Date.now())delete x[k];});
+  x[String(projectId||'')]=Date.now();
   ptSaveProjectTombstones(x);
 }
-function ptIsProjectDeleted(id){
-  if(!id)return false;
+function ptIsProjectDeleted(projectId){
   const x=ptProjectTombstones();
-  return Number(x[String(id)]||0)>Date.now();
+  return !!x[String(projectId||'')];
 }
 function ptMergeProjectsStable(prevProjects, serverProjects){
   // Same fix as ptMergeTasksStable below, applied to projects: a stale
   // /api/app-data response (server-side cache race after create) must never
   // erase a project the user just created/optimistically confirmed. The
-  // ptIsProjectDeleted() tombstone check is the flip side: it stops a stale
-  // response from resurrecting a project the user just deleted.
+  // ptIsProjectDeleted() tombstone check stops a stale response from
+  // resurrecting a project the user just deleted. Mirrors frontend.js.
   const now=Date.now();
   const prev=Array.isArray(prevProjects)?prevProjects:[];
   const srv=(Array.isArray(serverProjects)?serverProjects:[]).filter(p=>p&&!String(p.deleted_at||'').trim()&&!ptIsProjectDeleted(p.id));
@@ -211,8 +198,6 @@ function ptMergeProjectsStable(prevProjects, serverProjects){
     seen.add(String(merged.id));
     out.push(merged);
   });
-  // Keep optimistic/recent projects while app-data cache catches up (mirrors
-  // the task-vanish fix — don't let stale data erase a just-created project).
   prev.forEach(p=>{
     if(!p||!p.id||String(p.deleted_at||'').trim()||ptIsProjectDeleted(p.id))return;
     const id=String(p.id);
@@ -229,42 +214,44 @@ function ptMergeProjectsStable(prevProjects, serverProjects){
   });
   return final;
 }
-function ptMergeTasksStable(prevTasks, serverTasks){
+function ptMergeTasksStable(localTasks,serverTasks){
+  // Robust merge: tombstone-aware, client_task_key dedup, 30-min TTL, keeps
+  // pending/recent optimistic tasks while server catches up. Mirrors frontend.js.
   const now=Date.now();
-  const prev=Array.isArray(prevTasks)?prevTasks:[];
+  const tombstones=ptTaskTombstones();const ttl=1800000;let changed=false;
+  Object.keys(tombstones).forEach(k=>{if(now-tombstones[k]>ttl){delete tombstones[k];changed=true;}});
+  if(changed)ptSaveTaskTombstones(tombstones);
+  const prev=Array.isArray(localTasks)?localTasks:[];
   const srv=(Array.isArray(serverTasks)?serverTasks:[]).filter(t=>t&&!String(t.deleted_at||'').trim()&&!ptIsTaskDeleted(t.id));
-  const byId=new Map();
-  const byKey=new Map();
-  prev.forEach(t=>{if(!t)return; if(t.id)byId.set(String(t.id),t); if(t.client_task_key)byKey.set(String(t.client_task_key),t);});
-  const out=[]; const seenId=new Set(); const seenKey=new Set();
+  const byId=new Map();const byKey=new Map();
+  prev.forEach(t=>{if(!t)return;if(t.id)byId.set(String(t.id),t);if(t.client_task_key)byKey.set(String(t.client_task_key),t);});
+  const out=[];const seenId=new Set();const seenKey=new Set();
   srv.forEach(st=>{
     const local=(st.client_task_key&&byKey.get(String(st.client_task_key)))||(st.id&&byId.get(String(st.id)))||null;
     const merged={...(local||{}),...st,_pending:false,_syncing:false,_localTs:(local&&local._localTs)||Date.now()};
-    if(merged.id)seenId.add(String(merged.id));
-    if(merged.client_task_key)seenKey.add(String(merged.client_task_key));
+    if(merged.id)seenId.add(String(merged.id));if(merged.client_task_key)seenKey.add(String(merged.client_task_key));
     out.push(merged);
   });
-  // Keep optimistic/recent tasks while Railway app-data/Redis catches up. This is
-  // the core fix for Temp -> vanish after 10/20 sec: stale app-data is no longer
-  // allowed to erase a just-created task until it has had enough time to appear
-  // in the DB-backed payload or fail visibly.
+  // Keep optimistic/pending tasks the server hasn't echoed back yet (new task within 3 min or still _pending)
   prev.forEach(t=>{
     if(!t||String(t.deleted_at||'').trim()||ptIsTaskDeleted(t.id))return;
-    const id=String(t.id||''); const key=String(t.client_task_key||'');
+    const id=String(t.id||'');const key=String(t.client_task_key||'');
     if((id&&seenId.has(id))||(key&&seenKey.has(key)))return;
-    const keep = t._pending || t._syncing || Number(t._recentLocalUntil||0)>now || (Number(t._localTs||0) && now-Number(t._localTs||0)<180000);
+    const keep=t._pending||t._syncing||Number(t._recentLocalUntil||0)>now||(Number(t._localTs||0)&&now-Number(t._localTs||0)<180000);
     if(keep)out.unshift(t);
   });
-  const final=[]; const fids=new Set(); const fkeys=new Set();
+  const final=[];const fids=new Set();const fkeys=new Set();
   out.forEach(t=>{
-    const id=String(t.id||''); const key=String(t.client_task_key||'');
-    if(id&&fids.has(id))return;
-    if(key&&fkeys.has(key))return;
-    if(id)fids.add(id); if(key)fkeys.add(key);
-    final.push(t);
+    const id=String(t.id||'');const key=String(t.client_task_key||'');
+    if(id&&fids.has(id))return;if(key&&fkeys.has(key))return;
+    if(id)fids.add(id);if(key)fkeys.add(key);final.push(t);
   });
   return final;
 }
+function ptMakeTaskClientKey(){
+  try{return 'ctk_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);}catch(_){return 'ctk_'+String(Date.now());}
+}
+
 const _apiNotifyError = (url, message, status) => {
   message = _apiCleanMessage(message, status);
   const key = `${status || 0}:${String(url || '').split('?')[0]}:${message || ''}`;
@@ -275,6 +262,22 @@ const _apiNotifyError = (url, message, status) => {
   if (!_apiShouldToast(url, status)) return;
   window.dispatchEvent(new CustomEvent('pt:api-error', { detail: { url, message, status } }));
 };
+// BUG FIX (silent "frozen dashboard" after a session dies while the tab is
+// open — e.g. laptop sleeps past the 30-min idle window, or the server
+// invalidates the session for any other reason): every poller and the SSE
+// stream independently swallowed 401s and just kept retrying forever, so
+// the UI never told the user they'd been signed out — presence, live
+// updates and reminders all silently stopped working until a manual
+// refresh. This fires ONE global signal the first time any authenticated
+// endpoint reports the session is gone, so the app can log out for real
+// instead of each caller quietly failing on its own.
+let _ptSessionExpiredFired = false;
+const _ptNotifySessionExpired = () => {
+  if (_ptSessionExpiredFired) return;
+  _ptSessionExpiredFired = true;
+  window.dispatchEvent(new CustomEvent('pt:session-expired'));
+};
+window._ptResetSessionExpiredFlag = () => { _ptSessionExpiredFired = false; }; // called from a fresh login
 const _apiRequest = async (u, opts = {}) => {
   const method = (opts.method || 'GET').toUpperCase();
   const timeoutMs = opts.timeoutMs || (method === 'GET' ? 15000 : 30000);
@@ -311,7 +314,12 @@ const _apiRequest = async (u, opts = {}) => {
     const data = await _apiRead(r);
     if (!r.ok) {
       const message = data?.error || data?.message || `HTTP ${r.status}`;
-      if (!(r.status === 401 && !u.startsWith('/api/auth/'))) _apiNotifyError(u, message, r.status);
+      const isAuthEndpoint = u.startsWith('/api/auth/');
+      if (r.status === 401 && !isAuthEndpoint) {
+        _ptNotifySessionExpired(); // see _ptNotifySessionExpired above
+      } else {
+        _apiNotifyError(u, message, r.status);
+      }
       return { ok:false, error:message, status:r.status, data };
     }
     const etag = r.headers.get('ETag');
@@ -334,7 +342,7 @@ const _apiRequest = async (u, opts = {}) => {
   }
 };
 
-const ptPollManager=(()=>{let timer=null,inFlight=null,sseHealthy=true,lastTick=0;const handlers=new Set();const tick=async(force=false)=>{const now=Date.now();if(!force&&now-lastTick<25000)return inFlight;if(document.hidden&&!force)return inFlight;lastTick=now;if(inFlight)return inFlight;inFlight=api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{handlers.forEach(h=>{try{h(d||{});}catch(e){console.warn('[poll handler]',e);}});return d;}).finally(()=>{inFlight=null;});return inFlight;};const start=()=>{if(timer)return;timer=setInterval(()=>{if(!document.hidden&&!sseHealthy)tick(false);},30000);};const setSseHealthy=v=>{sseHealthy=!!v;if(sseHealthy&&timer){clearInterval(timer);timer=null;}else if(!sseHealthy)start();};/* SCALABILITY: expose getter so DM component can check SSE health without coupling to SSE internals */const isSseHealthy=()=>sseHealthy;return{subscribe(h){handlers.add(h);return()=>handlers.delete(h);},tick,start,setSseHealthy,isSseHealthy};})();
+const ptPollManager=(()=>{let timer=null,inFlight=null,sseHealthy=true,lastTick=0;const handlers=new Set();const tick=async(force=false)=>{const now=Date.now();if(!force&&now-lastTick<25000)return inFlight;lastTick=now;if(inFlight)return inFlight;inFlight=api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{handlers.forEach(h=>{try{h(d||{});}catch(e){console.warn('[poll handler]',e);}});return d;}).finally(()=>{inFlight=null;});return inFlight;};const start=()=>{if(timer)return;timer=setInterval(()=>{if(!document.hidden&&!sseHealthy)tick(false);},30000);};const setSseHealthy=v=>{sseHealthy=!!v;if(sseHealthy&&timer){clearInterval(timer);timer=null;}else if(!sseHealthy)start();};return{subscribe(h){handlers.add(h);return()=>handlers.delete(h);},tick,start,setSseHealthy};})();
 window.ptPollManager=ptPollManager;
 function _ptDmThreadPeerFromUrl(u){
   try{
@@ -400,10 +408,10 @@ const PAL=['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#ec4899','#0891b2'
 const fmtD=d=>{if(!d)return'—';try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return d;}};
 const ago=iso=>{const m=Math.floor((Date.now()-new Date(iso))/60000);if(m<1)return'just now';if(m<60)return m+'m ago';if(m<1440)return Math.floor(m/60)+'h ago';return Math.floor(m/1440)+'d ago';};
 const safe=a=>(Array.isArray(a)?a:[]);
+const normRole=r=>(r||'').toString().toLowerCase().replace(/[^a-z]/g,'');
+function hasOpsAccess(cu){const r=normRole(cu&&cu.role);return ['admin','owner','workspaceowner','manager','projectmanager','teamlead','superadmin'].includes(r);}
 // Normalize project.members: DB stores it as a JSON string, UI needs a real array
 const parseMembers=m=>{if(Array.isArray(m))return m;try{const p=JSON.parse(m||'[]');return Array.isArray(p)?p:[];}catch{return[];}};
-const normRole=r=>String(r||'').trim().toLowerCase().replace(/[\s_-]+/g,'');
-function hasOpsAccess(cu){const r=normRole(cu&&cu.role);return ['admin','owner','workspaceowner','manager','projectmanager','teamlead','superadmin'].includes(r);}
 function parseIdList(v){if(Array.isArray(v))return v;if(v==null||v==='')return [];const s=String(v).trim();if(!s)return [];if(s[0]==='['||s[0]==='{'){try{const parsed=JSON.parse(s);return Array.isArray(parsed)?parsed:[];}catch(e){return [];}}return s.split(',').map(x=>x.trim()).filter(Boolean);}
 function idListLen(v){return parseIdList(v).length;}
 function idListHas(v,id){return parseIdList(v).includes(id);}
@@ -428,7 +436,7 @@ function SP({s}){
 function PB({p}){
   const d=PRIS[p]||{label:p,color:'#94a3b8',sym:'·'};
   const isC=p==='critical';
-  return html`<span class="badge" style=${{color:d.color,background:d.color+'22',boxShadow:isC?'0 0 6px '+d.color+'55':'none',animation:isC?'pulse 1.5s infinite':'none'}}>${d.sym} ${d.label}</span>`;
+  return html`<span class="badge" style=${{color:d.color,background:d.color+'22',boxShadow:isC?'0 0 6px '+d.color+'55':'none',animation:isC?'pulse 1.5s infinite':'none',whiteSpace:'nowrap',flexShrink:0}}>${d.sym} ${d.label}</span>`;
 }
 function Prog({pct,color}){
   return html`<div class="prog"><div class="progf" style=${{width:Math.min(100,Math.max(0,pct||0))+'%',background:color||'var(--ac)'}}></div></div>`;
@@ -482,6 +490,85 @@ function AuthScreen({onLogin}){
   const canvasRef=useRef(null);
   const formRef=useRef(null);
   const [googleEnabled,setGoogleEnabled]=useState(false);
+  // ── Forgot / reset password ──────────────────────────────────────────────
+  const [authMode,setAuthMode]=useState(()=>{
+    try{
+      const p=new URLSearchParams(window.location.search);
+      return (p.get('action')==='reset-password'&&p.get('token'))?'reset':'normal';
+    }catch{return 'normal';}
+  });
+  const [resetToken]=useState(()=>{
+    try{return new URLSearchParams(window.location.search).get('token')||'';}catch{return '';}
+  });
+  const [newPw1,setNewPw1]=useState('');
+  const [newPw2,setNewPw2]=useState('');
+  const [showNewPw,setShowNewPw]=useState(false);
+  const [forgotSent,setForgotSent]=useState(false);
+  const [resetEmailMasked,setResetEmailMasked]=useState('');
+  const [resetLinkError,setResetLinkError]=useState('');
+  const [resetChecking,setResetChecking]=useState(true);
+  const [needsVerification,setNeedsVerification]=useState(false);
+  const [resendingVerification,setResendingVerification]=useState(false);
+  const [verificationResent,setVerificationResent]=useState(false);
+
+  // On landing on the reset-password screen, verify the token up front so we
+  // can (a) show which account is being reset and (b) surface an invalid /
+  // expired link immediately instead of only after the user types a password.
+  useEffect(()=>{
+    if(authMode!=='reset'||!resetToken){setResetChecking(false);return;}
+    let cancelled=false;
+    (async()=>{
+      try{
+        const r=await fetch('/api/auth/reset-password/verify?token='+encodeURIComponent(resetToken));
+        const d=await r.json().catch(()=>null);
+        if(cancelled) return;
+        if(!d||d.error){setResetLinkError((d&&d.error)||'Invalid or expired reset link.');}
+        else{setResetEmailMasked(d.email_masked||'');}
+      }catch{if(!cancelled)setResetLinkError('Could not verify this reset link. Please try again.');}
+      if(!cancelled)setResetChecking(false);
+    })();
+    return ()=>{cancelled=true;};
+  },[authMode,resetToken]);
+
+  // Mirrors the backend's validate_password policy so people get instant
+  // feedback instead of a round-trip; the server remains the source of truth.
+  const pwPolicyChecks=(pwv)=>([
+    {label:'At least 8 characters',ok:pwv.length>=8},
+    {label:'One uppercase letter',ok:/[A-Z]/.test(pwv)},
+    {label:'One lowercase letter',ok:/[a-z]/.test(pwv)},
+    {label:'One number',ok:/[0-9]/.test(pwv)},
+    {label:'One special character',ok:/[^A-Za-z0-9]/.test(pwv)},
+  ]);
+  const pwStrengthScore=(pwv)=>{
+    if(!pwv) return 0;
+    let s=0;
+    if(pwv.length>=8) s++;
+    if(pwv.length>=12) s++;
+    if(/[a-z]/.test(pwv)&&/[A-Z]/.test(pwv)) s++;
+    if(/[0-9]/.test(pwv)) s++;
+    if(/[^A-Za-z0-9]/.test(pwv)) s++;
+    return Math.min(s,4);
+  };
+  const PwStrengthMeter=({value})=>{
+    const checks=pwPolicyChecks(value);
+    const score=pwStrengthScore(value);
+    const labels=['Too weak','Weak','Fair','Good','Strong'];
+    const colors=['#4b4b5a','#ef4444','#f59e0b','#3b82f6','#22c55e'];
+    if(!value) return null;
+    return html`
+      <div style=${{marginTop:8}}>
+        <div style=${{display:'flex',gap:4,marginBottom:6}}>
+          ${[0,1,2,3].map(i=>html`<div key=${i} style=${{flex:1,height:4,borderRadius:2,background:i<score?colors[score]:'rgba(255,255,255,0.08)',transition:'background .2s'}}></div>`)}
+        </div>
+        <div style=${{fontSize:11,fontWeight:700,color:colors[score],marginBottom:6}}>${labels[score]}</div>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:'4px 10px'}}>
+          ${checks.map(c=>html`
+            <span key=${c.label} style=${{fontSize:10.5,color:c.ok?'rgba(140,255,180,0.85)':'rgba(175,170,210,0.4)'}}>
+              ${c.ok?'✓':'○'} ${c.label}
+            </span>`)}
+        </div>
+      </div>`;
+  };
 
   // Check if Google OAuth is configured on the server
   useEffect(()=>{
@@ -501,7 +588,8 @@ function AuthScreen({onLogin}){
   },[]);
 
   const setTab=(t)=>{
-    setTabRaw(t);setEmail('');setPw('');setErr('');setName('');setWsName('');setInviteCode('');setPhase('idle');
+    setTabRaw(t);setEmail('');setPw('');setErr('');setName('');setWsName('');setInviteCode('');setPhase('idle');setNeedsVerification(false);setVerificationResent(false);
+    setAuthMode('normal');setForgotSent(false);setNewPw1('');setNewPw2('');
     try{history.replaceState(null,'','/?action='+t);}catch{}
   };
 
@@ -774,18 +862,18 @@ function AuthScreen({onLogin}){
   },[]);
 
   const go=async()=>{
-    setErr('');setPhase('loading');
+    setErr('');setNeedsVerification(false);setVerificationResent(false);setPhase('loading');
     if(tab==='login'){
       const r=await api.post('/api/auth/login',{email,password:pw});
       if(!r){setErr('Server error. Please try again.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
-      if(r.error){setErr(r.error);setPhase('error');setTimeout(()=>setPhase('idle'),350);}
+      if(r.verification_required){setErr(r.error);setNeedsVerification(true);setPhase('idle');}
+      else if(r.error){setErr(r.error);setPhase('error');setTimeout(()=>setPhase('idle'),350);}
       else if(r.totp_required){setTotpUserId(r.user_id);setTotpUserName(r.name);setTotpPendingToken(r.totp_pending_token||'');setTotpStep(true);setPhase('idle');}
       else{setSuccessMsg('Welcome back, '+r.name);setPhase('success');setTimeout(()=>onLogin(r),1900);}
     } else {
       if(!name||!email||!pw){setErr('All fields required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
-      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){setErr('Please enter a valid email address.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
-      if(pw.length<8){setErr('Password must be at least 8 characters.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
-      if(pw.length>72){setErr('Password must be at most 72 characters.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
+      const failedPwCheck=pwPolicyChecks(pw).find(c=>!c.ok);
+      if(failedPwCheck){setErr('Password needs: '+failedPwCheck.label.toLowerCase()+'.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(regMode==='create'&&!wsName){setErr('Workspace name is required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(regMode==='join'&&!inviteCode){setErr('Enter the invite code.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       const r=await api.post('/api/auth/register',{mode:regMode,workspace_name:wsName,invite_code:inviteCode,name,email,password:pw,role,birth_date:birthDate});
@@ -805,11 +893,45 @@ function AuthScreen({onLogin}){
     else{setSuccessMsg('Verified! Welcome back, '+totpUserName);setPhase('success');setTimeout(()=>onLogin(r),1800);}
   };
 
+  const resendVerification=async()=>{
+    setResendingVerification(true);
+    const r=await api.post('/api/auth/resend-verification',{email});
+    setResendingVerification(false);
+    if(r&&!r.error) setVerificationResent(true);
+  };
+
+  const sendResetLink=async()=>{
+    if(!email){setErr('Enter your email address first.');return;}
+    setErr('');setPhase('loading');
+    const r=await api.post('/api/auth/forgot-password',{email});
+    setPhase('idle');
+    if(!r){setErr('Server error. Please try again.');return;}
+    // Backend never reveals whether the email exists — always show the same message.
+    setForgotSent(true);
+  };
+
+  const backToSignIn=()=>{
+    setAuthMode('normal');setErr('');setForgotSent(false);setNewPw1('');setNewPw2('');
+    try{history.replaceState(null,'','/?action=login');}catch{}
+  };
+
+  const submitNewPassword=async()=>{
+    const failedCheck=pwPolicyChecks(newPw1).find(c=>!c.ok);
+    if(failedCheck){setErr('Password needs: '+failedCheck.label.toLowerCase()+'.');return;}
+    if(newPw1!==newPw2){setErr('Passwords do not match.');return;}
+    setErr('');setPhase('loading');
+    const r=await api.post('/api/auth/reset-password',{token:resetToken,password:newPw1});
+    if(!r){setErr('Server error. Please try again.');setPhase('idle');return;}
+    if(r.error){setErr(r.error);setPhase('idle');return;}
+    setSuccessMsg('Password updated — please sign in.');setPhase('success');
+    setTimeout(()=>{backToSignIn();setSuccessMsg('');setPhase('idle');},1900);
+  };
+
   const LBL=({children})=>html`<label style=${{display:'block',fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'rgba(180,170,210,0.55)',marginBottom:8}}>${children}</label>`;
 
   // ── LEFT PANEL (canvas + hero copy) ──
   const LEFT=html`
-    <div style=${{position:'relative',width:'52%',flexShrink:0,minHeight:'100vh',overflow:'hidden'}}>
+    <div class="ap-left" style=${{position:'relative',width:'52%',flexShrink:0,minHeight:'100vh',overflow:'hidden'}}>
       <canvas ref=${canvasRef} style=${{position:'absolute',inset:0,width:'100%',height:'100%'}}></canvas>
 
       <!-- Top accent: iPhone 17 Pro titanium spectrum line -->
@@ -878,17 +1000,17 @@ function AuthScreen({onLogin}){
 
   // ── RIGHT PANEL wrapper ──
   const RIGHT=(content)=>html`
-    <div style=${{flex:1,minHeight:'100vh',overflowY:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'48px 40px',
+    <main class="ap-right" style=${{flex:1,minHeight:'100vh',overflowY:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'48px 40px',
       background:'linear-gradient(160deg,#06040f 0%,#0a0618 40%,#060412 100%)',
       borderLeft:'1px solid rgba(255,255,255,0.05)'}}>
       <div style=${{width:'100%',maxWidth:400}}>
         ${content}
       </div>
-    </div>`;
+    </main>`;
 
   // ── SUCCESS ──
   if(phase==='success') return html`
-    <div style=${{display:'flex',width:'100vw',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
+    <div style=${{display:'flex',width:'100%',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
     ${RIGHT(html`
       <div style=${{textAlign:'center',animation:'ap-scale 0.55s cubic-bezier(0.34,1.56,0.64,1) both'}}>
         <!-- Concentric ripple rings -->
@@ -915,7 +1037,7 @@ function AuthScreen({onLogin}){
 
   // ── TOTP ──
   if(totpStep) return html`
-    <div style=${{display:'flex',width:'100vw',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
+    <div style=${{display:'flex',width:'100%',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
     ${RIGHT(html`
       <div style=${{animation:'ap-fadeUp 0.55s ease both'}}>
         <div style=${{width:54,height:54,borderRadius:16,background:'linear-gradient(135deg,#5a8cff,#a855f7)',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24,boxShadow:'0 6px 28px rgba(90,140,255,0.45)'}}>
@@ -958,7 +1080,7 @@ function AuthScreen({onLogin}){
 
   // ── MAIN FORM ──
   return html`
-    <div style=${{display:'flex',width:'100vw',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
+    <div style=${{display:'flex',width:'100%',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
     ${RIGHT(html`
       <div ref=${formRef} style=${{animation:'ap-fadeUp 0.65s ease both'}}>
 
@@ -972,14 +1094,14 @@ function AuthScreen({onLogin}){
 
         <!-- Headline -->
         <h1 style=${{fontFamily:"'Bricolage Grotesque',system-ui",fontSize:'clamp(1.75rem,3vw,2.2rem)',fontWeight:800,letterSpacing:'-1.8px',lineHeight:1.08,color:'#f5f5f7',marginBottom:10}}>
-          ${tab==='login'?'Sign in.':'Get started.'}
+          ${authMode==='reset'?'Set a new password.':authMode==='forgot'?'Reset password.':tab==='login'?'Sign in.':'Get started.'}
         </h1>
         <p style=${{fontSize:14,color:'rgba(175,170,210,0.5)',marginBottom:28,lineHeight:1.6}}>
-          ${tab==='login'?'Access your Project Tracker workspace.':'Create your team workspace.'}
+          ${authMode==='reset'?'Choose a new password for your account.':authMode==='forgot'?'We\'ll email you a link to get back in.':tab==='login'?'Access your Project Tracker workspace.':'Create your team workspace.'}
         </p>
 
         <!-- Tab switcher — Apple segmented control -->
-        <div style=${{display:'flex',background:'rgba(255,255,255,0.05)',borderRadius:13,padding:'3px',border:'1px solid rgba(255,255,255,0.07)',marginBottom:24,backdropFilter:'blur(20px)'}}>
+        ${authMode==='normal'?html`        <div style=${{display:'flex',background:'rgba(255,255,255,0.05)',borderRadius:13,padding:'3px',border:'1px solid rgba(255,255,255,0.07)',marginBottom:24,backdropFilter:'blur(20px)'}}>
           ${['login','register'].map(tp=>html`
             <button key=${tp} class=${'ap-tab '+(tab===tp?'ap-tab-active':'ap-tab-inactive')} onClick=${()=>setTab(tp)}>
               ${tp==='login'?'Sign In':'Create Account'}
@@ -995,20 +1117,21 @@ function AuthScreen({onLogin}){
           ${regMode==='create'?html`
             <div style=${{marginBottom:16,animation:'ap-slideDown 0.2s ease both'}}>
               <${LBL}>Workspace Name</${LBL}>
-              <input class="ap-inp" placeholder="e.g. Acme Corp" value=${wsName} maxLength=120 onInput=${e=>setWsName(e.target.value)}/>
+              <input class="ap-inp" placeholder="e.g. Acme Corp" value=${wsName} onInput=${e=>setWsName(e.target.value)}/>
             </div>`:null}
           ${regMode==='join'?html`
             <div style=${{marginBottom:16,padding:'14px 16px',background:'rgba(90,140,255,0.06)',borderRadius:13,border:'1px solid rgba(90,140,255,0.18)',animation:'ap-slideDown 0.2s ease both'}}>
               <${LBL}>Invite Code</${LBL}>
               <input class="ap-inp" style=${{fontFamily:'monospace',letterSpacing:8,fontSize:20,textAlign:'center'}} placeholder="XXXXXXXX" value=${inviteCode} onInput=${e=>setInviteCode(e.target.value.toUpperCase())}/>
             </div>`:null}`:null}
+        `:null}
 
         <!-- Fields -->
         <div style=${{display:'flex',flexDirection:'column',gap:14,marginBottom:6}}>
           ${tab==='register'?html`
             <div>
               <${LBL}>Full Name</${LBL}>
-              <input class="ap-inp" placeholder="Alice Chen" value=${name} maxLength=120 onInput=${e=>setName(e.target.value)}/>
+              <input class="ap-inp" placeholder="Alice Chen" value=${name} onInput=${e=>setName(e.target.value)}/>
             </div>
             <div>
               <${LBL}>Birthday optional</${LBL}>
@@ -1016,6 +1139,46 @@ function AuthScreen({onLogin}){
               <div style=${{fontSize:10,color:'rgba(175,170,210,0.42)',marginTop:6}}>Used only for your private celebration unless you make it visible later.</div>
             </div>`:null}
 
+          ${authMode==='reset'?html`
+            ${resetChecking?html`
+              <div style=${{padding:'14px 16px',fontSize:13,color:'rgba(175,170,210,0.55)'}}>Verifying your link…</div>`
+            :resetLinkError?html`
+              <div style=${{padding:'14px 16px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:12,fontSize:13,color:'rgba(255,200,200,0.9)',lineHeight:1.6}}>
+                ${resetLinkError}
+              </div>`:html`
+            ${resetEmailMasked?html`
+              <div style=${{padding:'10px 14px',background:'rgba(90,140,255,0.06)',border:'1px solid rgba(90,140,255,0.18)',borderRadius:11,fontSize:12.5,color:'rgba(200,210,255,0.75)',marginBottom:2}}>
+                Resetting password for <b style=${{color:'#f5f5f7'}}>${resetEmailMasked}</b>
+              </div>`:null}
+            <div>
+              <${LBL}>New Password</${LBL}>
+              <div style=${{position:'relative'}}>
+                <input class="ap-inp" style=${{paddingRight:48}} type=${showNewPw?'text':'password'}
+                  placeholder="At least 8 characters" value=${newPw1} autoComplete="new-password"
+                  onInput=${e=>setNewPw1(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&submitNewPassword()}/>
+                <button type="button" aria-label=${showNewPw?'Hide password':'Show password'} onClick=${()=>setShowNewPw(!showNewPw)}
+                  style=${{position:'absolute',right:2,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:16,lineHeight:1,width:44,height:44}}>
+                  ${showNewPw?'🙈':'👁'}
+                </button>
+              </div>
+              <${PwStrengthMeter} value=${newPw1}/>
+            </div>
+            <div>
+              <${LBL}>Confirm New Password</${LBL}>
+              <input class="ap-inp" type=${showNewPw?'text':'password'} placeholder="Re-enter password"
+                value=${newPw2} autoComplete="new-password"
+                onInput=${e=>setNewPw2(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&submitNewPassword()}/>
+            </div>`}`:authMode==='forgot'?html`
+            ${forgotSent?html`
+              <div style=${{padding:'14px 16px',background:'rgba(90,140,255,0.08)',border:'1px solid rgba(90,140,255,0.22)',borderRadius:12,fontSize:13,color:'rgba(220,225,255,0.85)',lineHeight:1.6}}>
+                If an account exists for <b style=${{color:'#f5f5f7'}}>${email}</b>, a password reset link is on its way — check your inbox (it expires in 12 minutes).
+              </div>`:html`
+            <div>
+              <${LBL}>Email Address</${LBL}>
+              <input class="ap-inp" type="email" placeholder="you@company.com" value=${email}
+                autoComplete="username" onInput=${e=>setEmail(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&sendResetLink()}/>
+              <div style=${{fontSize:11,color:'rgba(175,170,210,0.45)',marginTop:8,lineHeight:1.5}}>Enter the email on your account and we'll send a link to reset your password.</div>
+            </div>`}`:html`
           <div>
             <${LBL}>Email Address</${LBL}>
             <input class="ap-inp" type="email" placeholder="you@company.com" value=${email}
@@ -1027,19 +1190,23 @@ function AuthScreen({onLogin}){
             <div style=${{position:'relative'}}>
               <input class="ap-inp" style=${{paddingRight:48}} type=${showPw?'text':'password'}
                 placeholder="••••••••••" value=${pw} autoComplete="current-password"
-                minLength=${tab==='register'?8:undefined} maxLength=72
                 onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
-              <button onClick=${()=>setShowPw(!showPw)}
-                style=${{position:'absolute',right:14,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:14,lineHeight:1,padding:2,transition:'color 0.2s'}}
+              <button type="button" aria-label=${showPw?'Hide password':'Show password'} onClick=${()=>setShowPw(!showPw)}
+                style=${{position:'absolute',right:2,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:16,lineHeight:1,width:44,height:44,transition:'color 0.2s'}}
                 onMouseEnter=${e=>e.target.style.color='rgba(175,170,210,0.8)'}
                 onMouseLeave=${e=>e.target.style.color='rgba(175,170,210,0.4)'}>
                 ${showPw?'🙈':'👁'}
               </button>
             </div>
-            ${tab==='register'?html`<div style=${{fontSize:10,color:'rgba(175,170,210,0.42)',marginTop:6}}>8–72 characters.</div>`:null}
-          </div>
+            ${tab==='register'?html`<${PwStrengthMeter} value=${pw}/>`:null}
+            ${tab==='login'?html`
+              <div style=${{textAlign:'right',marginTop:8}}>
+                <a href="#" onClick=${e=>{e.preventDefault();setErr('');setAuthMode('forgot');}}
+                  style=${{fontSize:12,color:'rgba(160,185,255,0.8)',fontWeight:600,textDecoration:'none',display:'inline-block',padding:'12px 0'}}>Forgot password?</a>
+              </div>`:null}
+          </div>`}
 
-          ${tab==='register'?html`
+          ${authMode==='normal'&&tab==='register'?html`
             <div>
               <${LBL}>Role</${LBL}>
               <select class="ap-inp" style=${{cursor:'pointer',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23aeaeb2' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 14px center',WebkitAppearance:'none',appearance:'none'}}
@@ -1054,18 +1221,38 @@ function AuthScreen({onLogin}){
               <span style=${{fontSize:13,color:'#ff7a76',lineHeight:1.5}}>${err}</span>
             </div>`:null}
 
+          ${needsVerification?html`
+            <div style=${{marginTop:-6}}>
+              ${verificationResent?html`
+                <div style=${{fontSize:12.5,color:'rgba(140,255,180,0.85)'}}>✓ Verification email sent — check your inbox.</div>`
+              :html`
+                <button onClick=${resendVerification} disabled=${resendingVerification}
+                  style=${{background:'none',border:'none',cursor:'pointer',color:'rgba(160,185,255,0.9)',fontSize:12.5,fontWeight:700,textDecoration:'underline',padding:0}}>
+                  ${resendingVerification?'Sending…':'Resend verification email'}
+                </button>`}
+            </div>`:null}
+
           <!-- CTA — Apple-style shimmer gradient button -->
-          <button class="ap-btn-primary" onClick=${go} disabled=${phase==='loading'} style=${{marginTop:4}}>
+          ${!(authMode==='forgot'&&forgotSent)&&!(authMode==='reset'&&(resetChecking||resetLinkError))?html`
+          <button class="ap-btn-primary"
+            onClick=${authMode==='reset'?submitNewPassword:authMode==='forgot'?sendResetLink:go}
+            disabled=${phase==='loading'} style=${{marginTop:4}}>
             ${phase==='loading'
               ?html`<span style=${{display:'inline-flex',alignItems:'center',gap:10,justifyContent:'center'}}>
                 <span style=${{width:17,height:17,border:'2.5px solid rgba(255,255,255,0.25)',borderTopColor:'#fff',borderRadius:'50%',animation:'ap-spin 0.7s linear infinite',display:'inline-block'}}></span>
                 <span>Please wait…</span>
               </span>`
-              :html`<span>${tab==='login'?'Sign In':regMode==='create'?'Create Workspace':'Join Workspace'} →</span>`}
-          </button>
+              :html`<span>${authMode==='reset'?'Update Password':authMode==='forgot'?'Send Reset Link':tab==='login'?'Sign In':regMode==='create'?'Create Workspace':'Join Workspace'} →</span>`}
+          </button>`:null}
+
+          ${authMode!=='normal'?html`
+            <div style=${{textAlign:'center',marginTop:2}}>
+              <a href="#" onClick=${e=>{e.preventDefault();backToSignIn();}}
+                style=${{fontSize:12,color:'rgba(175,170,210,0.6)',fontWeight:600,textDecoration:'none'}}>← Back to sign in</a>
+            </div>`:null}
 
           <!-- Google Sign-In -->
-          ${googleEnabled?html`
+          ${googleEnabled&&authMode==='normal'?html`
             <div style=${{display:'flex',alignItems:'center',gap:12,margin:'6px 0 2px'}}>
               <div style=${{flex:1,height:'1px',background:'rgba(255,255,255,0.08)'}}></div>
               <span style=${{fontSize:11,color:'rgba(175,170,210,0.35)',fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase'}}>or</span>
@@ -1109,21 +1296,21 @@ function AuthScreen({onLogin}){
         </div>
 
         <!-- Switch tab -->
-        <p style=${{fontSize:13.5,color:'rgba(175,170,210,0.4)',textAlign:'center',marginTop:22,lineHeight:1.7}}>
+        ${authMode==='normal'?html`<p style=${{fontSize:13.5,color:'rgba(175,170,210,0.4)',textAlign:'center',marginTop:22,lineHeight:1.7}}>
           ${tab==='login'
             ?html`New to Project Tracker? <button class="ap-link" onClick=${()=>setTab('register')} style=${{color:'#7e9fff',fontSize:13.5,fontWeight:600}}>Create account</button>`
             :html`Already have an account? <button class="ap-link" onClick=${()=>setTab('login')} style=${{color:'#7e9fff',fontSize:13.5,fontWeight:600}}>Sign in</button>`}
-        </p>
+        </p>`:null}
 
         <!-- Help / legal -->
         <div style=${{marginTop:28,paddingTop:20,borderTop:'1px solid rgba(255,255,255,0.05)',display:'flex',justifyContent:'center',gap:20,flexWrap:'wrap'}}>
-          <a href="mailto:support@project-tracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5}}
+          <a href="mailto:support@projecttracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5,minHeight:44}}
             onMouseEnter=${e=>e.target.style.color='rgba(90,140,255,0.9)'} onMouseLeave=${e=>e.target.style.color='rgba(160,150,200,0.45)'}>
-            🛟 support@project-tracker.in
+            🛟 support@projecttracker.in
           </a>
-          <a href="mailto:ceo@project-tracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5}}
+          <a href="mailto:ceo@projecttracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5,minHeight:44}}
             onMouseEnter=${e=>e.target.style.color='rgba(168,85,247,0.9)'} onMouseLeave=${e=>e.target.style.color='rgba(160,150,200,0.45)'}>
-            🤝 ceo@project-tracker.in
+            🤝 ceo@projecttracker.in
           </a>
         </div>
 
@@ -1409,7 +1596,7 @@ function PersonalTwoFAToggle({cu,setCu}){
     const r=await api.post('/api/auth/totp/setup',{});
     if(r.error){setMsg(r.error);return;}
     setTotpData(r);setShowSetup(true);setVerifyToken('');
-    setTimeout(() => {if(inpRef.current)inpRef.current.focus();},400);
+    setTimeout(()=>{if(inpRef.current)inpRef.current.focus();},400);
   };
 
   const confirmSetup=async()=>{
@@ -1492,10 +1679,46 @@ function PersonalTwoFAToggle({cu,setCu}){
     </div>`;
 }
 
-function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dark,setDark,teams,users,projects,tasks,teamCtx,setTeamCtx,activeTeam,wsDmEnabled=true,onlineUsers=new Set(),offlineMode=false,featureFlags={}}){
+function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col:colProp,setCol,wsName,dark,setDark,teams,users,projects,tasks,teamCtx,setTeamCtx,activeTeam,wsDmEnabled=true,onlineUsers=new Set(),offlineMode=false,featureFlags={}}){
   const fmtTime=s=>{const m=Math.floor(s/60);const sec=s%60;return m+':'+(sec<10?'0':'')+sec;};
+  const col=colProp&&!window.matchMedia('(max-width:768px)').matches; // drawer is always full-width on phones
   const isAdminManager=hasOpsAccess(cu);
   const baseView=(view||'dashboard').split(':')[0];
+
+  // ── Sidebar theme tokens ──────────────────────────────────────────────
+  // The sidebar used to be hardcoded to the dark palette regardless of the
+  // app's light/dark theme. These tokens pick an appropriate value for
+  // whichever mode is active (`dark` is passed down from the app root).
+  const sbBg=dark
+    ?'linear-gradient(180deg,#0d0b1e 0%,#13112b 60%,#0d0b1e 100%)'
+    :'linear-gradient(180deg,#ffffff 0%,#f5f7ff 60%,#ffffff 100%)';
+  const sbBorderColor=dark?'rgba(90,94,247,0.18)':'rgba(139,92,246,0.16)';
+  const sbBorderSoft=dark?'rgba(90,94,247,0.12)':'rgba(139,92,246,0.10)';
+  const sbDivider=dark?'rgba(90,94,247,0.15)':'rgba(139,92,246,0.14)';
+  const sbShadow=dark
+    ?'2px 0 32px rgba(10,8,30,0.45),inset -1px 0 0 rgba(90,94,247,0.08)'
+    :'2px 0 24px rgba(15,14,23,0.08),inset -1px 0 0 rgba(139,92,246,0.06)';
+  const sbTextStrong=dark?'#ffffff':'#0f0e17';
+  const sbWorkspaceLabel=dark?'rgba(203,213,225,0.6)':'#8b87a3';
+  const sbMyTeamLabel=dark?'rgba(255,255,255,.3)':'rgba(15,14,23,.35)';
+  const sbGroupLabel=dark?'rgba(165,180,252,0.35)':'rgba(91,60,180,0.45)';
+  const sbNavText=dark?'rgba(200,195,240,0.65)':'#4b4768';
+  const sbNavTextLocked=dark?'rgba(200,195,240,0.25)':'rgba(75,71,104,0.35)';
+  const sbNavHoverBg=dark?'rgba(90,94,247,0.10)':'rgba(139,92,246,0.08)';
+  const sbNavActiveBg=dark?'rgba(90,94,247,0.18)':'rgba(139,92,246,0.14)';
+  const sbFooterText=dark?'rgba(203,213,225,0.65)':'#635f7a';
+  const sbFooterHoverBg=dark?'rgba(90,94,247,0.12)':'rgba(139,92,246,0.10)';
+  const sbFooterHoverColor=dark?'#a5b4fc':'#7C3AED';
+  const sbSettingsInactiveColor=dark?'rgba(255,255,255,.35)':'rgba(15,14,23,.4)';
+  const sbSignoutColor=dark?'rgba(203,213,225,0.55)':'#7c7893';
+  const sbPinBtnColor=dark?'#a5b4fc':'#6d28d9';
+  const collapseBtnBg=dark?'#0d0b1e':'#ffffff';
+  const collapseBtnBorder=dark?'rgba(90,94,247,0.2)':'rgba(139,92,246,0.22)';
+  const collapseBtnColor=dark?'rgba(255,255,255,.35)':'rgba(15,14,23,.4)';
+  const collapseBtnHoverBg=dark?'#1a1a1a':'#f5f7ff';
+  const collapseBtnHoverColor=dark?'rgba(255,255,255,.8)':'#0f0e17';
+  const collapseBtnLeaveBg=dark?'#0f172a':'#ffffff';
+  const collapseBtnLeaveColor=dark?'rgba(148,163,184,0.5)':'rgba(15,14,23,.4)';
 
   const NAV_ICONS={
     dashboard:    html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`, projects:     html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`, tasks:        html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`, messages:     html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`, tickets:      html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.5a1.5 1.5 0 0 0 0 3V15a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1.5a1.5 1.5 0 0 0 0-3V9z"/><line x1="9" y1="7" x2="9" y2="17" strokeDasharray="2 2"/></svg>`, timeline:     html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="8" y1="18" x2="14" y2="18"/></svg>`, productivity: html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>`, reminders:    html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`, team:         html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`, dm:           html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
@@ -1508,26 +1731,40 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
     'workspace-os': html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M9 8h1"/><path d="M14 8h1"/><path d="M9 12h1"/><path d="M14 12h1"/><path d="M10 21v-5h4v5"/></svg>`,
   };
   const adminNav=[
-    {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'ops', label:'Ops Center', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   const devNav=[
-    {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+  // Grouped-sidebar labels (visual grouping only, migrated from the demo's
+  // collapsible category headers). Nav order/pin/drag logic is unaffected —
+  // a label is simply shown whenever the category changes while iterating.
+  const NAV_GROUPS={
+    ai:'AI', dashboard:'Overview', 'workspace-os':'Overview',
+    projects:'Work', tasks:'Work', tickets:'Work', timeline:'Work', productivity:'Work',
+    messages:'Communication', reminders:'Communication', notes:'Communication',
+    team:'People', billing:'People',
+    'ai-docs':'Tools', 'password-generator':'Tools', vault:'Tools',
+  };
   const FEATURE_NAV_MAP={
     timesheet:'time_tracking', billing:'billing_invoices', 'ai-docs':'ai_docs',
-    vault:'vault', productivity:'advanced_analytics', ops:'advanced_analytics',
+    vault:'vault', productivity:'advanced_analytics',
     tickets:'tickets', 'workspace-os':'employee_self_service'
   };
   const isNavFeatureEnabled=(id)=>{
     const key=FEATURE_NAV_MAP[id];
     if(!key)return true;
-    if(id==='ops'&&isAdminManager)return !!featureFlags[key];
     return featureFlags[key]!==false;
   };
-  const baseNavItems=(isAdminManager?adminNav:devNav)
-    .filter(it=>it.id!=='dm'||(wsDmEnabled||isAdminManager))
-    .filter(it=>isNavFeatureEnabled(it.id));
-
-  // ── Sidebar nav reorder + pin ────────────────────────────────────────────
+  // ── Sidebar nav reorder + pin + show/hide ────────────────────────────────
   const roleKey=isAdminManager?'admin':'dev';
+  // Items that are hidden (disabled) never leave the picker below — just the
+  // nav itself. 'dashboard' can never be hidden so there's always a safe
+  // landing view even if someone disables everything else.
+  const [hiddenNav,setHiddenNav]=useState(()=>{try{const s=localStorage.getItem('pf_nav_hidden_'+roleKey);return new Set(s?JSON.parse(s):[]);}catch{return new Set();}});
+  const [showCustomize,setShowCustomize]=useState(false);
+  const allNavItemsForRole=(isAdminManager?adminNav:devNav)
+    .filter(it=>isNavFeatureEnabled(it.id));
+  const baseNavItems=allNavItemsForRole
+    .filter(it=>it.id==='dashboard'||!hiddenNav.has(it.id));
   const [navOrder,setNavOrder]=useState(()=>{try{const s=localStorage.getItem('pf_nav_order_'+roleKey);return s?JSON.parse(s):null;}catch{return null;}});
   const [pinnedTop,setPinnedTop]=useState(()=>{try{const s=localStorage.getItem('pf_nav_pin_top_'+roleKey);return new Set(s?JSON.parse(s):[]);}catch{return new Set();}});
   const [pinnedBottom,setPinnedBottom]=useState(()=>{try{const s=localStorage.getItem('pf_nav_pin_bot_'+roleKey);return new Set(s?JSON.parse(s):[]);}catch{return new Set();}});
@@ -1541,6 +1778,16 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
       localStorage.setItem('pf_nav_pin_top_'+roleKey,JSON.stringify([...pTop]));
       localStorage.setItem('pf_nav_pin_bot_'+roleKey,JSON.stringify([...pBot]));
     }catch{}
+  };
+  const toggleNavHidden=(id)=>{
+    if(id==='dashboard')return; // always keep a safe landing view available
+    const nh=new Set(hiddenNav);
+    if(nh.has(id))nh.delete(id);else nh.add(id);
+    setHiddenNav(nh);
+    try{localStorage.setItem('pf_nav_hidden_'+roleKey,JSON.stringify([...nh]));}catch{}
+    // If the product the user is currently looking at just got hidden, send
+    // them somewhere that's still visible instead of leaving them stranded.
+    if(nh.has(id)&&baseView===id)setView('dashboard');
   };
   const togglePin=(id,zone)=>{
     const npt=new Set(pinnedTop),npb=new Set(pinnedBottom);
@@ -1571,23 +1818,30 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
         display:'flex',alignItems:'center',gap:col?0:10,width:'100%',
         padding:col?'10px 0':'9px 10px',borderRadius:9,border:'none',
         cursor:isOfflineLocked?'not-allowed':'pointer',
-        background:baseView===it.id?'rgba(90,94,247,0.18)':'transparent',
-        color:isOfflineLocked?'rgba(200,195,240,0.25)':(baseView===it.id?'#a5b4fc':'rgba(200,195,240,0.65)'),
+        background:baseView===it.id?sbNavActiveBg:'transparent',
+        color:isOfflineLocked?sbNavTextLocked:(baseView===it.id?sbFooterHoverColor:sbNavText),
         fontSize:12,fontWeight:baseView===it.id?700:500,transition:'all .12s',textAlign:'left',
         borderLeft:baseView===it.id&&!col?'2px solid #818cf8':'2px solid transparent',
         justifyContent:col?'center':'flex-start',position:'relative',
         opacity:isOfflineLocked?0.35:1,
         boxShadow:baseView===it.id?'inset 0 0 0 1px rgba(129,140,248,0.15),0 0 20px rgba(90,94,247,0.1)':'none'
       }}
-      onMouseEnter=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background='rgba(90,94,247,0.10)';e.currentTarget.style.color='#a5b4fc';}}}
-      onMouseLeave=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(200,195,240,0.65)';}}}>
+      onMouseEnter=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background=sbNavHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}}
+      onMouseLeave=${e=>{if(baseView!==it.id&&!isOfflineLocked){e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbNavText;}}}>
       <span style=${{flexShrink:0,width:col?'auto':18,display:'flex',alignItems:'center',justifyContent:'center',opacity:baseView===it.id?1:.8}}>${NAV_ICONS[it.id]||null}</span>
       ${!col?html`<span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12,flex:1,paddingRight:hoverNav===it.id&&!col?44:0}}>${it.label}</span>`:null}
       ${it.badge&&!col&&!isOfflineLocked?html`<span style=${{fontSize:8,fontWeight:800,padding:'1px 5px',borderRadius:4,background:'linear-gradient(135deg,#5a5ef7,#a855f7)',color:'#fff',letterSpacing:'.04em',flexShrink:0}}>${it.badge}</span>`:null}
       ${it.id==='notifs'&&unread>0&&!isOfflineLocked?html`<span style=${{position:'absolute',top:6,right:col?6:10,minWidth:16,height:16,borderRadius:8,background:'var(--rd)',color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>${unread>9?'9+':unread}</span>`:null}
-      ${it.id==='dm'&&dmUnread.reduce((a,x)=>a+(x.cnt||0),0)>0&&!isOfflineLocked?html`<span style=${{position:'absolute',top:6,right:col?6:10,minWidth:16,height:16,borderRadius:8,background:'var(--cy)',color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>${dmUnread.reduce((a,x)=>a+(x.cnt||0),0)}</span>`:null}
     </button>`;
   };
+
+  let __lastNavGrp=null;
+  const midWithGroups=orderedSections.mid.map(it=>{
+    const g=NAV_GROUPS[it.id]||'';
+    const showGrp=!!g&&g!==__lastNavGrp;
+    __lastNavGrp=g;
+    return {it,showGrp,g};
+  });
 
   const themeIcon=dark
     ?html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
@@ -1596,37 +1850,37 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
   const W=col?64:200; // collapsed=64px, expanded=200px
 
   return html`
-    <aside style=${{
+    <aside class="pt-sidebar" style=${{
       width:W,minWidth:W,maxWidth:W,
-      background:'linear-gradient(180deg,#0d0b1e 0%,#13112b 60%,#0d0b1e 100%)',
+      background:sbBg,
       display:'flex',flexDirection:'column',
-      height:'100vh',flexShrink:0,overflow:'visible',
-      borderRight:'1px solid rgba(90,94,247,0.18)',
+      height:'100dvh',flexShrink:0,overflow:'visible',
+      borderRight:'1px solid '+sbBorderColor,
       transition:'width .2s ease,min-width .2s ease,max-width .2s ease',
       position:'relative',
-      boxShadow:'2px 0 32px rgba(10,8,30,0.45),inset -1px 0 0 rgba(90,94,247,0.08)'
+      boxShadow:sbShadow
     }}>
 
             <div style=${{
-        padding:col?'14px 0':'12px 14px', display:'flex',alignItems:'center', gap:8,flexShrink:0, borderBottom:'1px solid rgba(90,94,247,0.12)', justifyContent:col?'center':'flex-start', minHeight:38
+        padding:col?'14px 0':'12px 14px', display:'flex',alignItems:'center', gap:8,flexShrink:0, borderBottom:'1px solid '+sbBorderSoft, justifyContent:col?'center':'flex-start', minHeight:38
       }}>
         <div style=${{width:28,height:28,borderRadius:8,background:'linear-gradient(135deg,#5a5ef7,#a855f7)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 2px 12px rgba(90,94,247,0.5),0 0 0 1px rgba(255,255,255,0.1)'}}>
           <svg width="14" height="14" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="9" fill="white"/><circle cx="32" cy="11" r="6" fill="white" opacity=".9"/><circle cx="51" cy="43" r="6" fill="white" opacity=".9"/><circle cx="13" cy="43" r="6" fill="white" opacity=".9"/><line x1="32" y1="17" x2="32" y2="23" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><line x1="46" y1="40" x2="40" y2="36" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><line x1="18" y1="40" x2="24" y2="36" stroke="white" strokeWidth="3.5" strokeLinecap="round"/></svg>
         </div>
         ${!col?html`<div style=${{flex:1,minWidth:0}}>
-          <div style=${{fontSize:12,fontWeight:700,color:'#ffffff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${wsName||'Project Tracker'}</div>
+          <div style=${{fontSize:12,fontWeight:700,color:sbTextStrong,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${wsName||'Project Tracker'}</div>
           ${activeTeam?html`<div style=${{fontSize:10,color:'var(--ac)',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
-            ${!isAdminManager?html`<span style=${{color:'rgba(255,255,255,.3)',fontWeight:400}}>My Team</span>`:null}
+            ${!isAdminManager?html`<span style=${{color:sbMyTeamLabel,fontWeight:400}}>My Team</span>`:null}
             ${activeTeam.name}
           </div>`
-          :html`<div style=${{fontSize:10,color:'rgba(203,213,225,0.6)'}}>Workspace</div>`}
+          :html`<div style=${{fontSize:10,color:sbWorkspaceLabel}}>Workspace</div>`}
         </div>`:null}
       </div>
 
             <nav style=${{flex:1,overflowY:'auto',padding:'8px 6px',display:'flex',flexDirection:'column',gap:2}}>
 
         ${orderedSections.top.length>0?html`
-          ${!col?html`<div style=${{fontSize:8,fontWeight:700,color:'rgba(165,180,252,0.35)',textTransform:'uppercase',letterSpacing:'0.08em',padding:'4px 10px 2px'}}>Pinned</div>`:null}
+          ${!col?html`<div style=${{fontSize:8,fontWeight:700,color:sbGroupLabel,textTransform:'uppercase',letterSpacing:'0.08em',padding:'4px 10px 2px'}}>Pinned</div>`:null}
           ${orderedSections.top.map(it=>html`
             <div key=${it.id} style=${{position:'relative'}}
               onMouseEnter=${()=>setHoverNav(it.id)} onMouseLeave=${()=>setHoverNav(null)}>
@@ -1637,9 +1891,10 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
                     style=${{background:'rgba(239,68,68,0.25)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#f87171',fontSize:9,lineHeight:'14px'}}>✕</button>
                 </div>`:null}
             </div>`)}
-          <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>`:null}
+          <div style=${{height:1,background:sbDivider,margin:'3px 8px 3px'}}></div>`:null}
 
-        ${orderedSections.mid.map(it=>html`
+        ${midWithGroups.map(({it,showGrp,g})=>html`
+          ${showGrp&&!col?html`<div key=${'grp-'+g} class="sb-grp-lbl">${g}</div>`:null}
           <div key=${it.id}
             draggable=${!col}
             onDragStart=${()=>{dragSrc.current=it.id;}}
@@ -1666,14 +1921,14 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
             ${hoverNav===it.id&&!col?html`
               <div style=${{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',display:'flex',gap:2,zIndex:20}}>
                 <button title="Pin to top" onClick=${e=>{e.stopPropagation();togglePin(it.id,'top');}}
-                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↑</button>
+                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:sbPinBtnColor,fontSize:9,lineHeight:'14px'}}>↑</button>
                 <button title="Pin to bottom" onClick=${e=>{e.stopPropagation();togglePin(it.id,'bot');}}
-                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:'#a5b4fc',fontSize:9,lineHeight:'14px'}}>↓</button>
+                  style=${{background:'rgba(90,94,247,0.3)',border:'none',borderRadius:4,cursor:'pointer',padding:'2px 5px',color:sbPinBtnColor,fontSize:9,lineHeight:'14px'}}>↓</button>
               </div>`:null}
           </div>`)}
 
         ${orderedSections.bot.length>0?html`
-          <div style=${{height:1,background:'rgba(90,94,247,0.15)',margin:'3px 8px 3px'}}></div>
+          <div style=${{height:1,background:sbDivider,margin:'3px 8px 3px'}}></div>
           ${orderedSections.bot.map(it=>html`
             <div key=${it.id} style=${{position:'relative'}}
               onMouseEnter=${()=>setHoverNav(it.id)} onMouseLeave=${()=>setHoverNav(null)}>
@@ -1687,49 +1942,86 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
 
       </nav>
 
-            <div style=${{padding:'8px 6px',borderTop:'1px solid rgba(90,94,247,0.12)',display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
+            <div style=${{padding:'8px 6px',borderTop:'1px solid '+sbBorderSoft,display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
 
         <button title=${dark?'Light Mode':'Dark Mode'} onClick=${()=>{setDark(d=>{const n=!d;try{localStorage.setItem('pf_dark',n?'1':'0');}catch{}return n;})}}
-          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:'rgba(203,213,225,0.65)',transition:'all .12s',justifyContent:col?'center':'flex-start'}}
-          onMouseEnter=${e=>{e.currentTarget.style.background='rgba(90,94,247,0.12)';e.currentTarget.style.color='#a5b4fc';}}
-          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(203,213,225,0.65)';}}>
+          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:sbFooterText,transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+          onMouseEnter=${e=>{e.currentTarget.style.background=sbFooterHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}
+          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbFooterText;}}>
           <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,display:'flex',alignItems:'center',justifyContent:'center'}}>${themeIcon}</span>
           ${!col?html`<span style=${{fontSize:12}}>${dark?'Light Mode':'Dark Mode'}</span>`:null}
         </button>
+        <button title=${col?'Customize sidebar':''} onClick=${()=>setShowCustomize(true)}
+          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:sbFooterText,transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+          onMouseEnter=${e=>{e.currentTarget.style.background=sbFooterHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}
+          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbFooterText;}}>
+          <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="16" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
+          </span>
+          ${!col?html`<span style=${{fontSize:12}}>Customize Sidebar</span>`:null}
+        </button>
         ${(cu&&(cu.role==='Admin'||cu.role==='Manager'||cu.role==='TeamLead'))?html`
           <button title=${col?'Settings':''} onClick=${()=>setView('settings')}
-            style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer', background:baseView==='settings'?'rgba(37,99,235,0.18)':'transparent', color:baseView==='settings'?'var(--ac)':'rgba(255,255,255,.35)', transition:'all .12s',justifyContent:col?'center':'flex-start'}}
-            onMouseEnter=${e=>{if(baseView!=='settings'){e.currentTarget.style.background='rgba(90,94,247,0.12)';e.currentTarget.style.color='#a5b4fc';}}}
-            onMouseLeave=${e=>{if(baseView!=='settings'){e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(255,255,255,.35)';}}}>
+            style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer', background:baseView==='settings'?'rgba(37,99,235,0.18)':'transparent', color:baseView==='settings'?'var(--ac)':sbSettingsInactiveColor, transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+            onMouseEnter=${e=>{if(baseView!=='settings'){e.currentTarget.style.background=sbFooterHoverBg;e.currentTarget.style.color=sbFooterHoverColor;}}}
+            onMouseLeave=${e=>{if(baseView!=='settings'){e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbSettingsInactiveColor;}}}>
             <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,textAlign:'center'}}>⚙️</span>
             ${!col?html`<span style=${{fontSize:12}}>Settings</span>`:null}
           </button>`:null}
         <button title=${col?'Sign out':''} onClick=${onLogout}
-          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:'rgba(203,213,225,0.55)',transition:'all .12s',justifyContent:col?'center':'flex-start'}}
+          style=${{display:'flex',alignItems:'center',gap:col?0:9,width:'100%',padding:col?'9px 0':'8px 10px',borderRadius:9,border:'none',cursor:'pointer',background:'transparent',color:sbSignoutColor,transition:'all .12s',justifyContent:col?'center':'flex-start'}}
           onMouseEnter=${e=>{e.currentTarget.style.background='rgba(239,68,68,.1)';e.currentTarget.style.color='#f87171';}}
-          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(203,213,225,0.55)';}}>
+          onMouseLeave=${e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=sbSignoutColor;}}>
           <span style=${{fontSize:15,flexShrink:0,width:col?'auto':18,textAlign:'center'}}>↪</span>
           ${!col?html`<span style=${{fontSize:12}}>Sign out</span>`:null}
         </button>
       </div>
       <!-- Sidebar orb decoration -->
       ${!col?html`<div style=${{position:'absolute',bottom:100,left:-40,width:120,height:120,borderRadius:'50%',background:'radial-gradient(circle,rgba(90,94,247,0.12) 0%,transparent 70%)',pointerEvents:'none',zIndex:0}}></div>`:null}
-      <button title=${col?'Expand sidebar':'Collapse sidebar'} onClick=${()=>setCol(c=>!c)}
+      <button class="pt-collapse-btn" title=${col?'Expand sidebar':'Collapse sidebar'} onClick=${()=>setCol(c=>!c)}
         style=${{
-          position:'absolute', left:col?64:200, top:'50%', transform:'translateY(-50%)', zIndex:200, width:14, height:40, background:'#0d0b1e', border:'1px solid rgba(90,94,247,0.2)', borderLeft:'none', borderRadius:'0 6px 6px 0', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,.35)', transition:'left .2s ease, background .12s, color .12s', padding:0, }}
-        onMouseEnter=${e=>{e.currentTarget.style.background='#1a1a1a';e.currentTarget.style.color='rgba(255,255,255,.8)';}}
-        onMouseLeave=${e=>{e.currentTarget.style.background='#0f172a';e.currentTarget.style.color='rgba(148,163,184,0.5)';}}>
+          position:'absolute', left:col?64:200, top:'50%', transform:'translateY(-50%)', zIndex:200, width:14, height:40, background:collapseBtnBg, border:'1px solid '+collapseBtnBorder, borderLeft:'none', borderRadius:'0 6px 6px 0', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:collapseBtnColor, transition:'left .2s ease, background .12s, color .12s', padding:0, }}
+        onMouseEnter=${e=>{e.currentTarget.style.background=collapseBtnHoverBg;e.currentTarget.style.color=collapseBtnHoverColor;}}
+        onMouseLeave=${e=>{e.currentTarget.style.background=collapseBtnLeaveBg;e.currentTarget.style.color=collapseBtnLeaveColor;}}>
         <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           ${col
             ?html`<polyline points="2 2 6 6 2 10"/>`
             :html`<polyline points="6 2 2 6 6 10"/>`}
         </svg>
       </button>
+      ${showCustomize?html`
+        <div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}
+          onClick=${e=>{if(e.target===e.currentTarget)setShowCustomize(false);}}>
+          <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:16,padding:'20px 22px',width:380,maxWidth:'calc(100vw - 32px)',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,.4)'}}>
+            <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+              <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)'}}>Customize Sidebar</div>
+              <button onClick=${()=>setShowCustomize(false)} style=${{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',fontSize:16,padding:4,lineHeight:1}}>✕</button>
+            </div>
+            <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:14,lineHeight:1.5}}>Turn off products you don't use — they'll disappear from your sidebar. You can turn them back on any time.</div>
+            <div style=${{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:2,margin:'0 -6px',padding:'0 6px'}}>
+              ${allNavItemsForRole.map(it=>{
+                const isDashboard=it.id==='dashboard';
+                const isOn=isDashboard||!hiddenNav.has(it.id);
+                return html`
+                <div key=${it.id} style=${{display:'flex',alignItems:'center',gap:10,padding:'8px 6px',borderRadius:9}}>
+                  <span style=${{flexShrink:0,width:18,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--tx2)'}}>${NAV_ICONS[it.id]||null}</span>
+                  <span style=${{flex:1,fontSize:13,fontWeight:600,color:'var(--tx)'}}>${it.label}</span>
+                  ${isDashboard?html`<span style=${{fontSize:10,color:'var(--tx3)',fontWeight:600}}>Always on</span>`:html`
+                  <button role="switch" aria-checked=${isOn} aria-label=${(isOn?'Disable ':'Enable ')+it.label}
+                    onClick=${()=>toggleNavHidden(it.id)}
+                    style=${{position:'relative',width:36,height:20,borderRadius:10,border:'1px solid var(--bd)',cursor:'pointer',flexShrink:0,padding:0,background:isOn?'var(--grad-main)':'var(--sf3)',transition:'background .15s'}}>
+                    <span style=${{position:'absolute',top:2,left:isOn?18:2,width:16,height:16,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,.3)',transition:'left .15s'}}></span>
+                  </button>`}
+                </div>`;
+              })}
+            </div>
+          </div>
+        </div>`:null}
     </aside>`;
 }
 
 /* ─── Header ──────────────────────────────────────────────────────────────── */
-function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewReminders,notifs,onNotifClick,onMarkAllRead,onClearAll,activeTeam,teams,setTeamCtx}){
+function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewReminders,notifs,onNotifClick,onMarkAllRead,markingAllRead,onClearAll,activeTeam,teams,setTeamCtx}){
   const [showNP,setShowNP]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
   const [uploadMsg,setUploadMsg]=useState('');
@@ -1819,13 +2111,14 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
   return html`
     <div style=${{flexShrink:0,background:'var(--sf)',borderBottom:'1px solid var(--bd)',position:'relative',zIndex:100,boxShadow:'0 1px 0 rgba(99,102,241,0.08),0 2px 12px rgba(15,14,23,0.05)'}}>
       <div style=${{padding:'0 18px',height:54,display:'flex',alignItems:'center',gap:10}}>
-                <div style=${{display:'flex',alignItems:'center',gap:8,flexShrink:0,padding:'5px 14px 5px 10px',background:'#1e3a5f',borderRadius:100,cursor:'pointer',border:'1px solid rgba(37,99,235,0.25)',transition:'all .14s'}} onClick=${onViewReminders}>
+        <button type="button" class="pt-hamburger" aria-label="Open menu" onClick=${()=>document.body.classList.toggle('pt-nav-open')}>☰</button>
+                <div class="pt-hdr-reminders" style=${{display:'flex',alignItems:'center',gap:8,flexShrink:0,padding:'5px 14px 5px 10px',background:'#1e3a5f',borderRadius:100,cursor:'pointer',border:'1px solid rgba(37,99,235,0.25)',transition:'all .14s'}} onClick=${onViewReminders}>
           <svg width="13" height="13" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="7" fill="#60a5fa"/><circle cx="32" cy="13" r="4" fill="#60a5fa" opacity="0.9"/><circle cx="48" cy="43" r="4" fill="#60a5fa" opacity="0.9"/><circle cx="16" cy="43" r="4" fill="#60a5fa" opacity="0.9"/><line x1="32" y1="17" x2="32" y2="25" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round"/><line x1="44" y1="40" x2="38" y2="36" stroke="#5a8cff" strokeWidth="2.5" strokeLinecap="round"/><line x1="20" y1="40" x2="26" y2="36" stroke="#5a8cff" strokeWidth="2.5" strokeLinecap="round"/></svg>
           <span style=${{fontSize:11,fontWeight:700,color:'#bfdbfe',letterSpacing:'.3px'}}>Your Reminders</span>
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style=${{fontSize:11,color:'#93c5fd',fontWeight:700}}>${todayStr}</span>
         </div>
-                        <div style=${{flex:1,overflowX:'auto',scrollbarWidth:'none',msOverflowStyle:'none'}}>
+                        <div class="pt-hdr-ticker" style=${{flex:1,overflowX:'auto',scrollbarWidth:'none',msOverflowStyle:'none'}}>
           <div style=${{height:40,background:'#0f172a',borderRadius:100,display:'flex',alignItems:'center',padding:'0 14px',gap:0,position:'relative',minWidth:0,overflow:'hidden',border:'1px solid rgba(37,99,235,0.15)'}}>
             ${upcoming.length===0?html`
               <div style=${{display:'flex',alignItems:'center',gap:10,width:'100%',justifyContent:'center'}}>
@@ -1842,8 +2135,8 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
                   return html`
                     <div key=${r.id} style=${{display:'flex',flexDirection:'column',alignItems:'center',marginRight:i<upcoming.length-1?28:0,flexShrink:0,position:'relative',zIndex:1,cursor:'pointer'}} onClick=${onViewReminders} title=${r.task_title}>
                       <div style=${{position:'relative'}}>
-                        ${(cu&&cu.avatar_data&&cu.avatar_data.startsWith('data:image'))||(cu&&cu.has_avatar&&cu.id)?
-                          html`<img src=${cu.avatar_data&&cu.avatar_data.startsWith('data:image')?cu.avatar_data:('/api/users/'+encodeURIComponent(cu.id)+'/avatar?v='+encodeURIComponent(cu.avatar_rev||cu.last_active||''))} style=${{width:isNow?28:22,height:isNow?28:22,borderRadius:'50%',objectFit:'cover',border:isNow?'2px solid #22c55e':'2px solid rgba(90,140,255,.35)',boxShadow:isNow?'0 0 0 3px rgba(34,197,94,.2)':'none',transition:'all .18s'}} onError=${e=>{try{e.currentTarget.style.display='none';}catch(_){}}}/>`:
+                        ${cu&&cu.avatar_data&&cu.avatar_data.startsWith('data:image')?
+                          html`<img src=${cu.avatar_data} style=${{width:isNow?28:22,height:isNow?28:22,borderRadius:'50%',objectFit:'cover',border:isNow?'2px solid #22c55e':'2px solid rgba(90,140,255,.35)',boxShadow:isNow?'0 0 0 3px rgba(34,197,94,.2)':'none',transition:'all .18s'}}/>`:
                           html`<div style=${{width:isNow?28:22,height:isNow?28:22,borderRadius:'50%',background:isNow?'linear-gradient(135deg,#22c55e,#16a34a)':'linear-gradient(135deg,#3b82f6,#2563eb)',border:isNow?'2px solid #22c55e':'2px solid rgba(96,165,250,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:isNow?10:8,fontWeight:700,color:isNow?'#fff':'#fff',boxShadow:isNow?'0 0 0 3px rgba(34,197,94,.2)':'0 0 8px rgba(59,130,246,.3)',transition:'all .18s'}}>
                             ${(r.task_title||'?').charAt(0).toUpperCase()}
                           </div>`}
@@ -1872,7 +2165,7 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
                 <div style=${{padding:'10px 13px 8px',borderBottom:'1px solid var(--bd)',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
                   <span style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em'}}>Notifications ${unread>0?html`<span style=${{color:'var(--ac)',fontSize:11}}>(${unread})</span>`:null}</span>
                   <div style=${{display:'flex',gap:5}}>
-                    ${unread>0?html`<button class="btn bg" style=${{fontSize:10,padding:'2px 7px',height:20}} onClick=${onMarkAllRead}>✓ Mark all read</button>`:null}
+                    <button class="btn bg" style=${{fontSize:10,padding:'2px 7px',height:20,opacity:(unread===0||markingAllRead)?.45:1,cursor:(unread===0||markingAllRead)?'not-allowed':'pointer'}} disabled=${unread===0||markingAllRead} onClick=${onMarkAllRead}>${markingAllRead?'Marking…':'✓ Mark all read'}</button>
                     <button class="btn brd" style=${{fontSize:10,padding:'2px 7px',height:20}} onClick=${()=>{onClearAll&&onClearAll();setShowNP(false);}}>Clear all</button>
                   </div>
                 </div>
@@ -1978,16 +2271,12 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
 }
 
 /* ─── MemberPicker ────────────────────────────────────────────────────────── */
-function MemberPicker({allUsers,selected,onChange,onlineUsers=new Set()}){
+function MemberPicker({allUsers,selected,onChange}){
   return html`<div style=${{display:'flex',flexWrap:'wrap',gap:7,marginTop:4}}>
     ${safe(allUsers).map(u=>html`
       <button key=${u.id} class=${'chip'+(selected.includes(u.id)?' on':'')}
         onClick=${()=>onChange(selected.includes(u.id)?selected.filter(x=>x!==u.id):[...selected,u.id])}>
-        <div style=${{position:'relative',display:'inline-flex',alignItems:'center'}}>
-          <${Av} u=${u} size=${18}/>
-          ${onlineUsers.has(u.id)?html`<span style=${{position:'absolute',bottom:-1,right:-1,width:6,height:6,borderRadius:'50%',background:'#22c55e',border:'1.5px solid var(--bg)',boxShadow:'0 0 0 1px #22c55e',pointerEvents:'none'}}></span>`:null}
-        </div>
-        <span>${u.name}</span>
+        <${Av} u=${u} size=${18}/><span>${u.name}</span>
         ${selected.includes(u.id)?html`<span style=${{color:'var(--ac2)',fontSize:11}}>✓</span>`:null}
       </button>`)}
   </div>`;
@@ -2033,7 +2322,7 @@ const TYPE_COLORS={task:'#1d4ed8',story:'#15803d',bug:'#b91c1c',epic:'#6d28d9',s
 const TYPE_BG={task:'rgba(29,78,216,0.10)',story:'rgba(21,128,61,0.10)',bug:'rgba(185,28,28,0.10)',epic:'rgba(109,40,217,0.10)',spike:'rgba(180,83,9,0.10)'};
 const TYPE_BORDER={task:'rgba(29,78,216,0.2)',story:'rgba(21,128,61,0.2)',bug:'rgba(185,28,28,0.2)',epic:'rgba(109,40,217,0.2)',spike:'rgba(180,83,9,0.2)'};
 
-function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSetReminder,teams,activeTeam,onlineUsers=new Set()}){
+function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSetReminder,teams,activeTeam}){
   const [title,setTitle]=useState((task&&task.title)||'');
   const [desc,setDesc]=useState((task&&task.description)||'');
   const [pid,setPid]=useState((task&&task.project)||defaultPid||(projects[0]&&projects[0].id)||'');
@@ -2437,7 +2726,7 @@ function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSet
 }
 
 /* ─── ProjectDetail ───────────────────────────────────────────────────────── */
-function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,onSetReminder,teams,activeTeam,onlineUsers=new Set()}){
+function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,onSetReminder,teams,activeTeam}){
   const [tab,setTab]=useState('tasks');const [edit,setEdit]=useState(false);
   const [name,setName]=useState(project.name||'');const [desc,setDesc]=useState(project.description||'');
   const [tDate,setTDate]=useState(project.target_date||'');const [color,setColor]=useState(project.color||'#5a8cff');
@@ -2510,24 +2799,23 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
     } else {
       // CREATE: post then show immediately
       // Pre-optimistic: show task immediately before API responds
-      const clientTaskKey=ptMakeTaskClientKey();
-      const tempId2='tmp_'+clientTaskKey;
-      const tempT2={...p,project:project.id,id:tempId2,client_task_key:clientTaskKey,created:new Date().toISOString(),_localTs:Date.now(),_recentLocalUntil:Date.now()+180000,_pending:true,_syncing:true};
-      setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[tempT2])}));
-      r=await api.post('/api/tasks',{...p,project:project.id,client_task_key:clientTaskKey},{timeoutMs:15000,quiet:true});
+      const tempId2='tmp_'+Date.now();
+      const tempT2={...p,project:project.id,id:tempId2,created:new Date().toISOString(),_localTs:Date.now(),_pending:true};
+      setData&&setData(prev=>({...prev,tasks:[tempT2,...(prev.tasks||[])]}));
+      r=await api.post('/api/tasks',{...p,project:project.id});
       if(r&&r.id){
-        setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[{...r,client_task_key:r.client_task_key||clientTaskKey,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])}));
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===tempId2?{...r,_localTs:Date.now()}:t)}));
       } else {
-        setData&&setData(prev=>({...prev,tasks:(prev.tasks||[]).map(t=>t.id===tempId2?{...t,_pending:false,_syncing:false,_failed:true,_recentLocalUntil:Date.now()+180000}:t)}));
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==tempId2)}));
       }
     }
-    // Reconcile: background reload syncs DB state without blocking the optimistic update.
-    // Removed the 2s forced reload (it was making the board feel sluggish after task creation).
+    // Background reload uses normal cache (server already injected new item)
+    setTimeout(()=>onReload(),2000);
     return r;
   };
   const delTask=async id=>{
     setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==id)}));
-    ptMarkTaskDeleted(id); api.del('/api/tasks/'+id,{quiet:true,timeoutMs:12000}).then(()=>setTimeout(()=>onReload(undefined,true),1200)).catch(()=>{});
+    api.del('/api/tasks/'+id).then(()=>setTimeout(()=>onReload(),800)).catch(()=>onReload());
   };
 
   return html`
@@ -2566,7 +2854,7 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
                   ${safe(teams).map(t=>html`<option key=${t.id} value=${t.id}>${t.name} (${parseIdList(t.member_ids).filter(id=>safe(allUsers).some(u=>u.id===id)).length} members)</option>`)}
                 </select>
               </div>
-              <div><label class="lbl">Members</label><${MemberPicker} allUsers=${allUsers} selected=${members} onChange=${setMembers} onlineUsers=${onlineUsers}/></div>
+              <div><label class="lbl">Members</label><${MemberPicker} allUsers=${allUsers} selected=${members} onChange=${setMembers}/></div>
             </div>
             <div style=${{height:1,background:'var(--bd)',marginBottom:12}}></div>`:html`
             <p style=${{color:'var(--tx2)',fontSize:13,marginBottom:11,lineHeight:1.55}}>${project.description||'No description.'}</p>
@@ -2669,13 +2957,13 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
         </div>
       </div>
 
-      ${showNew?html`<${TaskModal} task=${null} onClose=${()=>setShowNew(false)} onSave=${saveTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam} onlineUsers=${onlineUsers}/>`:null}
-      ${editTask?html`<${TaskModal} task=${editTask} onClose=${()=>setEditTask(null)} onSave=${saveTask} onDel=${delTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]} onlineUsers=${onlineUsers}/>`:null}
+      ${showNew?html`<${TaskModal} task=${null} onClose=${()=>setShowNew(false)} onSave=${saveTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam}/>`:null}
+      ${editTask?html`<${TaskModal} task=${editTask} onClose=${()=>setEditTask(null)} onSave=${saveTask} onDel=${delTask} projects=${[project]} users=${projUsers.length?projUsers:allUsers} cu=${cu} defaultPid=${project.id} onSetReminder=${onSetReminder} teams=${teams||[]}/>`:null}
     </div>`;
 }
 
 /* ─── ProjectsView ────────────────────────────────────────────────────────── */
-function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,teams,activeTeam,initialProjectId,onClearInitial,onlineUsers=new Set()}){
+function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,teams,activeTeam,initialProjectId,onClearInitial}){
   const [showNew,setShowNew]=useState(false);const [detail,setDetail]=useState(null);
 
   // Open project from initialProjectId prop OR directly from URL path /projects/<id>
@@ -2700,7 +2988,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
   const [color,setColor]=useState('#2563eb');const [members,setMembers]=useState([]);const [err,setErr]=useState('');
   const [search,setSearch]=useState('');
   const [sortBy,setSortBy]=useState('newest');
-  const [viewMode,setViewMode]=useState('grid');
+  const [viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem('pf_projects_view')||'grid';}catch{return 'grid';}});
   const [projTeam,setProjTeam]=useState('');
 
   useEffect(()=>{if(detail){
@@ -2825,9 +3113,9 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
 
                 <div style=${{display:'flex',background:'var(--sf2)',borderRadius:7,padding:2,gap:1,flexShrink:0}}>
           <button class=${'tb'+(viewMode==='grid'?' act':'')} style=${{fontSize:12,padding:'2px 8px'}}
-            onClick=${()=>setViewMode('grid')} title="Card view">⊞</button>
+            onClick=${()=>{setViewMode('grid');try{localStorage.setItem('pf_projects_view','grid');}catch{}}} title="Card view">⊞</button>
           <button class=${'tb'+(viewMode==='compact'?' act':'')} style=${{fontSize:12,padding:'2px 8px'}}
-            onClick=${()=>setViewMode('compact')} title="Compact list">☰</button>
+            onClick=${()=>{setViewMode('compact');try{localStorage.setItem('pf_projects_view','compact');}catch{}}} title="Compact list">☰</button>
         </div>
 
         ${search?html`<button class="btn bg" style=${{fontSize:11,padding:'3px 8px',flexShrink:0}}
@@ -2870,11 +3158,11 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
                   onClick=${()=>setDetail(p)}
                   onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='var(--sh)';}}
                   onMouseLeave=${e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='';}}>
-                  <div style=${{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:7}}>
-                    <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',flex:1,marginRight:6,lineHeight:1.3}}>${p.name}</h3>
+                  <div style=${{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:7,minHeight:34}}>
+                    <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',flex:1,marginRight:6,lineHeight:1.3,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}} title=${p.name}>${p.name}</h3>
                     <span class="badge" style=${{background:p.color+'22',color:p.color,flexShrink:0,fontSize:9}}>${pt.length} tasks</span>
                   </div>
-                  <p style=${{fontSize:11,color:'var(--tx2)',lineHeight:1.5,marginBottom:9,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>${p.description||'No description.'}</p>
+                  <p style=${{fontSize:11,color:'var(--tx2)',lineHeight:1.5,marginBottom:9,minHeight:33,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>${p.description||'No description.'}</p>
                   <div style=${{marginBottom:9}}>
                     <div style=${{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                       <span style=${{fontSize:9,color:'var(--tx3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px'}}>Progress</span>
@@ -2979,7 +3267,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
                 </div>
               </div>
               <div><label class="lbl">Add Members</label>
-                <${MemberPicker} allUsers=${users} selected=${members} onChange=${setMembers} onlineUsers=${onlineUsers}/></div>
+                <${MemberPicker} allUsers=${users} selected=${members} onChange=${setMembers}/></div>
               ${cu&&(cu.role==='Admin'||cu.role==='Manager')&&teams.length>0?html`
               <div><label class="lbl">Assign to Team <span style=${{fontSize:9,color:'var(--tx3)',fontWeight:400}}>(optional — adds all team members)</span></label>
                 <select class="sel" value=${projTeam} onChange=${e=>setProjTeam(e.target.value)}>
@@ -3006,7 +3294,7 @@ function ProjectsView({projects,tasks,users,cu,reload,setData,onSetReminder,team
         </div>`:null}
 
       ${detail?html`<${ProjectDetail} project=${detail} allTasks=${tasks} allUsers=${users} cu=${cu}
-        onClose=${()=>setDetail(null)} onReload=${reload} setData=${setData} onSetReminder=${onSetReminder} teams=${teams} activeTeam=${activeTeam} onlineUsers=${onlineUsers||new Set()}/>`:null}
+        onClose=${()=>setDetail(null)} onReload=${reload} setData=${setData} onSetReminder=${onSetReminder} teams=${teams} activeTeam=${activeTeam}/>`:null}
     </div>`;
 }
 
@@ -3015,8 +3303,8 @@ const STAGE_DAYS={backlog:0,planning:7,development:21,code_review:28,testing:35,
 const STAGE_PCT={backlog:0,planning:10,development:35,code_review:55,testing:70,uat:80,release:90,production:95,completed:100,blocked:null};
 function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
 
-function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initialStage,initialPriority,initialAssignee,initialTaskId,onClearInitialTask,teams,activeTeam,onlineUsers=new Set()}){
-  const [mode,setMode]=useState('kanban');
+function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initialStage,initialPriority,initialAssignee,initialTaskId,onClearInitialTask,teams,activeTeam}){
+  const [mode,setMode]=useState(()=>{try{return localStorage.getItem('pf_tasks_view')||'kanban';}catch{return 'kanban';}});
   const [pid,setPid]=useState('all');
   const [teamF,setTeamF]=useState('all');
   const [priF,setPriF]=useState(initialPriority||'all');
@@ -3025,7 +3313,7 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
   const [dueF,setDueF]=useState('all');
   const [typeF,setTypeF]=useState('all');
   const [search,setSearch]=useState('');
-  const debouncedSearch=useDebounce(search,250);
+  const [showFilters,setShowFilters]=useState(!!(initialStage||initialPriority));
   const [showResolved,setShowResolved]=useState(true);
   const [sortCol,setSortCol]=useState(null);
   const [sortDir,setSortDir]=useState('asc');
@@ -3100,7 +3388,7 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
         const byAssignee=teamFilterMemberIds&&t.assignee&&teamFilterMemberIds.has(t.assignee);
         if(!byTeamId&&!byAssignee)return false;
       }
-      if(debouncedSearch){const sq=debouncedSearch.toLowerCase();if(!t.title.toLowerCase().includes(sq)&&!t.id.toLowerCase().includes(sq))return false;}
+      if(search){const sq=search.toLowerCase();if(!t.title.toLowerCase().includes(sq)&&!t.id.toLowerCase().includes(sq))return false;}
       if(dueF!=='all'&&t.due){
         const d=new Date(t.due);d.setHours(0,0,0,0);
         if(dueF==='overdue'&&d>=today)return false;
@@ -3112,7 +3400,7 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       if(sprintFilter&&t.sprint!==sprintFilter)return false;
       return true;
     });
-  },[tasks,pid,teamF,teamFilterMemberIds,priF,stageF,assF,dueF,debouncedSearch,showResolved,sprintFilter,typeF]);
+  },[tasks,pid,teamF,teamFilterMemberIds,priF,stageF,assF,dueF,search,showResolved,sprintFilter,typeF]);
 
   const toggleSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
 
@@ -3153,8 +3441,6 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
   // Guard: prevent concurrent saves for the same task id (stops double PUT on rapid submits)
   const _savingTaskIds=useRef(new Set());
   const saveT=async p=>{
-    // Concurrent-save guard — drop the second call if same task is already in-flight
-    const taskKey=p.id?String(p.id):'new_'+Date.now();
     if(p.id&&_savingTaskIds.current.has(String(p.id)))return;
     if(p.id)_savingTaskIds.current.add(String(p.id));
     let r;
@@ -3165,30 +3451,37 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       r=await api.put('/api/tasks/'+p.id,p);
     } else {
       // CREATE: pre-optimistic — show task card INSTANTLY before API returns
-      const clientTaskKey=ptMakeTaskClientKey();
-      const tempTaskId='tmp_'+clientTaskKey;
+      const tempTaskId='tmp_'+Date.now();
       const tempTask={
-        ...p, id:tempTaskId, client_task_key:clientTaskKey,
+        ...p, id:tempTaskId,
         created:new Date().toISOString(),
-        _localTs:Date.now(),_recentLocalUntil:Date.now()+180000,_pending:true,_syncing:true
+        _localTs:Date.now(),_pending:true
       };
-      setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[tempTask])}));
-      // API call in background; stale app-data cannot remove this temp/recent task.
-      r=await api.post('/api/tasks',{...p,client_task_key:clientTaskKey},{timeoutMs:15000,quiet:true});
+      setData&&setData(prev=>({...prev,tasks:[tempTask,...(prev.tasks||[])]}));
+      // API call in background
+      r=await api.post('/api/tasks',p);
       if(r&&r.id){
-        setData&&setData(prev=>({...prev,tasks:ptMergeTasksStable(prev.tasks,[{...r,client_task_key:r.client_task_key||clientTaskKey,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])}));
+        // Replace temp with real task from server
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===tempTaskId?{...r,_localTs:Date.now()}:t)}));
+        // Bust reload to clear server cache and prevent stale data on next load
+        setTimeout(()=>load(undefined,true),1200);
       } else {
-        setData&&setData(prev=>({...prev,tasks:(prev.tasks||[]).map(t=>t.id===tempTaskId?{...t,_pending:false,_syncing:false,_failed:true,_recentLocalUntil:Date.now()+180000}:t)}));
+        // Rollback temp task on error
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==tempTaskId)}));
       }
     }
     // NOTE: celebration is fired by pt:task-celebrate event (dispatched by TaskModal before save),
     // so we do NOT call triggerTaskCelebration here to avoid double badge/confetti.
+    if(r&&r.id){
+      setData&&setData(prev=>({...prev,tasks:(prev.tasks||[]).map(t=>t.id===r.id?{...t,...r}:t)}));
+    }
     return r;
     }finally{if(p.id)_savingTaskIds.current.delete(String(p.id));}
   };
   const delT=async id=>{
+    ptMarkTaskDeleted(id);
     setData&&setData(prev=>({...prev,tasks:prev.tasks.filter(t=>t.id!==id)}));
-    ptMarkTaskDeleted(id); api.del('/api/tasks/'+id,{quiet:true,timeoutMs:12000}).then(()=>setTimeout(()=>reload(undefined,true),1200)).catch(()=>{});
+    api.del('/api/tasks/'+id).then(()=>load(undefined,true)).catch(()=>load(undefined,true));
   };
   const quickStage=async(tid,stage)=>{
     const autoPct=STAGE_PCT[stage];
@@ -3284,8 +3577,8 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
             </div>`:null}
           ${activeFilters>0?html`<button class="btn bam" style=${{padding:'7px 11px',fontSize:11}} onClick=${clearAll}>✕ Clear</button>`:null}
                     <div style=${{display:'flex',background:'var(--sf2)',borderRadius:9,padding:3,gap:2,flex:'0 0 auto'}}>
-            <button class=${'tb'+(mode==='kanban'?' act':'')} onClick=${()=>setMode('kanban')}>⊞ Board</button>
-            <button class=${'tb'+(mode==='list'?' act':'')} onClick=${()=>setMode('list')}>☰ List</button>
+            <button class=${'tb'+(mode==='kanban'?' act':'')} onClick=${()=>{setMode('kanban');try{localStorage.setItem('pf_tasks_view','kanban');}catch{}}}>⊞ Board</button>
+            <button class=${'tb'+(mode==='list'?' act':'')} onClick=${()=>{setMode('list');try{localStorage.setItem('pf_tasks_view','list');}catch{}}}>☰ List</button>
           </div>
           <input ref=${csvRef} type="file" accept=".csv" style=${{display:'none'}} onChange=${importCsv}/>
           ${cu&&(cu.role==='Admin'||cu.role==='Manager'||cu.role==='TeamLead')?html`
@@ -3393,10 +3686,10 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
                     const isOverdue=tk.due&&new Date(tk.due)<new Date()&&tk.stage!=='completed';
                     const isDueToday=tk.due&&fmtD(tk.due)===fmtD(new Date().toISOString().split('T')[0]);
                     return html`<div key=${tk.id} class="tkc" onClick=${()=>setEditT(tk)}>
-                      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-                        <div style=${{display:'flex',alignItems:'center',gap:4}}>
+                      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,gap:6}}>
+                        <div style=${{display:'flex',alignItems:'center',gap:4,minWidth:0,flex:'1 1 auto',overflow:'hidden'}}>
                           <span style=${{width:10,height:10,borderRadius:2,display:'inline-block',flexShrink:0,background:TYPE_COLORS[tk.task_type||'task']||'#1d4ed8'}}></span>
-                          <span style=${{fontSize:9,fontWeight:700,fontFamily:'monospace',padding:'1px 6px',borderRadius:4,background:TYPE_BG[tk.task_type||'task']||'rgba(29,78,216,0.10)',color:TYPE_COLORS[tk.task_type||'task']||'#1d4ed8',border:'1px solid '+(TYPE_BORDER[tk.task_type||'task']||'rgba(29,78,216,0.2)')}}>${tk.id}</span>
+                          <span title=${tk.id} style=${{fontSize:9,fontWeight:700,fontFamily:'monospace',padding:'1px 6px',borderRadius:4,background:TYPE_BG[tk.task_type||'task']||'rgba(29,78,216,0.10)',color:TYPE_COLORS[tk.task_type||'task']||'#1d4ed8',border:'1px solid '+(TYPE_BORDER[tk.task_type||'task']||'rgba(29,78,216,0.2)'),whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',minWidth:0}}>${tk.id}</span>
                         </div>
                         <${PB} p=${tk.priority}/>
                       </div>
@@ -3453,18 +3746,18 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
           <div class="card" style=${{padding:0,overflow:'hidden'}}>
             <table style=${{width:'100%',borderCollapse:'collapse'}}>
               <thead>
-                <tr style=${{borderBottom:'2px solid var(--bd)',background:'rgba(0,0,0,0.35)'}}>
+                <tr class="ttbl-head" style=${{borderBottom:'2px solid var(--bd)'}}>
                   ${[
                     {k:'id', lbl:'ID', s:null}, {k:'type', lbl:'Type', s:null}, {k:'title', lbl:'Title', s:null}, {k:'project', lbl:'Project', s:null}, {k:'assignee',lbl:'Assignee', s:'assignee'}, {k:'priority',lbl:'Priority', s:'priority'}, {k:'stage', lbl:'Stage', s:'stage'}, {k:'due', lbl:'Due', s:'due'}, {k:'pct', lbl:'%', s:'pct'}, {k:'pts', lbl:'Pts', s:null}, ].map(h=>{
                     const isA=sortCol===h.s;const can=!!h.s;
                     return html`<th key=${h.k}
                       onClick=${can?()=>toggleSort(h.s):null}
-                      style=${{padding:'10px 13px',textAlign:'left',fontSize:10,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:.5,userSelect:'none',cursor:can?'pointer':'default',whiteSpace:'nowrap',color:isA?'var(--ac2)':'var(--tx3)',borderBottom:isA?'2px solid var(--ac)':'2px solid transparent',transition:'all .15s',background:isA?'rgba(99,102,241,.07)':'',position:'relative'}}>
+                      style=${{padding:'10px 13px',textAlign:'left',fontSize:10,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:.5,userSelect:'none',cursor:can?'pointer':'default',whiteSpace:'nowrap',color:isA?'var(--ac2)':'var(--tx2)',borderBottom:isA?'2px solid var(--ac)':'2px solid transparent',transition:'all .15s',background:isA?'rgba(99,102,241,.07)':'',position:'relative'}}>
                       <div style=${{display:'flex',alignItems:'center',gap:5}}>
                         <span>${h.lbl}</span>
                         ${can?html`<span style=${{display:'flex',flexDirection:'column',lineHeight:.8,fontSize:8,gap:1}}>
-                          <span style=${{color:isA&&sortDir==='asc'?'var(--ac2)':'var(--tx3)',opacity:isA&&sortDir==='asc'?1:.4}}>▲</span>
-                          <span style=${{color:isA&&sortDir==='desc'?'var(--ac2)':'var(--tx3)',opacity:isA&&sortDir==='desc'?1:.4}}>▼</span>
+                          <span style=${{color:isA&&sortDir==='asc'?'var(--ac2)':'var(--tx2)',opacity:isA&&sortDir==='asc'?1:.55}}>▲</span>
+                          <span style=${{color:isA&&sortDir==='desc'?'var(--ac2)':'var(--tx2)',opacity:isA&&sortDir==='desc'?1:.55}}>▼</span>
                         </span>`:null}
                       </div>
                     </th>`;
@@ -3518,8 +3811,147 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
           </div>
         </div>`:null}
 
-      ${editT?html`<${TaskModal} task=${editT} onClose=${()=>setEditT(null)} onSave=${saveT} onDel=${delT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]} onlineUsers=${onlineUsers}/>`:null}
-      ${newT?html`<${TaskModal} task=${null} onClose=${()=>setNewT(false)} onSave=${saveT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam||null} onlineUsers=${onlineUsers}/>`:null}
+      ${editT?html`<${TaskModal} task=${editT} onClose=${()=>setEditT(null)} onSave=${saveT} onDel=${delT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]}/>`:null}
+      ${newT?html`<${TaskModal} task=${null} onClose=${()=>setNewT(false)} onSave=${saveT} projects=${projects} users=${users} cu=${cu} onSetReminder=${onSetReminder} teams=${teams||[]} activeTeam=${activeTeam||null}/>`:null}
+    </div>`;
+}
+
+/* ─── AI Workspace (AI Command Center — the new home page) ────────────────── */
+const AI_QUICK_ACTIONS=[
+  {label:'Create Project',        prompt:'Create a new project. Ask me for the name, description, and target date if you need them.'},
+  {label:'Create Task',           prompt:'Create a new task. Ask me which project, title, priority, and assignee.'},
+  {label:'Team Summary',          prompt:'Give me a summary of what each team member is currently working on.'},
+  {label:'Risk Assessment',       prompt:'Which projects are at risk right now, and why?'},
+  {label:'Deadlines Approaching', prompt:'What deadlines are coming up in the next 7 days?'},
+  {label:'EOD Report',            prompt:'Generate an end-of-day report summarizing all task statuses by project.'},
+  {label:'Blocked Tasks',         prompt:'Which tasks are currently blocked or stuck, and what would unblock them?'},
+  {label:'Sprint Plan',           prompt:'Help me draft a sprint plan from the current backlog.'},
+];
+
+function AIWorkspace({cu,onNav}){
+  const STORAGE_KEY='pt_ai_conversations';
+  const loadConvos=()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');}catch(_){return [];}};
+  const [convos,setConvos]=useState(loadConvos);
+  const [activeId,setActiveId]=useState(()=>{const c=loadConvos();return c.length?c[0].id:null;});
+  const active=convos.find(c=>c.id===activeId)||null;
+  const [input,setInput]=useState('');
+  const [sending,setSending]=useState(false);
+  const [error,setError]=useState('');
+  const scrollRef=useRef(null);
+
+  const persist=(next)=>{setConvos(next);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(_){}};
+
+  useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},[active&&active.messages&&active.messages.length,sending]);
+
+  const newConversation=()=>{
+    const c={id:'c'+Date.now(),title:'New chat',pinned:false,created:new Date().toISOString(),messages:[]};
+    const next=[c,...convos];
+    persist(next);
+    setActiveId(c.id);
+    return c;
+  };
+
+  const renameConversation=(id,title)=>persist(convos.map(c=>c.id===id?{...c,title}:c));
+  const deleteConversation=(id)=>{
+    const next=convos.filter(c=>c.id!==id);
+    persist(next);
+    if(activeId===id)setActiveId(next.length?next[0].id:null);
+  };
+  const togglePin=(id)=>persist(convos.map(c=>c.id===id?{...c,pinned:!c.pinned}:c));
+
+  const send=async(text)=>{
+    const msg=(text!==undefined?text:input).trim();
+    if(!msg||sending)return;
+    setError('');
+    let convo=active;
+    if(!convo)convo=newConversation();
+    const userMsg={role:'user',content:msg,ts:Date.now()};
+    const withUser={...convo,messages:[...convo.messages,userMsg],
+      title:convo.messages.length===0?msg.slice(0,48):convo.title};
+    persist(convos.map(c=>c.id===convo.id?withUser:c).concat(convos.find(c=>c.id===convo.id)?[]:[withUser]));
+    setActiveId(convo.id);
+    setInput('');
+    setSending(true);
+    try{
+      const r=await api.post('/api/ai/chat',{message:msg,history:withUser.messages.map(m=>({role:m.role,content:m.content}))});
+      if(r&&r.error){
+        setError(r.message||'The AI assistant is unavailable right now.');
+      }else{
+        const aiMsg={role:'assistant',content:(r&&r.message)||'',actions:(r&&r.actions)||[],ts:Date.now()};
+        const withReply={...withUser,messages:[...withUser.messages,aiMsg]};
+        setConvos(prev=>{const next=prev.map(c=>c.id===convo.id?withReply:c);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(_){}return next;});
+        if(aiMsg.actions&&aiMsg.actions.some(a=>a.type&&a.type!=='error')&&onNav){/* something changed workspace data */}
+      }
+    }catch(e){
+      setError('Could not reach the AI assistant. Check your connection and try again.');
+    }finally{
+      setSending(false);
+    }
+  };
+
+  const sorted=[...convos].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||new Date(b.created)-new Date(a.created));
+
+  return html`
+    <div class="ai-root" style=${{display:'flex',height:'100%',background:'var(--bg)'}}>
+      <div style=${{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
+        <div class="ai-pad" style=${{padding:'28px 32px 12px'}}>
+          <div style=${{fontSize:22,fontWeight:900,color:'var(--tx)'}}>Good ${(new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening')}${cu&&cu.name?', '+cu.name.split(' ')[0]:''} 👋</div>
+          <div style=${{fontSize:13,color:'var(--tx2)',marginTop:4}}>Ask me anything about your projects, tasks, and team — or pick a quick action below.</div>
+        </div>
+
+        ${(!active||active.messages.length===0)?html`
+          <div class="ai-pad" style=${{padding:'8px 32px 20px',display:'flex',flexWrap:'wrap',gap:10}}>
+            ${AI_QUICK_ACTIONS.map(qa=>html`
+              <button key=${qa.label} class="btn" style=${{borderRadius:12,padding:'10px 14px',fontSize:12.5,fontWeight:700}}
+                onClick=${()=>send(qa.prompt)}>${qa.label}</button>
+            `)}
+          </div>`:null}
+
+        <div ref=${scrollRef} class="ai-pad" style=${{flex:1,overflowY:'auto',padding:'0 32px'}}>
+          ${active&&active.messages.map((m,i)=>html`
+            <div key=${i} style=${{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:14}}>
+              <div style=${{maxWidth:640,padding:'12px 16px',borderRadius:16,fontSize:13.5,lineHeight:1.55,whiteSpace:'pre-wrap',
+                background:m.role==='user'?'var(--ac)':'var(--sf)',color:m.role==='user'?'#fff':'var(--tx)',border:m.role==='user'?'none':'1px solid var(--bd)'}}>
+                ${m.content}
+                ${m.actions&&m.actions.length?html`
+                  <div style=${{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+                    ${m.actions.map((a,ai)=>a.type==='error'?null:html`
+                      <div key=${ai} style=${{fontSize:11,fontWeight:700,padding:'6px 10px',borderRadius:8,background:'rgba(16,185,129,0.12)',color:'#10b981'}}>
+                        ✓ ${a.type==='create_task'?`Created task: ${a.title}`:a.type==='create_project'?`Created project: ${a.name}`:a.type==='update_task'?`Updated task ${a.id}`:a.type==='eod_report'?'Generated report':a.type}
+                      </div>
+                    `)}
+                  </div>`:null}
+              </div>
+            </div>
+          `)}
+          ${sending?html`<div style=${{fontSize:12.5,color:'var(--tx2)',padding:'6px 0 16px'}}>AI is thinking…</div>`:null}
+          ${error?html`<div style=${{fontSize:12.5,color:'#ef4444',padding:'6px 0 16px'}}>${error}</div>`:null}
+        </div>
+
+        <div class="ai-pad" style=${{padding:'16px 32px 24px',borderTop:'1px solid var(--bd)'}}>
+          <form onSubmit=${e=>{e.preventDefault();send();}} style=${{display:'flex',gap:10}}>
+            <input value=${input} onInput=${e=>setInput(e.target.value)} placeholder="Ask AI anything…"
+              style=${{flex:1,padding:'13px 16px',borderRadius:14,border:'1px solid var(--bd)',background:'var(--sf)',color:'var(--tx)',fontSize:13.5}}/>
+            <button class="btn bp" type="submit" disabled=${sending||!input.trim()} style=${{borderRadius:14,padding:'0 22px',fontWeight:800}}>Send</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="ai-history" style=${{width:280,borderLeft:'1px solid var(--bd)',padding:'20px 16px',overflowY:'auto',flexShrink:0}}>
+        <button class="btn bp" style=${{width:'100%',borderRadius:12,marginBottom:14,fontWeight:800}} onClick=${()=>newConversation()}>+ New chat</button>
+        ${sorted.map(c=>html`
+          <div key=${c.id} onClick=${()=>setActiveId(c.id)}
+            style=${{padding:'10px 12px',borderRadius:10,marginBottom:6,cursor:'pointer',fontSize:12.5,
+              background:c.id===activeId?'var(--ac3)':'transparent',display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+            <span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--tx)',fontWeight:c.id===activeId?800:600}}>${c.pinned?'📌 ':''}${c.title||'New chat'}</span>
+            <span style=${{display:'flex',gap:4,flexShrink:0}}>
+              <span onClick=${e=>{e.stopPropagation();togglePin(c.id);}} style=${{cursor:'pointer',opacity:.6}} title="Pin">📌</span>
+              <span onClick=${e=>{e.stopPropagation();deleteConversation(c.id);}} style=${{cursor:'pointer',opacity:.6}} title="Delete">✕</span>
+            </span>
+          </div>
+        `)}
+        ${!sorted.length?html`<div style=${{fontSize:12,color:'var(--tx2)'}}>No conversations yet.</div>`:null}
+      </div>
     </div>`;
 }
 
@@ -3574,6 +4006,7 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
   const priChart=[
     {name:'Critical',value:activeTasks.filter(x=>x.priority==='critical').length,color:'var(--rd)',priKey:'critical'}, {name:'High',value:activeTasks.filter(x=>x.priority==='high').length,color:'var(--rd2)',priKey:'high'}, {name:'Medium',value:activeTasks.filter(x=>x.priority==='medium').length,color:'var(--pu)',priKey:'medium'}, {name:'Low',value:activeTasks.filter(x=>x.priority==='low').length,color:'var(--cy)',priKey:'low'}
   ];
+  const priTotal=priChart.reduce((a,x)=>a+x.value,0);
   const stats=[
     {label:'Total Projects',val:count('projects',p.length),color:'#1d4ed8',bg:'rgba(29,78,216,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,nav:'projects'}, {label:'Active Tasks',val:count('tasks',active),color:'#0e7490',bg:'rgba(14,116,144,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,nav:'tasks'}, {label:'Completed',val:count('completed',done),color:'var(--gn)',bg:'rgba(21,128,61,0.12)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,nav:'tasks:stage:completed'}, {label:'Blocked',val:count('blocked',blocked),color:'var(--rd)',bg:'rgba(185,28,28,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`,nav:'tasks:stage:blocked'}, {label:'My Tasks',val:count('my_active_tasks_count',myT.filter(x=>x.stage!=='completed').length),color:'var(--am)',bg:'rgba(180,83,9,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,nav:'tasks:assignee:me'}, {label:'Team Members',val:count('team_members',u.length),color:'var(--pu)',bg:'rgba(109,40,217,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,nav:isAdminManager?'team':'tasks:assignee:me'}, {label:'Open Tickets',val:count('open_tickets',openTickets),color:'var(--cy)',bg:'rgba(14,116,144,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.5a1.5 1.5 0 0 0 0 3V15a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1.5a1.5 1.5 0 0 0 0-3V9z"/><line x1="9" y1="7" x2="9" y2="17" strokeDasharray="2 2"/></svg>`,nav:'tickets:status:open'}, {label:'In Progress',val:count('in_progress_tickets',inProgressTickets),color:'var(--am)',bg:'rgba(180,83,9,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,nav:isAdminManager?'tickets':'tasks:assignee:me'}, {label:'My Tickets',val:count('my_tickets',myTickets),color:'var(--or)',bg:'rgba(194,65,12,0.10)',icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,nav:'tickets:assignee:me'}, {label:"Today's Hours",val:todayHrs,color:'#0891b2',bg:'rgba(8,145,178,0.10)',strVal:true,icon:html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,nav:'workspace-os:time'}, ];
   // ── Last 7 days hours sparkline data ────────────────────────────────────────
@@ -3662,8 +4095,8 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
             onMouseLeave=${e=>{e.currentTarget.style.borderColor='';e.currentTarget.style.transform='';}}>
             <div style=${{position:'absolute',top:0,left:0,right:0,height:2,background:s.color,borderRadius:'16px 16px 0 0'}}></div>
             <div style=${{width:26,height:26,borderRadius:7,background:s.bg,display:'flex',alignItems:'center',justifyContent:'center',color:s.color,marginBottom:8}}>${s.icon}</div>
-            <div style=${{fontSize:24,fontWeight:700,color:'var(--tx)',lineHeight:1,fontFamily:"'Space Grotesk',sans-serif",letterSpacing:-1}}>${s.val}</div>
-            <div style=${{fontSize:11,color:'var(--tx2)',marginTop:5,fontWeight:500}}>${s.label}</div>
+            <div style=${{fontSize:22,fontWeight:800,color:'var(--tx)',lineHeight:1,fontFamily:"'Space Grotesk',sans-serif",letterSpacing:-0.5}}>${s.val}</div>
+            <div style=${{fontSize:10,color:'var(--tx3)',marginTop:6,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em'}}>${s.label}</div>
           </div>`)}
       </div>
 
@@ -3688,35 +4121,48 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
           })}
         </div>
       </div>`:null}
-      <div style=${{display:'grid',gridTemplateColumns:'240px 1fr 1fr',gap:14}}>
-        <div class="card">
-          <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:11}}>Priority Split</h3>
-          <${RC.ResponsiveContainer} width="100%" height=${120}>
-            <${RC.PieChart}>
-              <${RC.Pie} data=${priChart} cx="50%" cy="50%" innerRadius=${34} outerRadius=${52} dataKey="value" paddingAngle=${4} cursor="pointer"
-                onClick=${(data)=>{if(data&&data.priKey)onNav('tasks:priority:'+data.priKey);}}>
-                ${priChart.map((e,i)=>html`<${RC.Cell} key=${i} fill=${e.color}/>`)}<//>
-              <${RC.Tooltip} contentStyle=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:12,color:'var(--tx)',fontSize:12}}/>
+      <div style=${{display:'grid',gridTemplateColumns:'240px 1fr 1fr',gap:14,alignItems:'stretch'}}>
+        <div class="card" style=${{display:'flex',flexDirection:'column',height:420}}>
+          <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:11,flexShrink:0}}>Priority Split</h3>
+          ${priTotal===0?html`
+          <div style=${{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,minHeight:0,color:'var(--tx3)'}}>
+            <div style=${{width:52,height:52,borderRadius:'50%',border:'2px dashed var(--bd)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📊</div>
+            <div style=${{fontSize:12,fontWeight:600,color:'var(--tx2)',textAlign:'center'}}>No active tasks yet</div>
+            <div style=${{fontSize:10,color:'var(--tx3)',textAlign:'center',maxWidth:150}}>Priority breakdown will show up here once tasks are added.</div>
+          </div>`:html`
+          <div style=${{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',minHeight:0}}>
+            <${RC.ResponsiveContainer} width="100%" height=${120}>
+              <${RC.PieChart}>
+                <${RC.Pie} data=${priChart} cx="50%" cy="50%" innerRadius=${34} outerRadius=${52} dataKey="value" paddingAngle=${4} cursor="pointer"
+                  onClick=${(data)=>{if(data&&data.priKey)onNav('tasks:priority:'+data.priKey);}}>
+                  ${priChart.map((e,i)=>html`<${RC.Cell} key=${i} fill=${e.color}/>`)}<//>
+                <${RC.Tooltip} contentStyle=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:12,color:'var(--tx)',fontSize:12}}/>
+              <//>
             <//>
-          <//>
-          ${priChart.map((item,i)=>html`
-            <div key=${i} style=${{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',borderBottom:i<3?'1px solid var(--bd)':'none',cursor:'pointer'}}
-              onClick=${()=>onNav('tasks:priority:'+item.priKey)}>
-              <div style=${{display:'flex',alignItems:'center',gap:7}}>
-                <div style=${{width:7,height:7,borderRadius:2,background:item.color}}></div>
-                <span style=${{fontSize:12,color:'var(--tx2)'}}>${item.name}</span>
-              </div>
-              <span style=${{fontSize:12,color:'var(--tx)',fontFamily:'monospace',fontWeight:700}}>${item.value}</span>
-            </div>`)}
-          <p style=${{fontSize:9,color:'var(--tx3)',marginTop:6,textAlign:'center'}}>Click to filter by priority</p>
+            ${priChart.map((item,i)=>html`
+              <div key=${i} style=${{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',borderBottom:i<3?'1px solid var(--bd)':'none',cursor:'pointer'}}
+                onClick=${()=>onNav('tasks:priority:'+item.priKey)}>
+                <div style=${{display:'flex',alignItems:'center',gap:7}}>
+                  <div style=${{width:7,height:7,borderRadius:2,background:item.color}}></div>
+                  <span style=${{fontSize:12,color:'var(--tx2)'}}>${item.name}</span>
+                </div>
+                <span style=${{fontSize:12,color:'var(--tx)',fontFamily:'monospace',fontWeight:700}}>${item.value}</span>
+              </div>`)}
+            <p style=${{fontSize:9,color:'var(--tx3)',marginTop:6,textAlign:'center'}}>Click to filter by priority</p>
+          </div>`}
         </div>
-        <div class="card" style=${{display:'flex',flexDirection:'column'}}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div class="card" style=${{display:'flex',flexDirection:'column',height:420}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexShrink:0}}>
             <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',margin:0}}>Project Progress</h3>
             <button class="btn bg" style=${{fontSize:10,padding:'2px 9px',height:22}} onClick=${()=>onNav('projects')}>View All</button>
           </div>
           <div style=${{flex:1,minHeight:0,overflowY:'auto',maskImage:'linear-gradient(to bottom,#000 calc(100% - 18px),transparent 100%)',WebkitMaskImage:'linear-gradient(to bottom,#000 calc(100% - 18px),transparent 100%)'}}>
-          ${p.map(proj=>{
+          ${p.length===0?html`
+            <div style=${{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,height:'100%',color:'var(--tx3)'}}>
+              <div style=${{width:52,height:52,borderRadius:'50%',border:'2px dashed var(--bd)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📁</div>
+              <div style=${{fontSize:12,fontWeight:600,color:'var(--tx2)',textAlign:'center'}}>No projects yet</div>
+              <div style=${{fontSize:10,color:'var(--tx3)',textAlign:'center',maxWidth:170}}>Create a project to start tracking progress here.</div>
+            </div>`:p.map(proj=>{
             const pt=t.filter(x=>x.project===proj.id);
             const pc=pt.length?Math.round(pt.reduce((a,x)=>a+(x.pct||0),0)/pt.length):(proj.progress||0);
             return {proj,pc};
@@ -3736,17 +4182,18 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
           })}
           </div>
         </div>
-        <div class="card">
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div class="card" style=${{display:'flex',flexDirection:'column',height:420}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexShrink:0}}>
             <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',margin:0}}>My Active Tasks</h3>
             ${myActiveTasks.filter(x=>x.due&&new Date(x.due)<new Date()).length>0?html`
               <span style=${{fontSize:10,color:'var(--rd)',fontWeight:700,background:'rgba(248,113,113,.1)',padding:'2px 8px',borderRadius:10}}>
                 ⚠ ${myActiveTasks.filter(x=>x.due&&new Date(x.due)<new Date()).length} overdue
               </span>`:null}
           </div>
-          ${myActiveTasks.slice(0,6).map((tk,i)=>html`
+          <div style=${{flex:1,minHeight:0,overflowY:'auto',maskImage:'linear-gradient(to bottom,#000 calc(100% - 18px),transparent 100%)',WebkitMaskImage:'linear-gradient(to bottom,#000 calc(100% - 18px),transparent 100%)'}}>
+          ${myActiveTasks.map((tk,i)=>html`
             <div key=${tk.id} onClick=${()=>onNav('tasks:assignee:me')}
-              style=${{display:'flex',gap:9,padding:'7px 0',borderBottom:i<Math.min(myActiveTasks.length,6)-1?'1px solid var(--bd)':'none',alignItems:'center',cursor:'pointer',borderRadius:6,transition:'background .1s'}}
+              style=${{display:'flex',gap:9,padding:'7px 0',borderBottom:i<myActiveTasks.length-1?'1px solid var(--bd)':'none',alignItems:'center',cursor:'pointer',borderRadius:6,transition:'background .1s'}}
               onMouseEnter=${e=>e.currentTarget.style.background='var(--sf2)'}
               onMouseLeave=${e=>e.currentTarget.style.background='transparent'}>
               <div style=${{width:6,height:6,borderRadius:2,background:(STAGES[tk.stage]&&STAGES[tk.stage].color)||'var(--ac)',flexShrink:0,marginLeft:3}}></div>
@@ -3759,8 +4206,9 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
               <span style=${{fontSize:9,color:'var(--tx3)',fontFamily:'monospace',flexShrink:0}}>${tk.pct}%</span>
             </div>`)}
           ${myActiveTasks.length===0?html`<div style=${{color:'var(--tx3)',fontSize:13,textAlign:'center',paddingTop:16}}>No active tasks assigned. 🎉</div>`:null}
+          </div>
           ${myActiveTasks.length>0?html`
-            <button class="btn bg" style=${{width:'100%',marginTop:10,fontSize:11,padding:'6px 0'}}
+            <button class="btn bg" style=${{width:'100%',marginTop:10,fontSize:11,padding:'6px 0',flexShrink:0}}
               onClick=${()=>onNav('tasks:assignee:me')}>
               View all my tasks →
             </button>`:null}
@@ -3770,140 +4218,6 @@ function Dashboard({cu,tasks,projects,users,onNav,activeTeam,teams,setTeamCtx,ti
 }
 
 
-
-/* ─── OpsCommandCenter — production live system view ──────────────────────── */
-function OpsCommandCenter({cu,tasks,projects,users,tickets,notifs,onNav}){
-  const t=safe(tasks), p=safe(projects), u=safe(users), tk=safe(tickets), nf=safe(notifs);
-  const now=new Date();
-  const norm=x=>String(x||'').trim().toLowerCase();
-  const toDate=x=>{if(!x)return null;const d=new Date(x);return isNaN(d.getTime())?null:d;};
-  const daysUntil=x=>{const d=toDate(x);return d?Math.ceil((d-now)/86400000):null;};
-  const sameId=(a,b)=>String(a||'')&&String(a||'')===String(b||'');
-  const getProjectId=x=>x.project_id||x.project||x.pid||'';
-  const getAssignee=x=>x.assignee_id||x.assignee||x.owner_id||x.owner||x.user_id||'';
-  const getPriority=x=>norm(x.priority||x.severity||x.impact);
-  const isDone=x=>['completed','complete','done','closed','resolved'].includes(norm(x.stage||x.status));
-  const isBlocked=x=>Boolean(x.blocked)||['blocked','on hold','waiting','dependency'].includes(norm(x.stage||x.status));
-  const activeTasks=t.filter(x=>!isDone(x));
-  const doneTasks=t.filter(isDone);
-  const overdueTasks=activeTasks.filter(x=>{const d=toDate(x.due||x.due_date||x.deadline);return d&&d<now;});
-  const dueSoonTasks=activeTasks.filter(x=>{const d=daysUntil(x.due||x.due_date||x.deadline);return d!==null&&d>=0&&d<=3;});
-  const blockedTasks=activeTasks.filter(isBlocked);
-  const unassignedTasks=activeTasks.filter(x=>!getAssignee(x));
-  const reviewTasks=activeTasks.filter(x=>['review','in review','qa','testing','approval','waiting approval'].includes(norm(x.stage||x.status)));
-  const reopenedTasks=t.filter(x=>Number(x.reopen_count||x.reopened||0)>0||norm(x.status)==='reopened');
-  const staleTasks=activeTasks.filter(x=>{const d=toDate(x.updated_at||x.modified_at||x.created_at);return d&&((now-d)/86400000)>7;});
-  const openTickets=tk.filter(x=>!['resolved','closed','done'].includes(norm(x.status)));
-  const criticalTickets=openTickets.filter(x=>['critical','urgent','p0','p1','high'].includes(getPriority(x)));
-  const unassignedTickets=openTickets.filter(x=>!getAssignee(x));
-  const ticketBacklog=openTickets.length;
-  const unread=nf.filter(x=>!x.read).length;
-  const urgentNotifs=nf.filter(x=>!x.read&&['critical','urgent','high','deadline','blocked'].includes(norm(x.priority||x.type))).length;
-  const onlineUsers=u.filter(x=>x.online||x.is_online||norm(x.status)==='online'||norm(x.presence)==='online').length;
-  const idleUsers=u.filter(x=>norm(x.status)==='idle'||norm(x.presence)==='idle'||x.idle).length;
-  const offlineUsers=Math.max(0,u.length-onlineUsers-idleUsers);
-  const recentUsers=u.filter(x=>{const d=toDate(x.last_seen||x.last_active||x.updated_at);return d&&((now-d)/3600000)<=24;}).length;
-  const workload=u.map(user=>{
-    const uid=user.id;
-    const userTasks=activeTasks.filter(x=>sameId(getAssignee(x),uid));
-    const userTickets=openTickets.filter(x=>sameId(getAssignee(x),uid));
-    const overdue=userTasks.filter(x=>{const d=toDate(x.due||x.due_date||x.deadline);return d&&d<now;}).length;
-    const blocked=userTasks.filter(isBlocked).length;
-    const lateNight=userTasks.filter(x=>{const d=toDate(x.updated_at||x.created_at);return d&&(d.getHours()>=21||d.getHours()<6);}).length;
-    const total=userTasks.length+userTickets.length;
-    return {id:uid,name:user.name||user.email||uid,tasks:userTasks.length,tickets:userTickets.length,overdue,blocked,lateNight,total};
-  }).sort((a,b)=>b.total-a.total);
-  const avgLoad=workload.length?workload.reduce((s,x)=>s+x.total,0)/workload.length:0;
-  const overloaded=workload.filter(x=>x.total>Math.max(5,avgLoad*1.6)||x.overdue>=3||x.blocked>=2);
-  const underloaded=workload.filter(x=>x.total===0);
-  const projectRows=p.map(pr=>{
-    const pid=pr.id;
-    const pt=t.filter(x=>sameId(getProjectId(x),pid));
-    const open=pt.filter(x=>!isDone(x));
-    const done=pt.filter(isDone);
-    const overdue=open.filter(x=>{const d=toDate(x.due||x.due_date||x.deadline);return d&&d<now;}).length;
-    const blocked=open.filter(isBlocked).length;
-    const unassigned=open.filter(x=>!getAssignee(x)).length;
-    const progress=pt.length?Math.round(done.length*100/pt.length):Number(pr.progress||0);
-    const targetDays=daysUntil(pr.target_date||pr.end_date||pr.deadline);
-    const timelineRisk=targetDays!==null&&targetDays<0&&progress<100?35:targetDays!==null&&targetDays<=7&&progress<70?18:0;
-    const risk=Math.min(100,overdue*16+blocked*22+unassigned*5+timelineRisk+(progress<30&&pt.length?10:0));
-    return {id:pid,name:pr.name||'Untitled project',open:open.length,done:done.length,total:pt.length,overdue,blocked,unassigned,progress,targetDays,risk,color:pr.color||'var(--ac)'};
-  }).sort((a,b)=>b.risk-a.risk||b.open-a.open);
-  const highRiskProjects=projectRows.filter(x=>x.risk>=50);
-  const atRiskProjects=projectRows.filter(x=>x.risk>=25&&x.risk<50);
-  const totalWork=t.length+tk.length;
-  const completionRate=t.length?Math.round(doneTasks.length*100/t.length):0;
-  const health=Math.max(0,Math.min(100,Math.round(100-overdueTasks.length*4-blockedTasks.length*5-criticalTickets.length*7-highRiskProjects.length*6-unassignedTasks.length*1.5-unassignedTickets.length*3-overloaded.length*4)));
-  const deliveryConfidence=Math.max(0,Math.min(100,Math.round(100-highRiskProjects.length*10-atRiskProjects.length*4-overdueTasks.length*3-blockedTasks.length*4)));
-  const slaCompliance=Math.max(0,Math.min(100,Math.round(100-criticalTickets.length*10-overdueTasks.length*3-ticketBacklog*1.5)));
-  const communicationHealth=Math.max(0,Math.min(100,Math.round(100-unread*2-urgentNotifs*8)));
-  const capacityHealth=Math.max(0,Math.min(100,Math.round(100-overloaded.length*12-underloaded.length*2)));
-  const agingBuckets=[
-    ['0-2d',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age<=2;}).length],
-    ['3-7d',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age>2&&age<=7;}).length],
-    ['8-14d',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age>7&&age<=14;}).length],
-    ['15d+',activeTasks.filter(x=>{const d=toDate(x.created_at||x.updated_at);const age=d?(now-d)/86400000:0;return age>14;}).length]
-  ];
-  const stageCounts=activeTasks.reduce((m,x)=>{const k=x.stage||x.status||'open';m[k]=(m[k]||0)+1;return m;},{});
-  const bottlenecks=Object.entries(stageCounts).sort((a,b)=>b[1]-a[1]).slice(0,4);
-  const focus=[
-    ...criticalTickets.slice(0,3).map(x=>({icon:'🚨',title:x.title||x.subject||'Critical ticket',body:'High-impact ticket requires triage.',nav:'tickets'})),
-    ...blockedTasks.slice(0,3).map(x=>({icon:'🧱',title:x.title||x.name||'Blocked task',body:'Dependency or owner review needed.',nav:'tasks'})),
-    ...overdueTasks.slice(0,3).map(x=>({icon:'⏰',title:x.title||x.name||'Overdue task',body:'Timeline update or reassignment needed.',nav:'tasks'})),
-    ...dueSoonTasks.slice(0,2).map(x=>({icon:'🎯',title:x.title||x.name||'Due soon',body:'Due within the next 3 days.',nav:'tasks'})),
-    ...(unassignedTasks.length?[{icon:'👤',title:'Unassigned tasks',body:`${unassignedTasks.length} active task(s) need an owner.`,nav:'tasks'}]:[]),
-    ...(unassignedTickets.length?[{icon:'🎫',title:'Unassigned tickets',body:`${unassignedTickets.length} ticket(s) need an owner.`,nav:'tickets'}]:[])
-  ].slice(0,8);
-  const riskColor=v=>v>=75?'#22c55e':v>=55?'#f59e0b':'#ef4444';
-  const stat=(label,val,sub,color,nav)=>html`<button onClick=${()=>nav&&onNav(nav)} style=${{textAlign:'left',cursor:nav?'pointer':'default',padding:16,borderRadius:18,background:'linear-gradient(180deg,var(--sf),rgba(255,255,255,.025))',border:'1px solid var(--bd2)',minHeight:106}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style=${{fontSize:10,fontWeight:950,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.35}}>${label}</span><span style=${{width:8,height:8,borderRadius:99,background:color,boxShadow:'0 0 14px '+color}}></span></div><div style=${{fontSize:27,fontWeight:950,color:'var(--tx)',marginTop:8,lineHeight:1}}>${val}</div><div style=${{fontSize:11,color:'var(--tx3)',marginTop:7}}>${sub}</div></button>`;
-  const miniBar=(label,val,color)=>html`<div style=${{margin:'9px 0'}}><div style=${{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:6}}><b style=${{color:'var(--tx2)'}}>${label}</b><b style=${{color}}>${val}%</b></div><div style=${{height:7,borderRadius:99,background:'rgba(255,255,255,.08)',overflow:'hidden'}}><div style=${{width:Math.max(3,Math.min(100,val))+'%',height:'100%',borderRadius:99,background:color}}></div></div></div>`;
-  const panel=(title,body,sub)=>html`<div class="card" style=${{borderRadius:22,minHeight:0}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:10}}><div style=${{fontSize:15,fontWeight:950,color:'var(--tx)'}}>${title}</div>${sub?html`<div style=${{fontSize:9,color:'var(--tx3)',fontWeight:800,textTransform:'uppercase',letterSpacing:.35}}>${sub}</div>`:null}</div>${body}</div>`;
-  return html`
-    <div class="fi ops-command-center" style=${{height:'100%',overflowY:'auto',padding:'16px 20px 28px',display:'flex',flexDirection:'column',gap:14,background:'var(--bg)',color:'var(--tx)'}}>
-      <div style=${{padding:18,borderRadius:24,background:'linear-gradient(135deg,var(--sf),var(--sf2))',border:'1px solid var(--bd2)',display:'flex',alignItems:'center',gap:14}}>
-        <div style=${{width:48,height:48,borderRadius:18,display:'grid',placeItems:'center',background:'rgba(99,102,241,.15)',border:'1px solid rgba(99,102,241,.30)',fontSize:23}}>⌘</div>
-        <div style=${{flex:1,minWidth:0}}><div style=${{fontSize:21,fontWeight:950,color:'var(--tx)'}}>Operations Command Center</div><div style=${{fontSize:12,color:'var(--tx3)',marginTop:3}}>Live operational inputs from projects, tasks, tickets, notifications, team workload, deadlines, and activity. No demo data.</div></div>
-        <button class="btn bp" onClick=${()=>onNav('tasks')} style=${{fontSize:12}}>Open Work Queue</button>
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:12}}>
-        ${stat('Portfolio Health',health+'%',health>=80?'Stable':health>=60?'Needs attention':'Critical',riskColor(health),'ops')}
-        ${stat('Delivery Confidence',deliveryConfidence+'%',`${highRiskProjects.length} high-risk project(s)`,riskColor(deliveryConfidence),'timeline')}
-        ${stat('SLA Compliance',slaCompliance+'%',`${criticalTickets.length} critical ticket(s)`,riskColor(slaCompliance),'tickets')}
-        ${stat('Capacity Health',capacityHealth+'%',`${overloaded.length} overloaded member(s)`,riskColor(capacityHealth),'team')}
-        ${stat('Communication',communicationHealth+'%',`${unread} unread · ${urgentNotifs} urgent`,riskColor(communicationHealth),'dm')}
-        ${stat('Open Work',activeTasks.length,`${overdueTasks.length} overdue · ${blockedTasks.length} blocked`,'var(--ac)','tasks')}
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'minmax(280px,1.1fr) minmax(280px,.9fr)',gap:14}}>
-        ${panel('Today’s Focus',focus.length?html`<div style=${{display:'flex',flexDirection:'column',gap:9}}>${focus.map(a=>html`<div onClick=${()=>onNav(a.nav)} style=${{cursor:'pointer',display:'flex',gap:10,padding:11,borderRadius:16,background:'var(--sf2)',border:'1px solid var(--bd)'}}><div style=${{fontSize:18}}>${a.icon}</div><div style=${{minWidth:0}}><div style=${{fontSize:12,fontWeight:900,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${a.title}</div><div style=${{fontSize:9,color:'var(--tx3)'}}>${a.body}</div></div></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No urgent operational actions right now.</div>`, 'AI-prioritized')}
-        ${panel('Operational Scorecard',html`<div>${miniBar('Delivery confidence',deliveryConfidence,riskColor(deliveryConfidence))}${miniBar('SLA compliance',slaCompliance,riskColor(slaCompliance))}${miniBar('Communication health',communicationHealth,riskColor(communicationHealth))}${miniBar('Capacity balance',capacityHealth,riskColor(capacityHealth))}<div style=${{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8,marginTop:12}}>${[['Done rate',completionRate+'%'],['Total signals',totalWork],['Review queue',reviewTasks.length],['Stale tasks',staleTasks.length]].map(([k,v])=>html`<div style=${{padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)'}}><div style=${{fontSize:9,color:'var(--tx3)',fontWeight:800}}>${k}</div><div style=${{fontSize:18,color:'var(--tx)',fontWeight:950}}>${v}</div></div>`)}</div></div>`, '20-input model')}
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:14}}>
-        ${panel('Delivery Risk Engine',projectRows.length?html`<div style=${{display:'flex',flexDirection:'column',gap:8}}>${projectRows.slice(0,6).map(pr=>html`<div onClick=${()=>onNav('projects')} style=${{cursor:'pointer',padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)',borderLeft:'4px solid '+(pr.risk>=50?'#ef4444':pr.risk>=25?'#f59e0b':'#22c55e')}}><div style=${{display:'flex',justifyContent:'space-between',gap:8}}><b style=${{fontSize:12,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${pr.name}</b><b style=${{fontSize:12,color:pr.risk>=50?'#ef4444':pr.risk>=25?'#f59e0b':'#22c55e'}}>${pr.risk}</b></div><div style=${{fontSize:9,color:'var(--tx3)',marginTop:4}}>Open ${pr.open} · Overdue ${pr.overdue} · Blocked ${pr.blocked} · ${pr.progress}% done</div></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No project risk data available.</div>`, 'computed')}
-        ${panel('Team Capacity Matrix',workload.length?html`<div style=${{display:'flex',flexDirection:'column',gap:8}}>${workload.slice(0,8).map(w=>html`<div style=${{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'center',padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)'}}><div style=${{minWidth:0}}><div style=${{fontSize:12,fontWeight:900,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${w.name}</div><div style=${{fontSize:9,color:'var(--tx3)'}}>Tasks ${w.tasks} · Tickets ${w.tickets} · Overdue ${w.overdue}</div></div><b style=${{color:w.total>Math.max(5,avgLoad*1.6)||w.overdue>=3?'#ef4444':w.total===0?'var(--tx3)':'var(--tx)'}}>${w.total}</b></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No team workload data available.</div>`, `${onlineUsers} online · ${idleUsers} idle`)}
-        ${panel('Task Aging Analysis',html`<div style=${{display:'flex',flexDirection:'column',gap:10}}>${agingBuckets.map(([label,count])=>{const pct=activeTasks.length?Math.round(count*100/activeTasks.length):0;return html`<div><div style=${{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:5}}><b style=${{color:'var(--tx2)'}}>${label}</b><b style=${{color:'var(--tx)'}}>${count}</b></div><div style=${{height:8,borderRadius:99,background:'rgba(255,255,255,.08)',overflow:'hidden'}}><div style=${{width:Math.max(2,pct)+'%',height:'100%',background:label==='15d+'?'#ef4444':label==='8-14d'?'#f59e0b':'var(--ac)'}}></div></div></div>`;})}</div>`, 'open tasks')}
-        ${panel('Bottleneck Detector',bottlenecks.length?html`<div style=${{display:'flex',flexDirection:'column',gap:8}}>${bottlenecks.map(([stage,count])=>html`<div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:10,borderRadius:14,background:'var(--sf2)',border:'1px solid var(--bd)'}}><span style=${{fontSize:12,color:'var(--tx2)',fontWeight:850}}>${stage}</span><b style=${{fontSize:15,color:'var(--tx)'}}>${count}</b></div>`)}</div>`:html`<div style=${{padding:24,textAlign:'center',color:'var(--tx3)'}}>No stage bottlenecks detected.</div>`, 'workflow')}
-      </div>
-
-      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
-        ${[
-          ['Real-time activity',`${onlineUsers} online`,`${recentUsers||onlineUsers} active in 24h · ${offlineUsers} offline`,'team'],
-          ['Burnout risk',overloaded.length,`${overloaded.filter(x=>x.lateNight>0).length} with late-night activity`,'team'],
-          ['Deadline prediction',`${dueSoonTasks.length} due soon`,`${overdueTasks.length} already overdue`,'timeline'],
-          ['Communication health',`${unread} unread`,`${urgentNotifs} urgent notification(s)`,'dm'],
-          ['Meeting/action load',reviewTasks.length,'Review / approval queue count','tasks'],
-          ['Backlog grooming',unassignedTasks.length,`${reopenedTasks.length} reopened · ${staleTasks.length} stale`,'tasks'],
-          ['System health signals',nf.filter(x=>['error','api_error','system','incident'].includes(norm(x.type))).length,'Error/incident notifications','dashboard'],
-          ['Smart alerts',urgentNotifs,`${criticalTickets.length} critical tickets grouped`,'dashboard'],
-          ['Operational replay',`${doneTasks.length}/${t.length}`,'Completed vs total task history','tasks'],
-          ['War room trigger',highRiskProjects.length+criticalTickets.length,`${highRiskProjects.length} risky project(s) + ${criticalTickets.length} critical ticket(s)`,'tickets']
-        ].map(([label,val,sub,nav])=>stat(label,val,sub,'var(--ac)',nav))}
-      </div>
-    </div>`;
-}
 
 
 /* ─── TimelineView (Admin/Manager only) ───────────────────────────────────── */
@@ -4310,6 +4624,9 @@ function ProductivityView({cu,tasks,projects,users,dashboardSummary}){
       </div>    </div>`;
 }
 function renderMd(text){
+  // Used for chat/DM message bubbles via dangerouslySetInnerHTML — escape
+  // first, or any user can send another user live HTML/script in a message
+  // that executes in the recipient's session (stored XSS).
   return escapeHtml(text).replace(/[*][*](.*?)[*][*]/g,'<b>$1</b>');
 }
 
@@ -4319,40 +4636,6 @@ function ptCallStoreSet(callId,status){try{if(!callId)return;const all=JSON.pars
 function ptSetActiveCallUsers(ids){try{localStorage.setItem('ptActiveCallUsers:v1',JSON.stringify(Array.from(ids||[]).filter(Boolean)));window.dispatchEvent(new CustomEvent('pt_active_call_users',{detail:{users:Array.from(ids||[]).filter(Boolean)}}));}catch{}}
 function ptGetActiveCallUsers(){try{return new Set(JSON.parse(localStorage.getItem('ptActiveCallUsers:v1')||'[]')||[]);}catch{return new Set();}}
 function ptClearActiveCallUsers(){try{localStorage.removeItem('ptActiveCallUsers:v1');window.dispatchEvent(new CustomEvent('pt_active_call_users',{detail:{users:[]}}));}catch{}}
-/** Open a new tab with a friendly loading page instead of about:blank.
- *  Must be called synchronously inside a user-gesture handler so the
- *  browser doesn't block the popup.  Once the Meet URL is ready, set
- *  win.location.href to navigate the tab to the real meeting. */
-function openMeetLoadingWindow(){
-  const win=null;
-  if(!win)return null;
-  try{
-    win.document.open();
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting to Google Meet…</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px}svg{animation:spin 1.2s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}h1{font-size:20px;font-weight:600;color:#f1f5f9}p{font-size:14px;color:#94a3b8}</style>
-<style id="wsos-v34-professional-fix">
-.wsos-wrap.compact{max-width:1180px;margin:14px auto 40px;padding:0 12px}.wsos-hero{min-height:58px;padding:12px 16px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.wsos-hero h2{margin:0;font-size:22px}.wsos-hero p{margin:3px 0 0;color:var(--tx2);font-size:12px}.wsos-actions{display:flex;gap:8px;align-items:center}.wsos-tabs{margin:10px 0;display:flex;gap:6px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px}.wsos-tabs button{border:0;background:transparent;color:var(--tx2);padding:8px 12px;border-radius:999px;font-weight:800;font-size:12px;cursor:pointer}.wsos-tabs button.active{background:rgba(104,96,255,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(104,96,255,.35)}.wsos-panel,.wsos-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px}.wsos-grid{display:grid;grid-template-columns:1fr;gap:12px}.wsos-grid.two{grid-template-columns:1fr 1fr}.wsos-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.wsos-card-head b{font-size:14px}.wsos-card-head span,.wsos-row span,.wsos-empty{display:block;color:var(--tx2);font-size:12px;margin-top:3px}.wsos-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.wsos-metrics>div{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:12px}.wsos-metrics b{display:block;font-size:22px}.wsos-quick{display:flex;gap:8px;margin:12px 0}.wsos-form{display:grid;grid-template-columns:repeat(12,1fr);gap:8px;margin-top:10px}.wsos-form .span1{grid-column:span 1}.wsos-form .span2{grid-column:span 2}.wsos-form .span3{grid-column:span 3}.wsos-form .span4{grid-column:span 4}.wsos-form .span5{grid-column:span 5}.wsos-form .span12{grid-column:span 12}.wsos-form label{display:block;font-size:11px;color:var(--tx2);font-weight:800;text-transform:uppercase;margin-bottom:4px}.wsos-form textarea{min-height:70px}.wsos-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}.wsos-row:last-child{border-bottom:0}.wsos-pill{display:inline-flex;align-items:center;border:1px solid rgba(104,96,255,.35);background:rgba(104,96,255,.14);color:var(--accent);border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;white-space:nowrap}.wsos-pill.good{color:#29b36a;background:rgba(41,179,106,.12);border-color:rgba(41,179,106,.28)}.wsos-pill.warn{color:#ff9a3c;background:rgba(255,154,60,.12);border-color:rgba(255,154,60,.28)}.wsos-balance{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}.wsos-balance-card{border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(255,255,255,.035)}.wsos-balance-card span{display:block;color:var(--tx2);font-size:11px;margin-top:4px}.wsos-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin:8px 0}.wsos-bar i{display:block;height:100%;background:linear-gradient(90deg,#6860ff,#a855f7);border-radius:99px}.wsos-table{width:100%;border-collapse:collapse;margin-top:10px}.wsos-table th,.wsos-table td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.wsos-table th{color:var(--tx2);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.wsos-lock,.wsos-empty{border:1px dashed var(--line);border-radius:14px;padding:18px;text-align:center;color:var(--tx2)}
-    .wos-file-input{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}.wos-file-label{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--wos-soft);border:1px dashed color-mix(in srgb,var(--wos-ac) 55%,var(--wos-line));color:var(--wos-tx);border-radius:12px;padding:10px 12px;min-height:40px;font-weight:900;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wos-file-label small{color:var(--wos-muted);font-weight:800;overflow:hidden;text-overflow:ellipsis}.wos-section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.wos-balance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.wos-balance{background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:15px;padding:12px}.wos-balance b{display:block;font-size:20px}.wos-balance small{color:var(--wos-muted);font-size:11px;font-weight:900}.wos-two-col{display:grid;grid-template-columns:minmax(560px,1.35fr) minmax(480px,.95fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-doc-grid{display:grid;grid-template-columns:minmax(560px,1.1fr) minmax(520px,.9fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-action-strip{background:color-mix(in srgb,var(--wos-ac) 8%,var(--wos-card));border:1px solid color-mix(in srgb,var(--wos-ac) 35%,var(--wos-line));border-radius:16px;padding:12px;margin-top:12px}.wos-mini-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}.wos-mini-day{min-height:46px;border-radius:12px;background:var(--wos-soft);border:1px solid var(--wos-line);padding:6px;font-size:11px}.wos-mini-day.has{background:color-mix(in srgb,#22c55e 12%,var(--wos-soft));border-color:rgba(34,197,94,.25)}@media(max-width:1050px){.wos-two-col,.wos-doc-grid{grid-template-columns:1fr}.wos-balance-grid{grid-template-columns:repeat(2,1fr)}}
-    @media(max-width:900px){.wsos-grid.two,.wsos-metrics,.wsos-balance{grid-template-columns:1fr 1fr}.wsos-form .span1,.wsos-form .span2,.wsos-form .span3,.wsos-form .span4,.wsos-form .span5{grid-column:span 6}}@media(max-width:620px){.wsos-grid.two,.wsos-metrics,.wsos-balance{grid-template-columns:1fr}.wsos-hero{flex-direction:column;align-items:flex-start}.wsos-form>*{grid-column:span 12!important}}
-</style>
-
-
-<style id="wos-v48-profile-polish">
-  .wos-overlay{z-index:21990!important;background:rgba(4,7,18,.62)!important;backdrop-filter:blur(10px)!important}
-  .wos-drawer{z-index:22000!important;background:var(--wos-card)!important;color:var(--wos-tx)!important;border:1px solid var(--wos-line)!important;box-shadow:0 30px 90px rgba(0,0,0,.42)!important;overflow:auto!important}
-  .wos-profile-title{display:flex;align-items:center;gap:12px;min-width:0}.wos-profile-title h3{font-size:20px;letter-spacing:-.02em}.wos-profile-title p{max-width:720px;line-height:1.45}
-  .wos-profile-tabs{position:sticky;top:0;z-index:2;background:var(--wos-card);border-bottom:1px solid var(--wos-line);padding:10px 0;margin-bottom:14px}.wos-profile-tabs button{min-height:32px;padding:7px 12px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--wos-muted);font-weight:900;cursor:pointer}.wos-profile-tabs button.active{background:color-mix(in srgb,var(--wos-ac) 16%,var(--wos-card));border-color:color-mix(in srgb,var(--wos-ac) 35%,var(--wos-line));color:var(--wos-ac)}
-  .wos-drawer .wos-card{box-shadow:none}.wos-drawer .wos-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wos-drawer .wos-edit-grid[style*="repeat(4"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}.wos-drawer .inp,.wos-drawer .sel{min-height:42px;width:100%;font-size:13px}.wos-drawer textarea.inp{min-height:96px}
-  .wos-policy-pillbox{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.wos-policy-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--wos-line);background:var(--wos-soft);border-radius:999px;padding:6px 9px;font-size:11px;font-weight:900;color:var(--wos-tx)}
-  .wos-action-strip .inp,.wos-action-strip .sel,.wos-action-strip .wos-input{min-height:42px!important}.wos-file-label{justify-content:flex-start!important;min-width:180px!important;min-height:44px!important;padding:10px 14px!important}.wos-file-label span{flex:0 0 auto}.wos-file-label small{min-width:0;flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .wos-action-strip h3{margin:0 0 10px}.wos-section-title h3{margin:0}.wos-section-title p{max-width:560px;line-height:1.45}.wos-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wos-field{border:1px solid var(--wos-line);background:var(--wos-soft);border-radius:14px;padding:11px 12px;min-height:58px}.wos-field small{display:block;color:var(--wos-muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:900;margin-bottom:5px}.wos-field b{display:block;color:var(--wos-tx);font-size:13px;word-break:break-word}
-  @media(max-width:860px){.wos-drawer{left:12px!important;right:12px!important;top:12px!important;bottom:12px!important;width:auto!important}.wos-drawer .wos-edit-grid,.wos-drawer .wos-edit-grid[style*="repeat(4"],.wos-field-grid{grid-template-columns:1fr!important}}
-</style>
-
-</head><body><svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" stroke="#334155" stroke-width="4"/><path d="M24 4a20 20 0 0 1 20 20" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/></svg><h1>Connecting to Google Meet…</h1><p>Please wait while your meeting room is being created.</p></body></html>`);
-    win.document.close();
-  }catch(e){}
-  return win;
-}
 function renderChatContent(text){
   const raw=String(text||'');
   const safe=escapeHtml(raw);
@@ -4385,8 +4668,8 @@ function renderChatContent(text){
     if(!isEnded&&callId&&hasValidMeet&&isRinging&&(!receiverId||receiverId===currentUserId)){
       actions=`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button data-pt-call-action="popup" data-pt-call-id="${escapeHtml(callId)}" data-pt-call-meet="${escapeHtml(meetUrl)}" data-pt-call-from="${escapeHtml(from)}" data-pt-call-peer="${escapeHtml(callerId)}" style="border:0;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;background:#22c55e;color:white;cursor:pointer">Accept</button><button data-pt-call-action="reject" data-pt-call-id="${escapeHtml(callId)}" data-pt-call-meet="${escapeHtml(meetUrl)}" data-pt-call-from="${escapeHtml(from)}" data-pt-call-peer="${escapeHtml(callerId)}" style="border:0;border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900;background:#475569;color:white;cursor:pointer">Dismiss</button></div>`;
     }
-    const title=isEnded?'📞 Call ended':(isOngoing?'Call in progress':'Video call');
-    const body=isEnded?'Call ended':(isOngoing?'This call is already active.':(escapeHtml(from)+' is calling.'));
+    const title=isEnded?'Call ended':(isOngoing?'In call':'Video call');
+    const body=isEnded?'This call was not connected.':(isOngoing?'Both users joined this call.':(escapeHtml(from)+' is calling you.'));
     return `<div style="min-width:230px;max-width:320px;border:1px solid rgba(59,130,246,.28);border-radius:16px;padding:11px 13px;background:linear-gradient(135deg,rgba(37,99,235,.16),rgba(14,165,233,.08))"><div style="display:flex;align-items:center;gap:9px;font-weight:900"><span style="width:28px;height:28px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:${isEnded?'#64748b':'#2563eb'};color:white">📞</span><span>${title}</span></div><div style="font-size:12px;opacity:.82;margin-top:6px;line-height:1.4">${body}</div>${actions}</div>`;
   }
   const meetMatch=raw.match(/https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:\?[^\s<]*)?/i);
@@ -4406,12 +4689,6 @@ function renderChatContent(text){
   if(fileUrl&&isImg){
     return safe.replace(/(^|\s)(\/api\/files\/[A-Za-z0-9_-]+)/g,'$1<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;font-weight:800">Open image</a>').replace(/\n/g,'<br>');
   }
-  const meetMatch2=raw.match(/https:\/\/meet\.google\.com\/[A-Za-z0-9-]+/i);
-  if(meetMatch2){
-    const url=meetMatch2[0];
-    const code=(raw.match(/Code:\s*([A-Za-z0-9-]+)/i)||[])[1]||url.split('/').pop();
-    return `<div style="min-width:240px;display:grid;gap:8px"><div style="display:flex;align-items:center;gap:8px;font-weight:900"><span style="width:30px;height:30px;border-radius:999px;background:#2563eb;color:#fff;display:inline-flex;align-items:center;justify-content:center">📹</span><span>Google Meet call</span></div><div style="font-size:11px;opacity:.82;font-family:monospace">Invite code: ${escapeHtml(code)}</div><a href="${url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;border-radius:12px;padding:9px 12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:900">Join Google Meet ↗</a></div>`;
-  }
   return safe
     .replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;font-weight:700">$1</a>')
     .replace(/(^|\s)(\/api\/files\/[A-Za-z0-9_-]+)/g,'$1<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;font-weight:800">Open attachment</a>')
@@ -4429,57 +4706,44 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
   const [stableOrder,setStableOrder]=useState(null); // null = not yet fetched
   const orderSetRef=useRef(false);
 
-  const allProjectsLoadedRef=useRef(false);
-  const allProjectsRetryRef=useRef(0);
-  const loadAllProjects=useCallback(()=>{
+  const allProjectsLoadedForTeamRef=useRef(undefined); // which team_id (or '' for none) we've already fetched
+  useEffect(()=>{
+    const teamKey=(activeTeam&&activeTeam.id)||'';
+    if(allProjectsLoadedForTeamRef.current===teamKey)return;
+    // BUG FIX: this used to call /api/projects/all with no team_id, which
+    // returns every project in the whole workspace — so switching to
+    // Channels showed other teams' project channels (and their message
+    // activity/unread badges) alongside your own. Scope it to the team
+    // currently in view, same as Projects/Tasks/Tickets already do.
+    // FURTHER FIX: this only ran once ([] deps) — if activeTeam loaded
+    // asynchronously (still null/undefined on first render), that very
+    // first fetch went out unscoped anyway and never refetched once the
+    // real team arrived, so every project's last-message timestamp — and
+    // therefore its unread badge — stayed based on the whole workspace,
+    // showing "unread" for channels you'd never even seen. Re-run whenever
+    // the resolved team actually changes (including undefined -> defined).
     api.get('/api/projects/all'+teamIdQS).then(d=>{
-      if(Array.isArray(d)){
-        // Accept the response even if empty — an empty workspace is valid and
-        // should not be treated as a failure that blocks future updates.
-        allProjectsLoadedRef.current=true;
-        allProjectsRetryRef.current=0;
+      if(Array.isArray(d)&&d.length){
+        allProjectsLoadedForTeamRef.current=teamKey;
         setAllProjects(d);
-        if(!orderSetRef.current&&d.length){
+        // If stableOrder not yet set, use creation order (alphabetical) as stable base
+        if(!orderSetRef.current){
           orderSetRef.current=true;
           // Sort by name initially — overwritten when first message timestamps arrive
           const initial={};
           d.forEach(p=>{initial[p.id]=p.created||'';});
           setStableOrder(initial);
         }
-      }else{
-        // Request failed (e.g. transient 5xx/pool exhaustion) — d is
-        // {ok:false,...}, not an array. Previously this silently gave up
-        // forever, leaving the sidebar stuck on stale/placeholder data
-        // (including projects with a blank name) until a full page reload.
-        // Retry with capped backoff instead.
-        const attempt=allProjectsRetryRef.current+1;
-        allProjectsRetryRef.current=attempt;
-        if(attempt<=5){
-          setTimeout(loadAllProjects,Math.min(2000*attempt,15000));
-        }
       }
     });
-  },[]);
-
-  useEffect(()=>{
-    loadAllProjects();
-  },[loadAllProjects]);
-
-  // Re-sync whenever a project is created/updated elsewhere (SSE), so a
-  // rename or a brand-new channel shows up here without needing a remount.
-  useEffect(()=>{
-    const onRealtime=(e)=>{
-      const t=(e&&e.detail&&e.detail.type)||'';
-      if(['project_updated','project_added','project.created','project.updated'].includes(t)){
-        loadAllProjects();
-      }
-    };
-    window.addEventListener('pt:realtime',onRealtime);
-    return()=>window.removeEventListener('pt:realtime',onRealtime);
-  },[loadAllProjects]);
+  },[activeTeam&&activeTeam.id]);
 
   useEffect(()=>{
     const fetchTs=async()=>{
+      // Same team scoping fix as /api/projects/all above — without it this
+      // flooded the unread map with channels you never opened (other
+      // teams' projects), each defaulting to lastSeen='' and so always
+      // looking "new", making a plain refresh look like it invented badges.
       const d=await api.get('/api/projects/last-messages'+teamIdQS);
       if(d&&typeof d==='object'){
         setLastMsgTs(d);
@@ -4518,22 +4782,28 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     fetchTs();
     const id=setInterval(fetchTs,60000); // SSE handles message updates; fallback only
     return()=>clearInterval(id);
-  },[]);
+    // BUG FIX: [] deps meant this effect (and the closure captured by its
+    // setInterval) only ever used the teamIdQS value from the very first
+    // render. If activeTeam was still null/undefined at that point (it
+    // loads asynchronously), every poll for the rest of the session kept
+    // fetching last-message timestamps for the WHOLE workspace instead of
+    // the current team — so projects you'd never opened in Channels (and
+    // had no lastSeen entry for) permanently showed an unread badge, since
+    // any timestamp is "newer" than an empty lastSeen. Re-create the
+    // effect (and its interval) whenever the resolved team actually changes.
+  },[activeTeam&&activeTeam.id]);
 
   const [pid,setPid]=useState('');
   const pidRef=useRef('');
   useEffect(()=>{pidRef.current=pid;},[pid]);
   const [msgs,setMsgs]=useState([]);const [txt,setTxt]=useState('');const ref=useRef(null);
-  const _chanCacheKey='pfChannelMessageCache:v2';
-  const _loadChanCache=()=>{try{return new Map(Object.entries(JSON.parse(localStorage.getItem(_chanCacheKey)||'{}')));}catch{return new Map();}};
-  const _saveChanCache=(id,list)=>{try{const raw=JSON.parse(localStorage.getItem(_chanCacheKey)||'{}');raw[id]=Array.isArray(list)?list.slice(-250):[];localStorage.setItem(_chanCacheKey,JSON.stringify(raw));}catch{}};
-  const msgCacheRef=useRef(_loadChanCache());
+  const msgCacheRef=useRef((()=>{try{const raw=JSON.parse(localStorage.getItem('ptChannelMsgCache')||'{}');return new Map(Object.entries(raw).map(([k,v])=>[k,Array.isArray(v)?v:[]]));}catch{return new Map();}})());
   const msgReqSeq=useRef(0);
   const [loadingChannel,setLoadingChannel]=useState('');
   const [showChatEmoji,setShowChatEmoji]=useState(false);
   const [attaching,setAttaching]=useState(false);
   const fileInputRef=useRef(null);
-  const [channelUnread,setChannelUnread]=useState({}); // {projectId: count}
+  const [channelUnread,setChannelUnread]=useState({}); // {projectId: count} — tracked for read-state bookkeeping (cleared on open) but no longer rendered as a live badge in the channel list; see sortedProjects.map below.
   // Persist lastSeen to localStorage so refresh doesn't reset unread counts
   // BUG FIX (all channels show unread again after sign-out/sign-in): logout()
   // used to wipe the shared 'pfLastSeen' key entirely, on every logout, as if
@@ -4549,7 +4819,6 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
   const [chanSearch,setChanSearch]=useState('');
   const [newestFirst,setNewestFirst]=useState(false);
   const [incomingCall,setIncomingCall]=useState(null);
-  const [outgoingMeetCall,setOutgoingMeetCall]=useState(null);
   const dismissedCallIds=useRef(new Set());
 
   const loadMsgs=useCallback(async(id,mode='switch')=>{
@@ -4567,7 +4836,7 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     if(seq!==msgReqSeq.current||id!==pidRef.current)return;
     if(Array.isArray(d)){
       msgCacheRef.current.set(id,d);
-      _saveChanCache(id,d);
+      try{const obj={};msgCacheRef.current.forEach((v,k)=>{obj[k]=(Array.isArray(v)?v:[]).slice(-250);});localStorage.setItem('ptChannelMsgCache',JSON.stringify(obj));}catch{}
       setMsgs(d);
       setLoadingChannel('');
       if(d.length>0){
@@ -4598,7 +4867,6 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     if(!pid){setMsgs([]);setLoadingChannel('');return;}
     const cached=msgCacheRef.current.get(pid);
     if(cached){setMsgs(cached);setLoadingChannel('');}
-    else {setMsgs([]);setLoadingChannel(pid);}
     loadMsgs(pid,'switch');
   },[pid,loadMsgs]);
 
@@ -4608,7 +4876,6 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
       api.get('/api/messages?project='+pid).then(d=>{
         if(Array.isArray(d)){
           msgCacheRef.current.set(pid,d);
-          _saveChanCache(pid,d);
           setLoadingChannel('');
           setMsgs(prev=>{
             if(d.length>prev.length){
@@ -4635,7 +4902,7 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
 
   const sp=allProjects.find(p=>p.id===pid);
   const projTasks=safe(tasks).filter(t=>t.project===pid);
-  const projMembers=parseIdList(sp&&sp.members).map(id=>safe(users).find(u=>u.id===id)).filter(Boolean);
+  const projMembers=safe(sp&&sp.members?parseIdList(sp.members):[]).map(id=>safe(users).find(u=>u.id===id)).filter(Boolean);
   const doneTasks=projTasks.filter(t=>t.stage==='completed').length;
   const blockedTasks=projTasks.filter(t=>t.stage==='blocked').length;
   const pc=projTasks.length?Math.round(projTasks.reduce((a,t)=>a+(t.pct||0),0)/projTasks.length):0;
@@ -4645,10 +4912,10 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     if(!body||!pid)return;
     if(textOverride===undefined)setTxt('');
     const temp={id:'tmpmsg'+Date.now(),project:pid,sender:cu.id,content:body,ts:new Date().toISOString(),_pending:true};
-    setMsgs(prev=>{const next=[...prev,temp];msgCacheRef.current.set(pid,next);_saveChanCache(pid,next);return next;});
+    setMsgs(prev=>{const next=[...prev,temp];msgCacheRef.current.set(pid,next);return next;});
     const m=await api.post('/api/messages',{project:pid,content:body},{quiet:true});
     if(m&&m.id){
-      setMsgs(prev=>{const next=prev.map(x=>x.id===temp.id?m:x);msgCacheRef.current.set(pid,next);_saveChanCache(pid,next);return next;});
+      setMsgs(prev=>{const next=prev.map(x=>x.id===temp.id?m:x);msgCacheRef.current.set(pid,next);return next;});
       setLastMsgTs(prev=>({...prev,[pid]:m.ts||new Date().toISOString()}));
     }
   };
@@ -4714,20 +4981,6 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     return rows;
   },[allProjects,chanSearch,newMsgProjects]);
 
-  useEffect(()=>{
-    if(!incomingCall){ stopRingtone(); return; }
-    startRingtone();
-    callTimeoutRef.current=setTimeout(() => {
-      const call=incomingCall;
-      if(!call)return;
-      dismissedCallIds.current.add(call.callId);
-      setIncomingCall(null);
-      stopRingtone();
-      api.post('/api/calls/respond',{callId:call.callId,action:'missed',peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true}).catch(()=>{});
-    },20000);
-    return()=>{clearTimeout(callTimeoutRef.current);stopRingtone();};
-  },[incomingCall,startRingtone,stopRingtone]);
-
   const trackDmMeetWindow=(win,call)=>{
     if(!win||!call)return;
     dmMeetWindowRef.current=win;
@@ -4763,28 +5016,22 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
     const call=incomingCall;
     if(!call)return;
     dismissedCallIds.current.add(call.callId);
-    stopRingtone();
     setIncomingCall(null);
-    const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-    try{
-      const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-      if(action==='accept'&&((r&&r.meetUrl)||call.meetUrl)){
-        if(acceptWin){acceptWin.location.href=(r&&r.meetUrl)||call.meetUrl;trackDmMeetWindow(acceptWin,call);}
-        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Accept again.','error');
-      }
-      if(typeof window.showToast==='function') window.showToast(action==='accept'?'Call accepted':'Call rejected',action==='accept'?'success':'info');
-    }catch(e){
-      try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{}
-      console.warn('[DM] call response failed',e);
-      if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');
+    let meetWin=null;
+    if(action==='accept'&&call.meetUrl){
+      // Open the real Meet URL directly from the click handler. No about:blank page.
+      meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+      if(meetWin)trackDmMeetWindow(meetWin,call);
+      else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Accept again.','error');
     }
+    api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:12000})
+      .then(r=>{
+        if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setActiveCallUsers&&setActiveCallUsers(ids);}catch(_){ }try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}
+        if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}
+        if(typeof window.showToast==='function') window.showToast(action==='accept'?'Call accepted':'Call rejected',action==='accept'?'success':'info');
+      })
+      .catch(e=>{console.warn('[DM] call response failed',e); if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');});
   };
-  const joinOutgoingMeet=()=>{
-    if(!outgoingMeetCall||!outgoingMeetCall.meetUrl)return;
-    const w=window.open(outgoingMeetCall.meetUrl,'_blank');
-    if(!w && typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Join as host again.','error');
-  };
-  const closeOutgoingMeet=()=>{if(typeof setOutgoingMeetCall==='function')setOutgoingMeetCall(null);};
   return html`<style>@keyframes dmMenuPop{from{opacity:0;transform:translateY(-6px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmPickerPop{from{opacity:0;transform:translateY(8px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmBubbleIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes callPulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.45)}70%{box-shadow:0 0 0 18px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}</style>
   ${incomingCall?html`<div style=${{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(2,6,23,.62)',backdropFilter:'blur(8px)'}}>
     <div style=${{width:360,maxWidth:'92vw',border:'1px solid rgba(239,68,68,.42)',borderRadius:24,padding:22,background:'linear-gradient(145deg,rgba(15,23,42,.98),rgba(30,41,59,.96))',boxShadow:'0 30px 90px rgba(0,0,0,.65)',textAlign:'center'}}>
@@ -4838,7 +5085,6 @@ function MessagesView({projects,users,cu,tasks,activeTeam}){
               <div style=${{display:'flex',alignItems:'center',gap:7,width:'100%'}}>
                 <div style=${{width:7,height:7,borderRadius:2,background:p.color,flexShrink:0}}></div>
                 <span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,textAlign:'left'}}># ${p.name}</span>
-                ${channelUnread[p.id]>0?html`<span style=${{fontSize:9,fontWeight:800,background:'var(--ac)',color:'#fff',borderRadius:8,padding:'1px 6px',flexShrink:0,minWidth:16,textAlign:'center'}}>${channelUnread[p.id]>9?'9+':channelUnread[p.id]}</span>`:null}
               </div>
             </button>`;
         })}
@@ -4999,7 +5245,22 @@ const playSound=(type='notif')=>{
     }
   }catch(e){}
 };
-function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId=null,onClearInitial,onlineUsers=new Set(),awayUsers=new Set()}){
+// PERF/UX FIX ("cursor shaking" / glitchy feeling while typing a DM, worse
+// the longer the tab stays open): this component was a plain function,
+// re-rendered from scratch on every parent re-render — including every
+// presence/poll/reminder tick (as often as every 15-45s), even while
+// actively typing in the message box below. It's a large component (the
+// full conversation list + message thread), so each of those unrelated
+// re-renders was real, visible work competing with keystrokes — that's
+// the stutter/jank being described, not an actual visual "shake" bug.
+// React.memo skips re-rendering when props are equal, but the default
+// shallow comparison doesn't help here because dmUnread/users/onlineUsers/
+// awayUsers get brand-new array/Set references on every poll even when
+// their actual contents haven't changed. The comparator below checks
+// actual content instead of reference identity, so a poll that returns
+// the same unread counts and the same online users — the overwhelming
+// majority of them — now correctly skips this whole subtree.
+const DirectMessages=React.memo(function DirectMessages({cu,users,dmUnread,onDmRead,onDmReadAll,markingAllDmsRead=false,dmEnabled=true,initialUserId=null,onClearInitial,onlineUsers=new Set(),awayUsers=new Set()}){
   const isAdminOrManager=cu&&(cu.role==='Admin'||cu.role==='Manager');
   if(!dmEnabled&&!isAdminOrManager) return html`
     <div style=${{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12,color:'var(--tx3)'}}>
@@ -5018,6 +5279,9 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     const name=String(u.name||'').trim().toLowerCase();
     const handle=String(u.handle||u.username||'').trim().toLowerCase();
     if(!uid)return false;
+    // Never show the logged-in user as a DM target. Some app-data responses contain
+    // a duplicate current-user profile row with a different temp id; matching only by
+    // id left "PRASANNA" selectable and caused self-DM loops / wrong active thread.
     if(currentId && uid===currentId)return false;
     if(currentEmail && email && email===currentEmail)return false;
     if(currentHandle && handle && handle===currentHandle)return false;
@@ -5028,7 +5292,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   const [msgs,setMsgs]=useState([]);
   const [txt,setTxt]=useState('');
   const [search,setSearch]=useState('');
-  const debouncedDmSearch=useDebounce(search,250);
+  const [msgThreadId,setMsgThreadId]=useState('');
   const [sending,setSending]=useState(false);
   const [lastMsgMap,setLastMsgMap]=useState({});
   const [dmContext,setDmContext]=useState(null);
@@ -5042,12 +5306,12 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   const [menuFor,setMenuFor]=useState('');
   const [menuPos,setMenuPos]=useState(null);
   const [msgSearch,setMsgSearch]=useState('');
+  const [dmFavorites,setDmFavorites]=useState(()=>new Set());
   const [previewImage,setPreviewImage]=useState('');
   const [remoteTyping,setRemoteTyping]=useState(false);
   const [recording,setRecording]=useState(false);
   const [startingMeet,setStartingMeet]=useState(false);
   const [incomingCall,setIncomingCall]=useState(null);
-  const [outgoingMeetCall,setOutgoingMeetCall]=useState(null);
   const dismissedCallIds=useRef(new Set());
   const ringtoneRef=useRef(null);
   const ringtoneCtxRef=useRef(null);
@@ -5056,6 +5320,12 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   const voiceChunksRef=useRef([]);
   const [activeCallUsers,setActiveCallUsers]=useState(()=>ptGetActiveCallUsers());
   useEffect(()=>{const h=e=>setActiveCallUsers(new Set((e.detail&&e.detail.users)||[]));window.addEventListener('pt_active_call_users',h);return()=>window.removeEventListener('pt_active_call_users',h);},[]);
+  const hasOnline=(id)=>onlineUsers&&onlineUsers.has&&onlineUsers.has(String(id));
+  const hasAway=(id)=>awayUsers&&awayUsers.has&&awayUsers.has(String(id));
+  const presenceColor=(id)=>activeCallUsers.has(id)||activeCallUsers.has(String(id))?'#8b5cf6':(hasOnline(id)?'#22c55e':(hasAway(id)?'#f59e0b':'#475569'));
+  const presenceShadow=(id)=>activeCallUsers.has(id)||activeCallUsers.has(String(id))?'0 0 0 1px #8b5cf6,0 0 8px rgba(139,92,246,.65)':(hasOnline(id)?'0 0 0 1px #22c55e,0 0 6px rgba(34,197,94,.5)':(hasAway(id)?'0 0 0 1px #f59e0b,0 0 6px rgba(245,158,11,.45)':'none'));
+  const presenceText=(id)=>activeCallUsers.has(id)||activeCallUsers.has(String(id))?'In a call':(hasOnline(id)?'Active now':(hasAway(id)?'Away':'Offline'));
+
   const dmMeetWindowRef=useRef(null);
   const dmMeetCallRef=useRef(null);
   const dmMeetCloseTimerRef=useRef(null);
@@ -5090,19 +5360,11 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       }
       // Remove short-window duplicates created by double-clicks/retries. Keep call cards untouched.
       const content=String(m.content||'');
-      const isCall=content.includes('CALL_INVITE:')||content.includes('Missed call')||content.includes('📞 Call ended');
+      const isCall=content.includes('CALL_INVITE:')||content.includes('Missed call')||content.includes('Call ended');
       const t=Date.parse(m.ts||'')||0;
       const contentKey=[m.sender,m.recipient,content,m.reply_to||''].join('|');
       const prev=contentSeen.get(contentKey);
       if(!isCall&&prev&&Math.abs(t-(Date.parse(prev.ts||'')||0))<8000){
-        // Prefer confirmed messages over pending/optimistic ones to fix stuck "Sending..." bug
-        if(prev._pending&&!m._pending&&!String(id).startsWith('tmpdm')){
-          const prevIdx=out.indexOf(prev);
-          if(prevIdx>=0){out[prevIdx]=m;}
-          contentSeen.set(contentKey,m);
-          if(prev.id)byId.delete(String(prev.id));
-          if(id)byId.set(id,m);
-        }
         continue;
       }
       contentSeen.set(contentKey,m);
@@ -5154,7 +5416,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
           if(!ringtoneCtxRef.current)return;
           const osc=ctx.createOscillator(); osc.type='sine'; osc.frequency.value=880; osc.connect(gain);
           osc.start(); osc.stop(ctx.currentTime+0.18);
-          setTimeout(() => {try{const osc2=ctx.createOscillator();osc2.type='sine';osc2.frequency.value=660;osc2.connect(gain);osc2.start();osc2.stop(ctx.currentTime+0.18);}catch{}},240);
+          setTimeout(()=>{try{const osc2=ctx.createOscillator();osc2.type='sine';osc2.frequency.value=660;osc2.connect(gain);osc2.start();osc2.stop(ctx.currentTime+0.18);}catch{}},240);
         };
         ringtoneCtxRef.current=ctx; tick(); ringtoneRef.current={pause:()=>{},currentTime:0,_id:setInterval(tick,1200)};
         const oldStop=stopRingtone;
@@ -5199,18 +5461,10 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       return m;
     });
     const serverIds=new Set(merged.map(m=>m.id));
-    // Never let background polling/SSE temporarily erase local messages that haven't been
-    // confirmed by the server yet (pending/failed/temp) OR that were confirmed very recently
-    // (within 30 s) and may have been missed by an incremental fetch due to same-second
-    // timestamp precision or a race with the network round-trip.
-    const recentCutoff=Date.now()-30000;
+    // Never let background polling/SSE temporarily erase optimistic local messages.
     localList.forEach(m=>{
-      if(!serverIds.has(m.id)){
-        const isPendingOrTemp=m._pending||m._failed||String(m.id||'').startsWith('tmpdm');
-        const isRecentConfirmed=!m._pending&&!m._failed&&!String(m.id||'').startsWith('tmpdm')&&(Date.parse(m.ts||'')||0)>recentCutoff;
-        if(isPendingOrTemp||isRecentConfirmed){
-          merged.push(m);
-        }
+      if(!serverIds.has(m.id)&&(m._pending||m._failed||String(m.id||'').startsWith('tmpdm'))){
+        merged.push(m);
       }
     });
     merged.sort((a,b)=>new Date(a.ts||0)-new Date(b.ts||0));
@@ -5224,16 +5478,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     // fuzzy/session/unread resolution. This prevents a stale notification target
     // from keeping the UI on the previous conversation.
     const clickedPeer=(source==='click')?(safe(users).find(u=>u&&String(u.id)===rawId)||null):null;
-    let id2=clickedPeer?String(clickedPeer.id):resolvePeerId(rawId);
-    // FIX: When users haven't loaded yet (app-data still in-flight, ~2-3s),
-    // resolvePeerId returns '' for any ID. For trusted notification sources carrying
-    // a server-issued numeric peer ID, bypass the local user-list validation and
-    // use the raw ID directly. The API endpoint /api/dm/:id validates on the server
-    // side. This eliminates the 2-3s routing delay caused by waiting for app-data.
-    if(!id2&&(source==='notification'||source==='sw-notification')&&/^\d+$/.test(rawId)&&rawId!==String(cu&&cu.id)){
-      console.debug('[DM] users not loaded yet — using raw notification peer ID provisionally',{rawId,source});
-      id2=rawId;
-    }
+    const id2=clickedPeer?String(clickedPeer.id):resolvePeerId(rawId);
     if(!id2){
       console.warn('[DM] blocked invalid peer target', {target:rawId,source});
       if(source!=='click'){
@@ -5329,16 +5574,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     // IMPORTANT: initialUserId is a one-shot command, but it may arrive before
     // users are loaded. Validate only after users exist; otherwise retry when
     // the users list changes through resolvePeerId/switchToUser dependencies.
-    // FIX: If users haven't loaded yet but the target is a numeric server-issued
-    // peer ID (from a notification), proceed immediately with the raw ID rather
-    // than waiting 2-3s for app-data. switchToUser will call /api/dm/:id directly.
-    // When users do load, resolvePeerId fires again via dep change — but the
-    // same-peer guard (lastInitialUserIdRef + activeToRef) prevents a duplicate switch.
-    let resolvedTarget=resolvePeerId(target);
-    if(!resolvedTarget&&/^\d+$/.test(target)&&target!==String(cu&&cu.id)){
-      console.debug('[DM] initialUserId: users not loaded yet, using numeric ID directly',{target});
-      resolvedTarget=target;
-    }
+    const resolvedTarget=resolvePeerId(target);
     if(!resolvedTarget)return;
     if(resolvedTarget===lastInitialUserIdRef.current && String(activeToRef.current||'')===String(resolvedTarget))return;
     try{
@@ -5415,9 +5651,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     else setLoadingThread(id);
     console.debug('[DM] load start', {id,reason,seq,cached:existing.length});
     const lastMsg=existing.length?existing[existing.length-1]:null;
-    // Subtract 1 s so messages at the exact same second as the last known message
-    // are not excluded by the strict ts > ? comparison on the server.
-    const sinceParam=(lastMsg&&lastMsg.ts&&reason!=='load')?'?since='+(new Date(lastMsg.ts).getTime()-1000):'';
+    const sinceParam=(lastMsg&&lastMsg.ts&&reason!=='load')?'?since='+new Date(lastMsg.ts).getTime():'';
     const d=await api.get('/api/dm/'+id+sinceParam,{quiet:true,timeoutMs:12000,allowNoActiveDmFetch:true});
     if(seq!==reqSeq.current||id!==activeToRef.current){
       console.debug('[DM] stale response ignored', {id,active:activeToRef.current,seq,current:reqSeq.current});
@@ -5438,7 +5672,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       setThreadMessages(id,merged,true);
       setLoadingThread('');
       onDmRead(id);
-      // Clear global incoming cache — full network fetch has now merged all messages.
+      // Clear global incoming cache — full network fetch has now merged all messages
       try{if(window._pfDmIncoming&&window._pfDmIncoming[id])delete window._pfDmIncoming[id];}catch(_){}
       console.debug('[DM] load ok', {id,count:merged.length,incremental:!!sinceParam,seq});
       if(merged.length>0){const lastM=merged[merged.length-1];setLastMsgMap(prev=>({...prev,[id]:{content:lastM.content,ts:lastM.ts,sender:lastM.sender,time_label:lastM.time_label||''}}));}
@@ -5456,24 +5690,22 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       setMsgThreadId('');setMsgs([]);setLoadingThread('');return;
     }
     const cached=threadCache.current.get(toId);
-    // Pre-populate from global incoming cache (messages received via SSE/poll before this
-    // component mounted) so the thread is visible before the network call completes.
+    // Pre-populate from global incoming cache (messages received via SSE before this
+    // component mounted) so the message is visible instantly, before the network call.
     const incomingBuf=(window._pfDmIncoming&&window._pfDmIncoming[toId])||[];
     if(cached||incomingBuf.length){
       const base=cached||[];
       if(incomingBuf.length){
-        const seenIds=new Set(base.map(m=>String(m.id)));
-        const merged=normalizeDmList([...base,...incomingBuf.filter(m=>!seenIds.has(String(m.id)))]);
-        setMsgThreadId(toId);
-        setMsgs(merged);
-        setLoadingThread('');
+        const seenIds=new Set(base.map(m=>m.id));
+        const merged=[...base,...incomingBuf.filter(m=>!seenIds.has(m.id))].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+        setMsgThreadId(toId);setMsgs(merged);setLoadingThread('');
         threadCache.current.set(toId,merged);
+        // Clear the incoming buffer for this peer — it's now in threadCache
         try{if(window._pfDmIncoming)delete window._pfDmIncoming[toId];}catch(_){}
       }else{
         setMsgThreadId(toId);setMsgs(cached);setLoadingThread('');
       }
-    }
-    else setLoadingThread(toId);
+    }else setLoadingThread(toId);
     loadMsgs(toId,'selected');
     // SINGLE ACTIVE DM THREAD OWNER:
     // Only the currently selected/notification-targeted chat is allowed to poll /api/dm/:id.
@@ -5486,57 +5718,31 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     }catch(_){}
     let dmPollBusy=false;
     const id=setInterval(async()=>{
-      // SCALABILITY: Skip the fallback poll entirely when SSE is live.
-      // The dm_created SSE event already appends messages directly to state
-      // (see onDmRefresh handler below) with zero extra network cost.
-      // We only need this interval when SSE has dropped (readyState !== OPEN).
-      // Check window.__ptSSEActive which is set by the SSE useEffect.
-      // SCALABILITY: dual SSE health check — EventSource readyState + ptPollManager flag.
-      // readyState===1 (OPEN) means the server is actively streaming.
-      // ptPollManager.isSseHealthy() is set to false when the onError/close fires,
-      // giving a belt-and-suspenders guard against missed state changes.
-      const sseOpen=(window.__ptSSEActive&&window.__ptSSEActive.readyState===1)||
-                    (window.ptPollManager&&window.ptPollManager.isSseHealthy&&window.ptPollManager.isSseHealthy());
-      if(sseOpen){
-        console.debug('[DM] skipping fallback poll — SSE is healthy, dm_created events deliver in real-time');
-        return;
-      }
       if(dmPollBusy)return;
       dmPollBusy=true;
       try{
-        const requestedTo=toId;
-        // Capture sinceParam from current cache before the network call.
-        const cachedAtStart=threadCache.current.get(requestedTo)||[];
-        const lastMsgAtStart=cachedAtStart.length?cachedAtStart[cachedAtStart.length-1]:null;
-        // Subtract 1s so same-second messages are not excluded by strict > on the server.
-        const sinceParam=lastMsgAtStart&&lastMsgAtStart.ts?'?since='+(new Date(lastMsgAtStart.ts).getTime()-1000):'';
+        const requestedTo=String(toId||'');
+        if(!requestedTo||requestedTo!==String(activeToRef.current||''))return;
+        try{if(window.__ptDmActivePollUser&&String(window.__ptDmActivePollUser)!==requestedTo)return;}catch(_){}
+        const cached=threadCache.current.get(requestedTo)||[];
+        const lastMsg=cached.length?cached[cached.length-1]:null;
+        const sinceParam=lastMsg&&lastMsg.ts?'?since='+new Date(lastMsg.ts).getTime():'';
         const d=await api.get('/api/dm/'+requestedTo+sinceParam,{quiet:true,timeoutMs:12000,allowNoActiveDmFetch:true});
         if(requestedTo!==String(activeToRef.current||''))return;
         try{if(window.__ptDmActivePollUser&&String(window.__ptDmActivePollUser)!==requestedTo)return;}catch(_){}
         if(Array.isArray(d)){
           if(sinceParam&&d.length===0)return;
-          // Re-read threadCache AFTER the await so we always merge onto the freshest local state.
-          // Using the stale pre-await snapshot was the root cause of confirmed messages vanishing:
-          // messages confirmed during the ~6s network round-trip were absent from the snapshot
-          // and not re-added by mergePendingReactionState (which only preserves _pending/_failed/tmpdm).
-          const freshCached=threadCache.current.get(requestedTo)||[];
-          const seen=new Set(freshCached.map(m=>m.id));
-          const merged=sinceParam?mergePendingReactionState(requestedTo,[...freshCached,...d.filter(m=>!seen.has(m.id))]):mergePendingReactionState(requestedTo,d);
+          const seen=new Set(cached.map(m=>m.id));
+          const merged=sinceParam?mergePendingReactionState(requestedTo,[...cached,...d.filter(m=>!seen.has(m.id))]):mergePendingReactionState(requestedTo,d);
           setMsgThreadId(requestedTo);
           setThreadMessages(requestedTo,merged,false);
           setLoadingThread('');
           setMsgs(prev=>{
-            // Also preserve any _pending/_failed/tmpdm from current React state not yet in merged
-            // (e.g. optimistic messages added after threadCache was read above).
-            const prevArr=Array.isArray(prev)?prev:[];
-            const mergedIds=new Set(merged.map(m=>m.id));
-            const extraPending=prevArr.filter(m=>!mergedIds.has(m.id)&&(m._pending||m._failed||String(m.id||'').startsWith('tmpdm')));
-            const final=extraPending.length?normalizeDmList([...merged,...extraPending]):merged;
-            if(final.length>prevArr.length){
-              const added=final.slice(prevArr.length);
+            if(merged.length>prev.length){
+              const added=merged.slice(prev.length);
               if(added.some(m=>String(m.sender)!==String(cu.id)))playSound('notif');
             }
-            return final;
+            return merged;
           });
           onDmRead(requestedTo);
         }
@@ -5580,8 +5786,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       if(msg&&msg.type==='dm_seen'&&data){
         const peer=String(data.reader||data.sender||'');
         const seenAt=data.seen_at||new Date().toISOString();
-        // U3: also set status:'seen' so the double-tick SVG renders immediately
-        const markSeen=list=>(Array.isArray(list)?list:[]).map(x=>String(x.sender)===String(cu.id)&&String(x.recipient)===peer?{...x,read:1,seen_at:x.seen_at||seenAt,status:'seen'}:x);
+        const markSeen=list=>(Array.isArray(list)?list:[]).map(x=>String(x.sender)===String(cu.id)&&String(x.recipient)===peer?{...x,read:1,seen_at:x.seen_at||seenAt}:x);
         if(peer){
           const patched=markSeen(threadCache.current.get(peer)||[]);
           threadCache.current.set(peer,patched);_saveDmCache(peer,patched);
@@ -5597,7 +5802,12 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       }
       if(msg&&msg.type==='dm_created'&&data&&data.message){
         let m=data.message;
-        const peer=(String(m.sender)===String(cu.id))?m.recipient:m.sender;
+        const peer=(String(m.sender)===String(cu.id))?String(m.recipient):String(m.sender);
+        if(!toId && String(m.sender)!==String(cu.id) && String(m.recipient)===String(cu.id)){
+          try{sessionStorage.setItem('pt_open_dm_user',peer);sessionStorage.setItem('pt_dm_notification_target',peer);}catch(_){}
+          switchToUser(peer,'notification');
+          return;
+        }
         const belongs=String(peer)===String(toId) || String(data.sender)===String(toId) || String(data.recipient)===String(toId);
         if(belongs){
           if(String(m.sender)!==String(cu.id))m={...m,read:1};
@@ -5661,42 +5871,6 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     return()=>{cancelled=true;clearInterval(id);};
   },[]);
 
-  // ── DM thread pre-warm ──────────────────────────────────────────────────
-  // Silently fetch the top 5 most-recent DM threads in the background when
-  // the panel mounts. This fills threadCache so the first click on any of
-  // those conversations renders instantly from cache instead of waiting for
-  // a cold network round-trip (the "click then load" symptom).
-  useEffect(()=>{
-    if(!cu||!users||!users.length)return;
-    let cancelled=false;
-    const prewarm=async()=>{
-      try{
-        const previews=await api.get('/api/dm/previews',{quiet:true,timeoutMs:8000});
-        if(cancelled||!previews||typeof previews!=='object')return;
-        // Sort peers by most recent message timestamp, take top 5
-        const peers=Object.entries(previews)
-          .sort((a,b)=>(b[1].ts||'').localeCompare(a[1].ts||''))
-          .slice(0,5)
-          .map(([peerId])=>peerId);
-        for(const peerId of peers){
-          if(cancelled)break;
-          if(threadCache.current.get(peerId)&&threadCache.current.get(peerId).length>0)continue;
-          try{
-            const msgs=await api.get('/api/dm/'+peerId,{quiet:true,timeoutMs:8000,allowNoActiveDmFetch:true});
-            if(!cancelled&&Array.isArray(msgs)&&msgs.length){
-              setThreadMessages(peerId,msgs,false);
-            }
-          }catch(_){}
-          // Small gap between fetches to avoid stampeding the server
-          await new Promise(r=>setTimeout(r,200));
-        }
-      }catch(_){}
-    };
-    // Delay slightly so the visible page finishes rendering first
-    const t=setTimeout(prewarm,1500);
-    return()=>{cancelled=true;clearTimeout(t);};
-  },[cu&&cu.id,users&&users.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const atBottomRef=useRef(true);
   const handleScroll=()=>{if(!ref.current)return;const{scrollTop,scrollHeight,clientHeight}=ref.current;atBottomRef.current=scrollHeight-scrollTop-clientHeight<120;};
   useEffect(()=>{if(ref.current&&atBottomRef.current)ref.current.scrollTop=ref.current.scrollHeight;},[msgs]);
@@ -5728,7 +5902,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     dmRecentSendRef.current={key:sendKey,at:Date.now()};
     const clientMsgId='cmid_'+cu.id+'_'+Date.now()+'_'+Math.random().toString(16).slice(2);
     const tempId='tmpdm'+Date.now();
-    const optimistic={id:tempId,client_msg_id:clientMsgId,sender:cu.id,recipient,content:c,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:true};
+    const optimistic={id:tempId,client_msg_id:clientMsgId,sender:cu.id,recipient,content:c,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:true,_instant:true};
     setTxt('');setReplyTo(null);
     setSending(true);
     setTimeout(()=>setSending(false),120);
@@ -5758,7 +5932,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         setMsgs(prev=>{
           const base=Array.isArray(prev)?prev:[];
           const replaced=base.some(x=>x.id===tempId||x.id===m.id||(x.client_msg_id&&x.client_msg_id===clientMsgId));
-          const list=replaced?base.map(x=>(x.id===tempId||x.id===m.id||(x.client_msg_id&&x.client_msg_id===clientMsgId))?confirmed:x):[...base,confirmed];
+          const list=replaced?base.map(x=>x.id===tempId||x.client_msg_id===clientMsgId?confirmed:x):[...base,confirmed];
           const next=normalizeDmList(list);
           threadCache.current.set(recipient,next);
           _saveDmCache(recipient,next);
@@ -5810,6 +5984,28 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   };
   const startEdit=(m)=>{setMenuFor('');setEditingId(m.id);setReplyTo(null);setTxt(m.content||'');};
   useEffect(()=>{window._pfSetDmContext=setDmContext;},[]);
+  // Load starred/favorite DM contacts once on mount (per-user preference, small list).
+  useEffect(()=>{
+    api.get('/api/dm/favorites',{quiet:true}).then(r=>{
+      if(r&&Array.isArray(r.favorites))setDmFavorites(new Set(r.favorites.map(String)));
+    }).catch(()=>{});
+  },[]);
+  const toggleFavorite=async(peerId)=>{
+    if(!peerId)return;
+    const id=String(peerId);
+    const wasFav=dmFavorites.has(id);
+    // Optimistic toggle so the heart responds instantly; rolled back on failure.
+    setDmFavorites(prev=>{const next=new Set(prev);wasFav?next.delete(id):next.add(id);return next;});
+    try{
+      const r=await api.post('/api/dm/favorite',{peer_id:id});
+      if(r&&typeof r.favorited==='boolean'){
+        setDmFavorites(prev=>{const next=new Set(prev);r.favorited?next.add(id):next.delete(id);return next;});
+      }
+    }catch(e){
+      console.warn('[DM] favorite toggle failed',e);
+      setDmFavorites(prev=>{const next=new Set(prev);wasFav?next.add(id):next.delete(id);return next;});
+    }
+  };
   const sendTyping=()=>{
     // Typing indicator is intentionally local-only. The previous network POST on
     // keypress created /api/dm/typing 499 storms and delayed real sends.
@@ -5826,8 +6022,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     const peer=toUser&&toUser.name?toUser.name:'teammate';
     const recipient=toId;
     setStartingMeet(true);
-    let hostWin=null;
-    // Do not open an intermediate blank/loading tab. Open Meet directly only after URL is ready.
+    // No intermediate about:blank tab. Open only the final Google Meet URL.
     try{
       const r=await api.post('/api/calls/google-meet',{type:'dm',targetId:recipient,title:`Call with ${peer}`},{quiet:true});
       if(!r||!r.ok||!r.meetUrl){
@@ -5843,13 +6038,11 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
           return next;
         });
       }
-      // Caller initiated the meeting from a direct click, so open Meet immediately in a new tab.
-      const call={callId:r.callId,peer,peerId:recipient,meetUrl:r.meetUrl};
-      hostWin=window.open(r.meetUrl,'_blank','noopener,noreferrer');
-      if(hostWin){trackDmMeetWindow(hostWin,call);} else if(typeof window.showToast==='function') window.showToast('Meeting invite sent. Allow popups or use the Join button in chat.','success');
-      if(typeof setOutgoingMeetCall==='function')setOutgoingMeetCall(null);
-      ptCallStoreSet(r.callId,'ringing');
-      if(typeof window.showToast==='function') window.showToast('Calling '+peer+'… waiting for them to accept','success');
+      // Do not show either user as "In a call" yet. Caller is only waiting;
+      // active-call state is set only after receiver accepts and server sends in_call.
+      const callWindow=window.open(r.meetUrl,'_blank','noopener,noreferrer');
+      if(!callWindow && typeof window.showToast==='function') window.showToast('Popup blocked. Allow popups to wait in the Meet room.','error');
+      if(typeof window.showToast==='function') window.showToast('Calling '+peer+'… waiting in Google Meet','success');
     }catch(e){
       console.warn('[DM] Google Meet call failed',e);
       const msg=(e&&e.message)||'Unable to create Google Meet. Configure server Google OAuth first.';
@@ -5881,7 +6074,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         const body=(file.type||'').startsWith('image/')?'🖼️ '+uploaded.name+'\n/api/files/'+uploaded.id:'📎 '+uploaded.name+'\n/api/files/'+uploaded.id;
         const recipient=toId;
         const tempId='tmpdm'+Date.now();
-        const optimistic={id:tempId,sender:cu.id,recipient,content:body,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:false};
+        const optimistic={id:tempId,sender:cu.id,recipient,content:body,read:0,ts:new Date().toISOString(),reply_to:replyTo&&replyTo.id||'',_pending:true};
         setReplyTo(null);setMsgThreadId(recipient);
         setMsgs(prevMsgs=>{const next=[...prevMsgs,optimistic];threadCache.current.set(recipient,next);_saveDmCache(recipient,next);return next;});
         const m=await api.post('/api/dm',{recipient,content:body,reply_to:optimistic.reply_to});
@@ -5906,7 +6099,9 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       switchToUser(valid,'url');
     }
   },[toId,resolvePeerId,switchToUser]);
-  const filtered=others.filter(u=>u.name.toLowerCase().includes(debouncedDmSearch.toLowerCase()));
+  const filtered=others.filter(u=>u.name.toLowerCase().includes(search.toLowerCase()));
+  const favoritedFiltered=filtered.filter(u=>dmFavorites.has(String(u.id)));
+  const restFiltered=filtered.filter(u=>!dmFavorites.has(String(u.id)));
   const toUser=safe(users).find(u=>String(u.id)===String(toId));
   const visibleMsgs=(String(msgThreadId)===String(toId))?normalizeDmList(msgs.filter(m=>(String(m.sender)===String(cu.id)&&String(m.recipient)===String(toId))||(String(m.sender)===String(toId)&&String(m.recipient)===String(cu.id)))):[];
   const displayMsgs=msgSearch.trim()?visibleMsgs.filter(m=>String(m.content||'').toLowerCase().includes(msgSearch.toLowerCase())):visibleMsgs;
@@ -5974,7 +6169,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
   useEffect(()=>{
     if(!incomingCall){ stopRingtone(); return; }
     startRingtone();
-    callTimeoutRef.current=setTimeout(() => {
+    callTimeoutRef.current=setTimeout(()=>{
       const call=incomingCall;
       if(!call||dismissedCallIds.current.has(call.callId))return;
       dismissedCallIds.current.add(call.callId);
@@ -5983,7 +6178,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
       // Local timeout only hides the popup; server updates the original call card.
       // Do not write a local missed state that can leak into DM history.
     },20000);
-    return()=>{clearTimeout(callTimeoutRef.current);stopRingtone();};
+    return()=>stopRingtone();
   },[incomingCall,startRingtone,stopRingtone]);
   const respondIncomingCall=async(action)=>{
     const call=incomingCall;
@@ -5991,41 +6186,46 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     dismissedCallIds.current.add(call.callId);
     stopRingtone();
     setIncomingCall(null);
-    const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-    try{
-      const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-      if(action==='accept'){
-        // Wait for server call_status=in_call before showing In a call.
-        // Wait for server call_status=in_call before storing active call state.
-        const joinUrl=(r&&r.meetUrl)||call.meetUrl;
-        if(acceptWin){acceptWin.location.href=joinUrl;trackDmMeetWindow(acceptWin,call);}
-        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Connect again.','error');
-      }
-      if(typeof window.showToast==='function') window.showToast(action==='accept'?'Joining call…':'Call rejected',action==='accept'?'success':'info');
-    }catch(e){
-      try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{}
-      console.warn('[DM] call response failed',e);
-      if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');
+    let meetWin=null;
+    if(action==='accept'&&call.meetUrl){
+      meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+      if(meetWin&&typeof trackDmMeetWindow==='function')trackDmMeetWindow(meetWin,call);
+      else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Connect again.','error');
     }
+    api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:12000})
+      .then(r=>{
+        if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setActiveCallUsers&&setActiveCallUsers(ids);}catch(_){ }try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}
+        if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}
+        if(typeof window.showToast==='function') window.showToast(action==='accept'?'Joining call…':'Call rejected',action==='accept'?'success':'info');
+      })
+      .catch(e=>{console.warn('[DM] call response failed',e);if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error');});
   };
-  const joinOutgoingMeet=()=>{
-    if(!outgoingMeetCall||!outgoingMeetCall.meetUrl)return;
-    const w=window.open(outgoingMeetCall.meetUrl,'_blank');
-    if(!w && typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Join as host again.','error');
+  // Single contact-row renderer shared by the Favourites and All sections, so a
+  // teammate always looks/behaves identically regardless of which section they're in.
+  // The heart toggle is a <span role="button"> (not a nested <button>) since it sits
+  // inside the row's own <button>, and nested <button> elements are invalid HTML.
+  const renderDmContactRow=(u)=>{
+    const unr=unreadFor(u.id);const isA=String(toId)===String(u.id);const lm=lastMsgMap[String(u.id)]||lastMsgMap[u.id];const isFav=dmFavorites.has(String(u.id));
+    return html`
+      <button key=${u.id} data-dm-peer=${u.id} type="button" onPointerDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onMouseDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onClick=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} style=${{display:'flex',alignItems:'center',gap:9,width:'100%',padding:'8px 10px',border:'none',borderRadius:9,cursor:'pointer',marginBottom:2,background:isA?'rgba(99,102,241,.14)':'transparent',transition:'all .14s'}}>
+        <div style=${{position:'relative',flexShrink:0}}>
+          <${Av} u=${u} size=${32}/>
+          <div style=${{position:'absolute',bottom:0,right:0,width:10,height:10,borderRadius:'50%',background:presenceColor(u.id),border:'2px solid var(--bg)',boxShadow:presenceShadow(u.id),transition:'background .3s,box-shadow .3s'}}></div>
+        </div>
+        <div style=${{flex:1,minWidth:0,textAlign:'left'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:4}}>
+            <div style=${{fontSize:13,fontWeight:unr>0?700:600,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>${u.name}</div>
+            ${lm?html`<span style=${{fontSize:9,color:'var(--tx3)',flexShrink:0,whiteSpace:'nowrap'}}>${lm.time_label||ago(lm.ts)}</span>`:null}
+          </div>
+          ${lm?html`<div style=${{fontSize:11,color:unr>0?'var(--tx2)':'var(--tx3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:unr>0?600:400,marginTop:1}}>${String(lm.sender)===String(cu.id)?'You: ':''}<span>${(lm.content||'').replace(/\n/g,' ')}</span></div>`:null}
+        </div>
+        <span role="button" tabIndex="0" title=${isFav?'Remove from favourites':'Add to favourites'} onClick=${e=>{e.preventDefault();e.stopPropagation();toggleFavorite(u.id);}} onPointerDown=${e=>e.stopPropagation()} onMouseDown=${e=>e.stopPropagation()} style=${{border:'none',background:'none',cursor:'pointer',padding:2,flexShrink:0,color:isFav?'#f472b6':'var(--tx3)',display:'flex',alignItems:'center',opacity:isFav?1:.55}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill=${isFav?'currentColor':'none'} stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        </span>
+        ${unr>0?html`<span style=${{background:'var(--ac)',color:'#fff',borderRadius:10,fontSize:10,padding:'2px 6px',fontFamily:'monospace',fontWeight:700,flexShrink:0}}>${unr}</span>`:null}
+      </button>`;
   };
-  const closeOutgoingMeet=()=>{if(typeof setOutgoingMeetCall==='function')setOutgoingMeetCall(null);};
-  return html`<style>@keyframes dmMenuPop{from{opacity:0;transform:translateY(-6px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmPickerPop{from{opacity:0;transform:translateY(8px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmBubbleIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes callPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.45)}70%{box-shadow:0 0 0 28px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}</style>${outgoingMeetCall?html`<div style=${{position:'fixed',inset:0,zIndex:99998,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(2,6,23,.52)',backdropFilter:'blur(10px)'}}>
-    <div style=${{width:'min(520px,calc(100vw - 32px))',border:'1px solid rgba(148,163,184,.22)',borderRadius:28,background:'linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.98))',boxShadow:'0 30px 90px rgba(0,0,0,.55)',padding:28,textAlign:'center',color:'#fff'}}>
-      <div style=${{width:72,height:72,borderRadius:24,margin:'0 auto 16px',display:'grid',placeItems:'center',background:'rgba(34,197,94,.16)',fontSize:34}}>🎥</div>
-      <div style=${{fontSize:12,fontWeight:900,letterSpacing:'.14em',textTransform:'uppercase',color:'#93c5fd',marginBottom:8}}>Call started</div>
-      <div style=${{fontSize:30,fontWeight:950,marginBottom:8}}>Waiting for ${outgoingMeetCall.peer}</div>
-      <div style=${{fontSize:14,color:'#cbd5e1',lineHeight:1.5,marginBottom:22}}>ProjectTracker will stay open. Join Google Meet in a new tab only when you click below. The room is created with open access, so invitees should not wait in lobby.</div>
-      <div style=${{display:'flex',gap:14,justifyContent:'center',flexWrap:'wrap'}}>
-        <button onClick=${closeOutgoingMeet} style=${{border:0,borderRadius:999,padding:'14px 22px',fontWeight:900,background:'rgba(148,163,184,.16)',color:'#e2e8f0',cursor:'pointer'}}>Stay here</button>
-        <button onClick=${joinOutgoingMeet} style=${{border:0,borderRadius:999,padding:'14px 22px',fontWeight:950,background:'#22c55e',color:'#052e16',cursor:'pointer',boxShadow:'0 18px 40px rgba(34,197,94,.28)'}}>Join as host</button>
-      </div>
-    </div>
-  </div>`:null}${incomingCall?html`<div style=${{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:'radial-gradient(circle at 50% 22%,rgba(34,197,94,.18),rgba(2,6,23,.94) 42%,rgba(0,0,0,.98))',backdropFilter:'blur(14px)'}}>
+  return html`<style>@keyframes dmMenuPop{from{opacity:0;transform:translateY(-6px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmPickerPop{from{opacity:0;transform:translateY(8px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes dmBubbleIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes callPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.45)}70%{box-shadow:0 0 0 28px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}</style>${incomingCall?html`<div style=${{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:'radial-gradient(circle at 50% 22%,rgba(34,197,94,.18),rgba(2,6,23,.94) 42%,rgba(0,0,0,.98))',backdropFilter:'blur(14px)'}}>
     <div style=${{position:'absolute',top:22,left:26,fontSize:13,fontWeight:800,color:'#fff',letterSpacing:.5,opacity:.85}}>Project Tracker Call</div>
     <div style=${{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',textAlign:'center',padding:24}}>
       <div style=${{width:132,height:132,borderRadius:'50%',marginBottom:28,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#334155,#0f172a)',border:'3px solid rgba(255,255,255,.18)',boxShadow:'0 0 0 12px rgba(255,255,255,.04),0 30px 90px rgba(0,0,0,.65)',fontSize:54,animation:'callPulse 1.2s infinite'}}>📹</div>
@@ -6040,23 +6240,22 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
     </div>
   </div>`:null}<div class="fi" style=${{display:'flex',height:'100%',overflow:'hidden'}}>
     <div style=${{width:190,borderRight:'1px solid var(--bd)',display:'flex',flexDirection:'column',flexShrink:0}}>
-      <div style=${{padding:'11px 12px',borderBottom:'1px solid var(--bd)'}}><div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7,marginBottom:8}}>Direct Messages</div><input class="inp" style=${{fontSize:12,padding:'6px 10px'}} placeholder="Search..." value=${search} onInput=${e=>setSearch(e.target.value)}/></div>
+      <div style=${{padding:'11px 12px',borderBottom:'1px solid var(--bd)'}}>
+        <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+          <div style=${{fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.7}}>Direct Messages</div>
+          ${(()=>{const totalUnreadHere=(dmUnread||[]).reduce((a,x)=>a+(x.cnt||0),0);return totalUnreadHere>0&&onDmReadAll?html`
+            <button class="btn bg" title="Mark every unread conversation as read" aria-label="Mark all direct messages as read"
+              style=${{fontSize:10,padding:'2px 7px',height:20,opacity:markingAllDmsRead?.6:1,cursor:markingAllDmsRead?'not-allowed':'pointer'}}
+              disabled=${markingAllDmsRead} onClick=${onDmReadAll}>${markingAllDmsRead?'Marking…':'✓ Mark all read'}</button>
+          `:null;})()}
+        </div>
+        <input class="inp" style=${{fontSize:12,padding:'6px 10px'}} placeholder="Search..." value=${search} onInput=${e=>setSearch(e.target.value)}/>
+      </div>
       <div style=${{flex:1,overflowY:'auto',padding:6}}>
-        ${filtered.map(u=>{const unr=unreadFor(u.id);const isA=toId===u.id;const lm=lastMsgMap[u.id];return html`
-          <button key=${u.id} data-dm-peer=${u.id} type="button" onPointerDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onMouseDown=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} onClick=${e=>{e.preventDefault();e.stopPropagation();switchToUser(u.id,'click')}} style=${{display:'flex',alignItems:'center',gap:9,width:'100%',padding:'8px 10px',border:'none',borderRadius:9,cursor:'pointer',marginBottom:2,background:isA?'rgba(99,102,241,.14)':'transparent',transition:'all .14s'}}>
-            <div style=${{position:'relative',flexShrink:0}}>
-              <${Av} u=${u} size=${32}/>
-              <div style=${{position:'absolute',bottom:0,right:0,width:10,height:10,borderRadius:'50%',background:activeCallUsers.has(u.id)?'#8b5cf6':(onlineUsers.has(u.id)?'#22c55e':(awayUsers.has(u.id)?'#f59e0b':'#475569')),border:'2px solid var(--bg)',boxShadow:activeCallUsers.has(u.id)?'0 0 0 1px #8b5cf6,0 0 8px rgba(139,92,246,.65)':(onlineUsers.has(u.id)?'0 0 0 1px #22c55e,0 0 6px rgba(34,197,94,.5)':(awayUsers.has(u.id)?'0 0 0 1px #f59e0b,0 0 6px rgba(245,158,11,.5)':'none')),transition:'background .3s,box-shadow .3s'}}></div>
-            </div>
-            <div style=${{flex:1,minWidth:0,textAlign:'left'}}>
-              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:4}}>
-                <div style=${{fontSize:13,fontWeight:unr>0?700:600,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>${u.name}</div>
-                ${lm?html`<span style=${{fontSize:9,color:'var(--tx3)',flexShrink:0,whiteSpace:'nowrap'}}>${lm.time_label||ago(lm.ts)}</span>`:null}
-              </div>
-              ${lm?html`<div style=${{fontSize:11,color:unr>0?'var(--tx2)':'var(--tx3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:unr>0?600:400,marginTop:1}}>${lm.sender===cu.id?'You: ':''}<span>${(lm.content||'').replace(/\n/g,' ')}</span></div>`:null}
-            </div>
-            ${unr>0?html`<span style=${{background:'var(--ac)',color:'#fff',borderRadius:10,fontSize:10,padding:'2px 6px',fontFamily:'monospace',fontWeight:700,flexShrink:0}}>${unr}</span>`:null}
-          </button>`;})}
+        ${favoritedFiltered.length?html`<div style=${{fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,padding:'6px 10px 4px'}}>⭐ Favourites</div>`:null}
+        ${favoritedFiltered.map(u=>renderDmContactRow(u))}
+        ${favoritedFiltered.length?html`<div style=${{fontSize:10,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,padding:'10px 10px 4px'}}>All</div>`:null}
+        ${restFiltered.map(u=>renderDmContactRow(u))}
       </div>
     </div>
     <div style=${{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
@@ -6064,24 +6263,19 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         ${toUser?html`
           <div style=${{position:'relative'}}>
             <${Av} u=${toUser} size=${36}/>
-            <div style=${{position:'absolute',bottom:0,right:0,width:11,height:11,borderRadius:'50%',background:activeCallUsers.has(toUser.id)?'#8b5cf6':(onlineUsers.has(toUser.id)?'#22c55e':(awayUsers.has(toUser.id)?'#f59e0b':'#475569')),border:'2px solid var(--bg)',boxShadow:activeCallUsers.has(toUser.id)?'0 0 0 1px #8b5cf6,0 0 8px rgba(139,92,246,.7)':(onlineUsers.has(toUser.id)?'0 0 0 1px #22c55e,0 0 7px rgba(34,197,94,.6)':(awayUsers.has(toUser.id)?'0 0 0 1px #f59e0b,0 0 7px rgba(245,158,11,.6)':'none')),transition:'background .3s,box-shadow .3s'}}></div>
+            <div style=${{position:'absolute',bottom:0,right:0,width:11,height:11,borderRadius:'50%',background:presenceColor(toUser.id),border:'2px solid var(--bg)',boxShadow:presenceShadow(toUser.id),transition:'background .3s,box-shadow .3s'}}></div>
           </div>
           <div>
             <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${toUser.name}</div>
-            <div style=${{fontSize:11,color:remoteTyping?'var(--ac)':(activeCallUsers.has(toUser.id)?'#8b5cf6':(onlineUsers.has(toUser.id)?'#22c55e':(awayUsers.has(toUser.id)?'#f59e0b':'var(--tx3)'))),fontWeight:500}}>${remoteTyping?'typing…':(activeCallUsers.has(toUser.id)?'In a call':(onlineUsers.has(toUser.id)?'Active now':(awayUsers.has(toUser.id)?'Away':'Offline')))}</div>
-          </div>`:html`<span style=${{color:'var(--tx3)'}}>Select someone to chat</span>`}
+            <div style=${{fontSize:11,color:remoteTyping?'var(--ac)':(hasOnline(toUser.id)?'#22c55e':(hasAway(toUser.id)?'#f59e0b':'var(--tx3)')),fontWeight:500}}>${remoteTyping?'typing…':presenceText(toUser.id)}</div>
+          </div>
+          <span role="button" tabIndex="0" title=${dmFavorites.has(String(toUser.id))?'Remove from favourites':'Add to favourites'} onClick=${()=>toggleFavorite(toUser.id)} style=${{border:'1px solid var(--bd)',background:'var(--sf)',borderRadius:'50%',width:28,height:28,cursor:'pointer',color:dmFavorites.has(String(toUser.id))?'#f472b6':'var(--tx3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill=${dmFavorites.has(String(toUser.id))?'currentColor':'none'} stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          </span>`:html`<span style=${{color:'var(--tx3)'}}>Select someone to chat</span>`}
         <input class="inp" placeholder="Search in conversation..." value=${msgSearch} onInput=${e=>setMsgSearch(e.target.value)} style=${{marginLeft:'auto',width:190,height:30,fontSize:12}}/>
       </div>
       ${pinnedMsgs.length?html`<div style=${{padding:'7px 16px',borderBottom:'1px solid var(--bd)',background:'rgba(245,158,11,.08)',display:'flex',gap:8,alignItems:'center',fontSize:12,color:'var(--tx2)'}}><b>📌 Pinned</b><span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${pinnedMsgs[0].content}</span></div>`:null}
       <div ref=${ref} onScroll=${handleScroll} onDragOver=${ev=>ev.preventDefault()} onDrop=${handleDmDrop} onClick=${closeMsgOverlays} style=${{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12}}>
-        ${isThreadLoading?html`
-          <div style=${{display:'flex',flexDirection:'column',gap:14,padding:'8px 0'}}>
-            ${[72,48,90,56,80].map((w,i)=>{const isR=i%2===0;return html`
-              <div key=${i} style=${{display:'flex',gap:8,alignItems:'flex-end',flexDirection:isR?'row':'row-reverse'}}>
-                <div style=${{width:28,height:28,borderRadius:'50%',background:'var(--sf2)',flexShrink:0,animation:'ap-shimmer 1.6s linear infinite',backgroundImage:'linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%)',backgroundSize:'200% 100%'}}></div>
-                <div style=${{width:w+'%',maxWidth:280,height:38,borderRadius:14,background:'var(--sf2)',animation:'ap-shimmer 1.6s linear infinite',animationDelay:(i*0.12)+'s',backgroundImage:'linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%)',backgroundSize:'200% 100%'}}></div>
-              </div>`;})}
-          </div>`:null}
                 ${(!isThreadLoading&&visibleMsgs.length===0)?html`<div style=${{textAlign:'center',paddingTop:60,color:'var(--tx3)',fontSize:13}}><div style=${{fontSize:28,marginBottom:6}}>👋</div><div style=${{fontWeight:600,marginBottom:4,color:'var(--tx2)'}}>${toUser?'Start a conversation with '+toUser.name:'Select someone'}</div></div>`:null}
         ${displayMsgs.map((m,i)=>{const isMe=m.sender===cu.id;const showT=i===displayMsgs.length-1||displayMsgs[i+1].sender!==m.sender;const prevM=i>0?displayMsgs[i-1]:null;const curDateLabel=m.date_label||(()=>{try{const d=new Date(m.ts);const now=new Date();const diff=now.setHours(0,0,0,0)-new Date(d).setHours(0,0,0,0);return diff===0?'Today':diff===86400000?'Yesterday':d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}catch{return '';}})();const prevDateLabel=prevM?(prevM.date_label||(()=>{try{const d=new Date(prevM.ts);const now=new Date();const diff=now.setHours(0,0,0,0)-new Date(d).setHours(0,0,0,0);return diff===0?'Today':diff===86400000?'Yesterday':d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}catch{return '';}})()):'__START__';const showDateSep=curDateLabel&&curDateLabel!==prevDateLabel;const replied=findMsg(m.reply_to);return html`${showDateSep?html`<div style=${{display:'flex',alignItems:'center',gap:10,color:'var(--tx3)',fontSize:11,fontWeight:600,margin:'8px 0 4px'}}><span style=${{height:1,background:'var(--bd)',flex:1}}></span><span style=${{padding:'2px 10px',borderRadius:999,border:'1px solid var(--bd)',background:'var(--sf)',whiteSpace:'nowrap'}}>${curDateLabel}</span><span style=${{height:1,background:'var(--bd)',flex:1}}></span></div>`:null}${firstUnreadIdx===i?html`<div style=${{display:'flex',alignItems:'center',gap:10,color:'var(--ac)',fontSize:10,fontWeight:800,margin:'6px 0'}}><span style=${{height:1,background:'var(--ac)',flex:1,opacity:.45}}></span>New messages<span style=${{height:1,background:'var(--ac)',flex:1,opacity:.45}}></span></div>`:null}
           <div key=${m.client_msg_id||m.id} style=${{display:'flex',gap:8,alignItems:'flex-end',flexDirection:isMe?'row-reverse':'row',animation:'dmBubbleIn .18s ease-out'}}>
@@ -6103,7 +6297,7 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
                   ${m.reactions.map(r=>{const mine=(r.users||[]).includes(cu.id);return html`<button onClick=${ev=>{ev.stopPropagation();toggleReaction(m.id,r.emoji);}} title=${mine?'Remove reaction':'Add reaction'} style=${{border:mine?'1px solid var(--ac)':'1px solid var(--bd)',background:mine?'rgba(99,102,241,.18)':'var(--sf)',color:'var(--tx)',borderRadius:999,fontSize:11,padding:'2px 7px',cursor:'pointer',boxShadow:mine?'0 0 0 1px rgba(99,102,241,.18)':'none',lineHeight:1.2}}>${r.emoji} ${r.count}</button>`;})}
                 </div>`:null}
               </div>
-              ${showT?html`<div style=${{display:'flex',alignItems:'center',gap:4,margin:'2px 2px 0',flexDirection:isMe?'row-reverse':'row'}}><span style=${{fontSize:10,color:m._failed?'var(--rd)':'var(--tx3)',fontFamily:'monospace'}}>${m._failed?'Failed':((m.time_label||(()=>{try{const d=new Date(m.ts);const h=d.getHours();const ap=h<12?'AM':'PM';return (h%12||12)+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap;}catch{return ago(m.ts);}})())+(m.edited?' · edited':''))}</span>${isMe&&!m._pending&&!m._failed?html`<span title=${m.status==='seen'?'Seen':m.status==='delivered'?'Delivered':'Sent'} style=${{display:'flex',alignItems:'center',color:m.status==='seen'?'var(--ac)':'var(--tx3)',opacity:0.8}}>${m.status==='seen'?html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`:(m.status==='delivered'?html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`:html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`)}</span>`:null}${m._failed?html`<button onClick=${()=>{setTxt(m.content||'');setMsgs(prev=>prev.filter(x=>x.id!==m.id));}} style=${{border:'none',background:'none',color:'var(--rd)',fontSize:10,cursor:'pointer',padding:'0 3px',fontWeight:700}}>↩ Retry</button>`:null}</div>`:null}
+              ${showT?html`<div style=${{display:'flex',alignItems:'center',gap:4,margin:'2px 2px 0',flexDirection:isMe?'row-reverse':'row'}}><span style=${{fontSize:10,color:m._failed?'var(--rd)':'var(--tx3)',fontFamily:'monospace'}}>${m._failed?'Failed':((m.time_label||(()=>{try{const d=new Date(m.ts);const h=d.getHours();const ap=h<12?'AM':'PM';return (h%12||12)+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap;}catch{return ago(m.ts);}})())+(m.edited?' · edited':''))}</span>${isMe&&!m._pending&&!m._failed?html`<span title=${m.status==='seen'||m.read?'Seen':m.delivered_at?'Delivered':'Sent'} style=${{display:'flex',alignItems:'center',color:m.status==='seen'||m.read?'var(--ac)':'var(--tx3)',opacity:0.8}}>${(m.status==='seen'||m.read)?html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`:(m.delivered_at?html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`:html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`)}</span>`:null}${m._failed?html`<button onClick=${()=>{setTxt(m.content||'');setMsgs(prev=>prev.filter(x=>x.id!==m.id));}} style=${{border:'none',background:'none',color:'var(--rd)',fontSize:10,cursor:'pointer',padding:'0 3px',fontWeight:700}}>↩ Retry</button>`:null}</div>`:null}
             </div>
           </div>`;})}
       </div>
@@ -6122,14 +6316,37 @@ function DirectMessages({cu,users,dmUnread,onDmRead,dmEnabled=true,initialUserId
         <button title="Start instant video call" class="btn" style=${{padding:'7px 10px',fontSize:16,flexShrink:0,background:startingMeet?'rgba(34,197,94,.18)':'linear-gradient(135deg,#16a34a,#22c55e)',color:'#fff',border:'none'}} onClick=${startGoogleMeetCall} disabled=${!toId||startingMeet}>${startingMeet?'…':html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style=${{display:'block'}}><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`}</button>
         <button title="Voice note" class="btn" style=${{padding:'7px 10px',fontSize:16,flexShrink:0,background:recording?'rgba(239,68,68,.2)':'var(--sf)'}} onClick=${toggleRecording} disabled=${!toId}>${recording?'■':html`<span style=${{width:30,height:30,borderRadius:99,background:'#050505',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:3,boxShadow:'0 8px 24px rgba(0,0,0,.28)'}}><i style=${{width:3,height:10,borderRadius:3,background:'#fff',display:'block'}}></i><i style=${{width:3,height:16,borderRadius:3,background:'#fff',display:'block'}}></i><i style=${{width:3,height:10,borderRadius:3,background:'#fff',display:'block'}}></i></span>`}</button>
         <textarea class="inp" style=${{flex:1,minHeight:40,maxHeight:100,resize:'none',padding:'9px 13px',lineHeight:1.5}} placeholder=${editingId?'Edit message...':'Message '+((toUser&&toUser.name)||'...')} value=${txt} onInput=${e=>{setTxt(e.target.value);sendTyping();}} onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}></textarea>
-        <button class="btn bp" style=${{padding:'9px 15px',flexShrink:0,opacity:sending?0.65:1}} onClick=${send} disabled=${!txt.trim()||!toId}>➤</button>
+        <button class="btn bp" style=${{padding:'9px 15px',flexShrink:0}} onClick=${send} disabled=${!txt.trim()||!toId}>➤</button>
       </div>
     </div>
   </div>`;
-}
+}, (prev, next) => {
+  // Return true = props are "equal enough" to skip re-rendering.
+  if (prev.cu?.id !== next.cu?.id) return false;
+  if (prev.dmEnabled !== next.dmEnabled) return false;
+  if (prev.initialUserId !== next.initialUserId) return false;
+  if (prev.markingAllDmsRead !== next.markingAllDmsRead) return false;
+  // onDmRead/onDmReadAll/onClearInitial are callbacks — comparing them would
+  // defeat the point (they often get new references per render even when
+  // the logic they perform hasn't changed), so they're deliberately
+  // excluded here.
+  const usersA = prev.users || [], usersB = next.users || [];
+  if (usersA.length !== usersB.length) return false;
+  if (usersA.length && usersA.map(u => u.id).join(',') !== usersB.map(u => u.id).join(',')) return false;
+  const dmA = prev.dmUnread || [], dmB = next.dmUnread || [];
+  if (dmA.length !== dmB.length) return false;
+  if (dmA.length) {
+    const keyOf = arr => arr.map(x => (x.sender || x.peer_id || x.user_id) + ':' + (x.cnt || 0)).sort().join(',');
+    if (keyOf(dmA) !== keyOf(dmB)) return false;
+  }
+  const setKey = s => s ? Array.from(s).sort().join(',') : '';
+  if (setKey(prev.onlineUsers) !== setKey(next.onlineUsers)) return false;
+  if (setKey(prev.awayUsers) !== setKey(next.awayUsers)) return false;
+  return true;
+});
 
 /* ─── NotifsView ──────────────────────────────────────────────────────────── */
-function NotifsView({notifs,reload,setData,onNavigate}){
+function NotifsView({notifs,reload,setData,onNavigate,onMarkAllRead,markingAllRead}){
   const NT={
     task_assigned:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,c:'var(--ac)',nav:'tasks',label:'View Tasks'}, status_change:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>`,c:'var(--cy)',nav:'tasks',label:'View Tasks'}, comment:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,c:'var(--pu)',nav:'tasks',label:'View Tasks'}, deadline:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,c:'var(--am)',nav:'tasks',label:'View Tasks'}, dm:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>`,c:'#06b6d4',nav:'dm',label:'Open Messages'}, project_added:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/></svg>`,c:'#10b981',nav:'projects',label:'View Projects'}, reminder:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,c:'#f59e0b',nav:'tasks',label:'View Tasks'}, call:{icon:html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.28a2 2 0 0 1 1.99-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6.29 6.29l1.24-.82a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,c:'#22c55e',nav:'dashboard',label:'Join Instant Meet'}, };
   const unread=safe(notifs).filter(n=>!n.read).length;
@@ -6138,16 +6355,11 @@ function NotifsView({notifs,reload,setData,onNavigate}){
     if(onNavigate){onNavigate(n);}
     reload();
   };
-  const clearAll=async()=>{
-    // Optimistic update — instantly mark all as read in UI, no visible lag
-    if(setData)setData(prev=>({...prev,notifs:(prev.notifs||[]).map(n=>({...n,read:1}))}));
-    api.put('/api/notifications/read-all',{}).then(()=>reload()).catch(()=>reload());
-  };
   return html`<div class="fi" style=${{height:'100%',overflowY:'auto',padding:'18px 22px',boxSizing:'border-box'}}>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
       <span style=${{fontSize:13,color:'var(--tx2)'}}>${unread>0?html`<b style=${{color:'var(--ac)'}}>${unread}</b> unread`:'All caught up!'}</span>
       <div style=${{display:'flex',gap:8}}>
-        ${unread>0?html`<button class="btn bg" style=${{fontSize:12}} onClick=${clearAll}>✓ Mark all read</button>`:null}
+        <button class="btn bg" style=${{fontSize:12,opacity:(unread===0||markingAllRead)?.45:1,cursor:(unread===0||markingAllRead)?'not-allowed':'pointer'}} disabled=${unread===0||markingAllRead} onClick=${onMarkAllRead}>${markingAllRead?'Marking…':'✓ Mark all read'}</button>
         ${notifs.length>0?html`<button class="btn brd" style=${{fontSize:12,color:'var(--rd)'}}
           onClick=${()=>{if(window.confirm('Clear all notifications?'))api.del('/api/notifications/all').then(reload);}}>🗑 Clear all</button>`:null}
       </div>
@@ -6187,6 +6399,28 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
   const [totpVerifying,setTotpVerifying]=useState(false);
   const [totpMsg,setTotpMsg]=useState('');
   const [twoFaLoading,setTwoFaLoading]=useState(false);
+  const [showSessions,setShowSessions]=useState(false);
+  const [sessions,setSessions]=useState(null);
+  const [sessionsLoading,setSessionsLoading]=useState(false);
+  const [sessionsMsg,setSessionsMsg]=useState('');
+  const loadSessions=async()=>{
+    setSessionsLoading(true);
+    try{
+      const r=await api.get('/api/auth/sessions',{quiet:true});
+      setSessions(Array.isArray(r)?r:(Array.isArray(r?.data)?r.data:[]));
+    }catch(_){setSessions([]);}
+    setSessionsLoading(false);
+  };
+  const revokeSession=async(sid)=>{
+    try{await api.del(`/api/auth/sessions/${sid}`);}catch(_){}
+    loadSessions();
+  };
+  const logoutEverywhere=async()=>{
+    if(!window.confirm('This logs out every device — including this one — and you\'ll need to sign in again. Continue?'))return;
+    setSessionsMsg('Logging out everywhere…');
+    try{await api.post('/api/auth/sessions/logout-all',{});}catch(_){}
+    window.location.reload();
+  };
 
   const resetPw=async()=>{
     if(!newPw.trim())return;
@@ -6213,7 +6447,7 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
     if(r.error){setTotpMsg(r.error);return;}
     setTotpMsg('✓ Google Authenticator configured!');
     setShowTotpSetup(false);setTotpData(null);
-    setTimeout(() => {setTotpMsg('');reload&&reload();},1500);
+    setTimeout(()=>{setTotpMsg('');reload&&reload();},1500);
   };
 
   const resetTotp=async()=>{
@@ -6223,7 +6457,7 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
     setTwoFaLoading(false);
     if(r.error){alert(r.error);return;}
     setTotpMsg('✓ 2FA reset');
-    setTimeout(() => {setTotpMsg('');reload&&reload();},1200);
+    setTimeout(()=>{setTotpMsg('');reload&&reload();},1200);
   };
 
   const toggleEmailOtp=async()=>{
@@ -6240,7 +6474,7 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
   const [showSecurity,setShowSecurity]=useState(false);
 
   return html`
-    <div class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16}}>
+    <div class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16,transform:(showSecurity||showTotpSetup)?'none':undefined}}>
       <div style=${{display:'flex',alignItems:'center',gap:10}}>
         <${Av} u=${u} size=${38}/>
         <div style=${{flex:1,minWidth:0}}>
@@ -6311,6 +6545,38 @@ function MemberRow({u,cu,i,total,reload,ROLE_COLORS,roleOptions}){
             </div>
             ${totpMsg?html`<div style=${{fontSize:11,color:totpMsg.startsWith('✓')?'var(--gn)':'var(--rd)',fontWeight:600,marginTop:8}}>${totpMsg}</div>`:null}
           </div>
+
+          ${isSelf?html`
+          <div style=${{marginTop:14,paddingTop:14,borderTop:'1px solid var(--bd)'}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+              <div class="lbl" style=${{marginBottom:0}}>Active sessions</div>
+              <button class="btn bg" style=${{padding:'5px 9px',fontSize:11}}
+                onClick=${()=>{setShowSessions(s=>!s);if(!showSessions&&!sessions)loadSessions();}}>
+                ${showSessions?'Hide':'🖥 Show'}
+              </button>
+            </div>
+            ${showSessions?html`<div style=${{display:'flex',flexDirection:'column',gap:6}}>
+              ${sessionsLoading?html`<div style=${{fontSize:11,color:'var(--tx3)'}}>Loading…</div>`:null}
+              ${!sessionsLoading&&sessions&&sessions.length===0?html`<div style=${{fontSize:11,color:'var(--tx3)'}}>No other sessions.</div>`:null}
+              ${(sessions||[]).map(s=>html`
+                <div key=${s.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'7px 10px',background:'var(--sf2)',borderRadius:8,border:'1px solid var(--bd)'}}>
+                  <div style=${{minWidth:0}}>
+                    <div style=${{fontSize:12,color:'var(--tx)',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+                      ${s.device_name||'Unknown device'}
+                      ${s.is_current?html`<span style=${{fontSize:9,fontWeight:800,color:'var(--gn)',background:'rgba(74,222,128,.12)',padding:'1px 6px',borderRadius:6}}>THIS DEVICE</span>`:null}
+                    </div>
+                    <div style=${{fontSize:10,color:'var(--tx3)',marginTop:2}}>${s.ip||'Unknown IP'} · last active ${ago?ago(s.last_seen):s.last_seen}</div>
+                  </div>
+                  ${!s.is_current?html`<button class="btn brd" style=${{padding:'5px 8px',fontSize:10,flexShrink:0}}
+                    onClick=${()=>revokeSession(s.id)}>Log out</button>`:null}
+                </div>`)}
+              <button class="btn bg" style=${{padding:'6px 10px',fontSize:11,color:'var(--rd)',marginTop:4,alignSelf:'flex-start'}}
+                onClick=${logoutEverywhere}>
+                🚪 Log out of all devices (including this one)
+              </button>
+              ${sessionsMsg?html`<div style=${{fontSize:11,color:'var(--tx2)'}}>${sessionsMsg}</div>`:null}
+            </div>`:null}
+          </div>`:null}
         </div>
       </div>`:null}
 
@@ -6381,7 +6647,8 @@ function TeamView({users,cu,reload,projects}){
   const [teams,setTeams]=useState([]);const [showNewTeam,setShowNewTeam]=useState(false);
   const [editTeam,setEditTeam]=useState(null);
   const [tName,setTName]=useState('');const [tLead,setTLead]=useState('');const [tMembers,setTMembers]=useState([]);
-  const [savingTeam,setSavingTeam]=useState(false);
+  const [savingTeam,setSavingTeam]=useState(false);const [teamErr,setTeamErr]=useState('');
+  const canManageTeams=cu&&(cu.role==='Admin'||cu.role==='Manager');
   const [memberSearch,setMemberSearch]=useState('');
   const [roleFilter,setRoleFilter]=useState('all');
   const [teamSearch,setTeamSearch]=useState('');
@@ -6421,18 +6688,28 @@ function TeamView({users,cu,reload,projects}){
     setShowNew(false);setName('');setEmail('');setPw('');setNewMemberTeam('');setNewMemberProject('');
   };
 
-  const openNewTeam=()=>{setEditTeam(null);setTName('');setTLead('');setTMembers([]);setShowNewTeam(true);};
-  const openEditTeam=t=>{setEditTeam(t);setTName(t.name);setTLead(t.lead_id||'');setTMembers(parseIdList(t.member_ids));setShowNewTeam(true);};
+  const openNewTeam=()=>{setEditTeam(null);setTName('');setTLead('');setTMembers([]);setTeamErr('');setShowNewTeam(true);};
+  const openEditTeam=t=>{setEditTeam(t);setTName(t.name);setTLead(t.lead_id||'');setTMembers(parseIdList(t.member_ids));setTeamErr('');setShowNewTeam(true);};
   const saveTeam=async()=>{
-    if(!tName.trim())return;
-    setSavingTeam(true);
-    const payload={name:tName,lead_id:tLead,member_ids:tMembers};
-    if(editTeam)await api.put('/api/teams/'+editTeam.id,payload);
-    else await api.post('/api/teams',payload);
-    setSavingTeam(false);setShowNewTeam(false);setEditTeam(null);
+    const trimmed=tName.trim();
+    if(!trimmed){setTeamErr('Team name is required.');return;}
+    setSavingTeam(true);setTeamErr('');
+    const payload={name:trimmed,lead_id:tLead,member_ids:tMembers};
+    const r=editTeam?await api.put('/api/teams/'+editTeam.id,payload):await api.post('/api/teams',payload);
+    setSavingTeam(false);
+    if(!r||r.error){
+      setTeamErr((r&&r.error)==='Forbidden'?"You don't have permission to manage teams — ask an Admin or Manager.":(r&&r.error)||'Could not save team. Please try again.');
+      return; // keep modal open so nothing is lost and the user sees why it failed
+    }
+    setShowNewTeam(false);setEditTeam(null);setTeamErr('');
     loadTeams();
   };
-  const delTeam=async id=>{if(!window.confirm('Delete this team?'))return;await api.del('/api/teams/'+id);loadTeams();};
+  const delTeam=async id=>{
+    if(!window.confirm('Delete this team?'))return;
+    const r=await api.del('/api/teams/'+id);
+    if(r&&r.error){alert(r.error==='Forbidden'?"You don't have permission to delete teams — ask an Admin or Manager.":r.error);return;}
+    loadTeams();
+  };
   const toggleMember=id=>{setTMembers(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);};
 
   const umap=safe(users).filter(u=>u&&u.id).reduce((a,u)=>{a[u.id]=u;return a;},{});
@@ -6508,7 +6785,8 @@ function TeamView({users,cu,reload,projects}){
             style=${{paddingLeft:30,height:34,fontSize:12}} onInput=${e=>setTeamSearch(e.target.value)}/>
         </div>
         <span style=${{fontSize:12,color:'var(--tx3)',flexShrink:0}}>${filteredTeams.length} of ${teams.length}</span>
-        <button class="btn bp" style=${{flexShrink:0}} onClick=${openNewTeam}>+ New Team</button>
+        ${canManageTeams?html`<button class="btn bp" style=${{flexShrink:0}} onClick=${openNewTeam}>+ New Team</button>`:
+          html`<span style=${{fontSize:11,color:'var(--tx3)',flexShrink:0}} title="Only Admins and Managers can create teams">🔒 Admin/Manager only</span>`}
       </div>
       ${teams.length===0&&teamSearch===''?html`
         <div style=${{textAlign:'center',padding:'40px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:12,border:'1px dashed var(--bd)'}}>
@@ -6527,7 +6805,7 @@ function TeamView({users,cu,reload,projects}){
             <div style=${{display:'flex',alignItems:'center',gap:10}}>
               <div style=${{width:40,height:40,borderRadius:12,background:'var(--ac3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>🏷</div>
               <div style=${{flex:1,minWidth:0}}>
-                <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)'}}>${t.name}</div>
+                <div style=${{fontSize:14,fontWeight:700,color:(t.name&&t.name.trim())?'var(--tx)':'var(--tx3)'}}>${(t.name&&t.name.trim())?t.name:'(Unnamed team)'}</div>
                 <span class="tx3-11">${members.length} member${members.length!==1?'s':''}</span>
               </div>
             </div>
@@ -6543,10 +6821,10 @@ function TeamView({users,cu,reload,projects}){
                   <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:500}}>${m.name}</div>
                 </div>`)}
             </div>
-            <div style=${{display:'flex',gap:6,marginTop:4}}>
+            ${canManageTeams?html`<div style=${{display:'flex',gap:6,marginTop:4}}>
               <button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEditTeam(t)}>✏️ Edit</button>
               <button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>delTeam(t.id)}>🗑 Delete</button>
-            </div>
+            </div>`:null}
           </div>`;
         })}
       </div>`:null}
@@ -6619,8 +6897,9 @@ function TeamView({users,cu,reload,projects}){
             </div>
             <div style=${{fontSize:11,color:'var(--tx3)',marginTop:4}}>${tMembers.length} member${tMembers.length!==1?'s':''} selected</div>
           </div>
+          ${teamErr?html`<div style=${{color:'var(--rd)',fontSize:12,padding:'7px 11px',background:'rgba(248,113,113,.07)',borderRadius:7}}>⚠ ${teamErr}</div>`:null}
           <div style=${{display:'flex',gap:9,justifyContent:'flex-end',paddingTop:4}}>
-            <button class="btn bg" onClick=${()=>setShowNewTeam(false)}>Cancel</button>
+            <button class="btn bg" onClick=${()=>{setShowNewTeam(false);setTeamErr('');}}>Cancel</button>
             <button class="btn bp" onClick=${saveTeam} disabled=${savingTeam||!tName.trim()}>
               ${savingTeam?'Saving...':editTeam?'Save Changes':'Create Team'}
             </button>
@@ -6641,18 +6920,17 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
   const [filterPriority,setFilterPriority]=useState('');
   const [filterType,setFilterType]=useState('');
   const [filterAssignee,setFilterAssignee]=useState(()=>initialAssignee==='me'&&cu?cu.id:'');
-  const [ticketSearch,setTicketSearch]=useState('');
-  const debouncedTicketSearch=useDebounce(ticketSearch,250);
+  const [showNew,setShowNew]=useState(false);
   const [editTicket,setEditTicket]=useState(null);
   const [detailTicket,setDetailTicket]=useState(null);
   const [comments,setComments]=useState([]);
   const [newComment,setNewComment]=useState('');
-  const [internalNote,setInternalNote]=useState('');
   const [savingComment,setSavingComment]=useState(false);
   const [showResolved,setShowResolved]=useState(false);
-  const [viewMode,setViewMode]=useState('grid');
-  const [dragTicketId,setDragTicketId]=useState(null);
-  const [copilotOpen,setCopilotOpen]=useState(true);
+  const [ticketSearch,setTicketSearch]=useState('');
+
+  const canEdit=cu&&cu.role!=='Developer'&&cu.role!=='Viewer';
+  const canDelete=cu&&['Admin','Manager','TeamLead'].includes(cu.role);
 
   const [nTitle,setNTitle]=useState('');
   const [nDesc,setNDesc]=useState('');
@@ -6663,263 +6941,365 @@ function TicketsView({cu,users,projects,onReload,activeTeam,initialAssignee,init
   const [nStatus,setNStatus]=useState('open');
   const [saving,setSaving]=useState(false);
 
-  const canEdit=cu&&cu.role!=='Developer'&&cu.role!=='Viewer';
-  const canDelete=cu&&['Admin','Manager','TeamLead'].includes(cu.role);
-  const umap=safe(users).reduce((a,u)=>{a[u.id]=u;return a;},{});
-  const ownerTypes=new Set(['billing_issue','upgrade_request','addon_request','server_issue','workspace_enquiry','payment_issue','security_issue']);
-  const slaText=t=>{if(!t.resolution_due_at||['resolved','closed'].includes(t.status))return ''; const ms=new Date(t.resolution_due_at).getTime()-Date.now(); if(Number.isNaN(ms))return ''; const mins=Math.max(0,Math.round(ms/60000)); if(ms<0)return 'SLA breached'; if(mins<60)return 'SLA '+mins+'m'; return 'SLA '+Math.round(mins/60)+'h';};
-
-  const TYPE_CFG={
-    bug:{icon:'🐛',color:'var(--rd)',bg:'rgba(248,113,113,.12)',label:'Bug'},
-    feature:{icon:'✨',color:'var(--ac)',bg:'rgba(90,140,255,.10)',label:'Feature'},
-    improvement:{icon:'🔧',color:'var(--cy)',bg:'rgba(34,211,238,.12)',label:'Improvement'},
-    task:{icon:'✅',color:'var(--gn)',bg:'rgba(74,222,128,.12)',label:'Task'},
-    question:{icon:'❓',color:'var(--pu)',bg:'rgba(167,139,250,.12)',label:'Question'},
-  };
-  const PRIORITY_CFG={
-    critical:{icon:'🔴',color:'#ef4444',label:'Critical',slaH:4},
-    high:{icon:'🟠',color:'#f97316',label:'High',slaH:12},
-    medium:{icon:'🟡',color:'#eab308',label:'Medium',slaH:24},
-    low:{icon:'🟢',color:'#22c55e',label:'Low',slaH:72},
-  };
-  const STATUS_CFG={
-    open:{icon:'🔵',color:'var(--cy)',label:'Open'},
-    'in-progress':{icon:'🟡',color:'var(--am)',label:'In Progress'},
-    review:{icon:'🟣',color:'var(--pu)',label:'In Review'},
-    resolved:{icon:'🟢',color:'var(--gn)',label:'Resolved'},
-    closed:{icon:'⚫',color:'var(--tx3)',label:'Closed'},
-  };
-  const STATUS_ORDER=['open','in-progress','review','resolved','closed'];
-
   const load=useCallback(async()=>{
-    setBusy(true);
-    try{
-      const url=activeTeam?'/api/tickets?team_id='+activeTeam.id:'/api/tickets';
-      const d=await api.get(url);
-      setTickets(Array.isArray(d)?d:[]);
-    }finally{setBusy(false);}
-  },[activeTeam]);
+    const cached=ptInstantCacheGet(ticketCacheKey,[]);
+    if(Array.isArray(cached)&&cached.length){setTickets(cached);setBusy(false);}else setBusy(true);
+    const url=activeTeam?'/api/tickets?team_id='+activeTeam.id:'/api/tickets';
+    const d=await api.get(url,{quiet:true,timeoutMs:7000});
+    if(Array.isArray(d)){setTickets(d);ptInstantCacheSet(ticketCacheKey,d);ptInstantCacheSet(url,d);}
+    setBusy(false);
+  },[activeTeam,ticketCacheKey]);
   useEffect(()=>{load();},[load]);
   useEffect(()=>{
-    if(!initialTicketId||!tickets.length)return;
-    const t=tickets.find(x=>String(x.id)===String(initialTicketId));
-    if(t){openDetail(t);onClearInitialTicket&&onClearInitialTicket();try{history.replaceState(null,'',workspaceBasePath(cu)+'tickets');}catch(e){}}
+    if(!initialTicketId)return;
+    const t=(tickets||[]).find(x=>String(x.id)===String(initialTicketId));
+    if(t){setDetailTicket(t);openDetail(t);if(onClearInitialTicket)onClearInitialTicket();}
   },[initialTicketId,tickets]);
 
-  const slaInfo=(t)=>{
-    const cfg=PRIORITY_CFG[t.priority]||PRIORITY_CFG.medium;
-    const created=new Date(t.created||Date.now()).getTime();
-    const due=created+(cfg.slaH*60*60*1000);
-    const left=due-Date.now();
-    const done=['resolved','closed'].includes(t.status);
-    const mins=Math.round(Math.abs(left)/60000);
-    const label=done?'Completed':left<0?('Breached '+(mins>=60?Math.floor(mins/60)+'h':mins+'m')):(mins>=60?Math.floor(mins/60)+'h left':mins+'m left');
-    return {due,left,done,label,risk:!done&&(left<0?'breach':left<2*60*60*1000?'hot':left<6*60*60*1000?'warn':'ok')};
-  };
-  const riskScore=(t)=>{const s=slaInfo(t);return s.risk==='breach'?100:s.risk==='hot'?85:s.risk==='warn'?60:(t.priority==='critical'?50:t.priority==='high'?35:15);};
-  const suggestedAssignee=()=>safe(users).find(u=>['Developer','Tester','TeamLead'].includes(u.role))||safe(users)[0];
-  const aiSummary=(t)=>{
-    const p=(PRIORITY_CFG[t.priority]||{}).label||t.priority;
-    const s=slaInfo(t);
-    const owner=t.assignee&&umap[t.assignee]?umap[t.assignee].name:'No owner';
-    return `${p} ${t.type||'ticket'} · ${owner} · SLA ${s.label}. ${t.description?String(t.description).slice(0,130):'No description yet.'}`;
-  };
-
-  const visibleTickets=useMemo(()=>tickets.filter(t=>{
-    const isResolved=t.status==='resolved'||t.status==='closed';
-    if(isResolved&&!showResolved&&filterStatus!=='resolved'&&filterStatus!=='closed')return false;
+  const visibleTickets=useMemo(()=>{
+    return tickets.filter(t=>{
+      const isResolved=t.status==='resolved'||t.status==='closed';
+      if(isResolved&&!showResolved&&filterStatus!=='resolved'&&filterStatus!=='closed')return false;
       if(filterStatus==='sla_risk'&&!(t.resolution_due_at&&t.status!=='resolved'&&t.status!=='closed'))return false;
       if(filterStatus==='owner_enquiries'&&t.scope!=='owner')return false;
-    if(filterStatus&&t.status!==filterStatus)return false;
-    if(filterPriority&&t.priority!==filterPriority)return false;
-    if(filterType&&t.type!==filterType)return false;
-    if(filterAssignee&&t.assignee!==filterAssignee)return false;
-    const q=debouncedTicketSearch.trim().toLowerCase();
-    if(q&&!String([t.id,t.title,t.description,t.type,t.priority,t.status,(umap[t.assignee]||{}).name].join(' ')).toLowerCase().includes(q))return false;
-    return true;
-  }),[tickets,showResolved,filterStatus,filterPriority,filterType,filterAssignee,debouncedTicketSearch,users]);
+      if(filterStatus&&t.status!==filterStatus)return false;
+      if(filterPriority&&t.priority!==filterPriority)return false;
+      if(filterType&&t.type!==filterType)return false;
+      if(filterAssignee&&t.assignee!==filterAssignee)return false;
+      const q=ticketSearch.trim().toLowerCase();
+      if(q&&!String([t.id,t.title,t.description,t.type,t.priority,t.status].join(' ')).toLowerCase().includes(q))return false;
+      return true;
+    });
+  },[tickets,showResolved,filterStatus,filterPriority,filterType,filterAssignee,ticketSearch]);
 
   const saveTicket=async()=>{
     if(!nTitle.trim())return;
     if(saving)return;
     setSaving(true);
-    setSaving(true);
-    const payload={title:nTitle.trim(),description:nDesc,type:nType,priority:nPriority,assignee:nAssignee,project:nProject,status:nStatus,team_id:activeTeam?activeTeam.id:''};
-    try{ if(editTicket){await api.put('/api/tickets/'+editTicket.id,payload);} else {await api.post('/api/tickets',payload);} }
-    finally{setSaving(false);setShowNew(false);setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');load();}
+    const payload={title:nTitle,description:nDesc,type:nType,priority:nPriority,assignee:nAssignee,project:nProject,status:nStatus,team_id:activeTeam?activeTeam.id:''};
+    const now=new Date().toISOString();
+    const tempId='tmp_tkt_'+Date.now();
+    const optimistic=editTicket?{...editTicket,...payload,updated:now}:{...payload,id:tempId,workspace_id:'',reporter:cu&&cu.id,created:now,updated:now,tags:'[]'};
+    setTickets(prev=>{const next=editTicket?prev.map(t=>t.id===editTicket.id?optimistic:t):[optimistic,...prev];ptInstantCacheSet(ticketCacheKey,next);return next;});
+    setShowNew(false);setEditTicket(null);setSaving(false);
+    setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee(cu&&(cu.role==='Developer'||cu.role==='Tester')?cu.id:'');setNProject('');setNStatus('open');
+    try{
+      const saved=editTicket?await api.put('/api/tickets/'+editTicket.id,payload,{quiet:true,timeoutMs:10000}):await api.post('/api/tickets',payload,{quiet:true,timeoutMs:10000});
+      if(saved&&saved.error){throw new Error(saved.error);}
+      if(saved&&saved.id){setTickets(prev=>{const next=prev.map(t=>t.id===(editTicket?editTicket.id:tempId)?saved:t);ptInstantCacheSet(ticketCacheKey,next);return next;});}
+      try{window._pfToast&&window._pfToast('success','Ticket saved','Ticket updated instantly.');}catch(_e){}
+    }catch(e){
+      setTickets(prev=>{const next=editTicket?prev.map(t=>t.id===editTicket.id?editTicket:t):prev.filter(t=>t.id!==tempId);ptInstantCacheSet(ticketCacheKey,next);return next;});
+      try{window._pfToast&&window._pfToast('error','Ticket save failed',String(e&&e.message||'Please retry.'));}catch(_e){alert('Ticket save failed. Please retry.');}
+    }
   };
-  const openEdit=(t)=>{setEditTicket(t);setNTitle(t.title||'');setNDesc(t.description||'');setNType(t.type||'bug');setNPriority(t.priority||'medium');setNAssignee(t.assignee||'');setNProject(t.project||'');setNStatus(t.status||'open');setShowNew(true);};
-  const openDetail=async(t)=>{setDetailTicket(t);setCopilotOpen(true);try{const c=await api.get('/api/tickets/'+t.id+'/comments');setComments(Array.isArray(c)?c:[]);}catch(e){setComments([]);}};
-  const postComment=async(internal=false)=>{
-    const content=(internal?internalNote:newComment).trim();
+
+  const openEdit=(t)=>{
+    setEditTicket(t);setNTitle(t.title);setNDesc(t.description||'');setNType(t.type||'bug');
+    setNPriority(t.priority||'medium');setNAssignee(t.assignee||'');setNProject(t.project||'');setNStatus(t.status||'open');
+    setShowNew(true);
+  };
+
+  const openDetail=async(t)=>{
+    setDetailTicket(t);
+    const c=await api.get('/api/tickets/'+t.id+'/comments');
+    setComments(Array.isArray(c)?c:[]);
+  };
+
+  const postComment=async()=>{
+    const content=newComment.trim();
     if(!content||!detailTicket)return;
+    const temp={id:'tmp_comment_'+Date.now(),ticket_id:detailTicket.id,user_id:cu&&cu.id,content,created:new Date().toISOString(),_saving:true};
+    setNewComment('');
     setSavingComment(true);
-    try{await api.post('/api/tickets/'+detailTicket.id+'/comments',{content:internal?'[internal] '+content:content});if(internal)setInternalNote('');else setNewComment('');const c=await api.get('/api/tickets/'+detailTicket.id+'/comments');setComments(Array.isArray(c)?c:[]);}finally{setSavingComment(false);}
+    setComments(prev=>[...prev,temp]);
+    try{
+      const saved=await api.post('/api/tickets/'+detailTicket.id+'/comments',{content},{quiet:true,timeoutMs:12000});
+      setComments(prev=>prev.map(c=>c.id===temp.id?(saved&&saved.id?saved:{...temp,_saving:false}):c));
+    }catch(e){
+      setComments(prev=>prev.filter(c=>c.id!==temp.id));
+      setNewComment(content);
+      try{window._pfToast&&window._pfToast('error','Comment not saved','Please retry.');}catch(_e){}
+    }finally{
+      setSavingComment(false);
+    }
   };
-  const quickStatus=async(t,status)=>{setTickets(prev=>prev.map(x=>x.id===t.id?{...x,status}:x));if(detailTicket&&detailTicket.id===t.id)setDetailTicket(prev=>({...prev,status}));await api.put('/api/tickets/'+t.id,{status});load();};
-  const del=async(id)=>{if(!window.confirm('Delete this ticket?'))return;await api.del('/api/tickets/'+id);setDetailTicket(null);load();};
+
+  const quickStatus=async(t,status)=>{
+    const prevTicket={...t};
+    setTickets(prev=>{const next=prev.map(x=>x.id===t.id?{...x,status,updated:new Date().toISOString()}:x);ptInstantCacheSet(ticketCacheKey,next);return next;});
+    if(detailTicket&&detailTicket.id===t.id)setDetailTicket(prev=>({...prev,status,updated:new Date().toISOString()}));
+    try{
+      const r=await api.put('/api/tickets/'+t.id,{status},{quiet:true,timeoutMs:12000});
+      if(r&&r.error)throw new Error(r.error);
+      if(r&&r.id)setTickets(prev=>{const next=prev.map(x=>x.id===t.id?r:x);ptInstantCacheSet(ticketCacheKey,next);return next;});
+    }catch(e){
+      setTickets(prev=>{const next=prev.map(x=>x.id===t.id?prevTicket:x);ptInstantCacheSet(ticketCacheKey,next);return next;});
+      if(detailTicket&&detailTicket.id===t.id)setDetailTicket(prevTicket);
+      try{window._pfToast&&window._pfToast('error','Status update failed','Please retry.');}catch(_e){}
+    }
+  };
+
+  const del=async(id)=>{
+    if(!window.confirm('Delete this ticket?'))return;
+    const old=tickets;
+    setTickets(prev=>{const next=prev.filter(t=>t.id!==id);ptInstantCacheSet(ticketCacheKey,next);return next;});
+    setDetailTicket(null);
+    try{const r=await api.del('/api/tickets/'+id,{quiet:true,timeoutMs:12000});if(r&&r.error)throw new Error(r.error);}catch(e){setTickets(old);try{window._pfToast&&window._pfToast('error','Delete failed','Please retry.');}catch(_e){}}
+  };
+
+  const TYPE_CFG={
+    bug:{icon:'🐛',color:'var(--rd)',bg:'rgba(248,113,113,.12)',label:'Bug'}, support_request:{icon:'🎧',color:'var(--cy)',bg:'rgba(34,211,238,.12)',label:'Support'}, access_request:{icon:'🔐',color:'var(--pu)',bg:'rgba(167,139,250,.12)',label:'Access'}, incident:{icon:'🚨',color:'#ef4444',bg:'rgba(239,68,68,.12)',label:'Incident'}, change_request:{icon:'🔁',color:'var(--am)',bg:'rgba(245,158,11,.12)',label:'Change'}, feature:{icon:'✨',color:'var(--ac)',bg:'rgba(90,140,255,.10)',label:'Feature'}, improvement:{icon:'🔧',color:'var(--cy)',bg:'rgba(34,211,238,.12)',label:'Improvement'}, task:{icon:'✅',color:'var(--gn)',bg:'rgba(74,222,128,.12)',label:'Task'}, question:{icon:'❓',color:'var(--pu)',bg:'rgba(167,139,250,.12)',label:'Question'}, billing_issue:{icon:'💳',color:'#f59e0b',bg:'rgba(245,158,11,.12)',label:'Billing enquiry'}, upgrade_request:{icon:'⬆️',color:'var(--ac)',bg:'rgba(90,140,255,.12)',label:'Upgrade request'}, addon_request:{icon:'🧩',color:'var(--gn)',bg:'rgba(34,197,94,.12)',label:'Add-on request'}, server_issue:{icon:'🖥️',color:'#ef4444',bg:'rgba(239,68,68,.12)',label:'Server issue'}, workspace_enquiry:{icon:'🏢',color:'var(--cy)',bg:'rgba(34,211,238,.12)',label:'Workspace enquiry'}, };
+  const PRIORITY_CFG={
+    critical:{icon:'🔴',color:'#ef4444',label:'Critical'}, high:{icon:'🟠',color:'#f97316',label:'High'}, medium:{icon:'🟡',color:'#eab308',label:'Medium'}, low:{icon:'🟢',color:'#22c55e',label:'Low'}, };
+  const STATUS_CFG={
+    open:{icon:'🔵',color:'var(--cy)',label:'Open'}, in_review:{icon:'🟣',color:'var(--pu)',label:'In Review'}, waiting_for_customer:{icon:'⏳',color:'#f59e0b',label:'Waiting for customer'}, in_progress:{icon:'🟡',color:'var(--am)',label:'In Progress'}, 'in-progress':{icon:'🟡',color:'var(--am)',label:'In Progress'}, review:{icon:'🟣',color:'var(--pu)',label:'In Review'}, resolved:{icon:'🟢',color:'var(--gn)',label:'Resolved'}, closed:{icon:'⚫',color:'var(--tx3)',label:'Closed'}, };
+  // BUG FIX ("In Progress" — and "In Review" — appearing twice in the status
+  // dropdown/filter chips): STATUS_CFG intentionally keeps both 'in_progress'
+  // and legacy 'in-progress' (and both 'in_review' and legacy 'review') as
+  // separate keys so OLD tickets stored with either spelling still resolve to
+  // a correct icon/color/label wherever a ticket's own .status is looked up.
+  // But anywhere that builds a list of *selectable options* (the New Ticket
+  // status <select>, the status filter chips) was iterating
+  // Object.entries(STATUS_CFG) directly, which surfaces both aliases as if
+  // they were different statuses. STATUS_OPTIONS is the deduped, canonical
+  // list — matching TICKET_STATUS_FLOW in app.py — for anywhere that needs
+  // one option per real status rather than a raw dump of every lookup key.
+  const STATUS_OPTIONS=['open','in_review','waiting_for_customer','in_progress','resolved','closed'].map(v=>[v,STATUS_CFG[v]]);
 
   const statCounts=Object.keys(STATUS_CFG).reduce((a,s)=>{a[s]=tickets.filter(t=>t.status===s).length;return a;},{});
+  const myTicketsCount=tickets.filter(t=>t.assignee===cu.id&&t.status!=='closed'&&t.status!=='resolved').length;
   const unresolvedTickets=tickets.filter(t=>!['resolved','closed'].includes(t.status)).length;
   const criticalTickets=tickets.filter(t=>t.priority==='critical'&&!['resolved','closed'].includes(t.status)).length;
   const unassignedTickets=tickets.filter(t=>!t.assignee&&!['resolved','closed'].includes(t.status)).length;
-  const myTicketsCount=tickets.filter(t=>t.assignee===cu.id&&t.status!=='closed'&&t.status!=='resolved').length;
-  const breachedTickets=tickets.filter(t=>slaInfo(t).risk==='breach').length;
-  const atRiskTickets=tickets.filter(t=>['hot','warn'].includes(slaInfo(t).risk)).length;
-  const velocity=tickets.filter(t=>['resolved','closed'].includes(t.status)).length;
-  const reopenRisk=tickets.filter(t=>String(t.description||'').toLowerCase().includes('again')||String(t.title||'').toLowerCase().includes('reopen')).length;
-  const suggested=suggestedAssignee();
 
-  const TicketCard=({t,compact})=>{
-    const tc=TYPE_CFG[t.type]||TYPE_CFG.bug, pc=PRIORITY_CFG[t.priority]||PRIORITY_CFG.medium, sc=STATUS_CFG[t.status]||STATUS_CFG.open;
-    const assignee=t.assignee?umap[t.assignee]:null, sla=slaInfo(t), risk=riskScore(t);
-    return html`<div draggable=${true} onDragStart=${()=>setDragTicketId(t.id)} onClick=${()=>openDetail(t)}
-      style=${{position:'relative',padding:compact?'10px':'13px',border:'1px solid '+(sla.risk==='breach'?'rgba(239,68,68,.55)':sla.risk==='hot'?'rgba(249,115,22,.50)':'var(--bd)'),borderRadius:16,background:'linear-gradient(135deg,rgba(255,255,255,.055),rgba(255,255,255,.018))',boxShadow:sla.risk==='breach'?'0 0 28px rgba(239,68,68,.12)':'0 12px 32px rgba(0,0,0,.18)',cursor:'pointer',overflow:'hidden',transition:'transform .16s ease,border-color .16s ease'}}
-      onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.borderColor='var(--ac)';}}
-      onMouseLeave=${e=>{e.currentTarget.style.transform='';e.currentTarget.style.borderColor=(sla.risk==='breach'?'rgba(239,68,68,.55)':sla.risk==='hot'?'rgba(249,115,22,.50)':'var(--bd)');}}>
-      <div style=${{position:'absolute',inset:'0 0 auto 0',height:3,background:`linear-gradient(90deg,${pc.color},transparent)`,opacity:.9}}></div>
-      <div style=${{display:'flex',gap:10,alignItems:'flex-start'}}>
-        <div style=${{width:34,height:34,borderRadius:12,background:tc.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:17,flexShrink:0}}>${tc.icon}</div>
-        <div style=${{flex:1,minWidth:0}}>
-          <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:5}}><span class="id-badge id-ticket" style=${{fontSize:9}}>${t.id}</span><span style=${{fontSize:12,fontWeight:900,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.title}</span></div>
-          ${!compact?html`<div style=${{fontSize:11,color:'var(--tx3)',lineHeight:1.35,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden',marginBottom:8}}>${t.description||'No description provided'}</div>`:null}
-          <div style=${{display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:pc.color+'22',color:pc.color,fontWeight:800}}>${pc.icon} ${pc.label}</span>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:sc.color+'22',color:sc.color,fontWeight:800}}>${sc.icon} ${sc.label}</span>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:sla.risk==='breach'?'rgba(239,68,68,.16)':sla.risk==='hot'?'rgba(249,115,22,.16)':'rgba(59,130,246,.12)',color:sla.risk==='breach'?'#f87171':sla.risk==='hot'?'#fb923c':'var(--tx3)',fontWeight:800}}>⏱ ${sla.label}</span>
+  const umap=safe(users).reduce((a,u)=>{a[u.id]=u;return a;},{});
+  const ownerTypes=new Set(['billing_issue','upgrade_request','addon_request','server_issue','workspace_enquiry','payment_issue','security_issue']);
+  const slaText=t=>{if(!t.resolution_due_at||['resolved','closed'].includes(t.status))return ''; const ms=new Date(t.resolution_due_at).getTime()-Date.now(); if(Number.isNaN(ms))return ''; const mins=Math.max(0,Math.round(ms/60000)); if(ms<0)return 'SLA breached'; if(mins<60)return 'SLA '+mins+'m'; return 'SLA '+Math.round(mins/60)+'h';};
+
+  const FORM=html`
+    <div class="ov" onClick=${e=>e.target===e.currentTarget&&(setShowNew(false),setEditTicket(null))}>
+      <div class="mo fi" style=${{maxWidth:560}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+          <h2 style=${{fontSize:16,fontWeight:700,color:'var(--tx)'}}>${editTicket?'✏️ Edit Ticket':'🎫 New Ticket'}</h2>
+          <button class="btn bg" style=${{padding:'7px 10px'}} onClick=${()=>{setShowNew(false);setEditTicket(null);}}>✕</button>
+        </div>
+        <div style=${{display:'flex',flexDirection:'column',gap:13}}>
+          <div style=${{fontSize:12,color:'var(--tx2)',lineHeight:1.5,padding:'8px 10px',border:'1px solid var(--bd)',borderRadius:12,background:'var(--bg)'}}>
+            Functional tickets stay inside this workspace. Billing, upgrade, add-on, server and workspace enquiries are routed to the Project Tracker owner panel.
           </div>
-        </div>
-        ${assignee?html`<${Av} u=${assignee} size=${26}/>`:html`<div title="Unassigned" style=${{width:26,height:26,borderRadius:99,display:'grid',placeItems:'center',background:'rgba(245,158,11,.16)',fontSize:13}}>👤</div>`}
-      </div>
-      <div style=${{marginTop:10,height:4,borderRadius:99,background:'rgba(255,255,255,.06)',overflow:'hidden'}}><div style=${{width:Math.min(100,risk)+'%',height:'100%',background:risk>80?'#ef4444':risk>50?'#f59e0b':'var(--ac)',borderRadius:99}}></div></div>
-    </div>`;
-  };
-
-  const FORM=html`<div class="ov" onClick=${e=>e.target===e.currentTarget&&(setShowNew(false),setEditTicket(null))}>
-    <div class="mo fi" style=${{maxWidth:620}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><h2 style=${{fontSize:16,fontWeight:900,color:'var(--tx)'}}>${editTicket?'✏️ Edit Ticket':'🎫 New Ticket'}</h2><button class="btn bg" onClick=${()=>{setShowNew(false);setEditTicket(null);}}>✕</button></div>
-      <div style=${{display:'grid',gap:12}}>
-        <div><label class="lbl">Title *</label><input class="inp" value=${nTitle} onInput=${e=>setNTitle(e.target.value)} placeholder="Brief description of the issue"/></div>
-        <div><label class="lbl">Description</label><textarea class="inp" rows="4" style=${{resize:'vertical'}} value=${nDesc} onInput=${e=>setNDesc(e.target.value)} placeholder="Steps, impact, expected vs actual, logs…"></textarea></div>
-        <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
-          <div><label class="lbl">Type</label><select class="inp" value=${nType} onChange=${e=>setNType(e.target.value)}>${Object.entries(TYPE_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}</select></div>
-          <div><label class="lbl">Priority</label><select class="inp" value=${nPriority} onChange=${e=>setNPriority(e.target.value)}>${Object.entries(PRIORITY_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}</select></div>
-          <div><label class="lbl">Status</label><select class="inp" value=${nStatus} onChange=${e=>setNStatus(e.target.value)}>${Object.entries(STATUS_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}</select></div>
-        </div>
-        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          <div><label class="lbl">Assignee</label><select class="inp" value=${nAssignee} onChange=${e=>setNAssignee(e.target.value)}><option value="">— Unassigned —</option>${safe(users).map(u=>html`<option key=${u.id} value=${u.id}>${u.name}</option>`)}</select></div>
-          <div><label class="lbl">Project</label><select class="inp" value=${nProject} onChange=${e=>setNProject(e.target.value)}><option value="">— No project —</option>${safe(projects).map(p=>html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</select></div>
-        </div>
-        ${!nAssignee&&suggested?html`<button class="btn bg" style=${{justifySelf:'start'}} onClick=${()=>setNAssignee(suggested.id)}>🤖 Assign suggested owner: ${suggested.name}</button>`:null}
-        <div style=${{display:'flex',gap:9,justifyContent:'flex-end'}}><button class="btn bg" onClick=${()=>{setShowNew(false);setEditTicket(null);}}>Cancel</button><button class="btn bp" disabled=${saving||!nTitle.trim()} onClick=${saveTicket}>${saving?'Saving…':editTicket?'Save Changes':'Create Ticket'}</button></div>
-      </div>
-    </div>
-  </div>`;
-
-  const DETAIL=detailTicket?html`<div class="ov" onClick=${e=>e.target===e.currentTarget&&setDetailTicket(null)}>
-    <div class="mo fi" style=${{width:'min(1040px,94vw)',maxHeight:'88vh',display:'grid',gridTemplateColumns:copilotOpen?'1fr 300px':'1fr',gap:0,padding:0,overflow:'hidden'}}>
-      <div style=${{display:'flex',flexDirection:'column',minHeight:0}}>
-        <div style=${{padding:'18px 20px',borderBottom:'1px solid var(--bd)',display:'flex',justifyContent:'space-between',gap:12}}>
-          <div style=${{minWidth:0}}><div style=${{display:'flex',gap:8,alignItems:'center',marginBottom:7}}><span class="id-badge id-ticket">${detailTicket.id}</span><span style=${{fontSize:11,color:(PRIORITY_CFG[detailTicket.priority]||{}).color,fontWeight:900}}>${(PRIORITY_CFG[detailTicket.priority]||{}).icon} ${(PRIORITY_CFG[detailTicket.priority]||{}).label}</span></div><h2 style=${{fontSize:16,fontWeight:900,color:'var(--tx)',margin:0}}>${detailTicket.title}</h2></div>
-          <div style=${{display:'flex',gap:8,alignItems:'start'}}><button class="btn bg" onClick=${()=>setCopilotOpen(!copilotOpen)}>🤖 AI</button>${canEdit?html`<button class="btn bg" onClick=${()=>openEdit(detailTicket)}>Edit</button>`:null}${canDelete?html`<button class="btn bg" style=${{color:'var(--rd)'}} onClick=${()=>del(detailTicket.id)}>Delete</button>`:null}<button class="btn bg" onClick=${()=>setDetailTicket(null)}>✕</button></div>
-        </div>
-        <div style=${{padding:20,overflow:'auto',display:'grid',gap:16}}>
-          <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}}>
-            <div class="card"><div class="lbl">Status</div><select class="inp" value=${detailTicket.status} onChange=${e=>quickStatus(detailTicket,e.target.value)}>${Object.entries(STATUS_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}</select></div>
-            <div class="card"><div class="lbl">SLA</div><div style=${{fontSize:12,fontWeight:900,color:slaInfo(detailTicket).risk==='breach'?'#ef4444':'var(--tx)'}}>⏱ ${slaInfo(detailTicket).label}</div></div>
-            <div class="card"><div class="lbl">Assignee</div><div style=${{display:'flex',alignItems:'center',gap:8}}>${detailTicket.assignee&&umap[detailTicket.assignee]?html`<${Av} u=${umap[detailTicket.assignee]} size=${24}/><span style=${{fontSize:12,fontWeight:800}}>${umap[detailTicket.assignee].name}</span>`:html`<span style=${{fontSize:12,color:'var(--tx3)'}}>Unassigned</span>`}</div></div>
+          <div>
+            <label class="lbl">Title *</label>
+            <input class="inp" value=${nTitle} onInput=${e=>setNTitle(e.target.value)} placeholder="Brief description of the issue"/>
           </div>
-          <div class="card"><div class="lbl">Description</div><div style=${{fontSize:13,color:'var(--tx2)',lineHeight:1.55,whiteSpace:'pre-wrap'}}>${detailTicket.description||'No description yet.'}</div></div>
-          <div class="card"><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><b style=${{fontSize:13}}>Activity timeline</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${comments.length} update${comments.length!==1?'s':''}</span></div>
-            <div style=${{display:'grid',gap:10,maxHeight:230,overflow:'auto'}}>
-              <div style=${{display:'flex',gap:9}}><div style=${{width:8,height:8,borderRadius:99,background:'var(--ac)',marginTop:5}}></div><div><div style=${{fontSize:11,fontWeight:900}}>Ticket created</div><div style=${{fontSize:9,color:'var(--tx3)'}}>${new Date(detailTicket.created).toLocaleString()}</div></div></div>
-              ${comments.map(c=>{const internal=String(c.content||'').startsWith('[internal]');return html`<div key=${c.id||c.created} style=${{display:'flex',gap:9}}><div style=${{width:8,height:8,borderRadius:99,background:internal?'#f59e0b':'var(--gn)',marginTop:5}}></div><div style=${{flex:1}}><div style=${{fontSize:11,fontWeight:900}}>${internal?'Internal note':'Comment'} · ${(umap[c.user_id]||{}).name||'User'}</div><div style=${{fontSize:12,color:'var(--tx2)',whiteSpace:'pre-wrap'}}>${internal?String(c.content).replace('[internal] ',''):c.content}</div><div style=${{fontSize:9,color:'var(--tx3)',marginTop:2}}>${new Date(c.created||Date.now()).toLocaleString()}</div></div></div>`})}
+          <div>
+            <label class="lbl">Description</label>
+            <textarea class="inp" rows="3" style=${{resize:'vertical'}} value=${nDesc} onInput=${e=>setNDesc(e.target.value)} placeholder="Steps to reproduce, expected vs actual behaviour..."></textarea>
+          </div>
+          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+            <div>
+              <label class="lbl">Type</label>
+              <select class="inp" value=${nType} onChange=${e=>setNType(e.target.value)}>
+                ${Object.entries(TYPE_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Priority</label>
+              <select class="inp" value=${nPriority} onChange=${e=>setNPriority(e.target.value)}>
+                ${Object.entries(PRIORITY_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Status</label>
+              <select class="inp" value=${nStatus} onChange=${e=>setNStatus(e.target.value)}>
+                ${STATUS_OPTIONS.map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+              </select>
             </div>
           </div>
           <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <div class="card"><div class="lbl">Customer / public reply</div><textarea class="inp" rows="3" value=${newComment} onInput=${e=>setNewComment(e.target.value)} placeholder="Add reply…"></textarea><button class="btn bp" style=${{marginTop:8}} disabled=${savingComment||!newComment.trim()} onClick=${()=>postComment(false)}>Send reply</button></div>
-            <div class="card"><div class="lbl">Internal note</div><textarea class="inp" rows="3" value=${internalNote} onInput=${e=>setInternalNote(e.target.value)} placeholder="Private investigation note…"></textarea><button class="btn bg" style=${{marginTop:8}} disabled=${savingComment||!internalNote.trim()} onClick=${()=>postComment(true)}>Save internal note</button></div>
+            <div>
+              <label class="lbl">Assignee</label>
+              <select class="inp" value=${nAssignee} onChange=${e=>setNAssignee(e.target.value)}>
+                <option value="">— Unassigned —</option>
+                ${safe(users).map(u=>html`<option key=${u.id} value=${u.id}>${u.name}</option>`)}
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Project</label>
+              <select class="inp" value=${nProject} onChange=${e=>setNProject(e.target.value)}>
+                <option value="">— No project —</option>
+                ${safe(projects).map(p=>html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+              </select>
+            </div>
+          </div>
+          <div style=${{display:'flex',gap:9,justifyContent:'flex-end',paddingTop:4}}>
+            <button class="btn bg" onClick=${()=>{setShowNew(false);setEditTicket(null);}}>Cancel</button>
+            <button class="btn bp" onClick=${saveTicket} disabled=${saving||!nTitle.trim()}>
+              ${saving?'Saving...':editTicket?'Save Changes':'Create Ticket'}
+            </button>
           </div>
         </div>
       </div>
-      ${copilotOpen?html`<aside style=${{borderLeft:'1px solid var(--bd)',background:'linear-gradient(180deg,rgba(90,140,255,.10),rgba(255,255,255,.02))',padding:16,overflow:'auto'}}>
-        <div style=${{fontSize:12,fontWeight:900,marginBottom:10}}>🤖 Ticket Copilot</div>
-        <div class="card" style=${{marginBottom:10}}><div class="lbl">Smart summary</div><div style=${{fontSize:12,lineHeight:1.5,color:'var(--tx2)'}}>${aiSummary(detailTicket)}</div></div>
-        <div class="card" style=${{marginBottom:10}}><div class="lbl">Recommended next action</div><div style=${{fontSize:12,color:'var(--tx2)'}}>${!detailTicket.assignee?'Assign an owner first.':slaInfo(detailTicket).risk==='breach'?'Escalate immediately and add an update.':detailTicket.status==='open'?'Move to In Progress when work starts.':'Keep timeline updated.'}</div></div>
-        <div class="card"><div class="lbl">Similar resolved ticket hints</div><div style=${{fontSize:12,color:'var(--tx2)'}}>${tickets.filter(x=>x.id!==detailTicket.id&&['resolved','closed'].includes(x.status)&&x.type===detailTicket.type).slice(0,3).map(x=>x.title).join(' · ')||'No similar resolved tickets yet.'}</div></div>
-      </aside>`:null}
-    </div>
-  </div>`:null;
+    </div>`;
 
-  return html`<div class="fi" style=${{height:'100%',overflowY:'auto',padding:'8px 12px',background:'var(--bg)'}}>
-    <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(135px,1fr))',gap:8,marginBottom:10}}>
-      ${[
-        {label:'Open workload',val:unresolvedTickets,sub:'active queue',icon:'⚡',tone:'rgba(59,130,246,.14)'},
-        {label:'SLA breach',val:breachedTickets,sub:'needs escalation',icon:'⏱️',tone:'rgba(239,68,68,.16)'},
-        {label:'At risk',val:atRiskTickets,sub:'watch closely',icon:'🔥',tone:'rgba(249,115,22,.16)'},
-        {label:'Unassigned',val:unassignedTickets,sub:'needs owner',icon:'👤',tone:'rgba(245,158,11,.14)'},
-        {label:'Resolved',val:velocity,sub:'delivery velocity',icon:'✅',tone:'rgba(34,197,94,.14)'},
-        {label:'Reopen risk',val:reopenRisk,sub:'possible repeats',icon:'♻️',tone:'rgba(139,92,246,.14)'}
-      ].map(card=>html`<div style=${{border:'1px solid var(--bd)',background:'linear-gradient(135deg,var(--sf),var(--sf2))',borderRadius:12,padding:'7px 9px',display:'flex',alignItems:'center',gap:10,boxShadow:'0 10px 30px rgba(0,0,0,.12)'}}><div style=${{width:30,height:30,borderRadius:11,display:'grid',placeItems:'center',background:card.tone,fontSize:16}}>${card.icon}</div><div><div style=${{fontSize:17,fontWeight:900,color:'var(--tx)',lineHeight:1}}>${card.val}</div><div style=${{fontSize:10,fontWeight:900,color:'var(--tx2)'}}>${card.label}</div><div style=${{fontSize:9,color:'var(--tx3)'}}>${card.sub}</div></div></div>`)}
-    </div>
-
-    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
-      <div style=${{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}>
-        ${Object.entries(STATUS_CFG).map(([s,c])=>html`<button key=${s} class=${'chip'+(filterStatus===s?' on':'')} onClick=${()=>setFilterStatus(filterStatus===s?'':s)} style=${{fontSize:11,display:'flex',alignItems:'center',gap:4}}>${c.icon} ${c.label} <span style=${{fontWeight:800,color:c.color}}>${statCounts[s]||0}</span></button>`)}
+  const DETAIL=detailTicket?html`
+    <div class="ov" onClick=${e=>e.target===e.currentTarget&&setDetailTicket(null)}>
+      <div class="mo fi" style=${{maxWidth:620,maxHeight:'85vh',display:'flex',flexDirection:'column'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexShrink:0}}>
+          <div style=${{flex:1,minWidth:0,marginRight:12}}>
+            <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+              <span style=${{fontSize:18}}>${(TYPE_CFG[detailTicket.type]||TYPE_CFG.bug).icon}</span>
+              <span style=${{fontSize:11,padding:'2px 8px',borderRadius:6,background:(PRIORITY_CFG[detailTicket.priority]||PRIORITY_CFG.medium).color+'22',color:(PRIORITY_CFG[detailTicket.priority]||PRIORITY_CFG.medium).color,fontWeight:700}}>${(PRIORITY_CFG[detailTicket.priority]||PRIORITY_CFG.medium).label}</span>
+              <select value=${detailTicket.status} onChange=${e=>quickStatus(detailTicket,e.target.value)}
+                style=${{fontSize:11,padding:'2px 8px',borderRadius:6,background:'var(--sf2)',border:'1px solid var(--bd)',color:'var(--tx)',cursor:'pointer'}}>
+                ${STATUS_OPTIONS.map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+              </select>
+            </div>
+            <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+              <span class="id-badge id-ticket">${detailTicket.id}</span>
+              ${detailTicket.type?html`<span class="id-badge" style=${{background:({'bug':'rgba(185,28,28,0.10)','feature':'rgba(29,78,216,0.10)','improvement':'rgba(14,116,144,0.10)','task':'rgba(21,128,61,0.10)','question':'rgba(109,40,217,0.10)'})[detailTicket.type]||'var(--ac3)',color:({'bug':'var(--rd)','feature':'var(--ac)','improvement':'var(--cy)','task':'var(--gn)','question':'var(--pu)'})[detailTicket.type]||'var(--ac)'}}>${detailTicket.type}</span>`:null}
+            </div>
+            <h2 style=${{fontSize:16,fontWeight:700,color:'var(--tx)',marginBottom:4}}>${detailTicket.title}</h2>
+            <div class="tx3-11">
+              Reported by ${(umap[detailTicket.reporter]||{name:'Unknown'}).name} · ${new Date(detailTicket.created).toLocaleDateString()}
+              ${detailTicket.assignee?html` · Assigned to <b style=${{color:'var(--tx2)'}}>${(umap[detailTicket.assignee]||{name:'?'}).name}</b>`:null}
+            </div>
+          </div>
+          <div style=${{display:'flex',gap:6,flexShrink:0}}>
+            ${canEdit?html`<button class="btn bg" style=${{fontSize:11,padding:'5px 9px'}} onClick=${()=>openEdit(detailTicket)}>✏️ Edit</button>`:null}
+            ${canDelete?html`<button class="btn brd" style=${{fontSize:11,padding:'5px 9px',color:'var(--rd)'}} onClick=${()=>del(detailTicket.id)}>🗑</button>`:null}
+            <button class="btn bg" style=${{padding:'7px 10px'}} onClick=${()=>setDetailTicket(null)}>✕</button>
+          </div>
+        </div>
+        ${detailTicket.description?html`
+          <div style=${{background:'var(--sf2)',borderRadius:9,padding:'12px 14px',marginBottom:14,fontSize:13,color:'var(--tx2)',lineHeight:1.6,flexShrink:0,border:'1px solid var(--bd)'}}>
+            ${detailTicket.description}
+          </div>`:null}
+        <div style=${{flex:1,overflowY:'auto',paddingBottom:8}}>
+          <div style=${{fontWeight:700,fontSize:12,color:'var(--tx2)',marginBottom:10}}>💬 Comments (${comments.length})</div>
+          ${comments.length===0?html`<p style=${{color:'var(--tx3)',fontSize:12,textAlign:'center',padding:'16px 0'}}>No comments yet. Be the first!</p>`:null}
+          <div style=${{display:'flex',flexDirection:'column',gap:8}}>
+            ${comments.map(c=>html`
+              <div key=${c.id} style=${{display:'flex',gap:10,padding:'8px 10px',background:'var(--sf2)',borderRadius:10,border:'1px solid var(--bd)'}}>
+                <${Av} u=${umap[c.user_id]||{name:'?',color:'#888'}} size=${30}/>
+                <div style=${{flex:1}}>
+                  <div style=${{display:'flex',gap:8,alignItems:'center',marginBottom:4}}>
+                    <span style=${{fontSize:12,fontWeight:700,color:'var(--tx)'}}>${(umap[c.user_id]||{name:'?'}).name}</span>
+                    <span style=${{fontSize:9,color:'var(--tx3)'}}>${new Date(c.created).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                  </div>
+                  <div style=${{fontSize:12,color:'var(--tx2)',lineHeight:1.5}}>${c.content}</div>
+                </div>
+              </div>`)}
+          </div>
+        </div>
+        <div style=${{display:'flex',gap:9,paddingTop:12,borderTop:'1px solid var(--bd)',flexShrink:0}}>
+          <input class="inp" style=${{flex:1}} value=${newComment} onInput=${e=>setNewComment(e.target.value)}
+            onKeyDown=${e=>e.key==='Enter'&&!e.shiftKey&&postComment()}
+            placeholder="Add a comment… (Enter to submit)"/>
+          <button class="btn bp" onClick=${postComment} disabled=${savingComment||!newComment.trim()}>
+            ${savingComment?html`<span class="spin"></span>`:'Send'}
+          </button>
+        </div>
       </div>
-      <div style=${{display:'flex',gap:7}}><button class=${'chip'+(viewMode==='grid'?' on':'')} onClick=${()=>setViewMode('grid')}>▤ Grid</button><button class=${'chip'+(viewMode==='board'?' on':'')} onClick=${()=>setViewMode('board')}>▦ Board</button><button class=${'chip'+(viewMode==='list'?' on':'')} onClick=${()=>setViewMode('list')}>☰ List</button><button class=${'chip'+(viewMode==='analytics'?' on':'')} onClick=${()=>setViewMode('analytics')}>📊 Analytics</button><button class="btn bp" style=${{fontSize:12}} onClick=${()=>{setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');setShowNew(true);}}>+ New Ticket</button></div>
-    </div>
+    </div>`:null;
 
-    <div style=${{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center',padding:'6px 8px',border:'1px solid var(--bd)',background:'linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.018))',borderRadius:16}}>
-      <button class=${'chip'+(filterAssignee===cu.id?' on':'')} style=${{fontSize:11,flexShrink:0}} onClick=${()=>setFilterAssignee(filterAssignee===cu.id?'':cu.id)}>👤 My Tickets ${myTicketsCount>0?html`<span style=${{fontWeight:800,marginLeft:3}}>(${myTicketsCount})</span>`:null}</button>
-      <select class="sel" style=${{fontSize:11,padding:'5px 10px',height:30,width:130,flex:'0 0 130px'}} value=${filterPriority} onChange=${e=>setFilterPriority(e.target.value)}><option value="">All priorities</option>${Object.entries(PRIORITY_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}</select>
-      <select class="sel" style=${{fontSize:11,padding:'5px 10px',height:30,width:115,flex:'0 0 115px'}} value=${filterType} onChange=${e=>setFilterType(e.target.value)}><option value="">All types</option>${Object.entries(TYPE_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}</select>
-      <input class="inp" value=${ticketSearch} onInput=${e=>setTicketSearch(e.target.value)} placeholder="Search id, title, owner…" style=${{fontSize:11,height:30,minWidth:170,maxWidth:280,flex:'1 1 210px'}}/>
-      <label class="chip" style=${{fontSize:11}}><input type="checkbox" checked=${showResolved} onChange=${e=>setShowResolved(e.target.checked)} style=${{marginRight:5}}/>Show closed</label>
-      <span style=${{fontSize:11,color:'var(--tx3)',marginLeft:'auto'}}>${visibleTickets.length} ticket${visibleTickets.length!==1?'s':''}</span>
-    </div>
+  return html`
+    <div class="fi" style=${{height:'100%',overflowY:'auto',padding:'8px 12px',background:'var(--bg)'}}>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(118px,1fr))',gap:6,marginBottom:8}}>
+        ${[
+          {label:'Open workload',val:unresolvedTickets,sub:'not closed/resolved',icon:'⚡',tone:'rgba(59,130,246,.14)'},
+          {label:'Critical',val:criticalTickets,sub:'needs immediate action',icon:'🚨',tone:'rgba(239,68,68,.14)'},
+          {label:'Unassigned',val:unassignedTickets,sub:'needs owner',icon:'👤',tone:'rgba(245,158,11,.14)'},
+          {label:'My queue',val:myTicketsCount,sub:'assigned to me',icon:'🎯',tone:'rgba(139,92,246,.14)'}
+        ].map(card=>html`<div style=${{border:'1px solid var(--bd)',background:'linear-gradient(135deg,var(--sf),var(--sf2))',borderRadius:12,padding:'7px 9px',display:'flex',alignItems:'center',gap:12,boxShadow:'0 10px 30px rgba(0,0,0,.12)'}}>
+          <div style=${{width:26,height:26,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',background:card.tone,fontSize:17}}>${card.icon}</div>
+          <div><div style=${{fontSize:16,fontWeight:900,color:'var(--tx)',lineHeight:1}}>${card.val}</div><div style=${{fontSize:10,fontWeight:800,color:'var(--tx2)'}}>${card.label}</div><div style=${{fontSize:9,color:'var(--tx3)'}}>${card.sub}</div></div>
+        </div>`)}
+      </div>
 
-    ${busy?html`<div style=${{textAlign:'center',padding:40}}><div class="spin" style=${{margin:'0 auto'}}></div></div>`:null}
-    ${!busy&&visibleTickets.length===0?html`<div style=${{textAlign:'center',padding:'48px 16px',color:'var(--tx3)',fontSize:13,background:'linear-gradient(135deg,var(--sf),var(--sf2))',borderRadius:18,border:'1px solid var(--bd)'}}><div style=${{fontSize:36,marginBottom:12}}>🎫</div><div style=${{fontWeight:900,marginBottom:6,color:'var(--tx2)'}}>No tickets match this command center view</div><div style=${{marginBottom:14}}>Clear filters or create a new ticket to track work.</div><button class="btn bp" onClick=${()=>setShowNew(true)}>+ Create Ticket</button></div>`:null}
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <div style=${{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}>
+          ${STATUS_OPTIONS.map(([s,c])=>html`
+            <button key=${s} class=${'chip'+(filterStatus===s?' on':'')} onClick=${()=>setFilterStatus(filterStatus===s?'':s)}
+              style=${{fontSize:11,display:'flex',alignItems:'center',gap:4}}>
+              ${c.icon} ${c.label} <span style=${{fontWeight:700,color:c.color}}>${statCounts[s]||0}</span>
+            </button>`)}
+        </div>
+        <button class="btn bp" style=${{fontSize:12}} onClick=${()=>{setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');setShowNew(true);}}>
+          + New Ticket
+        </button>
+      </div>
 
-    ${!busy&&viewMode==='analytics'?html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
-      <div class="card"><b>Resolution velocity</b><div style=${{fontSize:28,fontWeight:900,marginTop:8}}>${velocity}</div><div style=${{fontSize:11,color:'var(--tx3)'}}>Resolved / closed tickets</div></div>
-      <div class="card"><b>Agent workload</b><div style=${{display:'grid',gap:8,marginTop:10}}>${safe(users).slice(0,6).map(u=>{const n=tickets.filter(t=>t.assignee===u.id&&!['closed','resolved'].includes(t.status)).length;return html`<div style=${{display:'flex',alignItems:'center',gap:8}}><${Av} u=${u} size=${22}/><span style=${{fontSize:12,flex:1}}>${u.name}</span><b>${n}</b></div>`})}</div></div>
-      <div class="card"><b>SLA heatmap</b><div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginTop:12}}>${['critical','high','medium','low'].map(p=>html`<div style=${{padding:10,borderRadius:12,background:(PRIORITY_CFG[p]||{}).color+'22',textAlign:'center'}}><div>${(PRIORITY_CFG[p]||{}).icon}</div><b>${tickets.filter(t=>t.priority===p&&slaInfo(t).risk==='breach').length}</b><div style=${{fontSize:9,color:'var(--tx3)'}}>${p}</div></div>`)}</div></div>
-      <div class="card"><b>Automation ideas</b><div style=${{fontSize:12,color:'var(--tx2)',lineHeight:1.7,marginTop:8}}>• Auto-assign unowned critical tickets<br/>• Escalate SLA breaches<br/>• Auto-close inactive resolved tickets<br/>• Create task from feature ticket</div></div>
-    </div>`:null}
+            <div style=${{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center',padding:'6px 8px',border:'1px solid var(--bd)',background:'linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.018))',borderRadius:16,boxShadow:'inset 0 1px 0 rgba(255,255,255,.04)'}}>
+        ${filterStatus?html`
+          <div style=${{display:'flex',alignItems:'center',gap:6,padding:'4px 10px 4px 8px',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:20,flexShrink:0}}>
+            <span style=${{fontSize:11,color:'var(--tx2)',fontWeight:600}}>${(STATUS_CFG[filterStatus]||{label:filterStatus}).icon} ${(STATUS_CFG[filterStatus]||{label:filterStatus}).label}</span>
+            <button onClick=${()=>setFilterStatus('')}
+              style=${{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',fontSize:13,lineHeight:1,padding:'0 2px'}}>×</button>
+          </div>`:null}
+        ${filterAssignee?html`
+          <div style=${{display:'flex',alignItems:'center',gap:6,padding:'4px 10px 4px 8px',background:'var(--ac3)',border:'1px solid var(--ac)',borderRadius:20,flexShrink:0}}>
+            <div style=${{width:6,height:6,borderRadius:'50%',background:'var(--ac)',flexShrink:0}}></div>
+            <span style=${{fontSize:11,fontWeight:700,color:'var(--ac)'}}>Assigned to me</span>
+            <button onClick=${()=>setFilterAssignee('')}
+              style=${{background:'none',border:'none',cursor:'pointer',color:'var(--ac)',fontSize:13,lineHeight:1,padding:'0 2px',marginLeft:2}}
+              title="Clear filter">×</button>
+          </div>`:null}
+        <button class=${'chip'+(filterAssignee===cu.id?' on':'')} style=${{fontSize:11,flexShrink:0}}
+          onClick=${()=>setFilterAssignee(filterAssignee===cu.id?'':cu.id)}>
+          👤 My Tickets ${myTicketsCount>0?html`<span style=${{fontWeight:700,marginLeft:3}}>(${myTicketsCount})</span>`:null}
+        </button>
+        <select class="sel" style=${{fontSize:11,padding:'5px 10px',height:28,width:126,flex:'0 0 132px'}} value=${filterPriority} onChange=${e=>setFilterPriority(e.target.value)}>
+          <option value="">All Priorities</option>
+          ${Object.entries(PRIORITY_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+        </select>
+        <select class="sel" style=${{fontSize:11,padding:'5px 10px',height:28,width:116,flex:'0 0 120px'}} value=${filterType} onChange=${e=>setFilterType(e.target.value)}>
+          <option value="">All Types</option>
+          ${Object.entries(TYPE_CFG).map(([v,c])=>html`<option key=${v} value=${v}>${c.icon} ${c.label}</option>`)}
+        </select>
+        <input class="inp" value=${ticketSearch} onInput=${e=>setTicketSearch(e.target.value)} placeholder="Search tickets..." style=${{fontSize:11,height:30,minWidth:180,maxWidth:320,flex:'1 1 220px'}}/>
+        <span style=${{fontSize:11,color:'var(--tx3)',alignSelf:'center',marginLeft:4}}>${visibleTickets.length} ticket${visibleTickets.length!==1?'s':''}</span>
+      </div>
 
-    ${!busy&&viewMode==='grid'?html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
-      ${visibleTickets.map(t=>{
-        const tc=TYPE_CFG[t.type]||TYPE_CFG.bug, pc=PRIORITY_CFG[t.priority]||PRIORITY_CFG.medium, sc=STATUS_CFG[t.status]||STATUS_CFG.open;
-        const assignee=t.assignee?umap[t.assignee]:null;
-        return html`
-        <div key=${t.id} class="card" style=${{display:'flex',flexDirection:'column',gap:8,padding:16,cursor:'pointer'}} onClick=${()=>openDetail(t)}>
-          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-            <span style=${{fontSize:14,fontWeight:800,color:'var(--tx)'}}>${t.title}</span>
-            ${assignee?html`<${Av} u=${assignee} size=${24}/>`:null}
-          </div>
-          <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:pc.color+'22',color:pc.color,fontWeight:800,textTransform:'uppercase'}}>${pc.label}</span>
-            <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:sc.color+'22',color:sc.color,fontWeight:800,textTransform:'uppercase'}}>${sc.label}</span>
-          </div>
-          <div style=${{fontSize:11,color:'var(--tx3)'}}>From ${assignee?assignee.name:'Unassigned'}</div>
-          ${t.description?html`<div style=${{fontSize:12,color:'var(--tx2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.description}</div>`:null}
-          <div style=${{display:'flex',gap:6,marginTop:6}} onClick=${e=>e.stopPropagation()}>
-            ${canEdit?html`<button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEdit(t)}>✏️ Edit</button>`:null}
-            ${canDelete?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>del(t.id)}>🗑 Delete</button>`:null}
-          </div>
-        </div>`;
-      })}
-    </div>`:null}
-
-    ${!busy&&viewMode==='board'?html`<div style=${{display:'grid',gridTemplateColumns:'repeat(5,minmax(210px,1fr))',gap:10,alignItems:'start',overflowX:'auto',paddingBottom:8}}>
-      ${STATUS_ORDER.map(st=>{const cfg=STATUS_CFG[st];const items=visibleTickets.filter(t=>t.status===st);return html`<div key=${st} onDragOver=${e=>e.preventDefault()} onDrop=${()=>{const t=tickets.find(x=>x.id===dragTicketId);if(t)quickStatus(t,st);setDragTicketId(null);}} style=${{minHeight:180,border:'1px solid var(--bd)',borderRadius:18,background:'rgba(255,255,255,.025)',padding:10}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><b style=${{fontSize:12,color:cfg.color}}>${cfg.icon} ${cfg.label}</b><span class="chip" style=${{fontSize:10}}>${items.length}</span></div><div style=${{display:'grid',gap:9}}>${items.map(t=>html`<${TicketCard} key=${t.id} t=${t} compact=${false}/>`)}${items.length===0?html`<div style=${{border:'1px dashed var(--bd)',borderRadius:14,padding:18,textAlign:'center',fontSize:11,color:'var(--tx3)'}}>Drop tickets here</div>`:null}</div></div>`})}
-    </div>`:null}
-
-    ${!busy&&viewMode==='list'?html`<div style=${{display:'grid',gap:8}}>${visibleTickets.map(t=>html`<${TicketCard} key=${t.id} t=${t} compact=${true}/>` )}</div>`:null}
-    ${showNew?FORM:null}${DETAIL}
-  </div>`;
+            ${busy?html`<div style=${{textAlign:'center',padding:40}}><div class="spin" style=${{margin:'0 auto'}}></div></div>`:null}
+      ${!busy&&visibleTickets.length===0?html`
+        <div style=${{textAlign:'center',padding:'48px 16px',color:'var(--tx3)',fontSize:13,background:'var(--sf)',borderRadius:12,border:'1px solid var(--bd)'}}>
+          <div style=${{fontSize:36,marginBottom:12}}>🎫</div>
+          <div style=${{fontWeight:700,marginBottom:6,color:'var(--tx2)'}}>${ticketSearch||filterStatus||filterPriority||filterType||filterAssignee?'No tickets match these filters':'No tickets yet'}</div>
+          <div style=${{marginBottom:14}}>${ticketSearch||filterStatus||filterPriority||filterType||filterAssignee?'Try clearing filters or search text.':'Create a ticket to track bugs, features, and tasks'}</div>
+          <button class="btn bp" onClick=${()=>{setEditTicket(null);setNTitle('');setNDesc('');setNType('bug');setNPriority('medium');setNAssignee('');setNProject('');setNStatus('open');setShowNew(true);}}>+ Create Ticket</button>
+        </div>`:null}
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:14}}>
+        ${visibleTickets.map(t=>{
+          const tc=TYPE_CFG[t.type]||TYPE_CFG.bug;
+          const pc=PRIORITY_CFG[t.priority]||PRIORITY_CFG.medium;
+          const sc=STATUS_CFG[t.status]||STATUS_CFG.open;
+          const assignee=t.assignee?umap[t.assignee]:null;
+          return html`
+          <div key=${t.id} onClick=${()=>openDetail(t)} class="card"
+            style=${{display:'flex',flexDirection:'column',gap:8,padding:16,cursor:'pointer'}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+              <div style=${{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                <div style=${{width:32,height:32,borderRadius:9,background:tc.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>${tc.icon}</div>
+                <span style=${{fontSize:14,fontWeight:800,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.title}</span>
+              </div>
+              ${assignee?html`<${Av} u=${assignee} size=${24}/>`:null}
+            </div>
+            <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
+              <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:pc.color+'22',color:pc.color,fontWeight:800,textTransform:'uppercase'}}>${pc.icon} ${pc.label}</span>
+              <span style=${{fontSize:10,padding:'2px 7px',borderRadius:99,background:sc.color+'22',color:sc.color,fontWeight:800,textTransform:'uppercase'}}>${sc.icon} ${sc.label}</span>
+            </div>
+            <div style=${{fontSize:11,color:'var(--tx3)'}}>From ${assignee?assignee.name:'Unassigned'} · ${new Date(t.created).toLocaleDateString()}${t.project?html` · 📁 ${(safe(projects).find(p=>p.id===t.project)||{name:t.project}).name}`:null}</div>
+            ${t.description?html`<div style=${{fontSize:12,color:'var(--tx2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${t.description}</div>`:null}
+            <div style=${{display:'flex',gap:6,marginTop:6}} onClick=${e=>e.stopPropagation()}>
+              ${canEdit?html`<button class="btn bg" style=${{flex:1,fontSize:12,padding:'6px 10px'}} onClick=${()=>openEdit(t)}>✏️ Edit</button>`:null}
+              ${canDelete?html`<button class="btn brd" style=${{flex:1,fontSize:12,padding:'6px 10px',color:'var(--rd)'}} onClick=${()=>del(t.id)}>🗑 Delete</button>`:null}
+            </div>
+          </div>`;})}
+      </div>
+      ${showNew?FORM:null}
+      ${DETAIL}
+    </div>`;
 }
 
 /* ─── Reusable ToggleSwitch ───────────────────────────────────────────────── */
@@ -7024,62 +7404,6 @@ function TwoFASettingsCard({cu}){
 }
 
 /* ─── WorkspaceSettings ───────────────────────────────────────────────────── */
-function NotifPrefsPanel({cu}){
-  const [prefs,setPrefs]=useState(null);
-  const [saving,setSaving]=useState(false);
-  const [saved,setSaved]=useState(false);
-  useEffect(()=>{api.get('/api/notif-prefs').then(d=>{if(!d.error)setPrefs(d);});},[]);
-  const save=async(updates)=>{
-    const merged={...(prefs||{}),...updates};
-    setPrefs(merged);
-    setSaving(true);
-    await api.put('/api/notif-prefs',updates);
-    setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),1800);
-  };
-  if(!prefs)return html`<div style=${{padding:'32px 0',textAlign:'center',color:'var(--tx3)',fontSize:13}}>Loading notification settings…</div>`;
-  const S={card:{background:'var(--bg2)',borderRadius:12,padding:'20px 24px',marginBottom:16,border:'0.5px solid var(--bd)'},label:{fontSize:13,fontWeight:500,color:'var(--tx1)',margin:0},sub:{fontSize:12,color:'var(--tx3)',margin:'3px 0 0'},row:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 0',borderBottom:'0.5px solid var(--bd)'},rowLast:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 0'},toggle:{position:'relative',display:'inline-block',width:38,height:22,cursor:'pointer'},slider:(on)=>({position:'absolute',top:0,left:0,right:0,bottom:0,background:on?'var(--ac)':'var(--bd)',borderRadius:22,transition:'background .2s'}),knob:(on)=>({position:'absolute',top:3,left:on?18:3,width:16,height:16,background:'white',borderRadius:'50%',transition:'left .2s'})};
-  const Toggle=({on,onChange})=>html`<label style=${S.toggle} onClick=${()=>onChange(!on)}>
-    <span style=${S.slider(on)}></span>
-    <span style=${S.knob(on)}></span>
-  </label>`;
-  const sect=(title)=>html`<p style=${{fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',color:'var(--tx3)',margin:'24px 0 8px'}}>${title}</p>`;
-  return html`<div style=${{maxWidth:640,margin:'0 auto',padding:'24px 0'}}>
-    <h2 style=${{fontSize:17,fontWeight:600,color:'var(--tx1)',margin:'0 0 4px'}}>Notification preferences</h2>
-    <p style=${{fontSize:13,color:'var(--tx3)',margin:'0 0 20px'}}>Control how and when you receive alerts across all channels.</p>
-    ${sect('Channels')}
-    <div style=${S.card}>
-      <div style=${S.row}><div><p style=${S.label}>In-app notifications</p><p style=${S.sub}>Banner alerts inside the dashboard</p></div><${Toggle} on=${prefs.inapp_enabled!==false} onChange=${v=>save({inapp_enabled:v})}/></div>
-      <div style=${S.row}><div><p style=${S.label}>Desktop / push alerts</p><p style=${S.sub}>Browser and Tauri OS notifications</p></div><${Toggle} on=${prefs.push_enabled!==false} onChange=${v=>save({push_enabled:v})}/></div>
-      <div style=${S.rowLast}><div><p style=${S.label}>Email notifications</p><p style=${S.sub}>Due-date, ticket, and digest emails</p></div><${Toggle} on=${prefs.email_enabled!==false} onChange=${v=>save({email_enabled:v})}/></div>
-    </div>
-    ${sect('Quiet hours')}
-    <div style=${S.card}>
-      <div style=${S.row}><div><p style=${S.label}>Mute after office hours</p><p style=${S.sub}>Suppress push and email during mute window</p></div><${Toggle} on=${!!prefs.mute_after_hours} onChange=${v=>save({mute_after_hours:v})}/></div>
-      ${prefs.mute_after_hours?html`<div style=${{display:'flex',gap:16,padding:'10px 0',alignItems:'center'}}>
-        <div><p style=${S.label}>Mute from</p><input type="time" value=${prefs.mute_start||'18:00'} onChange=${e=>save({mute_start:e.target.value})} style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,width:110}}/></div>
-        <div><p style=${S.label}>Until</p><input type="time" value=${prefs.mute_end||'09:00'} onChange=${e=>save({mute_end:e.target.value})} style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,width:110}}/></div>
-      </div>`:null}
-    </div>
-    ${sect('Alert filtering')}
-    <div style=${S.card}>
-      <div style=${S.row}><div><p style=${S.label}>Priority alerts only</p><p style=${S.sub}>Only push for urgent events (tasks, approvals, DMs)</p></div><${Toggle} on=${!!prefs.priority_only} onChange=${v=>save({priority_only:v})}/></div>
-      ${(cu.role==='TeamLead'||cu.role==='Manager'||cu.role==='Admin')?html`<div style=${S.rowLast}><div><p style=${S.label}>Role-based digest alerts</p><p style=${S.sub}>Daily summary for blockers, SLA breaches, pending approvals</p></div><${Toggle} on=${prefs.role_alerts!==false} onChange=${v=>save({role_alerts:v})}/></div>`:null}
-    </div>
-    ${sect('Email digest frequency')}
-    <div style=${S.card}>
-      <div style=${S.rowLast}><div><p style=${S.label}>Summary email frequency</p><p style=${S.sub}>Personalised task and project overview</p></div>
-        <select value=${prefs.digest_frequency||'weekly'} onChange=${e=>save({digest_frequency:e.target.value})} style=${{background:'var(--bg3)',border:'0.5px solid var(--bd)',borderRadius:8,padding:'6px 10px',color:'var(--tx1)',fontSize:13,cursor:'pointer'}}>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly (Mon)</option>
-          <option value="bi-weekly">Bi-weekly (1st & 15th)</option>
-          <option value="none">None</option>
-        </select>
-      </div>
-    </div>
-    ${saved?html`<p style=${{fontSize:12,color:'var(--gr)',textAlign:'center',margin:'8px 0 0'}}>✓ Preferences saved</p>`:null}
-  </div>`;
-}
-
 
 function WorkspacePlanUsageCard({cu}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
@@ -7140,7 +7464,7 @@ function WorkspacePlanUsageCard({cu}){
 }
 
 
-function WorkspaceOSPolicySettingsCard({cu}){
+function WorkspaceOSPolicySettingsCard({cu,bare}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const titleCase=s=>String(s||'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -7158,10 +7482,10 @@ function WorkspaceOSPolicySettingsCard({cu}){
   const save=async()=>{setLoading(true);const r=await api.put('/api/workspace-os/settings',cfg,{quiet:true,timeoutMs:10000}).catch(e=>({error:e.message}));setLoading(false);if(r&&r.ok){setCfg({...cfg,...r.settings});setMsg('Attendance policy saved');try{window.dispatchEvent(new CustomEvent('pt:wos-refresh'));}catch(_){}}else setMsg((r&&r.error)||'Policy save failed');setTimeout(()=>setMsg(''),1800);};
   const modeOptions=['office','remote','hybrid','work_from_home','client_visit','field_work','business_travel','on_duty'];
   const roleOptions=['admin','hr','manager','peopleops','finance'];
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+  return html`<div class=${bare?'':'card'} style=${bare?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
     <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
-      <div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>
-      ${allowed?html`<button class="btn bp" style=${{fontSize:11,padding:'7px 12px'}} onClick=${save} disabled=${loading}>${loading?'Saving…':'Save policy'}</button>`:null}
+      ${bare?html`<div/>`:html`<div><h3 style=${{fontSize:13,fontWeight:800,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🕘 Attendance & Holiday Policy</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Workspace-level HR configuration. Employees see only the enabled modes and published holidays inside Workspace OS.</p></div>`}
+      ${allowed?html`<button class="btn bp" style=${{fontSize:11,padding:'7px 12px',marginLeft:'auto'}} onClick=${save} disabled=${loading}>${loading?'Saving…':'Save policy'}</button>`:null}
     </div>
     ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Only Admin/Owner/HR can configure attendance policy.</div>`:html`<div style=${{display:'grid',gridTemplateColumns:'160px 1fr 1fr',gap:12,alignItems:'start'}}>
       <label><span class="lbl">Permission hours/month</span><input class="inp" type="number" min="0" step="0.5" value=${cfg.permission_hours_per_month||0} onInput=${e=>setCfg({...cfg,permission_hours_per_month:e.target.value})}/></label>
@@ -7174,7 +7498,7 @@ function WorkspaceOSPolicySettingsCard({cu}){
 }
 
 
-function WorkspaceOSAdminImportsCard({cu}){
+function WorkspaceOSAdminImportsCard({cu,bare}){
   const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
   const allowed=!!cu&&['admin','owner','workspace owner','hr','peopleops','people admin'].includes(roleNorm);
   const today=new Date();
@@ -7221,10 +7545,10 @@ function WorkspaceOSAdminImportsCard({cu}){
     <input type="file" accept=${accept} multiple=${!!multiple} style=${{display:'none'}} onChange=${e=>onChange(multiple?e.target.files:(e.target.files&&e.target.files[0]))}/>
     <b style=${{fontSize:12,color:'var(--tx)'}}>${label}</b><span style=${{fontSize:11,color:'var(--tx3)'}}>${chosen||sub}</span>
   </label>`;
-  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
+  return html`<div class=${bare?'':'card'} style=${bare?{}:{marginBottom:16,borderColor:'rgba(90,140,255,.25)',background:'linear-gradient(180deg,var(--sf),rgba(90,140,255,.035))'}} id="workspace-os-admin-imports">
     <div style=${{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',marginBottom:14}}>
-      <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>
-      <div style=${{display:'flex',gap:8}}><a class="btn brd" href="/api/holidays/template" style=${{fontSize:11,padding:'6px 10px'}}>Holiday template</a><a class="btn brd" href="/api/payslips/template" style=${{fontSize:11,padding:'6px 10px'}}>Payslip mapping CSV</a></div>
+      ${bare?html`<div/>`:html`<div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',marginBottom:4}}>🗂 Workspace OS Admin Imports</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Holiday calendars and payslip bulk uploads belong in Settings. Workspace OS only shows published employee-facing data.</p></div>`}
+      <div style=${{display:'flex',gap:8,marginLeft:'auto'}}><a class="btn brd" href="/api/holidays/template" style=${{fontSize:11,padding:'6px 10px'}}>Holiday template</a><a class="btn brd" href="/api/payslips/template" style=${{fontSize:11,padding:'6px 10px'}}>Payslip mapping CSV</a></div>
     </div>
     <div style=${{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:16}}>
       <div style=${dropStyle}>
@@ -7242,10 +7566,119 @@ function WorkspaceOSAdminImportsCard({cu}){
   </div>`;
 }
 
+function UsageRing({pct,label,value,color,size,unlimited,centerText,usedCount}){
+  size=size||96;
+  const r=(size/2)-8, c=2*Math.PI*r;
+  // Unlimited/custom limits: show a soft, mostly-translucent ring (not a fake percentage)
+  // and put the real usage count in the center instead of a %.
+  const effPct = unlimited ? 100 : Math.min(100,Math.max(0,pct||0));
+  const off = c*(1-effPct/100);
+  const ringColor = unlimited ? (color+'55') : color;
+  const center = centerText!=null ? centerText : (unlimited ? String(usedCount!=null?usedCount:0) : `${Math.round(pct)}%`);
+  return html`
+    <div style=${{display:'flex',flexDirection:'column',alignItems:'center',gap:10,padding:'18px 14px',borderRadius:16,background:'var(--sf)',border:'1px solid var(--bd)'}}>
+      <div style=${{position:'relative',width:size,height:size}}>
+        <svg width=${size} height=${size} viewBox=${`0 0 ${size} ${size}`} style=${{transform:'rotate(-90deg)'}}>
+          <circle cx=${size/2} cy=${size/2} r=${r} fill="none" stroke="var(--sf2)" strokeWidth="8"/>
+          <circle cx=${size/2} cy=${size/2} r=${r} fill="none" stroke=${ringColor} strokeWidth="8" strokeLinecap="round"
+            strokeDasharray=${c} strokeDashoffset=${unlimited?0:off} style=${{transition:'stroke-dashoffset .5s ease'}}/>
+        </svg>
+        <div style=${{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:unlimited?(size>80?15:12):(size>80?17:14),fontWeight:900,color:'var(--tx)'}}>${center}</div>
+      </div>
+      <div style=${{textAlign:'center'}}>
+        <div style=${{fontSize:12,fontWeight:800,color:'var(--tx)'}}>${label}</div>
+        <div style=${{fontSize:11,color:'var(--tx3)',marginTop:2}}>${value}</div>
+      </div>
+    </div>`;
+}
+
+function AdminConsoleCard({cu}){
+  const [tab,setTab]=useState('usage');
+  const roleNorm=String(cu&&cu.role||'').trim().toLowerCase().replace(/[_-]/g,' ');
+  const allowed=!!cu&&['admin','owner','manager','workspace owner'].includes(roleNorm);
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+  const load=useCallback(async()=>{
+    if(!allowed)return;
+    setLoading(true);setErr('');
+    try{
+      const cached=(()=>{try{return JSON.parse(localStorage.getItem('pt_plan_usage_cache_'+String((cu&&cu.workspace_id)||(cu&&cu.workspace)||'default'))||'null');}catch(_){return null;}})();
+      if(cached&&!data)setData(cached);
+      const r=await api.get('/api/workspace/plan-usage',{quiet:true,timeoutMs:15000});
+      if(r&&r.error){setErr(r.error);}else{setData(r);try{localStorage.setItem('pt_plan_usage_cache_'+String((cu&&cu.workspace_id)||(cu&&cu.workspace)||'default'),JSON.stringify(r));}catch(_){}}
+    }catch(e){setErr('Could not load workspace plan usage.');}
+    setLoading(false);
+  },[allowed,cu&&cu.workspace_id,cu&&cu.workspace]);
+  useEffect(()=>{if(tab==='usage')load();},[load,tab]);
+  const plan=String((data&&data.plan)||'starter').toUpperCase();
+  const usage=(data&&data.usage)||{};
+  const limits=(data&&data.limits)||{};
+  const fmtNum=(v)=>Number(v||0).toLocaleString('en-IN');
+  const fmtStorage=(mb)=>{
+    const n=Number(mb||0);
+    if(n>=1024)return (Math.round((n/1024)*10)/10).toLocaleString('en-IN')+' GB';
+    if(n>0&&n<1)return (Math.round(n*100)/100).toLocaleString('en-IN')+' MB';
+    if(n>0&&n<10)return (Math.round(n*10)/10).toLocaleString('en-IN')+' MB';
+    return fmtNum(Math.round(n))+' MB';
+  };
+  const ringColors=['#818cf8','#22d3ee','#f59e0b','#4ade80','#f472b6','#a78bfa'];
+  const ringDefs=[
+    ['Workspaces','workspaces',null],['Team members','members',null],['Projects','projects',null],
+    ['Tasks','tasks',null],['Invoices','invoices',null],['Storage','storage_mb','storage'],
+  ];
+  const tabs=[['usage','📊','Plan & Usage'],['attendance','🕘','Attendance & Holiday Policy'],['imports','⬆','Data Imports']];
+
+  return html`<div class="card" style=${{marginBottom:16,borderColor:'rgba(90,140,255,.22)'}}>
+    <div style=${{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:14,flexWrap:'wrap'}}>
+      <div><h3 style=${{fontSize:14,fontWeight:900,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>⚙️ Admin Console</h3><p style=${{fontSize:12,color:'var(--tx2)',margin:0}}>Plan & Usage · Attendance & Holiday Policy · Data Imports — merged into one console.</p></div>
+      ${tab==='usage'?html`<button class="btn brd" style=${{fontSize:11,padding:'5px 10px'}} onClick=${load} disabled=${loading}>${loading?'Refreshing…':'↻ Refresh'}</button>`:null}
+    </div>
+
+    <div style=${{display:'flex',gap:4,borderBottom:'1px solid var(--bd)',marginBottom:16}}>
+      ${tabs.map(([v,icon,label])=>html`
+        <button key=${v} onClick=${()=>setTab(v)}
+          style=${{background:'none',border:'none',borderBottom:'2px solid '+(tab===v?'var(--ac)':'transparent'),color:tab===v?'var(--ac)':'var(--tx3)',fontWeight:800,fontSize:12,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>
+          ${icon} ${label}
+        </button>`)}
+    </div>
+
+    ${tab==='usage'?html`
+      ${!allowed?html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Workspace plan and usage is available to admins/managers only</div>`:null}
+      ${allowed&&err?html`<div style=${{padding:'7px 10px',borderRadius:10,background:'rgba(185,28,28,.09)',border:'1px solid rgba(185,28,28,.18)',fontSize:12,color:'var(--rd)'}}>${err}</div>`:null}
+      ${allowed&&!err?html`<div>
+        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:14,marginBottom:16}}>
+          ${ringDefs.map(([label,key,kind],i)=>{
+            const used=Number(usage[key]||0), max=Number(limits[key]||0);
+            const unlimited=max>=9999;
+            const pct=unlimited?0:(max?Math.min(100,Math.round((used/max)*100)):0);
+            const value=kind==='storage'?`${fmtStorage(used)} / ${unlimited?'Custom':fmtStorage(max)}`:`${fmtNum(used)} / ${unlimited?'Custom':fmtNum(max)}`;
+            const centerText=unlimited?(kind==='storage'?fmtStorage(used):fmtNum(used)):null;
+            return html`<${UsageRing} key=${key} pct=${pct} unlimited=${unlimited} usedCount=${used} centerText=${centerText} label=${label} value=${value} color=${ringColors[i%ringColors.length]}/>`;
+          })}
+        </div>
+        <div class="card" style=${{background:'var(--sf2)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+          <div>
+            <div style=${{fontSize:13,fontWeight:900,color:'var(--tx)'}}>Plan</div>
+            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:2}}>
+              <span style=${{fontWeight:800,color:'var(--ac)'}}>${plan}</span> plan · Role: ${(data&&data.role)||(cu&&cu.role)||'—'} · Last updated: ${(data&&data.updated_at)||'—'}
+            </div>
+          </div>
+        </div>
+      </div>`:null}
+    `:null}
+
+    ${tab==='attendance'?html`<${WorkspaceOSPolicySettingsCard} cu=${cu} bare=${true}/>`:null}
+    ${tab==='imports'?html`<${WorkspaceOSAdminImportsCard} cu=${cu} bare=${true}/>`:null}
+  </div>`;
+}
+
 function WorkspaceSettings({cu,onReload}){
   const [ws,setWs]=useState(null);const [wsName,setWsName]=useState('');const [aiKey,setAiKey]=useState('');const [aiKeyDirty,setAiKeyDirty]=useState(false);const [showKey,setShowKey]=useState(false);const [saving,setSaving]=useState(false);const [saved,setSaved]=useState(false);
   const [emailEnabled,setEmailEnabled]=useState(true);const [smtpServer,setSmtpServer]=useState('smtp.gmail.com');const [smtpPort,setSmtpPort]=useState(587);const [smtpUsername,setSmtpUsername]=useState('');const [smtpPassword,setSmtpPassword]=useState('');const [fromEmail,setFromEmail]=useState('');const [showSmtpPass,setShowSmtpPass]=useState(false);const [testEmail,setTestEmail]=useState('');const [testingEmail,setTestingEmail]=useState(false);const [testResult,setTestResult]=useState(null);const [otpEnabled,setOtpEnabled]=useState(false);
   const [dmEnabled,setDmEnabled]=useState(true);
+  const [slackEnabled,setSlackEnabled]=useState(false);
+  const [slackStatus,setSlackStatus]=useState(null);
   const PERM_DEFAULTS={
     'Create & Edit Projects':   {Admin:true, Manager:true, TeamLead:true, Developer:false,Tester:false,Viewer:false}, 'Create & Assign Tasks':    {Admin:true, Manager:true, TeamLead:true, Developer:true, Tester:false,Viewer:false}, 'Edit Tasks':               {Admin:true, Manager:true, TeamLead:true, Developer:false,Tester:false,Viewer:false}, 'Delete Tasks':             {Admin:true, Manager:true, TeamLead:true, Developer:false,Tester:false,Viewer:false}, 'Create Tickets':           {Admin:true, Manager:true, TeamLead:true, Developer:true, Tester:true, Viewer:false}, 'Edit Tickets':             {Admin:true, Manager:true, TeamLead:true, Developer:false,Tester:false,Viewer:false}, 'Delete Tickets':           {Admin:true, Manager:true, TeamLead:true, Developer:false,Tester:false,Viewer:false}, 'Close / Resolve Tickets':  {Admin:true, Manager:true, TeamLead:true, Developer:true, Tester:false,Viewer:false}, 'Delete Projects':          {Admin:true, Manager:true, TeamLead:false,Developer:false,Tester:false,Viewer:false}, 'Send Channel Messages':    {Admin:true, Manager:true, TeamLead:true, Developer:true, Tester:true, Viewer:true}, 'Manage Team Members':      {Admin:true, Manager:true, TeamLead:true, Developer:false,Tester:false,Viewer:false}, 'Manage Workspace Settings':{Admin:true, Manager:false,TeamLead:false,Developer:false,Tester:false,Viewer:false}, 'View All Projects':        {Admin:true, Manager:true, TeamLead:true, Developer:true, Tester:true, Viewer:true}, 'Start Instant Meet Calls':       {Admin:true, Manager:true, TeamLead:true, Developer:true, Tester:true, Viewer:true}, 'Delete Team Members':      {Admin:true, Manager:false,TeamLead:false,Developer:false,Tester:false,Viewer:false}, };
   const storedPerms=()=>{try{return JSON.parse(localStorage.getItem('pf_perms')||'null');}catch{return null;}};
@@ -7256,7 +7689,8 @@ function WorkspaceSettings({cu,onReload}){
   };
   const resetPerms=()=>{setPerms(PERM_DEFAULTS);localStorage.removeItem('pf_perms');};
 
-  useEffect(()=>{api.get('/api/workspace').then(d=>{if(!d.error){setWs(d);setWsName(d.name||'');setAiKey(d.ai_api_key?'•'.repeat(20):'');setAiKeyDirty(false);setEmailEnabled(d.email_enabled!==0);setSmtpServer(d.smtp_server||'smtp.gmail.com');setSmtpPort(d.smtp_port||587);setSmtpUsername(d.smtp_username||'');setSmtpPassword(d.smtp_password?'•'.repeat(16):'');setFromEmail(d.from_email||'');setOtpEnabled(!!d.otp_enabled);setDmEnabled(d.dm_enabled!==0);}});},[]);
+  useEffect(()=>{api.get('/api/workspace').then(d=>{if(!d.error){setWs(d);setWsName(d.name||'');setAiKey(d.ai_api_key?'•'.repeat(20):'');setAiKeyDirty(false);setEmailEnabled(d.email_enabled!==0);setSmtpServer(d.smtp_server||'smtp.gmail.com');setSmtpPort(d.smtp_port||587);setSmtpUsername(d.smtp_username||'');setSmtpPassword(d.smtp_password?'•'.repeat(16):'');setFromEmail(d.from_email||'');setOtpEnabled(!!d.otp_enabled);setDmEnabled(d.dm_enabled!==0);setSlackEnabled(!!d.slack_notifications_enabled);}});
+  api.get('/api/slack/status').then(d=>{if(d&&d.ok)setSlackStatus(d);}).catch(()=>{});},[]);
 
   const removeAiKey=()=>{
     if(!window.confirm('Remove the saved Anthropic API key? The AI assistant will stop working until a new key is added.'))return;
@@ -7265,13 +7699,11 @@ function WorkspaceSettings({cu,onReload}){
 
   const save=async()=>{
     setSaving(true);
-    const payload={name:wsName,email_enabled:emailEnabled,smtp_server:smtpServer,smtp_port:smtpPort,smtp_username:smtpUsername,from_email:fromEmail,otp_enabled:otpEnabled,dm_enabled:dmEnabled};
-    // aiKey shows as a masked placeholder ('•'.repeat(20)) when a key is already saved, since the
-    // real value is never sent to the client. Typing a new key naturally clears/replaces that mask.
-    // Deleting the key is different: the field becomes '', which used to be dropped from the payload
-    // entirely (falsy check below), so Save silently kept the old key. aiKeyDirty distinguishes "user
-    // explicitly cleared this field" (via the Remove button) from "field untouched" so an intentional
-    // deletion actually reaches the server as ai_api_key:''.
+    const payload={name:wsName,email_enabled:emailEnabled,smtp_server:smtpServer,smtp_port:smtpPort,smtp_username:smtpUsername,from_email:fromEmail,otp_enabled:otpEnabled,dm_enabled:dmEnabled,slack_notifications_enabled:slackEnabled};
+    // See removeAiKey/the Remove button below: aiKey shows a masked placeholder when a
+    // key is already saved (the real value is never sent to the client), so an empty
+    // field used to be indistinguishable from "untouched" and Save silently kept the
+    // old key forever. aiKeyDirty marks an explicit deletion so it actually reaches the server.
     if(aiKey&&!aiKey.startsWith('•'))payload.ai_api_key=aiKey;
     else if(aiKeyDirty&&!aiKey)payload.ai_api_key='';
     if(smtpPassword&&!smtpPassword.startsWith('•'))payload.smtp_password=smtpPassword;
@@ -7365,11 +7797,7 @@ function WorkspaceSettings({cu,onReload}){
         </div>
       </div>
 
-      <${WorkspacePlanUsageCard} cu=${cu}/>
-
-      <${WorkspaceOSPolicySettingsCard} cu=${cu}/>
-
-      <${WorkspaceOSAdminImportsCard} cu=${cu}/>
+      <${AdminConsoleCard} cu=${cu}/>
 
       <${WorkspaceRolesSettings} cu=${cu}/>
 
@@ -7467,6 +7895,44 @@ function WorkspaceSettings({cu,onReload}){
         </div>
       </div>
 
+      <div class="card" style=${{marginBottom:8}}>
+        <div style=${{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16}}>
+          <div style=${{flex:1}}>
+            <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>
+              <svg style=${{verticalAlign:'middle',marginRight:5}} width="18" height="18" viewBox="0 0 127 127" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2H27.2V80z" fill="#E01E5A"/><path d="M33.7 80c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z" fill="#E01E5A"/><path d="M46.9 27.2c-7.3 0-13.2-5.9-13.2-13.2C33.7 6.7 39.6.8 46.9.8c7.3 0 13.2 5.9 13.2 13.2V27.2H46.9z" fill="#36C5F0"/><path d="M46.9 33.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H46.9z" fill="#36C5F0"/><path d="M99.8 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.8V46.9z" fill="#2EB67D"/><path d="M93.3 46.9c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.9C66.9 6.6 72.8.7 80.1.7c7.3 0 13.2 5.9 13.2 13.2V46.9z" fill="#2EB67D"/><path d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8H80.1z" fill="#ECB22E"/><path d="M80.1 93.3c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2h-33z" fill="#ECB22E"/></svg>
+              Slack Notifications
+            </h3>
+            <p style=${{fontSize:12,color:'var(--tx2)',marginBottom:8}}>
+              When enabled, workspace members will receive Slack DMs for task assignments, tickets, 
+              mentions, and direct messages — automatically matched by their email address.
+              No individual sign-in required: the Slack Bot Token in your Railway env vars handles delivery.
+            </p>
+            <div style=${{padding:'9px 13px',background:slackEnabled?'rgba(54,197,240,0.06)':'rgba(255,255,255,0.02)',borderRadius:9,border:slackEnabled?'1px solid rgba(54,197,240,0.35)':'1px solid var(--bd)',fontSize:12,color:'var(--tx2)',display:'flex',flexDirection:'column',gap:5}}>
+              <div style=${{display:'flex',alignItems:'center',gap:6}}>\n                <span>${slackEnabled?'✅':'⬜'}</span>
+                <span style=${{fontWeight:600,color:slackEnabled?'#36C5F0':'var(--tx2)'}}>Slack Notifications are ${slackEnabled?'ENABLED':'DISABLED'}</span>
+              </div>
+              ${slackStatus?html`<div style=${{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
+                <span style=${{fontSize:10,padding:'2px 7px',borderRadius:10,background:slackStatus.bot_configured?'rgba(46,182,125,0.15)':'rgba(224,30,90,0.12)',color:slackStatus.bot_configured?'#2EB67D':'#E01E5A',fontWeight:600}}>${slackStatus.bot_configured?'✓ Bot Token configured':'✗ SLACK_BOT_TOKEN missing'}</span>
+                <span style=${{fontSize:10,padding:'2px 7px',borderRadius:10,background:'rgba(255,255,255,0.06)',color:'var(--tx3)',fontWeight:600}}>Users matched by email · no individual login required</span>
+              </div>`:null}
+              ${slackEnabled&&slackStatus&&!slackStatus.bot_configured?html`
+              <div style=${{marginTop:6,padding:'7px 10px',background:'rgba(224,30,90,0.08)',borderRadius:7,fontSize:11,color:'#E01E5A',fontWeight:500}}>
+                ⚠ Add SLACK_BOT_TOKEN to your Railway environment variables before enabling this. Members will not receive notifications until it's set.
+              </div>`:null}
+              <div class="tx3-11" style=${{marginTop:4}}>
+                ${slackEnabled
+                  ?'Members will receive Slack DMs for: task assignment · ticket assignment · DM messages · comments & mentions · incidents.'
+                  :'Enable to forward key notifications to your team\'s Slack accounts automatically.'}
+              </div>
+            </div>
+          </div>
+          <div style=${{flexShrink:0,paddingTop:4,display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+            <${ToggleSwitch} checked=${slackEnabled} onChange=${()=>setSlackEnabled(!slackEnabled)}/>
+            <span style=${{fontSize:10,fontWeight:600,color:slackEnabled?'#36C5F0':'var(--tx3)'}}>${slackEnabled?'On':'Off'}</span>
+          </div>
+        </div>
+      </div>
+
       <div style=${{display:'flex',gap:10,justifyContent:'flex-end'}}>
         <button class="btn bp" onClick=${save} disabled=${saving}>
           ${saving?html`<span class="spin"></span>`:saved?'✓ Saved!':'Save Settings'}
@@ -7557,17 +8023,17 @@ function NotesView({cu}){
   const taskCount=active&&editorRef.current?editorRef.current.querySelectorAll('.note-check').length:0;
   return html`<div class=${'notes-page pro '+(viewMode==='wide'?'wide':'focus')+' '+(toolsOpen?'tools-open':'') }>
     <style>${`
-      .notes-page.pro{height:100%;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 75% 8%,rgba(96,165,250,.14),transparent 28%),radial-gradient(circle at 16% 88%,rgba(168,85,247,.16),transparent 34%),#05070d;overflow:hidden;color:#eef3ff}.notes-page.pro.wide{grid-template-columns:230px minmax(0,1fr)}
-      .notes-sidebar{border-right:1px solid rgba(148,163,184,.18);background:linear-gradient(180deg,rgba(15,23,42,.95),rgba(2,6,23,.92));display:flex;flex-direction:column;min-width:0;box-shadow:10px 0 30px rgba(0,0,0,.22)}
-      .notes-head{padding:16px;border-bottom:1px solid rgba(148,163,184,.16)}.notes-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.notes-title{font-size:20px;font-weight:950;color:#fff;letter-spacing:-.03em}.notes-sub{font-size:10px;color:#94a3b8}.notes-count{font-size:10px;color:#bfdbfe;background:rgba(37,99,235,.18);border:1px solid rgba(96,165,250,.28);border-radius:999px;padding:4px 8px}
-      .notes-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.notes-tabs{display:flex;gap:8px;margin-top:10px}.notes-mini{height:32px!important;font-size:11px!important;padding:0 12px!important;border-radius:999px!important}.notes-quick .notes-mini:nth-child(1){background:linear-gradient(135deg,#8b5cf6,#6366f1)!important;color:#fff!important}.notes-quick .notes-mini:nth-child(2){background:linear-gradient(135deg,#10b981,#059669)!important;color:#fff!important}.notes-quick .notes-mini:nth-child(3){background:linear-gradient(135deg,#f59e0b,#f97316)!important;color:#111827!important}.notes-quick .notes-mini:nth-child(4){background:rgba(255,255,255,.08)!important;color:#e5e7eb!important;border:1px solid rgba(255,255,255,.14)!important}
-      .notes-list{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:10px}.notes-card{text-align:left;border:1px solid rgba(148,163,184,.14);background:linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,41,59,.66));border-radius:18px;padding:8px;cursor:pointer;color:#e5e7eb;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.notes-card:hover{transform:translateY(-2px);border-color:var(--note-color,#60a5fa);box-shadow:0 12px 30px rgba(0,0,0,.24)}.notes-card.active{border-color:var(--note-color,#60a5fa);background:linear-gradient(135deg,rgba(37,99,235,.22),rgba(15,23,42,.94));box-shadow:0 0 0 1px color-mix(in srgb,var(--note-color,#60a5fa) 40%,transparent)}.notes-card.pinned{box-shadow:inset 3px 0 0 var(--note-color,#60a5fa)}
-      .notes-card-top{display:flex;gap:9px;align-items:center}.notes-dot{width:10px;height:10px;border-radius:99px;background:var(--note-color,#60a5fa);box-shadow:0 0 16px var(--note-color,#60a5fa);flex-shrink:0}.notes-card-title{font-size:13px;font-weight:950;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notes-card-text{font-size:11px;color:#94a3b8;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.notes-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.notes-tag{font-size:9px;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.07);color:#cbd5e1;border:1px solid rgba(255,255,255,.1)}
-      .notes-main{min-width:0;display:grid;grid-template-rows:auto 1fr;overflow:hidden}.notes-topbar{min-height:62px;padding:10px 18px;border-bottom:1px solid rgba(148,163,184,.16);background:linear-gradient(180deg,rgba(15,23,42,.92),rgba(15,23,42,.72));display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:10px;align-items:center;backdrop-filter:blur(14px)}.notes-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.notes-saved{font-size:10px;color:#94a3b8}.notes-title-input{font-size:20px!important;font-weight:950!important;height:40px!important;border-radius:13px!important;background:rgba(255,255,255,.08)!important;color:#fff!important;border-color:rgba(255,255,255,.14)!important}.notes-tools{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;border:1px solid rgba(148,163,184,.16);border-radius:18px;background:rgba(2,6,23,.6)}
-      .notes-color{width:20px;height:20px;border-radius:99px;border:1px solid rgba(255,255,255,.22);cursor:pointer;background:var(--note-color,#60a5fa)}.notes-color.active{outline:2px solid #fff;outline-offset:2px}.notes-tool-group{display:flex;gap:6px;align-items:center;padding:5px 8px;border:1px solid rgba(148,163,184,.14);border-radius:999px;background:rgba(255,255,255,.06)}.notes-tool-label{font-size:10px;color:#94a3b8}
-      .notes-workspace{min-height:0;display:grid;grid-template-columns:1fr;overflow:hidden}.notes-page.pro.tools-open .notes-workspace{grid-template-columns:minmax(0,1fr) 260px}.notes-panel{border-left:1px solid rgba(148,163,184,.16);background:rgba(15,23,42,.76);padding:14px;overflow:auto}.notes-panel h4{margin:9px 0 7px;font-size:10px;color:#93c5fd;text-transform:uppercase;letter-spacing:.12em}.notes-tagbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-      .notes-editor-wrap{overflow:auto;padding:18px 26px 24px;background:radial-gradient(circle at top right,rgba(124,58,237,.16),transparent 35%),linear-gradient(180deg,rgba(2,6,23,.8),#020617)}.notes-editor{min-height:calc(100% - 8px);width:min(1180px,96%);margin:0 auto;padding:38px;border-radius:26px;background:linear-gradient(180deg,rgba(24,24,27,.98),rgba(15,23,42,.96));border:1px solid rgba(148,163,184,.22);box-shadow:0 22px 70px rgba(0,0,0,.32);color:#f8fafc;font-size:15px;line-height:1.85;outline:none}.notes-page.pro.wide .notes-editor{width:min(1360px,98%)}.notes-editor:focus{border-color:#60a5fa;box-shadow:0 0 0 4px rgba(96,165,250,.12),0 22px 70px rgba(0,0,0,.32)}.notes-editor h1,.notes-editor h2,.notes-editor h3{line-height:1.25;color:#fff}.notes-editor blockquote,.note-callout{border-left:4px solid #60a5fa;background:rgba(96,165,250,.12);padding:8px 14px;border-radius:14px;margin:12px 0}.notes-editor input[type=checkbox]{width:16px;height:16px;vertical-align:middle;margin-right:8px;accent-color:#60a5fa}.notes-empty{height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8}.notes-empty-list{padding:28px;text-align:center;color:#94a3b8}
-      .notes-page.pro .inp{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.14)}.notes-page.pro .btn:disabled{opacity:.55;cursor:not-allowed}.notes-page.pro .danger{background:rgba(239,68,68,.12)!important;color:#fecaca!important;border-color:rgba(239,68,68,.28)!important}
+      .notes-page.pro{height:100%;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 75% 8%,rgba(96,165,250,.14),transparent 28%),radial-gradient(circle at 16% 88%,rgba(168,85,247,.16),transparent 34%),var(--bg);overflow:hidden;color:var(--tx)}.notes-page.pro.wide{grid-template-columns:230px minmax(0,1fr)}
+      .notes-sidebar{border-right:1px solid var(--bd);background:linear-gradient(180deg,var(--sf),var(--sf2));display:flex;flex-direction:column;min-width:0;box-shadow:10px 0 30px rgba(0,0,0,.1)}
+      .notes-head{padding:16px;border-bottom:1px solid var(--bd)}.notes-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.notes-title{font-size:20px;font-weight:950;color:var(--tx);letter-spacing:-.03em}.notes-sub{font-size:10px;color:var(--tx3)}.notes-count{font-size:10px;color:var(--ac2);background:var(--ac4);border:1px solid var(--ac3);border-radius:999px;padding:4px 8px}
+      .notes-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.notes-tabs{display:flex;gap:8px;margin-top:10px}.notes-mini{height:32px!important;font-size:11px!important;padding:0 12px!important;border-radius:999px!important}.notes-quick .notes-mini:nth-child(1){background:linear-gradient(135deg,#8b5cf6,#6366f1)!important;color:#fff!important}.notes-quick .notes-mini:nth-child(2){background:linear-gradient(135deg,#10b981,#059669)!important;color:#fff!important}.notes-quick .notes-mini:nth-child(3){background:linear-gradient(135deg,#f59e0b,#f97316)!important;color:#111827!important}.notes-quick .notes-mini:nth-child(4){background:var(--sf3)!important;color:var(--tx)!important;border:1px solid var(--bd)!important}
+      .notes-list{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:10px}.notes-card{text-align:left;border:1px solid var(--bd);background:linear-gradient(135deg,var(--sf),var(--sf2));border-radius:18px;padding:8px;cursor:pointer;color:var(--tx2);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.notes-card:hover{transform:translateY(-2px);border-color:var(--note-color,#60a5fa);box-shadow:0 12px 30px rgba(0,0,0,.14)}.notes-card.active{border-color:var(--note-color,#60a5fa);background:linear-gradient(135deg,var(--ac4),var(--sf));box-shadow:0 0 0 1px color-mix(in srgb,var(--note-color,#60a5fa) 40%,transparent)}.notes-card.pinned{box-shadow:inset 3px 0 0 var(--note-color,#60a5fa)}
+      .notes-card-top{display:flex;gap:9px;align-items:center}.notes-dot{width:10px;height:10px;border-radius:99px;background:var(--note-color,#60a5fa);box-shadow:0 0 16px var(--note-color,#60a5fa);flex-shrink:0}.notes-card-title{font-size:13px;font-weight:950;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notes-card-text{font-size:11px;color:var(--tx3);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.notes-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.notes-tag{font-size:9px;padding:2px 7px;border-radius:999px;background:var(--sf3);color:var(--tx2);border:1px solid var(--bd)}
+      .notes-main{min-width:0;display:grid;grid-template-rows:auto 1fr;overflow:hidden}.notes-topbar{min-height:62px;padding:10px 18px;border-bottom:1px solid var(--bd);background:linear-gradient(180deg,var(--sf),var(--sf2));display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:10px;align-items:center;backdrop-filter:blur(14px)}.notes-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.notes-saved{font-size:10px;color:var(--tx3)}.notes-title-input{font-size:20px!important;font-weight:950!important;height:40px!important;border-radius:13px!important;background:var(--sf2)!important;color:var(--tx)!important;border-color:var(--bd)!important}.notes-tools{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;border:1px solid var(--bd);border-radius:18px;background:var(--sf2)}
+      .notes-color{width:20px;height:20px;border-radius:99px;border:1px solid var(--bd);cursor:pointer;background:var(--note-color,#60a5fa)}.notes-color.active{outline:2px solid var(--tx);outline-offset:2px}.notes-tool-group{display:flex;gap:6px;align-items:center;padding:5px 8px;border:1px solid var(--bd);border-radius:999px;background:var(--sf3)}.notes-tool-label{font-size:10px;color:var(--tx3)}
+      .notes-workspace{min-height:0;display:grid;grid-template-columns:1fr;overflow:hidden}.notes-page.pro.tools-open .notes-workspace{grid-template-columns:minmax(0,1fr) 260px}.notes-panel{border-left:1px solid var(--bd);background:var(--sf);padding:14px;overflow:auto}.notes-panel h4{margin:9px 0 7px;font-size:10px;color:var(--ac2);text-transform:uppercase;letter-spacing:.12em}.notes-tagbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+      .notes-editor-wrap{overflow:auto;padding:18px 26px 24px;background:radial-gradient(circle at top right,var(--ac4),transparent 35%),var(--bg)}.notes-editor{min-height:calc(100% - 8px);width:min(1180px,96%);margin:0 auto;padding:38px;border-radius:26px;background:linear-gradient(180deg,var(--sf),var(--sf2));border:1px solid var(--bd);box-shadow:0 22px 70px rgba(0,0,0,.12);color:var(--tx);font-size:15px;line-height:1.85;outline:none}.notes-page.pro.wide .notes-editor{width:min(1360px,98%)}.notes-editor:focus{border-color:#60a5fa;box-shadow:0 0 0 4px rgba(96,165,250,.12),0 22px 70px rgba(0,0,0,.12)}.notes-editor h1,.notes-editor h2,.notes-editor h3{line-height:1.25;color:var(--tx)}.notes-editor blockquote,.note-callout{border-left:4px solid #60a5fa;background:rgba(96,165,250,.12);padding:8px 14px;border-radius:14px;margin:12px 0}.notes-editor input[type=checkbox]{width:16px;height:16px;vertical-align:middle;margin-right:8px;accent-color:#60a5fa}.notes-empty{height:100%;display:flex;align-items:center;justify-content:center;color:var(--tx3)}.notes-empty-list{padding:28px;text-align:center;color:var(--tx3)}
+      .notes-page.pro .inp{background:var(--sf2);color:var(--tx);border-color:var(--bd)}.notes-page.pro .btn:disabled{opacity:.55;cursor:not-allowed}.notes-page.pro .danger{background:rgba(239,68,68,.12)!important;color:var(--rd)!important;border-color:rgba(239,68,68,.28)!important}
       @media(max-width:980px){.notes-page.pro{grid-template-columns:1fr}.notes-sidebar{max-height:250px}.notes-page.pro.tools-open .notes-workspace{grid-template-columns:1fr}.notes-panel{display:none}.notes-topbar{grid-template-columns:1fr}.notes-actions{justify-content:flex-start}.notes-editor{width:100%;padding:24px}.notes-editor-wrap{padding:8px}}
     `}</style>
     <aside class="notes-sidebar">
@@ -7585,7 +8051,7 @@ function NotesView({cu}){
         </button>`):html`<div class="notes-empty-list">No notes found.</div>`}
       </div>
     </aside>
-    <main class="notes-main">
+    <div class="notes-main">
       ${active?html`<div class="notes-topbar">
         <input class="inp notes-title-input" value=${active.title||''} onInput=${e=>savePatch(active.id,{title:e.target.value})} placeholder="Note title" />
         <div class="notes-actions">
@@ -7609,7 +8075,7 @@ function NotesView({cu}){
           <h4>Shortcuts</h4><div class="notes-sub">Ctrl+S save · Ctrl+B bold · Ctrl+I italic · checkbox clicks are saved</div>
         </aside>`:null}
       </div>`:html`<div class="notes-empty"><button class="btn bp" disabled=${creating} onClick=${()=>createNote('blank')}>Create your first note</button></div>`}
-    </main>
+    </div>
   </div>`;
 }
 
@@ -7674,7 +8140,7 @@ function AiDocsView({cu,projects,tasks,users}){
     setInput('');
   };
 
-  const scrollToBottom=()=>{ setTimeout(() => { if(bottomRef.current) bottomRef.current.scrollIntoView({behavior:'smooth'}); },80); };
+  const scrollToBottom=()=>{ setTimeout(()=>{ if(bottomRef.current) bottomRef.current.scrollIntoView({behavior:'smooth'}); },80); };
 
   const fmtRecent=(iso)=>{
     try{
@@ -7836,7 +8302,7 @@ ${hasFiles?'- The user has attached files. Analyze them and create documentation
     }
 
     try{
-      const r=fetch('https://api.anthropic.com/v1/messages',{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{'Content-Type':'application/json','x-api-key':ws.ai_api_key,'anthropic-version':'2023-06-01'},
         body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,system:systemPrompt,messages:history})
@@ -7876,16 +8342,12 @@ ${hasFiles?'- The user has attached files. Analyze them and create documentation
 
   const renderMd=(md)=>{
     if(!md)return '';
-    // Escape HTML-significant characters BEFORE any markdown→HTML regex runs
-    // below (mirrors the top-level renderMd at the top of this file, which
-    // does the same). Without this step, any raw '<'/'>' in the source text
-    // — e.g. a task/project title or description that made it into the AI's
-    // context and got echoed back in its reply — was injected straight into
-    // dangerouslySetInnerHTML as live markup instead of literal text: an
-    // indirect-prompt-injection-to-XSS path (security review finding #9).
-    // Escaping first is safe for the markdown syntax below: none of it uses
-    // '&','<','>','"' as delimiters (headers use '#', bold/italic use '*',
-    // code uses backtick, tables use '|'), so every regex still matches.
+    // Escape HTML-significant characters BEFORE any markdown->HTML regex below
+    // runs. Without this, a raw '<'/'>' that made it into the AI's context
+    // (e.g. from a task/project title) and got echoed back in its reply was
+    // injected straight into dangerouslySetInnerHTML as live markup instead of
+    // literal text. Safe to do first: none of the markdown syntax below uses
+    // '&','<','>','"' as a delimiter.
     md=escapeHtml(md);
     return md
       .replace(/^# (.+)$/gm,'<h1 style="font-size:20px;font-weight:800;color:var(--tx);margin:0 0 14px;letter-spacing:-.4px;padding-bottom:8px;border-bottom:2px solid rgba(255,100,60,.2)">$1</h1>')
@@ -9516,12 +9978,112 @@ function vaultStorageKey(cu){
   try{ const lastUid = localStorage.getItem('project-tracker_last_uid'); if(lastUid) return 'project-tracker_vault_v2_'+lastUid; }catch(_){}
   return 'project-tracker_vault_v2_guest';
 }
-function vaultLoad(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch(_){ return []; } }
-function vaultPersist(key,cards){ try{ localStorage.setItem(key,JSON.stringify(cards)); }catch(_){} }
 function vaultNewId(){ return 'c'+Date.now()+Math.random().toString(36).slice(2,6); }
-async function vaultHashPw(pw){
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('project-tracker::'+pw));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+// ── Offline-mode encryption (AES-GCM, passphrase-derived via PBKDF2) ─────────
+// Previously vaultLoad/vaultPersist read and wrote plain JSON to localStorage —
+// every credential sitting in cleartext on disk for anyone with access to the
+// browser profile (extensions, other local users, a stolen laptop). Now the
+// blob is always encrypted with a key derived from a passphrase the user
+// enters for the offline session; the passphrase itself is never persisted
+// anywhere, only kept in memory for as long as the tab is open.
+async function vaultDeriveLocalKey(passphrase, saltBytes){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:saltBytes, iterations:150000, hash:'SHA-256'},
+    baseKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']
+  );
+}
+function _b64(bytes){ return btoa(Array.from(bytes,b=>String.fromCharCode(b)).join('')); }
+function _unb64(str){ return new Uint8Array(atob(str).split('').map(c=>c.charCodeAt(0))); }
+async function vaultLoad(key, passphrase){
+  let raw; try{ raw = localStorage.getItem(key); }catch(_){ return []; }
+  if(!raw) return [];
+  // Legacy path: pre-encryption data written as plain JSON. Migrate it up
+  // (re-saved encrypted on the next vaultPersist call) rather than losing it.
+  if(raw[0]==='['){ try{ return JSON.parse(raw); }catch(_){ return []; } }
+  if(!passphrase) throw new Error('passphrase required');
+  try{
+    const blob = JSON.parse(raw);
+    const salt = _unb64(blob.salt), iv = _unb64(blob.iv), ct = _unb64(blob.ct);
+    const cryptoKey = await vaultDeriveLocalKey(passphrase, salt);
+    const plainBuf = await crypto.subtle.decrypt({name:'AES-GCM', iv}, cryptoKey, ct);
+    return JSON.parse(new TextDecoder().decode(plainBuf));
+  }catch(e){
+    throw new Error('Incorrect passphrase');
+  }
+}
+async function vaultPersist(key, cards, passphrase){
+  if(!passphrase) return; // never fall back to writing plaintext
+  try{
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cryptoKey = await vaultDeriveLocalKey(passphrase, salt);
+    const ctBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv}, cryptoKey, new TextEncoder().encode(JSON.stringify(cards)));
+    localStorage.setItem(key, JSON.stringify({salt:_b64(salt), iv:_b64(iv), ct:_b64(new Uint8Array(ctBuf))}));
+  }catch(_){}
+}
+function vaultGenPassword(len){
+  len = len || 16;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  let out = '';
+  for(let i=0;i<len;i++) out += chars[arr[i]%chars.length];
+  return out;
+}
+function vaultPwStrength(pw){
+  if(!pw) return {score:0, pct:0, label:'', color:'#475569'};
+  let score = 0;
+  if(pw.length>=8) score++;
+  if(pw.length>=12) score++;
+  if(/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if(/\d/.test(pw)) score++;
+  if(/[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [
+    {label:'Weak',   color:'#ef4444'},
+    {label:'Weak',   color:'#ef4444'},
+    {label:'Fair',   color:'#f59e0b'},
+    {label:'Good',   color:'#eab308'},
+    {label:'Strong', color:'#4ade80'},
+    {label:'Strong', color:'#4ade80'},
+  ];
+  const lvl = levels[Math.min(score, levels.length-1)];
+  return {score, pct: Math.min(100, (score/5)*100), label:lvl.label, color:lvl.color};
+}
+// ── Security Health scan ─────────────────────────────────────────────────
+// Walks every card's secret-flagged fields (passwords/keys/tokens — the
+// same _secret flag the card editor already sets) and flags two things a
+// credential vault should surface on its own rather than making the user
+// open each card to notice: passwords weak enough to guess/brute-force,
+// and the exact same secret value reused across more than one field.
+// Runs entirely over data already loaded into the page (see VaultHashPw —
+// values are masked in the UI, not encrypted at rest in the browser), so
+// this costs nothing extra from the server.
+function vaultSecurityAudit(cards){
+  const entries = [];
+  (cards||[]).forEach(c=>{
+    const vColId = (c.cols && c.cols[1] && c.cols[1].id) || 'c2';
+    (c.rows||[]).forEach(r=>{
+      if(r && r._secret && r[vColId]){
+        entries.push({cardId:c.id, value:r[vColId]});
+      }
+    });
+  });
+  const weakIds = new Set();
+  entries.forEach(e=>{ if(vaultPwStrength(e.value).score<=2) weakIds.add(e.cardId); });
+  const counts = {};
+  entries.forEach(e=>{ counts[e.value]=(counts[e.value]||0)+1; });
+  const reusedIds = new Set();
+  entries.forEach(e=>{ if(counts[e.value]>1) reusedIds.add(e.cardId); });
+  return {
+    weakIds, reusedIds,
+    weakCount: weakIds.size,
+    reusedCount: reusedIds.size,
+    totalSecrets: entries.length,
+    clean: entries.length>0 && weakIds.size===0 && reusedIds.size===0,
+  };
 }
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
@@ -9549,19 +10111,80 @@ function vaultGetIcon(title, tags){
   return VAULT_ICON_DEFAULT;
 }
 
+// ── Category, expiry & relative-time helpers (My Vault redesign) ──────────────
+const VAULT_CATEGORIES = {
+  database: {key:'database', label:'Database', badge:'DATABASE', color:'#22C55E'},
+  api:      {key:'api',      label:'API',      badge:'API',      color:'#A78BFA'},
+  server:   {key:'server',   label:'Server',   badge:'SERVER',   color:'#5B7CFF'},
+  auth:     {key:'auth',     label:'Auth',     badge:'AUTH',     color:'#8B5CF6'},
+  cloud:    {key:'cloud',    label:'Cloud',    badge:'CLOUD',    color:'#F59E0B'},
+  network:  {key:'network',  label:'Network',  badge:'NETWORK',  color:'#22D3EE'},
+  other:    {key:'other',    label:'Other',    badge:'OTHER',    color:'#2DD4BF'},
+};
+const VAULT_CATEGORY_LIST = Object.values(VAULT_CATEGORIES);
+function vaultAutoCategory(title, tags){
+  const s = ((title||'')+' '+(tags||'')).toLowerCase();
+  if(/(database|postgres|mysql|mongo|redis|\bdb\b|sql)/.test(s)) return 'database';
+  if(/(api|token|webhook|endpoint|deploy)/.test(s)) return 'api';
+  if(/(vpn|network|firewall|\bdns\b|router|switch|sophos|proxy)/.test(s)) return 'network';
+  if(/(server|ssh|smtp|relay|host|ftp)/.test(s)) return 'server';
+  if(/(auth|sso|oauth|login|okta|client secret)/.test(s)) return 'auth';
+  if(/(aws|azure|\bgcp\b|cloud|s3|storage bucket)/.test(s)) return 'cloud';
+  return 'other';
+}
+function vaultCategoryInfo(card){
+  const key = card.category && VAULT_CATEGORIES[card.category] ? card.category : vaultAutoCategory(card.title, card.tags);
+  return VAULT_CATEGORIES[key] || VAULT_CATEGORIES.other;
+}
+function vaultExpiryInfo(expiresAt){
+  if(!expiresAt) return null;
+  const d = new Date(expiresAt); if(isNaN(d.getTime())) return null;
+  const diffDays = Math.ceil((d.getTime()-Date.now())/86400000);
+  const dateStr = d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  if(diffDays<0) return {expired:true, soon:false, label:'Expired '+dateStr, color:'#ef4444', bg:'rgba(239,68,68,.12)', border:'rgba(239,68,68,.3)', days:diffDays};
+  if(diffDays<=30) return {expired:false, soon:true, label:'Expires '+dateStr, color:'#f59e0b', bg:'rgba(245,158,11,.12)', border:'rgba(245,158,11,.3)', days:diffDays};
+  return {expired:false, soon:false, label:'Expires '+dateStr, color:'#94a3b8', bg:'rgba(148,163,184,.08)', border:'rgba(148,163,184,.2)', days:diffDays};
+}
+function vaultTimeAgo(iso){
+  if(!iso) return '—';
+  const d = new Date(iso); if(isNaN(d.getTime())) return '—';
+  const mins = Math.floor((Date.now()-d.getTime())/60000);
+  if(mins<1) return 'just now';
+  if(mins<60) return mins+'m ago';
+  const hrs = Math.floor(mins/60);
+  if(hrs<24) return 'Today, '+d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'});
+  const days = Math.floor(hrs/24);
+  if(days===1) return 'Yesterday, '+d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'});
+  if(days<7) return days+'d ago';
+  return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+}
+// Fields whose *label* looks like a secret get masked by default even if the
+// user never flipped the manual "mask this field" toggle — password, key,
+// token, secret, credential-type fields.
+function vaultIsSecretLabel(label){
+  return /(password|passwd|\bpwd\b|secret|token|api[ _-]?key|private[ _-]?key|access[ _-]?key|client secret|credential)/i.test(label||'');
+}
+
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const VS = {
   wrap:   { flex:1, display:'flex', flexDirection:'column', height:'100%', overflowY:'auto', overflowX:'hidden', width:'100%', boxSizing:'border-box', scrollbarWidth:'thin', scrollbarColor:'#5a5ef7 rgba(90,94,247,0.08)' },
   wrapInner: { padding:'24px 28px', maxWidth:1100, width:'100%' },
   ph:     { display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,gap:12 },
-  btnPri: { background:'linear-gradient(135deg,#5a5ef7,#a855f7)',color:'#fff',border:'none',padding:'8px 18px',borderRadius:100,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6,transition:'opacity .15s' },
+  btnPri: { background:'var(--grad-vault)',color:'#fff',border:'none',padding:'8px 18px',borderRadius:100,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6,transition:'opacity .15s' },
   btnCan: { background:'none',border:'1px solid var(--bd)',color:'var(--tx2)',fontSize:13,padding:'7px 16px',borderRadius:100,cursor:'pointer',fontFamily:'inherit' },
   moBack: { position:'fixed',inset:0,background:'rgba(0,0,0,.82)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(8px)' },
 };
 
 // ── Password modal ────────────────────────────────────────────────────────────
-function VaultPwModal({title, mode, onConfirm, onClose}){
-  // mode: 'set' | 'verify'
+function VaultPwModal({title, mode, onConfirm, onClose, kind, externalError}){
+  // mode: 'set' | 'verify'. kind: label for what's being locked/unlocked —
+  // defaults to 'Card' for per-card locks; pass 'Vault' for the whole-vault
+  // master password / offline-passphrase gates so the copy reads correctly.
+  // externalError: a server-side failure (e.g. "Incorrect password") passed
+  // in from the caller after onConfirm resolves — shown inside the modal
+  // itself so a failed unlock is never silent just because the modal stays
+  // open (it doesn't auto-close on failure, only on success).
+  const noun = kind || 'Card';
   const [pw1,setPw1]=useState('');
   const [pw2,setPw2]=useState('');
   const [show1,setShow1]=useState(false);
@@ -9572,7 +10195,11 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
     if(!pw1){ setErr('Enter a password'); return; }
     if(mode==='set' && pw1.length<4){ setErr('Use at least 4 characters'); return; }
     if(mode==='set' && pw1!==pw2){ setErr('Passwords do not match'); return; }
-    vaultHashPw(pw1).then(h=>onConfirm(h)).catch(()=>setErr('Error hashing password'));
+    // The raw password is sent straight to onConfirm now — hashing (bcrypt)
+    // happens server-side for real verification. Previously this hashed with
+    // an unsalted SHA-256 in the browser and the server just stored whatever
+    // hash it was given, so "locked" cards were never actually gated.
+    onConfirm(pw1);
   }
   const inp = {
     width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,
@@ -9583,7 +10210,7 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
   return html`
     <div style=${{...VS.moBack,zIndex:2147483000}} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
       <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:16,padding:'26px',width:400,maxWidth:'calc(100vw - 32px)',boxShadow:'0 32px 80px rgba(0,0,0,.6)',position:'relative'}}>
-        <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)',marginBottom:4}}>${mode==='set' ? '🔒 Lock Card' : '🔓 Unlock Card'}</div>
+        <div style=${{fontSize:15,fontWeight:800,color:'var(--tx)',marginBottom:4}}>${mode==='set' ? '🔒 Lock '+noun : '🔓 Unlock '+noun}</div>
         <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:18,lineHeight:1.5}}>${mode==='set' ? 'Set a password to protect "'+title+'". This popup is now outside the card so it will not be hidden.' : 'Enter password for "'+title+'"'}</div>
         <div style=${{marginBottom:12,position:'relative'}}>
           <input style=${inp} type=${show1?'text':'password'} placeholder="Password" value=${pw1}
@@ -9600,11 +10227,11 @@ function VaultPwModal({title, mode, onConfirm, onClose}){
               onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
             <button style=${eyeBtn} type="button" onClick=${()=>setShow2(!show2)}>${show2?'Hide':'Show'}</button>
           </div>`}
-        ${err && html`<div style=${{fontSize:12,color:'#f87171',marginBottom:10}}>${err}</div>`}
+        ${(err||externalError) && html`<div style=${{fontSize:12,color:'var(--rd2)',marginBottom:10}}>${err||externalError}</div>`}
         ${mode==='set' && html`<div style=${{fontSize:11,color:'var(--tx2)',background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.15)',borderRadius:7,padding:'7px 10px',marginBottom:14}}>⚠️ Cannot be recovered if forgotten.</div>`}
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
-          <button style=${{...VS.btnPri, background: mode==='set' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#5a5ef7,#a855f7)'}} onClick=${submit}>${mode==='set'?'Lock Card':'Unlock'}</button>
+          <button style=${{...VS.btnPri, background: mode==='set' ? 'var(--grad-warn)' : 'var(--grad-vault)'}} onClick=${submit}>${mode==='set'?'Lock '+noun:'Unlock'}</button>
         </div>
       </div>
     </div>`;
@@ -9620,17 +10247,18 @@ function VaultDelModal({title, onConfirm, onClose}){
         <div style=${{fontSize:13,color:'var(--tx2)',marginBottom:20,lineHeight:1.6}}>All credentials in this card will be permanently deleted. This cannot be undone.</div>
         <div style=${{display:'flex',gap:8,justifyContent:'center'}}>
           <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
-          <button style=${{...VS.btnPri,background:'linear-gradient(135deg,#ef4444,#b91c1c)'}} onClick=${onConfirm}>Delete Forever</button>
+          <button style=${{...VS.btnPri,background:'var(--grad-danger)'}} onClick=${onConfirm}>Delete Forever</button>
         </div>
       </div>
     </div>`;
 }
 
 // ── Spreadsheet card ──────────────────────────────────────────────────────────
-function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate}){
-  const isLocked = !!card.lockHash;
+function VaultSpreadCard({card, isUnlocked, isWeak, isReused, onUnlock, onLock, onDelete, onUpdate}){
+  const isLocked = !!card.locked;
   const canSee = !isLocked || isUnlocked;
   const iconInfo = vaultGetIcon(card.title, card.tags);
+  const [unlockErr, setUnlockErr] = useState('');
 
   const [title,    setTitle]    = useState(card.title||'');
   const [tags,     setTags]     = useState(card.tags||'');
@@ -9655,15 +10283,40 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   const [copyFlash,setCopyFlash]= useState(null);
   const [saving, setSaving] = useState(false);
   const [menu, setMenu] = useState(null); // {type:'row'|'col', id, index, x, y}
+  const [category, setCategory] = useState(card.category || '');
+  const [expiresAt, setExpiresAt] = useState(card.expires_at || card.expiresAt || '');
+  const [pinned, setPinned] = useState(!!card.pinned);
+  const [sheetMode, setSheetMode] = useState(false);
+  const [notes, setNotes] = useState(card.notes || '');
+  const [showExpiryEdit, setShowExpiryEdit] = useState(false);
+  const revealTimers = useRef({}); // cellKey -> timeout id, for 15s auto-remask
+  useEffect(()=>()=>{ Object.values(revealTimers.current).forEach(clearTimeout); }, []);
+  const isSimple = cols.length===2; // plain Key/Value card → shows as clean labeled fields
+  const keyCol = cols[0] || {id:'c1',label:'Key'};
+  const valCol = cols[1] || {id:'c2',label:'Value'};
 
-  function push(nextCols, nextRows, nextTitle, nextTags){
+  function push(nextCols, nextRows, nextTitle, nextTags, nextCategory, nextExpires, nextPinned, nextNotes){
     const c = nextCols  !== undefined ? nextCols  : cols;
     const r = nextRows  !== undefined ? nextRows  : rows;
     const t = nextTitle !== undefined ? nextTitle : title;
     const tg= nextTags  !== undefined ? nextTags  : tags;
+    const cat=nextCategory!== undefined ? nextCategory : category;
+    const exp=nextExpires !== undefined ? nextExpires : expiresAt;
+    const pin=nextPinned  !== undefined ? nextPinned  : pinned;
+    const nt =nextNotes   !== undefined ? nextNotes   : notes;
     setSaving(true);
-    onUpdate({...card, title:t, tags:tg, cols:c, rows:r});
+    // Stamp `updated` locally so the footer's relative timestamp ("Updated just
+    // now") reflects this edit immediately. The PUT below still returns the
+    // server's authoritative timestamp, which the parent reconciles once it
+    // resolves — this optimistic value just avoids a stale-looking UI in the
+    // meantime.
+    onUpdate({...card, title:t, tags:tg, cols:c, rows:r, category:cat, expires_at:exp, pinned:pin, notes:nt, updated:new Date().toISOString()});
     setTimeout(() => setSaving(false), 800);
+  }
+  function togglePin(){
+    const next=!pinned;
+    setPinned(next);
+    push(undefined,undefined,undefined,undefined,undefined,undefined,next);
   }
 
   function emptyRow(){
@@ -9733,61 +10386,155 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
   function revealCell(cellKey, colLabel){
     setShowSecretCells(s=>({...s,[cellKey]:true}));
     try { api.post('/api/vault/'+card.id+'/audit', {action:'reveal', detail: colLabel||'secret'}); } catch(_){ }
+    if(revealTimers.current[cellKey]) clearTimeout(revealTimers.current[cellKey]);
+    revealTimers.current[cellKey] = setTimeout(()=>{
+      setShowSecretCells(s=>{ if(!s[cellKey]) return s; const n={...s}; delete n[cellKey]; return n; });
+      delete revealTimers.current[cellKey];
+    }, 15000);
+  }
+  function hideCell(cellKey){
+    if(revealTimers.current[cellKey]){ clearTimeout(revealTimers.current[cellKey]); delete revealTimers.current[cellKey]; }
+    setShowSecretCells(s=>{ const n={...s}; delete n[cellKey]; return n; });
   }
   function openMenu(e,type,id,index){
     e.preventDefault(); e.stopPropagation();
     setMenu({type,id,index,x:e.clientX||240,y:e.clientY||240});
   }
 
-  const accentColor = iconInfo.border;
-  const stripeColor = iconInfo.border.replace(/[\d.]+\)$/,'1)');
-  const menuBtn = {background:'rgba(255,255,255,.04)',border:'1px solid var(--bd)',borderRadius:6,color:'var(--tx2)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1};
-  const softActionBtn = {background:'rgba(255,255,255,.035)',border:'1px solid rgba(255,255,255,.08)',borderRadius:6,color:'var(--tx3)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
-  const dangerMiniBtn = {background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.18)',borderRadius:6,color:'#f87171',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
+  const catInfo = vaultCategoryInfo({title, tags, category});
+  const expInfo = vaultExpiryInfo(expiresAt);
+  // Single accent per card, driven by category (matches the small badge the
+  // user already sees), applied sparingly via CSS custom properties rather
+  // than filling backgrounds or borders. Icon glyph selection (iconInfo)
+  // stays independent — only its color now follows the category accent.
+  const accentColor = catInfo.color;
+  const accentVars = {
+    '--vault-accent': accentColor,
+    '--vault-accent-wash': accentColor+'1a',
+    '--vault-accent-wash-strong': accentColor+'2e',
+    '--vault-accent-border': accentColor+'40',
+  };
+  const menuBtn = {background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:6,color:'var(--tx2)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1};
+  const softActionBtn = {background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:6,color:'var(--tx3)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
+  const dangerMiniBtn = {background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.18)',borderRadius:6,color:'var(--rd2)',fontSize:11,padding:'2px 6px',cursor:'pointer',lineHeight:1,transition:'all .15s'};
   const menuItem = {display:'block',width:'100%',textAlign:'left',background:'none',border:'none',color:'var(--tx)',fontSize:12,padding:'8px 10px',cursor:'pointer',borderRadius:7,fontFamily:'inherit'};
 
   return html`
-    <div class="vault-card" onClick=${()=>menu&&setMenu(null)} style=${{
-      border:'1px solid '+accentColor.replace(/[\d.]+\)$/,'.25)'),
-      borderLeft:'4px solid '+stripeColor,
-      boxShadow:'0 4px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03)',
-    }}>
-      <div style=${{height:3,background:'linear-gradient(90deg,'+stripeColor+' 0%,'+accentColor.replace(/[\d.]+\)$/,'.6)')+' 60%,transparent 100%)'}}></div>
-      <div class="vault-card-header" style=${{
-        background:'linear-gradient(135deg,'+iconInfo.bg.replace(/[\d.]+\)$/,'0.22)')+' 0%,transparent 65%)',
-        borderBottom:'1px solid '+accentColor.replace(/[\d.]+\)$/,'.15)'),
-      }}>
-        <div class="vault-card-icon" style=${{
-          background:iconInfo.bg.replace(/[\d.]+\)$/,'0.3)'),
-          border:'1.5px solid '+stripeColor,
-          boxShadow:'0 0 16px '+accentColor.replace(/[\d.]+\)$/,'.35)'),
-        }}>${iconInfo.icon}</div>
-        ${editing && html`
-          <input style=${{flex:1,background:'var(--sf2)',border:'1px solid '+stripeColor,borderRadius:9,padding:'6px 11px',fontSize:14,fontWeight:800,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
-            value=${title} autoFocus
-            onInput=${e=>setTitle(e.target.value)}
-            onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
-            onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
-        ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
-        ${saving && html`<span class="vault-tag" style=${{background:'rgba(34,197,94,.1)',color:'#4ade80',border:'1px solid rgba(34,197,94,.3)'}}>💾 Saving...</span>`}
-        ${isLocked && html`<span class="vault-tag" style=${{background:isUnlocked?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:isUnlocked?'#4ade80':'#f87171',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>`}
-        <div style=${{display:'flex',gap:6,flexShrink:0}}>
-          ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>Lock</button>`}
-          ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
-          <button class="vault-action-btn danger" onClick=${()=>setShowDel(true)}>Delete</button>
+    <div class="vault-card${pinned?' is-pinned':''}" onClick=${()=>menu&&setMenu(null)} style=${accentVars}>
+      <div class="vault-card-header">
+        <div class="vault-card-header-scroll">
+          <div class="vault-card-icon">${iconInfo.icon}</div>
+          ${editing && html`
+            <input style=${{flex:'0 0 140px',background:'var(--vault-slate2)',border:'1px solid var(--vault-line-hover)',borderRadius:8,padding:'6px 11px',fontSize:13.5,fontWeight:700,color:'var(--tx)',fontFamily:'inherit',outline:'none'}}
+              value=${title} autoFocus
+              onInput=${e=>setTitle(e.target.value)}
+              onBlur=${()=>{setEditing(false);push(undefined,undefined,title,undefined);}}
+              onKeyDown=${e=>{if(e.key==='Enter'||e.key==='Escape'){setEditing(false);push(undefined,undefined,title,undefined);}}}/>`}
+          ${!editing && html`<span class="vault-card-title" onClick=${()=>setEditing(true)} title="Click to rename">${title||'Untitled'}</span>`}
+          <span class="vault-tag" style=${{color:catInfo.color,background:catInfo.color+'1a',border:'1px solid '+catInfo.color+'40'}}>${catInfo.badge}</span>
+          ${saving && html`<span class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx3)',border:'1px solid var(--vault-line)'}}>Saving…</span>`}
+          ${isLocked && html`<span class="vault-tag" style=${{display:'inline-flex',alignItems:'center',gap:4,background:isUnlocked?'rgba(34,197,94,.12)':'rgba(255,255,255,.05)',color:isUnlocked?'#4ADE80':'var(--tx3)',border:'1px solid '+(isUnlocked?'rgba(34,197,94,.3)':'var(--vault-line)')}}>${isUnlocked ? '🔓 Unlocked' : '🔒 AES-256 Protected'}</span>`}
+          ${(isWeak||isReused) && html`<span class="vault-tag" title=${isWeak&&isReused?'Weak & reused password':isWeak?'Weak password':'Reused password'} style=${{background:'rgba(239,68,68,.12)',color:'#f87171',border:'1px solid rgba(239,68,68,.3)'}}>⚠️ ${isWeak&&isReused?'Weak · Reused':isWeak?'Weak':'Reused'}</span>`}
         </div>
+        <button class=${'vault-fav-btn'+(pinned?' active':'')} title=${pinned?'Unpin':'Pin as favorite'} aria-label=${pinned?'Unpin card':'Pin card as favorite'} aria-pressed=${pinned} onClick=${e=>{e.stopPropagation();togglePin();}}>★</button>
       </div>
-      ${tags && html`<div style=${{padding:'6px 18px 8px',display:'flex',gap:5,flexWrap:'wrap',borderBottom:'1px solid var(--bd)'}}>${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(90,94,247,.08)',color:'var(--ac)',border:'1px solid rgba(90,94,247,.2)'}}>${t}</span>`)}</div>`}
-
-      ${isLocked && !isUnlocked && html`
-        <div class="vault-locked-overlay">
-          <div style=${{width:56,height:56,borderRadius:16,background:'rgba(239,68,68,.08)',border:'1.5px solid rgba(239,68,68,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:26}}>🔒</div>
-          <div style=${{fontSize:14,fontWeight:700,color:'var(--tx)',marginBottom:6}}>${title}</div>
-          <div style=${{fontSize:12,color:'var(--tx2)',marginBottom:4}}>This card is password protected.</div>
-          <button class="vault-unlock-btn" onClick=${()=>setShowPwMo('verify')}>Unlock Card</button>
-        </div>`}
+      <div class="vault-badge-row">
+        ${(tags||'').split(',').map(t=>t.trim()).filter(Boolean).map(t=>html`<span key=${t} class="vault-tag" style=${{background:'rgba(255,255,255,.05)',color:'var(--tx2)',border:'1px solid var(--vault-line)'}}>${t}</span>`)}
+        ${expInfo && canSee && html`<button type="button" title="Click to edit expiry date" class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border,cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label} ✎</button>`}
+        ${expInfo && !canSee && html`<span class="vault-tag" style=${{color:expInfo.color,background:expInfo.bg,border:'1px solid '+expInfo.border}}>${expInfo.expired?'⚠️ ':'⏳ '}${expInfo.label}</span>`}
+        ${!expInfo && canSee && html`<button type="button" title="Set an expiry date" class="vault-tag" style=${{color:'var(--tx3)',background:'rgba(255,255,255,.04)',border:'1px dashed var(--bd)',cursor:'pointer',fontFamily:'inherit'}} onClick=${e=>{e.stopPropagation();setShowExpiryEdit(s=>!s);}}>+ Set expiry</button>`}
+      </div>
+      ${showExpiryEdit && canSee && html`
+      <div style=${{display:'flex',alignItems:'center',gap:6,padding:'0 18px 12px'}} onClick=${e=>e.stopPropagation()}>
+        <input type="date" style=${{flex:1,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'6px 9px',fontSize:12,color:'var(--tx)',fontFamily:'inherit',outline:'none',colorScheme:'dark'}}
+          value=${expiresAt||''}
+          onChange=${e=>{setExpiresAt(e.target.value);push(undefined,undefined,undefined,undefined,undefined,e.target.value,undefined);}}/>
+        ${expiresAt && html`<button type="button" title="Remove expiry date" style=${{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:8,color:'var(--rd2)',fontSize:11,padding:'6px 9px',cursor:'pointer',fontFamily:'inherit',flexShrink:0}} onClick=${()=>{setExpiresAt('');push(undefined,undefined,undefined,undefined,undefined,'',undefined);}}>Clear</button>`}
+        <button type="button" title="Done" style=${{background:'var(--sf3)',border:'1px solid var(--bd)',borderRadius:8,color:'var(--tx2)',fontSize:11,padding:'6px 9px',cursor:'pointer',fontFamily:'inherit',flexShrink:0}} onClick=${()=>setShowExpiryEdit(false)}>Done</button>
+      </div>`}
 
       ${canSee && html`
+      <div style=${{padding:'0 18px 12px'}}>
+        <textarea
+          style=${{width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:10,padding:'8px 10px',fontSize:12,color:'var(--tx2)',fontFamily:'inherit',fontWeight:400,outline:'none',resize:'vertical',minHeight:30,boxSizing:'border-box',lineHeight:1.4}}
+          placeholder="Add a note or description…"
+          value=${notes} rows="1"
+          onInput=${e=>setNotes(e.target.value)}
+          onBlur=${()=>push(undefined,undefined,undefined,undefined,undefined,undefined,undefined,notes)}/>
+      </div>`}
+
+      <div class="vault-card-body">
+      ${isLocked && !isUnlocked && html`
+        <div class="vault-locked-overlay">
+          <div class="vault-locked-head">
+            <div class="vault-security-viz">
+              <div class="core">🔒</div>
+            </div>
+            <div style=${{minWidth:0}}>
+              <div style=${{fontSize:12,fontWeight:500,color:'var(--tx2)'}}>Password protected — click Unlock to view</div>
+            </div>
+          </div>
+          <div class="vault-preview-rows">
+            <div class="vault-preview-row">
+              <span class="lbl">${(rows[0]&&(rows[0][keyCol.id]||'').trim())||'Username'}</span>
+              <span class="val">🔒 ••••••••••</span>
+            </div>
+            <div class="vault-preview-row">
+              <span class="lbl">${(rows[1]&&(rows[1][keyCol.id]||'').trim())||'Password'}</span>
+              <span class="val">🔒 ••••••••••</span>
+            </div>
+            <div class="vault-preview-row">
+              <span class="lbl">Last Updated</span>
+              <span class="val meta">${vaultTimeAgo(card.updated)}</span>
+            </div>
+          </div>
+          <button class="vault-unlock-btn" aria-label=${'Unlock '+(title||'card')} onClick=${()=>setShowPwMo('verify')}>🔓 Unlock <span class="arrow">→</span></button>
+        </div>`}
+
+      ${canSee && isSimple && !sheetMode && html`
+        <div style=${{padding:'16px 18px'}}>
+          ${rows.length===0 && html`<div style=${{fontSize:12,color:'var(--tx3)',padding:'10px 0'}}>No fields yet — click ✏️ Edit below to add some.</div>`}
+          ${rows.map(row=>{
+            const label = (row[keyCol.id]||'').trim() || 'Field';
+            const val = row[valCol.id]||'';
+            const isSecret = !!row._secret || vaultIsSecretLabel(label);
+            const flashKey = label+':'+(val||'');
+            const justCopied = copyFlash===flashKey;
+            return html`
+              <div key=${row._id} class="vault-field-group">
+                <div class="vault-field-label">${label}</div>
+                <div class="vault-field-box">
+                  ${isSecret ? html`
+                    <span class="vault-field-value" title=${justCopied?'':'Value hidden — click copy to use it'} style=${{letterSpacing:justCopied?0:3,color:justCopied?'var(--gn2)':'var(--tx3)'}}>${justCopied?'✓ Copied to clipboard':'••••••••••'}</span>
+                    ${val && html`<button class="vault-copy-btn" title="Copy — value stays hidden" style=${{color:justCopied?'var(--gn2)':'var(--tx3)'}} onClick=${()=>copyCell(val,label)}>${justCopied?'✓':'⧉'}</button>`}
+                  ` : html`
+                    <span class="vault-field-value" title=${val||''}>${val||'—'}</span>
+                    ${val && html`<button class="vault-copy-btn" title="Copy" style=${{color:justCopied?'var(--ac2)':'var(--tx3)'}} onClick=${()=>copyCell(val,label)}>${justCopied?'✓':'⧉'}</button>`}
+                  `}
+                </div>
+              </div>`; })}
+        </div>`}
+      ${canSee && isSimple && sheetMode && html`
+        <div style=${{padding:'16px 18px'}}>
+          ${rows.map((row,ri)=>{
+            const isSecret = !!row._secret;
+            return html`
+              <div key=${row._id} style=${{display:'flex',alignItems:'center',gap:7,marginBottom:8,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:9,padding:'7px 10px'}}>
+                <input style=${{width:120,flexShrink:0,background:'transparent',border:'none',outline:'none',fontSize:10,fontWeight:500,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:'inherit'}}
+                  placeholder="LABEL" value=${row[keyCol.id]||''}
+                  onInput=${e=>updateCell(row._id,keyCol.id,e.target.value)}
+                  onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
+                <span style=${{width:1,alignSelf:'stretch',background:'var(--bd)'}}></span>
+                <input style=${{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',fontSize:13,color:'var(--tx)',fontFamily:'monospace',textOverflow:'ellipsis'}}
+                  placeholder="Value" value=${row[valCol.id]||''} title=${row[valCol.id]||''}
+                  onInput=${e=>updateCell(row._id,valCol.id,e.target.value)}
+                  onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
+                <button title=${isSecret?'Unmark masked':'Mask this field'} style=${{background:'none',border:'none',cursor:'pointer',color:isSecret?'var(--am)':'var(--tx3)',fontSize:12,padding:2,flexShrink:0}} onClick=${()=>toggleRowSecret(row._id)}>${isSecret?'🔒':'👁'}</button>
+                <button title="Delete field" style=${{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',fontSize:12,padding:2,flexShrink:0}} onClick=${()=>removeRow(row._id)}>✕</button>
+              </div>`; })}
+          <button class="vault-add-row-btn" onClick=${addRow}>+ Add field</button>
+        </div>`}
+      ${canSee && !isSimple && html`
         <div class="vault-table-wrap">
           <table class="vault-table">
             <thead>
@@ -9833,23 +10580,24 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
                       const hideVal = isSecret && !isShowingThisCell;
                       const flashKey = col.label+':'+(val||'');
                       return html`
-                        <td key=${col.id} class="vault-td" style=${{background:'rgba(15,14,23,0.3)',borderLeft:'1px solid rgba(255,255,255,.04)',minWidth:150}}>
+                        <td key=${col.id} class="vault-td" style=${{background:'var(--sf2)',borderLeft:'1px solid var(--bd2)',minWidth:150}}>
                           ${hideVal && html`
                             <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                               <button type="button" title="Click to copy hidden value" aria-label="Copy hidden value"
-                                style=${{flex:1,textAlign:'left',background:copyFlash===flashKey?'rgba(34,197,94,.10)':'transparent',border:'1px solid '+(copyFlash===flashKey?'rgba(34,197,94,.26)':'transparent'),borderRadius:7,padding:'4px 7px',cursor:val?'copy':'default',color:copyFlash===flashKey?'#4ade80':'#94a3b8',fontSize:11,fontFamily:'inherit',letterSpacing:copyFlash===flashKey?0:4,transition:'all .15s'}}
+                                style=${{flex:1,textAlign:'left',background:copyFlash===flashKey?'rgba(34,197,94,.10)':'transparent',border:'1px solid '+(copyFlash===flashKey?'rgba(34,197,94,.26)':'transparent'),borderRadius:7,padding:'4px 7px',cursor:val?'copy':'default',color:copyFlash===flashKey?'var(--gn2)':'var(--tx3)',fontSize:11,fontFamily:'inherit',letterSpacing:copyFlash===flashKey?0:4,transition:'all .15s'}}
                                 onClick=${()=>val && copyCell(val,col.label)}>${copyFlash===flashKey?'✓ Copied':'••••••••'}</button>
                               <button class="vault-copy-btn" title="Reveal this cell" onClick=${()=>revealCell(cellKey, col.label)}>Show</button>
                             </div>`}
                           ${!hideVal && html`
                             <div style=${{display:'flex',alignItems:'center',gap:5}}>
-                              <input style=${{background:'transparent',border:'none',outline:'none',color:'#e2e8f0',fontSize:13,fontFamily:'inherit',flex:1,minWidth:0}}
+                              <input style=${{background:'transparent',border:'none',outline:'none',color:'var(--tx)',fontSize:13,fontFamily:'inherit',flex:1,minWidth:0,textOverflow:'ellipsis'}}
                                 value=${val}
+                                title=${val}
                                 placeholder="—"
                                 onInput=${e=>updateCell(row._id,col.id,e.target.value)}
                                 onBlur=${()=>push(undefined,undefined,undefined,undefined)}/>
-                              ${val && html`<button class="vault-copy-btn" title="Copy value" style=${{color:copyFlash===flashKey?'#818cf8':'#475569',background:copyFlash===flashKey?'rgba(90,94,247,.15)':'none'}} onClick=${()=>copyCell(val, col.label)}>⧉</button>`}
-                              ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide this cell" onClick=${()=>setShowSecretCells(s=>{const n={...s};delete n[cellKey];return n;})}>🙈</button>`}
+                              ${val && html`<button class="vault-copy-btn" title="Copy value" style=${{color:copyFlash===flashKey?'var(--ac2)':'var(--tx3)',background:copyFlash===flashKey?'rgba(90,94,247,.15)':'none'}} onClick=${()=>copyCell(val, col.label)}>⧉</button>`}
+                              ${isSecret && isShowingThisCell && html`<button class="vault-copy-btn" title="Hide this cell" onClick=${()=>hideCell(cellKey)}>🙈</button>`}
                             </div>`}
                         </td>`; })}
                     <td class="vault-td" style=${{textAlign:'center',padding:'6px',width:32,borderRight:'none'}}>
@@ -9864,6 +10612,20 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
             </tbody>
           </table>
         </div>`}
+      </div>
+
+      ${canSee && html`
+        <div class="vault-card-footer">
+          <span style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:600}}>Updated ${vaultTimeAgo(card.updated)}</span>
+          <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <button class="vault-action-btn" aria-pressed=${pinned} style=${pinned?{background:'rgba(139,92,246,.14)',borderColor:'rgba(139,92,246,.4)',color:'var(--ac2)'}:{}} onClick=${togglePin}>★ ${pinned?'Pinned':'Pin'}</button>
+            ${isSimple && html`<button class="vault-action-btn" onClick=${()=>setSheetMode(s=>!s)}>${sheetMode?'✓ Done':'✏️ Edit'}</button>`}
+            ${isLocked && isUnlocked && html`<button class="vault-action-btn" onClick=${()=>onLock(card.id)}>🔒 Lock</button>`}
+            ${isLocked && isUnlocked && html`<button class="vault-action-btn danger" onClick=${()=>{ setUnlockErr(''); onUpdate({...card,title,tags,cols,rows,notes,lockPassword:'',locked:false}); }}>🔓 Remove Lock</button>`}
+            ${!isLocked && html`<button class="vault-action-btn" onClick=${()=>setShowPwMo('set')}>🔒 Set Lock</button>`}
+            <button class="vault-action-btn danger" aria-label=${'Delete '+(title||'card')} onClick=${()=>setShowDel(true)}>🗑️ Delete</button>
+          </div>
+        </div>`}
 
       ${menu && html`
         <div style=${{position:'fixed',left:Math.min(menu.x, window.innerWidth-210),top:Math.min(menu.y, window.innerHeight-240),zIndex:2147482500,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:12,padding:6,width:190,boxShadow:'0 18px 50px rgba(0,0,0,.55)'}} onClick=${e=>e.stopPropagation()}>
@@ -9871,30 +10633,32 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
             <button style=${menuItem} onClick=${()=>insertRowAt(menu.index)}>Insert row above</button>
             <button style=${menuItem} onClick=${()=>insertRowAt(menu.index+1)}>Insert row below</button>
             <button style=${menuItem} onClick=${()=>duplicateRow(menu.id)}>Duplicate row</button>
-            <button style=${{...menuItem,color:'#f87171'}} onClick=${()=>removeRow(menu.id)}>Delete row</button>`}
+            <button style=${{...menuItem,color:'var(--rd2)'}} onClick=${()=>removeRow(menu.id)}>Delete row</button>`}
           ${menu.type==='col' && html`
             <button style=${menuItem} onClick=${()=>insertColAt(menu.index,'left')}>Insert column left</button>
             <button style=${menuItem} onClick=${()=>insertColAt(menu.index,'right')}>Insert column right</button>
-            <button style=${{...menuItem,color:'#f87171'}} onClick=${()=>removeCol(menu.id)}>Delete column</button>`}
+            <button style=${{...menuItem,color:'var(--rd2)'}} onClick=${()=>removeCol(menu.id)}>Delete column</button>`}
         </div>`}
 
       ${showPwMo && html`
         <${VaultPwModal}
           title=${title}
           mode=${showPwMo}
-          onConfirm=${h=>{
+          externalError=${unlockErr}
+          onConfirm=${async pw=>{
             if(showPwMo==='verify'){
-              if(h===card.lockHash){
-                onUnlock(card.id);
-                setShowPwMo(null);
-                try { api.post('/api/vault/'+card.id+'/audit', {action:'unlock', detail: title||'card'}); } catch(_){ }
-              } else { alert('Wrong password'); }
+              const r = await onUnlock(card.id, pw);
+              if(r && r.ok){ setShowPwMo(null); setUnlockErr(''); }
+              else { setUnlockErr((r&&r.error)||'Incorrect password'); }
             } else {
-              onUpdate({...card,title,tags,cols,rows,lockHash:h});
+              // Raw password goes to the server (bcrypt-hashed there) via the
+              // `lockPassword` field — apiUpdate only sends it as `lock_password`
+              // for this one save, then clears it from state immediately after.
+              onUpdate({...card,title,tags,cols,rows,notes,lockPassword:pw,locked:true});
               setShowPwMo(null);
             }
           }}
-          onClose=${()=>setShowPwMo(null)}/>`}
+          onClose=${()=>{setShowPwMo(null);setUnlockErr('');}}/>`}
 
       ${showDel && html`
         <${VaultDelModal}
@@ -9909,21 +10673,67 @@ function VaultSpreadCard({card, isUnlocked, onUnlock, onLock, onDelete, onUpdate
 function VaultNewCardModal({onClose, onCreate}){
   const [title, setTitle] = useState('');
   const [tags,  setTags]  = useState('');
+  const [category, setCategory] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [notes, setNotes] = useState('');
+  const [fields, setFields] = useState(()=>[{id:vaultNewId(), label:'', value:'', secret:false, show:false}]);
   const [err,   setErr]   = useState('');
-  const inp = {
-    width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:8,
-    padding:'7px 10px',fontSize:13,color:'var(--tx)',fontFamily:'inherit',
-    outline:'none',boxSizing:'border-box',
+  // BUG FIX (light theme): this whole modal used to be a fixed dark surface
+  // (background:'#13151f', white-tinted borders/inputs, near-white text)
+  // regardless of the active theme — so in light mode it rendered as a
+  // jarring dark box floating on an otherwise light page, with several
+  // text/border colors that were only readable against that fixed dark
+  // background. Rebuilt on the same var(--sf)/var(--bd)/var(--tx*) tokens
+  // the rest of the app (and VaultPwModal/VaultDelModal) already use.
+  const themedInp = {width:'100%',background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'var(--tx)',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'};
+  const lbl = {display:'block',fontSize:11,fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7};
+
+  function addField(){ setFields(f=>[...f,{id:vaultNewId(), label:'', value:'', secret:false, show:false}]); }
+  function removeField(id){ setFields(f=>f.filter(x=>x.id!==id)); }
+  function updateField(id, patch){ setFields(f=>f.map(x=>x.id===id?{...x,...patch}:x)); }
+  function genPassword(id){ updateField(id, {value: vaultGenPassword(16), secret:true, show:true}); }
+
+  // Category templates: pre-fill the fields a card of this type usually
+  // needs, so the user isn't starting from one blank Key/Value row every
+  // time. Only applied when the form is still untouched (a single empty
+  // field) — never overwrites something the user already typed.
+  const VAULT_FIELD_TEMPLATES = {
+    database: ['Host','Port','Username','Password','Database Name'],
+    api:      ['Endpoint','API Key','Secret'],
+    server:   ['Host / IP','Username','Password','Port'],
+    auth:     ['Client ID','Client Secret','Redirect URI'],
+    cloud:    ['Access Key ID','Secret Access Key','Region'],
+    network:  ['Address','Username','Password'],
   };
+  function applyTemplate(catKey){
+    const isUntouched = fields.length===1 && !fields[0].label.trim() && !fields[0].value.trim();
+    if(!isUntouched) return;
+    const labels = VAULT_FIELD_TEMPLATES[catKey];
+    if(!labels) return;
+    setFields(labels.map(l=>({id:vaultNewId(), label:l, value:'', secret:vaultIsSecretLabel(l), show:false})));
+  }
+
   function submit(){
     if(!title.trim()){ setErr('Title is required'); return; }
+    const validFields = fields.filter(f=>f.label.trim() || f.value.trim());
+    const cols = [{id:'c1',label:'Key'},{id:'c2',label:'Value'}];
+    const rows = validFields.map(f=>({
+      _id: vaultNewId(),
+      c1: f.label.trim() || 'Field',
+      c2: f.value,
+      _secret: !!f.secret || vaultIsSecretLabel(f.label),
+    }));
     const card = {
       id: vaultNewId(),
       title: title.trim(),
       tags: tags.trim(),
-      cols: [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
-      rows: [],
-      lockHash: '',
+      category: category,
+      expires_at: expiresAt,
+      notes: notes.trim(),
+      pinned: false,
+      cols: rows.length ? cols : [{id:'c1',label:'Key'},{id:'c2',label:'Value'}],
+      rows: rows,
+      locked: false,
     };
     onCreate(card);
     onClose();
@@ -9931,40 +10741,95 @@ function VaultNewCardModal({onClose, onCreate}){
   const icon = vaultGetIcon(title, tags);
   return html`
     <div style=${VS.moBack} onClick=${e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style=${{background:'#13151f',border:'1px solid rgba(90,94,247,.25)',borderRadius:20,padding:'28px',width:420,maxWidth:'calc(100vw - 32px)',boxShadow:'0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04)'}}>
+      <div style=${{background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:20,padding:'28px',width:460,maxWidth:'calc(100vw - 32px)',maxHeight:'calc(100vh - 48px)',overflowY:'auto',boxShadow:'var(--sh2)'}}>
         <div style=${{display:'flex',alignItems:'center',gap:12,marginBottom:22}}>
           <div style=${{width:44,height:44,borderRadius:13,background:icon.bg,border:'1.5px solid '+icon.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,boxShadow:'0 0 18px '+icon.border.replace(/[\d.]+\)$/,'.3)')}}>${icon.icon}</div>
           <div>
-            <div style=${{fontSize:16,fontWeight:900,color:'#f1f5f9',letterSpacing:'-.3px'}}>New Vault Card</div>
-            <div style=${{fontSize:12,color:'#64748b',marginTop:1}}>Encrypted credential store</div>
+            <div style=${{fontSize:16,fontWeight:900,color:'var(--tx)',letterSpacing:'-.3px'}}>New Vault Card</div>
+            <div style=${{fontSize:12,color:'var(--tx3)',marginTop:1}}>Encrypted credential store</div>
           </div>
         </div>
         <div style=${{marginBottom:8}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Card Title <span style=${{color:'#818cf8'}}>*</span></label>
-          <input style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'}}
+          <label style=${lbl}>Card Title <span style=${{color:'var(--ac2)'}}>*</span></label>
+          <input style=${themedInp}
             placeholder="e.g. AWS Production, GitHub Creds…"
             value=${title} autoFocus autoComplete="off"
             onFocus=${e=>{e.target.style.borderColor='rgba(129,140,248,.5)';}}
-            onBlur=${e=>{e.target.style.borderColor='rgba(255,255,255,.12)';}}
+            onBlur=${e=>{e.target.style.borderColor='var(--bd)';}}
             onInput=${e=>{setTitle(e.target.value);setErr('');}}
             onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
-          ${err && html`<div style=${{fontSize:11,color:'#f87171',marginTop:5}}>${err}</div>`}
+          ${err && html`<div style=${{fontSize:11,color:'var(--rd2)',marginTop:5}}>${err}</div>`}
         </div>
-        <div style=${{marginBottom:24}}>
-          <label style=${{display:'block',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:7}}>Tags <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'#475569'}}>(optional, comma-separated)</span></label>
-          <input style=${{width:'100%',background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:11,padding:'8px 10px',fontSize:13,color:'#e2e8f0',fontFamily:'inherit',outline:'none',boxSizing:'border-box',transition:'border-color .15s'}}
+        <div style=${{marginBottom:18}}>
+          <label style=${lbl}>Tags <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'var(--tx3)'}}>(optional, comma-separated)</span></label>
+          <input style=${themedInp}
             placeholder="aws, prod, infra"
             value=${tags} autoComplete="off"
             onFocus=${e=>{e.target.style.borderColor='rgba(129,140,248,.5)';}}
-            onBlur=${e=>{e.target.style.borderColor='rgba(255,255,255,.12)';}}
+            onBlur=${e=>{e.target.style.borderColor='var(--bd)';}}
             onInput=${e=>setTags(e.target.value)}
             onKeyDown=${e=>{if(e.key==='Enter')submit();}}/>
         </div>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:18}}>
+          <div>
+            <label style=${lbl}>Category</label>
+            <select style=${themedInp}
+              value=${category} onChange=${e=>{setCategory(e.target.value);applyTemplate(e.target.value);}}>
+              <option value="">Auto-detect</option>
+              ${VAULT_CATEGORY_LIST.map(c=>html`<option key=${c.key} value=${c.key}>${c.label}</option>`)}
+            </select>
+          </div>
+          <div>
+            <label style=${lbl}>Expiry Date <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'var(--tx3)'}}>(optional)</span></label>
+            <input type="date" style=${themedInp}
+              value=${expiresAt} onChange=${e=>setExpiresAt(e.target.value)}/>
+          </div>
+        </div>
+
+        <div style=${{marginBottom:18}}>
+          <label style=${lbl}>Fields <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'var(--tx3)'}}>(optional — add credentials now or later)</span></label>
+          ${fields.map((f,fi)=>{
+            const strength = f.secret ? vaultPwStrength(f.value) : null;
+            return html`
+              <div key=${f.id} style=${{marginBottom:8,background:'var(--sf2)',border:'1px solid var(--bd)',borderRadius:10,padding:'8px 9px'}}>
+                <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                  <input style=${{...themedInp,padding:'6px 8px',fontSize:12,width:120,flex:'0 0 120px'}}
+                    placeholder="Label" value=${f.label} autoComplete="off"
+                    onInput=${e=>updateField(f.id,{label:e.target.value})}/>
+                  <input style=${{...themedInp,padding:'6px 8px',fontSize:12,flex:1,fontFamily:f.secret?'monospace':'inherit'}}
+                    type=${f.secret && !f.show ? 'password' : 'text'}
+                    placeholder="Value" value=${f.value} autoComplete="new-password"
+                    onInput=${e=>updateField(f.id,{value:e.target.value})}/>
+                  <button type="button" title="Generate password" style=${{background:'rgba(90,94,247,.12)',border:'1px solid rgba(90,94,247,.3)',borderRadius:7,color:'var(--ac2)',fontSize:12,padding:'6px 8px',cursor:'pointer',flexShrink:0}}
+                    onClick=${()=>genPassword(f.id)}>🎲</button>
+                  <button type="button" title=${f.secret?'Marked as secret':'Mark as secret'} style=${{background:f.secret?'rgba(245,158,11,.14)':'var(--sf3)',border:'1px solid '+(f.secret?'rgba(245,158,11,.35)':'var(--bd)'),borderRadius:7,color:f.secret?'var(--am)':'var(--tx3)',fontSize:12,padding:'6px 8px',cursor:'pointer',flexShrink:0}}
+                    onClick=${()=>updateField(f.id,{secret:!f.secret})}>${f.secret?'🔒':'👁'}</button>
+                  ${fields.length>1 && html`<button type="button" title="Remove field" style=${{background:'none',border:'none',color:'var(--tx3)',fontSize:13,padding:'4px 4px',cursor:'pointer',flexShrink:0}} onClick=${()=>removeField(f.id)}>✕</button>`}
+                </div>
+                ${f.secret && f.value && html`
+                  <div style=${{display:'flex',alignItems:'center',gap:8}}>
+                    <div style=${{flex:1,height:4,background:'var(--bd)',borderRadius:100,overflow:'hidden'}}>
+                      <div style=${{width:strength.pct+'%',height:'100%',background:strength.color,borderRadius:100,transition:'width .15s'}}></div>
+                    </div>
+                    <span style=${{fontSize:10,fontWeight:700,color:strength.color}}>${strength.label}</span>
+                    <button type="button" style=${{background:'none',border:'none',color:'var(--tx3)',fontSize:10,cursor:'pointer',padding:0}} onClick=${()=>updateField(f.id,{show:!f.show})}>${f.show?'Hide':'Show'}</button>
+                  </div>`}
+              </div>`;
+          })}
+          <button type="button" style=${{background:'var(--sf2)',border:'1px dashed var(--bd)',borderRadius:9,color:'var(--tx3)',fontSize:12,padding:'7px 10px',cursor:'pointer',fontFamily:'inherit',width:'100%'}}
+            onClick=${addField}>+ Add field</button>
+        </div>
+
+        <div style=${{marginBottom:24}}>
+          <label style=${lbl}>Notes <span style=${{fontWeight:400,textTransform:'none',letterSpacing:0,color:'var(--tx3)'}}>(optional)</span></label>
+          <textarea style=${{...themedInp,minHeight:56,resize:'vertical',lineHeight:1.4}}
+            placeholder="Any additional context for this card…"
+            value=${notes}
+            onInput=${e=>setNotes(e.target.value)}></textarea>
+        </div>
+
         <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
-          <button style=${{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'#94a3b8',fontSize:13,padding:'9px 18px',borderRadius:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600,transition:'all .15s'}}
-            onMouseEnter=${e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';}}
-            onMouseLeave=${e=>{e.currentTarget.style.background='rgba(255,255,255,.06)';}}
-            onClick=${onClose}>Cancel</button>
+          <button style=${VS.btnCan} onClick=${onClose}>Cancel</button>
           <button class="vault-new-btn" onClick=${submit}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Create Card
@@ -9987,18 +10852,49 @@ function VaultView({cu}){
   const [auditLog, setAuditLog]= useState([]);
   const [auditOpen,setAuditOpen]=useState(false);
   const [showNew,  setShowNew] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('updated');
+
+  // ── Whole-vault master password gate ────────────────────────────────────
+  // Additive on top of per-card locks: one password gates the entire view
+  // for the session instead of forcing a separate password per card. Status
+  // is re-checked on mount (a fresh login always starts locked server-side).
+  const [masterStatus, setMasterStatus] = useState(null); // {enabled, unlocked} | null while loading
+  const [masterErr, setMasterErr] = useState('');
+  const [showSetMaster, setShowSetMaster] = useState(false);
+  // Set when the backend blocks /api/vault entirely because this workspace's
+  // plan doesn't include Vault — previously a blocked response silently fell
+  // through to "vault is empty" (Array.isArray(data) was false, so it mapped
+  // to []), which looked exactly like data loss even though nothing was ever
+  // touched. Now it renders its own clear message instead.
+  const [planBlocked, setPlanBlocked] = useState(false);
+
+  // ── Offline mode passphrase ──────────────────────────────────────────────
+  // The localStorage blob is now always encrypted (see vaultLoad/vaultPersist)
+  // — the passphrase lives only in this component's memory for the session,
+  // never persisted anywhere itself.
+  const [offlinePw, setOfflinePw] = useState('');
+  const [offlinePwModal, setOfflinePwModal] = useState(null); // 'set'|'verify'|null
+  const [offlineErr, setOfflineErr] = useState('');
 
   const offlineKey = vaultStorageKey(cu);
 
-  // Load from cache first, then API (or localStorage if offline)
   useEffect(()=>{
     if(!cu) return;
     if(cu._offline){
-      setCards(vaultLoad(offlineKey));
+      const hasExisting = (()=>{ try{ return !!localStorage.getItem(offlineKey); }catch(_){ return false; } })();
+      setOfflinePwModal(hasExisting ? 'verify' : 'set');
       setVLoading(false);
       return;
     }
-    // Serve from module-level cache — avoids two fetches every time user switches to Vault view
+    api.get('/api/vault/master/status').then(s=>setMasterStatus(s&&!s.error?s:{enabled:false,unlocked:true})).catch(()=>setMasterStatus({enabled:false,unlocked:true}));
+  }, [cu && cu.id]);
+
+  // Load from cache first, then API — once we know the vault isn't gated
+  // (no master password, or already unlocked this session).
+  useEffect(()=>{
+    if(!cu || cu._offline) return;
+    if(!masterStatus || (masterStatus.enabled && !masterStatus.unlocked)) return;
     if(_vaultCache){
       setCards(_vaultCache.cards);
       setAuditLog(_vaultCache.auditLog);
@@ -10006,134 +10902,293 @@ function VaultView({cu}){
       return;
     }
     setVLoading(true);
-    // Use allSettled (not all): the two calls are independent — if /api/vault/audit
-    // times out or 500s under load, we should still render the cards from /api/vault
-    // (and vice versa) instead of leaving the whole Vault view blank.
-    Promise.allSettled([api.get('/api/vault'), api.get('/api/vault/audit')]).then(([dataRes, auditRes])=>{
-      const data = dataRes.status === 'fulfilled' ? dataRes.value : [];
-      const audit = auditRes.status === 'fulfilled' ? auditRes.value : [];
-      if (dataRes.status === 'rejected') console.warn('[vault] failed to load cards:', dataRes.reason);
-      if (auditRes.status === 'rejected') console.warn('[vault] failed to load audit log:', auditRes.reason);
+    Promise.all([api.get('/api/vault'), api.get('/api/vault/audit')]).then(([data, audit])=>{
+      if(data && data.upgrade_required){
+        setPlanBlocked(true);
+        setVLoading(false);
+        return;
+      }
+      setPlanBlocked(false);
       const cards = Array.isArray(data) ? data.map(c=>({
         ...c,
         rows: typeof c.rows==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return [];}}(c.rows)) : (c.rows||[]),
         cols: typeof c.cols==='string' ? (function(s){try{return JSON.parse(s);}catch(e){return null;}}(c.cols)) : (c.cols||null),
-        lockHash: c.lock_hash||c.lockHash||''
+        locked: !!c.locked
       })) : [];
       const auditLog = Array.isArray(audit) ? audit : [];
-      // Don't cache a partial/failed load — only cache when both calls succeeded,
-      // so the next tab switch retries rather than sticking with an empty result.
-      if (dataRes.status === 'fulfilled' && auditRes.status === 'fulfilled') {
-        _vaultCache = { cards, auditLog };
-      }
+      _vaultCache = { cards, auditLog };
       setCards(cards);
       setAuditLog(auditLog);
       setVLoading(false);
-    });
-  }, [cu && cu.id]);
+    }).catch(()=>{ setVLoading(false); });
+  }, [cu && cu.id, masterStatus]);
+
+  // Offline: once the passphrase is confirmed, actually load the (decrypted) cards.
+  async function unlockOffline(pw){
+    try{
+      const loaded = await vaultLoad(offlineKey, pw);
+      setOfflinePw(pw);
+      setCards(loaded);
+      setOfflinePwModal(null);
+      setOfflineErr('');
+    }catch(e){
+      setOfflineErr(e.message || 'Incorrect passphrase');
+    }
+  }
+
+  async function verifyMaster(pw){
+    setMasterErr('');
+    const r = await api.post('/api/vault/master/verify', {password: pw});
+    if(r && r.ok){ setMasterStatus({enabled:true, unlocked:true}); return true; }
+    setMasterErr((r&&r.error)||'Incorrect password');
+    return false;
+  }
+  async function setMaster(newPw, currentPw){
+    setMasterErr('');
+    const r = await api.post('/api/vault/master/set', {new_password:newPw, current_password:currentPw||''});
+    if(r && r.ok){ setMasterStatus({enabled:true, unlocked:true}); setShowSetMaster(false); return true; }
+    setMasterErr((r&&r.error)||'Could not set master password');
+    return false;
+  }
+  async function lockVaultNow(){
+    if(!cu||cu._offline){ setOfflinePw(''); setCards([]); setOfflinePwModal('verify'); return; }
+    await api.post('/api/vault/master/lock', {});
+    await fetchAuditLog();
+    setMasterStatus(s=>({...(s||{}), unlocked:false}));
+    setCards([]); setUnlocked({}); vaultClearCache();
+  }
+
+  // The initial load populates auditLog once and nothing refreshed it after
+  // that — a card unlock, a create/edit/delete, or a master-password action
+  // all log a real event server-side immediately, but the on-screen log kept
+  // showing whatever was fetched at page-load until you left and came back.
+  // Every action below that produces a loggable event now calls this so the
+  // panel reflects what actually just happened.
+  async function fetchAuditLog(){
+    const audit = await api.get('/api/vault/audit');
+    const log = Array.isArray(audit) ? audit : [];
+    setAuditLog(log);
+    if(_vaultCache) _vaultCache.auditLog = log;
+    return log;
+  }
 
   async function apiCreate(card){
     const res = await api.post('/api/vault', {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||''
+      lock_password: card.lockPassword||'',
+      category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned,
+      notes: card.notes||''
     });
     vaultClearCache();
     if(res && res.id){
-      setCards(prev=>prev.map(c=>c.id===card.id?{...c,id:res.id,created:res.created}:c));
+      // Never keep the raw lock password sitting in state once it's been sent.
+      setCards(prev=>prev.map(c=>c.id===card.id?{...c,id:res.id,created:res.created,locked:!!card.lockPassword,lockPassword:undefined}:c));
+      fetchAuditLog();
     }
   }
   async function apiUpdate(card){
-    await api.put('/api/vault/'+card.id, {
+    const payload = {
       title:card.title, tags:card.tags,
       rows:card.rows, cols:card.cols||null,
-      lock_hash: card.lockHash||''
-    });
+      category: card.category||'', expires_at: card.expires_at||'', pinned: !!card.pinned,
+      notes: card.notes||''
+    };
+    // Only include lock_password when this save is explicitly setting/
+    // changing/removing the lock — omitting the key entirely on a normal
+    // content edit tells the server to leave the existing lock untouched
+    // (see vault_update: `"lock_password" in d`).
+    if(Object.prototype.hasOwnProperty.call(card,'lockPassword')) payload.lock_password = card.lockPassword||'';
+    const res = await api.put('/api/vault/'+card.id, payload);
     vaultClearCache();
+    // Reconcile with the server's authoritative `updated` (and expires_at) once
+    // the save confirms — the optimistic client-side timestamp set in push()
+    // above is close enough for the interim, but this replaces it with the
+    // real DB value so the relative-time display never drifts from the truth.
+    if(res && res.ok){
+      setCards(prev=>prev.map(c=>c.id===card.id?{...c,updated:res.updated,expires_at:res.expires_at,locked:!!res.locked,lockPassword:undefined}:c));
+      fetchAuditLog();
+    }
+    return res;
   }
   async function apiDelete(id){
     await api.del('/api/vault/'+id);
     vaultClearCache();
+    fetchAuditLog();
   }
 
   function handleCreate(card){
     const next=[card,...cards];
     setCards(next);
     if(cu&&!cu._offline) apiCreate(card);
-    else vaultPersist(offlineKey,next);
+    else vaultPersist(offlineKey,next,offlinePw);
   }
   function handleUpdate(updated){
     const next=cards.map(c=>c.id===updated.id?updated:c);
     setCards(next);
     if(cu&&!cu._offline) apiUpdate(updated);
-    else vaultPersist(offlineKey,next);
+    else vaultPersist(offlineKey,next,offlinePw);
   }
   function handleDelete(id){
     const next=cards.filter(c=>c.id!==id);
     setCards(next);
     setUnlocked(u=>{const n={...u};delete n[id];return n;});
     if(cu&&!cu._offline) apiDelete(id);
-    else vaultPersist(offlineKey,next);
+    else vaultPersist(offlineKey,next,offlinePw);
   }
-  function handleUnlock(id){ setUnlocked(u=>({...u,[id]:true})); }
-  function handleLock(id){   setUnlocked(u=>{const n={...u};delete n[id];return n;}); }
+  // Real, server-verified unlock — replaces the old client-side hash compare
+  // that never actually gated anything. Returns {ok} or {error} so the card
+  // can show an inline message instead of a jarring native alert().
+  async function handleUnlock(id, password){
+    if(cu&&!cu._offline){
+      const r = await api.post('/api/vault/'+id+'/unlock', {password});
+      fetchAuditLog(); // logs both failed and successful attempts — refresh either way
+      if(!r || r.error) return {error:(r&&r.error)||'Incorrect password'};
+      let rows=[]; try{ rows = JSON.parse(r.rows||'[]'); }catch(_){ rows=[]; }
+      setCards(prev=>prev.map(c=>c.id===id?{...c, rows, notes:r.notes||''}:c));
+      setUnlocked(u=>({...u,[id]:true}));
+      return {ok:true};
+    }
+    // Offline cards were already fully decrypted on passphrase entry — the
+    // per-card password is just a UI reveal gate in that mode.
+    setUnlocked(u=>({...u,[id]:true}));
+    return {ok:true};
+  }
+  function handleLock(id){
+    setUnlocked(u=>{const n={...u};delete n[id];return n;});
+    // Defense in depth: don't leave decrypted secrets sitting in memory/state
+    // once the card is re-locked — the next unlock re-fetches them.
+    if(cu&&!cu._offline) setCards(prev=>prev.map(c=>c.id===id&&c.locked?{...c,rows:[],notes:''}:c));
+  }
 
-  const filtered = cards.filter(c=>{
+  const cardsWithCat = cards.map(c=>({...c, _cat: vaultCategoryInfo(c).key}));
+  const counts = VAULT_CATEGORY_LIST.reduce((m,c)=>{m[c.key]=0;return m;},{});
+  cardsWithCat.forEach(c=>{ counts[c._cat]=(counts[c._cat]||0)+1; });
+
+  let filtered = cardsWithCat.filter(c=>{
+    if(categoryFilter!=='all' && c._cat!==categoryFilter) return false;
     if(!filter) return true;
     const hay=(c.title||'')+(c.tags||'')+(c.rows||[]).map(r=>Object.values(r).join(' ')).join(' ');
     return hay.toLowerCase().includes(filter.toLowerCase());
   });
+  filtered = [...filtered].sort((a,b)=>{
+    if(sortBy==='name') return (a.title||'').localeCompare(b.title||'');
+    if(sortBy==='expiry'){
+      const ea=a.expires_at?new Date(a.expires_at).getTime():Infinity;
+      const eb=b.expires_at?new Date(b.expires_at).getTime():Infinity;
+      return ea-eb;
+    }
+    // default: recently updated, pinned first
+    const pa=a.pinned?1:0, pb=b.pinned?1:0;
+    if(pa!==pb) return pb-pa;
+    return new Date(b.updated||0).getTime()-new Date(a.updated||0).getTime();
+  });
 
-  const totalCreds = cards.reduce((s,c)=>(c.rows||[]).length+s,0);
-  const totalProtected = cards.filter(c=>c.lockHash).length;
-  const totalSecrets = cards.reduce((s,c)=>(c.rows||[]).filter(r=>r._secret).length+s,0);
+  const totalCreds = cards.reduce((s,c)=>s+(c.locked ? (c.row_count||0) : (c.rows||[]).length),0);
+  const totalProtected = cards.filter(c=>c.locked).length;
+  const totalExpiring30 = cards.filter(c=>{
+    const info=vaultExpiryInfo(c.expires_at); return info && !info.expired && info.soon;
+  }).length;
+  const totalPinned = cards.filter(c=>c.pinned).length;
+  const secAudit = useMemo(()=>vaultSecurityAudit(cards),[cards]);
+
+  // ── Gate screens ──────────────────────────────────────────────────────────
+  // Offline: need the passphrase before anything can be decrypted at all.
+  if(cu && cu._offline && offlinePwModal){
+    return html`<div style=${{...VS.wrap, display:'flex', alignItems:'center', justifyContent:'center'}}>
+      <${VaultPwModal}
+        title="Offline Vault"
+        kind="Vault"
+        mode=${offlinePwModal}
+        externalError=${offlineErr}
+        onConfirm=${pw=>unlockOffline(pw)}
+        onClose=${()=>{}}/>
+    </div>`;
+  }
+  // Online: whole-vault master password, if the user has set one up.
+  if(cu && !cu._offline && masterStatus && masterStatus.enabled && !masterStatus.unlocked){
+    return html`<div style=${{...VS.wrap, display:'flex', alignItems:'center', justifyContent:'center'}}>
+      <${VaultPwModal}
+        title="My Vault"
+        kind="Vault"
+        mode="verify"
+        externalError=${masterErr}
+        onConfirm=${pw=>verifyMaster(pw)}
+        onClose=${()=>{}}/>
+    </div>`;
+  }
+  // The backend blocked every /api/vault request outright — this workspace's
+  // plan doesn't include Vault. Show that plainly instead of "vault is empty",
+  // which looked like data loss even though nothing was ever read or touched.
+  if(cu && !cu._offline && planBlocked){
+    return html`<div style=${{...VS.wrap, display:'flex', alignItems:'center', justifyContent:'center', padding:24}}>
+      <div style=${{maxWidth:440,textAlign:'center'}}>
+        <div style=${{width:64,height:64,borderRadius:20,background:'rgba(245,158,11,.1)',border:'1.5px solid rgba(245,158,11,.3)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 18px',fontSize:30}}>🔒</div>
+        <div style=${{fontWeight:800,fontSize:17,color:'var(--tx)',marginBottom:8}}>Vault isn't included in your current plan</div>
+        <div style=${{fontSize:13,color:'var(--tx2)',lineHeight:1.6}}>
+          Your cards haven't gone anywhere — they're safely stored, this view just can't load them until Vault is enabled for this workspace.
+          Ask your workspace admin to upgrade to the Team plan or higher, or enable the Vault add-on.
+        </div>
+      </div>
+    </div>`;
+  }
 
   return html`
-    <div class="vault-scroll" style=${{...VS.wrap, background:'var(--bg)'}}>
-    <div style=${{padding:'28px 32px', width:'100%', boxSizing:'border-box'}}>
+    <div class="vault-scroll" style=${{...VS.wrap, backgroundColor:'var(--bg)', backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)', backgroundSize:'32px 32px'}}>
+    <div class="vault-page-pad" style=${{width:'100%', boxSizing:'border-box'}}>
       <!-- Page header -->
       <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:22,gap:16,flexWrap:'wrap'}}>
         <div style=${{display:'flex',alignItems:'center',gap:14}}>
           <div style=${{width:44,height:44,borderRadius:13,background:'linear-gradient(135deg,rgba(90,94,247,.3),rgba(168,85,247,.2))',border:'1.5px solid rgba(90,94,247,.45)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,boxShadow:'0 0 24px rgba(90,94,247,.3)'}}>🔐</div>
           <div>
             <div style=${{fontSize:16,fontWeight:900,letterSpacing:'-.5px',lineHeight:1.15}}>
-              <span style=${{background:'linear-gradient(135deg,#818cf8,#c084fc)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>My Vault</span>
+              <span style=${{background:'var(--grad-vault)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>My Vault</span>
             </div>
             <div style=${{fontSize:12,color:'var(--tx2)',marginTop:2,fontWeight:500}}>Encrypted credential store · Click any cell to edit</div>
           </div>
         </div>
-        <button class="vault-new-btn" onClick=${()=>setShowNew(true)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Card
-        </button>
+        <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <button class="vault-new-btn" onClick=${()=>setShowNew(true)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Card
+          </button>
+          ${(!cu||!cu._offline) && html`<button class="vault-action-btn" title=${masterStatus&&masterStatus.enabled?'Change your vault master password':'Set a single password that unlocks your whole vault for the session, instead of one per card'} onClick=${()=>setShowSetMaster(true)}>🛡️ ${masterStatus&&masterStatus.enabled?'Change Master Password':'Set Master Password'}</button>`}
+          <button class="vault-action-btn" title="Re-lock the vault now" onClick=${lockVaultNow}>🔒 Lock Vault</button>
+        </div>
       </div>
 
-      <!-- Stats bar -->
-      <div style=${{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
+      <!-- Stats bar (flat colored-top-border cards) -->
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:16,marginBottom:16}}>
         ${[
-          {icon:'🗂️', val:String(cards.length),       lbl:'Total Cards',  accent:'rgba(129,140,248,.15)', border:'rgba(129,140,248,.25)'},
-          {icon:'🔑', val:String(totalCreds),          lbl:'Credentials',  accent:'rgba(34,197,94,.12)',   border:'rgba(34,197,94,.22)'},
-          {icon:'🔒', val:String(totalProtected),      lbl:'Protected',    accent:'rgba(245,158,11,.12)',  border:'rgba(245,158,11,.22)'},
-          {icon:'🕵️', val:String(totalSecrets),        lbl:'Secret Rows',  accent:'rgba(239,68,68,.08)',   border:'rgba(239,68,68,.2)', danger:true},
+          {val:cards.length,     lbl:'Total Cards', color:'#818cf8'},
+          {val:totalCreds,       lbl:'Credentials',  color:'#4ade80'},
+          {val:totalProtected,   lbl:'Protected',     color:'#f59e0b'},
+          {val:totalExpiring30,  lbl:'Expiring <30d', color:'#f97316'},
+          {val:totalPinned,      lbl:'Pinned',         color:'#f472b6'},
         ].map(s=>html`
-          <div style=${{
-            background:'var(--sf)',border:'1px solid var(--bd)',
-            borderLeft:'3px solid '+s.border,
-            borderRadius:10,padding:'10px 16px',
-            display:'flex',alignItems:'center',gap:12,
-            flex:'1 1 130px',minWidth:110,
-          }}>
-            <div style=${{width:32,height:32,borderRadius:8,background:s.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>${s.icon}</div>
-            <div>
-              <div style=${{fontSize:18,fontWeight:800,color:s.danger?'#ef4444':'var(--tx)',lineHeight:1,letterSpacing:'-.3px'}}>${s.val}</div>
-              <div style=${{fontSize:11,color:'var(--tx2)',fontWeight:600,marginTop:2}}>${s.lbl}</div>
-            </div>
+          <div class="vault-stat-card" style=${{borderTop:'3px solid '+s.color}}>
+            <div class="vault-stat-val">${s.val}</div>
+            <div class="vault-stat-lbl" style=${{textTransform:'uppercase',marginTop:6}}>${s.lbl}</div>
           </div>`)}
+        <div class="vault-stat-card" style=${{borderTop:'3px solid '+(secAudit.weakCount+secAudit.reusedCount>0?'#ef4444':'#22C55E')}}>
+          <div class="vault-stat-val" style=${{color:secAudit.weakCount+secAudit.reusedCount>0?'#ef4444':'var(--tx)'}}>${secAudit.weakCount+secAudit.reusedCount>0 ? (secAudit.weakCount+secAudit.reusedCount) : '✓'}</div>
+          <div class="vault-stat-lbl" style=${{textTransform:'uppercase',marginTop:6}}>Security Issues</div>
+        </div>
       </div>
+      ${(secAudit.weakCount>0 || secAudit.reusedCount>0) && html`
+        <div style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.22)',marginBottom:16,fontSize:12.5,color:'#fca5a5',flexWrap:'wrap'}}>
+          <span style=${{fontSize:15}}>⚠️</span>
+          <span>
+            ${secAudit.weakCount>0?`${secAudit.weakCount} card${secAudit.weakCount>1?'s have':' has'} a weak password`:''}
+            ${secAudit.weakCount>0 && secAudit.reusedCount>0?' · ':''}
+            ${secAudit.reusedCount>0?`${secAudit.reusedCount} card${secAudit.reusedCount>1?'s share':' shares'} a reused password`:''}
+            — look for the ⚠️ badge below.
+          </span>
+        </div>`}
 
-      <!-- Search & count -->
-      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
-        <div class="vault-search-wrap">
+      <!-- Search, sort & count -->
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <div class="vault-search-wrap" style=${{flex:1,minWidth:200}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input class="vault-search"
             placeholder="Search cards, tags, credentials…"
@@ -10141,37 +11196,65 @@ function VaultView({cu}){
             value=${filter}
             onInput=${e=>setFilter(e.target.value)}/>
         </div>
+        <select value=${sortBy} onChange=${e=>setSortBy(e.target.value)}
+          style=${{fontSize:11,color:'var(--tx2)',background:'var(--sf)',border:'1px solid var(--bd)',padding:'7px 12px',borderRadius:100,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+          <option value="updated">Recently updated</option>
+          <option value="name">Name (A–Z)</option>
+          <option value="expiry">Expiry date</option>
+        </select>
         <span style=${{fontSize:11,color:'var(--tx2)',background:'var(--sf)',border:'1px solid var(--bd)',padding:'5px 13px',borderRadius:100,fontWeight:700,whiteSpace:'nowrap'}}>
           ${String(filtered.length)} / ${String(cards.length)} cards
         </span>
       </div>
 
+      <!-- Category filter chips -->
+      <div style=${{display:'flex',gap:7,flexWrap:'wrap',marginBottom:24}}>
+        <button onClick=${()=>setCategoryFilter('all')}
+          style=${{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:100,cursor:'pointer',fontFamily:'inherit',background:categoryFilter==='all'?'var(--ac)':'var(--sf)',color:categoryFilter==='all'?'#fff':'var(--tx2)',border:'1px solid '+(categoryFilter==='all'?'var(--ac)':'var(--bd)')}}>All ${cards.length}</button>
+        ${VAULT_CATEGORY_LIST.map(c=>html`
+          <button key=${c.key} onClick=${()=>setCategoryFilter(c.key)}
+            style=${{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:100,cursor:'pointer',fontFamily:'inherit',background:categoryFilter===c.key?c.color+'26':'var(--sf)',color:categoryFilter===c.key?c.color:'var(--tx2)',border:'1px solid '+(categoryFilter===c.key?c.color+'55':'var(--bd)')}}>${c.label} ${counts[c.key]||0}</button>`)}
+      </div>
+
       <!-- Body -->
       ${vLoading && html`
-        <div style=${{textAlign:'center',padding:'64px 0',color:'#64748b',fontSize:13}}>
-          <div style=${{width:48,height:48,border:'2px solid rgba(90,94,247,.2)',borderTop:'2px solid #818cf8',borderRadius:'50%',animation:'sp .7s linear infinite',margin:'0 auto 16px'}}></div>
-          <div style=${{fontWeight:600,color:'#94a3b8'}}>Decrypting vault…</div>
+        <div style=${{textAlign:'center',padding:'64px 0',color:'var(--tx3)',fontSize:13}}>
+          <div style=${{width:48,height:48,border:'2px solid rgba(90,94,247,.2)',borderTop:'2px solid var(--ac2)',borderRadius:'50%',animation:'sp .7s linear infinite',margin:'0 auto 16px'}}></div>
+          <div style=${{fontWeight:600,color:'var(--tx2)'}}>Decrypting vault…</div>
         </div>`}
       ${!vLoading && filtered.length===0 && html`
-        <div style=${{textAlign:'center',padding:'72px 20px',color:'#475569'}}>
+        <div style=${{textAlign:'center',padding:'72px 20px',color:'var(--tx3)'}}>
           <div style=${{width:64,height:64,borderRadius:20,background:'rgba(90,94,247,.07)',border:'1.5px dashed rgba(90,94,247,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 18px',fontSize:30}}>🗄️</div>
-          <div style=${{fontWeight:700,marginBottom:6,color:'#94a3b8',fontSize:15}}>${filter?'No cards match your search':'Your vault is empty'}</div>
-          <div style=${{fontSize:13,color:'#334155'}}>${filter?'Try a different search term':'Click New Card to store your first credentials'}</div>
+          <div style=${{fontWeight:700,marginBottom:6,color:'var(--tx2)',fontSize:15}}>${filter||categoryFilter!=='all'?'No cards match your filters':'Your vault is empty'}</div>
+          <div style=${{fontSize:13,color:'var(--tx3)'}}>${filter||categoryFilter!=='all'?'Try a different search or category':'Click New Card to store your first credentials'}</div>
         </div>`}
-      ${!vLoading && filtered.map(c=>html`
+      ${!vLoading && filtered.length>0 && html`<div class="vault-cards-grid">
+      ${filtered.map(c=>html`
         <${VaultSpreadCard}
-          key=${c.id}
+          key=${c.id+':'+(unlocked[c.id]?'u':'l')}
           card=${c}
           isUnlocked=${!!unlocked[c.id]}
+          isWeak=${secAudit.weakIds.has(c.id)}
+          isReused=${secAudit.reusedIds.has(c.id)}
           onUnlock=${handleUnlock}
           onLock=${handleLock}
           onDelete=${handleDelete}
           onUpdate=${handleUpdate}/>`)}
+      </div>`}
 
       ${showNew && html`
         <${VaultNewCardModal}
           onClose=${()=>setShowNew(false)}
           onCreate=${handleCreate}/>`}
+
+      ${showSetMaster && html`
+        <${VaultPwModal}
+          title="Vault Master Password"
+          kind="Vault"
+          mode="set"
+          externalError=${masterErr}
+          onConfirm=${async pw=>{ const ok=await setMaster(pw); if(ok) setShowSetMaster(false); }}
+          onClose=${()=>{setShowSetMaster(false);setMasterErr('');}}/>`}
 
       <!-- ── Audit Log Panel ── -->
       ${!vLoading && !cu._offline && html`
@@ -10185,7 +11268,7 @@ function VaultView({cu}){
               </div>
             </div>
             <div style=${{display:'flex',alignItems:'center',gap:8}}>
-              <span style=${{fontSize:10,background:'rgba(34,197,94,.1)',color:'#22c55e',border:'1px solid rgba(34,197,94,.25)',padding:'3px 9px',borderRadius:100,fontWeight:700,letterSpacing:.3}}>
+              <span style=${{fontSize:10,background:'rgba(34,197,94,.1)',color:'var(--gn)',border:'1px solid rgba(34,197,94,.25)',padding:'3px 9px',borderRadius:100,fontWeight:700,letterSpacing:.3}}>
                 ● Fernet AES-128-CBC
               </span>
               <button
@@ -10207,7 +11290,7 @@ function VaultView({cu}){
               ${auditLog.length>0 && html`
                 <table style=${{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                   <thead>
-                    <tr style=${{background:'rgba(255,255,255,.03)',borderBottom:'1px solid var(--bd)'}}>
+                    <tr style=${{background:'var(--sf2)',borderBottom:'1px solid var(--bd)'}}>
                       ${['Action','Card','Detail','Time','IP'].map(h=>html`
                         <th key=${h} style=${{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'var(--tx3)',letterSpacing:.3,whiteSpace:'nowrap'}}>${h}</th>`)}
                     </tr>
@@ -10215,24 +11298,30 @@ function VaultView({cu}){
                   <tbody>
                     ${auditLog.map((e,i)=>{
                       const actionMeta = {
-                        reveal:  {label:'Reveal',  bg:'rgba(245,158,11,.1)', color:'#f59e0b', icon:'👁'},
-                        copy:    {label:'Copy',    bg:'rgba(99,102,241,.1)', color:'#818cf8', icon:'📋'},
-                        unlock:  {label:'Unlock',  bg:'rgba(34,197,94,.1)',  color:'#22c55e', icon:'🔓'},
-                        create:  {label:'Create',  bg:'rgba(59,130,246,.1)', color:'#60a5fa', icon:'✚'},
-                        delete:  {label:'Delete',  bg:'rgba(244,63,94,.1)',  color:'#f43f5e', icon:'🗑'},
-                      }[e.action] || {label:e.action, bg:'rgba(255,255,255,.05)', color:'#94a3b8', icon:'•'};
+                        reveal:  {label:'Reveal',  bg:'rgba(245,158,11,.1)', color:'var(--am)', icon:'👁'},
+                        copy:    {label:'Copy',    bg:'rgba(99,102,241,.1)', color:'var(--ac2)', icon:'📋'},
+                        unlock:  {label:'Unlock',  bg:'rgba(34,197,94,.1)',  color:'var(--gn)', icon:'🔓'},
+                        unlock_failed: {label:'Unlock failed', bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'⛔'},
+                        create:  {label:'Create',  bg:'rgba(59,130,246,.1)', color:'var(--cy)', icon:'✚'},
+                        update:  {label:'Update',  bg:'rgba(148,163,184,.1)', color:'var(--tx2)', icon:'✎'},
+                        delete:  {label:'Delete',  bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'🗑'},
+                        master_set: {label:'Master password set', bg:'rgba(139,92,246,.1)', color:'var(--ac2)', icon:'🛡'},
+                        master_unlock: {label:'Vault unlocked', bg:'rgba(34,197,94,.1)', color:'var(--gn)', icon:'🔓'},
+                        master_unlock_failed: {label:'Vault unlock failed', bg:'rgba(239,68,68,.1)', color:'#f87171', icon:'⛔'},
+                        master_lock: {label:'Vault locked', bg:'rgba(148,163,184,.1)', color:'var(--tx2)', icon:'🔒'},
+                      }[e.action] || {label:e.action, bg:'var(--sf2)', color:'var(--tx3)', icon:'•'};
                       const timeStr = e.created ? new Date(e.created).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                       return html`
-                        <tr key=${e.id||i} style=${{borderBottom:'1px solid rgba(255,255,255,.04)',transition:'background .15s'}}
-                          onMouseEnter=${el=>{if(el.currentTarget)el.currentTarget.style.background='rgba(255,255,255,.025)';}}
+                        <tr key=${e.id||i} style=${{borderBottom:'1px solid var(--bd2)',transition:'background .15s'}}
+                          onMouseEnter=${el=>{if(el.currentTarget)el.currentTarget.style.background='var(--sf2)';}}
                           onMouseLeave=${el=>{if(el.currentTarget)el.currentTarget.style.background='transparent';}}>
                           <td style=${{padding:'8px 14px',whiteSpace:'nowrap'}}>
                             <span style=${{display:'inline-flex',alignItems:'center',gap:5,background:actionMeta.bg,color:actionMeta.color,border:'1px solid '+actionMeta.color+'44',borderRadius:6,padding:'2px 8px',fontWeight:700,fontSize:11}}>
                               ${actionMeta.icon} ${actionMeta.label}
                             </span>
                           </td>
-                          <td style=${{padding:'8px 14px',color:'var(--tx)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.card_title||e.card_id||'—'}</td>
-                          <td style=${{padding:'8px 14px',color:'var(--tx2)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.detail||'—'}</td>
+                          <td style=${{padding:'8px 14px',color:'var(--tx2)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.card_title||e.card_id||'—'}</td>
+                          <td style=${{padding:'8px 14px',color:'var(--tx3)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${e.detail||'—'}</td>
                           <td style=${{padding:'8px 14px',color:'var(--tx3)',whiteSpace:'nowrap'}}>${timeStr}</td>
                           <td style=${{padding:'8px 14px',color:'var(--tx3)',fontFamily:'monospace',fontSize:11}}>${e.ip||'—'}</td>
                         </tr>`;
@@ -10278,7 +11367,7 @@ function ptCurrentWorkspaceContext(extra){
 }
 function ptWorkspacePrefixFromPath(){
   try{
-    const VIEWS=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
+    const VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
     const seg=window.location.pathname.split('/').filter(Boolean);
     const vi=seg.findIndex(s=>VIEWS.includes(String(s||'').trim()));
     if(vi>0){
@@ -10313,7 +11402,7 @@ function ptEntityUrl(page,id='',u=null){
 
 function ptRouteInfo(){
   try{
-    const VALID=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
+    const VALID=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
     const seg=window.location.pathname.split('/').filter(Boolean);
     const q=new URLSearchParams(window.location.search||'');
     let idx=0;
@@ -10534,15 +11623,12 @@ function BillingInvoicesView({cu}){
     try{const r=await api.put('/api/billing/invoices/'+id+'/status',{status});if(r&&r.error)setErr(r.error);}catch(e){setErr('Could not update invoice status');}
   };
   const printInvoice=(inv)=>{
-    // Every field below that comes from data (as opposed to a value we
-    // compute, like fmt()'s numeric output) is passed through escapeHtml
-    // before being concatenated into the HTML string written to the popup.
-    // These fields (customer_name, notes, description, ...) are all settable
-    // via PUT /api/billing/invoices/<id>, which only truncates/trims strings
-    // — it doesn't strip HTML — so without escaping here, a value like
-    // '<img src=x onerror=...>' would execute as stored XSS the next time any
-    // Admin/Manager in the workspace opens Print/Export on that invoice
-    // (security review finding #8).
+    // Every field below that comes from data (as opposed to a value we compute,
+    // like fmt()'s numeric output) is passed through escapeHtml before being
+    // concatenated into the HTML string written to the popup — these fields are
+    // settable via PUT /api/billing/invoices/<id>, which only truncates/trims
+    // strings, not strip HTML, so without escaping a value here executes as
+    // stored XSS the next time anyone opens Print/Export on that invoice.
     const esc=escapeHtml;
     const cur=inv.currency||profile.currency||'INR';
     const fmt=(v)=>`${cur} ${Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -10905,7 +11991,7 @@ function WorkspaceOSView({cu,users=[]}){
     const hist=[attendance_today,...(d.attendance_history||prev.attendance_history||[]).filter(x=>attendance_today?(x.id!==attendance_today.id&&x.work_date!==attendance_today.work_date):true)].filter(Boolean).slice(0,14);
     return {...prev,...d,attendance_today,attendance_history:hist,org_people:(d.org_people&&d.org_people.length)?d.org_people:(prev.org_people&&prev.org_people.length?prev.org_people:(users||[]))};
   });},[updateData,users,localAttendKey]);
-  const refresh=useCallback(async(force=false)=>{setBusy(true);const d=await api.get('/api/workspace-os/bootstrap'+(force?'?force=1':''),{quiet:true,timeoutMs:force?20000:6000}).catch(e=>({error:e.message}));setBusy(false);if(d&&d.ok){if(d.settings)setOsSettings(prev=>({...prev,...d.settings}));mergeServerData(d);setMsg(d.cache==='hit'?'Showing saved data':(d.cache==='quick'?'Loaded instantly':'Live'));setTimeout(()=>setMsg(''),1200);}else{setMsg('Showing saved data');setTimeout(()=>setMsg(''),1500);}},[mergeServerData]);
+  const refresh=useCallback(async(force=false)=>{setBusy(true);const d=await api.get('/api/workspace-os/bootstrap'+(force?'?force=1':''),{quiet:true,timeoutMs:15000}).catch(e=>({error:e.message}));setBusy(false);if(d&&d.ok){if(d.settings)setOsSettings(prev=>({...prev,...d.settings}));mergeServerData(d);setMsg(d.cache==='hit'?'Showing saved data':(d.cache==='quick'?'Loaded instantly':'Live'));setTimeout(()=>setMsg(''),1200);}else{setMsg('Showing saved data');setTimeout(()=>setMsg(''),1500);}},[mergeServerData]);
   useEffect(()=>{refresh(false);},[]);
   useEffect(()=>{const h=()=>refresh(true);window.addEventListener('pt:wos-refresh',h);return()=>window.removeEventListener('pt:wos-refresh',h);},[refresh]);
   useEffect(()=>{
@@ -11018,12 +12104,7 @@ function WorkspaceOSView({cu,users=[]}){
   const activityCatalog=[]; // Timesheet dropdown must show real current work only; use Manual activity name for ad-hoc work.
   const workItems=useMemo(()=>{
     const seen=new Set(); const arr=[];
-    // Match the backend's logic (_workspace_os_visible_work_items): exclude only
-    // genuinely closed/done items, don't require the stage to match a specific
-    // "open" name. The previous allow-list silently hid tasks/tickets that used
-    // any custom stage name (e.g. "Assigned", "Ongoing", "In Development") even
-    // though the backend had already scoped them to this user and kept them.
-    const closedStages=new Set(['completed','complete','production','done','closed','resolved','cancelled','archived']);
+    const openStages=new Set(['','backlog','todo','to do','open','active','in progress','in-progress','pending','blocked','review','qa','testing','new']);
     const push=(x,type)=>{
       if(!x)return;
       const rawId=String(x.id||'').trim();
@@ -11032,7 +12113,7 @@ function WorkspaceOSView({cu,users=[]}){
       const itemType=x.item_type||type||'task';
       const stage=String(x.stage||x.status||'').toLowerCase();
       if(!id||!title||seen.has(itemType+':'+id))return;
-      if(stage && closedStages.has(stage))return;
+      if(stage && !openStages.has(stage))return;
       seen.add(itemType+':'+id);
       arr.push({...x,id,title,item_type:itemType,project_id:x.project_id||x.project||'',project_name:x.project_name||x.project_title||''});
     };
@@ -11076,7 +12157,7 @@ function App(){
   const _hadSession=(()=>{try{return localStorage.getItem('pf_had_session')==='1';}catch{return false;}})();
   const [loading,setLoading]=useState(_hadSession);
   // Read initial view from URL path or ?page= param
-  const VALID_VIEWS=['dashboard','workspace-os','ops','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault'];
+  const VALID_VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault'];
   // Also treat /projects/<id> as valid
   useEffect(()=>{
     try{
@@ -11089,7 +12170,7 @@ function App(){
   // Set initial page title based on current URL path
   useEffect(()=>{
     try{
-      const VIEW_T={dashboard:'Dashboard',ops:'Ops Center',projects:'Projects',tasks:'Kanban Board',messages:'Channels',dm:'Direct Messages',tickets:'Tickets',ops:'Ops Center',timeline:'Timeline Tracker',reminders:'Reminders',settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity'};
+      const VIEW_T={ai:'AI Workspace',dashboard:'Dashboard',projects:'Projects',tasks:'Kanban Board',messages:'Channels',tickets:'Tickets',timeline:'Timeline Tracker',reminders:'Reminders',settings:'Settings',billing:'Billing & Invoices',team:'Team Management',productivity:'Dev Productivity'};
       const ri=ptRouteInfo(); const p=ri.page;
       if(p&&VIEW_T[p]) document.title='Project Tracker — '+VIEW_T[p]+' | AI-Powered Team Collaboration';
       else document.title='Project Tracker — AI-Powered Team Collaboration Platform';
@@ -11102,7 +12183,7 @@ function App(){
       const sp=new URLSearchParams(window.location.search).get('page');
       if(sp&&VALID_VIEWS.includes(sp)) return sp;
     }catch(e){}
-    return 'dashboard';
+    return 'ai';
   });
   // Production hard-sync: the browser URL is the source of truth on first paint.
   // This prevents /tasks or /dashboard from staying stuck on the previous Ops view after cache/hydration.
@@ -11203,7 +12284,7 @@ function App(){
     return()=>window.removeEventListener('pt:open-view',onOpenView);
   },[cu]);
   const [col,setCol]=useState(()=>{try{return localStorage.getItem('pf_col')==='1';}catch{return false;}});
-  const initialAppCache=null; // do not hydrate app-data before current user/workspace is known
+  const initialAppCache=ptInstantCacheGet('/api/app-data',null);
   const [data,setData]=useState(()=>{
     if(initialAppCache&&!initialAppCache.error){
       const _pm=parseMembers;
@@ -11289,13 +12370,13 @@ function App(){
       if(dmPeer){
         try{sessionStorage.setItem('pt_open_dm_user',String(dmPeer));sessionStorage.setItem('pt_dm_notification_target',String(dmPeer));sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_e){}
         setDmTargetUser(String(dmPeer));
-        _setView('dm:'+String(dmPeer));
+        _setView('ai');
         try{history.pushState(null,'',ptDmUrl(String(dmPeer)));}catch(_){}
         const fireDmOpen=()=>{try{if(window.__ptOpenDmPeer)window.__ptOpenDmPeer(String(dmPeer),'notification');window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(dmPeer),source:'notification'}}));}catch(_){}};
         fireDmOpen();
       }else{
         try{sessionStorage.setItem('pt_dm_resolve_next','1');}catch(_e){}
-        _setView('dm');
+        _setView('ai');
       }
       return;
     }
@@ -11356,16 +12437,17 @@ function App(){
         if(target){
           setDmTargetUser(String(target));
           try{sessionStorage.setItem('pt_open_dm_user',String(target));sessionStorage.setItem('pt_dm_notification_target',String(target));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_){}
-          _setView('dm:'+String(target));
+          _setView('ai');
         }else{
           // Plain /dm from sidebar/direct navigation stays unselected. Only a
           // notification-marked /dm?notif=dm may resolve latest unread.
           if(fromNotif){try{sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}}
-          _setView('dm');
+          _setView('ai');
         }
       }
     }catch(e){}
   },[_setView]);
+
   useEffect(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem('pf_accent')||'null');
@@ -11392,6 +12474,40 @@ function App(){
     try{localStorage.setItem('pf_team_ctx',id||'');}catch{}
   },[cu]);
   const [dmUnread,setDmUnread]=useState([]);
+  // BUG FIX (DM badge still shows old counts after refresh/sign-in, or
+  // after messages were already read): dmUnread is set from FIVE different
+  // places — app-data, poll, bootstrap, a direct /api/dm/unread fetch, and
+  // an SSE-triggered refetch — and under normal use several of these fire
+  // close together (visible in production logs: overlapping /api/dm/unread
+  // calls within the same second, plus a slow /api/app-data resolving
+  // afterward). Network responses don't arrive in the order they were
+  // sent — a slow request fired BEFORE you read a message can resolve
+  // AFTER a fast request fired AFTER you read it, and silently overwrite
+  // the correct, fresher count with a stale one, purely due to timing.
+  // dmUnreadSeqRef is a monotonic counter: every fetch captures the
+  // sequence number at the moment it STARTS, and its response is only
+  // applied if no newer fetch has started since — discarding stale,
+  // superseded responses regardless of which one happens to resolve last.
+  const dmUnreadSeqRef=useRef(0);
+  const applyDmUnread=useCallback((value,mySeq)=>{
+    if(mySeq!==dmUnreadSeqRef.current)return; // a newer fetch has since started — this one is stale, ignore it
+    setDmUnread(Array.isArray(value)?value:[]);
+  },[]);
+  // BUG FIX (DM badge count "coming back" minutes after being cleared): pollOnce()
+  // below is created inside a useEffect keyed on [cu,addToast] — it is NOT
+  // re-created when dmUnread changes. Every subsequent tick (SSE-unhealthy
+  // fallback poll, ~every 30s, or on stream reconnect) called
+  // `updateBadge(unread + dmUnread.reduce(...))` using the dmUnread ARRAY VALUE
+  // captured in that one closure at mount time — e.g. still 11 from before the
+  // user ever opened/read anything. Reading was clearing the real `dmUnread`
+  // state (and the on-screen sidebar badge, which renders from state directly
+  // and was never wrong), but a few polls later this stale closure repainted
+  // the OS/tab badge with the old total, making it look like unread DMs had
+  // reappeared. A ref always holds the current value regardless of which
+  // closure captured it, with no need to add dmUnread to the effect's deps
+  // (which would tear down/resubscribe the poll manager on every change).
+  const dmUnreadRef=useRef([]);
+  useEffect(()=>{ dmUnreadRef.current=dmUnread; },[dmUnread]);
   useEffect(()=>{
     // Notification fallback only: older push payloads sometimes open plain /dm,
     // or the user is already sitting on /dm with another thread selected.
@@ -11418,7 +12534,7 @@ function App(){
           sessionStorage.setItem('pt_dm_notification_target',peer);
           setDmTargetUser(peer);
           try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:peer,source}}));}catch(_){}
-          _setView('dm:'+peer);
+          _setView('ai');
           try{history.replaceState(null,'',ptDmUrl(peer));}catch(_){}
           return peer;
         }
@@ -11433,8 +12549,50 @@ function App(){
   const [globalSearch,setGlobalSearch]=useState('');
   const [showGlobalSearch,setShowGlobalSearch]=useState(false);
   const [searchSubtasks,setSearchSubtasks]=useState([]);const [wsName,setWsName]=useState('');const [wsDmEnabled,setWsDmEnabled]=useState(true);
+  /* ── SW notification click → in-app routing (no full reload) ─────────── */
+  useEffect(()=>{
+    const onSwNav=(e)=>{
+      try{
+        const {params={},_resolve}=e.detail||{};
+        const action=String(params.action||'').toLowerCase();
+        const id=String(params.id||params.entity_id||'');
+        let user=String(params.user||params.sender||params.peer||params.peer_id||'');
+        if(!user){try{const txt=String(params.title||'')+' '+String(params.body||'');const low=txt.toLowerCase();const u=(data.users||[]).find(x=>String(x.id)!==String(cu&&cu.id)&&((x.name&&low.includes(String(x.name).toLowerCase()))||(x.email&&low.includes(String(x.email).toLowerCase()))));if(u)user=String(u.id);}catch(_){}}
+        const url=String((e.detail&&e.detail.url)||'');
+        const page=(url.split('?')[0]||'').split('/').filter(Boolean).pop()||'';
+        if(action==='task'&&id){setInitialTaskId(id);_setView('tasks');}
+        else if(action==='project'&&id){setInitialProjectId(id);_setView('projects:'+String(id));}
+        else if(action==='ticket'&&id){setInitialTicketId(id);_setView('tickets');}
+        else if(action==='dm'||page==='dm'){
+          if(user){
+            setDmTargetUser(user);
+            try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',user);sessionStorage.setItem('pt_dm_notification_target',user);window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user,source:'sw-notification'}}));}catch(_){}
+            _setView('ai');
+          }else{
+            try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}
+            _setView('ai');
+            try{ if(typeof window._pfResolveDmNotifNow==='function') window._pfResolveDmNotifNow('sw-notification'); }catch(_r){}
+          }
+        }
+        else if(action==='messages'){_setView('messages');}
+        else if(action==='reminders'){_setView('reminders');}
+        else if(action==='notifs'||action==='notifications'){_setView('notifs');}
+        else{_setView('dashboard');}
+        if(typeof _resolve==='function')_resolve();
+      }catch(_){}
+    };
+    window.addEventListener('pt:sw-navigate',onSwNav);
+    return()=>window.removeEventListener('pt:sw-navigate',onSwNav);
+  },[_setView,setInitialTaskId,setInitialProjectId,setInitialTicketId,setDmTargetUser,data.users,cu&&cu.id]);
   const [onlineUsers,setOnlineUsers]=useState(new Set());
   const [awayUsers,setAwayUsers]=useState(new Set());
+  const applyPresence=(payload)=>{
+    if(Array.isArray(payload)){setOnlineUsers(new Set(payload.map(String)));setAwayUsers(new Set());return;}
+    if(payload&&typeof payload==='object'){
+      setOnlineUsers(new Set((payload.online||[]).map(String)));
+      setAwayUsers(new Set((payload.away||[]).map(String)));
+    }
+  };
   const [globalIncomingCall,setGlobalIncomingCall]=useState(null);
   const [globalActiveCallUsers,setGlobalActiveCallUsers]=useState(()=>ptGetActiveCallUsers());
   useEffect(()=>{const h=e=>setGlobalActiveCallUsers(new Set((e.detail&&e.detail.users)||[]));window.addEventListener('pt_active_call_users',h);return()=>window.removeEventListener('pt_active_call_users',h);},[]);
@@ -11461,7 +12619,7 @@ function App(){
         const tick=()=>{
           if(!globalRingtoneCtxRef.current)return;
           const osc=ctx.createOscillator(); osc.type='sine'; osc.frequency.value=880; osc.connect(gain); osc.start(); osc.stop(ctx.currentTime+0.20);
-          setTimeout(() => {try{const osc2=ctx.createOscillator();osc2.type='sine';osc2.frequency.value=660;osc2.connect(gain);osc2.start();osc2.stop(ctx.currentTime+0.20);}catch{}},260);
+          setTimeout(()=>{try{const osc2=ctx.createOscillator();osc2.type='sine';osc2.frequency.value=660;osc2.connect(gain);osc2.start();osc2.stop(ctx.currentTime+0.20);}catch{}},260);
         };
         globalRingtoneCtxRef.current=ctx; tick(); globalRingtoneRef.current={pause:()=>{},currentTime:0,_id:setInterval(tick,1250)};
         return;
@@ -11535,16 +12693,15 @@ function App(){
       globalDismissedCallIds.current.add(call.callId);
       stopGlobalRingtone();
       setGlobalIncomingCall(null);
-      const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-      try{
-        const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-        if(action==='accept'){
-          // Wait for server call_status=in_call before storing active call state.
-          const joinUrl=(r&&r.meetUrl)||call.meetUrl;
-          if(acceptWin){acceptWin.location.href=joinUrl;trackGlobalMeetWindow(acceptWin,call);}
-          else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Accept again.','error');
-        }
-      }catch(e){ try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{} if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error'); }
+      let meetWin=null;
+      if(action==='accept'&&call.meetUrl){
+        meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+        if(meetWin)trackGlobalMeetWindow(meetWin,call);
+        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Accept again.','error');
+      }
+      api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:12000})
+        .then(r=>{if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}})
+        .catch(e=>{ if(typeof window.showToast==='function') window.showToast('Unable to update call status.','error'); });
     };
     document.addEventListener('click',h,true);
     return()=>document.removeEventListener('click',h,true);
@@ -11556,27 +12713,22 @@ function App(){
     globalDismissedCallIds.current.add(call.callId);
     stopGlobalRingtone();
     setGlobalIncomingCall(null);
-    const acceptWin = action==='accept' ? openMeetLoadingWindow() : null;
-    try{
-      const r=await api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true});
-      if(action==='accept'){
-          // Wait for server call_status=in_call before storing active call state.
-        const joinUrl=(r&&r.meetUrl)||call.meetUrl;
-        if(acceptWin){acceptWin.location.href=joinUrl;trackGlobalMeetWindow(acceptWin,call);}
-        else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups for ProjectTracker, then click Connect again.','error');
-      }
-    }catch(e){
-      try{if(acceptWin&&!acceptWin.closed)acceptWin.close();}catch{}
-      console.warn('[Call] response failed',e);
-      if(window._pfToast)window._pfToast('error','Unable to update call status','Please try again.');
+    let meetWin=null;
+    if(action==='accept'&&call.meetUrl){
+      meetWin=window.open(call.meetUrl,'_blank','noopener,noreferrer');
+      if(meetWin&&typeof trackGlobalMeetWindow==='function')trackGlobalMeetWindow(meetWin,call);
+      else if(typeof window.showToast==='function') window.showToast('Popup blocked. Please allow popups and click Connect again.','error');
     }
+    api.post('/api/calls/respond',{callId:call.callId,action,peerId:call.peerId,meetUrl:call.meetUrl},{quiet:true,timeoutMs:12000})
+      .then(r=>{if(action==='accept'){const ids=new Set(((r&&r.users)||[cu&&cu.id,call.peerId]).filter(Boolean));ptSetActiveCallUsers(ids);try{setGlobalActiveCallUsers&&setGlobalActiveCallUsers(ids);}catch(_){ }window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'call_status',data:{callId:call.callId,status:'in_call',users:Array.from(ids),sender:call.peerId,recipient:cu&&cu.id,meetUrl:call.meetUrl}}}));}if(action==='accept'&&r&&r.meetUrl&&r.meetUrl!==call.meetUrl&&meetWin&&!meetWin.closed){try{meetWin.location.href=r.meetUrl;}catch{}}})
+      .catch(e=>{console.warn('[Call] response failed',e);if(window._pfToast)window._pfToast('error','Unable to update call status','Please try again.');});
   },[globalIncomingCall,cu,stopGlobalRingtone,_setView,trackGlobalMeetWindow]);
 
   useEffect(()=>{
     if(!globalIncomingCall){stopGlobalRingtone();return;}
     startGlobalRingtone();
     const remaining=globalIncomingCall.expiresAt ? Math.max(0, Number(globalIncomingCall.expiresAt)-Date.now()) : 20000;
-    globalCallTimeoutRef.current=setTimeout(() => {
+    globalCallTimeoutRef.current=setTimeout(()=>{
       const call=globalIncomingCall;
       if(!call||globalDismissedCallIds.current.has(call.callId))return;
       globalDismissedCallIds.current.add(call.callId);
@@ -11598,7 +12750,7 @@ function App(){
     let stopped=false;
     const check=async()=>{
       try{
-        const res=await api.get('/api/calls/incoming',{quiet:true,timeoutMs:30000});
+        const res=await api.get('/api/calls/incoming',{quiet:true});
         const calls=(res&&Array.isArray(res.calls))?res.calls:[];
         if(stopped||!calls.length)return;
         const c=calls.find(x=>x&&x.callId&&!globalDismissedCallIds.current.has(x.callId));
@@ -11606,39 +12758,98 @@ function App(){
         const expiresAt=Number(c.expiresAt||0)||0;
         if(expiresAt&&Date.now()>expiresAt)return;
         showGlobalCallPopup({callId:c.callId,from:c.senderName||'Someone',meetUrl:c.meetUrl,peerId:c.sender,expiresAt:c.expiresAt});
-        showBrowserNotif('📞 Video call',(c.senderName||'Someone')+' is calling you',()=>{window.focus();showGlobalCallPopup({callId:c.callId,from:c.senderName||'Someone',meetUrl:c.meetUrl,peerId:c.sender,expiresAt:c.expiresAt});},{tag:'call-'+c.callId,requireInteraction:true});
+        showBrowserNotif('📞 Video call',(c.senderName||'Someone')+' is calling you',()=>{window.focus();showGlobalCallPopup({callId:c.callId,from:c.senderName||'Someone',meetUrl:c.meetUrl,peerId:c.sender,expiresAt:c.expiresAt});},{tag:'call-'+c.callId,requireInteraction:true,url:ptDmUrl(c.sender||'')});
       }catch(e){}
     };
-    const startId=setTimeout(()=>{ if(!stopped) check(); },8000); // delay avoids cold-start stampede
+    check();
     const id=setInterval(()=>{if(!document.hidden)check();},60000);
-    return()=>{stopped=true;clearTimeout(startId);clearInterval(id);};
+    return()=>{stopped=true;clearInterval(id);};
   },[cu,showGlobalCallPopup]);
 
   // ── SSE real-time stream ──────────────────────────────────────────────────
+  // sseStatus drives a small non-blocking banner (rendered near the bottom of
+  // this component) so a dropped connection is visible as "reconnecting…"
+  // instead of looking identical to a dead/expired session — see onerror below,
+  // which now distinguishes a transient network blip from a real logout.
+  const [sseStatus,setSseStatus]=useState('connected'); // 'connected' | 'reconnecting'
+  const [showReconnectBanner,setShowReconnectBanner]=useState(false);
+  useEffect(()=>{
+    if(sseStatus==='reconnecting'){
+      // Debounced 3s so a normal instant reconnect never flashes anything —
+      // only a connection that's actually stuck shows the banner.
+      const t=setTimeout(()=>setShowReconnectBanner(true),3000);
+      return()=>clearTimeout(t);
+    }
+    setShowReconnectBanner(false);
+  },[sseStatus]);
+  // ── Plan usage warning (approaching a plan limit) ─────────────────────────
+  // Only fetched for admins/owners/managers — matches /api/workspace/plan-usage's
+  // own permission gate, since only they can act on an upgrade prompt. Fires
+  // once per workspace per browser per 24h so it nudges without nagging.
+  const [nearLimitWarning,setNearLimitWarning]=useState(null);
+  useEffect(()=>{
+    if(!cu)return;
+    const roleNorm=String(cu.role||'').toLowerCase().replace(/[_-]/g,' ');
+    if(!['admin','owner','manager','workspace owner'].includes(roleNorm))return;
+    const wsId=cu.workspace_id||'';
+    const dismissKey=`pfPlanWarnDismiss:${wsId}`;
+    api.get('/api/workspace/plan-usage',{quiet:true}).then(r=>{
+      if(!r||r.ok===false)return;
+      const usage=r.usage||{}, limits=r.limits||{};
+      const metrics=[['members','team members'],['projects','projects'],['storage_mb','storage']];
+      let worst=null;
+      for(const [key,label] of metrics){
+        const cap=Number(limits[key]||0), used=Number(usage[key]||0);
+        if(!cap)continue;
+        const ratio=used/cap;
+        if(ratio>=0.9&&ratio<1&&(!worst||ratio>worst.ratio)) worst={key,label,used,cap,ratio,plan:r.plan};
+      }
+      if(!worst)return;
+      try{
+        const dismissed=JSON.parse(localStorage.getItem(dismissKey)||'{}');
+        if(dismissed[worst.key]&&(Date.now()-dismissed[worst.key])<86400000)return;
+      }catch(_){}
+      setNearLimitWarning(worst);
+    }).catch(()=>{});
+  },[cu?.id,cu?.workspace_id]);
+  const dismissNearLimitWarning=()=>{
+    if(!nearLimitWarning||!cu)return;
+    try{
+      const dismissKey=`pfPlanWarnDismiss:${cu.workspace_id||''}`;
+      const dismissed=JSON.parse(localStorage.getItem(dismissKey)||'{}');
+      dismissed[nearLimitWarning.key]=Date.now();
+      localStorage.setItem(dismissKey,JSON.stringify(dismissed));
+    }catch(_){}
+    setNearLimitWarning(null);
+  };
   // A single EventSource replaces the need for manual polling on task/project/
   // notification/ticket mutations. The server calls _sse_publish() after every
   // write, so changes propagate to all connected clients in <1s instead of 30s.
   useEffect(()=>{
     if(!cu)return;
-    let es=null;let retryTimer=null;let retryDelay=3000;
+    let es=null;let retryTimer=null;
     const connect=()=>{
       // ── SSE Singleton guard ────────────────────────────────────────────────
-      // Prevents triple connections when multiple bundles (frontend.js / main.js /
-      // template.html) run in the same page context. The first bundle to connect
-      // registers window.__ptSSEActive; subsequent bundles reuse it and receive
-      // events via the 'pt:realtime' CustomEvent broadcast below.
       if(window.__ptSSEActive&&window.__ptSSEActive.readyState!==EventSource.CLOSED){
         es=window.__ptSSEActive; return;
       }
       try{
         es=new EventSource('/api/stream', {withCredentials: true});
-        window.__ptSSEActive=es;
-        es.onopen=()=>{retryDelay=3000;try{window.ptPollManager&&window.ptPollManager.setSseHealthy(true);}catch(_){}};
-        es.onmessage=e=>{
+        window.__ptSSEActive=es;        es.onmessage=e=>{
           try{
             const msg=JSON.parse(e.data);
             if(msg.type==='connected')return; // initial handshake
-            // Broadcast to all bundles that share this singleton
+            if(msg.type==='force_logout'){
+              // Single sign-on: our account was just signed in on another
+              // device, which immediately invalidates this session server-side.
+              // Sign out locally right away instead of waiting for the next
+              // poll/401 to notice (see signOutLocally — must not call the
+              // real logout endpoint here, that would kick the NEW device too).
+              try{window._pfToast&&window._pfToast('info','Signed out','Your account was signed in on another device.');}catch(_){}
+              signOutLocally();
+              return;
+            }
+            // Broadcast to all bundles sharing this singleton
             try{window.dispatchEvent(new CustomEvent('pt:realtime',{detail:msg}));}catch(_){}
             const __ptMsgForMe=(m)=>{
               try{
@@ -11659,36 +12870,13 @@ function App(){
                 setData&&setData(prev=>{
                   const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
                   if(d.action==='deleted'||msg.type==='task.deleted'){ptMarkTaskDeleted(d.id);return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};}
-                  if(d.task)return {...prev,tasks:ptMergeTasksStable(tasks,[{...d.task,_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}])};
-                  const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.client_task_key?{client_task_key:d.client_task_key}:{}),...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now(),_recentLocalUntil:Date.now()+180000}:t);
-                  // If this is a 'created' event and the task isn't in the list yet (POST still in flight),
-                  // schedule a bust reload to fetch the confirmed task from DB
-                  if(d.action==='created'&&!tasks.some(t=>String(t.id)===String(d.id))&&!tasks.some(t=>t._pending)){
-                    setTimeout(()=>load(teamCtx,true),800);
-                  }
-                  return {...prev,tasks:updated};
+                  return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t)};
                 });
               }
               return;
             }
-            if(['project_updated','ticket_updated','notification_updated','reminder_updated','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
+            if(['project_updated','ticket_updated','notification_updated','reminder_updated','task.created','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
               load(teamCtx);
-            }
-            // task.created: DON'T call load() here — it returns stale cache and wipes the
-            // optimistic task that was just inserted by the POST /api/tasks response.
-            // Instead, do a targeted bust reload ONLY if the task isn't already in state
-            // (covers the case where another team member created the task).
-            if(msg.type==='task.created'){
-              const d=msg.data||{};
-              setData&&setData(prev=>{
-                const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
-                const alreadyHave=d.id&&(tasks.some(t=>String(t.id)===String(d.id))||tasks.some(t=>t._pending));
-                if(!alreadyHave){
-                  // Another user created this task — schedule a bust to fetch it
-                  setTimeout(()=>load(teamCtx,true),1200);
-                }
-                return prev; // don't touch state — the POST handler owns it
-              });
             }
             if(msg.type==='notification'||msg.type==='notification_updated'){
               triggerPollRef.current&&triggerPollRef.current();
@@ -11696,46 +12884,58 @@ function App(){
             if(msg.type==='web_notification'&&msg.data){
               const n=msg.data||{};
               if(String(n.recipient||'')===String(cu.id)&&String(n.sender||'')!==String(cu.id)){
-                showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('dm:'+String(n.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
+                showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
               }
+            }
+            if(msg.type==='dm_read_all'){
+              // Multi-tab/multi-device sync (spec item 9): another tab/session
+              // for this SAME user ran "Mark all as read" — clear the badge
+              // here too instead of waiting for this tab's own next poll.
+              try{
+                const targetUser=String((msg.data&&msg.data.user_id)||'');
+                if(targetUser&&targetUser===String(cu&&cu.id||'')){
+                  setDmUnread([]);
+                }
+              }catch(_){}
             }
             if(['dm','dm_created','dm_reaction','dm_updated','dm_deleted','dm_pinned','dm_seen','dm_typing','call_status'].includes(msg.type)){
               if(!__ptMsgForMe(msg)) return;
-              if(msg.type!=='dm_typing'&&msg.type!=='dm_seen'){
-                api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{if(d&&Array.isArray(d.dm_unread))setDmUnread(d.dm_unread);if(d&&Array.isArray(d.notifications))setData(prev=>({...prev,notifs:d.notifications}));}).catch(()=>{});
-              }
-              if(msg.type==='dm_created'){
+              // Notification-badge rule: only an INCOMING message (someone else sent
+              // it TO me) can ever change my unread count. __ptMsgForMe() above is
+              // intentionally broad (true for my own outgoing sends too, since
+              // sender===me), because other logic below still needs to react to it
+              // — e.g. caching the message locally. But the unread-count refetch must
+              // be gated on "I am the recipient of a message from someone else", not
+              // merely "this event mentions me", or sending a DM would needlessly
+              // re-poll /api/dm/unread and risk the badge flickering/inflating.
+              const __ptIsIncomingForMe=(()=>{
                 try{
-                  const m=(msg.data&&msg.data.message)||{};
-                  if(m&&m.id&&window.__ptSeenDmIds&&window.__ptSeenDmIds.has(m.id)){
-                    // Cache incoming DM messages globally so DirectMessages can pre-populate instantly
+                  const me=String(cu&&cu.id||'');
+                  const d=(msg&&msg.data)||{};
+                  const x=(d&&d.message)||d||{};
+                  const recipient=String(x.recipient||d.recipient||d.user_id||d.to||d.target_id||'');
+                  const sender=String(x.sender||d.sender||d.sender_id||d.from_user_id||'');
+                  return !!me && recipient===me && sender!==me;
+                }catch(_){return false;}
+              })();
+              if(__ptIsIncomingForMe&&msg.type!=='dm_typing'&&msg.type!=='dm_seen'){const _dmSeq2=++dmUnreadSeqRef.current;api.get('/api/dm/unread').then(d=>applyDmUnread(d,_dmSeq2)).catch(()=>{});}
+              // Cache incoming DM messages globally so DirectMessages can pre-populate instantly
               // on mount without waiting for the loadMsgs network call to complete.
               try{
                 if(msg.type==='dm_created'){
                   const m=(msg.data&&msg.data.message)||msg.message||msg.data||{};
-                  const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
-                  if(m&&m.id&&peer){
-                    window._pfDmIncoming=window._pfDmIncoming||{};
-                    window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
-                    if(!window._pfDmIncoming[peer].find(x=>String(x.id)===String(m.id))){
-                      window._pfDmIncoming[peer].push(m);
+                  if(m&&m.id){
+                    const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
+                    if(peer){
+                      window._pfDmIncoming=window._pfDmIncoming||{};
+                      window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
+                      if(!window._pfDmIncoming[peer].find(x=>x.id===m.id)){
+                        window._pfDmIncoming[peer].push(m);
+                      }
                     }
                   }
                 }
               }catch(_){}
-              window.dispatchEvent(new CustomEvent('dm_refresh',{detail:msg}));
-                    return;
-                  }
-                  window.__ptSeenDmIds=window.__ptSeenDmIds||new Set();
-                  if(m&&m.id)window.__ptSeenDmIds.add(m.id);
-                  if(String(m.recipient||'')===String(cu.id)&&String(m.sender||'')!==String(cu.id)){
-                    const sender=(data.users||[]).find(u=>String(u.id)===String(m.sender))||{};
-                    const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90);
-                    if(!String(m.content||'').includes('CALL_INVITE:')) showBrowserNotif(sender.name||'New message', body||'Sent you a message', ()=>{window.focus(); try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));setDmTargetUser&&setDmTargetUser(String(m.sender));}catch(_){} _setView&&_setView('dm:'+String(m.sender)); try{if(window.__ptOpenDmPeer)window.__ptOpenDmPeer(String(m.sender),'notification');window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){}}, {tag:'dm-'+(m.id||Date.now())});
-                  }
-                }catch(e){}
-              }
-              // Notify the active DM panel to refresh messages/call state immediately.
               window.dispatchEvent(new CustomEvent('dm_refresh',{detail:msg}));
               // Show incoming DM browser/toast notification directly from SSE.
               // This avoids waiting for the 2s poll and keeps notifications immediate.
@@ -11748,7 +12948,7 @@ function App(){
                     const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
                     const body=raw.replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
                     window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm:'+String(m.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
                     playSound('notif');
                   }
                 }
@@ -11767,7 +12967,7 @@ function App(){
                 if(callId&&status==='ringing'&&isFresh&&isMine&&!globalDismissedCallIds.current.has(callId)){
                   const from=((raw.match(/CALL_FROM:([^\n]+)/)||[])[1]||'Someone').trim();
                   showGlobalCallPopup({callId,from,meetUrl,peerId:m.sender,expiresAt});
-                  showBrowserNotif('📞 Video call', from+' is calling you',()=>{window.focus();showGlobalCallPopup({callId,from,meetUrl,peerId:m.sender,expiresAt});},{tag:'call-'+callId,requireInteraction:true});
+                  showBrowserNotif('📞 Video call', from+' is calling you',()=>{window.focus();showGlobalCallPopup({callId,from,meetUrl,peerId:m.sender,expiresAt});},{tag:'call-'+callId,requireInteraction:true,url:ptDmUrl(m.sender||'')});
                 }
               }catch(e){}
             }
@@ -11793,71 +12993,74 @@ function App(){
                 if(isFresh&&validMeet){
                   const sender=(data.users||[]).find(u=>u.id===d.sender)||{};
                   setGlobalIncomingCall({callId:d.callId,from:d.senderName||sender.name||'Someone',meetUrl:d.meetUrl,peerId:d.sender,expiresAt});
-                  showBrowserNotif('📞 Video call', (d.senderName||sender.name||'Someone')+' is calling you',()=>{window.focus();},{tag:'call-'+d.callId,requireInteraction:true});
+                  showBrowserNotif('📞 Video call', (d.senderName||sender.name||'Someone')+' is calling you',()=>{window.focus();},{tag:'call-'+d.callId,requireInteraction:true,url:ptDmUrl(d.caller_id||d.sender||'')});
                 }
               }
             }
             if(msg.type==='presence'){
-              const d=msg.data||{};
-              if(Array.isArray(d.online)||Array.isArray(d.away)){
-                setOnlineUsers(prev=>{const next=new Set(prev);(d.online||[]).forEach(x=>next.add(String(x)));(d.away||[]).forEach(x=>next.delete(String(x)));return next;});
-                setAwayUsers(prev=>{const next=new Set(prev);(d.away||[]).forEach(x=>next.add(String(x)));(d.online||[]).forEach(x=>next.delete(String(x)));return next;});
-              }else if(d.user_id){
-                const uid=String(d.user_id);
-                const st=String(d.status||'online').toLowerCase();
-                setOnlineUsers(prev=>{const next=new Set(prev); if(st==='online'||st==='active')next.add(uid); else next.delete(uid); return next;});
-                setAwayUsers(prev=>{const next=new Set(prev); if(st==='away'||st==='idle')next.add(uid); else next.delete(uid); return next;});
-              }
+              api.get('/api/presence',{quiet:true,timeoutMs:12000}).then(applyPresence).catch(()=>{});
             }
           }catch(err){}
         };
+        es.onopen=()=>{
+          setSseStatus('connected');
+          // On SSE reconnect, trigger a bust reload to fetch any events missed during disconnection
+          if(es.readyState===EventSource.OPEN){
+            setTimeout(()=>load(teamCtx,true),800);
+          }
+        };
         es.onerror=()=>{
-          // Scale-safe reconnect: one retry timer with exponential backoff.
-          // Do not let EventSource 204/temporary proxy failures create a storm.
-          try{window.ptPollManager&&window.ptPollManager.setSseHealthy(false);}catch(_){}
-          try{es.close();}catch(_){}
-          if(retryTimer)clearTimeout(retryTimer);
-          const delay=retryDelay;
-          retryDelay=Math.min(60000, Math.floor(retryDelay*1.8));
-          retryTimer=setTimeout(connect,delay);
+          // BUG FIX: this used to unconditionally retry every 5s forever,
+          // including when the session itself was dead (e.g. the tab was
+          // asleep/suspended past the 30-min idle window, so the server
+          // already expired it) — silently hammering the server and never
+          // recovering until a manual refresh. Now a failed connection
+          // triggers one lightweight auth check: if the session is
+          // actually gone, api.get's 401 handling fires the global
+          // pt:session-expired logout instead of scheduling another
+          // doomed retry; only a real transient network blip keeps the
+          // normal 5s backoff loop.
+          setSseStatus('reconnecting');
+          es.close();
+          if(window.__ptSSEActive===es)window.__ptSSEActive=null;
+          api.get('/api/auth/me',{quiet:true,timeoutMs:8000}).then(r=>{
+            if(r&&r.status===401)return; // pt:session-expired already fired — don't reconnect
+            retryTimer=setTimeout(connect,5000);
+          }).catch(()=>{retryTimer=setTimeout(connect,5000);});
         };
       }catch(err){}
     };
     connect();
-    return()=>{try{window.ptPollManager&&window.ptPollManager.setSseHealthy(false);}catch(_){} if(es){es.close();if(window.__ptSSEActive===es)window.__ptSSEActive=null;}if(retryTimer)clearTimeout(retryTimer);};
+    return()=>{if(es){es.close();if(window.__ptSSEActive===es)window.__ptSSEActive=null;}if(retryTimer)clearTimeout(retryTimer);};
   },[cu,teamCtx]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Presence heartbeat — throttled to avoid DB/client exhaustion.
+  // Presence heartbeat: Teams-like status. Only heartbeat while locally active;
+  // after 3 minutes without keyboard/mouse, the server naturally shows the user as Away.
   useEffect(()=>{
     if(!cu)return;
-    let lastPosted=0,lastFetched=0,presenceBusy=false;
-    const applyPresenceLite=(p)=>{
-      if(Array.isArray(p)){setOnlineUsers(new Set(p.map(String)));setAwayUsers(new Set());return;}
-      if(p&&typeof p==='object'){
-        setOnlineUsers(new Set((p.online||[]).map(String)));
-        setAwayUsers(new Set((p.away||[]).map(String)));
-      }
-    };
+    const lastLocalActivity={current:Date.now()};
+    let lastPosted=0, lastFetched=0, presenceBusy=false;
     const fetchPresence=()=>{
       const now=Date.now();
-      // Skip when tab is hidden — avoids piling up 499s on Railway while the user is away
-      if(presenceBusy||now-lastFetched<15000||document.hidden)return Promise.resolve();
+      if(presenceBusy||now-lastFetched<15000)return Promise.resolve();
       presenceBusy=true;lastFetched=now;
-      return api.get('/api/presence',{quiet:true,timeoutMs:12000}).then(applyPresenceLite).catch(()=>{}).finally(()=>{presenceBusy=false;});
+      return api.get('/api/presence',{quiet:true,timeoutMs:12000}).then(applyPresence).catch(()=>{}).finally(()=>{presenceBusy=false;});
     };
-    const beat=()=>{
-      // Don't heartbeat while the tab is in the background
-      if(document.hidden)return Promise.resolve();
+    const postActive=()=>{
       const now=Date.now();
-      if(now-lastPosted<25000)return fetchPresence();
+      if(now-lastPosted<30000)return Promise.resolve();
       lastPosted=now;
       return api.post('/api/presence',{}, {quiet:true,timeoutMs:12000}).then(fetchPresence).catch(fetchPresence);
     };
-    const presStartId=setTimeout(()=>beat(),500);
-    const beatId=setInterval(beat,25000);
-    const onFocus=()=>{beat();};
-    window.addEventListener('focus',onFocus);
-    return()=>{clearTimeout(presStartId);clearInterval(beatId);window.removeEventListener('focus',onFocus);};
+    const onActivity=()=>{lastLocalActivity.current=Date.now();postActive();};
+    ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(ev=>window.addEventListener(ev,onActivity,{passive:true}));
+    postActive();
+    const beatId=setInterval(()=>{
+      if(Date.now()-lastLocalActivity.current<3*60*1000) postActive();
+      else fetchPresence();
+    },30000);
+    window.addEventListener('focus',onActivity);
+    return()=>{clearInterval(beatId);window.removeEventListener('focus',onActivity);['mousemove','mousedown','keydown','touchstart','scroll'].forEach(ev=>window.removeEventListener(ev,onActivity));};
   },[cu]);
   const [showReminders,setShowReminders]=useState(false);const [reminderTask,setReminderTask]=useState(null);const [upcomingReminders,setUpcomingReminders]=useState([]);
   const [showNotifBanner,setShowNotifBanner]=useState(false);
@@ -11895,10 +13098,24 @@ function App(){
     window.addEventListener('pt:api-error', onApiError);
     return()=>window.removeEventListener('pt:api-error', onApiError);
   },[addToast]);
+  // BUG FIX: pairs with _ptNotifySessionExpired in the api layer above. Any
+  // authenticated endpoint (poller, SSE reconnect check, etc.) reporting a
+  // real 401 now forces an actual logout — stopping every poller/SSE retry
+  // loop and showing the login screen — instead of the tab quietly sitting
+  // there "logged in" but disconnected from live data.
+  useEffect(()=>{
+    if(!cu)return;
+    const onSessionExpired=()=>{
+      try{window._pfToast&&window._pfToast('info','Signed out','Your session ended — please sign in again.');}catch(_){}
+      signOutLocally();
+    };
+    window.addEventListener('pt:session-expired', onSessionExpired);
+    return()=>window.removeEventListener('pt:session-expired', onSessionExpired);
+  },[cu]);
 
   const notify=useCallback((type,title,body,navTo,opts={})=>{
     addToast(type,title,body);
-    showBrowserNotif(title,body,()=>setView(navTo),{...opts,tag:opts.tag||type+'-'+Date.now()});
+    showBrowserNotif(title,body,()=>setView(navTo),{...opts,tag:opts.tag||type+'-'+Date.now(),url:opts.url||'/?action='+encodeURIComponent(navTo)});
     playSound(type==='call'?'call':'notif');
   },[addToast]);
 
@@ -11914,13 +13131,13 @@ function App(){
   const load=useCallback(async(overrideTeamCtx, bust=false)=>{
     if(!cu)return;
     const tCtx=overrideTeamCtx!==undefined?overrideTeamCtx:teamCtx;
+    const _dmSeq=++dmUnreadSeqRef.current; // claim this fetch's sequence slot before any network call starts
     try{
       // Single combined request instead of 9 parallel calls.
       // bust=true forces a fresh DB read on the server, bypassing stale worker caches.
       const bustParam=bust?'bust=1':'';
       const teamParam=tCtx?'team_id='+tCtx:'';
-      const wsParam=(window.PT_WORKSPACE&&window.PT_WORKSPACE.workspace_id)?('workspace_id='+encodeURIComponent(window.PT_WORKSPACE.workspace_id)):'';
-      const qs=[teamParam,bustParam,wsParam].filter(Boolean).join('&');
+      const qs=[teamParam,bustParam].filter(Boolean).join('&');
       const appDataUrl='/api/app-data'+(qs?'?'+qs:'');
       const cachedApp=ptInstantCacheGet(appDataUrl,null)||ptInstantCacheGet('/api/app-data',null);
       if(cachedApp&&!cachedApp.error){
@@ -11933,7 +13150,14 @@ function App(){
           const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
           const _pm=parseMembers;
           setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:ptMergeProjectsStable(prev.projects,(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)}))),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
-          if(Array.isArray(dmu))setDmUnread(dmu);
+          // BUG FIX: this used to also paint dmUnread straight from the
+          // (possibly stale) localStorage instant-cache here. Every other
+          // field repainted from cache is low-risk if briefly stale (a
+          // project list flickering old-then-new is harmless) — dm_unread
+          // specifically is exactly the field people notice and report as
+          // "still showing unread after I already read it", so it's worth
+          // the small delay of just waiting for the real network response
+          // a few lines down instead of ever painting a cached guess.
           if(Array.isArray(rems)){const now=new Date();setUpcomingReminders(rems.filter(r=>new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));}
         }
         if(ws&&ws.name)setWsName(ws.name);
@@ -11959,9 +13183,8 @@ function App(){
         return;
       }
       if(!(d&&d.partial)){ ptInstantCacheSet(appDataUrl,d); if(!appDataUrl.includes('?'))ptInstantCacheSet('/api/app-data',d); }
-      if(d&&d.ok===false){console.warn('[Load] app-data returned fallback, keeping current state',d);try{clearTimeout(window.__ptAppDataPartialRetry);window.__ptAppDataPartialRetry=setTimeout(()=>load(tCtx,true),1500);}catch(_){} return;}
       if(d&&d.partial){
-        try{clearTimeout(window.__ptAppDataPartialRetry);window.__ptAppDataPartialRetry=setTimeout(()=>load(tCtx,true),900);}catch(_){}
+        try{clearTimeout(window.__ptAppDataPartialRetry);window.__ptAppDataPartialRetry=setTimeout(()=>load(tCtx,true),1200);}catch(_){}
         const ws=d.workspace||{};
         const featureFlags=d.feature_flags||{}; const featureCatalog=d.feature_catalog||{};
         const workspacePlan=d.plan||data.workspacePlan||'starter'; const planLimits=d.plan_limits||data.planLimits||{};
@@ -11970,46 +13193,56 @@ function App(){
         if(ws){try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},ws,{workspace_id:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_id_from_me:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_slug:ws.workspace_slug||ws.slug||'',workspace_name:ws.name||ws.workspace_name||''});}catch(_){} setWsDmEnabled(ws.dm_enabled!==0);}
         return;
       }
-      if(d&&!d.partial&&Array.isArray(d.projects)&&Array.isArray(d.tasks)&&Array.isArray(d.users)&&d.projects.length===0&&d.tasks.length===0&&d.users.length===0){
-        console.warn('[Load] app-data returned an empty full payload; keeping existing state and running diagnostics', d);
-        try{api.get('/api/data-diagnostics?include_deleted=1',{quiet:true,timeoutMs:8000}).then(diag=>{window.PT_DATA_DIAGNOSTICS=diag;console.warn('[DataDiagnostics]',diag);if(window._pfToast){const c=(diag&&diag.counts)||{};window._pfToast('warning','Dashboard data check',`Visible: ${c.projects_visible||0} projects, ${c.tasks_visible||0} tasks. Hidden/deleted: ${c.projects_deleted||0} projects, ${c.tasks_deleted||0} tasks.`);}}).catch(()=>{});}catch(_){}
-        try{clearTimeout(window.__ptAppDataEmptyRetry);window.__ptAppDataEmptyRetry=setTimeout(()=>load(tCtx,true),1500);}catch(_){}
-        return;
-      }
       const {users=[],projects=[],tasks=[],notifications:notifs=[],dm_unread:dmu=[],workspace:ws={},teams:teamsRaw=[],tickets:ticketsRaw=[],reminders:rems=[],feature_flags:featureFlags={},feature_catalog:featureCatalog={},plan:workspacePlan='starter',plan_limits:planLimits={},dashboardSummary={}}=d;
       const teams=Array.isArray(teamsRaw)?teamsRaw:[];
       const tickets=Array.isArray(ticketsRaw)?ticketsRaw:[];
       const _pm=parseMembers;
       setData(prev=>({...prev,users:Array.isArray(users)?users:[],projects:ptMergeProjectsStable(prev.projects,(Array.isArray(projects)?projects:[]).map(p=>({...p,members:_pm(p.members)}))),tasks:ptMergeTasksStable(prev.tasks,tasks),notifs:Array.isArray(notifs)?notifs:[],teams,tickets,featureFlags:featureFlags||{},featureCatalog:featureCatalog||{},workspacePlan:workspacePlan||'starter',planLimits:planLimits||{},dashboardSummary:dashboardSummary||prev.dashboardSummary||{}}));
-      setDmUnread(Array.isArray(dmu)?dmu:[]);
+      applyDmUnread(dmu,_dmSeq);
       if(ws&&ws.name)setWsName(ws.name);
       if(ws){try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},ws,{workspace_id:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_id_from_me:ws.id||ws.workspace_id||ws.workspace_id_from_me||((cu&&cu.workspace_id)||''),workspace_slug:ws.workspace_slug||ws.slug||'',workspace_name:ws.name||ws.workspace_name||''});}catch(_){} setWsDmEnabled(ws.dm_enabled!==0);}
       if(Array.isArray(rems)){const now=new Date();setUpcomingReminders(rems.filter(r=>new Date(r.remind_at)>=now).sort((a,b)=>new Date(a.remind_at)-new Date(b.remind_at)));}
     }catch(e){console.error('[Load] Error:',e);}
   },[cu,teamCtx]);
 
+  // Shared "mark all notifications as read" handler used by both the header bell
+  // dropdown and the full NotifsView page. Deliberately does NOT call load() —
+  // load() does stale-while-revalidate from ptInstantCacheGet, which would
+  // synchronously repaint the old unread notifications over the top of this
+  // optimistic update before the fresh network response lands. Instead this:
+  //  1) snapshots current notifs for rollback
+  //  2) optimistically flips every notif to read in state (instant UI update)
+  //  3) patches the cached /api/app-data payload so a later load() can't resurrect them
+  //  4) persists via PUT /api/notifications/read-all
+  //  5) rolls back state + cache and shows an error toast if the request fails
+  const [markingAllRead,setMarkingAllRead]=useState(false);
+  const markAllNotificationsRead=useCallback(async()=>{
+    const prevNotifs=safe(data&&data.notifs);
+    const hasUnread=prevNotifs.some(n=>!n.read);
+    if(!hasUnread||markingAllRead)return;
+    setMarkingAllRead(true);
+    const toRead=arr=>safe(arr).map(n=>n.read?n:{...n,read:1});
+    setData(prev=>({...prev,notifs:toRead(prev.notifs)}));
+    ptPatchAppDataNotifsCache(toRead);
+    try{
+      const res=await api.put('/api/notifications/read-all',{});
+      if(res&&res.ok===false)throw new Error(res.error||'Request failed');
+      try{window._pfToast&&window._pfToast('success','All notifications marked as read.');}catch(_){}
+    }catch(e){
+      // Roll back optimistic UI + cache so state, badge, and DB stay in sync on failure
+      setData(prev=>({...prev,notifs:prevNotifs}));
+      ptPatchAppDataNotifsCache(()=>prevNotifs);
+      try{window._pfToast&&window._pfToast('error','Failed to mark notifications as read',(e&&e.message)||'Please try again.');}catch(_){}
+    }finally{
+      setMarkingAllRead(false);
+    }
+  },[data&&data.notifs,markingAllRead]);
+
   useEffect(()=>{
     // Try to get current user; if backend is unreachable, enter offline mode
     // so Vault and Password Generator still work without a server
-    api.get('/api/auth/me',{quiet:true,timeoutMs:15000}).then(u=>{
-      if(u&&!u.error){ setCu(u); window._pfCurrentUser=u; window.PT_CURRENT_USER=u; try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},{workspace_id:u.workspace_id||u.workspace_id_from_me||'',workspace_id_from_me:u.workspace_id_from_me||u.workspace_id||'',workspace_slug:u.workspace_slug||'',workspace_name:u.workspace_name||u._ws_name||''});}catch(_){} try{localStorage.setItem('pf_had_session','1');}catch{} setLoading(false); api.get('/api/bootstrap',{quiet:true,timeoutMs:15000}).then(b=>{if(b&&b.ok){window.PT_BOOTSTRAP=b;ptInstantCacheSet('/api/bootstrap',b);
-        // SCALABILITY FIX: bootstrap now returns users+dm_unread (added to /api/bootstrap).
-        // Pre-populating data.users here means resolvePeerId is functional in ~100ms
-        // instead of 2-3s, which eliminates the entire class of DM routing/display bugs
-        // caused by empty users during the cold app-data window.
-        // The full /api/app-data call that follows will overwrite with richer records
-        // (has_avatar, last_active, two_fa_enabled etc.) — this is just the fast seed.
-        setData(prev=>{
-          const bootstrapUsers=Array.isArray(b.users)&&b.users.length?b.users:null;
-          return{...prev,bootstrap:b,
-            // Only seed users if we don't already have richer app-data users loaded.
-            // Richer = has has_avatar field set by _fetch_app_data_from_db.
-            users:bootstrapUsers&&!(prev.users&&prev.users.length&&prev.users[0]&&'has_avatar'in prev.users[0])?bootstrapUsers:prev.users,
-            workspacePlan:(b.entitlements&&b.entitlements.plan)||prev.workspacePlan,
-            planLimits:(b.entitlements&&b.entitlements.limits)||prev.planLimits};
-        });
-        if(Array.isArray(b.dm_unread)&&b.dm_unread.length){setDmUnread(prev=>prev&&prev.length?prev:b.dm_unread);}
-      }}).catch(()=>{}); }
+    api.get('/api/auth/me').then(u=>{
+      if(u&&!u.error){ setCu(u); window._pfCurrentUser=u; window.PT_CURRENT_USER=u; try{window.PT_WORKSPACE=Object.assign({},window.PT_WORKSPACE||{},{workspace_id:u.workspace_id||u.workspace_id_from_me||'',workspace_id_from_me:u.workspace_id_from_me||u.workspace_id||'',workspace_slug:u.workspace_slug||'',workspace_name:u.workspace_name||u._ws_name||''});}catch(_){} try{localStorage.setItem('pf_had_session','1');}catch{} setLoading(false); api.get('/api/bootstrap',{quiet:true,timeoutMs:5000}).then(b=>{if(b&&b.ok){window.PT_BOOTSTRAP=b;ptInstantCacheSet('/api/bootstrap',b);setData(prev=>({...prev,bootstrap:b,workspacePlan:(b.entitlements&&b.entitlements.plan)||prev.workspacePlan,planLimits:(b.entitlements&&b.entitlements.limits)||prev.planLimits}));}}).catch(()=>{}); }
       else {
         // Got a response but errored (e.g. 401 not logged in) — show login instantly
         try{localStorage.removeItem('pf_had_session');}catch{}
@@ -12037,7 +13270,7 @@ function App(){
   useEffect(()=>{
     const q=(globalSearch||'').trim();
     if(!q||q.length<2){setSearchSubtasks([]);return;}
-    const t=setTimeout(() => {
+    const t=setTimeout(()=>{
       api.get('/api/subtasks/search?q='+encodeURIComponent(q))
         .then(d=>{if(Array.isArray(d))setSearchSubtasks(d);})
         .catch(()=>{});
@@ -12087,7 +13320,7 @@ function App(){
   // task/project mutation — so this extra interval was both redundant and
   // doubling DB load (2 extra queries every 30s per connected user).
   useEffect(()=>{
-    document.body.className=dark?'dm':'';
+    document.body.className=dark?'dm':'lm';
     try{
       const saved=JSON.parse(localStorage.getItem('pf_accent')||'null');
       if(saved&&saved.ac){
@@ -12107,35 +13340,22 @@ function App(){
   // BUGFIX: /api/dm/latest-unread returns messages that are *unread*, not messages
   // that are *new since this page load*. Those are not the same thing — a message
   // can have been delivered (and already toasted) in a previous session and still
-  // show read=0 simply because the user never opened that DM thread. Without a
-  // baseline, the very first pullLatest() call on every page refresh treated all
-  // of those old-but-unread rows as brand new and re-toasted every one of them.
-  // dmBaselineSeededRef gates that: the first pull only seeds the "already
-  // notified" dedupe sets silently; toasts fire only for ids seen after that.
+  // show read=0 simply because the user never opened that DM thread. This effect
+  // used to call pullLatest() immediately on every mount with no baseline check,
+  // so every refresh re-toasted the entire backlog of unread DMs. dmBaselineSeededRef
+  // gates that: the first pull after mount only seeds the "already notified" dedupe
+  // sets silently; toasts fire only for ids seen after that.
   const dmBaselineSeededRef=useRef(false);
   useEffect(()=>{
     if(!cu)return;
-    api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(d=>{if(d&&Array.isArray(d.dm_unread)){prevDmsRef.current=d.dm_unread;setDmUnread(d.dm_unread);}if(d&&Array.isArray(d.notifications))setData(prev=>({...prev,notifs:d.notifications}));}).catch(()=>{});
+    {const _dmSeq3=++dmUnreadSeqRef.current;api.get('/api/dm/unread').then(d=>{if(Array.isArray(d)){prevDmsRef.current=d;}applyDmUnread(d,_dmSeq3);}).catch(()=>{});}
     let latestBusy=false;
     const pullLatest=async()=>{
       if(latestBusy)return;
-      // SCALABILITY / correctness: when SSE is healthy it already delivers dm_created
-      // events instantly (see the es.onmessage handler). Running this poll anyway
-      // just races that delivery for the same message id, which is harmless (both
-      // paths dedupe via window.__ptSeenDmIds) but is pure wasted load once SSE is
-      // up. Mirrors the same readyState/isSseHealthy check the active-thread
-      // fallback poller uses.
-      const sseOpen=(window.__ptSSEActive&&window.__ptSSEActive.readyState===1)||
-                    (window.ptPollManager&&window.ptPollManager.isSseHealthy&&window.ptPollManager.isSseHealthy());
-      if(sseOpen)return;
       latestBusy=true;
       try{
-        const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:30000});
+        const latest=await api.get('/api/dm/latest-unread',{quiet:true,timeoutMs:7000});
         if(Array.isArray(latest)){
-          // First call after a page load/refresh: these "unread" rows may already
-          // have been notified in a prior session (unread just means "not opened",
-          // not "not yet shown to the user"). Seed the dedupe sets silently instead
-          // of toasting a backlog of old messages every time the page reloads.
           const isBaselinePull=!dmBaselineSeededRef.current;
           dmBaselineSeededRef.current=true;
           latest.slice().reverse().forEach(m=>{
@@ -12145,54 +13365,43 @@ function App(){
             if(window.__ptSeenDmIds.has(m.id)){ notifiedDmIdsRef.current.add(m.id); return; }
             notifiedDmIdsRef.current.add(m.id);
             window.__ptSeenDmIds.add(m.id);
-            if(isBaselinePull){
-              // Still hydrate the DM panel cache so unread messages show up if the
-              // user opens the thread, just don't fire a toast/sound/notification.
-              try{
-                const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
-                if(peer){
-                  window._pfDmIncoming=window._pfDmIncoming||{};
-                  window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
-                  if(!window._pfDmIncoming[peer].find(x=>String(x.id)===String(m.id))){
-                    window._pfDmIncoming[peer].push(m);
-                  }
-                }
-              }catch(_){}
-              return;
-            }
             // Inject the real message immediately into the DM panel. This avoids
             // fake alerts that open before the message is visible.
-            // Cache latest-unread messages globally so DirectMessages can pre-populate instantly
-            // even when the component was not mounted when the fallback poll fired.
+            // Also cache it globally so DirectMessages shows it instantly on mount.
             try{
               const peer=String(m.sender||'')!==String(cu.id)?m.sender:m.recipient;
               if(peer){
                 window._pfDmIncoming=window._pfDmIncoming||{};
                 window._pfDmIncoming[peer]=window._pfDmIncoming[peer]||[];
-                if(!window._pfDmIncoming[peer].find(x=>String(x.id)===String(m.id))){
+                if(!window._pfDmIncoming[peer].find(x=>x.id===m.id)){
                   window._pfDmIncoming[peer].push(m);
                 }
               }
             }catch(_){}
+            if(isBaselinePull){
+              // Backlog from before this page load: hydrate state only, don't toast.
+              return;
+            }
             window.dispatchEvent(new CustomEvent('dm_refresh',{detail:{type:'dm_created',soundPlayed:true,data:{id:m.id,sender:m.sender,recipient:m.recipient,message:m}}}));
             const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
             const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
             if(!String(m.content||'').includes('CALL_INVITE:')){
               window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm:'+String(m.sender)); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
               playSound('notif');
             }
           });
         }
-        const poll=await api.get('/api/poll',{quiet:true,timeoutMs:12000});
-        const d=poll&&Array.isArray(poll.dm_unread)?poll.dm_unread:[];
-        if(Array.isArray(d)){prevDmsRef.current=d;setDmUnread(d);}
+        const _dmSeq4=++dmUnreadSeqRef.current;
+        const d=await api.get('/api/dm/unread',{quiet:true,timeoutMs:12000});
+        if(Array.isArray(d)){prevDmsRef.current=d;}
+        applyDmUnread(d,_dmSeq4);
       }catch(e){}
       finally{latestBusy=false;}
     };
-    const pullStartId=setTimeout(()=>pullLatest(),5000); // delay avoids cold-start stampede
-    const id=setInterval(pullLatest,30000); // fallback only; SSE handles instant delivery
-    return()=>{clearTimeout(pullStartId);clearInterval(id);};
+    pullLatest();
+    const id=setInterval(()=>{if(!document.hidden)pullLatest();},120000); // light fallback; SSE handles instant delivery
+    return()=>clearInterval(id);
   },[cu,data.users]);
 
   const prevNotifIdsRef=useRef(null); // null = not yet seeded
@@ -12203,8 +13412,7 @@ function App(){
     if(!cu)return;
 
     const pollOnce=()=>{
-      api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(poll=>{
-        const d=(poll&&Array.isArray(poll.notifications))?poll.notifications:[];
+      api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(res=>{const d=res&&Array.isArray(res.notifications)?res.notifications:res;
         if(!Array.isArray(d))return;
         if(prevNotifIdsRef.current===null){
           prevNotifIdsRef.current=new Set(d.map(n=>n.id));
@@ -12221,24 +13429,23 @@ function App(){
           showBrowserNotif(title,n.content||'',()=>{
             window.focus();
             routeToNotification(n);
-          },{tag:'notif-'+n.id});
+          },{tag:'notif-'+n.id,url:'/?action='+(nav==='tasks'?'task':nav==='projects'?'project':nav==='tickets'?'ticket':nav==='dm'?'dm':nav)+(n.entity_id?'&id='+encodeURIComponent(n.entity_id):'')+(n.sender&&nav==='dm'?'&user='+encodeURIComponent(n.sender):'')});
           playSound('notif');
         });
         prevNotifIdsRef.current=new Set(d.map(n=>n.id));
         setData(prev=>({...prev,notifs:d}));
         const unread=d.filter(n=>!n.read).length;
-        const dmTotal=dmUnread.reduce((a,x)=>a+(x.cnt||0),0);
+        const dmTotal=dmUnreadRef.current.reduce((a,x)=>a+(x.cnt||0),0);
         updateBadge(unread+dmTotal);
       });
     };
 
-    api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(poll=>{
-        const d=(poll&&Array.isArray(poll.notifications))?poll.notifications:[];
+    api.get('/api/poll',{quiet:true,timeoutMs:12000}).then(res=>{const d=res&&Array.isArray(res.notifications)?res.notifications:res;
       if(Array.isArray(d)){
         prevNotifIdsRef.current=new Set(d.map(n=>n.id));
         setData(prev=>({...prev,notifs:d}));
         const unread=d.filter(n=>!n.read).length;
-        updateBadge(unread+dmUnread.reduce((a,x)=>a+(x.cnt||0),0));
+        updateBadge(unread+dmUnreadRef.current.reduce((a,x)=>a+(x.cnt||0),0));
       }
     });
 
@@ -12254,12 +13461,66 @@ function App(){
     setDmUnread(prev=>prev.filter(x=>peerOf(x)!==sidS));
     setData(prev=>{
       const notifs=Array.isArray(prev.notifs)?prev.notifs:[];
-      const isDmFrom=n=>String(n&&n.type||'').toLowerCase()==='dm'&&(String(n.sender_id||n.sender||n.from_user_id||n.user_id||'')===sidS);
+      const dmTypes=new Set(['dm','direct_message','message_received','new_message']);
+      const dmEntityTypes=new Set(['dm','direct_message','message','chat']);
+      const isDmFrom=n=>{
+        const t=String(n&&n.type||'').toLowerCase();
+        const et=String(n&&n.entity_type||'').toLowerCase();
+        return (dmTypes.has(t)||dmEntityTypes.has(et))&&(String(n.sender_id||n.sender||n.from_user_id||n.user_id||'')===sidS);
+      };
       const toDelete=notifs.filter(isDmFrom);
       toDelete.forEach(n=>{api.del('/api/notifications/'+n.id).catch(()=>{});});
       return {...prev,notifs:notifs.filter(n=>!isDmFrom(n))};
     });
   },[]);
+  // "Mark all as read" for Direct Messages — spec item 11/23. Same
+  // optimistic-then-persist-then-reconcile-on-failure shape as
+  // markAllNotificationsRead above, applied to dmUnread instead of notifs.
+  const [markingAllDmsRead,setMarkingAllDmsRead]=useState(false);
+  const onDmReadAll=useCallback(async()=>{
+    const prevDmUnread=dmUnreadRef.current;
+    if(!prevDmUnread.length||markingAllDmsRead)return;
+    setMarkingAllDmsRead(true);
+    setDmUnread([]);
+    try{
+      const res=await api.post('/api/dm/read-all',{});
+      if(res&&res.ok===false)throw new Error(res.error||'Request failed');
+      try{window._pfToast&&window._pfToast('success','All messages marked as read.');}catch(_){}
+    }catch(e){
+      setDmUnread(prevDmUnread); // reconcile: revert optimistic clear so the badge never lies about backend state
+      try{window._pfToast&&window._pfToast('error','Failed to mark messages as read',(e&&e.message)||'Please try again.');}catch(_){}
+    }finally{
+      setMarkingAllDmsRead(false);
+    }
+  },[markingAllDmsRead]);
+  // Local-only sign-out — used when we're told the session is no longer valid
+  // server-side (SSE force_logout from a login elsewhere in single-session
+  // mode, or a 401 bounce via pt:session-expired). Unlike logout(), this must
+  // NOT call POST /api/auth/logout: that endpoint sets a fresh account-wide
+  // logged_out_at timestamp, which — if this tab called it after already
+  // being superseded by a newer login — would immediately kill that newer
+  // session too (a login/logout ping-pong between devices). The server has
+  // already invalidated us; we just need to clean up the client and leave.
+  const signOutLocally=()=>{
+    api._abort();
+    window._pfCurrentUser=null;
+    setCu(null);setData({users:[],projects:[],tasks:[],notifs:[]});setDmUnread([]);
+    if(window._pfPushUnsubscribe) window._pfPushUnsubscribe().catch(()=>{});
+    try{
+      const NAV_PREF_PREFIXES=['pf_nav_hidden_','pf_nav_order_','pf_nav_pin_top_','pf_nav_pin_bot_'];
+      const isNavPref=k=>NAV_PREF_PREFIXES.some(p=>k.startsWith(p));
+      const keysToRemove=['pf_had_session','pf_perms','pf_accent'];
+      keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
+      const KEEP_ON_LOGOUT=new Set(['pf_dark','pf_col']);
+      Object.keys(localStorage).forEach(k=>{
+        if(KEEP_ON_LOGOUT.has(k))return;
+        if((k.startsWith('vw_ai_recents_')||k.startsWith('pf_'))&&!isNavPref(k)){
+          try{localStorage.removeItem(k);}catch{}
+        }
+      });
+    }catch{}
+    window.location.href='/?action=login';
+  };
   const logout=async()=>{
     // 1. Abort all in-flight API requests FIRST — stops polls, cancels app-data
     api._abort();
@@ -12273,24 +13534,27 @@ function App(){
     // session cookie. The index route sees user_id still in session → 302 to
     // dashboard → user sees a ghost dashboard flash before 401s kick in.
     try{
-      fetch('/api/auth/logout',{method:'POST',credentials:'include',headers:ptCsrfHeaders({'Content-Type':'application/json'}),body:'{}',signal:AbortSignal.timeout(3000)});
+      await fetch('/api/auth/logout',{method:'POST',credentials:'include',headers:ptCsrfHeaders({'Content-Type':'application/json'}),body:'{}',signal:AbortSignal.timeout(3000)});
     }catch(e){
       // Timeout or network error — server may have already cleared the session.
       // Proceed with client-side cleanup anyway.
     }
     // 5. Clear ALL localStorage only AFTER server confirms logout
     try{
+      // Sidebar customization (hidden items, custom order, pinned items) is a
+      // UI preference, not session data — it should survive sign-out/sign-in
+      // on the same browser, so it's explicitly excluded from the wipe below.
+      const NAV_PREF_PREFIXES=['pf_nav_hidden_','pf_nav_order_','pf_nav_pin_top_','pf_nav_pin_bot_'];
+      const isNavPref=k=>NAV_PREF_PREFIXES.some(p=>k.startsWith(p));
       // pf_dark (theme) and pf_col (sidebar collapsed state) intentionally excluded —
       // both are personal display preferences, not session data, so they should
       // survive sign-out instead of resetting on every login.
       const keysToRemove=['pf_had_session','pf_perms','pf_accent'];
       keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
-      // Personal display preferences (theme, sidebar collapsed state) must survive
-      // this blanket 'pf_' wipe too, or they silently reset on every sign-out.
       const KEEP_ON_LOGOUT=new Set(['pf_dark','pf_col']);
       Object.keys(localStorage).forEach(k=>{
         if(KEEP_ON_LOGOUT.has(k))return;
-        if(k.startsWith('vw_ai_recents_')||k.startsWith('pf_')){
+        if((k.startsWith('vw_ai_recents_')||k.startsWith('pf_'))&&!isNavPref(k)){
           try{localStorage.removeItem(k);}catch{}
         }
       });
@@ -12300,6 +13564,52 @@ function App(){
   };
 
   useEffect(()=>{if(cu)requestNotifPermission();},[cu]);
+
+  // ── Inactivity auto-logout ──────────────────────────────────────────────
+  // Requirement: keep the user signed in indefinitely WHILE active, but log
+  // them out automatically (forcing a manual login again) after 30 minutes
+  // with no real interaction — not just no page reload.
+  //
+  // Real user interaction (mouse/keyboard/touch/scroll) throttle-pings
+  // POST /api/auth/heartbeat, which is the ONLY thing that refreshes
+  // session["last_activity"] server-side (see login_required in app.py).
+  // Background polling (/api/poll, SSE, the 60s channel/DM refresh timers)
+  // deliberately does NOT count as activity, so a tab left open but idle
+  // still gets logged out by the server on its next request even though
+  // it's still quietly polling.
+  //
+  // The client-side timer below is just a UX nicety so an idle tab shows
+  // the login screen immediately at the 30-minute mark instead of waiting
+  // for the next API call to bounce with a 401.
+  useEffect(()=>{
+    if(!cu)return;
+    const IDLE_LIMIT_MS=30*60*1000;
+    const HEARTBEAT_MIN_GAP_MS=60*1000; // don't ping more than once a minute
+    let lastHeartbeatAt=0;
+    let idleTimer=null;
+    const sendHeartbeat=()=>{
+      const now=Date.now();
+      if(now-lastHeartbeatAt<HEARTBEAT_MIN_GAP_MS)return;
+      lastHeartbeatAt=now;
+      api.post('/api/auth/heartbeat',{},{quiet:true}).catch(()=>{});
+    };
+    const resetIdleTimer=()=>{
+      if(idleTimer)clearTimeout(idleTimer);
+      idleTimer=setTimeout(()=>{
+        try{window._pfToast&&window._pfToast('info','Signed out','You were signed out after 30 minutes of inactivity.');}catch(_){}
+        logout();
+      },IDLE_LIMIT_MS);
+    };
+    const onActivity=()=>{sendHeartbeat();resetIdleTimer();};
+    const events=['mousedown','mousemove','keydown','wheel','touchstart','scroll'];
+    events.forEach(ev=>window.addEventListener(ev,onActivity,{passive:true}));
+    sendHeartbeat();
+    resetIdleTimer();
+    return()=>{
+      events.forEach(ev=>window.removeEventListener(ev,onActivity));
+      if(idleTimer)clearTimeout(idleTimer);
+    };
+  },[cu]);
 
   const triggerPollRef = useRef(null);
   useEffect(()=>{
@@ -12325,13 +13635,8 @@ function App(){
         if(d.id){
           setData&&setData(prev=>{
             const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
-            if(d.action==='deleted'||msg.type==='task.deleted')return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};
-            const updated=tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t);
-            // If this is a 'created' event and task isn't in the list, schedule a bust load
-            if(d.action==='created'&&!tasks.some(t=>String(t.id)===String(d.id))&&!tasks.some(t=>t._pending)){
-              setTimeout(()=>load(undefined,{bust:true}),800);
-            }
-            return {...prev,tasks:updated};
+            if(d.action==='deleted'||msg.type==='task.deleted'){ptMarkTaskDeleted(d.id);return {...prev,tasks:tasks.filter(t=>String(t.id)!==String(d.id))};}
+            return {...prev,tasks:tasks.map(t=>String(t.id)===String(d.id)?{...t,...(d.stage?{stage:d.stage}:{}),...(d.project?{project:d.project}:{}),...(d.assignee?{assignee:d.assignee}:{}),...(d.comments!==undefined?{comments:d.comments}:{}),_localTs:Date.now()}:t)};
           });
         }
         return;
@@ -12339,21 +13644,8 @@ function App(){
       // notification_updated fires after every task save (backend creates a notification record).
       // Debounce these to avoid a full reload after each PUT /api/tasks.
       // Other events (project_updated, ticket_updated, etc.) also debounce to collapse bursts.
-      if(['project_updated','ticket_updated','notification_updated','reminder_updated','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
+      if(['project_updated','ticket_updated','notification_updated','reminder_updated','task.created','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
         debouncedRefresh();
-      }
-      // task.created via pt:realtime: same fix — skip stale-cache reload; only bust if task missing
-      if(msg.type==='task.created'){
-        const d=msg.data||{};
-        setData&&setData(prev=>{
-          const tasks=Array.isArray(prev.tasks)?prev.tasks:[];
-          const alreadyHave=d.id&&(tasks.some(t=>String(t.id)===String(d.id))||tasks.some(t=>t._pending));
-          if(!alreadyHave){
-            clearTimeout(_rtReloadTimer.current);
-            _rtReloadTimer.current=setTimeout(()=>load(undefined,{bust:true}),1200);
-          }
-          return prev;
-        });
       }
     };
     window.addEventListener('pt:refresh', onRefresh);
@@ -12372,18 +13664,46 @@ function App(){
   },[data.notifs,dmUnread]);
 
   const firedEarlyRef=useRef(new Set());
+  // BUG FIX (5-minute-before reminder notification never triggers): two
+  // compounding bugs in this effect.
+  //
+  // 1. STALE CLOSURE — `const rems=upcomingReminders` read the component's
+  //    upcomingReminders binding at the moment THIS effect last ran (its
+  //    deps are only [cu,addToast], so it runs once per login, not per
+  //    render). load()'s own setUpcomingReminders calls happen in a
+  //    completely separate effect/closure and never update what this
+  //    effect's checkDue() sees — so on any session where upcomingReminders
+  //    was still [] when this effect first ran (very common: this effect
+  //    can fire before the first app-data load resolves), the early-warning
+  //    loop below had nothing to iterate, ever, for the rest of that
+  //    session. Fixed by reading from a ref that's kept in sync with the
+  //    live state on every render, instead of the closed-over variable.
+  //
+  // 2. NARROW WINDOW vs COARSE INTERVAL — the old check only fired when
+  //    "now" landed within a ±60s window of the exact warnAt instant, but
+  //    this loop only ran every 180s. A 120s-wide window inside a 180s
+  //    cycle has real gaps: it's mathematically possible (and, empirically,
+  //    what was being reported) for every poll to land just outside the
+  //    window on both sides of it, skipping the notification entirely.
+  //    Fixed by firing as soon as "now" has passed warnAt (and not yet
+  //    passed the reminder's actual time) — a one-sided threshold instead
+  //    of a narrow window, so ANY poll after warnAt catches it exactly once
+  //    (firedEarlyRef still de-dupes). Also shortened the poll interval
+  //    itself so the maximum possible delay is much smaller regardless.
+  const upcomingRemindersRef=useRef(upcomingReminders);
+  useEffect(()=>{upcomingRemindersRef.current=upcomingReminders;},[upcomingReminders]);
   useEffect(()=>{
     if(!cu)return;
     const checkDue=async()=>{
       const due=await api.get('/api/reminders/due',{quiet:true,timeoutMs:12000}).catch(()=>[]);
-      const rems=upcomingReminders;
+      const rems=upcomingRemindersRef.current;
       if(Array.isArray(due)&&due.length>0){
         due.forEach(r=>{
           addToast('reminder','⏰ Reminder: '+r.task_title,'Click to view');
           showBrowserNotif('⏰ '+r.task_title,'Reminder is due now!',()=>{
             _setView('reminders');
             if(window.electronAPI){window.electronAPI.focusWindow();}else{window.focus();}
-          },{tag:'rem-'+r.id,requireInteraction:true});
+          },{tag:'rem-'+r.id,requireInteraction:true,url:'/?action=reminders'});
           playSound('reminder');
         });
       }
@@ -12394,15 +13714,14 @@ function App(){
           const minsBefore=r.minutes_before||0;
           if(minsBefore>0){
             const warnAt=new Date(remAt.getTime()-minsBefore*60000);
-            const diff=warnAt-now;
             const earlyKey='early-'+r.id+'-'+minsBefore;
-            if(diff>=-60000&&diff<=60000&&!firedEarlyRef.current.has(earlyKey)){
+            if(now>=warnAt&&now<remAt&&!firedEarlyRef.current.has(earlyKey)){
               firedEarlyRef.current.add(earlyKey);
               addToast('reminder','⏰ Coming up in '+minsBefore+'min',r.task_title);
               showBrowserNotif('⏰ Reminder in '+minsBefore+' min',r.task_title,()=>{
                 _setView('reminders');
                 if(window.electronAPI){window.electronAPI.focusWindow();}else{window.focus();}
-              },{tag:earlyKey,requireInteraction:false});
+              },{tag:earlyKey,requireInteraction:false,url:'/?action=reminders'});
               playSound('reminder');
             }
           }
@@ -12411,7 +13730,17 @@ function App(){
       }
     };
     checkDue();
-    const id=setInterval(checkDue,30000); // BUG FIX: was gated on !document.hidden, so reminders never fired while this tab was backgrounded — see template.html for full rationale
+    // BUG FIX (reminders only give sound/notification while this tab is
+    // focused): the interval used to skip checkDue() entirely whenever
+    // document.hidden was true — i.e. whenever this tab wasn't the one
+    // currently in focus (working in another tab/app, or the window
+    // minimized). That defeats the entire point of a reminder, which needs
+    // to alert you precisely while you're NOT looking at this tab. The
+    // reminder was never lost — due_reminders() still returned it once you
+    // switched back — but nothing fired until then, which read as "only
+    // works when I'm on that page." Browsers throttle background-tab
+    // intervals somewhat, but still run them, so drop the visibility gate.
+    const id=setInterval(checkDue,45000); // was 180000 — too coarse for a 60s-wide-or-narrower warning window
     return()=>clearInterval(id);
   },[cu,addToast]);
 
@@ -12445,7 +13774,7 @@ function App(){
   },[data.users,activeTeam,teamMemberIds]);
 
   if(loading)return html`<${AppLoader}/>`;
-  if(!cu)return html`<${AuthScreen} onLogin=${u=>{setCu(u);}}/>`;
+  if(!cu)return html`<${AuthScreen} onLogin=${u=>{try{window._ptResetSessionExpiredFlag&&window._ptResetSessionExpiredFlag();}catch(_){}setCu(u);}}/>`;
 
   if(isDevRole && devNoTeam && safe(data.teams).length>0) return html`
     <div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)',flexDirection:'column',gap:16,padding:24}}>
@@ -12465,6 +13794,7 @@ function App(){
 
   const activeTeamName=activeTeam?activeTeam.name:'';
   const TITLES={
+    ai:{title:'AI Workspace',sub:'Ask about your projects, tasks and team'}, vault:{title:'My Vault',sub:''}, 'password-generator':{title:'Password Gen',sub:''},
     dashboard:{title:'Dashboard',sub:activeTeamName?activeTeamName+' Team Dashboard':'Overview of your work'}, 'workspace-os':{title:'Workspace OS',sub:'Self-service · attendance · leave · policies · org'}, ops:{title:'Ops Center',sub:'Realtime · performance · portfolio risk'}, projects:{title:'Projects',sub:scopedProjects.length+' projects'+(activeTeamName?' · '+activeTeamName:'')}, tasks:{title:'Kanban Board',sub:scopedTasks.filter(t=>t.stage!=='completed'&&t.stage!=='backlog').length+' active · '+scopedTasks.length+' total'+(activeTeamName?' · '+activeTeamName:'')}, messages:{title:'Channels',sub:(activeTeamName?activeTeamName+' · ':'')+'Project channels'}, dm:{title:'Direct Messages',sub:totalDm>0?totalDm+' unread':'Private conversations'}, reminders:{title:'Reminders',sub:'Upcoming task reminders'}, notifs:{title:'Notifications',sub:unread+' unread'}, team:{title:'Team Management',sub:'Members & sub-teams'}, settings:{title:'Settings',sub:wsName||'Workspace configuration'}, billing:{title:'Billing & Invoices',sub:'Plans · company details · invoice history'}, timeline:{title:'Timeline Tracker',sub:activeTeamName?activeTeamName+' project timeline':'Project schedule'}, productivity:{title:'Dev Productivity',sub:activeTeamName?activeTeamName+' performance':'Team performance analytics'}, tickets:{title:'Tickets',sub:activeTeamName?activeTeamName+' tickets':'Support tickets'}, 'ai-docs':{title:'AI Documentation',sub:'Generate docs & architecture diagrams'}, timesheet:{title:'Timesheet',sub:'Log hours · export reports · track productivity'}, };
 
   const baseView=(view||'dashboard').split(':')[0];
@@ -12489,20 +13819,33 @@ function App(){
   const extra=null;
 
   return html`
-    <div style=${{display:'flex',flexDirection:'column',width:'100vw',height:'100vh',background:'var(--bg)',overflow:'hidden'}}>
+    <div style=${{display:'flex',flexDirection:'column',width:'100%',height:'100dvh',background:'var(--bg)',overflow:'hidden'}}>
       ${cu&&cu._offline?html`
         <div style=${{background:'rgba(245,158,11,.12)',borderBottom:'1px solid rgba(245,158,11,.28)',padding:'7px 20px',fontSize:12,color:'#f59e0b',display:'flex',alignItems:'center',gap:8,flexShrink:0,zIndex:999}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".5" fill="currentColor"/></svg>
           <b>Offline / No Backend</b> — Server not reachable. <b>My Vault</b> and <b>Password Generator</b> work fully (stored locally). Other features require a live backend.
         </div>`:null}
+      ${showReconnectBanner&&!(cu&&cu._offline)?html`
+        <div style=${{background:'rgba(245,158,11,.12)',borderBottom:'1px solid rgba(245,158,11,.28)',padding:'7px 20px',fontSize:12,color:'#f59e0b',display:'flex',alignItems:'center',gap:8,flexShrink:0,zIndex:999}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <b>Reconnecting…</b> — live updates are paused while we re-establish the connection.
+        </div>`:null}
+      ${nearLimitWarning&&!(cu&&cu._offline)?html`
+        <div style=${{background:'rgba(99,102,241,.12)',borderBottom:'1px solid rgba(99,102,241,.28)',padding:'7px 20px',fontSize:12,color:'#818cf8',display:'flex',alignItems:'center',gap:8,flexShrink:0,zIndex:999}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style=${{flexShrink:0}}><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          <span style=${{flex:1}}><b>Approaching your ${nearLimitWarning.plan||''} plan limit</b> — using ${nearLimitWarning.used} of ${nearLimitWarning.cap} ${nearLimitWarning.label} (${Math.round(nearLimitWarning.ratio*100)}%). <a href="#" onClick=${e=>{e.preventDefault();_setView('settings');}} style=${{color:'#818cf8',fontWeight:800,textDecoration:'underline'}}>Upgrade plan</a></span>
+          <button onClick=${dismissNearLimitWarning} style=${{background:'none',border:'none',color:'#818cf8',cursor:'pointer',fontSize:16,lineHeight:1,padding:'0 4px',flexShrink:0}} title="Dismiss for 24h">×</button>
+        </div>`:null}
       <div style=${{display:'flex',flex:1,overflow:'hidden'}}>
+      <div class="pt-scrim" onClick=${()=>document.body.classList.remove('pt-nav-open')}></div>
       <${Sidebar} cu=${cu} view=${baseView} setView=${v=>{
+          document.body.classList.remove('pt-nav-open');
           if(cu&&cu._offline){
             // In offline mode only allow vault and password-generator
             if(v==='vault'||v==='password-generator'){_setView(v);}
             return;
           }
-          if(typeof v==='string'&&v.startsWith('dm:')){const uid=v.slice(3);setDmTargetUser(uid);_setView('dm:'+uid);}
+          if(typeof v==='string'&&v.startsWith('dm:')){const uid=v.slice(3);setDmTargetUser(uid);_setView('ai');}
           else _setView(v);
         }} onLogout=${logout} unread=${unread} dmUnread=${dmUnread} col=${col} setCol=${v=>{setCol(v);try{localStorage.setItem('pf_col',v?'1':'0');}catch{}}} wsName=${cu&&cu._offline?'Offline Mode':wsName}
         dark=${dark} setDark=${setDark} wsDmEnabled=${wsDmEnabled} onlineUsers=${onlineUsers}
@@ -12523,53 +13866,42 @@ function App(){
             setData(prev=>({...prev,notifs:prev.notifs.filter(x=>x.id!==n.id)}));
             routeToNotification(n);
           }}
-          onMarkAllRead=${async()=>{setData(prev=>({...prev,notifs:(prev.notifs||[]).map(n=>({...n,read:1}))}));await api.put('/api/notifications/read-all',{});load();}}
+          onMarkAllRead=${markAllNotificationsRead}
+          markingAllRead=${markingAllRead}
           onClearAll=${async()=>{await api.del('/api/notifications/all');load();}}
         />
-        <div style=${{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+        <main style=${{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
           <${ErrorBoundary}>
             <div key=${baseView+'-'+(teamCtx||'all')} class="page-enter" style=${{flex:1,overflow: baseView==='vault'?'hidden':'hidden',display:'flex',flexDirection:'column',height:'100%'}}>
             ${baseView==='workspace-os'&&isViewFeatureAllowed('workspace-os')?html`<${WorkspaceOSView} cu=${cu} users=${data.users}/>`:null}
             ${baseView==='dashboard'?html`<${Dashboard} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} onNav=${setView} activeTeam=${activeTeam} teams=${data.teams} setTeamCtx=${setTeamCtx} tickets=${data.tickets||[]} dashboardSummary=${data.dashboardSummary||{}}/>`:null}
-            ${baseView==='ops'&&hasOpsAccess(cu)&&isViewFeatureAllowed('ops')?html`<${OpsCommandCenter} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} tickets=${data.tickets||[]} notifs=${data.notifs||[]} onNav=${setView}/>`:null}
-            ${baseView==='ops'&&!hasOpsAccess(cu)?html`
-              <div style=${{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',padding:24}}>
-                <div style=${{maxWidth:440,textAlign:'center',padding:24,borderRadius:22,background:'var(--sf)',border:'1px solid var(--bd)',boxShadow:'0 20px 70px rgba(0,0,0,.25)'}}>
-                  <div style=${{fontSize:42,marginBottom:10}}>🔐</div>
-                  <div style=${{fontSize:16,fontWeight:900,color:'var(--tx)',marginBottom:8}}>Ops Center is restricted</div>
-                  <div style=${{fontSize:13,color:'var(--tx2)',lineHeight:1.6}}>This workspace-level command center is visible only for Admins and Managers. Use Dashboard, Tickets, and Timeline for your assigned work.</div>
-                  <button class="btn bp" style=${{marginTop:16}} onClick=${()=>setView('dashboard')}>Go to Dashboard</button>
-                </div>
-              </div>`:null}
-            ${baseView==='projects'?html`<${ProjectsView} projects=${scopedProjects} tasks=${scopedTasks} users=${data.users} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam} initialProjectId=${initialProjectId} onClearInitial=${()=>setInitialProjectId(null)} onlineUsers=${onlineUsers}/>`:null}
+            ${baseView==='ai'?html`<${AIWorkspace} cu=${cu} onNav=${setView}/>`:null}
+            ${baseView==='projects'?html`<${ProjectsView} projects=${scopedProjects} tasks=${scopedTasks} users=${data.users} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam} initialProjectId=${initialProjectId} onClearInitial=${()=>setInitialProjectId(null)}/>`:null}
             ${baseView==='tasks'?html`<${TasksView} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} cu=${cu} reload=${load} setData=${setData} onSetReminder=${t=>{setReminderTask(t);}} teams=${data.teams} activeTeam=${activeTeam}
               initialStage=${taskFilterType==='stage'?taskFilterValue:null}
               initialPriority=${taskFilterType==='priority'?taskFilterValue:null}
               initialAssignee=${taskFilterType==='assignee'?taskFilterValue:null}
               initialTaskId=${initialTaskId}
               onClearInitialTask=${()=>setInitialTaskId(null)}
-              onlineUsers=${onlineUsers}
             />`:null}
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} activeTeam=${activeTeam} key=${'msgs-'+(teamCtx||'all')}/>`:null}
-            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
-            ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification}/>`:null}
+            ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}
-            ${baseView==='team'&&(cu.role==='Admin'||cu.role==='Manager'||cu.role==='TeamLead')?html`<${TeamView} users=${data.users} cu=${cu} reload=${load} projects=${data.projects}/>`:null}
-            ${baseView==='settings'?html`<${NotifPrefsPanel} cu=${cu}/>`:null}
-            ${baseView==='settings'&&(cu.role==='Admin'||cu.role==='Manager'||cu.role==='TeamLead')?html`<${WorkspaceSettings} cu=${cu} onReload=${load}/>`:null}
-            ${baseView==='billing'&&isViewFeatureAllowed('billing')?html`<${BillingInvoicesView} cu=${cu}/>`:null}
+            ${baseView==='team'&&hasOpsAccess(cu)?html`<${TeamView} users=${data.users} cu=${cu} reload=${load} projects=${data.projects}/>`:null}
+            ${baseView==='settings'&&hasOpsAccess(cu)?html`<${WorkspaceSettings} cu=${cu} onReload=${load}/>`:null}
             ${baseView==='timeline'?html`<${TimelineView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onNav=${(v,pid)=>{setView(v);if(pid)setInitialProjectId(pid);else setInitialProjectId(null);}}/>`:null}
-            ${baseView==='productivity'&&(cu.role==='Admin'||cu.role==='Manager')?html`<${ProductivityView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} dashboardSummary=${data.dashboardSummary||{}}/>`:null}
+            ${baseView==='productivity'&&hasOpsAccess(cu)&&isViewFeatureAllowed('productivity')?html`<${ProductivityView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} users=${scopedUsers} dashboardSummary=${data.dashboardSummary||{}}/>`:null}
             ${baseView==='notes'?html`<${NotesView} cu=${cu}/>`:null}
             ${baseView==='ai-docs'&&isViewFeatureAllowed('ai-docs')?html`<${AiDocsView} cu=${cu} projects=${scopedProjects} tasks=${scopedTasks} users=${data.users}/>`:null}
             ${baseView==='timesheet'&&isViewFeatureAllowed('timesheet')?html`<${TimesheetView} cu=${cu} teams=${data.teams} users=${data.users} projects=${scopedProjects} tasks=${scopedTasks}/>`:null}
             ${baseView==='password-generator'?html`<${PasswordGeneratorView}/>`:null}
+            ${baseView==='billing'&&isViewFeatureAllowed('billing')?html`<${BillingInvoicesView} cu=${cu}/>`:null}
             ${baseView==='vault'&&isViewFeatureAllowed('vault')?html`<${VaultView} cu=${cu}/>`:null}
             ${VIEW_FEATURE_MAP[baseView]&&!isViewFeatureAllowed(baseView)?html`<${FeatureLocked} title=${(TITLES[baseView]&&TITLES[baseView].title)||'Feature unavailable'}/>`:null}
             </div>
           <//>
-        </div>
+        </main>
       </div>
       </div>
     </div>
