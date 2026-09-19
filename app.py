@@ -14505,23 +14505,48 @@ def _billing_admin_required():
 def _table_exists(db, table_name):
     """Return whether a table exists on both SQLite and PostgreSQL.
     Production uses PostgreSQL, so sqlite_master-only checks caused Settings →
-    Plan & Usage to silently show 0 counts after deployment."""
+    Plan & Usage to silently show 0 counts after deployment.
+
+    FIX (found live via E2E testing — the sibling function _table_columns()
+    right below already carries a detailed writeup of this exact bug and was
+    already fixed; this function was the one place that fix was never
+    applied to). The SQLite sqlite_master query below is a guaranteed error
+    on Postgres, and swallowing that Python exception with a bare `pass`
+    does not un-abort the Postgres transaction — every statement after it,
+    including the "fallback" information_schema query two lines down and,
+    critically, every statement a caller runs after this function returns
+    (like billing_create_invoice()'s INSERT, which is what actually 500'd),
+    fails with 25P02 "current transaction is aborted" until an explicit
+    ROLLBACK. SAVEPOINT/ROLLBACK TO SAVEPOINT isolates the failed attempt so
+    the caller's transaction is exactly as healthy afterward as if this
+    function had never touched it, on either database."""
     table_name = str(table_name or "")
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", table_name):
         return False
     try:
+        db.execute("SAVEPOINT pt_table_exists")
+    except Exception:
+        pass  # SQLite (or any backend without SAVEPOINT support) — fine, nothing to protect against there
+    try:
         row = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (table_name,)).fetchone()
         if row:
+            try: db.execute("RELEASE SAVEPOINT pt_table_exists")
+            except Exception: pass
             return True
     except Exception:
-        pass
+        try: db.execute("ROLLBACK TO SAVEPOINT pt_table_exists")
+        except Exception: pass
     try:
         row = db.execute(
             "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=? LIMIT 1",
             (table_name,)
         ).fetchone()
+        try: db.execute("RELEASE SAVEPOINT pt_table_exists")
+        except Exception: pass
         return bool(row)
     except Exception:
+        try: db.execute("ROLLBACK TO SAVEPOINT pt_table_exists")
+        except Exception: pass
         return False
 
 def _table_columns(db, table_name):
@@ -14765,6 +14790,12 @@ def _next_invoice_no(db, workspace_id, prefix="INV"):
                 try: n = int(str(row["invoice_no"]).split("-")[-1]) + 1
                 except Exception: n = 1
     except Exception:
+        # Defensive rollback: if this SELECT ever fails for an unexpected
+        # reason, don't leave the caller's transaction aborted for every
+        # statement it runs after this function returns (same class of bug
+        # just fixed in _table_exists()/_table_columns() above).
+        try: db.execute("ROLLBACK")
+        except Exception: pass
         n = 1
     return f"{prefix}-{year}-{n:04d}"
 
