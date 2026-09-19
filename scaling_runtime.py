@@ -102,7 +102,7 @@ class ObjectStore:
 
     Env vars (first name that is set wins):
       OBJECT_STORE_PROVIDER   s3 | r2 | minio   (anything else => local disk)
-      S3_BUCKET               or AWS_S3_BUCKET_NAME
+      S3_BUCKET               or S3_BUCKET_NAME / AWS_S3_BUCKET_NAME / BUCKET_NAME / BUCKET
       S3_ENDPOINT_URL         or S3_ENDPOINT or AWS_ENDPOINT_URL
       S3_REGION               or AWS_DEFAULT_REGION   (default: auto)
       S3_ACCESS_KEY_ID        or AWS_ACCESS_KEY_ID
@@ -113,7 +113,7 @@ class ObjectStore:
     def __init__(self, local_dir: str) -> None:
         self.local_dir = local_dir
         self.provider = os.getenv("OBJECT_STORE_PROVIDER", "local").lower().strip() or "local"
-        self.bucket = _first_env("S3_BUCKET", "AWS_S3_BUCKET_NAME")
+        self.bucket = _first_env("S3_BUCKET", "S3_BUCKET_NAME", "AWS_S3_BUCKET_NAME", "BUCKET_NAME", "BUCKET")
         self.endpoint = _first_env("S3_ENDPOINT_URL", "S3_ENDPOINT", "AWS_ENDPOINT_URL")
         self.region = _first_env("S3_REGION", "AWS_DEFAULT_REGION") or "auto"
         self.access_key = _first_env("S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
@@ -156,6 +156,9 @@ class ObjectStore:
                 print(f"[object-store] WARNING: OBJECT_STORE_PROVIDER={self.provider!r} but S3 client "
                       f"is not usable ({self.init_error}). Falling back to LOCAL DISK.", flush=True)
                 print(f"[object-store] related env vars seen by this container: {self.env_seen}", flush=True)
+                # Every variable NAME the container received (no values) - compare with the Railway UI.
+                print(f"[object-store] all env var names: {sorted(os.environ.keys())}", flush=True)
+                self.provider = "local"
             else:
                 print(f"[object-store] S3 ready: bucket={self.bucket} endpoint={self.endpoint or 'aws-default'} "
                       f"region={self.region} style={self.addressing}", flush=True)
