@@ -217,6 +217,14 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 KEY_FILE   = os.path.join(DATA_DIR, ".pf_secret")
 
 # Upload safety limits. Override in production with env vars if needed.
+# Caps on how many rows /api/ai/chat pulls into the Claude prompt per message.
+# Small workspaces never hit these (whole workspace fits either way); large
+# ones get a prioritized sample instead of the entire table, so the request
+# stays fast/cheap and the model's context isn't dominated by low-priority
+# rows. Override in Railway env vars if a workspace genuinely needs more.
+AI_CHAT_MAX_TASKS_IN_CONTEXT = int(os.environ.get("AI_CHAT_MAX_TASKS_IN_CONTEXT", "200"))
+AI_CHAT_MAX_PROJECTS_IN_CONTEXT = int(os.environ.get("AI_CHAT_MAX_PROJECTS_IN_CONTEXT", "100"))
+
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 WORKSPACE_UPLOAD_QUOTA_BYTES = int(os.environ.get("WORKSPACE_UPLOAD_QUOTA_BYTES", str(2 * 1024 * 1024 * 1024)))
 ALLOWED_UPLOAD_EXTENSIONS = {
@@ -2912,7 +2920,9 @@ def send_email(to_email, subject, body_html, workspace_id=None):
                         'server': ws['smtp_server'],
                         'port': ws['smtp_port'] or 587,
                         'username': ws['smtp_username'],
-                        'password': ws['smtp_password'],
+                        # stored encrypted at rest (see update_workspace); vault_decrypt
+                        # falls back to the raw value for pre-encryption rows.
+                        'password': vault_decrypt(ws['smtp_password'], workspace_id) if ws['smtp_password'] else ws['smtp_password'],
                         'from_email': ws['from_email'] or ws['smtp_username']
                     }
         except Exception as e:
@@ -7700,7 +7710,14 @@ def get_workspace():
     with get_db() as db:
         ws=db.execute("SELECT * FROM workspaces WHERE id=?",(wid(),)).fetchone()
         if not ws: return jsonify({"error":"Workspace not found"}),404
-        return jsonify(dict(ws))
+        ws_out=dict(ws)
+        # ai_api_key / smtp_password are stored encrypted at rest (vault_encrypt in
+        # update_workspace below); decrypt for the settings form. vault_decrypt
+        # gracefully falls back to the raw value for older, pre-encryption rows,
+        # so this is safe to run unconditionally.
+        if ws_out.get("ai_api_key"): ws_out["ai_api_key"]=vault_decrypt(ws_out["ai_api_key"],wid())
+        if ws_out.get("smtp_password"): ws_out["smtp_password"]=vault_decrypt(ws_out["smtp_password"],wid())
+        return jsonify(ws_out)
 
 @app.route("/api/workspace",methods=["PUT"])
 @login_required
@@ -7708,11 +7725,11 @@ def update_workspace():
     d=request.json or {}
     with get_db() as db:
         if "name" in d: db.execute("UPDATE workspaces SET name=? WHERE id=?",(d["name"],wid()))
-        if "ai_api_key" in d: db.execute("UPDATE workspaces SET ai_api_key=? WHERE id=?",(d["ai_api_key"],wid()))
+        if "ai_api_key" in d: db.execute("UPDATE workspaces SET ai_api_key=? WHERE id=?",(vault_encrypt(d["ai_api_key"],wid()),wid()))
         if "smtp_server" in d: db.execute("UPDATE workspaces SET smtp_server=? WHERE id=?",(d["smtp_server"],wid()))
         if "smtp_port" in d: db.execute("UPDATE workspaces SET smtp_port=? WHERE id=?",(d["smtp_port"],wid()))
         if "smtp_username" in d: db.execute("UPDATE workspaces SET smtp_username=? WHERE id=?",(d["smtp_username"],wid()))
-        if "smtp_password" in d: db.execute("UPDATE workspaces SET smtp_password=? WHERE id=?",(d["smtp_password"],wid()))
+        if "smtp_password" in d: db.execute("UPDATE workspaces SET smtp_password=? WHERE id=?",(vault_encrypt(d["smtp_password"],wid()),wid()))
         if "from_email" in d: db.execute("UPDATE workspaces SET from_email=? WHERE id=?",(d["from_email"],wid()))
         if "email_enabled" in d: db.execute("UPDATE workspaces SET email_enabled=? WHERE id=?",(1 if d["email_enabled"] else 0,wid()))
         if "otp_enabled" in d: db.execute("UPDATE workspaces SET otp_enabled=? WHERE id=?",(1 if d["otp_enabled"] else 0,wid()))
@@ -11557,19 +11574,39 @@ def ai_chat():
             ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
             ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
         ) if ws else {}
-        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"))
+        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()))
         if ai_resolved["error"]:
             body, status = _ai_error_response(ai_resolved)
             return jsonify(body), status
         api_key = ai_resolved["key"]
 
-        projects=db.execute("SELECT id,name,description,target_date,color FROM projects WHERE workspace_id=?",(wid(),)).fetchall()
-        tasks=db.execute("SELECT id,title,stage,priority,assignee,project,due,pct FROM tasks WHERE workspace_id=?",(wid(),)).fetchall()
+        # Bounded context: for small workspaces this is everything (identical
+        # to before). For large ones, pulling every row into the prompt on
+        # every message got slow, expensive, and risked truncating the most
+        # important tasks out of the model's context window entirely. Instead
+        # we send a total count per stage (so the model knows the true scope)
+        # plus a capped, prioritized sample — overdue/urgent first, then by
+        # due date — so what DOES fit is the stuff most worth answering about.
+        total_tasks=db.execute("SELECT COUNT(*) c FROM tasks WHERE workspace_id=?",(wid(),)).fetchone()["c"]
+        stage_counts=db.execute("SELECT stage, COUNT(*) c FROM tasks WHERE workspace_id=? GROUP BY stage",(wid(),)).fetchall()
+        projects=db.execute(
+            "SELECT id,name,description,target_date,color FROM projects WHERE workspace_id=? "
+            "ORDER BY CASE WHEN target_date IS NULL OR target_date='' THEN 1 ELSE 0 END, target_date "
+            "LIMIT %d" % AI_CHAT_MAX_PROJECTS_IN_CONTEXT,(wid(),)).fetchall()
+        tasks=db.execute(
+            "SELECT id,title,stage,priority,assignee,project,due,pct FROM tasks WHERE workspace_id=? "
+            "ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, "
+            "CASE WHEN due IS NULL OR due='' THEN '9999-99-99' ELSE due END "
+            "LIMIT %d" % AI_CHAT_MAX_TASKS_IN_CONTEXT,(wid(),)).fetchall()
         users=db.execute("SELECT id,name,role FROM users WHERE workspace_id=?",(wid(),)).fetchall()
         cu=db.execute("SELECT * FROM users WHERE id=?",(session["user_id"],)).fetchone()
 
     proj_ctx="\n".join([f"- {p['name']} (id:{p['id']}, due:{p['target_date']})" for p in projects])
     task_ctx="\n".join([f"- [{t['id']}] {t['title']} | stage:{t['stage']} | priority:{t['priority']} | pct:{t['pct']}%" for t in tasks])
+    if total_tasks>len(tasks):
+        stage_summary=", ".join(f"{r['stage']}:{r['c']}" for r in stage_counts)
+        task_ctx += (f"\n... showing the {len(tasks)} highest-priority/soonest-due of {total_tasks} total tasks "
+                     f"(full breakdown by stage: {stage_summary}). Ask about a specific project or stage for more.")
     user_ctx="\n".join([f"- {u['name']} (id:{u['id']}, role:{u['role']})" for u in users])
 
     system=f"""You are an AI assistant for Project Tracker — a project management tool used by the workspace "{ws['name'] if ws else 'Unknown'}".
@@ -11698,7 +11735,7 @@ def ai_generate_docs():
             ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
             ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
         ) if ws else {}
-        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"))
+        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()))
         if ai_resolved["error"]:
             body, status = _ai_error_response(ai_resolved)
             return jsonify(body), status
@@ -11708,12 +11745,12 @@ def ai_generate_docs():
             projects = db.execute("SELECT * FROM projects WHERE id=? AND workspace_id=?", (project_id, wid())).fetchall()
             tasks = db.execute(
                 "SELECT t.*, u.name as assignee_name FROM tasks t LEFT JOIN users u ON t.assignee=u.id "
-                "WHERE t.project=? AND t.workspace_id=?", (project_id, wid())).fetchall()
+                "WHERE t.project=? AND t.workspace_id=? LIMIT %d" % AI_CHAT_MAX_TASKS_IN_CONTEXT, (project_id, wid())).fetchall()
         else:
-            projects = db.execute("SELECT * FROM projects WHERE workspace_id=?", (wid(),)).fetchall()
+            projects = db.execute("SELECT * FROM projects WHERE workspace_id=? LIMIT %d" % AI_CHAT_MAX_PROJECTS_IN_CONTEXT, (wid(),)).fetchall()
             tasks = db.execute(
                 "SELECT t.*, u.name as assignee_name FROM tasks t LEFT JOIN users u ON t.assignee=u.id "
-                "WHERE t.workspace_id=?", (wid(),)).fetchall()
+                "WHERE t.workspace_id=? LIMIT %d" % AI_CHAT_MAX_TASKS_IN_CONTEXT, (wid(),)).fetchall()
 
         users_db = db.execute("SELECT id,name,role,email FROM users WHERE workspace_id=?", (wid(),)).fetchall()
         teams = db.execute("SELECT * FROM teams WHERE workspace_id=?", (wid(),)).fetchall()
@@ -19326,7 +19363,7 @@ try:
     from intelligence import register_intelligence
     register_intelligence(app, get_db, wid, login_required, session, send_email, log,
                            secrets, json, datetime, timedelta, request, jsonify,
-                           record_usage=_record_usage)
+                           record_usage=_record_usage, vault_decrypt=vault_decrypt)
 except Exception as _intel_err:
     log.error("[intelligence] failed to register: %s", _intel_err)
 

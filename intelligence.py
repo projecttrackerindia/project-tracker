@@ -29,6 +29,16 @@ Adds, on top of the existing schema (projects/tasks/tickets/users/time_logs):
      One endpoint that rolls all of the above into a single "what needs
      attention right now" view, ordered by urgency.
 
+  5. DAILY BRIEFING
+     Turns the dashboard's computed numbers (project urgency, team load,
+     pending suggestion counts) into a short, plain-English summary for a
+     manager who doesn't want to read tables — "2 projects are at risk,
+     Priya is overloaded, here's what to look at first." Read-only: it
+     never assigns, routes, or sends anything, so unlike the other three
+     features it needs no approve/reject step. Generation is manually
+     triggered (counts as one AI call against the same quota) and cached
+     so reloading the dashboard doesn't regenerate it.
+
 Integration (already added to the bottom of app.py):
 
     from intelligence import register_intelligence
@@ -64,6 +74,7 @@ _datetime = None
 _timedelta = None
 _request = None
 _jsonify = None
+_vault_decrypt = None
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -90,9 +101,13 @@ def _ensure_schema():
                 to_user_id TEXT, subject TEXT DEFAULT '', body TEXT DEFAULT '',
                 summary TEXT DEFAULT '', status TEXT DEFAULT 'draft',
                 created TEXT, created_by TEXT DEFAULT '', sent_at TEXT DEFAULT '', sent_by TEXT DEFAULT '')""",
+            """CREATE TABLE IF NOT EXISTS intelligence_briefings (
+                id TEXT PRIMARY KEY, workspace_id TEXT, body TEXT DEFAULT '',
+                stats_json TEXT DEFAULT '', created TEXT, created_by TEXT DEFAULT '')""",
             "CREATE INDEX IF NOT EXISTS idx_alloc_sugg_ws ON allocation_suggestions(workspace_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_route_sugg_ws ON ticket_routing_suggestions(workspace_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_followup_ws ON followup_drafts(workspace_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_briefing_ws ON intelligence_briefings(workspace_id, created)",
         ]
         for s in stmts:
             try:
@@ -140,7 +155,8 @@ def _resolve_ai(db, workspace_id):
         cap = limits.get("ai_calls_platform_month")
     except Exception:
         pass
-    return resolve_ai_key(db, workspace_id, cap)
+    decrypt_fn = (lambda v: _vault_decrypt(v, workspace_id)) if _vault_decrypt else None
+    return resolve_ai_key(db, workspace_id, cap, decrypt_fn=decrypt_fn)
 
 
 def _call_claude(system, user_prompt, api_key, max_tokens=1200):
@@ -279,6 +295,95 @@ def _compute_project_urgency(db, workspace_id):
         })
     out.sort(key=lambda r: -r["urgency_score"])
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 5. Daily briefing — turns the computed numbers above into a short
+#    natural-language summary. Read-only (no approve/reject needed): it
+#    never assigns, routes, or sends anything on its own.
+# ─────────────────────────────────────────────────────────────────────────
+def _briefing_stats(db, workspace_id):
+    """Everything the briefing prompt needs, gathered once so both the AI
+    call and the raw JSON returned alongside it come from the same snapshot."""
+    urgency = _compute_project_urgency(db, workspace_id)
+    resources = _compute_resource_load(db, workspace_id)
+    overdue_tasks = db.execute(
+        "SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND stage NOT IN ('done','completed','cancelled') "
+        "AND due!='' AND due<?", (workspace_id, _datetime.now().date().isoformat())).fetchone()["c"]
+    open_tickets = 0
+    try:
+        open_tickets = db.execute(
+            "SELECT COUNT(*) c FROM tickets WHERE workspace_id=? AND status NOT IN ('closed','resolved')",
+            (workspace_id,)).fetchone()["c"]
+    except Exception:
+        pass  # tickets table may not exist in every deployment
+    pending_alloc = db.execute(
+        "SELECT COUNT(*) c FROM allocation_suggestions WHERE workspace_id=? AND status='pending'", (workspace_id,)).fetchone()["c"]
+    pending_routes = db.execute(
+        "SELECT COUNT(*) c FROM ticket_routing_suggestions WHERE workspace_id=? AND status='pending'", (workspace_id,)).fetchone()["c"]
+    return {
+        "projects_tracked": len(urgency),
+        "projects_at_risk": len([u for u in urgency if u["urgency_score"] > 40]),
+        "top_urgent_projects": urgency[:5],
+        "overdue_tasks": overdue_tasks,
+        "open_tickets": open_tickets,
+        "team_size": len(resources),
+        "overloaded_people": [r for r in resources if r["load_score"] >= 12 and not r["on_leave_today"]],
+        "people_on_leave_today": [r["name"] for r in resources if r["on_leave_today"]],
+        "pending_allocation_suggestions": pending_alloc,
+        "pending_routing_suggestions": pending_routes,
+    }
+
+
+def _generate_briefing(db, workspace_id, created_by):
+    stats = _briefing_stats(db, workspace_id)
+    if stats["projects_tracked"] == 0 and stats["team_size"] == 0:
+        return None, "No projects or team members yet — nothing to brief on."
+
+    ai_resolved = _resolve_ai(db, workspace_id)
+    if ai_resolved["error"]:
+        return None, ai_resolved["error"]
+    api_key = ai_resolved["key"]
+
+    proj_lines = "\n".join(
+        f"- {p['name']}: urgency {p['urgency_score']}, {p['progress']}% done, "
+        f"{p['overdue_tasks']} overdue task(s), {p['days_left']} days left"
+        for p in stats["top_urgent_projects"]) or "(none)"
+    overloaded_lines = "\n".join(
+        f"- {p['name']}: {p['open_tasks']} open tasks, {p['overdue_tasks']} overdue, load {p['load_score']}"
+        for p in stats["overloaded_people"]) or "(none)"
+
+    system = ("You write a short daily briefing for a project manager, from real computed numbers "
+              "(never invent figures not given to you). Be direct and specific — name the project or "
+              "person, not vague categories. 4-6 sentences, plain text, no markdown headers. Open with "
+              "the single most important thing, then supporting points, then one concrete suggestion "
+              "for what to do today.")
+    prompt = (
+        f"Projects tracked: {stats['projects_tracked']}, at risk (urgency>40): {stats['projects_at_risk']}\n"
+        f"TOP URGENT PROJECTS:\n{proj_lines}\n\n"
+        f"Overdue tasks workspace-wide: {stats['overdue_tasks']}\n"
+        f"Open tickets: {stats['open_tickets']}\n"
+        f"Team size: {stats['team_size']}\n"
+        f"OVERLOADED PEOPLE:\n{overloaded_lines}\n"
+        f"On leave today: {', '.join(stats['people_on_leave_today']) or '(none)'}\n"
+        f"Pending AI suggestions awaiting your review: {stats['pending_allocation_suggestions']} allocation, "
+        f"{stats['pending_routing_suggestions']} routing\n\n"
+        "Write the briefing now."
+    )
+
+    text, err = _call_claude(system, prompt, api_key, max_tokens=400)
+    if err:
+        return None, err
+
+    bid = "brief" + _secrets.token_hex(8)
+    now = _datetime.now().isoformat()
+    db.execute(
+        "INSERT INTO intelligence_briefings(id,workspace_id,body,stats_json,created,created_by) VALUES(?,?,?,?,?,?)",
+        (bid, workspace_id, text.strip(), _json.dumps(stats, default=str), now, created_by or ""))
+    db.commit()
+    if _record_usage and record_ai_call:
+        record_ai_call(_record_usage, workspace_id, ai_resolved["source"], {"endpoint": "intel_briefing"})
+    return {"id": bid, "body": text.strip(), "stats": stats, "created": now}, None
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -534,12 +639,13 @@ def _summarize_and_draft_followup(db, workspace_id, entity_type, entity_id, to_u
 # ─────────────────────────────────────────────────────────────────────────
 def register_intelligence(app, get_db, wid, login_required, session, send_email, log,
                            secrets, json, datetime, timedelta, request, jsonify,
-                           record_usage=None):
+                           record_usage=None, vault_decrypt=None):
     global _app, _get_db, _wid, _login_required, _session, _send_email, _log, _record_usage
-    global _secrets, _json, _datetime, _timedelta, _request, _jsonify
+    global _secrets, _json, _datetime, _timedelta, _request, _jsonify, _vault_decrypt
     _app, _get_db, _wid, _login_required, _session = app, get_db, wid, login_required, session
     _send_email, _log = send_email, log
     _record_usage = record_usage
+    _vault_decrypt = vault_decrypt
     _secrets, _json, _datetime, _timedelta = secrets, json, datetime, timedelta
     _request, _jsonify = request, jsonify
 
@@ -577,6 +683,35 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
             "pending_routings": [dict(r) for r in pending_routes],
             "pending_followups": [dict(r) for r in pending_followups],
         })
+
+    # ---- 5. Daily briefing ----
+    @app.route("/api/intelligence/briefing/generate", methods=["POST"])
+    @login_required
+    def intel_briefing_generate():
+        with get_db() as db:
+            result, err = _generate_briefing(db, wid(), session.get("user_id"))
+        if err in ("NOT_CONFIGURED", "NO_KEY"):
+            return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to generate a briefing."}), 400
+        if err == "LIMIT_EXCEEDED":
+            return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
+        if err:
+            return jsonify({"ok": True, "briefing": None, "message": err})
+        return jsonify({"ok": True, "briefing": result})
+
+    @app.route("/api/intelligence/briefing/latest", methods=["GET"])
+    @login_required
+    def intel_briefing_latest():
+        with get_db() as db:
+            row = db.execute(
+                "SELECT * FROM intelligence_briefings WHERE workspace_id=? ORDER BY created DESC LIMIT 1", (wid(),)).fetchone()
+        if not row:
+            return jsonify({"ok": True, "briefing": None})
+        d = dict(row)
+        try:
+            d["stats"] = _json.loads(d.pop("stats_json") or "{}")
+        except Exception:
+            d["stats"] = {}
+        return jsonify({"ok": True, "briefing": d})
 
     # ---- 1. Resource allocation ----
     @app.route("/api/intelligence/allocation/suggest", methods=["POST"])
@@ -741,6 +876,14 @@ textarea{width:100%;background:#0f1220;color:var(--text);border:1px solid var(--
 <p class="sub">Suggestions only — nothing here assigns or sends anything without your click.</p>
 
 <div class="card">
+  <h2>Daily Briefing
+    <button id="btnBriefing">Generate briefing</button>
+  </h2>
+  <div id="briefing" class="empty">No briefing generated yet.</div>
+  <div id="briefingMeta" class="muted"></div>
+</div>
+
+<div class="card">
   <h2>Urgency &amp; Allocation
     <button id="btnAlloc">Suggest allocations</button>
   </h2>
@@ -769,6 +912,21 @@ textarea{width:100%;background:#0f1220;color:var(--text);border:1px solid var(--
 async function api(path, opts){const r=await fetch(path,Object.assign({headers:{'Content-Type':'application/json'}},opts||{}));return r.json();}
 
 function pillFor(score){if(score>40)return 'bad';if(score>15)return 'warn';return 'good';}
+
+async function loadBriefing(){
+  const r = await api('/api/intelligence/briefing/latest');
+  const el = document.getElementById('briefing');
+  const meta = document.getElementById('briefingMeta');
+  if(r.briefing){
+    el.classList.remove('empty');
+    el.textContent = r.briefing.body;
+    meta.textContent = 'Generated ' + new Date(r.briefing.created).toLocaleString();
+  } else {
+    el.classList.add('empty');
+    el.textContent = 'No briefing generated yet.';
+    meta.textContent = '';
+  }
+}
 
 async function load(){
   const d = await api('/api/intelligence/dashboard');
@@ -818,5 +976,13 @@ document.getElementById('btnAlloc').onclick = async ()=>{
   if(res.error==='NO_KEY'){alert(res.message);return;}
   load();
 };
+document.getElementById('btnBriefing').onclick = async (e)=>{
+  e.target.disabled = true;
+  const res = await api('/api/intelligence/briefing/generate', {method:'POST', body: JSON.stringify({})});
+  e.target.disabled = false;
+  if(res.error){alert(res.message||res.error);return;}
+  loadBriefing();
+};
 load();
+loadBriefing();
 </script></body></html>"""

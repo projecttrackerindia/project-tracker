@@ -49,9 +49,19 @@ def _platform_calls_this_month(db, workspace_id):
     return int(row["total"]) if row else 0
 
 
-def resolve_ai_key(db, workspace_id, platform_call_limit=None):
+def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None):
     """
     Figures out which API key (if any) this workspace should use right now.
+
+    `decrypt_fn`, if given, is called on the raw `ai_api_key` column value
+    before use — pass app.py's `vault_decrypt` (bound to this workspace) so
+    a workspace's own key, which is stored encrypted at rest, is usable
+    here without this module needing to import app.py's crypto directly
+    (keeps this module dependency-free / independently testable). Omitting
+    it just uses the raw column value, which still works for legacy rows
+    written before encryption-at-rest was added — vault_decrypt itself
+    falls back to returning unencrypted values unchanged, so callers don't
+    need to know which rows are encrypted and which aren't.
 
     Returns a dict:
       {
@@ -68,7 +78,13 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None):
     ws = db.execute(
         "SELECT ai_api_key FROM workspaces WHERE id=?", (workspace_id,)
     ).fetchone()
-    own_key = (ws["ai_api_key"] if ws and ws["ai_api_key"] else "").strip()
+    raw_key = ws["ai_api_key"] if ws and ws["ai_api_key"] else ""
+    if raw_key and decrypt_fn:
+        try:
+            raw_key = decrypt_fn(raw_key)
+        except Exception:
+            pass  # fail closed to the raw value rather than crash key resolution
+    own_key = (raw_key or "").strip()
 
     if own_key:
         return {
