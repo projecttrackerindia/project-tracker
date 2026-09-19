@@ -149,6 +149,11 @@ class ObjectStore:
                 # Do NOT fail silently: uploads would quietly land on the container disk.
                 print(f"[object-store] WARNING: OBJECT_STORE_PROVIDER={self.provider!r} but S3 client "
                       f"is not usable ({self.init_error}). Falling back to LOCAL DISK.", flush=True)
+                # Names only (never values): shows typos / trailing spaces / empty values.
+                seen = {repr(k): ("set" if (v or "").strip() else "EMPTY")
+                        for k, v in os.environ.items()
+                        if any(t in k.upper() for t in ("S3", "AWS", "BUCKET", "OBJECT_STORE"))}
+                print(f"[object-store] related env vars seen by this container: {seen}", flush=True)
                 self.provider = "local"
             else:
                 print(f"[object-store] S3 ready: bucket={self.bucket} endpoint={self.endpoint or 'aws-default'} "
