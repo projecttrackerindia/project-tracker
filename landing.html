@@ -563,6 +563,7 @@ footer{border-top:1px solid var(--b1);padding:64px 48px 40px;background:var(--bg
   </div>
 </nav>
 
+<main>
 <!-- HERO -->
 <section class="hero">
   <div class="hero-canvas">
@@ -895,7 +896,7 @@ footer{border-top:1px solid var(--b1);padding:64px 48px 40px;background:var(--bg
           </div>
           <div class="ai-chat-input">
             <input class="ai-input-field" id="aiInput" placeholder="Ask anything about your workspace..." />
-            <button class="ai-send-btn" id="aiSendBtn">
+            <button class="ai-send-btn" id="aiSendBtn" aria-label="Send message to AI assistant">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
@@ -1753,11 +1754,13 @@ footer{border-top:1px solid var(--b1);padding:64px 48px 40px;background:var(--bg
       <p>Join hundreds of teams using Project Tracker to ship faster, stay aligned and collaborate better — powered by Claude AI.</p>
       <div class="cta-btns">
         <a href="/?action=register" class="cta-p">Create free workspace</a>
-        <a href="/about" class="cta-s">Learn more</a>
+        <a href="/about" class="cta-s">Learn more about Project Tracker</a>
       </div>
     </div>
   </div>
 </div>
+
+</main>
 
 <!-- FOOTER -->
 <footer>
@@ -1771,7 +1774,7 @@ footer{border-top:1px solid var(--b1);padding:64px 48px 40px;background:var(--bg
       </div>
     </div>
     <div class="footer-col">
-      <h4>Product</h4>
+      <h3>Product</h3>
       <a href="#features">Features</a>
       <a href="#modules">Modules</a>
       <a href="#pricing">Pricing</a>
@@ -1780,7 +1783,7 @@ footer{border-top:1px solid var(--b1);padding:64px 48px 40px;background:var(--bg
       <a href="/?action=login">Sign in</a>
     </div>
     <div class="footer-col">
-      <h4>Free Tools</h4>
+      <h3>Free Tools</h3>
       <a href="/password-generator">🔐 Password Generator</a>
       <a href="/?action=register">Engineering teams</a>
       <a href="/?action=register">Product managers</a>
@@ -1788,7 +1791,7 @@ footer{border-top:1px solid var(--b1);padding:64px 48px 40px;background:var(--bg
       <a href="/?action=register">Remote teams</a>
     </div>
     <div class="footer-col">
-      <h4>Legal</h4>
+      <h3>Legal</h3>
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>
       <a href="/security">Security</a>

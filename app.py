@@ -1353,10 +1353,19 @@ def add_security_headers(response):
         "media-src 'self' blob: https:; "
         "connect-src 'self' wss: https://api.anthropic.com https://accounts.google.com; "
         "frame-ancestors 'self'; "
-        "frame-src https://accounts.google.com;"
+        "frame-src https://accounts.google.com; "
+        "object-src 'none'; "
+        "base-uri 'self';"
     )
+    # Cross-Origin-Opener-Policy: isolates the browsing context from other
+    # origins' windows/tabs, closing a class of cross-origin attacks
+    # (flagged by Lighthouse Best Practices as "Ensure proper origin isolation with COOP").
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.is_secure:
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # 2-year max-age + preload = Lighthouse's bar for a "strong" HSTS policy.
+        # NOTE: submit projecttracker.in to https://hstspreload.org after deploying
+        # this — the preload directive only takes effect once you're on that list.
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
     return response
 
 
