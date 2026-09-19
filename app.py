@@ -1353,19 +1353,10 @@ def add_security_headers(response):
         "media-src 'self' blob: https:; "
         "connect-src 'self' wss: https://api.anthropic.com https://accounts.google.com; "
         "frame-ancestors 'self'; "
-        "frame-src https://accounts.google.com; "
-        "object-src 'none'; "
-        "base-uri 'self';"
+        "frame-src https://accounts.google.com;"
     )
-    # Cross-Origin-Opener-Policy: isolates the browsing context from other
-    # origins' windows/tabs, closing a class of cross-origin attacks
-    # (flagged by Lighthouse Best Practices as "Ensure proper origin isolation with COOP").
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.is_secure:
-        # 2-year max-age + preload = Lighthouse's bar for a "strong" HSTS policy.
-        # NOTE: submit projecttracker.in to https://hstspreload.org after deploying
-        # this — the preload directive only takes effect once you're on that list.
-        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
@@ -12131,6 +12122,7 @@ def sitemap_xml():
     today = datetime.utcnow().strftime("%Y-%m-%d")
     pages = [
         ("/", "1.0"),
+        ("/about", "0.6"),
         ("/terms", "0.3"),
         ("/privacy", "0.3"),
         ("/security", "0.3"),
@@ -13892,49 +13884,6 @@ def google_site_verification():
 
     with open(file_path, "r") as f:
         return Response(f.read(), mimetype="text/html")
-
-@app.route("/robots.txt")
-def robots_txt():
-    """Tell search engine crawlers what to index and where the sitemap lives."""
-    lines = [
-        "User-agent: *",
-        "Allow: /$",
-        "Allow: /about$",
-        "Allow: /privacy$",
-        "Allow: /terms$",
-        "Allow: /security$",
-        "Disallow: /api/",
-        "Disallow: /dashboard",
-        "Disallow: /app",
-        "Disallow: /login",
-        "Disallow: /onboarding",
-        "Disallow: /adminpanel",
-        "",
-        "Sitemap: https://projecttracker.in/sitemap.xml",
-    ]
-    return Response("\n".join(lines), mimetype="text/plain")
-
-@app.route("/sitemap.xml")
-def sitemap_xml():
-    """Public sitemap so Google can discover and prioritize the marketing pages."""
-    pages = [
-        ("https://projecttracker.in/", "1.0", "weekly"),
-        ("https://projecttracker.in/about", "0.6", "monthly"),
-        ("https://projecttracker.in/security", "0.5", "monthly"),
-        ("https://projecttracker.in/privacy", "0.3", "yearly"),
-        ("https://projecttracker.in/terms", "0.3", "yearly"),
-    ]
-    urls = "\n".join(
-        f"  <url><loc>{loc}</loc><priority>{prio}</priority><changefreq>{freq}</changefreq></url>"
-        for loc, prio, freq in pages
-    )
-    xml = (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"{urls}\n"
-        "</urlset>"
-    )
-    return Response(xml, mimetype="application/xml")
 
 @app.route("/<path:path>")
 def catch_all(path):
