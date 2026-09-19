@@ -192,7 +192,9 @@ window._pfPushUnsubscribe = async function(){
 <link rel="dns-prefetch" href="https://unpkg.com"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link id="pt-fonts" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print"/>
+<script>(function(){var l=document.getElementById('pt-fonts');if(!l)return;function on(){l.media='all';}if(l.sheet){on();}else{l.addEventListener('load',on);l.addEventListener('error',on);}})();</script>
+<noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/></noscript>
 <script>
 (function(){
   // Load libs in correct dependency order.
@@ -222,6 +224,34 @@ window._pfPushUnsubscribe = async function(){
   });
 })();
 </script>
+<style>
+/* ── Auth screen: stack on phones (static so it exists before React renders) ── */
+@media (max-width:900px){
+  .ap-left{display:none!important}
+  .ap-right{padding:24px 20px!important;border-left:none!important;min-height:100dvh}
+}
+/* ── Mobile shell (phones / small tablets) ── */
+.pt-hamburger{display:none;background:none;border:none;font-size:22px;line-height:1;width:44px;height:44px;margin-left:-10px;cursor:pointer;color:var(--tx);flex-shrink:0;align-items:center;justify-content:center}
+.pt-scrim{display:none}
+@media (max-width:768px){
+  .pt-hamburger{display:inline-flex}
+  aside.pt-sidebar{position:fixed!important;left:0;top:0;bottom:0;width:min(84vw,280px)!important;min-width:0!important;max-width:none!important;z-index:1001;transform:translateX(-100%);transition:transform .22s ease!important}
+  body.pt-nav-open aside.pt-sidebar{transform:none}
+  body.pt-nav-open .pt-scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000}
+  body.pt-nav-open .ai-btn{display:none}
+  .pt-collapse-btn{display:none!important}
+  .pt-hdr-reminders{display:none!important}
+  .pt-hdr-ticker>*{display:none!important}           /* keep the flex:1 spacer so bell/avatar stay right */
+  .ai-panel{width:min(370px,calc(100vw - 24px));height:min(520px,calc(100dvh - 160px));right:12px}
+  .toast-stack{width:min(356px,calc(100vw - 24px));right:12px}
+  input,select,textarea{font-size:16px!important}      /* stops iOS zoom-on-focus */
+  /* AI Workspace: history becomes a horizontal strip above the chat */
+  .ai-root{flex-direction:column}
+  .ai-history{order:-1;width:auto!important;border-left:none!important;border-bottom:1px solid var(--bd);padding:10px 12px!important;display:flex;flex-direction:row;gap:8px;overflow-x:auto!important;overflow-y:hidden!important;flex-shrink:0!important}
+  .ai-history>*{flex-shrink:0;width:auto!important;margin:0!important;white-space:nowrap}
+  .ai-pad{padding-left:16px!important;padding-right:16px!important}
+}
+</style>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;width:100%;overflow:auto}
@@ -2174,7 +2204,7 @@ function AuthScreen({onLogin}){
 
   // ── LEFT PANEL (canvas + hero copy) ──
   const LEFT=html`
-    <div style=${{position:'relative',width:'52%',flexShrink:0,minHeight:'100vh',overflow:'hidden'}}>
+    <div class="ap-left" style=${{position:'relative',width:'52%',flexShrink:0,minHeight:'100vh',overflow:'hidden'}}>
       <canvas ref=${canvasRef} style=${{position:'absolute',inset:0,width:'100%',height:'100%'}}></canvas>
 
       <!-- Top accent: iPhone 17 Pro titanium spectrum line -->
@@ -2243,17 +2273,17 @@ function AuthScreen({onLogin}){
 
   // ── RIGHT PANEL wrapper ──
   const RIGHT=(content)=>html`
-    <div style=${{flex:1,minHeight:'100vh',overflowY:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'48px 40px',
+    <main class="ap-right" style=${{flex:1,minHeight:'100vh',overflowY:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'48px 40px',
       background:'linear-gradient(160deg,#06040f 0%,#0a0618 40%,#060412 100%)',
       borderLeft:'1px solid rgba(255,255,255,0.05)'}}>
       <div style=${{width:'100%',maxWidth:400}}>
         ${content}
       </div>
-    </div>`;
+    </main>`;
 
   // ── SUCCESS ──
   if(phase==='success') return html`
-    <div style=${{display:'flex',width:'100vw',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
+    <div style=${{display:'flex',width:'100%',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
     ${RIGHT(html`
       <div style=${{textAlign:'center',animation:'ap-scale 0.55s cubic-bezier(0.34,1.56,0.64,1) both'}}>
         <!-- Concentric ripple rings -->
@@ -2280,7 +2310,7 @@ function AuthScreen({onLogin}){
 
   // ── TOTP ──
   if(totpStep) return html`
-    <div style=${{display:'flex',width:'100vw',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
+    <div style=${{display:'flex',width:'100%',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
     ${RIGHT(html`
       <div style=${{animation:'ap-fadeUp 0.55s ease both'}}>
         <div style=${{width:54,height:54,borderRadius:16,background:'linear-gradient(135deg,#5a8cff,#a855f7)',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24,boxShadow:'0 6px 28px rgba(90,140,255,0.45)'}}>
@@ -2323,7 +2353,7 @@ function AuthScreen({onLogin}){
 
   // ── MAIN FORM ──
   return html`
-    <div style=${{display:'flex',width:'100vw',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
+    <div style=${{display:'flex',width:'100%',minHeight:'100vh',overflow:'hidden'}}>${LEFT}
     ${RIGHT(html`
       <div ref=${formRef} style=${{animation:'ap-fadeUp 0.65s ease both'}}>
 
@@ -2399,8 +2429,8 @@ function AuthScreen({onLogin}){
                 <input class="ap-inp" style=${{paddingRight:48}} type=${showNewPw?'text':'password'}
                   placeholder="At least 8 characters" value=${newPw1} autoComplete="new-password"
                   onInput=${e=>setNewPw1(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&submitNewPassword()}/>
-                <button onClick=${()=>setShowNewPw(!showNewPw)}
-                  style=${{position:'absolute',right:14,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:14,lineHeight:1,padding:2}}>
+                <button type="button" aria-label=${showNewPw?'Hide password':'Show password'} onClick=${()=>setShowNewPw(!showNewPw)}
+                  style=${{position:'absolute',right:2,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:16,lineHeight:1,width:44,height:44}}>
                   ${showNewPw?'🙈':'👁'}
                 </button>
               </div>
@@ -2434,8 +2464,8 @@ function AuthScreen({onLogin}){
               <input class="ap-inp" style=${{paddingRight:48}} type=${showPw?'text':'password'}
                 placeholder="••••••••••" value=${pw} autoComplete="current-password"
                 onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}/>
-              <button onClick=${()=>setShowPw(!showPw)}
-                style=${{position:'absolute',right:14,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:14,lineHeight:1,padding:2,transition:'color 0.2s'}}
+              <button type="button" aria-label=${showPw?'Hide password':'Show password'} onClick=${()=>setShowPw(!showPw)}
+                style=${{position:'absolute',right:2,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'rgba(175,170,210,0.4)',fontSize:16,lineHeight:1,width:44,height:44,transition:'color 0.2s'}}
                 onMouseEnter=${e=>e.target.style.color='rgba(175,170,210,0.8)'}
                 onMouseLeave=${e=>e.target.style.color='rgba(175,170,210,0.4)'}>
                 ${showPw?'🙈':'👁'}
@@ -2445,7 +2475,7 @@ function AuthScreen({onLogin}){
             ${tab==='login'?html`
               <div style=${{textAlign:'right',marginTop:8}}>
                 <a href="#" onClick=${e=>{e.preventDefault();setErr('');setAuthMode('forgot');}}
-                  style=${{fontSize:12,color:'rgba(160,185,255,0.8)',fontWeight:600,textDecoration:'none'}}>Forgot password?</a>
+                  style=${{fontSize:12,color:'rgba(160,185,255,0.8)',fontWeight:600,textDecoration:'none',display:'inline-block',padding:'12px 0'}}>Forgot password?</a>
               </div>`:null}
           </div>`}
 
@@ -2547,11 +2577,11 @@ function AuthScreen({onLogin}){
 
         <!-- Help / legal -->
         <div style=${{marginTop:28,paddingTop:20,borderTop:'1px solid rgba(255,255,255,0.05)',display:'flex',justifyContent:'center',gap:20,flexWrap:'wrap'}}>
-          <a href="mailto:support@projecttracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5}}
+          <a href="mailto:support@projecttracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5,minHeight:44}}
             onMouseEnter=${e=>e.target.style.color='rgba(90,140,255,0.9)'} onMouseLeave=${e=>e.target.style.color='rgba(160,150,200,0.45)'}>
             🛟 support@projecttracker.in
           </a>
-          <a href="mailto:ceo@projecttracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5}}
+          <a href="mailto:ceo@projecttracker.in" style=${{fontSize:11.5,color:'rgba(160,150,200,0.45)',textDecoration:'none',transition:'color 0.2s',display:'flex',alignItems:'center',gap:5,minHeight:44}}
             onMouseEnter=${e=>e.target.style.color='rgba(168,85,247,0.9)'} onMouseLeave=${e=>e.target.style.color='rgba(160,150,200,0.45)'}>
             🤝 ceo@projecttracker.in
           </a>
@@ -2922,8 +2952,9 @@ function PersonalTwoFAToggle({cu,setCu}){
     </div>`;
 }
 
-function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dark,setDark,teams,users,projects,tasks,teamCtx,setTeamCtx,activeTeam,wsDmEnabled=true,onlineUsers=new Set(),offlineMode=false,featureFlags={}}){
+function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col:colProp,setCol,wsName,dark,setDark,teams,users,projects,tasks,teamCtx,setTeamCtx,activeTeam,wsDmEnabled=true,onlineUsers=new Set(),offlineMode=false,featureFlags={}}){
   const fmtTime=s=>{const m=Math.floor(s/60);const sec=s%60;return m+':'+(sec<10?'0':'')+sec;};
+  const col=colProp&&!window.matchMedia('(max-width:768px)').matches; // drawer is always full-width on phones
   const isAdminManager=hasOpsAccess(cu);
   const baseView=(view||'dashboard').split(':')[0];
 
@@ -3092,11 +3123,11 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
   const W=col?64:200; // collapsed=64px, expanded=200px
 
   return html`
-    <aside style=${{
+    <aside class="pt-sidebar" style=${{
       width:W,minWidth:W,maxWidth:W,
       background:sbBg,
       display:'flex',flexDirection:'column',
-      height:'100vh',flexShrink:0,overflow:'visible',
+      height:'100dvh',flexShrink:0,overflow:'visible',
       borderRight:'1px solid '+sbBorderColor,
       transition:'width .2s ease,min-width .2s ease,max-width .2s ease',
       position:'relative',
@@ -3220,7 +3251,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col,setCol,wsName,dar
       </div>
       <!-- Sidebar orb decoration -->
       ${!col?html`<div style=${{position:'absolute',bottom:100,left:-40,width:120,height:120,borderRadius:'50%',background:'radial-gradient(circle,rgba(90,94,247,0.12) 0%,transparent 70%)',pointerEvents:'none',zIndex:0}}></div>`:null}
-      <button title=${col?'Expand sidebar':'Collapse sidebar'} onClick=${()=>setCol(c=>!c)}
+      <button class="pt-collapse-btn" title=${col?'Expand sidebar':'Collapse sidebar'} onClick=${()=>setCol(c=>!c)}
         style=${{
           position:'absolute', left:col?64:200, top:'50%', transform:'translateY(-50%)', zIndex:200, width:14, height:40, background:collapseBtnBg, border:'1px solid '+collapseBtnBorder, borderLeft:'none', borderRadius:'0 6px 6px 0', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:collapseBtnColor, transition:'left .2s ease, background .12s, color .12s', padding:0, }}
         onMouseEnter=${e=>{e.currentTarget.style.background=collapseBtnHoverBg;e.currentTarget.style.color=collapseBtnHoverColor;}}
@@ -3353,13 +3384,14 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
   return html`
     <div style=${{flexShrink:0,background:'var(--sf)',borderBottom:'1px solid var(--bd)',position:'relative',zIndex:100,boxShadow:'0 1px 0 rgba(99,102,241,0.08),0 2px 12px rgba(15,14,23,0.05)'}}>
       <div style=${{padding:'0 18px',height:54,display:'flex',alignItems:'center',gap:10}}>
-                <div style=${{display:'flex',alignItems:'center',gap:8,flexShrink:0,padding:'5px 14px 5px 10px',background:'#1e3a5f',borderRadius:100,cursor:'pointer',border:'1px solid rgba(37,99,235,0.25)',transition:'all .14s'}} onClick=${onViewReminders}>
+        <button type="button" class="pt-hamburger" aria-label="Open menu" onClick=${()=>document.body.classList.toggle('pt-nav-open')}>☰</button>
+                <div class="pt-hdr-reminders" style=${{display:'flex',alignItems:'center',gap:8,flexShrink:0,padding:'5px 14px 5px 10px',background:'#1e3a5f',borderRadius:100,cursor:'pointer',border:'1px solid rgba(37,99,235,0.25)',transition:'all .14s'}} onClick=${onViewReminders}>
           <svg width="13" height="13" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="7" fill="#60a5fa"/><circle cx="32" cy="13" r="4" fill="#60a5fa" opacity="0.9"/><circle cx="48" cy="43" r="4" fill="#60a5fa" opacity="0.9"/><circle cx="16" cy="43" r="4" fill="#60a5fa" opacity="0.9"/><line x1="32" y1="17" x2="32" y2="25" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round"/><line x1="44" y1="40" x2="38" y2="36" stroke="#5a8cff" strokeWidth="2.5" strokeLinecap="round"/><line x1="20" y1="40" x2="26" y2="36" stroke="#5a8cff" strokeWidth="2.5" strokeLinecap="round"/></svg>
           <span style=${{fontSize:11,fontWeight:700,color:'#bfdbfe',letterSpacing:'.3px'}}>Your Reminders</span>
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style=${{fontSize:11,color:'#93c5fd',fontWeight:700}}>${todayStr}</span>
         </div>
-                        <div style=${{flex:1,overflowX:'auto',scrollbarWidth:'none',msOverflowStyle:'none'}}>
+                        <div class="pt-hdr-ticker" style=${{flex:1,overflowX:'auto',scrollbarWidth:'none',msOverflowStyle:'none'}}>
           <div style=${{height:40,background:'#0f172a',borderRadius:100,display:'flex',alignItems:'center',padding:'0 14px',gap:0,position:'relative',minWidth:0,overflow:'hidden',border:'1px solid rgba(37,99,235,0.15)'}}>
             ${upcoming.length===0?html`
               <div style=${{display:'flex',alignItems:'center',gap:10,width:'100%',justifyContent:'center'}}>
@@ -5133,22 +5165,22 @@ function AIWorkspace({cu,onNav}){
   const sorted=[...convos].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||new Date(b.created)-new Date(a.created));
 
   return html`
-    <div style=${{display:'flex',height:'100%',background:'var(--bg)'}}>
+    <div class="ai-root" style=${{display:'flex',height:'100%',background:'var(--bg)'}}>
       <div style=${{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
-        <div style=${{padding:'28px 32px 12px'}}>
+        <div class="ai-pad" style=${{padding:'28px 32px 12px'}}>
           <div style=${{fontSize:22,fontWeight:900,color:'var(--tx)'}}>Good ${(new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening')}${cu&&cu.name?', '+cu.name.split(' ')[0]:''} 👋</div>
           <div style=${{fontSize:13,color:'var(--tx2)',marginTop:4}}>Ask me anything about your projects, tasks, and team — or pick a quick action below.</div>
         </div>
 
         ${(!active||active.messages.length===0)?html`
-          <div style=${{padding:'8px 32px 20px',display:'flex',flexWrap:'wrap',gap:10}}>
+          <div class="ai-pad" style=${{padding:'8px 32px 20px',display:'flex',flexWrap:'wrap',gap:10}}>
             ${AI_QUICK_ACTIONS.map(qa=>html`
               <button key=${qa.label} class="btn" style=${{borderRadius:12,padding:'10px 14px',fontSize:12.5,fontWeight:700}}
                 onClick=${()=>send(qa.prompt)}>${qa.label}</button>
             `)}
           </div>`:null}
 
-        <div ref=${scrollRef} style=${{flex:1,overflowY:'auto',padding:'0 32px'}}>
+        <div ref=${scrollRef} class="ai-pad" style=${{flex:1,overflowY:'auto',padding:'0 32px'}}>
           ${active&&active.messages.map((m,i)=>html`
             <div key=${i} style=${{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:14}}>
               <div style=${{maxWidth:640,padding:'12px 16px',borderRadius:16,fontSize:13.5,lineHeight:1.55,whiteSpace:'pre-wrap',
@@ -5169,7 +5201,7 @@ function AIWorkspace({cu,onNav}){
           ${error?html`<div style=${{fontSize:12.5,color:'#ef4444',padding:'6px 0 16px'}}>${error}</div>`:null}
         </div>
 
-        <div style=${{padding:'16px 32px 24px',borderTop:'1px solid var(--bd)'}}>
+        <div class="ai-pad" style=${{padding:'16px 32px 24px',borderTop:'1px solid var(--bd)'}}>
           <form onSubmit=${e=>{e.preventDefault();send();}} style=${{display:'flex',gap:10}}>
             <input value=${input} onInput=${e=>setInput(e.target.value)} placeholder="Ask AI anything…"
               style=${{flex:1,padding:'13px 16px',borderRadius:14,border:'1px solid var(--bd)',background:'var(--sf)',color:'var(--tx)',fontSize:13.5}}/>
@@ -5178,7 +5210,7 @@ function AIWorkspace({cu,onNav}){
         </div>
       </div>
 
-      <div style=${{width:280,borderLeft:'1px solid var(--bd)',padding:'20px 16px',overflowY:'auto',flexShrink:0}}>
+      <div class="ai-history" style=${{width:280,borderLeft:'1px solid var(--bd)',padding:'20px 16px',overflowY:'auto',flexShrink:0}}>
         <button class="btn bp" style=${{width:'100%',borderRadius:12,marginBottom:14,fontWeight:800}} onClick=${()=>newConversation()}>+ New chat</button>
         ${sorted.map(c=>html`
           <div key=${c.id} onClick=${()=>setActiveId(c.id)}
@@ -9276,7 +9308,7 @@ function NotesView({cu}){
         </button>`):html`<div class="notes-empty-list">No notes found.</div>`}
       </div>
     </aside>
-    <main class="notes-main">
+    <div class="notes-main">
       ${active?html`<div class="notes-topbar">
         <input class="inp notes-title-input" value=${active.title||''} onInput=${e=>savePatch(active.id,{title:e.target.value})} placeholder="Note title" />
         <div class="notes-actions">
@@ -9300,7 +9332,7 @@ function NotesView({cu}){
           <h4>Shortcuts</h4><div class="notes-sub">Ctrl+S save · Ctrl+B bold · Ctrl+I italic · checkbox clicks are saved</div>
         </aside>`:null}
       </div>`:html`<div class="notes-empty"><button class="btn bp" disabled=${creating} onClick=${()=>createNote('blank')}>Create your first note</button></div>`}
-    </main>
+    </div>
   </div>`;
 }
 
@@ -15005,6 +15037,7 @@ function App(){
 
   const activeTeamName=activeTeam?activeTeam.name:'';
   const TITLES={
+    ai:{title:'AI Workspace',sub:'Ask about your projects, tasks and team'}, vault:{title:'My Vault',sub:''}, 'password-generator':{title:'Password Gen',sub:''},
     dashboard:{title:'Dashboard',sub:activeTeamName?activeTeamName+' Team Dashboard':'Overview of your work'}, 'workspace-os':{title:'Workspace OS',sub:'Self-service · attendance · leave · policies · org'}, ops:{title:'Ops Center',sub:'Realtime · performance · portfolio risk'}, projects:{title:'Projects',sub:scopedProjects.length+' projects'+(activeTeamName?' · '+activeTeamName:'')}, tasks:{title:'Kanban Board',sub:scopedTasks.filter(t=>t.stage!=='completed'&&t.stage!=='backlog').length+' active · '+scopedTasks.length+' total'+(activeTeamName?' · '+activeTeamName:'')}, messages:{title:'Channels',sub:(activeTeamName?activeTeamName+' · ':'')+'Project channels'}, dm:{title:'Direct Messages',sub:totalDm>0?totalDm+' unread':'Private conversations'}, reminders:{title:'Reminders',sub:'Upcoming task reminders'}, notifs:{title:'Notifications',sub:unread+' unread'}, team:{title:'Team Management',sub:'Members & sub-teams'}, settings:{title:'Settings',sub:wsName||'Workspace configuration'}, billing:{title:'Billing & Invoices',sub:'Plans · company details · invoice history'}, timeline:{title:'Timeline Tracker',sub:activeTeamName?activeTeamName+' project timeline':'Project schedule'}, productivity:{title:'Dev Productivity',sub:activeTeamName?activeTeamName+' performance':'Team performance analytics'}, tickets:{title:'Tickets',sub:activeTeamName?activeTeamName+' tickets':'Support tickets'}, 'ai-docs':{title:'AI Documentation',sub:'Generate docs & architecture diagrams'}, timesheet:{title:'Timesheet',sub:'Log hours · export reports · track productivity'}, };
 
   const baseView=(view||'dashboard').split(':')[0];
@@ -15029,7 +15062,7 @@ function App(){
   const extra=null;
 
   return html`
-    <div style=${{display:'flex',flexDirection:'column',width:'100vw',height:'100vh',background:'var(--bg)',overflow:'hidden'}}>
+    <div style=${{display:'flex',flexDirection:'column',width:'100%',height:'100dvh',background:'var(--bg)',overflow:'hidden'}}>
       ${cu&&cu._offline?html`
         <div style=${{background:'rgba(245,158,11,.12)',borderBottom:'1px solid rgba(245,158,11,.28)',padding:'7px 20px',fontSize:12,color:'#f59e0b',display:'flex',alignItems:'center',gap:8,flexShrink:0,zIndex:999}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".5" fill="currentColor"/></svg>
@@ -15047,7 +15080,9 @@ function App(){
           <button onClick=${dismissNearLimitWarning} style=${{background:'none',border:'none',color:'#818cf8',cursor:'pointer',fontSize:16,lineHeight:1,padding:'0 4px',flexShrink:0}} title="Dismiss for 24h">×</button>
         </div>`:null}
       <div style=${{display:'flex',flex:1,overflow:'hidden'}}>
+      <div class="pt-scrim" onClick=${()=>document.body.classList.remove('pt-nav-open')}></div>
       <${Sidebar} cu=${cu} view=${baseView} setView=${v=>{
+          document.body.classList.remove('pt-nav-open');
           if(cu&&cu._offline){
             // In offline mode only allow vault and password-generator
             if(v==='vault'||v==='password-generator'){_setView(v);}
@@ -15078,7 +15113,7 @@ function App(){
           markingAllRead=${markingAllRead}
           onClearAll=${async()=>{await api.del('/api/notifications/all');load();}}
         />
-        <div style=${{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+        <main style=${{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
           <${ErrorBoundary}>
             <div key=${baseView+'-'+(teamCtx||'all')} class="page-enter" style=${{flex:1,overflow: baseView==='vault'?'hidden':'hidden',display:'flex',flexDirection:'column',height:'100%'}}>
             ${baseView==='workspace-os'&&isViewFeatureAllowed('workspace-os')?html`<${WorkspaceOSView} cu=${cu} users=${data.users}/>`:null}
@@ -15109,7 +15144,7 @@ function App(){
             ${VIEW_FEATURE_MAP[baseView]&&!isViewFeatureAllowed(baseView)?html`<${FeatureLocked} title=${(TITLES[baseView]&&TITLES[baseView].title)||'Feature unavailable'}/>`:null}
             </div>
           <//>
-        </div>
+        </main>
       </div>
       </div>
     </div>
