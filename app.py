@@ -864,6 +864,9 @@ def readyz():
         checks["object_store_reachable"] = _os_ok
         if _os_err:
             checks["object_store_error"] = _os_err
+            if getattr(_object_store, "requested_provider", "local") in ("s3", "r2", "minio"):
+                # names only, never values - remove once S3 is confirmed working
+                checks["object_store_env_seen"] = getattr(_object_store, "env_seen", {})
     except Exception as e:
         checks["object_store_reachable"] = False
         checks["object_store_error"] = str(e)[:160]

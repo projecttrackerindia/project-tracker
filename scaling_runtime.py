@@ -121,6 +121,12 @@ class ObjectStore:
         self.addressing = (_first_env("S3_ADDRESSING_STYLE") or "virtual").lower()
         self.client = None
         self.init_error = ""
+        self.requested_provider = self.provider
+        self.env_seen: Dict[str, str] = {
+            repr(k): ("set" if (v or "").strip() else "EMPTY")
+            for k, v in os.environ.items()
+            if any(t in k.upper() for t in ("S3", "AWS", "BUCKET", "OBJECT_STORE"))
+        }
         if self.provider in {"s3", "r2", "minio"}:
             missing = [n for n, v in (("bucket", self.bucket), ("access key", self.access_key),
                                       ("secret key", self.secret_key)) if not v]
@@ -149,12 +155,7 @@ class ObjectStore:
                 # Do NOT fail silently: uploads would quietly land on the container disk.
                 print(f"[object-store] WARNING: OBJECT_STORE_PROVIDER={self.provider!r} but S3 client "
                       f"is not usable ({self.init_error}). Falling back to LOCAL DISK.", flush=True)
-                # Names only (never values): shows typos / trailing spaces / empty values.
-                seen = {repr(k): ("set" if (v or "").strip() else "EMPTY")
-                        for k, v in os.environ.items()
-                        if any(t in k.upper() for t in ("S3", "AWS", "BUCKET", "OBJECT_STORE"))}
-                print(f"[object-store] related env vars seen by this container: {seen}", flush=True)
-                self.provider = "local"
+                print(f"[object-store] related env vars seen by this container: {self.env_seen}", flush=True)
             else:
                 print(f"[object-store] S3 ready: bucket={self.bucket} endpoint={self.endpoint or 'aws-default'} "
                       f"region={self.region} style={self.addressing}", flush=True)
@@ -228,11 +229,22 @@ class ObjectStore:
             pass
 
 
+def _norm_env_name(name: str) -> str:
+    """Upper-case and drop anything that is not A-Z, 0-9 or _ (trailing spaces, zero-width
+    characters, non-breaking spaces and other copy/paste debris in a variable *name*)."""
+    return "".join(ch for ch in name.upper() if ch.isascii() and (ch.isalnum() or ch == "_"))
+
+
 def _first_env(*names: str) -> str:
-    for n in names:
+    for n in names:                                   # 1) exact match
         v = os.getenv(n)
         if v and v.strip():
             return v.strip()
+    wanted = {_norm_env_name(n): n for n in names}    # 2) tolerant match
+    for n in names:
+        for k, v in os.environ.items():
+            if _norm_env_name(k) == _norm_env_name(n) and v and v.strip():
+                return v.strip()
     return ""
 
 
