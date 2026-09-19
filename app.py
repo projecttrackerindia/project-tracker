@@ -308,6 +308,26 @@ def _sql_compat(sql, params=()):
         sql = sql.replace("INSERT OR REPLACE INTO push_subscriptions", "INSERT INTO push_subscriptions").rstrip()
         sql += (" ON CONFLICT (endpoint) DO UPDATE SET "
                 "p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, created=EXCLUDED.created")
+    if "INSERT OR REPLACE INTO user_sessions" in sql:
+        # FIX (found via live production log monitoring during E2E checks):
+        # this table was missing from the list above, so this exact SQLite-
+        # dialect INSERT OR REPLACE hit Postgres unmodified and failed with a
+        # syntax error on every single call — i.e. on every login — silently
+        # swallowed by _register_session()'s try/except. Practical impact:
+        # "new device" login alerts and the active-sessions list were both
+        # non-functional in production, since no session row was ever
+        # actually written. id (the session_id) is a fresh
+        # secrets.token_hex(16) per login and essentially never collides in
+        # normal operation, but this codebase's own PgBouncer-desync retry
+        # logic (see _DB.execute's "retrying once on a fresh connection")
+        # can legitimately re-send a statement that already succeeded, so a
+        # real ON CONFLICT UPDATE (true REPLACE semantics) is used here
+        # rather than a bare INSERT.
+        sql = sql.replace("INSERT OR REPLACE INTO user_sessions", "INSERT INTO user_sessions").rstrip()
+        sql += (" ON CONFLICT (id) DO UPDATE SET "
+                "user_id=EXCLUDED.user_id, workspace_id=EXCLUDED.workspace_id, "
+                "device_name=EXCLUDED.device_name, ip=EXCLUDED.ip, user_agent=EXCLUDED.user_agent, "
+                "login_at=EXCLUDED.login_at, last_seen=EXCLUDED.last_seen, is_current=EXCLUDED.is_current")
     return _pg_params(sql, params)
 
 # ── Transient connection-desync detection ───────────────────────────────────
