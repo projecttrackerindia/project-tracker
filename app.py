@@ -207,6 +207,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify, session, Response, send_file, send_from_directory, redirect, make_response, g
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 from scaling_runtime import ObjectStore, JobQueue, parse_cursor_args, build_next_cursor, etag_for_payload, incr_metric, record_latency
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -519,8 +520,51 @@ def get_secret_key():
     except: pass
     return k
 
+ADMIN_KEY_FILE = os.path.join(DATA_DIR, ".pf_admin_secret")
+
+def get_admin_token_secret_material():
+    """Dedicated signing secret for the platform-admin bearer token (see
+    _issue_admin_token/_verify_admin_token). Deliberately independent from
+    get_secret_key() above for two reasons: (1) that function's Railway fallback
+    derives the key from the service/project ID, which is not truly secret — it
+    can leak via build logs, dashboard URLs, or a forked deploy, and someone who
+    obtains it could forge session cookies; (2) even setting that aside, reusing
+    one key to sign two tokens of different privilege (an ordinary user session
+    vs. platform-admin access) means a leak or forgery of the lower-privilege
+    token compromises the higher-privilege one too. Set ADMIN_TOKEN_SECRET in
+    production; otherwise this persists its own random key to disk so tokens
+    keep working across worker/restart boundaries, same pattern as get_secret_key.
+    """
+    env_key = os.environ.get("ADMIN_TOKEN_SECRET", "")
+    if len(env_key) >= 32:
+        return env_key
+    if os.path.exists(ADMIN_KEY_FILE):
+        try:
+            with open(ADMIN_KEY_FILE, "r") as f:
+                k = f.read().strip()
+                if len(k) == 64: return k
+        except Exception: pass
+    k = secrets.token_hex(32)
+    log.warning("[ADMIN_TOKEN_SECRET] Generated a persisted admin-token secret at %s. Set ADMIN_TOKEN_SECRET env var for best security (required if the filesystem isn't a persistent volume).", ADMIN_KEY_FILE)
+    try:
+        with open(ADMIN_KEY_FILE, "w") as f: f.write(k)
+    except Exception: pass
+    return k
+
 app = Flask(__name__)
 app.secret_key = get_secret_key()
+# Trust exactly one reverse-proxy hop (Railway/Render's edge, or whatever
+# terminates TLS in front of gunicorn) for X-Forwarded-For/-Proto. Without
+# this, request.remote_addr on Railway/Render is the proxy's own IP, so every
+# IP-based rate limit and lockout below fell back to reading the raw
+# X-Forwarded-For header directly — which the *client* also controls, letting
+# anyone bypass login/OTP/admin brute-force protection by sending a different
+# value on each request (security review finding #2). ProxyFix instead takes
+# the IP the trusted proxy itself appended (the rightmost hop), ignoring
+# anything a client tries to prepend. If you ever add a second proxy in front
+# of this app (e.g. an nginx/Cloudflare layer in addition to the platform
+# edge), raise x_for to match the number of trusted hops.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 APP_STARTED_AT = datetime.utcnow()
 _is_https = os.environ.get("HTTPS","").lower() in ("1","true","on") or              os.environ.get("RAILWAY_ENVIRONMENT","") != "" or              os.environ.get("RENDER","") != ""
 app.config.update(
@@ -953,10 +997,11 @@ def _record_scanner_hit(ip):
             log.warning("[SECURITY] Auto-banned scanner IP %s", ip)
 
 def _client_ip():
-    """Get real client IP, respecting Railway/proxy X-Forwarded-For."""
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
+    """Get the real client IP. request.remote_addr is already corrected by
+    ProxyFix (see app.wsgi_app wrapping near app startup) to the IP our
+    trusted edge proxy reported — reading the raw X-Forwarded-For header
+    directly, as this function used to, let anyone spoof a fresh value on
+    every request and bypass every IP-based rate limit/lockout in the app."""
     return request.remote_addr or "unknown"
 
 # ── Scanner path fingerprints (extended from real attack logs) ───────────────
@@ -5643,7 +5688,12 @@ def login():
         # ── Google Authenticator (TOTP) — only 2FA method ────────────────────
         totp_active = u.get("totp_verified") and u.get("totp_secret")
         if totp_active:
-            return jsonify({"totp_required": True, "user_id": u["id"], "name": u["name"]}), 200
+            _clear_attempts(rl_key)  # password was correct — reset the login limiter
+            return jsonify({
+                "totp_required": True, "user_id": u["id"], "name": u["name"],
+                # Proof the password step succeeded, required by /api/auth/totp/verify.
+                "totp_pending_token": _issue_totp_pending_token(u["id"]),
+            }), 200
         # ── No 2FA configured — direct login ─────────────────────────────────
         _clear_attempts(rl_key)  # reset limiter on success
         login_ts = ts()
@@ -6099,16 +6149,33 @@ def totp_verify_login():
     d = request.json or {}
     user_id = d.get("user_id")
     token = d.get("token", "").strip().replace(" ", "")
+    pending_token = d.get("pending_token", "")
     if not user_id or not token:
         return jsonify({"error": "user_id and token required"}), 400
+    # Same brute-force protection as the password step: without this, an
+    # attacker who knows/guesses a user_id could hit this endpoint directly at
+    # unlimited speed to guess the 6-digit code (security review finding #1).
+    rl_key = f"totp:{request.remote_addr}:{user_id}"
+    allowed, wait = _check_rate_limit(rl_key)
+    if not allowed:
+        return jsonify({"error": f"Too many attempts. Try again in {wait}s."}), 429
+    # Require proof that login()'s password check already succeeded for this
+    # exact user_id — otherwise this endpoint alone lets anyone who merely
+    # knows a user_id attempt the TOTP code without ever knowing the password.
+    if not _verify_totp_pending_token(pending_token, user_id):
+        _record_attempt(rl_key)
+        return jsonify({"error": "Login session expired. Please sign in again."}), 401
     with get_db() as db:
         u = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
         if not u:
+            _record_attempt(rl_key)
             return jsonify({"error": "User not found"}), 404
         if not u.get("totp_secret") or not u.get("totp_verified"):
             return jsonify({"error": "TOTP not configured for this user"}), 400
         if not _totp_verify(u["totp_secret"], token):
+            _record_attempt(rl_key)
             return jsonify({"error": "Invalid authenticator code. Try again."}), 401
+        _clear_attempts(rl_key)
         login_ts = ts()
         session.permanent = True
         session["last_activity"] = time.time()
@@ -7514,7 +7581,7 @@ def vault_unlock(cid):
     d = request.json or {}
     pw = d.get("password", "") or ""
     uid = session["user_id"]
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
+    ip = _client_ip()[:60]  # see _client_ip() — ProxyFix-corrected, not a raw client-controllable header
     with get_db() as db:
         row = db.execute("SELECT * FROM vault_cards WHERE id=? AND user_id=?", (cid, uid)).fetchone()
         if not row:
@@ -7551,7 +7618,7 @@ def vault_delete(cid):
         # NOTE: audit history is intentionally NOT deleted here. The whole point
         # of an access audit log is that it survives the thing it's auditing —
         # wiping it on delete would let someone destroy their own trail.
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
+    ip = _client_ip()[:60]  # see _client_ip() — ProxyFix-corrected, not a raw client-controllable header
     _vault_audit(uid, cid, "delete", title, ip, card_title=title)
     return jsonify({"ok": True})
 
@@ -7603,7 +7670,7 @@ def vault_master_verify():
     d = request.json or {}
     pw = d.get("password", "") or ""
     uid = session["user_id"]
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
+    ip = _client_ip()[:60]  # see _client_ip() — ProxyFix-corrected, not a raw client-controllable header
     with get_db() as db:
         row = db.execute("SELECT hash FROM vault_master WHERE user_id=?", (uid,)).fetchone()
         if not row:
@@ -7699,7 +7766,7 @@ def vault_audit_event(cid):
     if not card:
         return jsonify({"error": "Not found"}), 404
     card_title = dict(card).get("title", "")
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
+    ip = _client_ip()[:60]  # see _client_ip() — ProxyFix-corrected, not a raw client-controllable header
     _vault_audit(session["user_id"], cid, action, detail, ip, card_title=card_title)
     return jsonify({"ok": True})
 
@@ -10807,12 +10874,12 @@ def update_ticket(tid):
         if not t: return jsonify({"error":"not found"}),404
         now=ts()
         cur_team_id = t["team_id"] if "team_id" in t.keys() else ""
-        db.execute("UPDATE tickets SET title=?,description=?,type=?,priority=?,status=?,assignee=?,project=?,tags=?,updated=?,team_id=? WHERE id=?",
+        db.execute("UPDATE tickets SET title=?,description=?,type=?,priority=?,status=?,assignee=?,project=?,tags=?,updated=?,team_id=? WHERE id=? AND workspace_id=?",
                    (d.get("title",t["title"]),d.get("description",t["description"]),
                     d.get("type",t["type"]),d.get("priority",t["priority"]),
                     d.get("status",t["status"]),d.get("assignee",t["assignee"]),
                     d.get("project",t["project"]),json.dumps(d.get("tags",json.loads(t["tags"] or "[]"))),now,
-                    d.get("team_id",cur_team_id),tid))
+                    d.get("team_id",cur_team_id),tid,wid()))
         result=dict(db.execute("SELECT * FROM tickets WHERE id=? AND workspace_id=?",(tid,wid())).fetchone())
         # In-app + email on ticket status change — notify ONLY the assigned person.
         # This prevents ticket create/update/delete spam going to the whole workspace.
@@ -10912,6 +10979,15 @@ def add_ticket_comment(tid):
     cid=f"tc{int(datetime.now().timestamp()*1000)}"
     visibility="internal" if d.get("internal") else "public"
     with get_db() as db:
+        # Verify the ticket actually belongs to this workspace before inserting.
+        # Every other mutating ticket route (update/delete/get-comments) checks
+        # this first; this one didn't, so a comment could be inserted against a
+        # ticket_id from a different tenant — invisible to both sides afterward
+        # (each side's SELECT filters by workspace_id), but still a tenant-
+        # boundary gap and a way to probe for ticket IDs cross-tenant via
+        # response codes/timing (security review finding #10).
+        if not db.execute("SELECT id FROM tickets WHERE id=? AND workspace_id=?", (tid, wid())).fetchone():
+            return jsonify({"error":"Ticket not found"}),404
         cols=["id","workspace_id","ticket_id","user_id","content","created"]
         vals=[cid,wid(),tid,session["user_id"],d["content"],ts()]
         try:
@@ -12301,12 +12377,16 @@ def terms_page():
 @app.route("/api/admin/security-stats")
 @login_required
 def admin_security_stats():
-    """Return live scanner/ban stats for admin dashboard."""
-    uid = session.get("user_id", "")
-    with get_db() as db:
-        u = db.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()
-        if not u or u["role"] not in ("Admin",):
-            return jsonify({"error": "Admin only"}), 403
+    """Return live scanner/ban stats for the PLATFORM admin dashboard.
+    This is platform-wide data (every workspace's banned IPs, and a list of
+    users across every tenant lacking TOTP) — it must be gated on the platform
+    bearer token like the equivalent /api/admin/totp-security-stats route, not
+    on "is this user a workspace-level Admin" (any tenant's own self-signup
+    Admin, with no platform trust at all). The old workspace-role check here
+    let any customer's Admin enumerate names/emails of users in every other
+    customer's workspace (security review finding #3)."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
     now = _time_mod.time()
     if _redis_client is not None:
         try:
@@ -12350,12 +12430,14 @@ def admin_security_stats():
 @app.route("/api/admin/unban-ip", methods=["POST"])
 @login_required
 def admin_unban_ip():
-    """Manually unban an IP address."""
-    uid = session.get("user_id", "")
-    with get_db() as db:
-        u = db.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()
-        if not u or u["role"] not in ("Admin",):
-            return jsonify({"error": "Admin only"}), 403
+    """Manually unban an IP address. This ban list is platform-wide (shared
+    across every tenant workspace), so — like admin_security_stats above —
+    it must require the platform bearer token, not a workspace-level Admin
+    role. Otherwise any tenant's own Admin could clear IP bans protecting the
+    entire platform, e.g. un-banning their own scanning/attack IP after
+    tripping the global scanner auto-ban (security review finding #4)."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
     ip = (request.json or {}).get("ip", "").strip()
     if not ip:
         return jsonify({"error": "ip required"}), 400
@@ -12928,15 +13010,11 @@ _ADMIN_FAIL_LOG = {}     # ip -> [fail_timestamp, ...] — brute-force lockout
 
 def _admin_token_secret():
     """Shared secret for stateless admin tokens across Gunicorn workers.
-    IMPORTANT: set ADMIN_TOKEN_SECRET or SECRET_KEY in production so tokens remain
-    valid across workers/restarts. Falls back to app.secret_key only as backup.
+    IMPORTANT: set ADMIN_TOKEN_SECRET in production so tokens remain valid
+    across workers/restarts. See get_admin_token_secret_material() for why this
+    is intentionally NOT derived from SECRET_KEY/app.secret_key.
     """
-    return (
-        os.environ.get("ADMIN_TOKEN_SECRET")
-        or os.environ.get("SECRET_KEY")
-        or str(getattr(app, "secret_key", ""))
-        or "project-tracker-admin-token-fallback"
-    ).encode("utf-8")
+    return get_admin_token_secret_material().encode("utf-8")
 
 def _issue_admin_token(email):
     """Create a stateless signed token so /api/admin/dashboard works across
@@ -12995,6 +13073,41 @@ def _admin_clear_failures(ip):
 def _require_admin():
     """Return True if request carries a valid signed admin token."""
     return _verify_admin_token(request.headers.get("X-Admin-Token", ""))
+
+def _totp_pending_secret():
+    sk = app.secret_key
+    return sk.encode("utf-8") if isinstance(sk, str) else sk
+
+def _issue_totp_pending_token(user_id):
+    """Short-lived, signed proof that the password step of login() already
+    succeeded for this user_id. Required by /api/auth/totp/verify before it
+    will check a code — otherwise that endpoint alone would let anyone who
+    merely knows/guesses a user_id attempt to brute-force the 6-digit TOTP
+    code without ever knowing the password (security review finding #1)."""
+    exp_ts = int((datetime.utcnow() + timedelta(minutes=5)).timestamp())
+    nonce = secrets.token_hex(8)
+    payload = f"{user_id}|{exp_ts}|{nonce}"
+    sig = hmac.new(_totp_pending_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw = f"{payload}|{sig}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+def _verify_totp_pending_token(token, user_id):
+    token = (token or "").strip()
+    if not token:
+        return False
+    try:
+        padded = token + ("=" * (-len(token) % 4))
+        raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        uid, exp_s, nonce, sig = raw.rsplit("|", 3)
+        payload = f"{uid}|{exp_s}|{nonce}"
+        expected = hmac.new(_totp_pending_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return False
+        if int(exp_s) < int(datetime.utcnow().timestamp()):
+            return False
+        return str(uid) == str(user_id)
+    except Exception:
+        return False
 
 def _audit(action, target="", detail=""):
     """Write an entry to audit_log. Fire-and-forget — never raises."""
@@ -13144,7 +13257,7 @@ def admin_api_login():
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@projecttracker.in").strip().lower()
     admin_pass  = os.environ.get("ADMIN_PASSWORD", "")
 
-    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()[:60]
+    client_ip = _client_ip()[:60]  # see _client_ip() — ProxyFix-corrected, not a raw client-controllable header
 
     if _admin_check_lockout(client_ip):
         return jsonify({"error": "Too many failed attempts. Try again in 15 minutes."}), 429
@@ -14753,12 +14866,29 @@ def billing_status():
 def stripe_webhook():
     payload = request.get_data()
     sig     = request.headers.get("Stripe-Signature","")
-    if STRIPE_WEBHOOK_SECRET:
-        parts = {p.split("=")[0]: p.split("=")[1] for p in sig.split(",") if "=" in p}
-        signed_payload = f"{parts.get('t','')}".encode() + b"." + payload
-        expected = _hmac.new(STRIPE_WEBHOOK_SECRET.encode(), signed_payload, _hashlib.sha256).hexdigest()
-        if not _hmac.compare_digest(expected, parts.get("v1","")):
-            return "Bad signature", 400
+    # Fail CLOSED, not open: previously, if STRIPE_WEBHOOK_SECRET simply wasn't
+    # configured (a plausible misconfiguration, not an edge case), signature
+    # verification was skipped entirely and any forged POST here could set a
+    # workspace's plan directly (security review finding #5). Billing isn't
+    # live in this deployment yet, so this 503 is the expected state until
+    # STRIPE_WEBHOOK_SECRET is set — that's strictly safer than accepting
+    # unverified events once it does go live.
+    if not STRIPE_WEBHOOK_SECRET:
+        log.error("[billing webhook] STRIPE_WEBHOOK_SECRET not configured — rejecting event instead of trusting it unverified.")
+        return "Webhook not configured", 503
+    parts = {p.split("=")[0]: p.split("=")[1] for p in sig.split(",") if "=" in p}
+    signed_payload = f"{parts.get('t','')}".encode() + b"." + payload
+    expected = _hmac.new(STRIPE_WEBHOOK_SECRET.encode(), signed_payload, _hashlib.sha256).hexdigest()
+    if not _hmac.compare_digest(expected, parts.get("v1","")):
+        return "Bad signature", 400
+    # Reject stale/replayed events — a captured valid payload+signature would
+    # otherwise remain replayable forever (Stripe recommends a 5-minute window).
+    try:
+        event_age = abs(int(time.time()) - int(parts.get("t", "0")))
+    except ValueError:
+        return "Bad timestamp", 400
+    if event_age > 300:
+        return "Timestamp too old", 400
     event = request.get_json(force=True)
     etype = event.get("type","")
     obj   = event.get("data",{}).get("object",{})
@@ -16847,9 +16977,12 @@ def link_github_repo():
     if not repo_full_name: return jsonify({"error": "repo_full_name required"}), 400
     rid = f"ghrepo{int(datetime.now().timestamp()*1000)}"
     token = d.get("github_token", "")
+    # Stored encrypted at rest (same vault_encrypt used for ai_api_key/smtp_password
+    # elsewhere) since, as of the webhook signature fix below, this value doubles as
+    # the HMAC key used to authenticate inbound GitHub webhook deliveries for this repo.
     _raw_pg(
         "INSERT INTO github_repos(id,workspace_id,repo_full_name,repo_url,github_token,connected_by,created) VALUES (?,?,?,?,?,?,?)",
-        (rid, wid(), repo_full_name, f"https://github.com/{repo_full_name}", token, session["user_id"], ts()))
+        (rid, wid(), repo_full_name, f"https://github.com/{repo_full_name}", vault_encrypt(token, wid()), session["user_id"], ts()))
     _audit("github_repo_linked", rid, f"Linked: {repo_full_name}")
     return jsonify({"ok": True, "id": rid, "repo_full_name": repo_full_name})
 
@@ -16866,8 +16999,33 @@ def github_webhook():
     payload = request.get_data()
     try: data = json.loads(payload)
     except Exception: return "Bad JSON", 400
-    ws_id = request.args.get("ws", "")
     repo_id = request.args.get("repo", "")
+    # ── Signature verification ────────────────────────────────────────────
+    # Previously this endpoint had NO authentication at all: anyone who could
+    # guess/discover a workspace_id could POST a fabricated event, and it was
+    # stored verbatim and later shown to that workspace's real users via
+    # /api/github/events (security review finding #6). Now: the repo must be
+    # a repo actually linked via POST /api/github/repos, and the request must
+    # carry a valid X-Hub-Signature-256 computed with that repo's stored
+    # token as the HMAC key (the same value you paste into GitHub's "Secret"
+    # field when creating the webhook). workspace_id is taken from the linked
+    # repo row itself, never from the request, closing off the same
+    # cross-tenant-injection path a spoofed `ws` query param would reopen.
+    if not repo_id:
+        return "repo required", 400
+    with get_db() as db:
+        repo = db.execute(
+            "SELECT id, workspace_id, github_token FROM github_repos WHERE id=?",
+            (repo_id,)
+        ).fetchone()
+    if not repo or not repo["github_token"]:
+        return "Unknown repo or no webhook secret configured", 404
+    secret = vault_decrypt(repo["github_token"], repo["workspace_id"])
+    sig_header = request.headers.get("X-Hub-Signature-256", "")
+    expected = "sha256=" + hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    if not sig_header or not hmac.compare_digest(sig_header, expected):
+        return "Invalid signature", 401
+    ws_id = repo["workspace_id"]
     text_to_search = ""
     if event_type == "push":
         text_to_search = " ".join(c.get("message","") for c in data.get("commits", []))
@@ -16877,10 +17035,9 @@ def github_webhook():
     task_id = ""
     m = re.search(r'T-\d{3,}(?:-\d+)?', text_to_search)
     if m: task_id = m.group(0)
-    if ws_id:
-        eid = f"ghe{int(datetime.now().timestamp()*1000)}"
-        _raw_pg("INSERT INTO github_events(id,workspace_id,repo_id,event_type,payload,task_id,created) VALUES (?,?,?,?,?,?,?)",
-                (eid, ws_id, repo_id, event_type, json.dumps(data)[:4000], task_id, ts()))
+    eid = f"ghe{int(datetime.now().timestamp()*1000)}"
+    _raw_pg("INSERT INTO github_events(id,workspace_id,repo_id,event_type,payload,task_id,created) VALUES (?,?,?,?,?,?,?)",
+            (eid, ws_id, repo_id, event_type, json.dumps(data)[:4000], task_id, ts()))
     return "ok", 200
 
 @app.route("/api/github/events")

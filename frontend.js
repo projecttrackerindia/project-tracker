@@ -476,6 +476,7 @@ function AuthScreen({onLogin}){
   const [successMsg,setSuccessMsg]=useState('');
   const [totpStep,setTotpStep]=useState(false);
   const [totpUserId,setTotpUserId]=useState('');
+  const [totpPendingToken,setTotpPendingToken]=useState('');
   const [totpUserName,setTotpUserName]=useState('');
   const [totpToken,setTotpToken]=useState('');
   const canvasRef=useRef(null);
@@ -778,7 +779,7 @@ function AuthScreen({onLogin}){
       const r=await api.post('/api/auth/login',{email,password:pw});
       if(!r){setErr('Server error. Please try again.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
       if(r.error){setErr(r.error);setPhase('error');setTimeout(()=>setPhase('idle'),350);}
-      else if(r.totp_required){setTotpUserId(r.user_id);setTotpUserName(r.name);setTotpStep(true);setPhase('idle');}
+      else if(r.totp_required){setTotpUserId(r.user_id);setTotpUserName(r.name);setTotpPendingToken(r.totp_pending_token||'');setTotpStep(true);setPhase('idle');}
       else{setSuccessMsg('Welcome back, '+r.name);setPhase('success');setTimeout(()=>onLogin(r),1900);}
     } else {
       if(!name||!email||!pw){setErr('All fields required.');setPhase('error');setTimeout(()=>setPhase('idle'),350);return;}
@@ -798,7 +799,7 @@ function AuthScreen({onLogin}){
     const tok=totpToken.replace(/\s/g,'');
     if(tok.length!==6){setErr('Enter the 6-digit code.');return;}
     setErr('');setPhase('loading');
-    const r=await api.post('/api/auth/totp/verify',{user_id:totpUserId,token:tok});
+    const r=await api.post('/api/auth/totp/verify',{user_id:totpUserId,token:tok,pending_token:totpPendingToken});
     if(!r){setErr('Server error. Please try again.');setPhase('idle');return;}
     if(r.error){setErr(r.error);setTotpToken('');setPhase('idle');}
     else{setSuccessMsg('Verified! Welcome back, '+totpUserName);setPhase('success');setTimeout(()=>onLogin(r),1800);}
@@ -7242,7 +7243,7 @@ function WorkspaceOSAdminImportsCard({cu}){
 }
 
 function WorkspaceSettings({cu,onReload}){
-  const [ws,setWs]=useState(null);const [wsName,setWsName]=useState('');const [aiKey,setAiKey]=useState('');const [showKey,setShowKey]=useState(false);const [saving,setSaving]=useState(false);const [saved,setSaved]=useState(false);
+  const [ws,setWs]=useState(null);const [wsName,setWsName]=useState('');const [aiKey,setAiKey]=useState('');const [aiKeyDirty,setAiKeyDirty]=useState(false);const [showKey,setShowKey]=useState(false);const [saving,setSaving]=useState(false);const [saved,setSaved]=useState(false);
   const [emailEnabled,setEmailEnabled]=useState(true);const [smtpServer,setSmtpServer]=useState('smtp.gmail.com');const [smtpPort,setSmtpPort]=useState(587);const [smtpUsername,setSmtpUsername]=useState('');const [smtpPassword,setSmtpPassword]=useState('');const [fromEmail,setFromEmail]=useState('');const [showSmtpPass,setShowSmtpPass]=useState(false);const [testEmail,setTestEmail]=useState('');const [testingEmail,setTestingEmail]=useState(false);const [testResult,setTestResult]=useState(null);const [otpEnabled,setOtpEnabled]=useState(false);
   const [dmEnabled,setDmEnabled]=useState(true);
   const PERM_DEFAULTS={
@@ -7255,12 +7256,24 @@ function WorkspaceSettings({cu,onReload}){
   };
   const resetPerms=()=>{setPerms(PERM_DEFAULTS);localStorage.removeItem('pf_perms');};
 
-  useEffect(()=>{api.get('/api/workspace').then(d=>{if(!d.error){setWs(d);setWsName(d.name||'');setAiKey(d.ai_api_key?'•'.repeat(20):'');setEmailEnabled(d.email_enabled!==0);setSmtpServer(d.smtp_server||'smtp.gmail.com');setSmtpPort(d.smtp_port||587);setSmtpUsername(d.smtp_username||'');setSmtpPassword(d.smtp_password?'•'.repeat(16):'');setFromEmail(d.from_email||'');setOtpEnabled(!!d.otp_enabled);setDmEnabled(d.dm_enabled!==0);}});},[]);
+  useEffect(()=>{api.get('/api/workspace').then(d=>{if(!d.error){setWs(d);setWsName(d.name||'');setAiKey(d.ai_api_key?'•'.repeat(20):'');setAiKeyDirty(false);setEmailEnabled(d.email_enabled!==0);setSmtpServer(d.smtp_server||'smtp.gmail.com');setSmtpPort(d.smtp_port||587);setSmtpUsername(d.smtp_username||'');setSmtpPassword(d.smtp_password?'•'.repeat(16):'');setFromEmail(d.from_email||'');setOtpEnabled(!!d.otp_enabled);setDmEnabled(d.dm_enabled!==0);}});},[]);
+
+  const removeAiKey=()=>{
+    if(!window.confirm('Remove the saved Anthropic API key? The AI assistant will stop working until a new key is added.'))return;
+    setAiKey('');setAiKeyDirty(true);
+  };
 
   const save=async()=>{
     setSaving(true);
     const payload={name:wsName,email_enabled:emailEnabled,smtp_server:smtpServer,smtp_port:smtpPort,smtp_username:smtpUsername,from_email:fromEmail,otp_enabled:otpEnabled,dm_enabled:dmEnabled};
+    // aiKey shows as a masked placeholder ('•'.repeat(20)) when a key is already saved, since the
+    // real value is never sent to the client. Typing a new key naturally clears/replaces that mask.
+    // Deleting the key is different: the field becomes '', which used to be dropped from the payload
+    // entirely (falsy check below), so Save silently kept the old key. aiKeyDirty distinguishes "user
+    // explicitly cleared this field" (via the Remove button) from "field untouched" so an intentional
+    // deletion actually reaches the server as ai_api_key:''.
     if(aiKey&&!aiKey.startsWith('•'))payload.ai_api_key=aiKey;
+    else if(aiKeyDirty&&!aiKey)payload.ai_api_key='';
     if(smtpPassword&&!smtpPassword.startsWith('•'))payload.smtp_password=smtpPassword;
     await api.put('/api/workspace',payload);
     setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
@@ -7378,10 +7391,13 @@ function WorkspaceSettings({cu,onReload}){
         <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🤖 AI Assistant</h3>
         <p style=${{fontSize:12,color:'var(--tx2)',marginBottom:14}}>Paste your Anthropic API key to enable the AI assistant. The key is stored securely in your workspace only.</p>
         <div><label class="lbl">Anthropic API Key</label>
-          <div style=${{position:'relative'}}>
-            <input class="inp" style=${{paddingRight:40,fontFamily:showKey?'monospace':'monospace',letterSpacing:aiKey.startsWith('•')?0:0}} type=${showKey?'text':'password'} placeholder="sk-ant-api..." value=${aiKey}
-              onInput=${e=>setAiKey(e.target.value)} onFocus=${()=>{if(aiKey.startsWith('•'))setAiKey('');}}/>
-            <button onClick=${()=>setShowKey(!showKey)} style=${{position:'absolute',right:11,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--tx3)'}}>${showKey?'🙈':'👁'}</button>
+          <div style=${{display:'flex',gap:8}}>
+            <div style=${{position:'relative',flex:1}}>
+              <input class="inp" style=${{paddingRight:40,fontFamily:showKey?'monospace':'monospace',letterSpacing:aiKey.startsWith('•')?0:0}} type=${showKey?'text':'password'} placeholder="sk-ant-api..." value=${aiKey}
+                onInput=${e=>{setAiKey(e.target.value);setAiKeyDirty(true);}} onFocus=${()=>{if(aiKey.startsWith('•'))setAiKey('');}}/>
+              <button onClick=${()=>setShowKey(!showKey)} style=${{position:'absolute',right:11,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--tx3)'}}>${showKey?'🙈':'👁'}</button>
+            </div>
+            ${aiKey?html`<button type="button" class="btn brd" style=${{fontSize:12,padding:'8px 12px',whiteSpace:'nowrap'}} onClick=${removeAiKey}>🗑 Remove</button>`:null}
           </div>
         </div>
         <div style=${{marginTop:10,padding:'7px 10px',background:'rgba(99,102,241,.07)',borderRadius:8,border:'1px solid rgba(90,140,255,.15)',fontSize:12,color:'var(--tx2)'}}>
@@ -7860,6 +7876,17 @@ ${hasFiles?'- The user has attached files. Analyze them and create documentation
 
   const renderMd=(md)=>{
     if(!md)return '';
+    // Escape HTML-significant characters BEFORE any markdown→HTML regex runs
+    // below (mirrors the top-level renderMd at the top of this file, which
+    // does the same). Without this step, any raw '<'/'>' in the source text
+    // — e.g. a task/project title or description that made it into the AI's
+    // context and got echoed back in its reply — was injected straight into
+    // dangerouslySetInnerHTML as live markup instead of literal text: an
+    // indirect-prompt-injection-to-XSS path (security review finding #9).
+    // Escaping first is safe for the markdown syntax below: none of it uses
+    // '&','<','>','"' as delimiters (headers use '#', bold/italic use '*',
+    // code uses backtick, tables use '|'), so every regex still matches.
+    md=escapeHtml(md);
     return md
       .replace(/^# (.+)$/gm,'<h1 style="font-size:20px;font-weight:800;color:var(--tx);margin:0 0 14px;letter-spacing:-.4px;padding-bottom:8px;border-bottom:2px solid rgba(255,100,60,.2)">$1</h1>')
       .replace(/^## (.+)$/gm,'<h2 style="font-size:16px;font-weight:700;color:var(--tx);margin:20px 0 8px;letter-spacing:-.3px">$1</h2>')
@@ -10507,12 +10534,22 @@ function BillingInvoicesView({cu}){
     try{const r=await api.put('/api/billing/invoices/'+id+'/status',{status});if(r&&r.error)setErr(r.error);}catch(e){setErr('Could not update invoice status');}
   };
   const printInvoice=(inv)=>{
+    // Every field below that comes from data (as opposed to a value we
+    // compute, like fmt()'s numeric output) is passed through escapeHtml
+    // before being concatenated into the HTML string written to the popup.
+    // These fields (customer_name, notes, description, ...) are all settable
+    // via PUT /api/billing/invoices/<id>, which only truncates/trims strings
+    // — it doesn't strip HTML — so without escaping here, a value like
+    // '<img src=x onerror=...>' would execute as stored XSS the next time any
+    // Admin/Manager in the workspace opens Print/Export on that invoice
+    // (security review finding #8).
+    const esc=escapeHtml;
     const cur=inv.currency||profile.currency||'INR';
     const fmt=(v)=>`${cur} ${Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const w=window.open('','_blank','width=800,height=900');
     if(!w)return;
-    const rows=(inv.items||[]).map(it=>`<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${it.description||'Service'}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${it.quantity||1}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmt(it.unit_price)}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${fmt(Number(it.quantity||0)*Number(it.unit_price||0))}</td></tr>`).join('');
-    w.document.write(`<!DOCTYPE html><html><head><title>${inv.invoice_no||'Invoice'}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:40px;color:#111;max-width:760px;margin:0 auto}table{width:100%;border-collapse:collapse}@media print{button{display:none}}</style>
+    const rows=(inv.items||[]).map(it=>`<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${esc(it.description||'Service')}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${esc(it.quantity||1)}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmt(it.unit_price)}</td><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${fmt(Number(it.quantity||0)*Number(it.unit_price||0))}</td></tr>`).join('');
+    w.document.write(`<!DOCTYPE html><html><head><title>${esc(inv.invoice_no||'Invoice')}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:40px;color:#111;max-width:760px;margin:0 auto}table{width:100%;border-collapse:collapse}@media print{button{display:none}}</style>
 <style id="wsos-v34-professional-fix">
 .wsos-wrap.compact{max-width:1180px;margin:14px auto 40px;padding:0 12px}.wsos-hero{min-height:58px;padding:12px 16px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.wsos-hero h2{margin:0;font-size:22px}.wsos-hero p{margin:3px 0 0;color:var(--tx2);font-size:12px}.wsos-actions{display:flex;gap:8px;align-items:center}.wsos-tabs{margin:10px 0;display:flex;gap:6px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px}.wsos-tabs button{border:0;background:transparent;color:var(--tx2);padding:8px 12px;border-radius:999px;font-weight:800;font-size:12px;cursor:pointer}.wsos-tabs button.active{background:rgba(104,96,255,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(104,96,255,.35)}.wsos-panel,.wsos-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px}.wsos-grid{display:grid;grid-template-columns:1fr;gap:12px}.wsos-grid.two{grid-template-columns:1fr 1fr}.wsos-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.wsos-card-head b{font-size:14px}.wsos-card-head span,.wsos-row span,.wsos-empty{display:block;color:var(--tx2);font-size:12px;margin-top:3px}.wsos-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.wsos-metrics>div{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:12px}.wsos-metrics b{display:block;font-size:22px}.wsos-quick{display:flex;gap:8px;margin:12px 0}.wsos-form{display:grid;grid-template-columns:repeat(12,1fr);gap:8px;margin-top:10px}.wsos-form .span1{grid-column:span 1}.wsos-form .span2{grid-column:span 2}.wsos-form .span3{grid-column:span 3}.wsos-form .span4{grid-column:span 4}.wsos-form .span5{grid-column:span 5}.wsos-form .span12{grid-column:span 12}.wsos-form label{display:block;font-size:11px;color:var(--tx2);font-weight:800;text-transform:uppercase;margin-bottom:4px}.wsos-form textarea{min-height:70px}.wsos-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}.wsos-row:last-child{border-bottom:0}.wsos-pill{display:inline-flex;align-items:center;border:1px solid rgba(104,96,255,.35);background:rgba(104,96,255,.14);color:var(--accent);border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;white-space:nowrap}.wsos-pill.good{color:#29b36a;background:rgba(41,179,106,.12);border-color:rgba(41,179,106,.28)}.wsos-pill.warn{color:#ff9a3c;background:rgba(255,154,60,.12);border-color:rgba(255,154,60,.28)}.wsos-balance{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}.wsos-balance-card{border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(255,255,255,.035)}.wsos-balance-card span{display:block;color:var(--tx2);font-size:11px;margin-top:4px}.wsos-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin:8px 0}.wsos-bar i{display:block;height:100%;background:linear-gradient(90deg,#6860ff,#a855f7);border-radius:99px}.wsos-table{width:100%;border-collapse:collapse;margin-top:10px}.wsos-table th,.wsos-table td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.wsos-table th{color:var(--tx2);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.wsos-lock,.wsos-empty{border:1px dashed var(--line);border-radius:14px;padding:18px;text-align:center;color:var(--tx2)}
     .wos-file-input{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}.wos-file-label{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--wos-soft);border:1px dashed color-mix(in srgb,var(--wos-ac) 55%,var(--wos-line));color:var(--wos-tx);border-radius:12px;padding:10px 12px;min-height:40px;font-weight:900;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wos-file-label small{color:var(--wos-muted);font-weight:800;overflow:hidden;text-overflow:ellipsis}.wos-section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.wos-balance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.wos-balance{background:var(--wos-soft);border:1px solid var(--wos-line);border-radius:15px;padding:12px}.wos-balance b{display:block;font-size:20px}.wos-balance small{color:var(--wos-muted);font-size:11px;font-weight:900}.wos-two-col{display:grid;grid-template-columns:minmax(560px,1.35fr) minmax(480px,.95fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-doc-grid{display:grid;grid-template-columns:minmax(560px,1.1fr) minmax(520px,.9fr);gap:18px;max-width:1480px;margin-left:auto;margin-right:auto}.wos-action-strip{background:color-mix(in srgb,var(--wos-ac) 8%,var(--wos-card));border:1px solid color-mix(in srgb,var(--wos-ac) 35%,var(--wos-line));border-radius:16px;padding:12px;margin-top:12px}.wos-mini-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}.wos-mini-day{min-height:46px;border-radius:12px;background:var(--wos-soft);border:1px solid var(--wos-line);padding:6px;font-size:11px}.wos-mini-day.has{background:color-mix(in srgb,#22c55e 12%,var(--wos-soft));border-color:rgba(34,197,94,.25)}@media(max-width:1050px){.wos-two-col,.wos-doc-grid{grid-template-columns:1fr}.wos-balance-grid{grid-template-columns:repeat(2,1fr)}}
@@ -10532,7 +10569,7 @@ function BillingInvoicesView({cu}){
   @media(max-width:860px){.wos-drawer{left:12px!important;right:12px!important;top:12px!important;bottom:12px!important;width:auto!important}.wos-drawer .wos-edit-grid,.wos-drawer .wos-edit-grid[style*="repeat(4"],.wos-field-grid{grid-template-columns:1fr!important}}
 </style>
 
-</head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px"><div><h1 style="margin:0 0 4px;font-size:28px;font-weight:900">${inv.invoice_no||'Invoice'}</h1><span style="font-size:13px;color:#6b7280;background:#f3f4f6;padding:3px 10px;border-radius:999px">${(inv.status||'draft').toUpperCase()}</span></div><div style="text-align:right;font-size:13px;color:#374151"><b style="font-size:22px;color:#111">${fmt(inv.total)}</b><br/>Issued: ${inv.issue_date||'—'}<br/>${inv.due_date?'Due: '+inv.due_date:''}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;padding:20px;background:#f9fafb;border-radius:12px"><div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">Billed To</div><div style="font-weight:700">${inv.customer_name||'Customer'}</div><div style="color:#6b7280">${inv.customer_email||''}</div></div><div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">From</div><div style="font-weight:700">${profile.legal_name||'Company'}</div><div style="color:#6b7280">${profile.billing_email||''}</div>${profile.tax_id?`<div style="color:#6b7280">GST/Tax: ${profile.tax_id}</div>`:''}</div></div><table><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Description</th><th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Qty</th><th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Unit Price</th><th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Amount</th></tr></thead><tbody>${rows}</tbody></table><div style="display:flex;justify-content:flex-end;margin-top:16px"><div style="width:280px"><div style="display:flex;justify-content:space-between;padding:8px 0;color:#6b7280"><span>Subtotal</span><span>${fmt(inv.subtotal||0)}</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;color:#6b7280"><span>Tax</span><span>${fmt(inv.tax_total||0)}</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;font-size:18px;font-weight:900;border-top:2px solid #111"><span>Total</span><span>${fmt(inv.total)}</span></div></div></div>${inv.notes?`<div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280"><b>Notes:</b><br/>${inv.notes}</div>`:''}<div style="margin-top:32px;text-align:center"><button onclick="window.print()" style="padding:10px 28px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Print / Save PDF</button></div></body></html>`);
+</head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px"><div><h1 style="margin:0 0 4px;font-size:28px;font-weight:900">${esc(inv.invoice_no||'Invoice')}</h1><span style="font-size:13px;color:#6b7280;background:#f3f4f6;padding:3px 10px;border-radius:999px">${esc((inv.status||'draft').toUpperCase())}</span></div><div style="text-align:right;font-size:13px;color:#374151"><b style="font-size:22px;color:#111">${fmt(inv.total)}</b><br/>Issued: ${esc(inv.issue_date||'—')}<br/>${inv.due_date?'Due: '+esc(inv.due_date):''}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;padding:20px;background:#f9fafb;border-radius:12px"><div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">Billed To</div><div style="font-weight:700">${esc(inv.customer_name||'Customer')}</div><div style="color:#6b7280">${esc(inv.customer_email||'')}</div></div><div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">From</div><div style="font-weight:700">${esc(profile.legal_name||'Company')}</div><div style="color:#6b7280">${esc(profile.billing_email||'')}</div>${profile.tax_id?`<div style="color:#6b7280">GST/Tax: ${esc(profile.tax_id)}</div>`:''}</div></div><table><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Description</th><th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Qty</th><th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Unit Price</th><th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Amount</th></tr></thead><tbody>${rows}</tbody></table><div style="display:flex;justify-content:flex-end;margin-top:16px"><div style="width:280px"><div style="display:flex;justify-content:space-between;padding:8px 0;color:#6b7280"><span>Subtotal</span><span>${fmt(inv.subtotal||0)}</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;color:#6b7280"><span>Tax</span><span>${fmt(inv.tax_total||0)}</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;font-size:18px;font-weight:900;border-top:2px solid #111"><span>Total</span><span>${fmt(inv.total)}</span></div></div></div>${inv.notes?`<div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280"><b>Notes:</b><br/>${esc(inv.notes)}</div>`:''}<div style="margin-top:32px;text-align:center"><button onclick="window.print()" style="padding:10px 28px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Print / Save PDF</button></div></body></html>`);
     w.document.close();
   };
 

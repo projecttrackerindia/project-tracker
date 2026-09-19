@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+*.log
+.DS_Store
+Thumbs.db
+node_modules/
+.pf_secret
+.pf_admin_secret
+.pf_vapid
+.vault_enc_key
