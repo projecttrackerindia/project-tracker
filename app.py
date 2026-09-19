@@ -1392,6 +1392,20 @@ def compress_response(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["X-PT-Fast-Realtime"] = "1"
         return response
+    # A send_file()/send_from_directory() response streams its body in
+    # Werkzeug's "direct passthrough" mode (so the WSGI server can hand the
+    # file straight to the client without buffering it in memory) — calling
+    # response.get_data() on one of those raises RuntimeError ("Attempted
+    # implicit sequence conversion but the response object is in direct
+    # passthrough mode"), which took down every request to /frontend.js in
+    # production the moment that route started actually serving a real file
+    # (found and fixed live during this session's E2E check — see
+    # serve_frontend_js()). Skip compression for these; the file is served
+    # once per browser and cached long-term afterward (or with immutable
+    # caching for the versioned URL), so per-request compression isn't
+    # buying much here anyway, and not crashing matters a great deal more.
+    if getattr(response, "direct_passthrough", False):
+        return response
     accept_encoding = request.headers.get("Accept-Encoding", "")
     if "gzip" not in accept_encoding:
         return response
