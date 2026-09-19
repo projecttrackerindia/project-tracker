@@ -792,6 +792,29 @@ def _ultra_fast_identity_profile_guard():
 _object_store = ObjectStore(UPLOAD_DIR)
 _job_queue = JobQueue(os.environ.get("REDIS_URL", ""), name=os.environ.get("RQ_DEFAULT_QUEUE", "default"))
 
+def _purge_stored_file(storage_provider, storage_key, file_id):
+    """Remove a file's bytes from wherever they live (S3 bucket and/or local disk).
+
+    Raises if an S3-backed file could not be deleted from the bucket, so callers can
+    avoid dropping the DB row and leaving an orphaned object behind.
+    """
+    storage_provider = (storage_provider or "local")
+    storage_key = storage_key or file_id
+    if storage_provider != "local":
+        if not getattr(_object_store, "ready", False):
+            raise RuntimeError("Object storage is not configured/reachable; cannot delete file from bucket")
+        _object_store.delete_object(storage_key)          # idempotent in S3
+    # Always clean any local copy too (legacy rows, or upload-time temp leftovers).
+    for name in {file_id, storage_key if storage_key == file_id else None, f"{file_id}.scan"}:
+        if not name:
+            continue
+        try:
+            path = os.path.join(UPLOAD_DIR, name)
+            if os.path.isfile(path):
+                os.remove(path)
+        except Exception:
+            log.warning("[files] could not remove local file %s", name, exc_info=True)
+
 @app.before_request
 def _mark_request_start_for_metrics():
     g.request_started_at = time.time()
@@ -836,6 +859,14 @@ def readyz():
         checks["redis_error"] = str(e)[:160]
     checks["queue"] = bool(getattr(_job_queue, "ready", False))
     checks["object_store_ready"] = bool(getattr(_object_store, "ready", False))
+    try:
+        _os_ok, _os_err = _object_store.check()
+        checks["object_store_reachable"] = _os_ok
+        if _os_err:
+            checks["object_store_error"] = _os_err
+    except Exception as e:
+        checks["object_store_reachable"] = False
+        checks["object_store_error"] = str(e)[:160]
     return jsonify({"ok": status == 200, "checks": checks}), status
 
 @app.route("/metrics")
@@ -1316,6 +1347,7 @@ def add_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob: https:; "
+        "media-src 'self' blob: https:; "
         "connect-src 'self' wss: https://api.anthropic.com https://accounts.google.com; "
         "frame-ancestors 'self'; "
         "frame-src https://accounts.google.com;"
@@ -9043,9 +9075,24 @@ def del_project(pid):
         cu_role=cu["role"] if cu else "Viewer"
         if cu_role not in ("Admin","Manager"):
             return jsonify({"error":"Only Admin or Manager can delete projects."}),403
+        # Collect every file attached to the project or to any of its tasks BEFORE the rows
+        # are deleted, so their bytes can be removed from the S3 bucket afterwards.
+        _doomed_files=[dict(r) for r in db.execute(
+            "SELECT id,storage_provider,storage_key FROM files WHERE workspace_id=? AND "
+            "(project_id=? OR task_id IN (SELECT id FROM tasks WHERE project=? AND workspace_id=?))",
+            (workspace_id,pid,pid,workspace_id)).fetchall()]
         db.execute("DELETE FROM projects WHERE id=? AND workspace_id=?",(pid,workspace_id))
+        for _f in _doomed_files:
+            db.execute("DELETE FROM files WHERE id=? AND workspace_id=?",(_f["id"],workspace_id))
         db.execute("DELETE FROM tasks WHERE project=? AND workspace_id=?",(pid,workspace_id))
         db.execute("DELETE FROM files WHERE project_id=? AND workspace_id=?",(pid,workspace_id))
+    _storage_failures=0
+    for _f in _doomed_files:
+        try:
+            _purge_stored_file(_f.get("storage_provider"), _f.get("storage_key"), _f["id"])
+        except Exception:
+            _storage_failures+=1
+            log.exception("[files] project %s deleted but file %s could not be removed from storage", pid, _f["id"])
     # Tombstone FIRST: even if a stale in-flight read re-caches this project
     # (e.g. a background SWR refresh that started reading the DB right before
     # the DELETE committed), _filter_deleted_tombstones() strips it out of
@@ -9063,7 +9110,7 @@ def del_project(pid):
     # _cache_bust_ws already clears projects_all/projects_last_msgs for every
     # team_id variant (substring match), so no separate _cache_delete needed.
     _cache_bust_ws(workspace_id)
-    return jsonify({"ok":True})
+    return jsonify({"ok":True,"files_removed":len(_doomed_files)-_storage_failures,"files_failed":_storage_failures})
 # BUG FIX: this route was missing its @app.route decorator entirely, so it
 # was never registered with Flask. POST /api/projects/bulk-assign-team fell
 # through to the wildcard /api/projects/<pid> DELETE-only route above (path
@@ -9865,20 +9912,22 @@ def download_file(fid):
 @login_required
 @require_role("Admin", "Manager", "TeamLead")
 def del_file(fid):
-    storage_key = fid
-    storage_provider = "local"
+    ws_id = wid()
     with get_db() as db:
-        row=db.execute("SELECT * FROM files WHERE id=? AND workspace_id=?",(fid,wid())).fetchone()
-        if row:
-            rowd=dict(row)
-            storage_key=rowd.get("storage_key") or fid
-            storage_provider=rowd.get("storage_provider") or "local"
-        db.execute("DELETE FROM files WHERE id=? AND workspace_id=?",(fid,wid()))
-    if storage_provider != "local" and getattr(_object_store, "ready", False):
-        _object_store.delete(storage_key)
-    else:
-        path=os.path.join(UPLOAD_DIR,fid)
-        if os.path.exists(path): os.remove(path)
+        row=db.execute("SELECT * FROM files WHERE id=? AND workspace_id=?",(fid,ws_id)).fetchone()
+    if not row:
+        return jsonify({"ok":True})          # already gone - delete is idempotent
+    rowd=dict(row)
+    # 1) Remove the bytes first (bucket + local). If the bucket delete fails we keep the DB
+    #    row so the user can retry, instead of leaving an orphaned object in S3 forever.
+    try:
+        _purge_stored_file(rowd.get("storage_provider"), rowd.get("storage_key"), fid)
+    except Exception as e:
+        log.exception("[files] failed to delete %s from object storage", fid)
+        return jsonify({"error":"Could not delete the file from storage. Please try again.", "details": str(e)[:180]}),502
+    # 2) Then remove the metadata row.
+    with get_db() as db:
+        db.execute("DELETE FROM files WHERE id=? AND workspace_id=?",(fid,ws_id))
     return jsonify({"ok":True})
 
 # ── Messages# ── Messages ──────────────────────────────────────────────────────────────────

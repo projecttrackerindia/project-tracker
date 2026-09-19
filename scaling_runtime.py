@@ -97,37 +97,76 @@ class JobQueue:
 
 
 class ObjectStore:
-    """S3/R2 object storage helper with local fallback.
+    """S3-compatible object storage helper (Railway Buckets, Cloudflare R2, MinIO, AWS S3)
+    with a local-disk fallback.
 
-    Required env for S3/R2:
-      OBJECT_STORE_PROVIDER=s3
-      S3_BUCKET=...
-      AWS_ACCESS_KEY_ID=...
-      AWS_SECRET_ACCESS_KEY=...
-      S3_ENDPOINT_URL=...   # optional for Cloudflare R2/MinIO
-      S3_REGION=auto       # optional
+    Env vars (first name that is set wins):
+      OBJECT_STORE_PROVIDER   s3 | r2 | minio   (anything else => local disk)
+      S3_BUCKET               or AWS_S3_BUCKET_NAME
+      S3_ENDPOINT_URL         or S3_ENDPOINT or AWS_ENDPOINT_URL
+      S3_REGION               or AWS_DEFAULT_REGION   (default: auto)
+      S3_ACCESS_KEY_ID        or AWS_ACCESS_KEY_ID
+      S3_SECRET_ACCESS_KEY    or AWS_SECRET_ACCESS_KEY
+      S3_ADDRESSING_STYLE     virtual (default, required by Railway Buckets) | path
     """
+
     def __init__(self, local_dir: str) -> None:
         self.local_dir = local_dir
         self.provider = os.getenv("OBJECT_STORE_PROVIDER", "local").lower().strip() or "local"
-        self.bucket = os.getenv("S3_BUCKET", "")
-        self.endpoint = os.getenv("S3_ENDPOINT_URL", "")
-        self.region = os.getenv("S3_REGION", "auto")
+        self.bucket = _first_env("S3_BUCKET", "AWS_S3_BUCKET_NAME")
+        self.endpoint = _first_env("S3_ENDPOINT_URL", "S3_ENDPOINT", "AWS_ENDPOINT_URL")
+        self.region = _first_env("S3_REGION", "AWS_DEFAULT_REGION") or "auto"
+        self.access_key = _first_env("S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
+        self.secret_key = _first_env("S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
+        self.addressing = (_first_env("S3_ADDRESSING_STYLE") or "virtual").lower()
         self.client = None
-        if self.provider in {"s3", "r2", "minio"} and self.bucket:
-            try:
-                import boto3  # type: ignore
-                kwargs: Dict[str, Any] = {"region_name": self.region}
-                if self.endpoint:
-                    kwargs["endpoint_url"] = self.endpoint
-                self.client = boto3.client("s3", **kwargs)
-            except Exception:
-                self.client = None
+        self.init_error = ""
+        if self.provider in {"s3", "r2", "minio"}:
+            missing = [n for n, v in (("bucket", self.bucket), ("access key", self.access_key),
+                                      ("secret key", self.secret_key)) if not v]
+            if missing:
+                self.init_error = "missing " + ", ".join(missing)
+            else:
+                try:
+                    import boto3  # type: ignore
+                    from botocore.config import Config  # type: ignore
+                    self.client = boto3.client(
+                        "s3",
+                        region_name=self.region,
+                        endpoint_url=self.endpoint or None,
+                        aws_access_key_id=self.access_key,
+                        aws_secret_access_key=self.secret_key,
+                        config=Config(
+                            signature_version="s3v4",
+                            s3={"addressing_style": self.addressing},
+                            retries={"max_attempts": 3, "mode": "standard"},
+                        ),
+                    )
+                except Exception as exc:  # boto3 missing, bad config, ...
+                    self.init_error = f"{type(exc).__name__}: {exc}"
+                    self.client = None
+            if self.client is None:
+                # Do NOT fail silently: uploads would quietly land on the container disk.
+                print(f"[object-store] WARNING: OBJECT_STORE_PROVIDER={self.provider!r} but S3 client "
+                      f"is not usable ({self.init_error}). Falling back to LOCAL DISK.", flush=True)
                 self.provider = "local"
+            else:
+                print(f"[object-store] S3 ready: bucket={self.bucket} endpoint={self.endpoint or 'aws-default'} "
+                      f"region={self.region} style={self.addressing}", flush=True)
 
     @property
     def ready(self) -> bool:
         return self.client is not None and bool(self.bucket)
+
+    def check(self) -> Tuple[bool, str]:
+        """Live connectivity + credentials check (used by /readyz)."""
+        if not self.ready:
+            return False, self.init_error or "not configured (local disk mode)"
+        try:
+            self.client.head_bucket(Bucket=self.bucket)
+            return True, ""
+        except Exception as exc:
+            return False, f"{type(exc).__name__}: {str(exc)[:200]}"
 
     def make_key(self, workspace_id: str, file_id: str, filename: str) -> str:
         safe = "".join(ch if ch.isalnum() or ch in {".", "-", "_"} else "_" for ch in filename)[:120]
@@ -146,9 +185,10 @@ class ObjectStore:
     def get_presigned_download(self, key: str, filename: str, expires: int = 300) -> Optional[str]:
         if not self.ready:
             return None
+        safe_name = (filename or "download").replace('"', "").replace("\r", "").replace("\n", "")
         return self.client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": self.bucket, "Key": key, "ResponseContentDisposition": f'attachment; filename="{filename}"'},
+            Params={"Bucket": self.bucket, "Key": key, "ResponseContentDisposition": f'attachment; filename="{safe_name}"'},
             ExpiresIn=expires,
         )
 
@@ -162,7 +202,17 @@ class ObjectStore:
         )
         return {"url": url, "method": "PUT", "headers": {"Content-Type": mime or "application/octet-stream"}, "key": key, "expires_in": expires}
 
+    def delete_object(self, key: str) -> None:
+        """Delete one object from the bucket. Raises on failure (S3 delete is idempotent:
+        deleting a key that does not exist is not an error)."""
+        if not self.ready:
+            raise RuntimeError("object store is not configured")
+        if not key:
+            return
+        self.client.delete_object(Bucket=self.bucket, Key=key)
+
     def delete(self, key_or_path: str) -> None:
+        """Legacy helper: delete an S3 key when the store is ready, else a local file."""
         if self.ready and key_or_path and not os.path.isabs(key_or_path):
             self.client.delete_object(Bucket=self.bucket, Key=key_or_path)
             return
@@ -171,6 +221,14 @@ class ObjectStore:
                 os.remove(key_or_path)
         except Exception:
             pass
+
+
+def _first_env(*names: str) -> str:
+    for n in names:
+        v = os.getenv(n)
+        if v and v.strip():
+            return v.strip()
+    return ""
 
 
 def parse_cursor_args(args, default_limit: int = 50, max_limit: int = 200) -> Tuple[int, str]:
