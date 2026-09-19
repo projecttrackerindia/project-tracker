@@ -1361,7 +1361,7 @@ def add_security_headers(response):
     # origins' windows/tabs, closing a class of cross-origin attacks
     # (flagged by Lighthouse Best Practices as "Ensure proper origin isolation with COOP").
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    if request.is_secure:
+    if _is_https:
         # 2-year max-age + preload = Lighthouse's bar for a "strong" HSTS policy.
         # NOTE: submit projecttracker.in to https://hstspreload.org after deploying
         # this — the preload directive only takes effect once you're on that list.
