@@ -5441,6 +5441,11 @@ def _ensure_task_stability_schema(db):
             "CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(workspace_id, deleted_at, created)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_client_key ON tasks(workspace_id, client_task_key)",
             "CREATE INDEX IF NOT EXISTS idx_projects_deleted ON projects(workspace_id, deleted_at, created)",
+            # row_version backs optimistic locking on task edits (architecture
+            # review, DATA-03): without it, two people editing the same task
+            # at the same time silently lose whichever change committed
+            # first, with no warning to either person. See update_task().
+            "ALTER TABLE tasks ADD COLUMN row_version INTEGER DEFAULT 1",
         ]
         for st in stmts:
             try:
@@ -9641,6 +9646,31 @@ def update_task(tid):
             else:
                 return jsonify({"error":"You do not have permission to edit this task. Only the assignee, project owner, or managers can edit tasks."}),403
 
+        # Optimistic locking (architecture review, DATA-03): two people
+        # editing the same task at the same time used to have whichever
+        # request committed second silently overwrite the other's change
+        # back to a stale value, with no warning to either person. If the
+        # caller tells us which version they last saw (expected_version) and
+        # it no longer matches, someone else's edit already landed — return
+        # 409 with the current row instead of blindly overwriting it. A
+        # client that doesn't send expected_version at all (e.g. before the
+        # frontend is updated to) gets today's exact behavior unchanged, so
+        # this can't break editing the way an unconditional requirement
+        # would if the frontend wiring had a bug.
+        expected_version = d.get("expected_version")
+        current_version = t["row_version"] if ("row_version" in t.keys() and t["row_version"] is not None) else 1
+        if expected_version is not None:
+            try:
+                conflict = int(expected_version) != int(current_version)
+            except (TypeError, ValueError):
+                conflict = False  # malformed value — don't block the edit over it
+            if conflict:
+                return jsonify({
+                    "error": "CONFLICT",
+                    "message": "This task was updated by someone else. Reload to see the latest version before saving your changes.",
+                    "task": dict(t),
+                }), 409
+
         old_stage=t["stage"]
         old_assignee=t["assignee"]
         def tf(key,default=''):
@@ -9652,7 +9682,7 @@ def update_task(tid):
         if comments_val is None: comments_val=json.loads(t["comments"] or "[]")
         db.execute("""UPDATE tasks SET title=?,description=?,project=?,assignee=?,
                       priority=?,stage=?,due=?,pct=?,comments=?,team_id=?,
-                      story_points=?,task_type=?,labels=?,sprint=? WHERE id=? AND workspace_id=?""",
+                      story_points=?,task_type=?,labels=?,sprint=?,row_version=? WHERE id=? AND workspace_id=?""",
                    (d.get("title",t["title"]),d.get("description",t["description"]),
                     d.get("project",t["project"]),d.get("assignee",t["assignee"]),
                     d.get("priority",t["priority"]),d.get("stage",t["stage"]),
@@ -9663,6 +9693,7 @@ def update_task(tid):
                     d.get("task_type",tf("task_type","task")),
                     labels_val,
                     d.get("sprint",tf("sprint","")),
+                    current_version+1,
                     tid,wid()))
         # Log activity events
         new_stage_val = d.get("stage", old_stage)

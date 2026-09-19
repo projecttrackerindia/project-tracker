@@ -2416,6 +2416,7 @@ function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSet
       } else {
         payload.stage=stage;payload.pct=pct;
       }
+      payload.expected_version=task.row_version;
       await api.put('/api/tasks/'+task.id,payload);
     }
   };
@@ -2429,6 +2430,12 @@ function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSet
       payload={title:title.trim(),description:desc,project:pid,assignee:ass,priority:pri,stage,due,pct,comments:cmts,team_id:teamId,story_points:storyPoints,task_type:taskType,labels:taskLabels,sprint};
     }
     if(task&&task.id)payload.id=task.id;
+    // Optimistic locking: tell the server which version of this task we last
+    // saw, so a concurrent edit by someone else is detected as a 409 instead
+    // of silently overwritten (see update_task() in app.py). task.row_version
+    // comes from the same task row this modal was opened with; undefined for
+    // a brand-new task, which is fine — that path is a create, not this PUT.
+    if(isEdit&&task)payload.expected_version=task.row_version;
     if(!rmEnabled&&!opts.keepOpen){
       if((payload.stage==='completed'||payload.stage==='production')&&typeof window!=='undefined'){
         try{window.dispatchEvent(new CustomEvent('pt:task-celebrate',{detail:{title:payload.title||title||'Task',project:payload.project||pid||'',id:payload.id||''}}));}catch(_){ }
@@ -2441,7 +2448,7 @@ function TaskModal({task,onClose,onSave,onDel,projects,users,cu,defaultPid,onSet
     }
     const result=await onSave(payload);
     setSaving(false);
-    if(result&&result.error){setErr(result.error);return null;}
+    if(result&&result.error){setErr(result.message||result.error);return null;}
     if(!isEdit&&rmEnabled&&rmDate&&rmTime){
       const dt=new Date(rmDate+'T'+rmTime);
       const taskId=(result&&result.id)||'';
@@ -2796,6 +2803,15 @@ function ProjectDetail({project,allTasks,allUsers,cu,onClose,onReload,setData,on
       // UPDATE: optimistic patch
       setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id?{...t,...p}:t)}));
       r=await api.put('/api/tasks/'+p.id,p);
+      if(r&&r.error==='CONFLICT'){
+        // Someone else's edit landed first (see update_task()'s optimistic-
+        // locking check) — the write above was rejected, so undo the
+        // optimistic patch immediately (don't wait for the 2s background
+        // reload below) so the screen doesn't keep showing an edit that
+        // didn't actually save.
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id&&r.task?{...r.task}:t)}));
+        onReload();
+      }
     } else {
       // CREATE: post then show immediately
       // Pre-optimistic: show task immediately before API responds
@@ -3449,6 +3465,12 @@ function TasksView({tasks,projects,users,cu,reload,setData,onSetReminder,initial
       // UPDATE: optimistic patch immediately
       setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id?{...t,...p}:t)}));
       r=await api.put('/api/tasks/'+p.id,p);
+      if(r&&r.error==='CONFLICT'){
+        // Someone else's edit landed first — undo the optimistic patch with
+        // the server's authoritative task state instead of leaving the
+        // screen showing an edit that didn't actually save.
+        setData&&setData(prev=>({...prev,tasks:prev.tasks.map(t=>t.id===p.id&&r.task?{...r.task}:t)}));
+      }
     } else {
       // CREATE: pre-optimistic — show task card INSTANTLY before API returns
       const tempTaskId='tmp_'+Date.now();
