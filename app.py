@@ -2367,7 +2367,7 @@ def _close_ddl_conn():
 
 def _ensure_logout_column():
     """Add logged_out_at column to users if it doesn't exist (migration)."""
-    _run_ddl("ALTER TABLE users ADD COLUMN logged_out_at TEXT DEFAULT ''")
+    _run_ddl("ALTER TABLE users ADD COLUMN IF NOT EXISTS logged_out_at TEXT DEFAULT ''")
 
 def ensure_timelog_schema():
     """Ensure time_logs has ALL required columns. Safe to call repeatedly."""
@@ -2377,18 +2377,18 @@ def ensure_timelog_schema():
     # Step 2: every column added individually — each gets its own fresh connection
     # This handles ANY state of the live DB regardless of when it was created
     for ddl in [
-        "ALTER TABLE time_logs ADD COLUMN workspace_id TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN user_id      TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN team_id      TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN date         TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN task_name    TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN project_id   TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN task_id      TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN hours        REAL DEFAULT 0",
-        "ALTER TABLE time_logs ADD COLUMN minutes      INTEGER DEFAULT 0",
-        "ALTER TABLE time_logs ADD COLUMN comments     TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN created      TEXT DEFAULT ''",
-        "ALTER TABLE workspaces ADD COLUMN required_hours_per_day REAL DEFAULT 8",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS workspace_id TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS user_id      TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS team_id      TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS date         TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS task_name    TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS project_id   TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS task_id      TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS hours        REAL DEFAULT 0",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS minutes      INTEGER DEFAULT 0",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS comments     TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS created      TEXT DEFAULT ''",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS required_hours_per_day REAL DEFAULT 8",
     ]:
         _run_ddl(ddl)
 
@@ -2399,32 +2399,32 @@ def ensure_ticket_timesheet_enhancements():
     Safe migration: adds missing columns/tables only, and never blocks app boot."""
     # Ticketing: split customer/vendor enquiries from workspace functionality tickets.
     for ddl in [
-        "ALTER TABLE tickets ADD COLUMN scope TEXT DEFAULT 'workspace'",
-        "ALTER TABLE tickets ADD COLUMN request_type TEXT DEFAULT 'functional'",
-        "ALTER TABLE tickets ADD COLUMN source TEXT DEFAULT 'workspace'",
-        "ALTER TABLE tickets ADD COLUMN sla_hours INTEGER DEFAULT 24",
-        "ALTER TABLE tickets ADD COLUMN first_response_due TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN resolution_due_at TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN resolved_at TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN customer_visible INTEGER DEFAULT 1",
-        "ALTER TABLE tickets ADD COLUMN internal_priority TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN assigned_agent TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN watchers_json TEXT DEFAULT '[]'",
-        "ALTER TABLE tickets ADD COLUMN last_customer_reply_at TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN last_agent_reply_at TEXT DEFAULT ''",
-        "ALTER TABLE tickets ADD COLUMN escalation_level INTEGER DEFAULT 0",
-        "ALTER TABLE ticket_comments ADD COLUMN visibility TEXT DEFAULT 'public'",
-        "ALTER TABLE ticket_comments ADD COLUMN is_internal INTEGER DEFAULT 0",
-        "ALTER TABLE time_logs ADD COLUMN status TEXT DEFAULT 'draft'",
-        "ALTER TABLE time_logs ADD COLUMN billable INTEGER DEFAULT 1",
-        "ALTER TABLE time_logs ADD COLUMN start_time TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN end_time TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN tags TEXT DEFAULT '[]'",
-        "ALTER TABLE time_logs ADD COLUMN submitted_at TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN approved_by TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN approved_at TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN rejected_reason TEXT DEFAULT ''",
-        "ALTER TABLE time_logs ADD COLUMN hourly_rate REAL DEFAULT 0"
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'workspace'",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS request_type TEXT DEFAULT 'functional'",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'workspace'",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sla_hours INTEGER DEFAULT 24",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_response_due TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS resolution_due_at TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS resolved_at TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS customer_visible INTEGER DEFAULT 1",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS internal_priority TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assigned_agent TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS watchers_json TEXT DEFAULT '[]'",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS last_customer_reply_at TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS last_agent_reply_at TEXT DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalation_level INTEGER DEFAULT 0",
+        "ALTER TABLE ticket_comments ADD COLUMN IF NOT EXISTS visibility TEXT DEFAULT 'public'",
+        "ALTER TABLE ticket_comments ADD COLUMN IF NOT EXISTS is_internal INTEGER DEFAULT 0",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'draft'",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS billable INTEGER DEFAULT 1",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT '[]'",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS submitted_at TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS approved_by TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS approved_at TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS rejected_reason TEXT DEFAULT ''",
+        "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS hourly_rate REAL DEFAULT 0"
     ]:
         _run_ddl(ddl)
     for ddl in [
@@ -4882,38 +4882,38 @@ def init_db():
         """)
         # ── Consolidated migrations (safe — each wrapped in try/except) ──────
         for stmt in [
-            "ALTER TABLE projects ADD COLUMN team_id TEXT DEFAULT ''",
-            "ALTER TABLE tickets ADD COLUMN team_id TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN team_id TEXT DEFAULT ''",
-            "ALTER TABLE messages ADD COLUMN is_system INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN avatar_data TEXT",
-            "ALTER TABLE users ADD COLUMN plain_password TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN two_fa_enabled INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN totp_secret TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN totp_verified INTEGER DEFAULT 0",
-            "ALTER TABLE tasks ADD COLUMN parent_id TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN story_points INTEGER DEFAULT 0",
-            "ALTER TABLE tasks ADD COLUMN sprint TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'task'",
-            "ALTER TABLE tasks ADD COLUMN labels TEXT DEFAULT '[]'",
-            "ALTER TABLE tasks ADD COLUMN deleted_at TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN client_task_key TEXT DEFAULT ''",
-            "ALTER TABLE projects ADD COLUMN deleted_at TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN otp_enabled INTEGER DEFAULT 0",
-            "ALTER TABLE workspaces ADD COLUMN dm_enabled INTEGER DEFAULT 1",
-            "ALTER TABLE workspaces ADD COLUMN smtp_server TEXT",
-            "ALTER TABLE workspaces ADD COLUMN smtp_port INTEGER DEFAULT 587",
-            "ALTER TABLE workspaces ADD COLUMN smtp_username TEXT",
-            "ALTER TABLE workspaces ADD COLUMN smtp_password TEXT",
-            "ALTER TABLE workspaces ADD COLUMN from_email TEXT",
-            "ALTER TABLE workspaces ADD COLUMN email_enabled INTEGER DEFAULT 1",
-            "ALTER TABLE call_rooms ADD COLUMN invited_users TEXT DEFAULT '[]'",
-            "ALTER TABLE notifications ADD COLUMN sender_id TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN last_active TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN google_id TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN google_picture TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'password'",
-            "ALTER TABLE users ADD COLUMN notify_prefs TEXT DEFAULT '{}'",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_id TEXT DEFAULT ''",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS team_id TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS team_id TEXT DEFAULT ''",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_system INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_enabled INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_verified INTEGER DEFAULT 0",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_id TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS story_points INTEGER DEFAULT 0",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_type TEXT DEFAULT 'task'",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS labels TEXT DEFAULT '[]'",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_task_key TEXT DEFAULT ''",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS otp_enabled INTEGER DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS dm_enabled INTEGER DEFAULT 1",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS smtp_server TEXT",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS smtp_port INTEGER DEFAULT 587",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS smtp_username TEXT",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS smtp_password TEXT",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS from_email TEXT",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS email_enabled INTEGER DEFAULT 1",
+            "ALTER TABLE call_rooms ADD COLUMN IF NOT EXISTS invited_users TEXT DEFAULT '[]'",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_picture TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'password'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_prefs TEXT DEFAULT '{}'",
             "CREATE TABLE IF NOT EXISTS time_logs (id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT, team_id TEXT DEFAULT '', date TEXT, task_name TEXT, project_id TEXT DEFAULT '', task_id TEXT DEFAULT '', hours REAL DEFAULT 0, minutes INTEGER DEFAULT 0, comments TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_ws ON tasks(workspace_id)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(workspace_id, assignee)",
@@ -4925,16 +4925,16 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_task_events ON task_events(task_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(workspace_id, deleted_at)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_proj_stage ON tasks(workspace_id, project, stage)",
-            "ALTER TABLE time_logs ADD COLUMN project_id TEXT DEFAULT ''",
-            "ALTER TABLE time_logs ADD COLUMN task_id TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN required_hours_per_day REAL DEFAULT 8",
+            "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT ''",
+            "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS task_id TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS required_hours_per_day REAL DEFAULT 8",
             "CREATE TABLE IF NOT EXISTS vault_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT DEFAULT '', tags TEXT DEFAULT '', rows TEXT DEFAULT '[]', cols TEXT DEFAULT '[]', lock_hash TEXT DEFAULT '', created TEXT, updated TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_cards_user ON vault_cards(user_id)",
-            "ALTER TABLE vault_cards ADD COLUMN cols TEXT DEFAULT '[]'",
-            "ALTER TABLE vault_cards ADD COLUMN category TEXT DEFAULT ''",
-            "ALTER TABLE vault_cards ADD COLUMN expires_at TEXT DEFAULT ''",
-            "ALTER TABLE vault_cards ADD COLUMN pinned INTEGER DEFAULT 0",
-            "ALTER TABLE vault_cards ADD COLUMN notes TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN IF NOT EXISTS cols TEXT DEFAULT '[]'",
+            "ALTER TABLE vault_cards ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN IF NOT EXISTS expires_at TEXT DEFAULT ''",
+            "ALTER TABLE vault_cards ADD COLUMN IF NOT EXISTS pinned INTEGER DEFAULT 0",
+            "ALTER TABLE vault_cards ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
             "CREATE TABLE IF NOT EXISTS vault_master (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL, created TEXT, updated TEXT)",
             "CREATE TABLE IF NOT EXISTS vault_audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT DEFAULT '', ip TEXT DEFAULT '', created TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_vault_audit_user ON vault_audit_log(user_id, created)",
@@ -4942,7 +4942,7 @@ def init_db():
             # Snapshot the card's title into the audit row itself at write-time, so
             # the log stays readable after the card is renamed OR deleted (deleting
             # a card must never delete its own history — see vault_delete).
-            "ALTER TABLE vault_audit_log ADD COLUMN card_title TEXT DEFAULT ''",
+            "ALTER TABLE vault_audit_log ADD COLUMN IF NOT EXISTS card_title TEXT DEFAULT ''",
             # Performance indexes for high-frequency polling queries
             "CREATE INDEX IF NOT EXISTS idx_users_ws_active ON users(workspace_id, last_active)",
             "CREATE INDEX IF NOT EXISTS idx_users_id ON users(id)",
@@ -4951,13 +4951,13 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_dm_reactions_msg ON dm_reactions(workspace_id, message_id)",
             # Favorite/pinned DM contacts — inspired by reference UI showing a heart
             # toggle on a contact card and a "Favourite's" section in the nav sidebar.
-            "ALTER TABLE direct_messages ADD COLUMN edited INTEGER DEFAULT 0",
-            "ALTER TABLE direct_messages ADD COLUMN deleted INTEGER DEFAULT 0",
-            "ALTER TABLE direct_messages ADD COLUMN pinned INTEGER DEFAULT 0",
-            "ALTER TABLE direct_messages ADD COLUMN delivered_at TEXT DEFAULT ''",
-            "ALTER TABLE direct_messages ADD COLUMN seen_at TEXT DEFAULT ''",
-            "ALTER TABLE direct_messages ADD COLUMN reply_to TEXT DEFAULT ''",
-            "ALTER TABLE direct_messages ADD COLUMN client_msg_id TEXT DEFAULT ''",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS edited INTEGER DEFAULT 0",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS deleted INTEGER DEFAULT 0",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS pinned INTEGER DEFAULT 0",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS delivered_at TEXT DEFAULT ''",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS seen_at TEXT DEFAULT ''",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS reply_to TEXT DEFAULT ''",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS client_msg_id TEXT DEFAULT ''",
             "CREATE INDEX IF NOT EXISTS idx_dm_client_msg ON direct_messages(workspace_id, sender, recipient, client_msg_id)",
             "CREATE INDEX IF NOT EXISTS idx_notifs_ts ON notifications(workspace_id, user_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_reminders_remind ON reminders(workspace_id, user_id, remind_at, fired)",
@@ -4971,35 +4971,35 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_notifications_ws_user_ts ON notifications(workspace_id, user_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_direct_messages_ws_recipient_created ON direct_messages(workspace_id, recipient, created)",
             "CREATE INDEX IF NOT EXISTS idx_reminders_ws_user_due ON reminders(workspace_id, user_id, remind_at, fired)",
-            "ALTER TABLE workspaces ADD COLUMN plan TEXT DEFAULT 'starter'",
-            "ALTER TABLE workspaces ADD COLUMN suspended INTEGER DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'starter'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS suspended INTEGER DEFAULT 0",
             # ── Stripe billing ──
-            "ALTER TABLE workspaces ADD COLUMN stripe_customer_id TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN stripe_subscription_id TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN plan_expires TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN trial_ends TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN seat_count INTEGER DEFAULT 5",
-            "ALTER TABLE workspaces ADD COLUMN custom_limits_json TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN storage_limit_mb INTEGER DEFAULT 0",
-            "ALTER TABLE workspaces ADD COLUMN billing_status TEXT DEFAULT 'active'",
-            "ALTER TABLE workspaces ADD COLUMN internal_notes TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS plan_expires TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS trial_ends TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS seat_count INTEGER DEFAULT 5",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS custom_limits_json TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS storage_limit_mb INTEGER DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS billing_status TEXT DEFAULT 'active'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS internal_notes TEXT DEFAULT ''",
             # ── Owner panel commercial controls ──
-            "ALTER TABLE workspaces ADD COLUMN payment_status TEXT DEFAULT 'active'",
-            "ALTER TABLE workspaces ADD COLUMN billing_cycle TEXT DEFAULT 'monthly'",
-            "ALTER TABLE workspaces ADD COLUMN renewal_date TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN amount_paid REAL DEFAULT 0",
-            "ALTER TABLE workspaces ADD COLUMN last_payment_date TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN payment_method_note TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN manual_discount REAL DEFAULT 0",
-            "ALTER TABLE workspaces ADD COLUMN add_ons_json TEXT DEFAULT '{}'",
-            "ALTER TABLE workspaces ADD COLUMN grace_until TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN read_only_until TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN cancelled_at TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN plan_change_reason TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'active'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS billing_cycle TEXT DEFAULT 'monthly'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS renewal_date TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS amount_paid REAL DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS last_payment_date TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS payment_method_note TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS manual_discount REAL DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS add_ons_json TEXT DEFAULT '{}'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS grace_until TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS read_only_until TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS cancelled_at TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS plan_change_reason TEXT DEFAULT ''",
             # ── User profile celebrations / personal moments ──
-            "ALTER TABLE users ADD COLUMN birth_date TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN birth_date_visibility TEXT DEFAULT 'private'",
-            "ALTER TABLE users ADD COLUMN first_login_seen INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date_visibility TEXT DEFAULT 'private'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS first_login_seen INTEGER DEFAULT 0",
             # ── Billing profile + invoice creation ──
             "CREATE TABLE IF NOT EXISTS workspace_billing_profile (workspace_id TEXT PRIMARY KEY, legal_name TEXT DEFAULT '', billing_email TEXT DEFAULT '', tax_id TEXT DEFAULT '', address_line1 TEXT DEFAULT '', address_line2 TEXT DEFAULT '', city TEXT DEFAULT '', state TEXT DEFAULT '', postal_code TEXT DEFAULT '', country TEXT DEFAULT 'India', currency TEXT DEFAULT 'INR', tax_rate REAL DEFAULT 18, invoice_prefix TEXT DEFAULT 'INV', invoice_notes TEXT DEFAULT '', updated_at TEXT DEFAULT '')",
             "CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, workspace_id TEXT, invoice_no TEXT, customer_name TEXT DEFAULT '', customer_email TEXT DEFAULT '', issue_date TEXT DEFAULT '', due_date TEXT DEFAULT '', status TEXT DEFAULT 'draft', currency TEXT DEFAULT 'INR', subtotal REAL DEFAULT 0, tax_total REAL DEFAULT 0, total REAL DEFAULT 0, notes TEXT DEFAULT '', created_by TEXT DEFAULT '', created TEXT DEFAULT '', updated TEXT DEFAULT '')",
@@ -5024,27 +5024,27 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_cfv_entity ON custom_field_values(entity_id)",
             "CREATE INDEX IF NOT EXISTS idx_cf_ws ON custom_fields(workspace_id)",
             # ── SLA tracking for tickets ──
-            "ALTER TABLE tickets ADD COLUMN sla_hours INTEGER DEFAULT 24",
-            "ALTER TABLE tickets ADD COLUMN sla_breached INTEGER DEFAULT 0",
-            "ALTER TABLE tickets ADD COLUMN first_response_at TEXT DEFAULT ''",
-            "ALTER TABLE tickets ADD COLUMN resolved_at TEXT DEFAULT ''",
-            "ALTER TABLE tickets ADD COLUMN sla_due_at TEXT DEFAULT ''",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sla_hours INTEGER DEFAULT 24",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sla_breached INTEGER DEFAULT 0",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_response_at TEXT DEFAULT ''",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS resolved_at TEXT DEFAULT ''",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sla_due_at TEXT DEFAULT ''",
             # ── Onboarding ──
-            "ALTER TABLE workspaces ADD COLUMN onboarding_done INTEGER DEFAULT 0",
-            "ALTER TABLE workspaces ADD COLUMN onboarding_step INTEGER DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS onboarding_done INTEGER DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS onboarding_step INTEGER DEFAULT 0",
             # ── Enhanced audit log ──
-            "ALTER TABLE audit_log ADD COLUMN entity_type TEXT DEFAULT ''",
-            "ALTER TABLE audit_log ADD COLUMN entity_id TEXT DEFAULT ''",
-            "ALTER TABLE notifications ADD COLUMN entity_id TEXT DEFAULT ''",
-            "ALTER TABLE notifications ADD COLUMN entity_type TEXT DEFAULT ''",
-            "ALTER TABLE notifications ADD COLUMN followup_sent INTEGER DEFAULT 0",
-            "ALTER TABLE audit_log ADD COLUMN old_value TEXT DEFAULT ''",
-            "ALTER TABLE audit_log ADD COLUMN new_value TEXT DEFAULT ''",
+            "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT ''",
+            "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS entity_id TEXT DEFAULT ''",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id TEXT DEFAULT ''",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT ''",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS followup_sent INTEGER DEFAULT 0",
+            "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS old_value TEXT DEFAULT ''",
+            "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS new_value TEXT DEFAULT ''",
             # ── Time tracking ──
             "CREATE TABLE IF NOT EXISTS time_entries (id TEXT PRIMARY KEY, workspace_id TEXT, task_id TEXT, user_id TEXT, description TEXT DEFAULT '', minutes INTEGER DEFAULT 0, billable INTEGER DEFAULT 1, date TEXT DEFAULT '', created TEXT, updated TEXT)",
             "CREATE INDEX IF NOT EXISTS idx_time_ws ON time_entries(workspace_id, user_id)",
             "CREATE INDEX IF NOT EXISTS idx_time_task ON time_entries(task_id)",
-            "ALTER TABLE audit_log ADD COLUMN ip TEXT DEFAULT ''",
+            "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS ip TEXT DEFAULT ''",
             # Performance indexes missing from original schema
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
             "CREATE INDEX IF NOT EXISTS idx_users_workspace ON users(workspace_id)",
@@ -5066,9 +5066,9 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(workspace_id, created DESC)",
             "CREATE INDEX IF NOT EXISTS idx_files_ws_task_ts ON files(workspace_id, task_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_files_ws_project_ts ON files(workspace_id, project_id, ts)",
-            "ALTER TABLE files ADD COLUMN storage_provider TEXT DEFAULT 'local'",
-            "ALTER TABLE files ADD COLUMN storage_key TEXT DEFAULT ''",
-            "ALTER TABLE files ADD COLUMN scan_status TEXT DEFAULT 'unknown'",
+            "ALTER TABLE files ADD COLUMN IF NOT EXISTS storage_provider TEXT DEFAULT 'local'",
+            "ALTER TABLE files ADD COLUMN IF NOT EXISTS storage_key TEXT DEFAULT ''",
+            "ALTER TABLE files ADD COLUMN IF NOT EXISTS scan_status TEXT DEFAULT 'unknown'",
             "CREATE INDEX IF NOT EXISTS idx_files_ws_ts_desc ON files(workspace_id, ts DESC)",
             "CREATE TABLE IF NOT EXISTS import_jobs (id TEXT PRIMARY KEY, workspace_id TEXT, import_type TEXT, filename TEXT, status TEXT DEFAULT 'queued', total INTEGER DEFAULT 0, success INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, error_log TEXT DEFAULT '', created_by TEXT DEFAULT '', created TEXT DEFAULT '')",
             "CREATE INDEX IF NOT EXISTS idx_import_jobs_ws_status ON import_jobs(workspace_id, status, created)",
@@ -5093,27 +5093,27 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_dm_conv_asc ON direct_messages(workspace_id, sender, recipient, ts)",
             "CREATE INDEX IF NOT EXISTS idx_dm_ws_recipient_read_ts ON direct_messages(workspace_id, recipient, read, ts DESC)",
             # Soft-delete support
-            "ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT ''",
-            "ALTER TABLE projects ADD COLUMN deleted_at TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN deleted_at TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN client_task_key TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_task_key TEXT DEFAULT ''",
             # ── SSO / SAML support ──
-            "ALTER TABLE workspaces ADD COLUMN sso_enabled INTEGER DEFAULT 0",
-            "ALTER TABLE workspaces ADD COLUMN sso_type TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN sso_idp_url TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN sso_entity_id TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN sso_x509_cert TEXT DEFAULT ''",
-            "ALTER TABLE workspaces ADD COLUMN sso_attr_email TEXT DEFAULT 'email'",
-            "ALTER TABLE workspaces ADD COLUMN sso_attr_name TEXT DEFAULT 'name'",
-            "ALTER TABLE workspaces ADD COLUMN sso_allow_password_login INTEGER DEFAULT 1",
-            "ALTER TABLE workspaces ADD COLUMN workspace_slug TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_enabled INTEGER DEFAULT 0",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_type TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_idp_url TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_entity_id TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_x509_cert TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_attr_email TEXT DEFAULT 'email'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_attr_name TEXT DEFAULT 'name'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_allow_password_login INTEGER DEFAULT 1",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS workspace_slug TEXT DEFAULT ''",
             # ── Phase 1: Email verification ──
-            "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN email_verify_token TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN email_verify_expires TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_token TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_expires TEXT DEFAULT ''",
             # ── Phase 1: Password reset tokens (10-15 min expiry) ──
-            "ALTER TABLE users ADD COLUMN pw_reset_token TEXT DEFAULT ''",
-            "ALTER TABLE users ADD COLUMN pw_reset_expires TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pw_reset_token TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pw_reset_expires TEXT DEFAULT ''",
             # ── Phase 1: Device/session management ──
             """CREATE TABLE IF NOT EXISTS user_sessions (
                 id TEXT PRIMARY KEY,
@@ -5142,10 +5142,10 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_invites_token ON workspace_invites(token)",
             "CREATE INDEX IF NOT EXISTS idx_invites_ws ON workspace_invites(workspace_id)",
             # ── Phase 2: Domain auto-join ──
-            "ALTER TABLE workspaces ADD COLUMN allowed_domains TEXT DEFAULT '[]'",
-            "ALTER TABLE workspaces ADD COLUMN domain_join_requires_approval INTEGER DEFAULT 1",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS allowed_domains TEXT DEFAULT '[]'",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS domain_join_requires_approval INTEGER DEFAULT 1",
             # ── Phase 2: Workspace URL slug (already exists but ensure column) ──
-            "ALTER TABLE workspaces ADD COLUMN custom_url_id TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS custom_url_id TEXT DEFAULT ''",
             # ── Multi-workspace billing accounts (groundwork) ──
             # Groups workspaces under one paying "account" so a plan's included-
             # workspace-count (e.g. Business's 3) can eventually be enforced.
@@ -5153,7 +5153,7 @@ def init_db():
             # workspace today is its own account of size 1 — correct, since there
             # is not yet any product flow that creates a second workspace under
             # an existing owner. See _account_workspace_limit_check().
-            "ALTER TABLE workspaces ADD COLUMN account_id TEXT DEFAULT ''",
+            "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS account_id TEXT DEFAULT ''",
             "CREATE INDEX IF NOT EXISTS idx_workspaces_account ON workspaces(account_id)",
             # ── Admin panel 2FA (TOTP) ──
             """CREATE TABLE IF NOT EXISTS platform_admin_security (
@@ -5469,9 +5469,9 @@ def _ensure_task_stability_schema(db):
         if _TASK_STABILITY_SCHEMA_DONE:
             return
         stmts = [
-            "ALTER TABLE tasks ADD COLUMN deleted_at TEXT DEFAULT ''",
-            "ALTER TABLE tasks ADD COLUMN client_task_key TEXT DEFAULT ''",
-            "ALTER TABLE projects ADD COLUMN deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_task_key TEXT DEFAULT ''",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TEXT DEFAULT ''",
             "CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(workspace_id, deleted_at, created)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_client_key ON tasks(workspace_id, client_task_key)",
             "CREATE INDEX IF NOT EXISTS idx_projects_deleted ON projects(workspace_id, deleted_at, created)",
@@ -5479,7 +5479,7 @@ def _ensure_task_stability_schema(db):
             # review, DATA-03): without it, two people editing the same task
             # at the same time silently lose whichever change committed
             # first, with no warning to either person. See update_task().
-            "ALTER TABLE tasks ADD COLUMN row_version INTEGER DEFAULT 1",
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS row_version INTEGER DEFAULT 1",
         ]
         for st in stmts:
             try:
@@ -11126,12 +11126,12 @@ def migrate_timelog_public():
             id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT,
             hours REAL DEFAULT 0, minutes INTEGER DEFAULT 0,
             comments TEXT DEFAULT '', created TEXT)"""),
-        ("ADD team_id",    "ALTER TABLE time_logs ADD COLUMN team_id    TEXT DEFAULT ''"),
-        ("ADD date",       "ALTER TABLE time_logs ADD COLUMN date       TEXT DEFAULT ''"),
-        ("ADD task_name",  "ALTER TABLE time_logs ADD COLUMN task_name  TEXT DEFAULT ''"),
-        ("ADD project_id", "ALTER TABLE time_logs ADD COLUMN project_id TEXT DEFAULT ''"),
-        ("ADD task_id",    "ALTER TABLE time_logs ADD COLUMN task_id    TEXT DEFAULT ''"),
-        ("ADD req_hours",  "ALTER TABLE workspaces ADD COLUMN required_hours_per_day REAL DEFAULT 8"),
+        ("ADD team_id",    "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS team_id    TEXT DEFAULT ''"),
+        ("ADD date",       "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS date       TEXT DEFAULT ''"),
+        ("ADD task_name",  "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS task_name  TEXT DEFAULT ''"),
+        ("ADD project_id", "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT ''"),
+        ("ADD task_id",    "ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS task_id    TEXT DEFAULT ''"),
+        ("ADD req_hours",  "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS required_hours_per_day REAL DEFAULT 8"),
     ]
     for label, sql in steps:
         try:
@@ -14684,52 +14684,74 @@ def _billing_profile_dict(row):
 def _ensure_billing_schema(db):
     """Idempotent billing DDL for already-deployed databases.
     Older deployments may have the route before all invoice tables/columns exist;
-    keeping this here prevents blank billing pages caused by backend 500s."""
+    keeping this here prevents blank billing pages caused by backend 500s.
+
+    FIX (found live via E2E testing — the very first real invoice-creation
+    attempt against production 500'd): every ADD COLUMN below was missing
+    IF NOT EXISTS. That's harmless the very first time this runs (columns
+    don't exist yet), but on every call after that, each ADD COLUMN fails
+    with "column already exists" — and because this function runs inside
+    the caller's own (non-autocommit) transaction, catching that exception
+    in Python does NOT reset Postgres's aborted-transaction state. Every
+    statement after the first failure — including the real query the
+    caller runs right after this function returns — then fails with
+    "current transaction is aborted, commands ignored until end of
+    transaction block", a 500 with no useful error surfaced to the user.
+    Net effect: billing/invoices was broken for every call after the first
+    one ever made against a given database. IF NOT EXISTS eliminates the
+    error at the source instead of relying on catching it correctly; the
+    explicit ROLLBACK below is a defense-in-depth backstop for any other
+    unexpected DDL error, so a single bad statement can never again poison
+    every query that runs afterward in the same request.
+    """
     stmts = [
         "CREATE TABLE IF NOT EXISTS workspace_billing_profile (workspace_id TEXT PRIMARY KEY)",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN legal_name TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN billing_email TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN tax_id TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN address_line1 TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN address_line2 TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN city TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN state TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN postal_code TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN country TEXT DEFAULT 'India'",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN currency TEXT DEFAULT 'INR'",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN tax_rate REAL DEFAULT 18",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN invoice_prefix TEXT DEFAULT 'INV'",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN invoice_notes TEXT DEFAULT ''",
-        "ALTER TABLE workspace_billing_profile ADD COLUMN updated_at TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS legal_name TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS billing_email TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS tax_id TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS address_line1 TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS address_line2 TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS state TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS postal_code TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'India'",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'INR'",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS tax_rate REAL DEFAULT 18",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS invoice_prefix TEXT DEFAULT 'INV'",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS invoice_notes TEXT DEFAULT ''",
+        "ALTER TABLE workspace_billing_profile ADD COLUMN IF NOT EXISTS updated_at TEXT DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY)",
-        "ALTER TABLE invoices ADD COLUMN workspace_id TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN invoice_no TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN customer_name TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN customer_email TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN issue_date TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN due_date TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN status TEXT DEFAULT 'draft'",
-        "ALTER TABLE invoices ADD COLUMN currency TEXT DEFAULT 'INR'",
-        "ALTER TABLE invoices ADD COLUMN subtotal REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN tax_total REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN total REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN notes TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN created_by TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN created TEXT DEFAULT ''",
-        "ALTER TABLE invoices ADD COLUMN updated TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS workspace_id TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_no TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_email TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS issue_date TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'draft'",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'INR'",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal REAL DEFAULT 0",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_total REAL DEFAULT 0",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS total REAL DEFAULT 0",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created TEXT DEFAULT ''",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated TEXT DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS invoice_items (id TEXT PRIMARY KEY)",
-        "ALTER TABLE invoice_items ADD COLUMN workspace_id TEXT DEFAULT ''",
-        "ALTER TABLE invoice_items ADD COLUMN invoice_id TEXT DEFAULT ''",
-        "ALTER TABLE invoice_items ADD COLUMN description TEXT DEFAULT ''",
-        "ALTER TABLE invoice_items ADD COLUMN quantity REAL DEFAULT 1",
-        "ALTER TABLE invoice_items ADD COLUMN unit_price REAL DEFAULT 0",
-        "ALTER TABLE invoice_items ADD COLUMN amount REAL DEFAULT 0",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS workspace_id TEXT DEFAULT ''",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS invoice_id TEXT DEFAULT ''",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS quantity REAL DEFAULT 1",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS unit_price REAL DEFAULT 0",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS amount REAL DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS idx_invoices_ws_created ON invoices(workspace_id, created)",
         "CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id)",
     ]
     for s in stmts:
-        try: db.execute(s)
-        except Exception: pass
+        try:
+            db.execute(s)
+        except Exception:
+            try: db.execute("ROLLBACK")
+            except Exception: pass
 
 def _next_invoice_no(db, workspace_id, prefix="INV"):
     prefix = re.sub(r"[^A-Za-z0-9-]", "", str(prefix or "INV"))[:12] or "INV"
@@ -17637,11 +17659,11 @@ def api_send_status_summary_digest():
 # ═══════════════════════════════════════════════════════════════════════════════
 def _run_v5_migrations():
     new_ddls = [
-        "ALTER TABLE workspaces ADD COLUMN slack_webhook_url TEXT DEFAULT ''",
-        "ALTER TABLE workspaces ADD COLUMN slack_notifications_enabled INTEGER DEFAULT 0",
-        "ALTER TABLE workspaces ADD COLUMN github_client_id TEXT DEFAULT ''",
-        "ALTER TABLE workspaces ADD COLUMN github_client_secret TEXT DEFAULT ''",
-        "ALTER TABLE workspaces ADD COLUMN github_org TEXT DEFAULT ''",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT DEFAULT ''",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS slack_notifications_enabled INTEGER DEFAULT 0",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_client_id TEXT DEFAULT ''",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_client_secret TEXT DEFAULT ''",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_org TEXT DEFAULT ''",
         """CREATE TABLE IF NOT EXISTS incidents (
             id TEXT PRIMARY KEY, workspace_id TEXT, title TEXT,
             severity TEXT DEFAULT 'medium', status TEXT DEFAULT 'open',
@@ -17915,19 +17937,19 @@ def ensure_workspace_os_schema():
             user_id TEXT PRIMARY KEY, workspace_id TEXT, department TEXT DEFAULT '',
             designation TEXT DEFAULT '', manager_id TEXT DEFAULT '', employment_type TEXT DEFAULT 'full-time',
             location TEXT DEFAULT '', updated TEXT)""",
-        "ALTER TABLE org_profiles ADD COLUMN employee_id TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN band TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN functional_area TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN job_level TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN hod_user_id TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN date_of_joining TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN dob_visibility TEXT DEFAULT 'private'",
-        "ALTER TABLE org_profiles ADD COLUMN salutation TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN middle_name TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN dob TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN personal_phone TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN emergency_contact TEXT DEFAULT ''",
-        "ALTER TABLE org_profiles ADD COLUMN custom_role TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS employee_id TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS band TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS functional_area TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS job_level TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS hod_user_id TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS date_of_joining TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS dob_visibility TEXT DEFAULT 'private'",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS salutation TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS middle_name TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS dob TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS personal_phone TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS emergency_contact TEXT DEFAULT ''",
+        "ALTER TABLE org_profiles ADD COLUMN IF NOT EXISTS custom_role TEXT DEFAULT ''",
         """CREATE TABLE IF NOT EXISTS workspace_approval_items (
             id TEXT PRIMARY KEY, workspace_id TEXT, request_type TEXT, entity_id TEXT,
             requester_id TEXT, approver_id TEXT DEFAULT '', status TEXT DEFAULT 'pending',
@@ -17946,9 +17968,9 @@ def ensure_workspace_os_schema():
             year TEXT, title TEXT, file_id TEXT, filename TEXT, mime TEXT DEFAULT 'application/pdf',
             size INTEGER DEFAULT 0, uploaded_by TEXT DEFAULT '', created TEXT)""",
         """CREATE INDEX IF NOT EXISTS idx_payslip_ws_user_period ON workspace_payslips(workspace_id,user_id,year,month)""",
-        """ALTER TABLE workspace_payslips ADD COLUMN storage_provider TEXT DEFAULT 'local'""",
-        """ALTER TABLE workspace_payslips ADD COLUMN storage_key TEXT DEFAULT ''""",
-        """ALTER TABLE workspace_payslips ADD COLUMN scan_status TEXT DEFAULT 'unknown'""",
+        """ALTER TABLE workspace_payslips ADD COLUMN IF NOT EXISTS storage_provider TEXT DEFAULT 'local'""",
+        """ALTER TABLE workspace_payslips ADD COLUMN IF NOT EXISTS storage_key TEXT DEFAULT ''""",
+        """ALTER TABLE workspace_payslips ADD COLUMN IF NOT EXISTS scan_status TEXT DEFAULT 'unknown'""",
         """CREATE TABLE IF NOT EXISTS workspace_custom_roles (
             id TEXT PRIMARY KEY, workspace_id TEXT, name TEXT, base_role TEXT DEFAULT 'Developer',
             description TEXT DEFAULT '', color TEXT DEFAULT '#6366f1', permissions_json TEXT DEFAULT '{}',
@@ -17964,7 +17986,7 @@ def ensure_workspace_os_schema():
             allowed_work_modes TEXT DEFAULT '["office","remote","hybrid","work_from_home","client_visit","field_work","business_travel","on_duty"]',
             holiday_upload_roles TEXT DEFAULT '["admin","hr","peopleops","peopleadmin"]',
             updated TEXT DEFAULT '')""",
-        """ALTER TABLE workspace_os_settings ADD COLUMN activity_catalog TEXT DEFAULT '["Meeting","Client Call","Code Review","Deployment","Support","Documentation","Research","Testing","Planning","Training"]'""",
+        """ALTER TABLE workspace_os_settings ADD COLUMN IF NOT EXISTS activity_catalog TEXT DEFAULT '["Meeting","Client Call","Code Review","Deployment","Support","Documentation","Research","Testing","Planning","Training"]'""",
     ]
     for ddl in ddls:
         _run_ddl(ddl)
