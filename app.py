@@ -8398,7 +8398,7 @@ def _fetch_app_data_from_db(ws, team_id, uid):
     if team_id:
         tasks_sql = (
             "SELECT id,workspace_id,title,description,project,assignee,priority,stage,"
-            "created,due,pct,team_id,story_points,task_type,labels,sprint,deleted_at,client_task_key "
+            "created,due,pct,team_id,story_points,task_type,labels,sprint,deleted_at,client_task_key,row_version "
             "FROM tasks WHERE workspace_id=? AND team_id=? AND COALESCE(deleted_at,'')='' "
             "ORDER BY created DESC LIMIT 120"
         )
@@ -8408,7 +8408,7 @@ def _fetch_app_data_from_db(ws, team_id, uid):
     else:
         tasks_sql = (
             "SELECT id,workspace_id,title,description,project,assignee,priority,stage,"
-            "created,due,pct,team_id,story_points,task_type,labels,sprint,deleted_at,client_task_key "
+            "created,due,pct,team_id,story_points,task_type,labels,sprint,deleted_at,client_task_key,row_version "
             "FROM tasks WHERE workspace_id=? AND COALESCE(deleted_at,'')='' "
             "ORDER BY created DESC LIMIT 120"
         )
@@ -9416,7 +9416,7 @@ def _task_row_for_response(db, tid, ws):
         row = db.execute(
             "SELECT id,workspace_id,title,description,project,assignee,priority,stage,"
             "created,due,pct,comments,team_id,story_points,task_type,labels,sprint,"
-            "deleted_at,client_task_key FROM tasks WHERE id=? AND workspace_id=?",
+            "deleted_at,client_task_key,row_version FROM tasks WHERE id=? AND workspace_id=?",
             (tid, ws)
         ).fetchone()
         return dict(row) if row else {}
