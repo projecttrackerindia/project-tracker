@@ -13883,6 +13883,50 @@ def google_site_verification():
 
     with open(file_path, "r") as f:
         return Response(f.read(), mimetype="text/html")
+
+@app.route("/robots.txt")
+def robots_txt():
+    """Tell search engine crawlers what to index and where the sitemap lives."""
+    lines = [
+        "User-agent: *",
+        "Allow: /$",
+        "Allow: /about$",
+        "Allow: /privacy$",
+        "Allow: /terms$",
+        "Allow: /security$",
+        "Disallow: /api/",
+        "Disallow: /dashboard",
+        "Disallow: /app",
+        "Disallow: /login",
+        "Disallow: /onboarding",
+        "Disallow: /adminpanel",
+        "",
+        "Sitemap: https://projecttracker.in/sitemap.xml",
+    ]
+    return Response("\n".join(lines), mimetype="text/plain")
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """Public sitemap so Google can discover and prioritize the marketing pages."""
+    pages = [
+        ("https://projecttracker.in/", "1.0", "weekly"),
+        ("https://projecttracker.in/about", "0.6", "monthly"),
+        ("https://projecttracker.in/security", "0.5", "monthly"),
+        ("https://projecttracker.in/privacy", "0.3", "yearly"),
+        ("https://projecttracker.in/terms", "0.3", "yearly"),
+    ]
+    urls = "\n".join(
+        f"  <url><loc>{loc}</loc><priority>{prio}</priority><changefreq>{freq}</changefreq></url>"
+        for loc, prio, freq in pages
+    )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{urls}\n"
+        "</urlset>"
+    )
+    return Response(xml, mimetype="application/xml")
+
 @app.route("/<path:path>")
 def catch_all(path):
     """Catch-all route for SPA client-side routing."""
