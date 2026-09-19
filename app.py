@@ -233,6 +233,18 @@ DANGEROUS_MIME_PREFIXES = ("text/html", "application/x-msdownload", "application
 import pg8000.native
 import urllib.parse, re as _re
 
+# ── AI key provider: BYOK (workspace's own key) with a capped fallback to
+# the platform's shared default key. Self-contained in ai_provider.py so it
+# can be edited/tested without touching this file. ─────────────────────────
+try:
+    from ai_provider import resolve_ai_key, record_ai_call, PLATFORM_AI_API_KEY, error_response_for as _ai_error_response
+except Exception as _ai_provider_err:
+    resolve_ai_key = None
+    record_ai_call = None
+    PLATFORM_AI_API_KEY = ""
+    _ai_error_response = None
+    log.error("[ai_provider] failed to import: %s", _ai_provider_err)
+
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("PGURL") or ""
 
 def _parse_db_url(url):
@@ -11533,9 +11545,23 @@ def ai_chat():
 
     with get_db() as db:
         ws=db.execute("SELECT * FROM workspaces WHERE id=?",(wid(),)).fetchone()
-        api_key=(ws["ai_api_key"] if ws and ws["ai_api_key"] else "").strip()
-        if not api_key:
-            return jsonify({"error":"NO_KEY","message":"Please configure your Anthropic API key in Workspace Settings (⚙) to enable AI features."}),400
+
+        # Resolve which key to use: the workspace's own (unlimited) key if
+        # set, else the platform's shared default key ("Project Tracker
+        # AI"), capped per month by plan. See ai_provider.py.
+        if resolve_ai_key is None:
+            return jsonify({"error":"NO_KEY","message":"AI is not available right now."}),400
+        plan = (ws["plan"] if ws and "plan" in ws.keys() else "starter") or "starter"
+        plan_limits = _limits_for_plan(
+            plan,
+            ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
+            ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
+        ) if ws else {}
+        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"))
+        if ai_resolved["error"]:
+            body, status = _ai_error_response(ai_resolved)
+            return jsonify(body), status
+        api_key = ai_resolved["key"]
 
         projects=db.execute("SELECT id,name,description,target_date,color FROM projects WHERE workspace_id=?",(wid(),)).fetchall()
         tasks=db.execute("SELECT id,title,stage,priority,assignee,project,due,pct FROM tasks WHERE workspace_id=?",(wid(),)).fetchall()
@@ -11640,7 +11666,15 @@ IMPORTANT: Always be helpful and concise. When performing actions, explain what 
         except Exception as ex:
             action_results.append({"type":"error","message":str(ex)})
 
-    return jsonify({"message":clean_text,"actions":action_results,"raw":ai_text})
+    if record_ai_call:
+        record_ai_call(_record_usage, wid(), ai_resolved["source"], {"endpoint": "ai_chat"})
+
+    return jsonify({
+        "message":clean_text,"actions":action_results,"raw":ai_text,
+        "ai_source": ai_resolved["source"],  # "own" or "platform" — lets the UI show which key answered
+        "ai_platform_calls_used": ai_resolved["platform_calls_used"],
+        "ai_platform_calls_limit": ai_resolved["platform_calls_limit"],
+    })
 
 @app.route("/api/ai/generate-docs",methods=["POST"])
 @login_required
@@ -11655,9 +11689,20 @@ def ai_generate_docs():
 
     with get_db() as db:
         ws = db.execute("SELECT * FROM workspaces WHERE id=?", (wid(),)).fetchone()
-        api_key = (ws["ai_api_key"] if ws and ws["ai_api_key"] else "").strip()
-        if not api_key:
-            return jsonify({"error": "NO_KEY", "message": "Configure your Anthropic API key in Settings → AI Assistant."}), 400
+
+        if resolve_ai_key is None:
+            return jsonify({"error": "NO_KEY", "message": "AI is not available right now."}), 400
+        plan = (ws["plan"] if ws and "plan" in ws.keys() else "starter") or "starter"
+        plan_limits = _limits_for_plan(
+            plan,
+            ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
+            ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
+        ) if ws else {}
+        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"))
+        if ai_resolved["error"]:
+            body, status = _ai_error_response(ai_resolved)
+            return jsonify(body), status
+        api_key = ai_resolved["key"]
 
         if project_id:
             projects = db.execute("SELECT * FROM projects WHERE id=? AND workspace_id=?", (project_id, wid())).fetchall()
@@ -11886,11 +11931,17 @@ Prioritized list of immediate actions.
     except Exception as e:
         return jsonify({"error": "NETWORK_ERROR", "message": str(e)}), 500
 
+    if record_ai_call:
+        record_ai_call(_record_usage, wid(), ai_resolved["source"], {"endpoint": "ai_generate_docs"})
+
     return jsonify({
         "content": content,
         "type": doc_type,
         "projects": [p["name"] for p in projects],
-        "task_count": len(tasks)
+        "task_count": len(tasks),
+        "ai_source": ai_resolved["source"],
+        "ai_platform_calls_used": ai_resolved["platform_calls_used"],
+        "ai_platform_calls_limit": ai_resolved["platform_calls_limit"],
     })
 
 
@@ -14699,10 +14750,14 @@ def stripe_webhook():
 # Storage values are intentionally capped by plan so the free tier stays sustainable.
 # Values are in MB.
 _DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS = {
-    "starter":    {"workspaces": 1, "members": 25,  "projects": 50,  "tasks": 350,  "invoices": 150,  "storage_mb": 1024},
-    "team":       {"workspaces": 1, "members": 100, "projects": 250, "tasks": 1500, "invoices": 500,  "storage_mb": 25 * 1024},
-    "business":   {"workspaces": 3, "members": 250, "projects": 750, "tasks": 5000, "invoices": 1500, "storage_mb": 100 * 1024},
-    "enterprise": {"workspaces": 9999, "members": 9999, "projects": 9999, "tasks": 99999,"invoices": 9999, "storage_mb": 500 * 1024},
+    # "ai_calls_platform_month": how many calls a workspace gets from the
+    # PLATFORM's shared default key ("Project Tracker AI") per calendar
+    # month before it must add its own Anthropic key. Workspaces using
+    # their own key are never capped by this number.
+    "starter":    {"workspaces": 1, "members": 25,  "projects": 50,  "tasks": 350,  "invoices": 150,  "storage_mb": 1024,          "ai_calls_platform_month": 50},
+    "team":       {"workspaces": 1, "members": 100, "projects": 250, "tasks": 1500, "invoices": 500,  "storage_mb": 25 * 1024,     "ai_calls_platform_month": 200},
+    "business":   {"workspaces": 3, "members": 250, "projects": 750, "tasks": 5000, "invoices": 1500, "storage_mb": 100 * 1024,    "ai_calls_platform_month": 1000},
+    "enterprise": {"workspaces": 9999, "members": 9999, "projects": 9999, "tasks": 99999,"invoices": 9999, "storage_mb": 500 * 1024, "ai_calls_platform_month": 9999},
 }
 # Kept as a plain module-level name for any older code that reads this directly.
 # _load_plan_configs()[plan]["limits"] is the live, admin-editable source of truth.
@@ -14978,7 +15033,7 @@ def _limits_for_plan(plan, custom_limits_json='', storage_limit_mb=0):
     try:
         extra = json.loads(custom_limits_json or "{}") if custom_limits_json else {}
         if isinstance(extra, dict):
-            for k in ("workspaces", "members", "projects", "tasks", "invoices", "storage_mb"):
+            for k in ("workspaces", "members", "projects", "tasks", "invoices", "storage_mb", "ai_calls_platform_month"):
                 if k in extra and str(extra[k]).strip() != "":
                     limits[k] = int(float(extra[k]))
     except Exception:
@@ -15186,9 +15241,17 @@ def _record_usage(workspace_id, event_type, quantity=1, meta=None):
 @login_required
 def get_usage():
     db  = get_db()
-    ws  = db.execute("SELECT plan FROM workspaces WHERE id=?", (wid(),)).fetchone()
+    ws  = db.execute("SELECT plan, custom_limits_json, storage_limit_mb FROM workspaces WHERE id=?", (wid(),)).fetchone()
     plan = (ws["plan"] or "starter") if ws else "starter"
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"])
+    # NOTE: this used to reference a module-level `PLAN_LIMITS` that was
+    # never defined anywhere (a pre-existing bug — this route would have
+    # raised NameError). `_limits_for_plan` is the real, admin-editable
+    # source of truth used everywhere else in the app.
+    limits = _limits_for_plan(
+        plan,
+        ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
+        ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
+    )
     usage  = _get_month_usage(wid())
     members = db.execute("SELECT COUNT(*) as c FROM users WHERE workspace_id=? AND COALESCE(deleted_at,'')=''", (wid(),)).fetchone()
     projects = db.execute("SELECT COUNT(*) as c FROM projects WHERE workspace_id=? AND COALESCE(deleted_at,'')=''", (wid(),)).fetchone()
@@ -15197,7 +15260,8 @@ def get_usage():
         usage={
             "members":       members["c"] if members else 0,
             "projects":      projects["c"] if projects else 0,
-            "ai_calls_month": usage.get("ai_call", 0),
+            "ai_calls_month": usage.get("ai_call_total", 0),
+            "ai_calls_platform_month": usage.get("ai_call_platform", 0),
             "storage_mb":    usage.get("storage_mb", 0),
         }
     )
@@ -19261,7 +19325,8 @@ def api_workspace_approvals():
 try:
     from intelligence import register_intelligence
     register_intelligence(app, get_db, wid, login_required, session, send_email, log,
-                           secrets, json, datetime, timedelta, request, jsonify)
+                           secrets, json, datetime, timedelta, request, jsonify,
+                           record_usage=_record_usage)
 except Exception as _intel_err:
     log.error("[intelligence] failed to register: %s", _intel_err)
 

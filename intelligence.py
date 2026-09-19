@@ -53,6 +53,7 @@ import re as _re
 _app = None
 _get_db = None
 _wid = None
+_record_usage = None
 _login_required = None
 _session = None
 _send_email = None
@@ -105,11 +106,41 @@ def _ensure_schema():
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Claude helper — reuses the same per-workspace key as the existing /api/ai/chat
+# Claude helper — reuses the same key-resolution as /api/ai/chat: the
+# workspace's own key if set, else the platform's shared default key
+# ("Project Tracker AI"), capped per month by plan. See ai_provider.py.
 # ─────────────────────────────────────────────────────────────────────────
-def _workspace_ai_key(db):
-    ws = db.execute("SELECT ai_api_key FROM workspaces WHERE id=?", (_wid(),)).fetchone()
-    return (ws["ai_api_key"] if ws and ws["ai_api_key"] else "").strip()
+try:
+    from ai_provider import resolve_ai_key, record_ai_call
+except Exception as _ai_provider_err:
+    resolve_ai_key = None
+    record_ai_call = None
+
+
+def _resolve_ai(db, workspace_id):
+    """Returns the same dict shape as ai_provider.resolve_ai_key(): a usable
+    key + source when available, or an error code ("NOT_CONFIGURED" /
+    "LIMIT_EXCEEDED") when not. Falls back to no explicit cap (the
+    conservative module default) if the plan-limits lookup fails for any
+    reason — e.g. if this is ever called before app.py has fully loaded."""
+    if resolve_ai_key is None:
+        return {"key": None, "source": "none", "error": "NOT_CONFIGURED",
+                "platform_calls_used": 0, "platform_calls_limit": 0}
+    cap = None
+    try:
+        from app import _limits_for_plan  # lazy: app.py is fully loaded before intelligence registers
+        ws = db.execute(
+            "SELECT plan, custom_limits_json, storage_limit_mb FROM workspaces WHERE id=?",
+            (workspace_id,)).fetchone()
+        plan = (ws["plan"] if ws and "plan" in ws.keys() else "starter") or "starter"
+        limits = _limits_for_plan(
+            plan,
+            ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
+            ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0)
+        cap = limits.get("ai_calls_platform_month")
+    except Exception:
+        pass
+    return resolve_ai_key(db, workspace_id, cap)
 
 
 def _call_claude(system, user_prompt, api_key, max_tokens=1200):
@@ -274,9 +305,10 @@ def _generate_allocation_suggestions(db, workspace_id, project_id=None, limit_ta
     if not unassigned:
         return [], "No unassigned pending tasks in your highest-urgency projects right now."
 
-    api_key = _workspace_ai_key(db)
-    if not api_key:
-        return [], "NO_KEY"
+    ai_resolved = _resolve_ai(db, workspace_id)
+    if ai_resolved["error"]:
+        return [], ai_resolved["error"]
+    api_key = ai_resolved["key"]
 
     proj_ctx = "\n".join(f"- {u['name']} (id:{u['project_id']}) urgency:{u['urgency_score']} "
                           f"days_left:{u['days_left']} progress:{u['progress']}% overdue_tasks:{u['overdue_tasks']}"
@@ -325,6 +357,8 @@ def _generate_allocation_suggestions(db, workspace_id, project_id=None, limit_ta
                          "suggested_user_id": uid, "reason": reason,
                          "urgency_score": urgency_map.get(t["project"], 0)})
     db.commit()
+    if _record_usage and record_ai_call:
+        record_ai_call(_record_usage, workspace_id, ai_resolved["source"], {"endpoint": "intel_allocation"})
     return created, None
 
 
@@ -365,9 +399,10 @@ def _generate_routing_suggestion(db, workspace_id, ticket_id):
     if not candidates:
         return None, "No completed tasks found to trace this back to — nothing to route against yet."
 
-    api_key = _workspace_ai_key(db)
-    if not api_key:
-        return None, "NO_KEY"
+    ai_resolved = _resolve_ai(db, workspace_id)
+    if ai_resolved["error"]:
+        return None, ai_resolved["error"]
+    api_key = ai_resolved["key"]
 
     users = {u["id"]: u["name"] for u in db.execute("SELECT id,name FROM users WHERE workspace_id=?", (workspace_id,)).fetchall()}
     cand_ctx = "\n".join(f"- task[{c['task_id']}] \"{c['title']}\" (built by {users.get(c['assignee'], c['assignee'])}, "
@@ -397,6 +432,8 @@ def _generate_routing_suggestion(db, workspace_id, ticket_id):
         (sid, workspace_id, ticket_id, parsed["user_id"], float(parsed.get("confidence", 0.5)),
          parsed.get("reason", ""), "pending", now))
     db.commit()
+    if _record_usage and record_ai_call:
+        record_ai_call(_record_usage, workspace_id, ai_resolved["source"], {"endpoint": "intel_routing"})
     return {"id": sid, "ticket_id": ticket_id, "suggested_user_id": parsed["user_id"],
             "suggested_user_name": users.get(parsed["user_id"], ""),
             "confidence": parsed.get("confidence", 0.5), "reason": parsed.get("reason", ""),
@@ -440,9 +477,10 @@ def _summarize_and_draft_followup(db, workspace_id, entity_type, entity_id, to_u
     if not target:
         return None, "Target user not found in this workspace."
 
-    api_key = _workspace_ai_key(db)
-    if not api_key:
-        return None, "NO_KEY"
+    ai_resolved = _resolve_ai(db, workspace_id)
+    if ai_resolved["error"]:
+        return None, ai_resolved["error"]
+    api_key = ai_resolved["key"]
 
     # Normalize both DB Row objects (ticket_comments) and plain dicts (task
     # comments parsed from JSON) into a uniform (user_id, created, content) tuple.
@@ -484,6 +522,8 @@ def _summarize_and_draft_followup(db, workspace_id, entity_type, entity_id, to_u
         (did, workspace_id, entity_type, entity_id, target_id, parsed.get("subject", f"Follow-up: {title}"),
          parsed.get("body", ""), parsed.get("summary", ""), "draft", now, created_by))
     db.commit()
+    if _record_usage and record_ai_call:
+        record_ai_call(_record_usage, workspace_id, ai_resolved["source"], {"endpoint": "intel_followup"})
     return {"id": did, "entity_type": entity_type, "entity_id": entity_id, "to_user_id": target_id,
             "to_user_name": target["name"], "to_user_email": target["email"],
             "subject": parsed.get("subject"), "body": parsed.get("body"), "summary": parsed.get("summary")}, None
@@ -493,11 +533,13 @@ def _summarize_and_draft_followup(db, workspace_id, entity_type, entity_id, to_u
 # Route registration
 # ─────────────────────────────────────────────────────────────────────────
 def register_intelligence(app, get_db, wid, login_required, session, send_email, log,
-                           secrets, json, datetime, timedelta, request, jsonify):
-    global _app, _get_db, _wid, _login_required, _session, _send_email, _log
+                           secrets, json, datetime, timedelta, request, jsonify,
+                           record_usage=None):
+    global _app, _get_db, _wid, _login_required, _session, _send_email, _log, _record_usage
     global _secrets, _json, _datetime, _timedelta, _request, _jsonify
     _app, _get_db, _wid, _login_required, _session = app, get_db, wid, login_required, session
     _send_email, _log = send_email, log
+    _record_usage = record_usage
     _secrets, _json, _datetime, _timedelta = secrets, json, datetime, timedelta
     _request, _jsonify = request, jsonify
 
@@ -543,8 +585,10 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
         d = request.json or {}
         with get_db() as db:
             created, err = _generate_allocation_suggestions(db, wid(), project_id=d.get("project_id"))
-        if err == "NO_KEY":
-            return jsonify({"error": "NO_KEY", "message": "Add your Anthropic API key in Workspace Settings to enable AI suggestions."}), 400
+        if err in ("NOT_CONFIGURED", "NO_KEY"):
+            return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to use suggestions."}), 400
+        if err == "LIMIT_EXCEEDED":
+            return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
         if err:
             return jsonify({"ok": True, "suggestions": [], "message": err})
         return jsonify({"ok": True, "suggestions": created})
@@ -580,8 +624,10 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
     def intel_route_suggest(ticket_id):
         with get_db() as db:
             result, err = _generate_routing_suggestion(db, wid(), ticket_id)
-        if err == "NO_KEY":
-            return jsonify({"error": "NO_KEY", "message": "Add your Anthropic API key in Workspace Settings to enable AI routing."}), 400
+        if err in ("NOT_CONFIGURED", "NO_KEY"):
+            return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to use routing."}), 400
+        if err == "LIMIT_EXCEEDED":
+            return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
         if err:
             return jsonify({"ok": True, "suggestion": None, "message": err})
         return jsonify({"ok": True, "suggestion": result})
@@ -621,8 +667,10 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
             return jsonify({"error": "entity_type must be 'ticket' or 'task', entity_id required"}), 400
         with get_db() as db:
             result, err = _summarize_and_draft_followup(db, wid(), entity_type, entity_id, to_user_id, session.get("user_id"))
-        if err == "NO_KEY":
-            return jsonify({"error": "NO_KEY", "message": "Add your Anthropic API key in Workspace Settings to enable AI drafting."}), 400
+        if err in ("NOT_CONFIGURED", "NO_KEY"):
+            return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to use drafting."}), 400
+        if err == "LIMIT_EXCEEDED":
+            return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
         if err:
             return jsonify({"error": "DRAFT_FAILED", "message": err}), 400
         return jsonify({"ok": True, "draft": result})

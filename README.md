@@ -85,6 +85,34 @@ SMTP_PASSWORD=your-gmail-app-password
 FROM_EMAIL=notifications@yourcompany.com
 ```
 
+#### Environment Variables (Optional - for default/native AI)
+By default, each workspace must add its own Anthropic API key (Settings →
+AI Assistant) to use AI features. To also offer a built-in default —
+"Project Tracker AI" — that workspaces get for free up to a monthly cap,
+set:
+
+```
+PLATFORM_AI_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
+```
+
+This is **your own** Anthropic key, billed to you — not a per-workspace
+key. Behavior:
+- A workspace with its own key in Settings always uses that key, with no cap.
+- A workspace without one automatically uses `PLATFORM_AI_API_KEY` instead,
+  up to a monthly call limit set per plan (see `ai_calls_platform_month` in
+  `app.py`'s `_DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS` — defaults are 50/month
+  on Starter, 200 on Team, 1000 on Business, effectively unlimited on
+  Enterprise). Admins can raise a single workspace's cap via the existing
+  `custom_limits_json` override the same way other plan limits are raised.
+- If `PLATFORM_AI_API_KEY` is left unset, behavior is unchanged from today:
+  workspaces without their own key get a "please add your API key" message.
+- `/api/ai/chat` and `/api/ai/generate-docs` responses now include
+  `ai_source` (`"own"` or `"platform"`) plus `ai_platform_calls_used` /
+  `ai_platform_calls_limit`, so the frontend can show which key answered
+  and how much of the free monthly quota is left. `GET /api/usage` also
+  now reports `ai_calls_month` (total) and `ai_calls_platform_month`
+  (platform-key calls only).
+
 ---
 
 ## 🎉 Done!
