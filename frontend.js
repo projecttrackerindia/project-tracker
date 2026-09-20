@@ -11405,7 +11405,7 @@ function ptCurrentWorkspaceContext(extra){
 }
 function ptWorkspacePrefixFromPath(){
   try{
-    const VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
+    const VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
     const seg=window.location.pathname.split('/').filter(Boolean);
     const vi=seg.findIndex(s=>VIEWS.includes(String(s||'').trim()));
     if(vi>0){
