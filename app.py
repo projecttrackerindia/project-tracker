@@ -10532,13 +10532,25 @@ def get_dm_thread(peer_id):
             params
         ).fetchall()
         messages = _attach_dm_reactions(db, wid(), rows)
-        # Viewing the thread marks the peer's messages to me as read.
-        unread_ids = [m["id"] for m in messages if str(m.get("sender")) == str(peer_id) and not m.get("read")]
+        # Viewing the thread marks the peer's messages to me as read — scoped to
+        # the WHOLE conversation, not just the rows this request happened to
+        # return. Incremental polls send ?since=<ts of the last message the
+        # client holds>, and SSE pushes new messages straight into the open
+        # thread, so that cursor sits PAST the very messages that just arrived.
+        # Deriving the ids from `messages` therefore marked nothing read on
+        # exactly the messages the user was looking at, while the client had
+        # already cleared its own badge optimistically — so the count came back
+        # on the next /api/dm/unread poll and climbed with every message.
+        unread_ids = [r["id"] for r in db.execute(
+            "SELECT id FROM direct_messages WHERE workspace_id=? AND sender=? AND recipient=? AND read=0",
+            (wid(), peer_id, uid)
+        ).fetchall()]
         if unread_ids:
             qmarks = ",".join("?" * len(unread_ids))
             db.execute(f"UPDATE direct_messages SET read=1, seen_at=? WHERE id IN ({qmarks})", [ts()] + unread_ids)
+            unread_set = set(unread_ids)
             for m in messages:
-                if m["id"] in unread_ids:
+                if m["id"] in unread_set:
                     m["read"] = 1
         if unread_ids:
             _sse_publish(wid(), "dm_read", {"user": uid, "peer": peer_id})
@@ -16601,6 +16613,11 @@ def sse_stream():
     ws_id = wid()
     uid   = session.get("user_id", "")
     login_at = session.get("login_at", "")
+    # Captured here, with the rest, because the generator below runs after the
+    # request context is torn down — reading session inside it raises "Working
+    # outside of request context", which the re-auth check swallows and
+    # fails open, silently disabling revocation checks for the whole stream.
+    session_id = session.get("session_id", "")
     q = _queue.Queue(maxsize=200)
     client_entry = {"q": q, "uid": str(uid or ""), "connected": True}
     with _sse_lock:
@@ -16619,7 +16636,7 @@ def sse_stream():
         if not uid:
             return False
         try:
-            if _is_session_revoked(session.get("session_id", "")):
+            if _is_session_revoked(session_id):
                 return False
             # Fast path: use the existing logout cache (Redis or in-process dict).
             # _get_logged_out_at returns None = not cached, "" = no logout, ts = logout ts.
