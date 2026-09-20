@@ -13531,14 +13531,6 @@ function App(){
       setMarkingAllDmsRead(false);
     }
   },[markingAllDmsRead]);
-  // Per-peer counterpart to onDmReadAll above — DirectMessages calls this
-  // whenever a specific thread is opened/read (see its own onDmRead calls).
-  // The real read-state already gets written server-side by GET /api/dm/:id
-  // itself; this just clears that one peer's badge immediately client-side
-  // instead of waiting for the next /api/dm/unread poll to catch up.
-  const onDmRead=useCallback((peerId)=>{
-    setDmUnread(prev=>prev.filter(r=>String(r.sender)!==String(peerId)));
-  },[]);
   // Local-only sign-out — used when we're told the session is no longer valid
   // server-side (SSE force_logout from a login elsewhere in single-session
   // mode, or a 401 bounce via pt:session-expired). Unlike logout(), this must
