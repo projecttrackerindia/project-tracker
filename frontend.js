@@ -13049,9 +13049,15 @@ function App(){
         };
         es.onopen=()=>{
           setSseStatus('connected');
-          // On SSE reconnect, trigger a bust reload to fetch any events missed during disconnection
+          // Catch-up reload for events missed while disconnected — but only on a
+          // real RECONNECT. onopen also fires for the very first connection, and
+          // there boot has just fetched this exact data, so firing it there made
+          // every single page load pull /api/app-data twice ~800ms apart (the
+          // second with bust=1, so it also bypassed the server cache and forced
+          // a fresh DB read) for no benefit.
           if(es.readyState===EventSource.OPEN){
-            setTimeout(()=>load(teamCtx,true),800);
+            if(window.__ptSSEConnectedOnce) setTimeout(()=>load(teamCtx,true),800);
+            window.__ptSSEConnectedOnce=true;
           }
         };
         es.onerror=()=>{
