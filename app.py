@@ -3233,9 +3233,18 @@ def _queue_task_assignment_email_for_created_task(task_or_id, creator_user_id=No
 
             assignee_email = _clean_email_addr(_row_value(assignee_user, 'email', ''))
             assignee_name = _row_value(assignee_user, 'name', 'there')
+            assignee_user_id = _row_value(assignee_user, 'id', assignee_ref)
             if not assignee_email:
                 log.warning("[TaskEmail] skipped — resolved assignee has no email source=%s ref=%r task=%s ws=%s", source, assignee_ref, tid, ws)
                 _email_audit('skip_no_email_address', source=source, task=tid, ref=repr(assignee_ref), ws=ws)
+                return False
+            # BUG FIX: this dispatcher is the sole path for task-assignment
+            # email (see the "authoritative" docstring above) and never
+            # checked the recipient's own email preference before sending —
+            # unlike deadline/ticket_updated/approval_requested, which all do.
+            if not _should_notify(assignee_user_id, "task_assigned", "email"):
+                log.info("[TaskEmail] skipped — recipient opted out source=%s task=%s ws=%s", source, tid, ws)
+                _email_audit('skip_notify_pref', source=source, task=tid, ws=ws)
                 return False
 
             creator_name = 'Someone'
@@ -9753,7 +9762,7 @@ def update_task(tid):
             new_assignee_row = db.execute("SELECT name,email FROM users WHERE id=?", (new_assignee_val,)).fetchone()
             reassigner_row   = db.execute("SELECT name FROM users WHERE id=?", (session["user_id"],)).fetchone()
             reassigner_name  = reassigner_row["name"] if reassigner_row else "Someone"
-            if new_assignee_row and new_assignee_row["email"]:
+            if new_assignee_row and new_assignee_row["email"] and _should_notify(new_assignee_val, "task_assigned", "email"):
                 threading.Thread(target=send_task_reassigned_email,
                     args=(new_assignee_row["email"], new_assignee_row["name"],
                           d.get("title", t["title"]), reassigner_name, tid, wid()),
@@ -9770,12 +9779,13 @@ def update_task(tid):
                 assignee_user=db.execute("SELECT name,email FROM users WHERE id=?",(t["assignee"],)).fetchone()
                 changer_user=db.execute("SELECT name FROM users WHERE id=?",(session["user_id"],)).fetchone()
                 changer_name=changer_user["name"] if changer_user else "Someone"
-                if assignee_user and assignee_user["email"]:
+                if assignee_user and assignee_user["email"] and _should_notify(t["assignee"], "status_change", "email"):
                     threading.Thread(target=send_status_change_email,
                         args=(assignee_user["email"],assignee_user["name"],t["title"],d["stage"],changer_name,wid()),
                         daemon=True).start()
-                _enqueue_push(push_notification_to_user, *(db, t["assignee"], f"🔄 Task updated: {t['title']}",
-                          f"{changer_name} moved it to {d['stage']}", f"/?action=task&id={tid}"))
+                if _should_notify(t["assignee"], "status_change", "push"):
+                    _enqueue_push(push_notification_to_user, *(db, t["assignee"], f"🔄 Task updated: {t['title']}",
+                              f"{changer_name} moved it to {d['stage']}", f"/?action=task&id={tid}"))
             if t["project"]:
                 actor=db.execute("SELECT name FROM users WHERE id=?",(session["user_id"],)).fetchone()
                 aname=actor["name"] if actor else "Someone"
@@ -9831,35 +9841,61 @@ def update_task(tid):
                            (nid2,wid(),"comment",f"{cname} commented on '{t['title']}': {latest.get('text','')}",
                             t["assignee"],0,ts(),tid,'task'))
                 assignee_user=db.execute("SELECT name,email FROM users WHERE id=?",(t["assignee"],)).fetchone()
-                if assignee_user and assignee_user["email"]:
+                if assignee_user and assignee_user["email"] and _should_notify(t["assignee"], "comment", "email"):
                     threading.Thread(target=send_comment_email,
                         args=(assignee_user["email"],assignee_user["name"],t["title"],cname,latest.get('text',''),wid()),
                         daemon=True).start()
-            # @mention detection: notify any @mentioned user who isn't already the assignee
+                # BUG FIX: this push+Slack DM for the assignee used to live
+                # inside `if mentioned_names:` below — pure accidental
+                # nesting, not intentional — so a comment with no @mention
+                # (the common case) never reached the assignee's phone or
+                # Slack at all, only email+in-app. Moved here so every
+                # comment on an assignee's task notifies them the same way,
+                # regardless of whether it also happens to @mention someone.
+                if _should_notify(t["assignee"], "comment", "push"):
+                    _enqueue_push(push_notification_to_user, db, t["assignee"],
+                        f"💬 Comment on: {t['title']}",
+                        f"{cname}: {latest.get('text','')[:80]}", "/")
+                _maybe_slack_dm(wid(), t["assignee"],
+                    f"💬 New comment on: {t['title']}",
+                    f"{cname}: {latest.get('text','')[:120]}",
+                    f"/?action=task&id={tid}")
+            # @mention detection: notify any @mentioned user who isn't already the assignee.
+            # BUG FIX: this used to extract "the mention" with
+            # findall(r'@([\w ]+)') and exact-match the capture against user
+            # names. [\w ]+ is greedy and treats a bare space as part of the
+            # name, so it doesn't stop at the end of a multi-word name — it
+            # keeps consuming whatever text follows until the first
+            # punctuation. "@Deva Raju can you check this" (no punctuation)
+            # captured "Deva Raju can you check this" as one blob, which
+            # never equals any real user's name, so the mention silently
+            # matched nothing. Only a mention immediately followed by
+            # punctuation ("@Deva Raju," / "@Deva Raju.") ever worked. Since
+            # virtually every name in this app is multi-word, this broke
+            # most real mentions. Search for each known user's actual name
+            # instead of trying to guess where an unknown name ends.
             import re as _re_mention
             comment_text_raw = latest.get("text","")
-            mentioned_names = _re_mention.findall(r'@([\w ]+)', comment_text_raw)
-            if mentioned_names:
+            if "@" in comment_text_raw:
                 all_users_ws = db.execute("SELECT id,name,email FROM users WHERE workspace_id=?", (wid(),)).fetchall()
                 commenter_row = db.execute("SELECT name FROM users WHERE id=?", (session["user_id"],)).fetchone()
                 commenter_name_m = commenter_row["name"] if commenter_row else "Someone"
                 for mu in all_users_ws:
-                    for mn in mentioned_names:
-                        if mu["name"].strip().lower() == mn.strip().lower():
-                            if mu["id"] != t.get("assignee","") and mu["email"]:
+                    mu_name = (mu["name"] or "").strip()
+                    if not mu_name:
+                        continue
+                    pattern = r'@' + _re_mention.escape(mu_name) + r'(?!\w)'
+                    if _re_mention.search(pattern, comment_text_raw, _re_mention.IGNORECASE):
+                        if mu["id"] != t.get("assignee","") and mu["id"] != session["user_id"]:
+                            if mu["email"] and _should_notify(mu["id"], "mention", "email"):
                                 threading.Thread(target=send_mention_email,
                                     args=(mu["email"], mu["name"], commenter_name_m,
                                           t["title"], comment_text_raw, wid()),
                                     daemon=True).start()
-                            break
-                _enqueue_push(push_notification_to_user, db, t["assignee"],
-                    f"💬 Comment on: {t['title']}",
-                    f"{cname}: {latest.get('text','')[:80]}", "/")
-                if t.get("assignee"):
-                    _maybe_slack_dm(wid(), t["assignee"],
-                        f"💬 New comment on: {t['title']}",
-                        f"{cname}: {latest.get('text','')[:120]}",
-                        f"/?action=task&id={tid}")
+                            if _should_notify(mu["id"], "mention", "push"):
+                                _enqueue_push(push_notification_to_user, db, mu["id"],
+                                    f"💬 {commenter_name_m} mentioned you",
+                                    f"On '{t['title']}': {comment_text_raw[:80]}", "/")
         _cache_bust(wid(), "tasks", "notifications", "notifs", "appdata")
         updated_task = dict(db.execute("SELECT * FROM tasks WHERE id=? AND workspace_id=?",(tid,wid())).fetchone())
         # Push SSE — all workspace clients get the new stage/assignee immediately
@@ -11290,7 +11326,7 @@ def create_ticket():
             db.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts,entity_id,entity_type) VALUES (?,?,?,?,?,?,?,?,?)",
                        (nid,wid(),"ticket_assigned",f"🎫 {rname} assigned ticket: {d['title']}",d["assignee"],0,now,tid,'ticket'))
             assignee_tkt=db.execute("SELECT name,email FROM users WHERE id=?",(d["assignee"],)).fetchone()
-            if assignee_tkt and assignee_tkt["email"]:
+            if assignee_tkt and assignee_tkt["email"] and _should_notify(d["assignee"], "ticket_assigned", "email"):
                 threading.Thread(target=send_ticket_assigned_email,
                     args=(assignee_tkt["email"],assignee_tkt["name"],d["title"],
                           rname,tid,priority,wid()),
