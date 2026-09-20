@@ -313,14 +313,24 @@ const _apiRequest = async (u, opts = {}) => {
     if (r.status === 304 && cached) return cached.data;
     const data = await _apiRead(r);
     if (!r.ok) {
-      const message = data?.error || data?.message || `HTTP ${r.status}`;
+      // BUG FIX: this used to collapse the backend's {error, message} pair into
+      // a single `error` string, preferring the short machine code (e.g.
+      // "OWN_KEY_NOT_CONFIGURED") over the actual human-readable `message` the
+      // backend crafted for it (see ai_provider.py's error_response_for) - so
+      // every caller that reasonably did `r.message||r.error` to prefer the
+      // friendly text ended up displaying the raw code instead, since
+      // `message` was never populated at all. Now `error` stays the short code
+      // (existing callers checking `r.error==='NO_KEY'` etc. keep working) and
+      // `message`, when the backend sent one, carries the friendly text.
+      const errorCode = data?.error || `HTTP ${r.status}`;
+      const message = data?.message || data?.error || `HTTP ${r.status}`;
       const isAuthEndpoint = u.startsWith('/api/auth/');
       if (r.status === 401 && !isAuthEndpoint) {
         _ptNotifySessionExpired(); // see _ptNotifySessionExpired above
       } else {
         _apiNotifyError(u, message, r.status);
       }
-      return { ok:false, error:message, status:r.status, data };
+      return { ok:false, error:errorCode, message, status:r.status, data };
     }
     const etag = r.headers.get('ETag');
     if (method === 'GET' && etag) _apiEtagCache[u] = { etag, data };
@@ -405,6 +415,10 @@ const PRIS={critical:{label:'Critical',color:'var(--rd)',sym:'🔴'},high:{label
 const ROLES=['Admin','Manager','HR','TeamLead','Developer','Tester','Viewer'];
 const JOIN_ROLES=['Developer','Tester','Viewer']; // roles available when joining via invite code
 const PAL=['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#ec4899','#0891b2','#5a8cff'];
+// Shared between AIWorkspace and AIAssistant so picking a provider in one AI
+// surface is remembered in the other too, instead of two independent choices.
+const AI_PROVIDER_STORAGE_KEY='pt_ai_provider';
+const AI_PROVIDERS=[{id:'platform',label:'Agent Tracker AI',hint:'Shared key, no setup needed'},{id:'own',label:'Claude AI',hint:'Uses your workspace\'s own Anthropic key'}];
 const fmtD=d=>{if(!d)return'—';try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return d;}};
 const ago=iso=>{const m=Math.floor((Date.now()-new Date(iso))/60000);if(m<1)return'just now';if(m<60)return m+'m ago';if(m<1440)return Math.floor(m/60)+'h ago';return Math.floor(m/1440)+'d ago';};
 const safe=a=>(Array.isArray(a)?a:[]);
@@ -3936,6 +3950,19 @@ function AIWorkspace({cu,onNav}){
   const [sending,setSending]=useState(false);
   const [error,setError]=useState('');
   const scrollRef=useRef(null);
+  // Which key answers: 'platform' = Agent Tracker AI (shared key, capped per plan,
+  // no setup needed), 'own' = Claude AI (this workspace's own Anthropic key, set in
+  // Workspace Settings), or null = no explicit choice made yet. null is NOT the
+  // same as 'platform': it's left out of the request entirely so the backend
+  // falls back to its normal auto behavior (use the workspace's own key if one is
+  // configured, else the platform key). BUG FIX: this used to default straight to
+  // 'platform' and always send it - which silently switched every workspace that
+  // already had its own key configured onto the capped shared key on first load,
+  // with no action from anyone. Defaulting to null (and only sending `provider`
+  // once the user has actually picked one, see send() below) preserves existing
+  // behavior for everyone who hasn't touched the toggle.
+  const [provider,setProvider]=useState(()=>{try{return localStorage.getItem(AI_PROVIDER_STORAGE_KEY)||null;}catch(_){return null;}});
+  const chooseProvider=(p)=>{setProvider(p);try{localStorage.setItem(AI_PROVIDER_STORAGE_KEY,p);}catch(_){}};
 
   const persist=(next)=>{setConvos(next);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(_){}};
 
@@ -3971,7 +3998,7 @@ function AIWorkspace({cu,onNav}){
     setInput('');
     setSending(true);
     try{
-      const r=await api.post('/api/ai/chat',{message:msg,history:withUser.messages.map(m=>({role:m.role,content:m.content}))});
+      const r=await api.post('/api/ai/chat',{message:msg,history:withUser.messages.map(m=>({role:m.role,content:m.content})),...(provider?{provider}:{})});
       if(r&&r.error){
         setError(r.message||'The AI assistant is unavailable right now.');
       }else{
@@ -3992,9 +4019,18 @@ function AIWorkspace({cu,onNav}){
   return html`
     <div class="ai-root" style=${{display:'flex',height:'100%',background:'var(--bg)'}}>
       <div style=${{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
-        <div class="ai-pad" style=${{padding:'28px 32px 12px'}}>
-          <div style=${{fontSize:22,fontWeight:900,color:'var(--tx)'}}>Good ${(new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening')}${cu&&cu.name?', '+cu.name.split(' ')[0]:''} 👋</div>
-          <div style=${{fontSize:13,color:'var(--tx2)',marginTop:4}}>Ask me anything about your projects, tasks, and team — or pick a quick action below.</div>
+        <div class="ai-pad" style=${{padding:'28px 32px 12px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+          <div>
+            <div style=${{fontSize:22,fontWeight:900,color:'var(--tx)'}}>Good ${(new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening')}${cu&&cu.name?', '+cu.name.split(' ')[0]:''} 👋</div>
+            <div style=${{fontSize:13,color:'var(--tx2)',marginTop:4}}>Ask me anything about your projects, tasks, and team — or pick a quick action below.</div>
+          </div>
+          <div style=${{display:'flex',background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:12,padding:3,flexShrink:0}} title="Which AI answers your questions">
+            ${AI_PROVIDERS.map(p=>html`
+              <button key=${p.id} type="button" onClick=${()=>chooseProvider(p.id)} title=${p.hint}
+                style=${{padding:'7px 12px',borderRadius:9,border:'none',cursor:'pointer',fontSize:11.5,fontWeight:800,
+                  background:provider===p.id?'var(--ac)':'transparent',color:provider===p.id?'#fff':'var(--tx2)'}}>${p.label}</button>
+            `)}
+          </div>
         </div>
 
         ${(!active||active.messages.length===0)?html`
@@ -7931,6 +7967,16 @@ function WorkspaceSettings({cu,onReload}){
         <h3 style=${{fontSize:13,fontWeight:700,color:'var(--tx)',letterSpacing:'-0.01em',marginBottom:4}}>🤖 AI Assistant</h3>
         <p style=${{fontSize:12,color:'var(--tx2)',marginBottom:14}}>Paste your Anthropic API key to enable the AI assistant. The key is stored securely in your workspace only.</p>
         <div><label class="lbl">Anthropic API Key</label>
+          <!-- Clicking into the masked field blanks the display (so typing a
+               new key doesn't require deleting bullet placeholders first),
+               but only actually typing something marks the form dirty. An
+               earlier revision of this fix also marked dirty on mere focus,
+               reasoning that a blank-looking field implied intent to clear it
+               - but the form has one shared Save button for every setting
+               here, so clicking into this field and then saving an unrelated
+               change (workspace name, a toggle) silently deleted the real key
+               with no confirmation. Reverted: only Remove (below) or actually
+               typing counts as an edit to this field. -->
           <div style=${{display:'flex',gap:8}}>
             <div style=${{position:'relative',flex:1}}>
               <input class="inp" style=${{paddingRight:40,fontFamily:showKey?'monospace':'monospace',letterSpacing:aiKey.startsWith('•')?0:0}} type=${showKey?'text':'password'} placeholder="sk-ant-api..." value=${aiKey}
@@ -8406,29 +8452,23 @@ ${hasFiles?'- The user has attached files. Analyze them and create documentation
     const history=messages.filter(m=>m.role!=='assistant'||m.type!=='thinking').slice(-12).map(m=>({role:m.role,content:m.content}));
     history.push({role:'user',content:userContent});
 
-    // Check for API key
-    const ws=await api.get('/api/workspace');
-    if(!ws.ai_api_key){
-      setMessages(m=>m.map(msg=>msg.id===thinkingId?{...msg,type:'error',content:'**No AI API Key configured.**\n\nPlease add your Anthropic API key in **Workspace Settings → AI Key** to enable the AI assistant.\n\nYou can get a key at [anthropic.com](https://anthropic.com).'}:msg));
-      setSending(false);scrollToBottom();return;
-    }
-
+    // BUG FIX (security): this used to call api.anthropic.com directly from the
+    // browser with the workspace's raw decrypted key attached - now proxied
+    // through the backend (server/app.py's ai_docs_chat), which resolves the
+    // right key (workspace's own, or the platform's shared/capped key) without
+    // ever sending it to the client. See app.py's /api/ai/docs-chat.
     try{
-      const r=await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':ws.ai_api_key,'anthropic-version':'2023-06-01'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,system:systemPrompt,messages:history})
-      });
-      if(!r.ok){
-        const e=await r.json().catch(()=>({}));
-        throw new Error(e.error?.message||'API error '+r.status);
+      const r=await api.post('/api/ai/docs-chat',{system:systemPrompt,messages:history});
+      if(r&&r.error){
+        const msg=r.message||r.error;
+        setMessages(m=>m.map(msg2=>msg2.id===thinkingId?{...msg2,type:'error',content:`**${msg}**`}:msg2));
+      }else{
+        const reply=(r&&r.content)||'Sorry, I could not generate a response.';
+        setMessages(m=>m.map(msg=>msg.id===thinkingId?{...msg,type:'assistant',content:reply}:msg));
       }
-      const data=await r.json();
-      const reply=data.content?.[0]?.text||'Sorry, I could not generate a response.';
-      setMessages(m=>m.map(msg=>msg.id===thinkingId?{...msg,type:'assistant',content:reply}:msg));
     }catch(e){
       const errMsg=e.message||'Network error';
-      setMessages(m=>m.map(msg=>msg.id===thinkingId?{...msg,type:'error',content:`**Error:** ${errMsg}\n\nPlease check your API key in Workspace Settings.`}:msg));
+      setMessages(m=>m.map(msg=>msg.id===thinkingId?{...msg,type:'error',content:`**Error:** ${errMsg}\n\nPlease try again.`}:msg));
     }
     setSending(false);scrollToBottom();
     // Auto-save to recents after AI responds
@@ -8752,6 +8792,11 @@ ${hasFiles?'- The user has attached files. Analyze them and create documentation
 /* ─── AIAssistant floating panel ──────────────────────────────────────────── */
 function AIAssistant({cu,projects,tasks,users}){
   const [open,setOpen]=useState(false);const [msgs,setMsgs]=useState([]);const [input,setInput]=useState('');const [busy,setBusy]=useState(false);const ref=useRef(null);const iref=useRef(null);
+  // See AIWorkspace for what these mean, including why null (no explicit
+  // choice) - not 'platform' - is the default. Shared storage key so the
+  // choice made in either AI surface carries over to the other.
+  const [provider,setProvider]=useState(()=>{try{return localStorage.getItem(AI_PROVIDER_STORAGE_KEY)||null;}catch(_){return null;}});
+  const chooseProvider=(p)=>{setProvider(p);try{localStorage.setItem(AI_PROVIDER_STORAGE_KEY,p);}catch(_){}};
 
   useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[msgs]);
 
@@ -8766,7 +8811,7 @@ function AIAssistant({cu,projects,tasks,users}){
     setMsgs(prev=>[...prev,userMsg]);
     setBusy(true);
     const history=[...msgs,userMsg];
-    const r=await api.post('/api/ai/chat',{message:m,history:history.slice(-10)});
+    const r=await api.post('/api/ai/chat',{message:m,history:history.slice(-10),...(provider?{provider}:{})});
     setBusy(false);
     if(r.error&&r.error==='NO_KEY'){
       setMsgs(prev=>[...prev,{role:'ai',content:'⚙️ No API key configured.\n\nGo to **Settings → AI Assistant** and paste your Anthropic API key to get started.',actions:[]}]);
@@ -8799,6 +8844,14 @@ function AIAssistant({cu,projects,tasks,users}){
             <div style=${{fontSize:9,color:'var(--tx3)'}}>Powered by Claude</div>
           </div>
           ${msgs.length>0?html`<button class="btn bg" style=${{fontSize:10,padding:'4px 9px'}} onClick=${()=>setMsgs([])}>Clear</button>`:null}
+        </div>
+
+        <div style=${{display:'flex',gap:4,padding:'8px 10px 0',flexShrink:0}}>
+          ${AI_PROVIDERS.map(p=>html`
+            <button key=${p.id} type="button" onClick=${()=>chooseProvider(p.id)} title=${p.hint}
+              style=${{flex:1,padding:'6px 8px',borderRadius:8,border:'1px solid var(--bd)',cursor:'pointer',fontSize:10.5,fontWeight:800,
+                background:provider===p.id?'var(--ac)':'var(--sf)',color:provider===p.id?'#fff':'var(--tx2)'}}>${p.label}</button>
+          `)}
         </div>
 
         <div ref=${ref} style=${{flex:1,overflowY:'auto',padding:'12px',display:'flex',flexDirection:'column',gap:10}}>

@@ -49,7 +49,7 @@ def _platform_calls_this_month(db, workspace_id):
     return int(row["total"]) if row else 0
 
 
-def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None):
+def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None, preferred_source=None):
     """
     Figures out which API key (if any) this workspace should use right now.
 
@@ -63,11 +63,22 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None):
     falls back to returning unencrypted values unchanged, so callers don't
     need to know which rows are encrypted and which aren't.
 
+    `preferred_source` lets a caller override the default auto-pick
+    ("own" key wins if set, else fall back to "platform"):
+      - "platform": use the shared platform key even if the workspace has
+        set its own — this is the "Agent Tracker AI" choice in the UI.
+      - "own": use only the workspace's own key, and fail with
+        OWN_KEY_NOT_CONFIGURED (rather than silently falling back to the
+        platform key) if none is set — this is the "Claude AI" choice, and
+        falling back silently would defeat the point of the user
+        deliberately picking "use MY key".
+      - None (default): unchanged auto behavior.
+
     Returns a dict:
       {
         "key": <api key string> or None,
         "source": "own" | "platform" | "none",
-        "error": None | "NOT_CONFIGURED" | "LIMIT_EXCEEDED",
+        "error": None | "NOT_CONFIGURED" | "OWN_KEY_NOT_CONFIGURED" | "LIMIT_EXCEEDED",
         "platform_calls_used": int or None,
         "platform_calls_limit": int or None,
       }
@@ -86,11 +97,20 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None):
             pass  # fail closed to the raw value rather than crash key resolution
     own_key = (raw_key or "").strip()
 
-    if own_key:
+    if own_key and preferred_source != "platform":
         return {
             "key": own_key,
             "source": "own",
             "error": None,
+            "platform_calls_used": None,
+            "platform_calls_limit": None,
+        }
+
+    if preferred_source == "own":
+        return {
+            "key": None,
+            "source": "own",
+            "error": "OWN_KEY_NOT_CONFIGURED",
             "platform_calls_used": None,
             "platform_calls_limit": None,
         }
@@ -149,6 +169,18 @@ def error_response_for(resolved):
                 "message": (
                     "AI features aren't available yet. Add your own Anthropic API key in "
                     "Workspace Settings, or ask your platform admin to enable the default AI."
+                ),
+            },
+            400,
+        )
+    if resolved["error"] == "OWN_KEY_NOT_CONFIGURED":
+        return (
+            {
+                "error": "OWN_KEY_NOT_CONFIGURED",
+                "message": (
+                    "You've selected Claude AI, but this workspace hasn't added an Anthropic API key yet. "
+                    "Add one in Workspace Settings → AI Assistant, or switch to Agent Tracker AI to keep going "
+                    "without your own key."
                 ),
             },
             400,

@@ -1480,7 +1480,10 @@ def add_security_headers(response):
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob: https:; "
         "media-src 'self' blob: https:; "
-        "connect-src 'self' wss: https://api.anthropic.com https://accounts.google.com; "
+        # api.anthropic.com removed: every AI feature now proxies through this app's
+        # own backend (see /api/ai/chat, /api/ai/docs-chat) - no first-party browser
+        # code calls Anthropic directly anymore, so there's no reason to allow it.
+        "connect-src 'self' wss: https://accounts.google.com; "
         "frame-ancestors 'self'; "
         "frame-src https://accounts.google.com; "
         "object-src 'none'; "
@@ -6934,6 +6937,7 @@ def accept_workspace_invite():
 
 @app.route("/api/workspace/invites", methods=["GET"])
 @login_required
+@require_role("Admin","Manager","TeamLead")
 def list_workspace_invites():
     ws = wid()
     with get_db() as db:
@@ -7890,7 +7894,20 @@ def vault_audit_event(cid):
 # ── Workspace ─────────────────────────────────────────────────────────────────
 @app.route("/api/workspace")
 @login_required
+@require_role("Admin","Manager","TeamLead")
 def get_workspace():
+    # BUG FIX (security): this route used to be reachable by ANY logged-in
+    # workspace member - Developer/Tester/Viewer included - who could then read
+    # the workspace's fully decrypted ai_api_key and smtp_password straight out
+    # of the JSON response, regardless of role. Client-side, only hasOpsAccess()
+    # roles (frontend.js) ever render the Settings page that calls this, but
+    # that's UI gating, not a security boundary - a direct fetch('/api/workspace')
+    # with a low-role session cookie bypassed it entirely. This is exactly the
+    # kind of exposure this session's AiDocsView fix set out to close (the raw
+    # key reaching a browser) - closing it here too, via the same require_role
+    # pattern already used elsewhere (e.g. the endpoints at app.py:6437, 8058).
+    # The only frontend caller (WorkspaceSettings) already requires these same
+    # roles to even render, so this doesn't remove any currently-working access.
     with get_db() as db:
         ws=db.execute("SELECT * FROM workspaces WHERE id=?",(wid(),)).fetchone()
         if not ws: return jsonify({"error":"Workspace not found"}),404
@@ -7905,7 +7922,13 @@ def get_workspace():
 
 @app.route("/api/workspace",methods=["PUT"])
 @login_required
+@require_role("Admin","Manager","TeamLead")
 def update_workspace():
+    # BUG FIX (security): same gap as get_workspace above, but worse - this is
+    # a WRITE. Any logged-in member of any role could previously overwrite the
+    # workspace's Anthropic key, SMTP credentials (redirecting outgoing email,
+    # including password-reset mail, through an attacker-controlled relay),
+    # name, or other settings below, with nothing but a valid session cookie.
     d=request.json or {}
     with get_db() as db:
         if "name" in d: db.execute("UPDATE workspaces SET name=? WHERE id=?",(d["name"],wid()))
@@ -7929,6 +7952,7 @@ def update_workspace():
 
 @app.route("/api/workspace/new-invite",methods=["POST"])
 @login_required
+@require_role("Admin","Manager","TeamLead")
 def new_invite():
     invite=secrets.token_hex(4).upper()
     with get_db() as db:
@@ -7993,6 +8017,7 @@ def debug_email_log():
 
 @app.route("/api/workspace/test-email",methods=["POST"])
 @login_required
+@require_role("Admin","Manager","TeamLead")
 def test_email():
     """Send a test email using the same path as task assignment emails."""
     d=request.json or {}
@@ -12172,7 +12197,8 @@ def ai_chat():
             ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
             ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
         ) if ws else {}
-        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()))
+        provider_pref = d.get("provider") if d.get("provider") in ("own", "platform") else None
+        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()), preferred_source=provider_pref)
         if ai_resolved["error"]:
             body, status = _ai_error_response(ai_resolved)
             return jsonify(body), status
@@ -12307,6 +12333,88 @@ IMPORTANT: Always be helpful and concise. When performing actions, explain what 
     return jsonify({
         "message":clean_text,"actions":action_results,"raw":ai_text,
         "ai_source": ai_resolved["source"],  # "own" or "platform" — lets the UI show which key answered
+        "ai_platform_calls_used": ai_resolved["platform_calls_used"],
+        "ai_platform_calls_limit": ai_resolved["platform_calls_limit"],
+    })
+
+@app.route("/api/ai/docs-chat",methods=["POST"])
+@login_required
+def ai_docs_chat():
+    """Backend proxy for the AI Documentation Studio (AiDocsView).
+
+    BUG FIX (security): this used to call api.anthropic.com directly from
+    the browser, with the workspace's decrypted Anthropic key attached as
+    the x-api-key header - meaning every logged-in member's browser held
+    the real key in memory and visible in the Network tab, regardless of
+    role. This proxies the call server-side instead, through the same
+    resolve_ai_key() key resolution (workspace's own key, or the platform's
+    shared/capped key) every other AI feature already goes through - the
+    browser never sees an Anthropic key at all.
+
+    The frontend already builds the full Anthropic-shaped request (system
+    prompt + message history, including multimodal content blocks for
+    uploaded images/PDFs) since that's what it used to send directly - this
+    endpoint accepts that same shape unchanged and forwards it, so no
+    behavior/UX changes other than where the key lives.
+    """
+    # request.content_length reads straight off the Content-Length header, so
+    # this check must run BEFORE request.json touches the body - request.json
+    # reads and parses the whole thing into memory first. BUG FIX: this used
+    # to run after `d=request.json`, by which point the expensive part (base64
+    # file attachments making this payload much larger than plain chat) had
+    # already happened, defeating the point of bounding it below the app's
+    # global 150MB request cap.
+    if (request.content_length or 0) > 80*1024*1024:
+        return jsonify({"error":"Attachments are too large for one request - remove a file and try again."}),413
+    d=request.json or {}
+    system_prompt=(d.get("system") or "").strip()
+    messages=d.get("messages") or []
+    if not isinstance(messages,list) or not messages:
+        return jsonify({"error":"Messages are required"}),400
+    if len(messages)>30:
+        return jsonify({"error":"Conversation is too long for a single request - start a new chat."}),400
+    provider_pref = d.get("provider") if d.get("provider") in ("own","platform") else None
+
+    with get_db() as db:
+        ws=db.execute("SELECT * FROM workspaces WHERE id=?",(wid(),)).fetchone()
+        if resolve_ai_key is None:
+            return jsonify({"error":"NO_KEY","message":"AI is not available right now."}),400
+        plan=(ws["plan"] if ws and "plan" in ws.keys() else "starter") or "starter"
+        plan_limits=_limits_for_plan(
+            plan,
+            ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
+            ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
+        ) if ws else {}
+        ai_resolved=resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()), preferred_source=provider_pref)
+        if ai_resolved["error"]:
+            body,status=_ai_error_response(ai_resolved)
+            return jsonify(body),status
+        api_key=ai_resolved["key"]
+
+    try:
+        req_data=json.dumps({
+            "model":"claude-sonnet-4-5","max_tokens":4000,
+            "system":system_prompt,"messages":messages,
+        }).encode()
+        req=urllib.request.Request("https://api.anthropic.com/v1/messages",
+            data=req_data,method="POST",
+            headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"})
+        with urllib.request.urlopen(req,timeout=90) as resp:
+            result=json.loads(resp.read().decode())
+            content=result["content"][0]["text"]
+    except urllib.error.HTTPError as e:
+        body=e.read().decode()
+        if e.code==401: return jsonify({"error":"INVALID_KEY","message":"Invalid API key. Check your key in Workspace Settings."}),400
+        return jsonify({"error":"API_ERROR","message":f"Anthropic API error: {body[:200]}"}),500
+    except Exception as e:
+        return jsonify({"error":"NETWORK_ERROR","message":f"Could not reach AI: {str(e)}"}),500
+
+    if record_ai_call:
+        record_ai_call(_record_usage, wid(), ai_resolved["source"], {"endpoint": "ai_docs_chat"})
+
+    return jsonify({
+        "content":content,
+        "ai_source": ai_resolved["source"],
         "ai_platform_calls_used": ai_resolved["platform_calls_used"],
         "ai_platform_calls_limit": ai_resolved["platform_calls_limit"],
     })
