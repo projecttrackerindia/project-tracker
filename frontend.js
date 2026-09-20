@@ -1684,6 +1684,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col:colProp,setCol,ws
   const col=colProp&&!window.matchMedia('(max-width:768px)').matches; // drawer is always full-width on phones
   const isAdminManager=hasOpsAccess(cu);
   const baseView=(view||'dashboard').split(':')[0];
+  const sbTotalDm=(dmUnread||[]).reduce((a,x)=>a+(x.cnt||0),0);
 
   // ── Sidebar theme tokens ──────────────────────────────────────────────
   // The sidebar used to be hardcoded to the dark palette regardless of the
@@ -1731,16 +1732,16 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col:colProp,setCol,ws
     'workspace-os': html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M9 8h1"/><path d="M14 8h1"/><path d="M9 12h1"/><path d="M14 12h1"/><path d="M10 21v-5h4v5"/></svg>`,
   };
   const adminNav=[
-    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'Workspace OS', badge:'New'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline Tracker'}, {id:'productivity',label:'Dev Productivity'}, {id:'reminders', label:'Reminders'}, {id:'team', label:'Team Management'}, {id:'billing', label:'Billing & Invoices', badge:'New'}, {id:'ai-docs', label:'AI Docs', badge:'AI'}, {id:'notes', label:'Notes', badge:'New'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   const devNav=[
-    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
+    {id:'ai', label:'AI Workspace', badge:'AI'}, {id:'dashboard', label:'Dashboard'}, {id:'workspace-os', label:'My Workspace'}, {id:'projects', label:'Projects'}, {id:'tasks', label:'Kanban Board'}, {id:'messages', label:'Channels'}, {id:'dm', label:'Direct Messages'}, {id:'tickets', label:'Tickets'}, {id:'timeline', label:'Timeline'}, {id:'reminders', label:'Reminders'}, {id:'notes', label:'Notes'}, {id:'password-generator', label:'Password Gen', badge:'FREE'}, {id:'vault', label:'My Vault'}, ];
   // Grouped-sidebar labels (visual grouping only, migrated from the demo's
   // collapsible category headers). Nav order/pin/drag logic is unaffected —
   // a label is simply shown whenever the category changes while iterating.
   const NAV_GROUPS={
     ai:'AI', dashboard:'Overview', 'workspace-os':'Overview',
     projects:'Work', tasks:'Work', tickets:'Work', timeline:'Work', productivity:'Work',
-    messages:'Communication', reminders:'Communication', notes:'Communication',
+    messages:'Communication', dm:'Communication', reminders:'Communication', notes:'Communication',
     team:'People', billing:'People',
     'ai-docs':'Tools', 'password-generator':'Tools', vault:'Tools',
   };
@@ -1832,6 +1833,7 @@ function Sidebar({cu,view,setView,onLogout,unread,dmUnread,col:colProp,setCol,ws
       ${!col?html`<span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12,flex:1,paddingRight:hoverNav===it.id&&!col?44:0}}>${it.label}</span>`:null}
       ${it.badge&&!col&&!isOfflineLocked?html`<span style=${{fontSize:8,fontWeight:800,padding:'1px 5px',borderRadius:4,background:'linear-gradient(135deg,#5a5ef7,#a855f7)',color:'#fff',letterSpacing:'.04em',flexShrink:0}}>${it.badge}</span>`:null}
       ${it.id==='notifs'&&unread>0&&!isOfflineLocked?html`<span style=${{position:'absolute',top:6,right:col?6:10,minWidth:16,height:16,borderRadius:8,background:'var(--rd)',color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>${unread>9?'9+':unread}</span>`:null}
+      ${it.id==='dm'&&sbTotalDm>0&&!isOfflineLocked?html`<span style=${{position:'absolute',top:6,right:col?6:10,minWidth:16,height:16,borderRadius:8,background:'var(--rd)',color:'#fff',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>${sbTotalDm>9?'9+':sbTotalDm}</span>`:null}
     </button>`;
   };
 
@@ -7719,9 +7721,18 @@ function WorkspaceSettings({cu,onReload}){
   useEffect(()=>{api.get('/api/workspace').then(d=>{if(!d.error){setWs(d);setWsName(d.name||'');setAiKey(d.ai_api_key?'•'.repeat(20):'');setAiKeyDirty(false);setEmailEnabled(d.email_enabled!==0);setSmtpServer(d.smtp_server||'smtp.gmail.com');setSmtpPort(d.smtp_port||587);setSmtpUsername(d.smtp_username||'');setSmtpPassword(d.smtp_password?'•'.repeat(16):'');setFromEmail(d.from_email||'');setOtpEnabled(!!d.otp_enabled);setDmEnabled(d.dm_enabled!==0);setSlackEnabled(!!d.slack_notifications_enabled);}});
   api.get('/api/slack/status').then(d=>{if(d&&d.ok)setSlackStatus(d);}).catch(()=>{});},[]);
 
-  const removeAiKey=()=>{
+  const removeAiKey=async()=>{
     if(!window.confirm('Remove the saved Anthropic API key? The AI assistant will stop working until a new key is added.'))return;
-    setAiKey('');setAiKeyDirty(true);
+    // FIX (reported: "I removed the key but it came back"): this used to only
+    // clear local state and rely on the user also clicking the separate Save
+    // button below — a destructive, explicitly-confirmed action like this
+    // should take effect immediately, not silently no-op until a second,
+    // unrelated click. Persist right here instead, same as newInvite() does.
+    setAiKey('');setAiKeyDirty(false);
+    setSaving(true);
+    await api.put('/api/workspace',{ai_api_key:''});
+    setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
+    await onReload();
   };
 
   const save=async()=>{
@@ -13520,6 +13531,14 @@ function App(){
       setMarkingAllDmsRead(false);
     }
   },[markingAllDmsRead]);
+  // Per-peer counterpart to onDmReadAll above — DirectMessages calls this
+  // whenever a specific thread is opened/read (see its own onDmRead calls).
+  // The real read-state already gets written server-side by GET /api/dm/:id
+  // itself; this just clears that one peer's badge immediately client-side
+  // instead of waiting for the next /api/dm/unread poll to catch up.
+  const onDmRead=useCallback((peerId)=>{
+    setDmUnread(prev=>prev.filter(r=>String(r.sender)!==String(peerId)));
+  },[]);
   // Local-only sign-out — used when we're told the session is no longer valid
   // server-side (SSE force_logout from a login elsewhere in single-session
   // mode, or a 401 bounce via pt:session-expired). Unlike logout(), this must
@@ -13912,6 +13931,7 @@ function App(){
               onClearInitialTask=${()=>setInitialTaskId(null)}
             />`:null}
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} activeTeam=${activeTeam} key=${'msgs-'+(teamCtx||'all')}/>`:null}
+            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} onDmReadAll=${onDmReadAll} markingAllDmsRead=${markingAllDmsRead} dmEnabled=${wsDmEnabled} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}
