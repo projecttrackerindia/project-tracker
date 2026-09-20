@@ -4959,6 +4959,14 @@ def init_db():
             "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS reply_to TEXT DEFAULT ''",
             "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS client_msg_id TEXT DEFAULT ''",
             "CREATE INDEX IF NOT EXISTS idx_dm_client_msg ON direct_messages(workspace_id, sender, recipient, client_msg_id)",
+            # context_type/context_id: optional link from a DM to the task/project it
+            # was sent from (frontend already sends these; column never existed).
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS context_type TEXT DEFAULT ''",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS context_id TEXT DEFAULT ''",
+            # dm_favorites: per-user "starred" DM contacts (the heart toggle in the
+            # sidebar) — table referenced by the comment above but never created.
+            "CREATE TABLE IF NOT EXISTS dm_favorites (id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT, peer_id TEXT, created TEXT, UNIQUE(workspace_id, user_id, peer_id))",
+            "CREATE INDEX IF NOT EXISTS idx_dm_favorites_user ON dm_favorites(workspace_id, user_id)",
             "CREATE INDEX IF NOT EXISTS idx_notifs_ts ON notifications(workspace_id, user_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_reminders_remind ON reminders(workspace_id, user_id, remind_at, fired)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(workspace_id, deleted_at, created)",
@@ -10228,6 +10236,313 @@ def _attach_dm_reactions(db, ws_id, messages):
     for m in out:
         m["reactions"]=list(grouped.get(m.get("id"), {}).values())
     return out
+
+# ── Direct Messages — restored routes ────────────────────────────────────────
+# The user-facing DM feature was deliberately removed at some point (see the
+# comment on the direct_messages table's CREATE statement: "the user-facing
+# Direct Messages feature and its /api/dm/* endpoints have been removed") —
+# but only the route layer. Every piece of supporting infrastructure was left
+# fully intact and clearly built for exactly this: the schema (every column
+# the frontend's DM UI already sends, including reply_to/edited/deleted/
+# pinned/client_msg_id — added above), indexes for every access pattern
+# (idx_dm_unread_covering, idx_dm_conversation, idx_dm_client_msg, ...),
+# the before_request CSRF/rate-limit middleware (already rate-limits POST
+# /api/dm specifically, by name, before this route even existed), and the
+# helper functions above (_fresh_dm_unread, _attach_dm_reactions,
+# _bust_dm_thread). Restoring the feature is therefore route handlers wired
+# to already-working infrastructure, not new plumbing throughout — every
+# response shape below was taken directly from how frontend.js already
+# consumes each endpoint (grep for '/api/dm' there), not guessed.
+
+@app.route("/api/dm/unread")
+@login_required
+def get_dm_unread():
+    with get_db() as db:
+        return jsonify(_fresh_dm_unread(db, wid(), session["user_id"]))
+
+@app.route("/api/dm/latest-unread")
+@login_required
+def get_dm_latest_unread():
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT * FROM direct_messages WHERE workspace_id=? AND recipient=? AND read=0 "
+            "AND COALESCE(deleted,0)=0 ORDER BY ts DESC LIMIT 5",
+            (wid(), session["user_id"])
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+
+@app.route("/api/dm/route-target")
+@login_required
+def get_dm_route_target():
+    with get_db() as db:
+        row = db.execute(
+            "SELECT sender FROM direct_messages WHERE workspace_id=? AND recipient=? AND read=0 "
+            "AND COALESCE(deleted,0)=0 ORDER BY ts DESC LIMIT 1",
+            (wid(), session["user_id"])
+        ).fetchone()
+        return jsonify({"user": row["sender"] if row else ""})
+
+@app.route("/api/dm/previews")
+@login_required
+def get_dm_previews():
+    """Most recent message per conversation peer, for the DM sidebar list —
+    a dedicated summary endpoint so the sidebar never has to load every
+    conversation's full body just to show a preview line (see the frontend
+    comment at this call site)."""
+    uid = session["user_id"]
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT * FROM direct_messages WHERE workspace_id=? AND (sender=? OR recipient=?) "
+            "AND COALESCE(deleted,0)=0 ORDER BY ts DESC LIMIT 300",
+            (wid(), uid, uid)
+        ).fetchall()
+        out = {}
+        for r in rows:
+            r = dict(r)
+            peer = r["recipient"] if str(r["sender"]) == str(uid) else r["sender"]
+            if peer not in out:
+                out[peer] = {"content": r["content"], "ts": r["ts"], "sender": r["sender"]}
+        return jsonify(out)
+
+@app.route("/api/dm/favorites")
+@login_required
+def get_dm_favorites():
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT peer_id FROM dm_favorites WHERE workspace_id=? AND user_id=?",
+            (wid(), session["user_id"])
+        ).fetchall()
+        return jsonify([r["peer_id"] for r in rows])
+
+@app.route("/api/dm/favorite", methods=["POST"])
+@login_required
+def toggle_dm_favorite():
+    d = request.json or {}
+    peer_id = str(d.get("peer_id") or "").strip()
+    if not peer_id:
+        return jsonify({"error": "peer_id required"}), 400
+    uid = session["user_id"]
+    with get_db() as db:
+        existing = db.execute(
+            "SELECT 1 FROM dm_favorites WHERE workspace_id=? AND user_id=? AND peer_id=?",
+            (wid(), uid, peer_id)
+        ).fetchone()
+        if existing:
+            db.execute("DELETE FROM dm_favorites WHERE workspace_id=? AND user_id=? AND peer_id=?", (wid(), uid, peer_id))
+            favorited = False
+        else:
+            db.execute("INSERT INTO dm_favorites(id,workspace_id,user_id,peer_id,created) VALUES(?,?,?,?,?)",
+                       (f"dmf{int(datetime.now().timestamp()*1000)}", wid(), uid, peer_id, ts()))
+            favorited = True
+        return jsonify({"ok": True, "peer_id": peer_id, "favorited": favorited})
+
+@app.route("/api/dm/read-all", methods=["POST"])
+@login_required
+def dm_read_all():
+    uid = session["user_id"]
+    with get_db() as db:
+        db.execute("UPDATE direct_messages SET read=1, seen_at=? WHERE workspace_id=? AND recipient=? AND read=0",
+                   (ts(), wid(), uid))
+    _sse_publish(wid(), "dm_read", {"user": uid})
+    return jsonify({"ok": True})
+
+@app.route("/api/dm/edit", methods=["POST"])
+@login_required
+def dm_edit():
+    d = request.json or {}
+    mid = str(d.get("message_id") or "")
+    content = str(d.get("content") or "").strip()
+    if not mid or not content:
+        return jsonify({"error": "message_id and content required"}), 400
+    uid = session["user_id"]
+    with get_db() as db:
+        msg = db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?", (mid, wid())).fetchone()
+        if not msg:
+            return jsonify({"error": "Message not found"}), 404
+        if str(msg["sender"]) != str(uid):
+            return jsonify({"error": "You can only edit your own messages"}), 403
+        db.execute("UPDATE direct_messages SET content=?, edited=1 WHERE id=? AND workspace_id=?", (content, mid, wid()))
+        updated = dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())
+        _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
+    _sse_publish(wid(), "dm_edited", {"id": mid})
+    return jsonify({"ok": True, "message": updated})
+
+@app.route("/api/dm/delete", methods=["POST"])
+@login_required
+def dm_delete():
+    d = request.json or {}
+    mid = str(d.get("message_id") or "")
+    if not mid:
+        return jsonify({"error": "message_id required"}), 400
+    uid = session["user_id"]
+    with get_db() as db:
+        msg = db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?", (mid, wid())).fetchone()
+        if not msg:
+            return jsonify({"error": "Message not found"}), 404
+        if str(msg["sender"]) != str(uid):
+            return jsonify({"error": "You can only delete your own messages"}), 403
+        db.execute("UPDATE direct_messages SET deleted=1 WHERE id=? AND workspace_id=?", (mid, wid()))
+        updated = dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())
+        _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
+    _sse_publish(wid(), "dm_deleted", {"id": mid})
+    return jsonify({"ok": True, "message": updated})
+
+@app.route("/api/dm/pin", methods=["POST"])
+@login_required
+def dm_pin():
+    d = request.json or {}
+    mid = str(d.get("message_id") or "")
+    pinned = 1 if d.get("pinned") else 0
+    if not mid:
+        return jsonify({"error": "message_id required"}), 400
+    uid = session["user_id"]
+    with get_db() as db:
+        msg = db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?", (mid, wid())).fetchone()
+        if not msg:
+            return jsonify({"error": "Message not found"}), 404
+        if str(uid) not in (str(msg["sender"]), str(msg["recipient"])):
+            return jsonify({"error": "Not authorized"}), 403
+        db.execute("UPDATE direct_messages SET pinned=? WHERE id=? AND workspace_id=?", (pinned, mid, wid()))
+        updated = dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())
+        _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
+    return jsonify({"ok": True, "message": updated})
+
+@app.route("/api/dm/react", methods=["POST"])
+@login_required
+def dm_react():
+    d = request.json or {}
+    mid = str(d.get("message_id") or "")
+    emoji = str(d.get("emoji") or "").strip()[:16]
+    if not mid or not emoji:
+        return jsonify({"error": "message_id and emoji required"}), 400
+    uid = session["user_id"]
+    with get_db() as db:
+        msg = db.execute("SELECT * FROM direct_messages WHERE id=? AND workspace_id=?", (mid, wid())).fetchone()
+        if not msg:
+            return jsonify({"error": "Message not found"}), 404
+        if str(uid) not in (str(msg["sender"]), str(msg["recipient"])):
+            return jsonify({"error": "Not authorized"}), 403
+        existing = db.execute(
+            "SELECT id FROM dm_reactions WHERE workspace_id=? AND message_id=? AND user_id=? AND emoji=?",
+            (wid(), mid, uid, emoji)
+        ).fetchone()
+        if existing:
+            db.execute("DELETE FROM dm_reactions WHERE id=?", (existing["id"],))
+        else:
+            rid = f"dmr{int(datetime.now().timestamp()*1000)}{secrets.token_hex(2)}"
+            db.execute("INSERT INTO dm_reactions(id,workspace_id,message_id,user_id,emoji,ts) VALUES(?,?,?,?,?,?)",
+                       (rid, wid(), mid, uid, emoji, ts()))
+        updated = _attach_dm_reactions(db, wid(), [dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())])[0]
+        _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
+    _sse_publish(wid(), "dm_reaction", {"id": mid})
+    return jsonify({"ok": True, "message": updated})
+
+@app.route("/api/dm", methods=["POST"])
+@login_required
+def send_dm():
+    d = request.json or {}
+    recipient = str(d.get("recipient") or "").strip()
+    content = str(d.get("content") or "").strip()
+    if not recipient or not content:
+        return jsonify({"error": "recipient and content required"}), 400
+    content = content[:8000]
+    uid = session["user_id"]
+    with get_db() as db:
+        target = db.execute(
+            "SELECT id FROM users WHERE id=? AND workspace_id=? AND COALESCE(deleted_at,'')=''",
+            (recipient, wid())
+        ).fetchone()
+        if not target:
+            return jsonify({"error": "User not found"}), 404
+        # Respect the workspace-level DM toggle (Settings -> Direct Messages):
+        # non-admin/manager users can't send at all when it's off. Admin/
+        # Manager retain access, matching DirectMessages' own frontend gate
+        # (`if(!dmEnabled&&!isAdminOrManager) return <disabled message>`).
+        ws_row = db.execute("SELECT dm_enabled FROM workspaces WHERE id=?", (wid(),)).fetchone()
+        dm_enabled = (ws_row["dm_enabled"] if ws_row and "dm_enabled" in ws_row.keys() else 1) != 0
+        cu = db.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()
+        cu_role = cu["role"] if cu else "Viewer"
+        if not dm_enabled and cu_role not in ("Admin", "Manager"):
+            return jsonify({"error": "Direct messages are disabled for this workspace."}), 403
+        client_msg_id = str(d.get("client_msg_id") or "")
+        # Dedupe on client_msg_id so a retried/double-submitted POST (network
+        # hiccup, optimistic-UI double-fire — the frontend always sends one)
+        # can't create a second copy of the same message.
+        if client_msg_id:
+            existing = db.execute(
+                "SELECT * FROM direct_messages WHERE workspace_id=? AND sender=? AND recipient=? AND client_msg_id=?",
+                (wid(), uid, recipient, client_msg_id)
+            ).fetchone()
+            if existing:
+                return jsonify(dict(existing))
+        mid = f"dm{int(datetime.now().timestamp()*1000)}{secrets.token_hex(2)}"
+        reply_to = str(d.get("reply_to") or "")
+        context_type = str(d.get("context_type") or "")
+        context_id = str(d.get("context_id") or "")
+        now = ts()
+        db.execute(
+            """INSERT INTO direct_messages(id,workspace_id,sender,recipient,content,read,ts,
+               reply_to,delivered_at,seen_at,edited,deleted,pinned,client_msg_id,context_type,context_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (mid, wid(), uid, recipient, content, 0, now, reply_to, now, "", 0, 0, 0, client_msg_id, context_type, context_id)
+        )
+        row = dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())
+        sender_row = db.execute("SELECT name FROM users WHERE id=?", (uid,)).fetchone()
+        sender_name = sender_row["name"] if sender_row else "Someone"
+        preview = content[:80] + ("..." if len(content) > 80 else "")
+        if _should_notify(recipient, "dm", "inapp"):
+            nid = f"n{int(datetime.now().timestamp()*1000)}"
+            db.execute(
+                "INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts,entity_id,entity_type) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (nid, wid(), "dm", f"{sender_name}: {preview}", recipient, 0, now, uid, "dm")
+            )
+        _bust_dm_thread(wid(), uid, recipient)
+    _sse_publish(wid(), "dm_sent", {"id": mid, "sender": uid, "recipient": recipient})
+    return jsonify(row)
+
+@app.route("/api/dm/<peer_id>")
+@login_required
+def get_dm_thread(peer_id):
+    if peer_id in ("unread", "latest-unread", "route-target", "previews", "favorites"):
+        # Unreachable in practice — Flask/Werkzeug prefers the literal routes
+        # above over this <peer_id> pattern for these exact paths — kept as
+        # an explicit belt-and-braces guard rather than relying on that
+        # ordering alone.
+        return jsonify({"error": "Not found"}), 404
+    uid = session["user_id"]
+    since_ms = request.args.get("since")
+    with get_db() as db:
+        peer = db.execute("SELECT id FROM users WHERE id=? AND workspace_id=?", (peer_id, wid())).fetchone()
+        if not peer:
+            return jsonify({"error": "User not found"}), 404
+        params = [wid(), uid, peer_id, peer_id, uid]
+        since_clause = ""
+        if since_ms:
+            try:
+                since_dt = datetime.utcfromtimestamp(int(since_ms) / 1000.0) + IST_OFFSET
+                since_clause = " AND ts > ?"
+                params.append(since_dt.strftime('%Y-%m-%dT%H:%M:%S') + '+05:30')
+            except (TypeError, ValueError):
+                pass
+        rows = db.execute(
+            "SELECT * FROM direct_messages WHERE workspace_id=? AND "
+            "((sender=? AND recipient=?) OR (sender=? AND recipient=?))" + since_clause +
+            " ORDER BY ts",
+            params
+        ).fetchall()
+        messages = _attach_dm_reactions(db, wid(), rows)
+        # Viewing the thread marks the peer's messages to me as read.
+        unread_ids = [m["id"] for m in messages if str(m.get("sender")) == str(peer_id) and not m.get("read")]
+        if unread_ids:
+            qmarks = ",".join("?" * len(unread_ids))
+            db.execute(f"UPDATE direct_messages SET read=1, seen_at=? WHERE id IN ({qmarks})", [ts()] + unread_ids)
+            for m in messages:
+                if m["id"] in unread_ids:
+                    m["read"] = 1
+        if unread_ids:
+            _sse_publish(wid(), "dm_read", {"user": uid, "peer": peer_id})
+        return jsonify(messages)
 
 @app.route("/api/calls/google-meet", methods=["POST"])
 @login_required
