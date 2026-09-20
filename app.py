@@ -10343,7 +10343,7 @@ def dm_read_all():
     with get_db() as db:
         db.execute("UPDATE direct_messages SET read=1, seen_at=? WHERE workspace_id=? AND recipient=? AND read=0",
                    (ts(), wid(), uid))
-    _sse_publish(wid(), "dm_read", {"user": uid})
+    _sse_publish(wid(), "dm_read_all", {"user_id": uid})
     return jsonify({"ok": True})
 
 @app.route("/api/dm/edit", methods=["POST"])
@@ -10364,7 +10364,7 @@ def dm_edit():
         db.execute("UPDATE direct_messages SET content=?, edited=1 WHERE id=? AND workspace_id=?", (content, mid, wid()))
         updated = dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())
         _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
-    _sse_publish(wid(), "dm_edited", {"id": mid})
+    _sse_publish(wid(), "dm_updated", {"id": mid, "sender": msg["sender"], "recipient": msg["recipient"]})
     return jsonify({"ok": True, "message": updated})
 
 @app.route("/api/dm/delete", methods=["POST"])
@@ -10384,7 +10384,7 @@ def dm_delete():
         db.execute("UPDATE direct_messages SET deleted=1 WHERE id=? AND workspace_id=?", (mid, wid()))
         updated = dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())
         _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
-    _sse_publish(wid(), "dm_deleted", {"id": mid})
+    _sse_publish(wid(), "dm_deleted", {"id": mid, "sender": msg["sender"], "recipient": msg["recipient"]})
     return jsonify({"ok": True, "message": updated})
 
 @app.route("/api/dm/pin", methods=["POST"])
@@ -10434,7 +10434,7 @@ def dm_react():
                        (rid, wid(), mid, uid, emoji, ts()))
         updated = _attach_dm_reactions(db, wid(), [dict(db.execute("SELECT * FROM direct_messages WHERE id=?", (mid,)).fetchone())])[0]
         _bust_dm_thread(wid(), msg["sender"], msg["recipient"])
-    _sse_publish(wid(), "dm_reaction", {"id": mid})
+    _sse_publish(wid(), "dm_reaction", {"id": mid, "sender": msg["sender"], "recipient": msg["recipient"]})
     return jsonify({"ok": True, "message": updated})
 
 @app.route("/api/dm", methods=["POST"])
@@ -10498,7 +10498,7 @@ def send_dm():
                 (nid, wid(), "dm", f"{sender_name}: {preview}", recipient, 0, now, uid, "dm")
             )
         _bust_dm_thread(wid(), uid, recipient)
-    _sse_publish(wid(), "dm_sent", {"id": mid, "sender": uid, "recipient": recipient})
+    _sse_publish(wid(), "dm_created", {"message": {**row, "sender_name": sender_name}})
     return jsonify(row)
 
 @app.route("/api/dm/<peer_id>")
