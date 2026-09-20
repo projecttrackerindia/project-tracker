@@ -1580,6 +1580,79 @@ function QRCodeDisplay({otpauth,size}){
   return html`<div ref=${ref} style=${{width:sz+'px',height:sz+'px',display:'inline-flex',alignItems:'center',justifyContent:'center'}}></div>`;
 }
 
+/* ─── NotificationPrefsPanel — profile panel ──────────────────────────────────
+   Fronts GET/PUT /api/notif-prefs. That API already existed and already gates
+   every real notification send (_should_notify() on the backend) — this was
+   the missing piece: no UI anywhere let a user actually see or change their
+   own preferences, so the backend gating was correct but unreachable. */
+function NotificationPrefsPanel({cu}){
+  const [prefs,setPrefs]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState('');
+
+  useEffect(()=>{
+    let cancelled=false;
+    api.get('/api/notif-prefs').then(r=>{if(!cancelled&&r&&!r.error)setPrefs(r);});
+    return()=>{cancelled=true;};
+  },[]);
+
+  const save=async(patch)=>{
+    const next={...prefs,...patch};
+    setPrefs(next);setSaving(true);setMsg('');
+    const r=await api.put('/api/notif-prefs',patch);
+    setSaving(false);
+    if(r&&r.error){setMsg(r.error);return;}
+    setMsg('✓ Saved');setTimeout(()=>setMsg(''),1500);
+  };
+
+  const Toggle=({label,sub,checked,onChange})=>html`
+    <div style=${{display:'flex',alignItems:'center',gap:10,padding:'7px 0'}}>
+      <div style=${{flex:1}}>
+        <div style=${{fontSize:12,fontWeight:700,color:'var(--tx)'}}>${label}</div>
+        ${sub?html`<div style=${{fontSize:10.5,color:'var(--tx3)',marginTop:1}}>${sub}</div>`:null}
+      </div>
+      <button role="switch" aria-checked=${checked} aria-label=${label}
+        onClick=${()=>onChange(!checked)}
+        style=${{position:'relative',width:36,height:20,borderRadius:10,border:'1px solid var(--bd)',cursor:'pointer',flexShrink:0,padding:0,background:checked?'var(--grad-main)':'var(--sf3)',transition:'background .15s'}}>
+        <span style=${{position:'absolute',top:2,left:checked?18:2,width:16,height:16,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,.3)',transition:'left .15s'}}></span>
+      </button>
+    </div>`;
+
+  if(!prefs) return html`<div style=${{fontSize:12,color:'var(--tx3)'}}>Loading preferences…</div>`;
+
+  return html`<div>
+    <div style=${{fontSize:11,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,marginBottom:6}}>Channels</div>
+    <${Toggle} label="In-app notifications" sub="Bell icon and sidebar badges" checked=${prefs.inapp_enabled!==false} onChange=${v=>save({inapp_enabled:v})}/>
+    <${Toggle} label="Push notifications" sub="Browser/device push while the app isn't open" checked=${prefs.push_enabled!==false} onChange=${v=>save({push_enabled:v})}/>
+    <${Toggle} label="Email notifications" sub="Task assignments, comments, mentions, approvals…" checked=${prefs.email_enabled!==false} onChange=${v=>save({email_enabled:v})}/>
+
+    <div style=${{fontSize:11,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,margin:'14px 0 6px'}}>Focus</div>
+    <${Toggle} label="Priority-only push" sub="Only urgent items (assignments, DMs, calls, deadlines) interrupt you" checked=${!!prefs.priority_only} onChange=${v=>save({priority_only:v})}/>
+    <${Toggle} label="Mute after hours" sub="Pause push/email during your off hours" checked=${!!prefs.mute_after_hours} onChange=${v=>save({mute_after_hours:v})}/>
+    ${prefs.mute_after_hours?html`
+      <div style=${{display:'flex',gap:10,alignItems:'center',padding:'4px 0 8px 0'}}>
+        <label style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:700}}>From
+          <input class="inp" type="time" value=${prefs.mute_start||'18:00'} onChange=${e=>save({mute_start:e.target.value})} style=${{marginTop:4,fontSize:12,padding:'5px 8px'}}/>
+        </label>
+        <label style=${{fontSize:10.5,color:'var(--tx3)',fontWeight:700}}>To
+          <input class="inp" type="time" value=${prefs.mute_end||'09:00'} onChange=${e=>save({mute_end:e.target.value})} style=${{marginTop:4,fontSize:12,padding:'5px 8px'}}/>
+        </label>
+      </div>`:null}
+
+    <div style=${{fontSize:11,fontWeight:800,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.6,margin:'14px 0 6px'}}>Digest</div>
+    <label style=${{display:'block',fontSize:10.5,color:'var(--tx3)',fontWeight:700}}>Summary email frequency
+      <select class="sel" value=${prefs.digest_frequency||'weekly'} onChange=${e=>save({digest_frequency:e.target.value})} style=${{marginTop:6,fontSize:12}}>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="bi-weekly">Bi-weekly</option>
+        <option value="none">Off</option>
+      </select>
+    </label>
+
+    ${msg?html`<div style=${{marginTop:10,fontSize:11,fontWeight:700,color:msg.startsWith('✓')?'var(--gn)':'var(--rd)'}}>${msg}</div>`:(saving?html`<div style=${{marginTop:10,fontSize:11,color:'var(--tx3)'}}>Saving…</div>`:null)}
+  </div>`;
+}
+
 /* ─── PersonalTwoFAToggle — profile panel ─────────────────────────────────── */
 function PersonalTwoFAToggle({cu,setCu}){
   const [configured,setConfigured]=useState(()=>!!(cu&&(cu.totp_configured||cu.totp_verified)));
@@ -2256,6 +2329,7 @@ function Header({title,sub,dark,setDark,extra,cu,setCu,upcomingReminders,onViewR
                   <div class="wos-card span-6"><h3>Personal</h3><p>These fields are permission-controlled. Normal users edit only their own profile.</p><div class="wos-edit-grid" style=${{marginTop:12}}><input class="inp" placeholder="Salutation" value=${profileDraft.salutation||''} onInput=${e=>setProfileDraft({...profileDraft,salutation:e.target.value})}/><input class="inp" placeholder="Middle name" value=${profileDraft.middle_name||''} onInput=${e=>setProfileDraft({...profileDraft,middle_name:e.target.value})}/><input class="inp" placeholder="Personal phone" value=${profileDraft.personal_phone||''} onInput=${e=>setProfileDraft({...profileDraft,personal_phone:e.target.value})}/><input class="inp" placeholder="Emergency contact" value=${profileDraft.emergency_contact||''} onInput=${e=>setProfileDraft({...profileDraft,emergency_contact:e.target.value})}/></div></div>
                   <div class="wos-card span-12"><h3>Employment summary</h3><p>Admin/HR managed fields are reused in Org Chart, Directory, Payslips and approvals.</p><div class="wos-edit-grid" style=${{marginTop:12,gridTemplateColumns:'repeat(4,minmax(0,1fr))'}}><input class="inp" placeholder="Employee ID" value=${profileDraft.employee_id||''} onInput=${e=>setProfileDraft({...profileDraft,employee_id:e.target.value})}/><input class="inp" placeholder="Department" value=${profileDraft.department||''} onInput=${e=>setProfileDraft({...profileDraft,department:e.target.value})}/><input class="inp" placeholder="Designation" value=${profileDraft.designation||''} onInput=${e=>setProfileDraft({...profileDraft,designation:e.target.value})}/><input class="inp" placeholder="Location" value=${profileDraft.location||''} onInput=${e=>setProfileDraft({...profileDraft,location:e.target.value})}/><input class="inp" placeholder="Band / Grade" value=${profileDraft.band||''} onInput=${e=>setProfileDraft({...profileDraft,band:e.target.value})}/><input class="inp" placeholder="Functional area" value=${profileDraft.functional_area||''} onInput=${e=>setProfileDraft({...profileDraft,functional_area:e.target.value})}/><input class="inp" placeholder="Job level" value=${profileDraft.job_level||''} onInput=${e=>setProfileDraft({...profileDraft,job_level:e.target.value})}/><label style=${{fontSize:11,fontWeight:900,color:'var(--wos-muted)',textTransform:'uppercase'}}>Date of joining<input class="inp" type="date" value=${profileDraft.date_of_joining||''} onInput=${e=>setProfileDraft({...profileDraft,date_of_joining:e.target.value})} style=${{marginTop:6}}/></label><select class="sel" value=${profileDraft.employment_type||'full-time'} onChange=${e=>setProfileDraft({...profileDraft,employment_type:e.target.value})}><option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="contract">Contract</option><option value="intern">Intern</option><option value="consultant">Consultant</option></select><select class="sel" value=${profileDraft.custom_role||''} onChange=${e=>setProfileDraft({...profileDraft,custom_role:e.target.value})}><option value="">No custom role</option>${(window.__ptCustomRoles||[]).map(r=>html`<option value=${r.name}>${r.name}</option>`)}</select></div></div>
                   <div class="wos-card span-12"><h3>Security & authentication</h3><p>Your authenticator and password controls remain part of the same profile experience.</p><${PersonalTwoFAToggle} cu=${cu} setCu=${setCu}/></div>
+                  <div class="wos-card span-12"><h3>Notification preferences</h3><p>Control how task, comment, mention, ticket, DM and approval notifications reach you.</p><${NotificationPrefsPanel} cu=${cu}/></div>
                 </div>
                 <div style=${{display:'flex',justifyContent:'flex-end',gap:10,marginTop:14}}><button class="wos-btn" onClick=${()=>setProfileFullMode(false)}>Cancel</button><button class="wos-btn primary" disabled=${profileSaving} onClick=${saveFullProfile}>${profileSaving?'Saving…':'Save complete profile'}</button></div>
               </aside>`:null}

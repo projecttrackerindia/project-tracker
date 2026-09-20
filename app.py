@@ -3588,6 +3588,24 @@ def _avatar_row(name: str, accent: str, sub: str = "") -> str:
     </table>"""
 
 
+def _approval_email_html(heading: str, intro_html: str, title: str, description: str, footer: str) -> str:
+    """Shared, escaped template for approval request/approved/rejected emails.
+    intro_html is pre-built by the caller (it may itself contain the result of
+    _email_escape() on a name) and is trusted as-is; title/description are
+    escaped here since callers pass those through as raw approval fields."""
+    safe_title = _email_escape(title)
+    safe_desc = _email_escape(description)
+    return f"""<div style="font-family:sans-serif;padding:24px;max-width:600px">
+        <h2 style="color:#111">{_email_escape(heading)}</h2>
+        <p>{intro_html}</p>
+        <div style="background:#f5f5f5;padding:16px;border-radius:8px;margin:16px 0">
+            <h3 style="margin:0">{safe_title}</h3>
+            {f'<p style="color:#666;margin:8px 0 0">{safe_desc}</p>' if description else ''}
+        </div>
+        <p>{_email_escape(footer)}</p>
+    </div>"""
+
+
 def _progress_bar(pct: int, accent: str) -> str:
     """Animated progress bar (CSS animation on supporting clients)."""
     w = max(3, min(100, int(pct)))
@@ -8154,6 +8172,13 @@ def update_notif_prefs_api():
         db.execute("UPDATE users SET notify_prefs=? WHERE id=? AND workspace_id=?",
                    (json.dumps(prefs), session["user_id"], wid()))
     _evict_me_cache(session["user_id"])
+    # BUG FIX: _get_notif_prefs() caches under notif_prefs:{uid}:v1 for 300s,
+    # and _evict_me_cache() only ever cleared the separate me:{uid} key — so
+    # saving new prefs here left every _should_notify() check (which is what
+    # actually gates whether an email/push goes out) reading the stale,
+    # pre-save values for up to 5 minutes. A user turning email off would
+    # keep getting emailed for a while with no indication anything was wrong.
+    _cache_delete(f"notif_prefs:{session['user_id']}:v1")
     return jsonify({"ok": True, "prefs": prefs})
 
 @app.route("/api/users/<uid>",methods=["PUT"])
@@ -9767,6 +9792,21 @@ def update_task(tid):
                     args=(new_assignee_row["email"], new_assignee_row["name"],
                           d.get("title", t["title"]), reassigner_name, tid, wid()),
                     daemon=True).start()
+            # BUG FIX: reassignment sent an email but, unlike every other
+            # notification type in this file, never wrote an in-app
+            # notification row or push — someone reassigned a task would see
+            # it nowhere in the app itself, only in their inbox.
+            if new_assignee_val != session["user_id"]:
+                if _should_notify(new_assignee_val, "task_assigned", "inapp"):
+                    nid_reassign = f"n{int(datetime.now().timestamp()*1000)+9}"
+                    db.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts,entity_id,entity_type) VALUES (?,?,?,?,?,?,?,?,?)",
+                               (nid_reassign, wid(), "task_assigned",
+                                f"{reassigner_name} reassigned '{d.get('title', t['title'])}' to you",
+                                new_assignee_val, 0, ts(), tid, 'task'))
+                if _should_notify(new_assignee_val, "task_assigned", "push"):
+                    _enqueue_push(push_notification_to_user, db, new_assignee_val,
+                        f"🔄 Task reassigned to you: {d.get('title', t['title'])}",
+                        f"{reassigner_name} reassigned this to you", f"/?action=task&id={tid}")
         if d.get("stage") and d["stage"]!=old_stage:
             base_ts2=int(datetime.now().timestamp()*1000)
             # Completion/status notifications are assignee-only. Team-wide celebration
@@ -17297,19 +17337,22 @@ def create_approval():
             db.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts) VALUES (?,?,?,?,?,?,?)",
                        (nid, wid(), "approval_requested", f"📬 {requester_name or 'Someone'} needs your approval: {d['title']}", approver_id, 0, now))
             # Email the approver
+            # BUG FIX: this inline template interpolated requester_name,
+            # d['title'] and d['description'] directly with no escaping at
+            # all (unlike every other email template in this file, which
+            # routes user text through _email_escape). All three are free
+            # text a requester controls, so an approval titled
+            # <img src=x onerror=...> would have rendered live in the
+            # approver's mail client. Fixed via _approval_email_html below.
             if _should_notify(approver_id, "approval_requested", "email"):
                 _apv_user = db.execute("SELECT name,email FROM users WHERE id=?", (approver_id,)).fetchone()
                 if _apv_user and _apv_user["email"]:
                     _apv_subject = f"📬 Approval needed: {d['title']}"
-                    _apv_body = f"""<div style="font-family:sans-serif;padding:24px;max-width:600px">
-                        <h2 style="color:#111">Approval Required</h2>
-                        <p><strong>{requester_name}</strong> has requested your approval for:</p>
-                        <div style="background:#f5f5f5;padding:16px;border-radius:8px;margin:16px 0">
-                            <h3 style="margin:0">{d['title']}</h3>
-                            <p style="color:#666;margin:8px 0 0">{d.get('description','')}</p>
-                        </div>
-                        <p>Please log in to review and approve or reject this request.</p>
-                    </div>"""
+                    _apv_body = _approval_email_html(
+                        "Approval Required",
+                        f"<strong>{_email_escape(requester_name)}</strong> has requested your approval for:",
+                        d["title"], d.get("description", ""),
+                        "Please log in to review and approve or reject this request.")
                     threading.Thread(target=send_email,
                         args=(_apv_user["email"], _apv_subject, _apv_body, wid()),
                         daemon=True).start()
@@ -17337,6 +17380,28 @@ def approve_request(aid):
             nid = f"n{int(datetime.now().timestamp()*1000)}"
             db.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts) VALUES (?,?,?,?,?,?,?)",
                        (nid, wid(), "approval_approved", f"✅ Approved: {apv['title']}", apv["requested_by"], 0, now))
+            # BUG FIX: the requester was told a decision was needed but never
+            # told the outcome — approval_requested emailed/pushed them,
+            # approval_approved only ever wrote the in-app row above, so
+            # anyone not actively watching the app never learned it went
+            # through.
+            approver_row = db.execute("SELECT name FROM users WHERE id=?", (session["user_id"],)).fetchone()
+            approver_name = approver_row["name"] if approver_row else "Someone"
+            if _should_notify(apv["requested_by"], "approval_approved", "email"):
+                requester_row = db.execute("SELECT name,email FROM users WHERE id=?", (apv["requested_by"],)).fetchone()
+                if requester_row and requester_row["email"]:
+                    _res_subject = f"✅ Approved: {apv['title']}"
+                    _res_body = _approval_email_html(
+                        "Request Approved",
+                        f"<strong>{_email_escape(approver_name)}</strong> approved your request:",
+                        apv["title"], apv["description"] or "",
+                        "Log in to view the details.")
+                    threading.Thread(target=send_email,
+                        args=(requester_row["email"], _res_subject, _res_body, wid()),
+                        daemon=True).start()
+            if _should_notify(apv["requested_by"], "approval_approved", "push"):
+                threading.Thread(target=push_notification_to_user,
+                    args=(None, apv["requested_by"], "Request Approved", apv["title"], "/"), daemon=True).start()
         _audit("approval_action", aid, f"Approved by {session['user_id']}, status={status}")
         return jsonify({"ok": True, "status": status})
 
@@ -17350,11 +17415,33 @@ def reject_request(aid):
         approvers = json.loads(apv["approvers"] or "[]")
         if session["user_id"] not in approvers: return jsonify({"error": "Not an approver"}), 403
         now = ts()
+        reason = d.get("reason", "")
         db.execute("UPDATE approvals SET rejected_by=?,rejection_reason=?,status=?,updated=? WHERE id=?",
-                   (session["user_id"], d.get("reason", ""), "rejected", now, aid))
+                   (session["user_id"], reason, "rejected", now, aid))
         nid = f"n{int(datetime.now().timestamp()*1000)}"
         db.execute("INSERT INTO notifications(id,workspace_id,type,content,user_id,read,ts) VALUES (?,?,?,?,?,?,?)",
                    (nid, wid(), "approval_rejected", f"❌ Rejected: {apv['title']}", apv["requested_by"], 0, now))
+        # See approval_approved above — same gap, requester never learned
+        # a rejection happened unless they were watching the app.
+        rejecter_row = db.execute("SELECT name FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        rejecter_name = rejecter_row["name"] if rejecter_row else "Someone"
+        if _should_notify(apv["requested_by"], "approval_rejected", "email"):
+            requester_row = db.execute("SELECT name,email FROM users WHERE id=?", (apv["requested_by"],)).fetchone()
+            if requester_row and requester_row["email"]:
+                intro = f"<strong>{_email_escape(rejecter_name)}</strong> rejected your request:"
+                if reason:
+                    intro += f'<br><br>Reason: <em>{_email_escape(reason)}</em>'
+                _res_subject = f"❌ Rejected: {apv['title']}"
+                _res_body = _approval_email_html(
+                    "Request Rejected", intro,
+                    apv["title"], apv["description"] or "",
+                    "Log in to view the details.")
+                threading.Thread(target=send_email,
+                    args=(requester_row["email"], _res_subject, _res_body, wid()),
+                    daemon=True).start()
+        if _should_notify(apv["requested_by"], "approval_rejected", "push"):
+            threading.Thread(target=push_notification_to_user,
+                args=(None, apv["requested_by"], "Request Rejected", apv["title"], "/"), daemon=True).start()
         return jsonify({"ok": True, "status": "rejected"})
 
 # ═══════════════════════════════════════════════════════════════════════════════
