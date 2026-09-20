@@ -12932,6 +12932,7 @@ function App(){
               try{
                 const targetUser=String((msg.data&&msg.data.user_id)||'');
                 if(targetUser&&targetUser===String(cu&&cu.id||'')){
+                  dmUnreadSeqRef.current++;
                   setDmUnread([]);
                 }
               }catch(_){}
@@ -13496,6 +13497,13 @@ function App(){
   const onDmRead=useCallback(sid=>{
     const sidS=String(sid||'');
     const peerOf=x=>String((x&& (x.sender||x.sender_id||x.peer_id||x.user_id||x.dm_user_id||x.from_user_id))||'');
+    // Bump the staleness guard here too: this is a local optimistic clear, not
+    // a fetch through applyDmUnread, so without this an /api/dm/unread request
+    // that was already in flight when the thread was opened (periodic poll,
+    // mount pull, etc.) can resolve afterward with the OLD pre-read count and
+    // silently reinstate it, making a just-cleared badge look like it "came
+    // back" for no reason.
+    dmUnreadSeqRef.current++;
     setDmUnread(prev=>prev.filter(x=>peerOf(x)!==sidS));
     setData(prev=>{
       const notifs=Array.isArray(prev.notifs)?prev.notifs:[];
@@ -13519,12 +13527,14 @@ function App(){
     const prevDmUnread=dmUnreadRef.current;
     if(!prevDmUnread.length||markingAllDmsRead)return;
     setMarkingAllDmsRead(true);
+    dmUnreadSeqRef.current++; // see onDmRead — invalidate any older in-flight /api/dm/unread fetch
     setDmUnread([]);
     try{
       const res=await api.post('/api/dm/read-all',{});
       if(res&&res.ok===false)throw new Error(res.error||'Request failed');
       try{window._pfToast&&window._pfToast('success','All messages marked as read.');}catch(_){}
     }catch(e){
+      dmUnreadSeqRef.current++;
       setDmUnread(prevDmUnread); // reconcile: revert optimistic clear so the badge never lies about backend state
       try{window._pfToast&&window._pfToast('error','Failed to mark messages as read',(e&&e.message)||'Please try again.');}catch(_){}
     }finally{
