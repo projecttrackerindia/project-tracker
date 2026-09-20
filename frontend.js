@@ -13512,7 +13512,11 @@ function App(){
       const isDmFrom=n=>{
         const t=String(n&&n.type||'').toLowerCase();
         const et=String(n&&n.entity_type||'').toLowerCase();
-        return (dmTypes.has(t)||dmEntityTypes.has(et))&&(String(n.sender_id||n.sender||n.from_user_id||n.user_id||'')===sidS);
+        // entity_id is where the backend actually puts the SENDER on a dm
+        // notification (user_id is the recipient — i.e. us — so matching on it
+        // compares us against the peer and never hits, which is why these rows
+        // used to pile up unread forever even after the thread was read).
+        return (dmTypes.has(t)||dmEntityTypes.has(et))&&(String(n.sender_id||n.sender||n.from_user_id||n.entity_id||'')===sidS);
       };
       const toDelete=notifs.filter(isDmFrom);
       toDelete.forEach(n=>{api.del('/api/notifications/'+n.id).catch(()=>{});});
@@ -13532,6 +13536,19 @@ function App(){
     try{
       const res=await api.post('/api/dm/read-all',{});
       if(res&&res.ok===false)throw new Error(res.error||'Request failed');
+      // Clear the dm notification rows too, the same way opening a single
+      // thread does. Without this, "mark all as read" silences the DM badge
+      // but leaves the bell/tab-title count lit for those same messages.
+      setData(prev=>{
+        const notifs=Array.isArray(prev.notifs)?prev.notifs:[];
+        const isDm=n=>{
+          const t=String(n&&n.type||'').toLowerCase();
+          const et=String(n&&n.entity_type||'').toLowerCase();
+          return ['dm','direct_message','message_received','new_message'].includes(t)||['dm','direct_message','chat'].includes(et);
+        };
+        notifs.filter(isDm).forEach(n=>{api.del('/api/notifications/'+n.id).catch(()=>{});});
+        return {...prev,notifs:notifs.filter(n=>!isDm(n))};
+      });
       try{window._pfToast&&window._pfToast('success','All messages marked as read.');}catch(_){}
     }catch(e){
       dmUnreadSeqRef.current++;
