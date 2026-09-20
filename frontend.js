@@ -11440,7 +11440,7 @@ function ptEntityUrl(page,id='',u=null){
 
 function ptRouteInfo(){
   try{
-    const VALID=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
+    const VALID=['ai','dashboard','workspace-os','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
     const seg=window.location.pathname.split('/').filter(Boolean);
     const q=new URLSearchParams(window.location.search||'');
     let idx=0;
@@ -12195,7 +12195,7 @@ function App(){
   const _hadSession=(()=>{try{return localStorage.getItem('pf_had_session')==='1';}catch{return false;}})();
   const [loading,setLoading]=useState(_hadSession);
   // Read initial view from URL path or ?page= param
-  const VALID_VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault'];
+  const VALID_VIEWS=['ai','dashboard','workspace-os','projects','tasks','messages','dm','tickets','timeline','reminders','settings','billing','team','productivity','ai-docs','timesheet','password-generator','vault','notifs'];
   // Also treat /projects/<id> as valid
   useEffect(()=>{
     try{
