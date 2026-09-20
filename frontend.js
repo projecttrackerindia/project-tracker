@@ -12913,9 +12913,15 @@ function App(){
               }
               return;
             }
-            if(['project_updated','ticket_updated','notification_updated','reminder_updated','task.created','ticket.created','ticket.updated','comment.added'].includes(msg.type)){
-              load(teamCtx);
-            }
+            // NOTE: no load() here. Line ~12891 already re-dispatches every SSE
+            // message as a 'pt:realtime' CustomEvent, and the listener for that
+            // reacts to this exact same event list with a 600ms debounce. Doing
+            // it here too meant one event cost two full /api/app-data fetches
+            // (~400ms and ~11.5KB each, the second with bust=1 so it also
+            // bypassed the server cache) plus a poll — in every connected
+            // client, for every task/ticket/project/reminder change anyone in
+            // the workspace made. The debounced one is kept: it collapses
+            // bursts and always reads fresh.
             if(msg.type==='notification'||msg.type==='notification_updated'){
               triggerPollRef.current&&triggerPollRef.current();
             }
