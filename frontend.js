@@ -12408,13 +12408,13 @@ function App(){
       if(dmPeer){
         try{sessionStorage.setItem('pt_open_dm_user',String(dmPeer));sessionStorage.setItem('pt_dm_notification_target',String(dmPeer));sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_e){}
         setDmTargetUser(String(dmPeer));
-        _setView('ai');
+        _setView('dm');
         try{history.pushState(null,'',ptDmUrl(String(dmPeer)));}catch(_){}
         const fireDmOpen=()=>{try{if(window.__ptOpenDmPeer)window.__ptOpenDmPeer(String(dmPeer),'notification');window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(dmPeer),source:'notification'}}));}catch(_){}};
         fireDmOpen();
       }else{
         try{sessionStorage.setItem('pt_dm_resolve_next','1');}catch(_e){}
-        _setView('ai');
+        _setView('dm');
       }
       return;
     }
@@ -12475,12 +12475,12 @@ function App(){
         if(target){
           setDmTargetUser(String(target));
           try{sessionStorage.setItem('pt_open_dm_user',String(target));sessionStorage.setItem('pt_dm_notification_target',String(target));sessionStorage.removeItem('pt_dm_resolve_next');}catch(_){}
-          _setView('ai');
+          _setView('dm');
         }else{
           // Plain /dm from sidebar/direct navigation stays unselected. Only a
           // notification-marked /dm?notif=dm may resolve latest unread.
           if(fromNotif){try{sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}}
-          _setView('ai');
+          _setView('dm');
         }
       }
     }catch(e){}
@@ -12572,7 +12572,7 @@ function App(){
           sessionStorage.setItem('pt_dm_notification_target',peer);
           setDmTargetUser(peer);
           try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:peer,source}}));}catch(_){}
-          _setView('ai');
+          _setView('dm');
           try{history.replaceState(null,'',ptDmUrl(peer));}catch(_){}
           return peer;
         }
@@ -12605,10 +12605,10 @@ function App(){
           if(user){
             setDmTargetUser(user);
             try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',user);sessionStorage.setItem('pt_dm_notification_target',user);window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user,source:'sw-notification'}}));}catch(_){}
-            _setView('ai');
+            _setView('dm');
           }else{
             try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_dm_resolve_next','1');sessionStorage.setItem('pt_dm_route_opened_at',String(Date.now()));}catch(_){}
-            _setView('ai');
+            _setView('dm');
             try{ if(typeof window._pfResolveDmNotifNow==='function') window._pfResolveDmNotifNow('sw-notification'); }catch(_r){}
           }
         }
@@ -12922,7 +12922,7 @@ function App(){
             if(msg.type==='web_notification'&&msg.data){
               const n=msg.data||{};
               if(String(n.recipient||'')===String(cu.id)&&String(n.sender||'')!==String(cu.id)){
-                showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
+                showBrowserNotif(n.title||'ProjectTracker', n.body||'', ()=>{window.focus(); if(n.kind==='dm'){try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(n.sender));}catch(_){} setDmTargetUser&&setDmTargetUser(String(n.sender)); _setView&&_setView('dm'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(n.sender),source:'notification'}}));}catch(_){}}}, {tag:n.tag||('pt-'+Date.now()),url:n.kind==='dm'?ptDmUrl(n.sender||''):(n.url||'/'),kind:n.kind||'',sender:n.sender||''});
               }
             }
             if(msg.type==='dm_read_all'){
@@ -12987,7 +12987,7 @@ function App(){
                     const sname=m.sender_name||((data.users||[]).find(u=>u.id===m.sender)||{}).name||'Someone';
                     const body=raw.replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
                     window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+                    showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
                     playSound('notif');
                   }
                 }
@@ -13426,7 +13426,7 @@ function App(){
             const body=String(m.content||'').replace(/CALL_[A-Z_]+:[^\n]+/g,'').trim().slice(0,90)||'Sent you a message';
             if(!String(m.content||'').includes('CALL_INVITE:')){
               window._pfToast&&window._pfToast('dm','💬 New message from '+sname,body);
-              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('ai'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
+              showBrowserNotif('💬 '+sname,body,()=>{try{sessionStorage.removeItem('pt_dm_manual_lock');window.__ptDmManualLock=null;sessionStorage.setItem('pt_open_dm_user',String(m.sender));}catch(_){} setDmTargetUser(String(m.sender)); _setView('dm'); try{window.dispatchEvent(new CustomEvent('pt:open-dm-user',{detail:{user:String(m.sender),source:'notification'}}));}catch(_){} window.focus();},{tag:'dm-'+m.id,url:ptDmUrl(m.sender||''),kind:'dm',sender:m.sender||''});
               playSound('notif');
             }
           });
@@ -13893,7 +13893,7 @@ function App(){
             if(v==='vault'||v==='password-generator'){_setView(v);}
             return;
           }
-          if(typeof v==='string'&&v.startsWith('dm:')){const uid=v.slice(3);setDmTargetUser(uid);_setView('ai');}
+          if(typeof v==='string'&&v.startsWith('dm:')){const uid=v.slice(3);setDmTargetUser(uid);_setView('dm');}
           else _setView(v);
         }} onLogout=${logout} unread=${unread} dmUnread=${dmUnread} col=${col} setCol=${v=>{setCol(v);try{localStorage.setItem('pf_col',v?'1':'0');}catch{}}} wsName=${cu&&cu._offline?'Offline Mode':wsName}
         dark=${dark} setDark=${setDark} wsDmEnabled=${wsDmEnabled} onlineUsers=${onlineUsers}
@@ -13933,7 +13933,7 @@ function App(){
               onClearInitialTask=${()=>setInitialTaskId(null)}
             />`:null}
             ${baseView==='messages'?html`<${MessagesView} projects=${scopedProjects} users=${data.users} cu=${cu} tasks=${scopedTasks} activeTeam=${activeTeam} key=${'msgs-'+(teamCtx||'all')}/>`:null}
-            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} onDmReadAll=${onDmReadAll} markingAllDmsRead=${markingAllDmsRead} dmEnabled=${wsDmEnabled} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
+            ${baseView==='dm'?html`<${DirectMessages} cu=${cu} users=${data.users} dmUnread=${dmUnread} onDmRead=${onDmRead} onDmReadAll=${onDmReadAll} markingAllDmsRead=${markingAllDmsRead} dmEnabled=${wsDmEnabled} initialUserId=${dmTargetUser} onClearInitial=${clearDmTargetUser} onlineUsers=${onlineUsers} awayUsers=${awayUsers}/>`:null}
             ${baseView==='reminders'?html`<${RemindersView} cu=${cu} tasks=${scopedTasks} projects=${scopedProjects} onSetReminder=${t=>{setReminderTask(t);}} onReload=${load}/>`:null}
             ${baseView==='notifs'?html`<${NotifsView} notifs=${data.notifs} reload=${load} setData=${setData} onNavigate=${routeToNotification} onMarkAllRead=${markAllNotificationsRead} markingAllRead=${markingAllRead}/>`:null}
             ${baseView==='tickets'&&isViewFeatureAllowed('tickets')?html`<${TicketsView} cu=${cu} users=${scopedUsers} projects=${scopedProjects} onReload=${load} activeTeam=${activeTeam} initialAssignee=${ticketFilterType==='assignee'?ticketFilterValue:null} initialStatus=${ticketFilterType==='status'?ticketFilterValue:null} initialTicketId=${initialTicketId} onClearInitialTicket=${()=>setInitialTicketId(null)}/>`:null}
