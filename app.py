@@ -10552,6 +10552,17 @@ def get_dm_thread(peer_id):
             for m in messages:
                 if m["id"] in unread_set:
                     m["read"] = 1
+        # Drop this peer's dm notifications here rather than leaving it to the
+        # client. The bell/tab badge counts unread notifications while the DM
+        # badge counts unread messages, so when only one side gets cleared the
+        # two disagree (the reported "5 in one place, 6 in another"). Doing it
+        # where the messages are marked read keeps them consistent by
+        # construction — and saves the client firing a DELETE per row.
+        db.execute(
+            "DELETE FROM notifications WHERE workspace_id=? AND user_id=? AND type='dm' AND entity_id=?",
+            (wid(), uid, peer_id)
+        )
+        _cache_bust(wid(), "dm_unread", "notifications", "notifs", "appdata")
         if unread_ids:
             _sse_publish(wid(), "dm_read", {"user": uid, "peer": peer_id})
         return jsonify(messages)
