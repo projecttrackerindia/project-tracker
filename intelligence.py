@@ -156,7 +156,16 @@ def _resolve_ai(db, workspace_id):
     except Exception:
         pass
     decrypt_fn = (lambda v: _vault_decrypt(v, workspace_id)) if _vault_decrypt else None
-    return resolve_ai_key(db, workspace_id, cap, decrypt_fn=decrypt_fn)
+    # preferred_source="own": these features (briefing/allocation/routing/
+    # followup) always need a real Anthropic key - the "platform" path now
+    # means the self-hosted Ollama instance (see ai_provider.py), and
+    # _call_claude below only knows how to talk to Anthropic. Forcing "own"
+    # here means a workspace without its own key gets a clean
+    # OWN_KEY_NOT_CONFIGURED, not a broken call using the Ollama sentinel as
+    # a bogus Anthropic key. Routing these features to the self-hosted model
+    # too is a separate, deliberate piece of work, not a side effect of
+    # wiring it into /api/ai/chat.
+    return resolve_ai_key(db, workspace_id, cap, decrypt_fn=decrypt_fn, preferred_source="own")
 
 
 def _call_claude(system, user_prompt, api_key, max_tokens=1200):
@@ -690,7 +699,7 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
     def intel_briefing_generate():
         with get_db() as db:
             result, err = _generate_briefing(db, wid(), session.get("user_id"))
-        if err in ("NOT_CONFIGURED", "NO_KEY"):
+        if err in ("NOT_CONFIGURED", "NO_KEY", "OWN_KEY_NOT_CONFIGURED"):
             return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to generate a briefing."}), 400
         if err == "LIMIT_EXCEEDED":
             return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
@@ -720,7 +729,7 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
         d = request.json or {}
         with get_db() as db:
             created, err = _generate_allocation_suggestions(db, wid(), project_id=d.get("project_id"))
-        if err in ("NOT_CONFIGURED", "NO_KEY"):
+        if err in ("NOT_CONFIGURED", "NO_KEY", "OWN_KEY_NOT_CONFIGURED"):
             return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to use suggestions."}), 400
         if err == "LIMIT_EXCEEDED":
             return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
@@ -759,7 +768,7 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
     def intel_route_suggest(ticket_id):
         with get_db() as db:
             result, err = _generate_routing_suggestion(db, wid(), ticket_id)
-        if err in ("NOT_CONFIGURED", "NO_KEY"):
+        if err in ("NOT_CONFIGURED", "NO_KEY", "OWN_KEY_NOT_CONFIGURED"):
             return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to use routing."}), 400
         if err == "LIMIT_EXCEEDED":
             return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429
@@ -802,7 +811,7 @@ def register_intelligence(app, get_db, wid, login_required, session, send_email,
             return jsonify({"error": "entity_type must be 'ticket' or 'task', entity_id required"}), 400
         with get_db() as db:
             result, err = _summarize_and_draft_followup(db, wid(), entity_type, entity_id, to_user_id, session.get("user_id"))
-        if err in ("NOT_CONFIGURED", "NO_KEY"):
+        if err in ("NOT_CONFIGURED", "NO_KEY", "OWN_KEY_NOT_CONFIGURED"):
             return jsonify({"error": "NO_KEY", "message": "Add your own Anthropic API key in Workspace Settings, or ask your admin to enable the default AI, to use drafting."}), 400
         if err == "LIMIT_EXCEEDED":
             return jsonify({"error": "LIMIT_EXCEEDED", "message": "This workspace has used its free AI calls from Project Tracker AI this month. Add your own Anthropic API key in Workspace Settings to keep going."}), 429

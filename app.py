@@ -246,11 +246,15 @@ import urllib.parse, re as _re
 # the platform's shared default key. Self-contained in ai_provider.py so it
 # can be edited/tested without touching this file. ─────────────────────────
 try:
-    from ai_provider import resolve_ai_key, record_ai_call, PLATFORM_AI_API_KEY, error_response_for as _ai_error_response
+    from ai_provider import (
+        resolve_ai_key, record_ai_call, PLATFORM_OLLAMA_URL, PLATFORM_OLLAMA_MODEL,
+        error_response_for as _ai_error_response,
+    )
 except Exception as _ai_provider_err:
     resolve_ai_key = None
     record_ai_call = None
-    PLATFORM_AI_API_KEY = ""
+    PLATFORM_OLLAMA_URL = ""
+    PLATFORM_OLLAMA_MODEL = ""
     _ai_error_response = None
     log.error("[ai_provider] failed to import: %s", _ai_provider_err)
 
@@ -12175,6 +12179,67 @@ def push_unsubscribe():
     return jsonify({"ok": True})
 
 # ── AI Assistant ──────────────────────────────────────────────────────────────
+
+# CPU-only inference on a self-hosted Ollama instance is much slower than a
+# hosted API - a few seconds to tens of seconds per reply, vs Claude's
+# near-instant. Give it real room to finish rather than the 30s that's
+# plenty for Anthropic. Matched on the frontend by a longer api.post
+# timeoutMs on these two endpoints (see frontend.js).
+OLLAMA_CALL_TIMEOUT_SECS = 100
+
+def _call_ai_model(source, api_key, system_prompt, msgs, max_tokens=1500):
+    """
+    Calls whichever backend resolve_ai_key() picked for this request:
+    Anthropic's Claude (source == "own", the workspace's own key) or the
+    self-hosted Ollama instance (source == "platform" - "Agent Tracker AI").
+    Normalizes both into one (ai_text, error) shape so callers - ai_chat and
+    ai_docs_chat - don't need their own copy of this branching or either
+    backend's request/response shape.
+
+    Returns (ai_text, None) on success, or (None, (body_dict, status)) on
+    failure; callers should `return jsonify(body), status` when the second
+    element isn't None.
+    """
+    if source == "platform":
+        if not PLATFORM_OLLAMA_URL:
+            return None, ({"error": "NO_KEY", "message": "Agent Tracker AI is not configured."}, 400)
+        try:
+            req_data = json.dumps({
+                "model": PLATFORM_OLLAMA_MODEL,
+                "messages": [{"role": "system", "content": system_prompt}] + msgs,
+                "stream": False,
+            }).encode()
+            req = urllib.request.Request(f"{PLATFORM_OLLAMA_URL}/api/chat", data=req_data, method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=OLLAMA_CALL_TIMEOUT_SECS) as resp:
+                result = json.loads(resp.read().decode())
+                return result["message"]["content"], None
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()
+            if "not found" in body.lower():
+                return None, ({"error": "MODEL_NOT_FOUND",
+                    "message": f"Agent Tracker AI's model ('{PLATFORM_OLLAMA_MODEL}') hasn't been pulled on the Ollama instance yet."}, 500)
+            return None, ({"error": "API_ERROR", "message": f"Agent Tracker AI error: {body[:200]}"}, 500)
+        except Exception as e:
+            return None, ({"error": "NETWORK_ERROR", "message": f"Could not reach Agent Tracker AI: {str(e)}"}, 500)
+
+    # source == "own": real Anthropic Claude, billed to the workspace's own key.
+    try:
+        req_data = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": max_tokens,
+            "system": system_prompt, "messages": msgs}).encode()
+        req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=req_data, method="POST",
+            headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+            return result["content"][0]["text"], None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        if e.code == 401:
+            return None, ({"error": "INVALID_KEY", "message": "Invalid API key. Check your key in Workspace Settings."}, 400)
+        return None, ({"error": "API_ERROR", "message": f"Anthropic API error: {body[:200]}"}, 500)
+    except Exception as e:
+        return None, ({"error": "NETWORK_ERROR", "message": f"Could not reach AI: {str(e)}"}, 500)
+
 @app.route("/api/ai/chat",methods=["POST"])
 @login_required
 def ai_chat():
@@ -12186,9 +12251,10 @@ def ai_chat():
     with get_db() as db:
         ws=db.execute("SELECT * FROM workspaces WHERE id=?",(wid(),)).fetchone()
 
-        # Resolve which key to use: the workspace's own (unlimited) key if
-        # set, else the platform's shared default key ("Project Tracker
-        # AI"), capped per month by plan. See ai_provider.py.
+        # Resolve which model answers: the workspace's own Anthropic key
+        # ("Claude AI") if set and preferred, else the self-hosted Ollama
+        # instance ("Agent Tracker AI"), capped per month by plan. See
+        # ai_provider.py.
         if resolve_ai_key is None:
             return jsonify({"error":"NO_KEY","message":"AI is not available right now."}),400
         plan = (ws["plan"] if ws and "plan" in ws.keys() else "starter") or "starter"
@@ -12256,20 +12322,10 @@ IMPORTANT: Always be helpful and concise. When performing actions, explain what 
     msgs=[{"role":"user" if m["role"]=="user" else "assistant","content":m["content"]} for m in history[-10:]]
     msgs.append({"role":"user","content":user_msg})
 
-    try:
-        req_data=json.dumps({"model":"claude-sonnet-4-5","max_tokens":1500,"system":system,"messages":msgs}).encode()
-        req=urllib.request.Request("https://api.anthropic.com/v1/messages",
-            data=req_data,method="POST",
-            headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"})
-        with urllib.request.urlopen(req,timeout=30) as resp:
-            result=json.loads(resp.read().decode())
-            ai_text=result["content"][0]["text"]
-    except urllib.error.HTTPError as e:
-        body=e.read().decode()
-        if e.code==401: return jsonify({"error":"INVALID_KEY","message":"Invalid API key. Check your key in Workspace Settings."}),400
-        return jsonify({"error":"API_ERROR","message":f"Anthropic API error: {body[:200]}"}),500
-    except Exception as e:
-        return jsonify({"error":"NETWORK_ERROR","message":f"Could not reach AI: {str(e)}"}),500
+    ai_text, ai_err = _call_ai_model(ai_resolved["source"], api_key, system, msgs, max_tokens=1500)
+    if ai_err:
+        body, status = ai_err
+        return jsonify(body), status
 
     import re
     actions_raw=re.findall(r'<action>(.*?)</action>',ai_text,re.DOTALL)
@@ -12373,7 +12429,14 @@ def ai_docs_chat():
         return jsonify({"error":"Messages are required"}),400
     if len(messages)>30:
         return jsonify({"error":"Conversation is too long for a single request - start a new chat."}),400
-    provider_pref = d.get("provider") if d.get("provider") in ("own","platform") else None
+    # Always "own": this endpoint only ever calls Anthropic (see the docstring
+    # above - small CPU-friendly Ollama models aren't vision-capable, so this
+    # can't safely route image/PDF-attached requests to Agent Tracker AI yet).
+    # Without forcing this, a workspace with no own key would silently
+    # resolve to source="platform" once PLATFORM_OLLAMA_URL is configured for
+    # /api/ai/chat, and the "ollama" sentinel key would get sent to Anthropic
+    # as a bogus x-api-key instead of a clean error.
+    provider_pref = "own"
 
     with get_db() as db:
         ws=db.execute("SELECT * FROM workspaces WHERE id=?",(wid(),)).fetchone()
@@ -12441,7 +12504,12 @@ def ai_generate_docs():
             ws["custom_limits_json"] if ws and "custom_limits_json" in ws.keys() else "",
             ws["storage_limit_mb"] if ws and "storage_limit_mb" in ws.keys() else 0,
         ) if ws else {}
-        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()))
+        # preferred_source="own": this route (currently unreferenced by any
+        # frontend caller - see ai_docs_chat's docstring for the endpoint that
+        # replaced it) calls Anthropic directly below, same constraint as
+        # ai_docs_chat. Forced explicitly so it can't silently break if this
+        # is ever revived after Agent Tracker AI (Ollama) is configured.
+        ai_resolved = resolve_ai_key(db, wid(), plan_limits.get("ai_calls_platform_month"), decrypt_fn=lambda v: vault_decrypt(v, wid()), preferred_source="own")
         if ai_resolved["error"]:
             body, status = _ai_error_response(ai_resolved)
             return jsonify(body), status

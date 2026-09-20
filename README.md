@@ -85,33 +85,71 @@ SMTP_PASSWORD=your-gmail-app-password
 FROM_EMAIL=notifications@yourcompany.com
 ```
 
-#### Environment Variables (Optional - for default/native AI)
-By default, each workspace must add its own Anthropic API key (Settings →
-AI Assistant) to use AI features. To also offer a built-in default —
-"Project Tracker AI" — that workspaces get for free up to a monthly cap,
-set:
+#### AI Assistant: two providers
 
-```
-PLATFORM_AI_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
-```
+The chat UI (AI Workspace page + the floating widget) lets each user pick
+which model answers:
 
-This is **your own** Anthropic key, billed to you — not a per-workspace
-key. Behavior:
-- A workspace with its own key in Settings always uses that key, with no cap.
-- A workspace without one automatically uses `PLATFORM_AI_API_KEY` instead,
-  up to a monthly call limit set per plan (see `ai_calls_platform_month` in
-  `app.py`'s `_DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS` — defaults are 50/month
-  on Starter, 200 on Team, 1000 on Business, effectively unlimited on
+- **Claude AI** — the workspace's own Anthropic key, added in Settings →
+  AI Assistant. Unlimited use, billed to whoever added the key.
+- **Agent Tracker AI** — this platform's own self-hosted model. No
+  external API key, no per-call vendor cost, capped per workspace per
+  month (to protect shared compute, not to protect a bill — see below).
+
+Setting up Agent Tracker AI (self-hosted, via Ollama):
+
+1. **Add an Ollama service to this Railway project** (the same project as
+   this web service, not a separate project) — New Service → Docker Image
+   → `ollama/ollama:latest`. Give it a volume mounted at `/root/.ollama`
+   so pulled models survive redeploys. Do **not** expose a public domain
+   for it — leave it reachable only over Railway's private network. Ollama
+   has no authentication of its own; anyone who could reach it directly
+   could run inference on it for free, bypassing every workspace's monthly
+   cap entirely.
+2. **Pull a model** once the service is up — open its shell in the Railway
+   dashboard (or a one-off `railway run`) and run:
+   ```
+   ollama pull qwen2.5:3b-instruct
+   ```
+   A 3B model is the right starting point for CPU-only serving — it's
+   usable (several seconds to ~a minute per reply) without needing a GPU.
+   `qwen2.5:7b-instruct` is noticeably more capable but noticeably slower
+   on CPU; move up to it (or a bigger model) once this Ollama service has
+   a GPU behind it instead of Railway's CPU-only compute.
+3. **Point this service at it** — set, on the web service's variables:
+   ```
+   PLATFORM_OLLAMA_URL=http://<ollama-service-name>.railway.internal:11434
+   PLATFORM_OLLAMA_MODEL=qwen2.5:3b-instruct
+   ```
+   Railway's private network gives every service in a project a
+   `<service-name>.railway.internal` hostname automatically — check the
+   Ollama service's own Settings tab for its exact private hostname.
+
+Behavior once configured:
+- A workspace with its own Anthropic key can still pick either option —
+  picking Agent Tracker AI doesn't require removing their key.
+- Agent Tracker AI is capped per workspace per calendar month (see
+  `ai_calls_platform_month` in `app.py`'s
+  `_DEFAULT_WORKSPACE_PLAN_USAGE_LIMITS` — defaults are 50/month on
+  Starter, 200 on Team, 1000 on Business, effectively unlimited on
   Enterprise). Admins can raise a single workspace's cap via the existing
   `custom_limits_json` override the same way other plan limits are raised.
-- If `PLATFORM_AI_API_KEY` is left unset, behavior is unchanged from today:
-  workspaces without their own key get a "please add your API key" message.
-- `/api/ai/chat` and `/api/ai/generate-docs` responses now include
-  `ai_source` (`"own"` or `"platform"`) plus `ai_platform_calls_used` /
-  `ai_platform_calls_limit`, so the frontend can show which key answered
-  and how much of the free monthly quota is left. `GET /api/usage` also
-  now reports `ai_calls_month` (total) and `ai_calls_platform_month`
-  (platform-key calls only).
+  The point of the cap on a self-hosted model isn't billing — it's that a
+  CPU-only Ollama instance serves one request at a time, so one workspace
+  sending a flood of messages would slow everyone else's replies.
+- If `PLATFORM_OLLAMA_URL` is left unset, Agent Tracker AI just isn't
+  available yet — same "please add your own API key, or ask your admin to
+  finish setup" message as before this was wired up.
+- `/api/ai/chat` responses include `ai_source` (`"own"` or `"platform"`)
+  plus `ai_platform_calls_used` / `ai_platform_calls_limit`, so the
+  frontend can show which model answered and how much of the monthly
+  quota is left. `GET /api/usage` also reports `ai_calls_month` (total)
+  and `ai_calls_platform_month` (Agent Tracker AI calls only).
+- The AI Documentation Studio (file-attached doc/diagram generation,
+  `/api/ai/docs-chat`) is unaffected by this — it still always uses
+  Anthropic. Small CPU-friendly Ollama models aren't vision-capable, so
+  routing image/PDF-attached requests to a self-hosted model isn't safe to
+  do generically; that's a separate piece of work if it's wanted later.
 
 ---
 

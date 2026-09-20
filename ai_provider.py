@@ -1,14 +1,22 @@
 """
-ai_provider.py — decides which Anthropic API key to use for a workspace's
-AI features, and enforces a monthly cap when falling back to the
-platform's shared default key ("Project Tracker AI" / native AI).
+ai_provider.py — decides which model backs a workspace's AI features
+("Claude AI" or "Agent Tracker AI" in the UI), and enforces a monthly cap
+on the shared option so one workspace can't monopolize it.
 
 Priority order:
-  1. The workspace's own key (workspaces.ai_api_key) — unlimited use here,
-     billed directly to Anthropic on the workspace owner's account.
-  2. The platform's shared default key (PLATFORM_AI_API_KEY env var) —
-     capped per workspace per calendar month so one workspace can't run up
-     your Anthropic bill. Cap comes from the workspace's plan limits.
+  1. The workspace's own key (workspaces.ai_api_key) — Anthropic's Claude,
+     billed directly to Anthropic on the workspace owner's own account.
+     This is "Claude AI" in the UI. Unlimited use here (it's their key,
+     their bill).
+  2. "Agent Tracker AI" — a self-hosted Ollama instance this platform runs
+     (PLATFORM_OLLAMA_URL / PLATFORM_OLLAMA_MODEL env vars), so it carries
+     no external API-key dependency and no per-call vendor cost. Still
+     capped per workspace per calendar month, though the reason has
+     shifted from "protect the Anthropic bill" to "protect shared compute
+     capacity" - a CPU-only Ollama instance serves requests one at a time,
+     so one workspace hammering it would starve everyone else's response
+     times even though there's no dollar cost per call. Cap comes from the
+     workspace's plan limits.
 
 This module is intentionally dependency-free (no Flask, no app.py
 globals) so it can be imported early and unit-tested on its own. The
@@ -25,11 +33,18 @@ import os
 import secrets
 from datetime import datetime
 
-# Set this on the Railway service running app.py (NOT the same key you'd
-# give an individual workspace) — this is Project Tracker's own Anthropic
-# key, used as the default "native AI" for workspaces that haven't set
-# their own.
-PLATFORM_AI_API_KEY = os.environ.get("PLATFORM_AI_API_KEY", "").strip()
+# Where the self-hosted "Agent Tracker AI" model lives. Point this at an
+# Ollama service reachable from this Railway service - e.g. another Railway
+# service in the same project, addressed via Railway's private networking
+# (something like http://ollama.railway.internal:11434), so it's never
+# exposed to the public internet. Empty means "Agent Tracker AI" isn't
+# configured yet and resolves to NOT_CONFIGURED, same as before this was
+# wired up.
+PLATFORM_OLLAMA_URL = os.environ.get("PLATFORM_OLLAMA_URL", "").strip().rstrip("/")
+# A small instruct model is the right default for CPU-only serving - this
+# is meant to be changed (bigger model, or a GPU-backed instance) once
+# real compute is behind it. See README/deploy notes for model choices.
+PLATFORM_OLLAMA_MODEL = os.environ.get("PLATFORM_OLLAMA_MODEL", "qwen2.5:3b-instruct").strip()
 
 # Fallback cap used only if the caller doesn't pass an explicit limit
 # (e.g. plan config lookup failed). Keep this conservative.
@@ -76,15 +91,21 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None, 
 
     Returns a dict:
       {
-        "key": <api key string> or None,
+        "key": <Anthropic api key string, or the sentinel "ollama"> or None,
         "source": "own" | "platform" | "none",
         "error": None | "NOT_CONFIGURED" | "OWN_KEY_NOT_CONFIGURED" | "LIMIT_EXCEEDED",
         "platform_calls_used": int or None,
         "platform_calls_limit": int or None,
       }
 
-    "own" and successful "platform" results have error=None and a usable key.
-    Any other combination means: don't call Anthropic, surface the error.
+    "own" and successful "platform" results have error=None. For "own",
+    `key` is a real Anthropic key to send as x-api-key. For "platform",
+    `key` is just the literal string "ollama" - a truthy sentinel, not a
+    real credential - since the self-hosted model needs no API key at all;
+    the caller should branch on `source` to decide whether to call
+    Anthropic or the Ollama instance at PLATFORM_OLLAMA_URL, not treat
+    `key` as usable against Anthropic in the "platform" case. Any other
+    combination means: don't call either backend, surface the error.
     """
     ws = db.execute(
         "SELECT ai_api_key FROM workspaces WHERE id=?", (workspace_id,)
@@ -115,7 +136,7 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None, 
             "platform_calls_limit": None,
         }
 
-    if not PLATFORM_AI_API_KEY:
+    if not PLATFORM_OLLAMA_URL:
         return {
             "key": None,
             "source": "none",
@@ -137,7 +158,7 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None, 
         }
 
     return {
-        "key": PLATFORM_AI_API_KEY,
+        "key": "ollama",  # sentinel - see resolve_ai_key's docstring
         "source": "platform",
         "error": None,
         "platform_calls_used": used,
@@ -147,7 +168,8 @@ def resolve_ai_key(db, workspace_id, platform_call_limit=None, decrypt_fn=None, 
 
 def record_ai_call(record_usage_fn, workspace_id, source, meta=None):
     """
-    Call this once, after a successful Anthropic call. `record_usage_fn`
+    Call this once, after a successful model call (Anthropic or the
+    self-hosted Ollama instance). `record_usage_fn`
     should be app.py's existing `_record_usage(workspace_id, event_type,
     quantity, meta)` — passed in rather than imported to avoid a circular
     import between app.py and this module.
@@ -168,7 +190,8 @@ def error_response_for(resolved):
                 "error": "NO_KEY",
                 "message": (
                     "AI features aren't available yet. Add your own Anthropic API key in "
-                    "Workspace Settings, or ask your platform admin to enable the default AI."
+                    "Workspace Settings to use Claude AI, or ask your platform admin to finish "
+                    "setting up Agent Tracker AI (PLATFORM_OLLAMA_URL isn't configured)."
                 ),
             },
             400,
@@ -191,8 +214,8 @@ def error_response_for(resolved):
                 "error": "LIMIT_EXCEEDED",
                 "message": (
                     f"This workspace has used all {resolved['platform_calls_limit']} free "
-                    "AI calls from Project Tracker AI this month. Add your own Anthropic API "
-                    "key in Workspace Settings to keep using AI features without a limit."
+                    "AI calls from Agent Tracker AI this month. Add your own Anthropic API "
+                    "key in Workspace Settings to switch to Claude AI, which has no monthly limit."
                 ),
                 "platform_calls_used": resolved["platform_calls_used"],
                 "platform_calls_limit": resolved["platform_calls_limit"],

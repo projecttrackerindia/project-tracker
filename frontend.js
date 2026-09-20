@@ -418,7 +418,7 @@ const PAL=['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#ec4899','#0891b2'
 // Shared between AIWorkspace and AIAssistant so picking a provider in one AI
 // surface is remembered in the other too, instead of two independent choices.
 const AI_PROVIDER_STORAGE_KEY='pt_ai_provider';
-const AI_PROVIDERS=[{id:'platform',label:'Agent Tracker AI',hint:'Shared key, no setup needed'},{id:'own',label:'Claude AI',hint:'Uses your workspace\'s own Anthropic key'}];
+const AI_PROVIDERS=[{id:'platform',label:'Agent Tracker AI',hint:'Self-hosted model, no setup needed - may be slower to reply'},{id:'own',label:'Claude AI',hint:'Uses your workspace\'s own Anthropic key'}];
 const fmtD=d=>{if(!d)return'—';try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return d;}};
 const ago=iso=>{const m=Math.floor((Date.now()-new Date(iso))/60000);if(m<1)return'just now';if(m<60)return m+'m ago';if(m<1440)return Math.floor(m/60)+'h ago';return Math.floor(m/1440)+'d ago';};
 const safe=a=>(Array.isArray(a)?a:[]);
@@ -3998,7 +3998,9 @@ function AIWorkspace({cu,onNav}){
     setInput('');
     setSending(true);
     try{
-      const r=await api.post('/api/ai/chat',{message:msg,history:withUser.messages.map(m=>({role:m.role,content:m.content})),...(provider?{provider}:{})});
+      // timeoutMs bumped from the 30s default: Agent Tracker AI (self-hosted,
+      // often CPU-only) can take much longer than a hosted API to answer.
+      const r=await api.post('/api/ai/chat',{message:msg,history:withUser.messages.map(m=>({role:m.role,content:m.content})),...(provider?{provider}:{})},{timeoutMs:110000});
       if(r&&r.error){
         setError(r.message||'The AI assistant is unavailable right now.');
       }else{
@@ -8811,7 +8813,8 @@ function AIAssistant({cu,projects,tasks,users}){
     setMsgs(prev=>[...prev,userMsg]);
     setBusy(true);
     const history=[...msgs,userMsg];
-    const r=await api.post('/api/ai/chat',{message:m,history:history.slice(-10),...(provider?{provider}:{})});
+    // See AIWorkspace's send() - Agent Tracker AI can be much slower than a hosted API.
+    const r=await api.post('/api/ai/chat',{message:m,history:history.slice(-10),...(provider?{provider}:{})},{timeoutMs:110000});
     setBusy(false);
     if(r.error&&r.error==='NO_KEY'){
       setMsgs(prev=>[...prev,{role:'ai',content:'⚙️ No API key configured.\n\nGo to **Settings → AI Assistant** and paste your Anthropic API key to get started.',actions:[]}]);
