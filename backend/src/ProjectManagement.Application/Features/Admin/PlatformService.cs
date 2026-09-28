@@ -150,7 +150,7 @@ public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var tenantQuery = db.Tenants.AsNoTracking().AsQueryable();
         if (type is { } t) tenantQuery = tenantQuery.Where(x => x.Type == t);
         if (!string.IsNullOrWhiteSpace(q)) { var s = q.Trim().ToLower(); tenantQuery = tenantQuery.Where(x => x.Name.ToLower().Contains(s) || x.Slug.ToLower().Contains(s)); }
-        var tenants = await tenantQuery.Take(5000).ToListAsync(ct);
+        var tenants = await tenantQuery.OrderBy(x => x.Id).Take(5000).ToListAsync(ct);
         var ids = tenants.Select(x => x.Id).ToList();
 
         var members = await db.TenantMembers.Where(m => ids.Contains(m.TenantId)).GroupBy(m => m.TenantId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
