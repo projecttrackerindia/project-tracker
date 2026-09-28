@@ -1,0 +1,15 @@
+bin/
+obj/
+node_modules/
+dist/
+*.db
+*.db-shm
+*.db-wal
+.vs/
+.env
+*.user
+logs/
+frontend/.vite/
+
+# uploaded files (local storage provider)
+data/files/

@@ -1,0 +1,275 @@
+import { useEffect, useRef, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
+import { ApiError } from '../api/client';
+import { clamp, initials, labelize } from '../lib/format';
+import { useUi } from '../stores/ui';
+import { usePriorities } from '../features/priorities/usePriorities';
+import { projectTypeLabel } from '../lib/workLabels';
+import { Icon, type IconName } from './Icon';
+
+// ------------------------------------------------------------------ badges
+const PRIORITY_CLASS: Record<Priority, string> = { Critical: 'badge-critical', High: 'badge-high', Medium: 'badge-medium', Low: 'badge-low' };
+
+/** The priority as this workspace names and colours it (standard look until someone customises it). */
+export function PriorityBadge({ priority }: { priority: Priority }) {
+  const { info } = usePriorities();
+  const i = info(priority);
+  if (!i.isCustom) return <span className={`badge ${PRIORITY_CLASS[priority] ?? 'badge-neutral'}`}><span className="dot" />{i.name}</span>;
+  const c = i.color;
+  return (
+    <span className="badge badge-custom" style={{ '--c': c } as CSSProperties}>
+      <span className="dot" />{i.name}
+    </span>
+  );
+}
+
+/** <option>s for the four levels, labelled with this workspace's names; the value is always the level. */
+export function PriorityOptions() {
+  const { list } = usePriorities();
+  return <>{list.map((p) => <option key={p.level} value={p.level}>{p.name}</option>)}</>;
+}
+
+const CATEGORY_CLASS: Record<StatusCategory, string> = {
+  Todo: 'badge-neutral', Active: 'badge-info', Done: 'badge-success', Cancelled: 'badge-neutral',
+};
+export const TaskStatusBadge = ({ name, category }: { name: string; category: StatusCategory }) => (
+  <span className={`badge ${CATEGORY_CLASS[category]}`}><span className="dot" />{name}</span>
+);
+
+const PROJECT_STATUS_CLASS: Record<ProjectStatus, string> = {
+  Planning: 'badge-neutral', Active: 'badge-info', OnHold: 'badge-warning', Completed: 'badge-success', Cancelled: 'badge-neutral', Archived: 'badge-neutral',
+};
+export const ProjectStatusBadge = ({ status }: { status: ProjectStatus }) => (
+  <span className={`badge ${PROJECT_STATUS_CLASS[status]}`}><span className="dot" />{labelize(status)}</span>
+);
+
+/** What the project is for (new project, change request, enhancement ...). */
+export const ProjectTypeBadge = ({ type }: { type: ProjectType | null | undefined }) => (
+  <span className="badge badge-neutral" title="Project type">{projectTypeLabel(type)}</span>
+);
+
+const HEALTH_CLASS: Record<ProjectHealth, string> = {
+  OnTrack: 'badge-success', AtRisk: 'badge-warning', Delayed: 'badge-danger', Completed: 'badge-info', Cancelled: 'badge-neutral', Archived: 'badge-neutral',
+};
+export const HealthBadge = ({ health }: { health: ProjectHealth }) => (
+  <span className={`badge ${HEALTH_CLASS[health]}`}><span className="dot" />{labelize(health)}</span>
+);
+
+const STAGE_CLASS: Record<StageDisplayStatus, string> = {
+  Pending: 'badge-neutral', InProgress: 'badge-info', Completed: 'badge-success', Delayed: 'badge-danger', Locked: 'badge-neutral',
+};
+export const StageBadge = ({ status }: { status: StageDisplayStatus }) => (
+  <span className={`badge ${STAGE_CLASS[status]}`}>{status === 'Locked' ? <Icon name="lock" size={11} /> : <span className="dot" />}{labelize(status)}</span>
+);
+
+const ROLE_CLASS: Record<Role, string> = { Owner: 'badge-purple', Admin: 'badge-info', Manager: 'badge-success', Member: 'badge-neutral', Guest: 'badge-warning' };
+export const RoleBadge = ({ role }: { role: Role }) => <span className={`badge ${ROLE_CLASS[role]}`}>{role}</span>;
+
+export const Badge = ({ tone = 'neutral', children }: { tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'purple'; children: ReactNode }) => (
+  <span className={`badge badge-${tone}`}>{children}</span>
+);
+
+// ------------------------------------------------------------------ small pieces
+export function Progress({ value, tone = 'auto', large }: { value: number; tone?: 'auto' | '' | 'green' | 'amber' | 'red'; large?: boolean }) {
+  const p = clamp(Math.round(value), 0, 100);
+  const cls = tone === 'auto' ? (p >= 75 ? 'green' : p >= 40 ? '' : 'red') : tone;
+  return (
+    <div className={`progress ${large ? 'progress-lg' : ''}`} role="progressbar" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100}>
+      <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />
+    </div>
+  );
+}
+
+export const Avatar = ({ name, size }: { name?: string | null; size?: 'sm' | 'lg' }) => (
+  <span className={`avatar ${size ?? ''}`} title={name ?? undefined}>{initials(name)}</span>
+);
+
+export const Spinner = () => <span className="spinner" role="status" aria-label="Loading" />;
+export const PageLoader = () => <div className="page-loader"><Spinner /></div>;
+
+export function EmptyState({ icon = 'inbox', title, text, action }: { icon?: IconName; title: string; text?: string; action?: ReactNode }) {
+  return (
+    <div className="empty">
+      <div className="empty-ico"><Icon name={icon} /></div>
+      <h4>{title}</h4>
+      {text && <p>{text}</p>}
+      {action}
+    </div>
+  );
+}
+
+export function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
+  const message = error instanceof ApiError ? error.message : 'Something went wrong.';
+  return (
+    <div className="empty">
+      <div className="empty-ico" style={{ color: 'var(--danger)' }}><Icon name="alert" /></div>
+      <h4>Could not load this page</h4>
+      <p>{message}</p>
+      {retry && <button className="btn btn-ghost" onClick={retry}><Icon name="refresh" /> Try again</button>}
+    </div>
+  );
+}
+
+export function PageHead({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="page-head">
+      <div><h1 className="page-title">{title}</h1>{sub && <p className="page-sub">{sub}</p>}</div>
+      {children && <div className="page-actions">{children}</div>}
+    </div>
+  );
+}
+
+export function StatCard({ icon, tone, value, label, foot }: { icon?: IconName; tone?: string; value: ReactNode; label: string; foot?: ReactNode }) {
+  return (
+    <div className="stat-card">
+      {icon && <div className="stat-top"><div className={`stat-icon ${tone ?? 'blue'}`}><Icon name={icon} /></div></div>}
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+      {foot && <div className="stat-foot">{foot}</div>}
+    </div>
+  );
+}
+
+export function Pager({ page, totalPages, totalItems, onPage }: { page: number; totalPages: number; totalItems: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="pager">
+      <span>Page {page} of {totalPages} · {totalItems.toLocaleString()} items</span>
+      <div className="row">
+        <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => onPage(page - 1)}><Icon name="chevronL" /> Prev</button>
+        <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>Next <Icon name="chevronR" /></button>
+      </div>
+    </div>
+  );
+}
+
+export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string; icon?: IconName; badge?: number }[]; value: T; onChange: (t: T) => void }) {
+  return (
+    <div className="tabs" role="tablist">
+      {tabs.map((t) => (
+        <button key={t.id} type="button" role="tab" aria-selected={value === t.id} className={`tab ${value === t.id ? 'active' : ''}`} onClick={() => onChange(t.id)}>
+          {t.icon && <Icon name={t.icon} />}{t.label}{!!t.badge && <span className="tab-badge" aria-label={`${t.badge} open`}>{t.badge}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function LabelChip({ name, color }: { name: string; color: string }) {
+  return <span className="label-chip" style={{ background: `${color}26`, color, borderColor: `${color}40` }}>{name}</span>;
+}
+
+// ------------------------------------------------------------------ forms
+export function Field({ label, required, error, hint, full, children }: {
+  label?: string; required?: boolean; error?: string; hint?: string; full?: boolean; children: ReactNode;
+}) {
+  return (
+    <div className={`field ${full ? 'full' : ''} ${error ? 'invalid' : ''}`}>
+      {label && <label>{label}{required && <span className="req">*</span>}</label>}
+      {children}
+      {error ? <div className="field-error" role="alert">{error}</div> : hint ? <div className="field-hint">{hint}</div> : null}
+    </div>
+  );
+}
+
+/** Maps server-reported field errors onto react-hook-form; returns the general message for anything else. */
+export function applyServerErrors(err: unknown, setError: (name: any, e: { message: string }) => void, fields: string[]): string | null {
+  if (!(err instanceof ApiError)) return 'Something went wrong. Please try again.';
+  let general: string | null = null;
+  for (const e of err.errors) {
+    if (e.field && fields.includes(e.field)) setError(e.field, { message: e.message });
+    else general ??= e.message;
+  }
+  return general;
+}
+
+// ------------------------------------------------------------------ modal
+export function Modal({ title, subtitle, onClose, children, footer, size, onSubmit }: {
+  title: string; subtitle?: string; onClose: () => void; children: ReactNode; footer?: ReactNode;
+  size?: 'sm' | 'lg' | 'xl'; onSubmit?: (e: FormEvent<HTMLFormElement>) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = 'hidden';
+    const root = ref.current;
+    const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>('input,select:not(.ss-native),textarea,button,[href],[tabindex]:not([tabindex="-1"])') ?? [])
+      .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+    (root?.querySelector<HTMLElement>('input:not([type=hidden]),.ss-trigger,textarea') ?? focusables()[1])?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+      if (e.key === 'Tab') {
+        const f = focusables();
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; prev?.focus?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const inner = (
+    <>
+      <div className="modal-head">
+        <div><h3>{title}</h3>{subtitle && <p>{subtitle}</p>}</div>
+        <button className="btn-icon" type="button" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+      </div>
+      <div className="modal-body">{children}</div>
+      {footer && <div className="modal-foot">{footer}</div>}
+    </>
+  );
+
+  return createPortal(
+    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} className={`modal ${size ?? ''}`} role="dialog" aria-modal="true" aria-label={title}>
+        {onSubmit ? <form onSubmit={onSubmit} noValidate style={{ display: 'contents' }}>{inner}</form> : inner}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function SubmitButton({ busy, children }: { busy?: boolean; children: ReactNode }) {
+  return <button className="btn btn-primary" type="submit" disabled={busy}>{busy && <span className="spinner" />}{children}</button>;
+}
+
+// ------------------------------------------------------------------ global roots
+export function ToastRoot() {
+  const toasts = useUi((s) => s.toasts);
+  const icon = { success: 'checkCircle', error: 'xCircle', warning: 'alert', info: 'info' } as const;
+  return (
+    <div className="toast-root" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast ${t.type}`}>
+          <span className="toast-ico"><Icon name={icon[t.type]} /></span><span>{t.message}</span>
+          {t.action && <button className="toast-action" onClick={() => { t.action!.onClick(); useUi.getState().dismissToast(t.id); }}>{t.action.label}</button>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ConfirmRoot() {
+  const c = useUi((s) => s.confirm);
+  if (!c) return null;
+  if (c.alertOnly) return (
+    <Modal size="sm" title={c.title} onClose={() => c.resolve(true)}
+      footer={<button className="btn btn-primary" onClick={() => c.resolve(true)} autoFocus>{c.confirmText}</button>}>
+      <div className="form-warn" role="alert" style={{ margin: 0, display: 'flex', alignItems: 'flex-start', gap: 9 }}><span style={{ flexShrink: 0, marginTop: 2 }}><Icon name="alert" size={15} /></span><span>{c.message}</span></div>
+    </Modal>
+  );
+  return (
+    <Modal size="sm" title={c.title} subtitle={c.danger ? 'This action cannot be undone.' : undefined} onClose={() => c.resolve(false)}
+      footer={<>
+        <button className="btn btn-ghost" onClick={() => c.resolve(false)}>Cancel</button>
+        <button className={`btn ${c.danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => c.resolve(true)} autoFocus>{c.confirmText}</button>
+      </>}>
+      <p style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>{c.message}</p>
+    </Modal>
+  );
+}

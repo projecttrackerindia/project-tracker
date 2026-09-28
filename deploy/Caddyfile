@@ -1,0 +1,30 @@
+# Public entry point: Caddy gets and renews HTTPS certificates by itself (Let's Encrypt) and forwards to the web container.
+# DOMAIN and ACME_EMAIL come from .env (see deploy/.env.production.example). The domain's DNS must point at this server,
+# and ports 80 and 443 must be reachable from the internet.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Browsers are told to always use HTTPS for this site from now on.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Large uploads are allowed through; the API enforces the real per-plan limit.
+	request_body {
+		max_size 520MB
+	}
+
+	reverse_proxy web:80 {
+		# Tell the app the visitor used https, so cookies are marked Secure and links use https.
+		header_up X-Forwarded-Proto {scheme}
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}

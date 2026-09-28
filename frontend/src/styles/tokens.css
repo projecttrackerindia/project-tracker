@@ -1,0 +1,172 @@
+/* ============================================================
+   DESIGN TOKENS — lavender glass (light) / deep slate blue with a restrained violet accent (dark)
+   Ported from the reference productivity app.
+   ============================================================ */
+:root {
+  --bg: #eef0fb;
+  --bg-image:
+    radial-gradient(1200px 820px at 8% -12%, #e6d8ff 0%, transparent 58%),
+    radial-gradient(1050px 720px at 96% -4%, #d3dcff 0%, transparent 54%),
+    radial-gradient(950px 900px at 48% 112%, #f4d9ff 0%, transparent 58%),
+    linear-gradient(160deg, #f7f5ff 0%, #eef0ff 45%, #f8f3ff 100%);
+
+  --surface: rgba(255, 255, 255, .62);
+  --surface-2: rgba(255, 255, 255, .40);
+  --surface-3: rgba(139, 92, 246, .10);
+  --surface-solid: rgba(255, 255, 255, .94);
+
+  --border: rgba(255, 255, 255, .72);
+  --border-strong: rgba(139, 92, 246, .26);
+
+  --text: #221a3a;
+  --text-2: #5a4f79;
+  --text-3: #928aa9;
+
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-soft: rgba(139, 92, 246, .15);
+  --primary-text: #ffffff;
+
+  --success: #0e9f6e;
+  --success-soft: rgba(14, 159, 110, .13);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, .13);
+  --danger: #e11d48;
+  --danger-soft: rgba(225, 29, 72, .12);
+  --info: #0284c7;
+  --info-soft: rgba(2, 132, 199, .12);
+  --purple: #8b5cf6;
+  --purple-soft: rgba(139, 92, 246, .15);
+
+  --glass: blur(20px) saturate(180%);
+  --glass-strong: blur(30px) saturate(190%);
+  --glass-soft: blur(12px) saturate(160%);
+  --hl: inset 0 1px 0 rgba(255, 255, 255, .78);
+  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .35);
+
+  --shadow-sm: 0 2px 10px rgba(76, 29, 149, .07);
+  --shadow: 0 10px 30px rgba(76, 29, 149, .12);
+  --shadow-lg: 0 24px 64px rgba(76, 29, 149, .24);
+
+  --hover-bg: rgba(255, 255, 255, .55);
+  --field-border: rgba(124, 58, 237, .24);
+  --panel-solid: #fbfaff;
+  --field-bg: rgba(255, 255, 255, .62);
+  --field-focus-bg: rgba(255, 255, 255, .85);
+  --tint: rgba(139, 92, 246, .09);
+  --tint-strong: rgba(139, 92, 246, .14);
+
+  /* modal is a calmer, near-opaque surface for legibility (spec: professional, enterprise-ready) */
+  --modal-bg: rgba(255, 255, 255, .97);
+  --modal-border: rgba(148, 163, 184, .28);
+  --modal-line: #e7e9ef;
+  --modal-foot: #f8f9fb;
+  --modal-field: #ffffff;
+  --modal-field-border: #d9dee8;
+  --modal-overlay: rgba(15, 23, 42, .48);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-lg: 22px;
+  --sidebar-w: 256px;
+  --sidebar-w-collapsed: 72px;
+  --topbar-h: 64px;
+  --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* the drifting blobs behind the sign-in / sign-up card */
+  --auth-blob-1: #c4b5fd;
+  --auth-blob-2: #ddd6fe;
+  --auth-blob-3: #e9d5ff;
+  --auth-blob-4: #bfdbfe;
+  --auth-blob-opacity: .58;
+  --auth-grid-line: rgba(107, 68, 189, .055);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* ---- Surfaces: a ladder of steps in deep slate blue, each about 4% lighter than the one below it, so the page,
+     the cards on it and what sits on those cards are told apart by depth rather than by borders or colour. ---- */
+  --bg: #1b2533;                      /* the page */
+  --chrome: #131c2a;                  /* sidebar and top bar: the darkest layer, framing the page */
+  --bg-image:
+    radial-gradient(1100px 620px at 14% -12%, rgba(104, 132, 190, .09), transparent 62%),
+    linear-gradient(180deg, #1d2836 0%, #18212e 100%);
+
+  --surface: #242e3d;                 /* cards and panels */
+  --surface-solid: #242e3d;
+  --surface-2: #2e3847;               /* raised: secondary buttons, chips, blocks nested inside a card */
+  --surface-3: rgba(176, 190, 222, .09);   /* neutral wash: tags, counters */
+  --panel-solid: #303b4b;             /* floating layers: menus, drawers, pickers */
+
+  --border: rgba(170, 186, 222, .12);
+  --border-strong: rgba(170, 186, 222, .22);
+
+  --text: #edf0f6;
+  --text-2: #b9bec6;
+  --text-3: #a3a9b1;
+
+  /* ---- The accent: kept for the active menu item, buttons, selections and key highlights only.
+     --primary is the accent as text / icon colour, --primary-fill as a solid background behind white text. ---- */
+  --accent-rgb: 117, 97, 235;
+  --primary: #bdb2ff;
+  --primary-hover: #d0c8ff;
+  --primary-fill: #7561eb;
+  --primary-soft: rgba(117, 97, 235, .18);
+  --primary-text: #17123a;
+
+  /* ---- Status colours: softer than the light theme's, each one readable on every surface above ---- */
+  --success: #58da98;
+  --success-soft: rgba(88, 218, 152, .11);
+  --warning: #f7bc57;
+  --warning-soft: rgba(247, 188, 87, .11);
+  --danger: #fb8083;
+  --danger-text: #fc9c9e;               /* the same red, lighter, for text on a tinted chip */
+  --danger-soft: rgba(251, 128, 131, .11);
+  --info: #6ec6f7;
+  --info-soft: rgba(110, 198, 247, .11);
+  --purple: #c4a4fe;
+  --purple-soft: rgba(196, 164, 254, .13);
+
+  /* the glass blur is a light-theme effect: opaque surfaces need none */
+  --glass: none;
+  --glass-strong: none;
+  --glass-soft: none;
+  --hl: inset 0 1px 0 rgba(255, 255, 255, .04);
+  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .02);
+
+  --shadow-sm: 0 1px 2px rgba(4, 8, 16, .30), 0 2px 8px rgba(4, 8, 16, .14);
+  --shadow: 0 4px 10px rgba(4, 8, 16, .22), 0 14px 32px rgba(4, 8, 16, .26);
+  --shadow-lg: 0 8px 20px rgba(4, 8, 16, .30), 0 28px 70px rgba(4, 8, 16, .50);
+
+  --hover-bg: rgba(170, 186, 222, .07);
+  --field-border: rgba(170, 186, 222, .20);
+  --field-bg: rgba(8, 13, 24, .34);   /* inputs sink into whatever surface they are on */
+  --field-focus-bg: rgba(8, 13, 24, .46);
+  --tint: rgba(170, 186, 222, .045);
+  --tint-strong: rgba(170, 186, 222, .09);
+
+  --modal-bg: #2a3444;
+  --modal-border: rgba(170, 186, 222, .16);
+  --modal-line: rgba(170, 186, 222, .12);
+  --modal-foot: #232c3a;
+  --modal-field: #202936;
+  --modal-field-border: rgba(170, 186, 222, .20);
+  --modal-overlay: rgba(6, 10, 20, .62);
+
+  /* the sign-in backdrop: dimmer, and cooler, than the light theme's blobs */
+  --auth-blob-1: #4a5a9a;
+  --auth-blob-2: #5b4fb8;
+  --auth-blob-3: #3d4f8a;
+  --auth-blob-4: #2f6a94;
+  --auth-blob-opacity: .20;
+  --auth-grid-line: rgba(170, 186, 222, .04);
+}
+
+
+/* ---- laptop-width override: the app's base sizing (above) was tuned for a large monitor, so on
+   a viewport in the ordinary laptop range these come back down ~20%, matching what was confirmed
+   against a real laptop screen. Excludes phone widths, which already have their own tuning above. ---- */
+@media (min-width: 769px) and (max-width: 1600px) {
+  :root { --radius: 12.8px; --radius-sm: 8px; --radius-lg: 17.6px; --sidebar-w: 204.8px; --sidebar-w-collapsed: 57.6px; --topbar-h: 51.2px; }
+}

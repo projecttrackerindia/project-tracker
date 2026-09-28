@@ -1,0 +1,42 @@
+# Production add-on: HTTPS in front of everything, nothing but 80/443 exposed.
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env up -d --build
+#
+# Needs (see deploy/.env.production.example): DOMAIN, ACME_EMAIL, APP_URL=https://<DOMAIN>, real SMTP_* values.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificates: keep this volume, or certificates are re-issued (and rate limited)
+      - caddy_config:/config
+
+  # The web container is no longer reachable from outside; only Caddy talks to it.
+  web:
+    restart: unless-stopped
+    ports: !reset []
+
+  api:
+    restart: unless-stopped
+    environment:
+      App__WebBaseUrl: https://${DOMAIN}
+      Cors__Origins__0: https://${DOMAIN}
+      Seed__Demo: "false"          # never ship the demo organization with its well-known password
+      Webhooks__AllowPrivateTargets: "false"
+
+  db:
+    restart: unless-stopped
+    ports: !reset []               # the database is reachable only from other containers
+
+  backup:
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

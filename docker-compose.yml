@@ -1,0 +1,94 @@
+# Full stack: PostgreSQL + API + web (nginx).  Copy .env.example to .env first.
+#   docker compose up --build          -> http://localhost:8080
+#   docker compose up -d db            -> just PostgreSQL, for running the API from your IDE
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: projectmanagement
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports: ["127.0.0.1:5432:5432"]   # localhost only
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d projectmanagement"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      Database__Provider: Postgres
+      ConnectionStrings__Default: Host=db;Port=5432;Database=projectmanagement;Username=postgres;Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY (>= 32 chars) in .env}
+      Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY:-}
+      Webhooks__AllowPrivateTargets: ${WEBHOOKS_ALLOW_PRIVATE:-false}   # keep false in production: webhooks must not reach internal networks
+      App__WebBaseUrl: ${APP_URL:-http://localhost:8080}     # used in email / invitation links
+      Cors__Origins__0: ${APP_URL:-http://localhost:8080}
+      Proxy__Trust: "true"          # nginx is the only thing in front of the API
+      # Email: "Log" only writes messages to `docker compose logs api`. Set EMAIL_PROVIDER=Smtp and the SMTP_* values in .env to really send them.
+      Email__Provider: ${EMAIL_PROVIDER:-Log}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__EnableSsl: ${SMTP_SSL:-true}
+      Email__Smtp__Username: ${SMTP_USER:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__Smtp__From: ${SMTP_FROM:-no-reply@example.com}
+      # Optional bootstrap for local trials (leave unset in real deployments):
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-}
+      Seed__Demo: ${SEED_DEMO:-false}
+      Billing__Currency: ${BILLING_CURRENCY:-INR}   # starting billing currency; the administrator can change it later in the admin portal
+      Storage__Provider: Local
+      Storage__LocalPath: /app/data/files
+      Backups__Path: /backups
+      # Traces and metrics (OpenTelemetry, OTLP). Nothing is sent unless an endpoint is set; e.g. http://lgtm:4318 with `--profile observability`.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      # Shared cache and rate limits for running several API servers: set REDIS_URL=redis:6379 and start with `--profile redis`. Empty = in-process memory.
+      Redis__ConnectionString: ${REDIS_URL:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-projectmanagement-api}
+    volumes: ["files:/app/data/files", "backups:/backups:ro"]   # uploaded files survive a rebuild; backups are only *read* (System health shows the newest)
+    expose: ["8080"]
+
+  # Nightly dump of the database and the uploaded files into the "backups" volume (see deploy/DEPLOY.md for copying them off this machine).
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-02}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    entrypoint: ["sh", "/backup.sh"]
+    volumes: ["./deploy/backup.sh:/backup.sh:ro", "backups:/backups", "files:/files:ro"]
+
+  # Optional: Grafana + Tempo (traces) + Prometheus (metrics) + Loki in one container, for looking at the API's telemetry locally.
+  #   set OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318 in .env, then:  docker compose --profile observability up -d
+  #   Grafana: http://localhost:3000  (admin / admin)  ->  Explore -> Tempo (traces) or Prometheus (metrics such as pm_webhook_deliveries_total)
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    profiles: ["observability"]
+    ports: ["127.0.0.1:3000:3000", "127.0.0.1:4318:4318"]
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    depends_on: [api]
+    # Localhost only by default. To open the app to other devices on your network set WEB_BIND=0.0.0.0 and APP_URL in .env.
+    ports: ["${WEB_BIND:-127.0.0.1}:8080:80"]
+
+volumes:
+  pgdata:
+  files:
+  backups:

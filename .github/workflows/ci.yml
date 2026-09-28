@@ -1,0 +1,108 @@
+name: CI
+
+# Runs on every push and pull request: builds and tests the API, type-checks and builds the web app, checks the deployment files,
+# and makes sure both Docker images still build. Nothing is published from here.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API (build + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: Restore
+        run: dotnet restore
+      - name: Build (warnings are shown, errors fail the build)
+        run: dotnet build --no-restore -c Release
+      - name: Integration tests
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: backend/TestResults/*.trx
+          if-no-files-found: ignore
+      - name: Known-vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then echo "::warning::Vulnerable NuGet packages found (see the log)"; fi
+
+  web:
+    name: Web (type-check + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Known-vulnerable packages (high and above)
+        run: npm audit --audit-level=high --omit=dev || echo "::warning::npm audit reported issues (see the log)"
+
+  deploy-files:
+    name: Deployment files
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose files are valid (local and production)
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-only/; s/^JWT_SIGNING_KEY=.*/JWT_SIGNING_KEY=ci-only-signing-key-0123456789-0123456789/' .env
+          docker compose config -q
+          DOMAIN=example.com ACME_EMAIL=ci@example.com docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env config -q
+      - name: Caddyfile is valid
+        run: docker run --rm -e DOMAIN=example.com -e ACME_EMAIL=ci@example.com -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Shell scripts parse
+        run: for f in deploy/*.sh; do sh -n "$f" && echo "ok $f"; done
+
+  images:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: API image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
