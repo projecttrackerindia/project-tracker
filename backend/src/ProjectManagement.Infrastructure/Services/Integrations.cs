@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Mail;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -55,10 +57,54 @@ public class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSender
     public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
         var o = options.Value;
-        using var client = new SmtpClient(o.Host, o.Port) { EnableSsl = o.EnableSsl };
+        // A short timeout matters here: some hosts (Railway among them) block outbound SMTP entirely, and without this the
+        // connection attempt hangs for minutes instead of failing fast.
+        using var client = new SmtpClient(o.Host, o.Port) { EnableSsl = o.EnableSsl, Timeout = 15_000 };
         if (!string.IsNullOrEmpty(o.Username)) client.Credentials = new NetworkCredential(o.Username, o.Password);
         using var mail = new MailMessage(o.From, message.To, message.Subject, message.Html) { IsBodyHtml = true };
         await client.SendMailAsync(mail, ct);
+    }
+}
+
+public class ResendOptions
+{
+    public const string Section = "Email:Resend";
+    /// <summary>From resend.com/api-keys.</summary>
+    public string ApiKey { get; set; } = "";
+    /// <summary>Either a bare address or "Display Name &lt;address@domain&gt;". The domain must be verified in the Resend dashboard.</summary>
+    public string From { get; set; } = "";
+}
+
+/// <summary>Sends through the Resend HTTPS API (api.resend.com), for hosts that block outbound SMTP.</summary>
+public class ResendEmailSender(HttpClient http, IOptions<ResendOptions> options) : IEmailSender
+{
+    public string Name => "resend";
+
+    public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
+    {
+        var o = options.Value;
+        if (string.IsNullOrWhiteSpace(o.ApiKey) || string.IsNullOrWhiteSpace(o.From))
+            throw new InvalidOperationException("Email:Resend:ApiKey and Email:Resend:From must both be set to use the Resend provider.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails")
+        {
+            Content = JsonContent.Create(new
+            {
+                from = o.From,
+                to = new[] { message.To },
+                subject = message.Subject,
+                html = message.Html,
+                text = message.Text,
+            }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", o.ApiKey);
+
+        using var response = await http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException($"Resend returned {(int)response.StatusCode}: {(body.Length > 300 ? body[..300] : body)}");
+        }
     }
 }
 

@@ -31,7 +31,8 @@ services:
       App__WebBaseUrl: ${APP_URL:-http://localhost:8080}     # used in email / invitation links
       Cors__Origins__0: ${APP_URL:-http://localhost:8080}
       Proxy__Trust: "true"          # nginx is the only thing in front of the API
-      # Email: "Log" only writes messages to `docker compose logs api`. Set EMAIL_PROVIDER=Smtp and the SMTP_* values in .env to really send them.
+      # Email: "Log" only writes messages to `docker compose logs api`. Set EMAIL_PROVIDER=Smtp and the SMTP_* values in .env to really
+      # send them, or EMAIL_PROVIDER=Resend and the RESEND_* values if outbound SMTP is blocked (see .env.example).
       Email__Provider: ${EMAIL_PROVIDER:-Log}
       Email__Smtp__Host: ${SMTP_HOST:-}
       Email__Smtp__Port: ${SMTP_PORT:-587}
@@ -39,6 +40,8 @@ services:
       Email__Smtp__Username: ${SMTP_USER:-}
       Email__Smtp__Password: ${SMTP_PASSWORD:-}
       Email__Smtp__From: ${SMTP_FROM:-no-reply@example.com}
+      Email__Resend__ApiKey: ${RESEND_API_KEY:-}
+      Email__Resend__From: ${RESEND_FROM:-}
       # Optional bootstrap for local trials (leave unset in real deployments):
       Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-}
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-}

@@ -162,7 +162,7 @@ public class NotificationPreferenceService(IAppDbContext db, ICurrentContext ctx
         {
             await email.SendAsync(new EmailMessage(user.Email, "Test notification",
                 EmailTemplates.Wrap("Your notifications work", WebUtility.HtmlEncode($"Hi {user.DisplayName},"), "This is a test message from your project workspace.", "Open settings", link),
-                $"This is a test message from your project workspace. {link}"), ct);
+                $"This is a test message from your project workspace. {link}"), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -206,7 +206,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
                     EmailTemplates.Wrap(n.Title, WebUtility.HtmlEncode($"Hi {user.DisplayName},"), body, "Open in the app", link,
                         "You get this email because of your notification settings. Change them under Settings → Notifications."),
-                    $"{n.Title}\n{body}\n{link}"), ct);
+                    $"{n.Title}\n{body}\n{link}"), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 n.EmailPending = false;
                 n.EmailedAt = clock.Now;
                 sent++;

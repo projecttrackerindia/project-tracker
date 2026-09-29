@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
@@ -62,7 +63,7 @@ public class WorkspaceProvisioner(IAppDbContext db, AppClock clock)
 public class AuthService(
     IAppDbContext db, ICurrentContext ctx, IPasswordHasher hasher, ITokenService tokens, IEmailSender email,
     IOptions<AppOptions> options, AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, MfaService mfa, SecurityAlerts alerts, ProjectManagement.Application.Features.Admin.PlatformSettingsCache platform,
-    PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent)
+    PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent, ILogger<AuthService> log)
 {
     private readonly AppOptions _opt = options.Value;
 
@@ -112,12 +113,14 @@ public class AuthService(
         return raw;
     }
 
-    private Task SendVerificationEmailAsync(User user, string rawToken, CancellationToken ct)
+    // A slow or unreachable mail server must not turn registration/resend into a failed request: the account is already saved by
+    // the time this runs, so a delivery problem here is logged and reported through Go live / resend, not thrown back at the caller.
+    private Task<bool> SendVerificationEmailAsync(User user, string rawToken, CancellationToken ct)
     {
         var link = $"{_opt.WebBaseUrl.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(rawToken)}";
-        return email.SendAsync(new EmailMessage(user.Email, "Verify your email address",
+        return email.TrySendAsync(new EmailMessage(user.Email, "Verify your email address",
             EmailTemplates.Wrap("Verify your email", $"Hi {WebUtility.HtmlEncode(user.DisplayName)},", "Confirm your email address to activate your account.",
-                "Verify email", link), $"Verify your email: {link}"), ct);
+                "Verify email", link), $"Verify your email: {link}"), log, ct);
     }
 
     public async Task VerifyEmailAsync(VerifyEmailRequest req, CancellationToken ct = default)
@@ -367,10 +370,10 @@ public class AuthService(
         await db.SaveChangesAsync(ct);
 
         var link = $"{_opt.WebBaseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(raw)}";
-        await email.SendAsync(new EmailMessage(user.Email, "Reset your password",
+        await email.TrySendAsync(new EmailMessage(user.Email, "Reset your password",
             EmailTemplates.Wrap("Reset your password", $"Hi {WebUtility.HtmlEncode(user.DisplayName)},",
                 $"We received a request to reset your password. This link expires in {_opt.ResetTokenHours} hours. If you did not ask for this, you can ignore this email.",
-                "Choose a new password", link), $"Reset your password: {link}"), ct);
+                "Choose a new password", link), $"Reset your password: {link}"), log, ct);
     }
 
     public async Task ResetPasswordAsync(ResetPasswordRequest req, CancellationToken ct = default)

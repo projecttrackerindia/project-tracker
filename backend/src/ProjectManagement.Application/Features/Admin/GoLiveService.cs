@@ -55,8 +55,13 @@ public class GoLiveService(IAppDbContext db, ICurrentContext ctx, IConfiguration
         if (provider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))
             checks.Add(string.IsNullOrWhiteSpace(config["Email:Smtp:Host"]) ? Fail("email", "E-mail delivery", "SMTP is selected but no host is set.", "Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD, then use “Send test email” below.")
                 : Ok("email", "E-mail delivery", $"Sending through {config["Email:Smtp:Host"]}. Use “Send test email” to confirm it works."));
+        else if (provider.Equals("Resend", StringComparison.OrdinalIgnoreCase))
+            checks.Add(string.IsNullOrWhiteSpace(config["Email:Resend:ApiKey"]) || string.IsNullOrWhiteSpace(config["Email:Resend:From"])
+                ? Fail("email", "E-mail delivery", "Resend is selected but the API key or sender address is missing.", "Set RESEND_API_KEY and RESEND_FROM, then use “Send test email” below.")
+                : Ok("email", "E-mail delivery", "Sending through Resend. Use “Send test email” to confirm it works."));
         else
-            checks.Add(Fail("email", "E-mail delivery", "Messages are only written to the server log. Nobody receives verification, invitation, password-reset or notification e-mails.", "Set EMAIL_PROVIDER=Smtp with your SMTP_* settings."));
+            checks.Add(Fail("email", "E-mail delivery", "Messages are only written to the server log. Nobody receives verification, invitation, password-reset or notification e-mails.",
+                "Set EMAIL_PROVIDER=Smtp with your SMTP_* settings, or EMAIL_PROVIDER=Resend with RESEND_API_KEY / RESEND_FROM if your host blocks outbound SMTP."));
         checks.Add(config.GetValue("App:RequireEmailVerification", true) ? Ok("verify", "E-mail verification", "New accounts must confirm their address.")
             : Warn("verify", "E-mail verification", "New accounts can sign in without confirming their address.", "Turn App:RequireEmailVerification back on."));
 
@@ -107,7 +112,7 @@ public class GoLiveService(IAppDbContext db, ICurrentContext ctx, IConfiguration
         {
             await email.SendAsync(new EmailMessage(me.Email, "Test e-mail from your project management server",
                 EmailTemplates.Wrap("E-mail is working", $"Hi {System.Net.WebUtility.HtmlEncode(me.DisplayName)},", "This test message confirms that the server can send e-mail.", "Open the app", config["App:WebBaseUrl"] ?? "/"),
-                "This test message confirms that the server can send e-mail."), ct);
+                "This test message confirms that the server can send e-mail."), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
             return new TestEmailResultDto(true, email.Name, me.Email, null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
+        services.Configure<ResendOptions>(config.GetSection(ResendOptions.Section));
         services.Configure<MaintenanceOptions>(config.GetSection(MaintenanceOptions.Section));
         services.Configure<NotificationOptions>(config.GetSection(NotificationOptions.Section));
         services.Configure<StorageOptions>(config.GetSection(StorageOptions.Section));
@@ -55,8 +56,11 @@ public static class DependencyInjection
         services.AddSingleton<DevMailbox>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();
 
-        if ((config["Email:Provider"] ?? "Log").Equals("Smtp", StringComparison.OrdinalIgnoreCase))
+        var emailProvider = config["Email:Provider"] ?? "Log";
+        if (emailProvider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))
             services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        else if (emailProvider.Equals("Resend", StringComparison.OrdinalIgnoreCase))
+            services.AddHttpClient<IEmailSender, ResendEmailSender>(c => c.Timeout = TimeSpan.FromSeconds(15));
         else
             services.AddSingleton<IEmailSender, LogEmailSender>();
 

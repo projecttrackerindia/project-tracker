@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
@@ -42,7 +43,7 @@ public class WorkspaceService(
     IAppDbContext db, ICurrentContext ctx, ITokenService tokens, IEmailSender email, IOptions<AppOptions> options,
     AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, PermissionService permissions, EntitlementService entitlements,
     ProjectManagement.Application.Features.Organization.ReportingService reporting, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity,
-    ProjectManagement.Application.Features.Consent.ConsentService consent, IPasswordHasher hasher, PasswordPolicyService passwordPolicy)
+    ProjectManagement.Application.Features.Consent.ConsentService consent, IPasswordHasher hasher, PasswordPolicyService passwordPolicy, ILogger<WorkspaceService> log)
 {
     private readonly AppOptions _opt = options.Value;
     private const int MaxOwnedOrganizations = 10;
@@ -243,8 +244,8 @@ public class WorkspaceService(
         var link = $"{_opt.WebBaseUrl.TrimEnd('/')}/login";
         var what = $"{creator.DisplayName} created an account for you in \"{tenant.Name}\" as {req.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. " +
             "Your administrator will give you your temporary password separately; you'll be asked to choose your own when you first sign in.";
-        await email.SendAsync(new EmailMessage(user.Email, $"Your account in {tenant.Name}",
-            EmailTemplates.Wrap($"Welcome to {tenant.Name}", $"Hi {System.Net.WebUtility.HtmlEncode(user.DisplayName)},", what, "Sign in", link), $"{what} Sign in: {link}"), ct);
+        await email.TrySendAsync(new EmailMessage(user.Email, $"Your account in {tenant.Name}",
+            EmailTemplates.Wrap($"Welcome to {tenant.Name}", $"Hi {System.Net.WebUtility.HtmlEncode(user.DisplayName)},", what, "Sign in", link), $"{what} Sign in: {link}"), log, ct);
         return new MemberDto(user.Id, user.DisplayName, user.Email, req.Role, member.CreatedAt, jobRoleName);
     }
 
@@ -387,10 +388,10 @@ public class WorkspaceService(
         await db.SaveChangesAsync(ct);
 
         var link = $"{_opt.WebBaseUrl.TrimEnd('/')}/invite?token={Uri.EscapeDataString(raw)}";
-        await email.SendAsync(new EmailMessage(invite.Email, $"{inviter.DisplayName} invited you to {tenant.Name}",
+        await email.TrySendAsync(new EmailMessage(invite.Email, $"{inviter.DisplayName} invited you to {tenant.Name}",
             EmailTemplates.Wrap($"Join {tenant.Name}", "Hello,",
                 $"{inviter.DisplayName} invited you to join \"{tenant.Name}\" as {invite.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. This invitation expires in {_opt.InvitationDays} days.",
-                "Accept invitation", link), $"{inviter.DisplayName} invited you to join \"{tenant.Name}\" as {invite.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. Accept your invitation: {link}"), ct);
+                "Accept invitation", link), $"{inviter.DisplayName} invited you to join \"{tenant.Name}\" as {invite.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. Accept your invitation: {link}"), log, ct);
         return ToDto(invite, inviter.DisplayName, jobRoleName, reportsToName);
     }
 
