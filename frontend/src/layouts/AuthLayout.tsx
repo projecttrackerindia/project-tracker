@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../components/Icon';
+import { BrandMark } from '../components/BrandMark';
 import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { useUi } from '../stores/ui';
@@ -24,7 +25,7 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
         <span className="auth-glow" aria-hidden="true" />
         <div className={`auth-card ${shake ? 'shake' : ''}`}>
           <div className="auth-brand">
-            <div className="brand-mark">P</div>
+            <div className="brand-mark"><BrandMark /></div>
             <div><strong>Projects</strong><span>Project management</span></div>
           </div>
           <h1 className="auth-title">{title}</h1>

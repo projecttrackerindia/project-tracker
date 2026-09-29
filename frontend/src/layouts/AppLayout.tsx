@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, notificationApi, workspaceApi } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { Icon, type IconName } from '../components/Icon';
+import { BrandMark } from '../components/BrandMark';
 import { Field, Modal, RoleBadge, SubmitButton, ToastRoot, ConfirmRoot, Avatar } from '../components/ui';
 import { timeAgo } from '../lib/format';
 import { queryClient, useAuth, useCan, useIsPersonal } from '../stores/auth';
@@ -95,7 +96,7 @@ function Sidebar() {
     <>
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarOpen ? 'open' : ''}`} id="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark">P</div>
+          <div className="brand-mark"><BrandMark /></div>
           <div className="brand-text"><strong>{isPlatformAdmin ? 'Platform' : 'Projects'}</strong><span>{isPlatformAdmin ? 'Administration' : 'Workspace'}</span></div>
         </div>
         <nav className="sidebar-nav" aria-label="Main navigation">
