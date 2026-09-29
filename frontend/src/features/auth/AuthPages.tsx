@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { authApi, consentApi, workspaceApi } from '../../api/endpoints';
-import { Field, Modal, PageLoader, SubmitButton, applyServerErrors } from '../../components/ui';
+import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerErrors } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { AuthLayout } from '../../layouts/AuthLayout';
 import { useAuth } from '../../stores/auth';
@@ -216,9 +216,9 @@ export function RegisterPage() {
         {error && <div className="form-error" role="alert">{error}</div>}
         <Field label="Full name" error={errors.displayName?.message}><input className="input" autoComplete="name" autoFocus {...register('displayName')} /></Field>
         <Field label="Email" error={errors.email?.message}><input className="input" type="email" autoComplete="email" {...register('email')} /></Field>
-        <Field label="Password" error={errors.password?.message}><input className="input" type="password" autoComplete="new-password" {...register('password')} /></Field>
+        <Field label="Password" error={errors.password?.message}><PasswordInput autoComplete="new-password" {...register('password')} /></Field>
         <PasswordChecklist policy={policy} password={typed} />
-        <Field label="Confirm password" error={errors.confirm?.message}><input className="input" type="password" autoComplete="new-password" {...register('confirm')} /></Field>
+        <Field label="Confirm password" error={errors.confirm?.message}><PasswordInput autoComplete="new-password" {...register('confirm')} /></Field>
         <label className="auth-remember" style={{ alignItems: 'flex-start', marginTop: 2 }}>
           <input type="checkbox" {...register('acceptedTerms')} />
           <span>I agree to the <button type="button" className="link" onClick={() => setShowLegal(true)}>Terms of Service and Privacy Policy</button></span>
@@ -298,9 +298,9 @@ export function ResetPasswordPage() {
       {!token ? <div className="form-error">This reset link is invalid.</div> : (
         <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); })} noValidate>
           {error && <div className="form-error" role="alert">{error}</div>}
-          <Field label="New password" error={errors.password?.message}><input className="input" type="password" autoComplete="new-password" autoFocus {...register('password')} /></Field>
+          <Field label="New password" error={errors.password?.message}><PasswordInput autoComplete="new-password" autoFocus {...register('password')} /></Field>
           <PasswordChecklist policy={policy} password={typed} showHistory />
-          <Field label="Confirm password" error={errors.confirm?.message}><input className="input" type="password" autoComplete="new-password" {...register('confirm')} /></Field>
+          <Field label="Confirm password" error={errors.confirm?.message}><PasswordInput autoComplete="new-password" {...register('confirm')} /></Field>
           <SubmitButton busy={m.isPending}>Update password</SubmitButton>
         </form>
       )}

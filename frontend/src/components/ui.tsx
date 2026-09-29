@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
 import { ApiError } from '../api/client';
@@ -172,6 +172,22 @@ export function Field({ label, required, error, hint, full, children }: {
     </div>
   );
 }
+
+/** A password `.input` with a show/hide toggle (for the plain, label-above field style; see `PasswordField` in auth/AuthFields for the icon-in-box login style). */
+export const PasswordInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function PasswordInput({ className, ...rest }, ref) {
+    const [revealed, setRevealed] = useState(false);
+    return (
+      <div className="password-box">
+        <input ref={ref} className={`input ${className ?? ''}`} type={revealed ? 'text' : 'password'} {...rest} />
+        <button type="button" className="password-toggle" tabIndex={-1} aria-pressed={revealed}
+          aria-label={revealed ? 'Hide password' : 'Show password'} onClick={() => setRevealed((v) => !v)}>
+          <Icon name={revealed ? 'eyeOff' : 'eye'} size={16} />
+        </button>
+      </div>
+    );
+  },
+);
 
 /** Maps server-reported field errors onto react-hook-form; returns the general message for anything else. */
 export function applyServerErrors(err: unknown, setError: (name: any, e: { message: string }) => void, fields: string[]): string | null {

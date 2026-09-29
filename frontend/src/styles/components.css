@@ -131,6 +131,15 @@ tr.clickable { cursor: pointer; }
 .ss-opt mark { background: transparent; color: var(--primary); font-weight: 750; text-decoration: underline; }
 .ss-empty { padding: 14px; text-align: center; color: var(--text-3); font-size: 12.5px; }
 .textarea { height: auto; min-height: 84px; padding: 10px 12px; resize: vertical; line-height: 1.55; }
+.password-box { position: relative; }
+.password-box .input { padding-right: 38px; }
+.password-toggle {
+  position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 30px; height: 30px;
+  border: 0; background: transparent; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); cursor: pointer;
+}
+.password-toggle:hover { background: var(--tint-strong); color: var(--primary); }
+.password-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.password-toggle svg { width: 16px; height: 16px; }
 .input:focus, .select:focus, .textarea:focus { border-color: rgba(139, 92, 246, .6); background-color: var(--field-focus-bg); box-shadow: 0 0 0 3px var(--primary-soft), var(--hl); }
 .input::placeholder, .textarea::placeholder { color: var(--text-3); }
 .toolbar .select, .toolbar .input { width: auto; flex: 0 0 auto; }
