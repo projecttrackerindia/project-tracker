@@ -72,7 +72,7 @@ function Sidebar() {
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat, badge: unread.data?.count },
     ] },
     { title: 'Work management', items: [
-      { to: '/work', label: 'All work tasks', icon: 'bolt', end: true, show: lv('work') > 0 },
+      { to: '/work', label: 'All work', icon: 'bolt', end: true, show: lv('work') > 0 },
       { to: '/work/mine', label: 'My work', icon: 'user', show: lv('work') > 0 },
       { to: '/work/reports', label: 'Work reports', icon: 'chart', show: lv('work') > 0 },
     ] },
