@@ -57,7 +57,7 @@ function Sidebar() {
       { to: '/admin/plans', label: 'Plans', icon: 'card' },
       { to: '/admin/health', label: 'System health', icon: 'activity' },
       { to: '/admin/settings', label: 'Platform settings', icon: 'settings' },
-      { to: '/admin/audit', label: 'Audit logs', icon: 'shield' },
+      { to: '/admin/audit', label: 'Audit log', icon: 'shield' },
     ] },
   ];
 

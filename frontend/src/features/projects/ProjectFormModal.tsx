@@ -86,7 +86,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
   const statusOptions = isEdit ? PROJECT_STATUSES : (['Planning', 'Active', 'OnHold'] as const);
 
   return (
-    <Modal size="lg" title={isEdit ? 'Edit project' : 'Create new project'} subtitle={isEdit ? 'Update project details and timeline.' : 'Set up a project to organise your tasks.'}
+    <Modal size="lg" title={isEdit ? 'Edit project' : 'New project'} subtitle={isEdit ? 'Update project details and timeline.' : 'Set up a project to organise your tasks.'}
       onClose={onClose} onSubmit={(e) => { e.preventDefault(); submit(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>{isEdit ? 'Save changes' : 'Create project'}</SubmitButton></>}>
       {formError && <div className="form-error" role="alert">{formError}</div>}

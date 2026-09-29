@@ -71,7 +71,7 @@ export function ProjectGroupsPage() {
 
   return (
     <>
-      <PageHead title="Project groups" sub={`${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} project${total === 1 ? '' : 's'}. Every project belongs to one group.`}>
+      <PageHead title="Project groups" sub={`${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} project${total === 1 ? '' : 's'}. Each project belongs to exactly one.`}>
         {canManage && <button className="btn btn-primary" onClick={() => setEditing({})}><Icon name="plus" /> New group</button>}
       </PageHead>
 

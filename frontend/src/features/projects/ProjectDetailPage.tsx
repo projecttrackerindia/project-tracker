@@ -95,7 +95,7 @@ export function ProjectDetailPage() {
     <>
       <div className="page-head">
         <div>
-          <Link className="btn btn-ghost btn-sm" to="/projects" style={{ marginBottom: 12 }}><Icon name="arrowLeft" /> Back to Projects</Link>
+          <Link className="btn btn-ghost btn-sm" to="/projects" style={{ marginBottom: 12 }}><Icon name="arrowLeft" /> Back to projects</Link>
           <h1 className="page-title">{p.name}</h1>
           <p className="page-sub">{p.key}{p.teamName ? ` · ${p.teamName}` : ''}</p>
         </div>
@@ -105,8 +105,8 @@ export function ProjectDetailPage() {
           {canDelete && <button className="btn btn-ghost" onClick={remove}><Icon name="trash" /> Delete</button>}
           {canCreate && seeTasks && !archived && <button className="btn btn-ghost" onClick={() => setImporting(true)}><Icon name="upload" /> Import</button>}
           {seeWork && <Link className="btn btn-ghost" to={`/work?project=${p.id}`} title="Work tasks (bug fixes, support, analysis) that refer to this project"><Icon name="bolt" /> Work tasks</Link>}
-          <Link className="btn btn-ghost" to={`/project-status?project=${p.id}`} title="See this project on the Project Status page"><Icon name="monitor" /> Go To Project Status</Link>
-          {canCreate && seeTasks && !archived && <button className="btn btn-primary" onClick={() => setNewTask({})}><Icon name="plus" /> Add Task</button>}
+          <Link className="btn btn-ghost" to={`/project-status?project=${p.id}`} title="See this project on the Project Status page"><Icon name="monitor" /> Go to project status</Link>
+          {canCreate && seeTasks && !archived && <button className="btn btn-primary" onClick={() => setNewTask({})}><Icon name="plus" /> Add task</button>}
         </div>
       </div>
 

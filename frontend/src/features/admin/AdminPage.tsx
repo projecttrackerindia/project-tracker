@@ -24,7 +24,7 @@ const TITLES: Record<Tab, { title: string; sub: string }> = {
   usage: { title: 'Usage', sub: 'How much each organization uses (counts only), who is near a plan limit, and plan exceptions.' },
   health: { title: 'System health', sub: 'Database, background workers, queues and traffic. Refreshes every 15 seconds.' },
   settings: { title: 'Platform settings', sub: 'Sign-ups, maintenance mode and the announcement banner.' },
-  audit: { title: 'Audit logs', sub: 'Security and business events across all organizations.' },
+  audit: { title: 'Audit log', sub: 'Security and business events across all organizations.' },
 };
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);

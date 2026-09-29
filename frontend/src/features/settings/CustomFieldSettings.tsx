@@ -98,7 +98,7 @@ function FieldModal({ field, onClose, onSaved }: { field?: CustomField; onClose:
   };
 
   return (
-    <Modal size="sm" title={field ? 'Edit field' : 'New custom field'} onClose={onClose} onSubmit={(e) => { e.preventDefault(); void submit(); }}
+    <Modal size="sm" title={field ? 'Edit field' : 'New field'} onClose={onClose} onSubmit={(e) => { e.preventDefault(); void submit(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>{field ? 'Save field' : 'Add field'}</SubmitButton></>}>
       {error && <div className="form-error" role="alert">{error}</div>}
       <Field label="Name" required><input className="input" maxLength={40} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Customer" /></Field>

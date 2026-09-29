@@ -70,7 +70,7 @@ export function WorkTasksPage({ mine = false }: { mine?: boolean }) {
   const items = list.data?.items ?? [];
   return (
     <>
-      <PageHead title={mine ? 'My work' : 'All work'} sub={mine ? 'Work tasks assigned to you: bug fixes, support, analysis and other operational work.' : 'Operational work that is not a project task: bug fixes, support, analysis, data preparation and more.'}>
+      <PageHead title={mine ? 'My work' : 'All work'} sub={mine ? 'Assigned to you: bug fixes, support, analysis and other operational work.' : 'Operational work that is not a project task: bug fixes, support, analysis, data preparation and more.'}>
         <button type="button" className="btn btn-ghost" onClick={exportCsv} title="Download the filtered list as a CSV file"><Icon name="download" /> Export</button>
         {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
       </PageHead>

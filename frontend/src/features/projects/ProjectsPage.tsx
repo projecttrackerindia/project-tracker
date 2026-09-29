@@ -109,7 +109,7 @@ export function ProjectsPage() {
             <button key={id} type="button" className={view === id ? 'active' : ''} aria-pressed={view === id} title={`${label} view`} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>
           ))}
         </div>
-        {canCreate && <button className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New Project</button>}
+        {canCreate && <button className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New project</button>}
       </PageHead>
 
       <div className="card mb-22">
@@ -149,7 +149,7 @@ export function ProjectsPage() {
           : projects.isError ? <ErrorState error={projects.error} retry={() => projects.refetch()} />
           : !data?.items.length ? (
             <div className="card-body"><EmptyState icon="folder" title="No projects found" text={hasFilters ? 'Try adjusting your filters.' : 'Create your first project to organise tasks.'}
-              action={hasFilters ? <button className="btn btn-ghost" onClick={reset}>Clear filters</button> : canCreate ? <button className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New Project</button> : undefined} /></div>
+              action={hasFilters ? <button className="btn btn-ghost" onClick={reset}>Clear filters</button> : canCreate ? <button className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New project</button> : undefined} /></div>
           ) : view === 'board' ? (
             <div className="card-body">
               <ProjectBoard projects={data.items} cacheKey={cacheKey} includeArchived={archived || status === 'Archived'} canEditAll={canEdit} meId={meId} onOpen={(id) => nav(`/projects/${id}`)} />

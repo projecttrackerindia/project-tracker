@@ -161,7 +161,7 @@ export function ListView({ projectId, stages, archived, onOpenTask, onAddTask, c
     <>
       {bar}
       {filtered.length === 0
-        ? <EmptyState icon="check" title="No tasks yet" text="Add the first task for this project." action={canCreate ? <button className="btn btn-primary" onClick={onAddTask}><Icon name="plus" /> Add Task</button> : undefined} />
+        ? <EmptyState icon="check" title="No tasks yet" text="Add the first task for this project." action={canCreate ? <button className="btn btn-primary" onClick={onAddTask}><Icon name="plus" /> Add task</button> : undefined} />
         : <div className="card"><TaskTable tasks={filtered} showProject={false} showPhase archived={archived} onOpen={(t) => onOpenTask(t.id)} onToggle={toggleTaskComplete} /></div>}
     </>
   );

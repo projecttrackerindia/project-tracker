@@ -115,7 +115,7 @@ function RuleModal({ projectId, statuses, rule, onClose, onSaved }: { projectId:
   };
 
   return (
-    <Modal size="sm" title={rule ? 'Edit rule' : 'New automation rule'} onClose={onClose} onSubmit={(e) => { e.preventDefault(); void submit(); }}
+    <Modal size="sm" title={rule ? 'Edit rule' : 'New rule'} onClose={onClose} onSubmit={(e) => { e.preventDefault(); void submit(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>{rule ? 'Save rule' : 'Add rule'}</SubmitButton></>}>
       {error && <div className="form-error" role="alert">{error}</div>}
       <Field label="Name" required><input className="input" maxLength={100} autoFocus value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Tell the reporter when work is done" /></Field>

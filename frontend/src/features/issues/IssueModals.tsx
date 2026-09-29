@@ -71,7 +71,7 @@ export function ReportIssueModal({ projectId, stages, members, defaultStageId, o
   return (
     <Modal size="lg" title="Report an issue" subtitle="Mark what failed or did not work as expected, so it can be fixed and retested." onClose={onClose}
       onSubmit={(e) => { e.preventDefault(); void submit(); }}
-      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>Mark as Observed / Failed</SubmitButton></>}>
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>Report issue</SubmitButton></>}>
       <div className="form-grid">
         <Field label="Title" required error={errors.title} full><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} maxLength={200} placeholder="e.g. Login button does nothing on Safari" /></Field>
         <Field label="Stage" error={errors.stageId} hint="The stage it was found in. It cannot be completed until this is resolved.">

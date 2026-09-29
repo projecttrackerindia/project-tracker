@@ -55,8 +55,8 @@ export function DashboardPage() {
   return (
     <>
       <PageHead title={`Welcome back, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
-        {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New Project</button>}
-        {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add Task</button>}
+        {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New project</button>}
+        {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add task</button>}
       </PageHead>
 
       <div className="stat-grid">
