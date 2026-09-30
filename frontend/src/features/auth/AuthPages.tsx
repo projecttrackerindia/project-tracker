@@ -14,6 +14,11 @@ import { toast } from '../../stores/ui';
 import { AuthSubmitButton, AuthSuccessOverlay, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
 
+/** How long AuthSuccessOverlay stays up before handing off. Long enough for its own choreography to finish playing
+ * (checkmark pop 0.5s, draw to 0.58s, both rings out to 1.08s) with a beat left over to actually register, not just
+ * flash past. */
+const CELEBRATION_MS = 1600;
+
 /** Purely a convenience: the last email that was signed in with "Remember me" checked, refilled on this device only. */
 const REMEMBERED_EMAIL_KEY = 'pm_remembered_email';
 const rememberedEmail = () => { try { return localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? ''; } catch { return ''; } };
@@ -110,7 +115,7 @@ export function LoginPage() {
       try { if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, v.email); else localStorage.removeItem(REMEMBERED_EMAIL_KEY); } catch { /* storage unavailable */ }
       if (r.mfaChallenge) { setChallenge(r.mfaChallenge); setCode(''); return; }
       setCelebrating(true);
-      window.setTimeout(() => nav(redirect, { replace: true }), 650);
+      window.setTimeout(() => nav(redirect, { replace: true }), CELEBRATION_MS);
     },
     onError: (e) => {
       setUnverified(e instanceof ApiError && e.code === 'EMAIL_NOT_VERIFIED');
@@ -120,7 +125,7 @@ export function LoginPage() {
   });
   const verify = useMutation({
     mutationFn: () => loginMfa(challenge!, code),
-    onSuccess: () => { setCelebrating(true); window.setTimeout(() => nav(redirect, { replace: true }), 650); },
+    onSuccess: () => { setCelebrating(true); window.setTimeout(() => nav(redirect, { replace: true }), CELEBRATION_MS); },
     onError: (e) => {
       if (e instanceof ApiError && e.code === 'MFA_CHALLENGE_INVALID') { setChallenge(null); setError(e.message); return; }
       setError(e instanceof ApiError ? e.message : 'Could not verify the code. Please try again.');
@@ -203,7 +208,7 @@ export function RegisterPage() {
 
   const m = useMutation({
     mutationFn: (v: RegisterValues) => authApi.register({ email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms }),
-    onSuccess: (_r, v) => { setCelebrating(true); window.setTimeout(() => setDone(v.email), 900); },
+    onSuccess: (_r, v) => { setCelebrating(true); window.setTimeout(() => setDone(v.email), CELEBRATION_MS); },
     onError: (e) => setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName'])),
   });
 
