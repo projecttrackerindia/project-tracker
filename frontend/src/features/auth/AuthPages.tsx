@@ -11,7 +11,7 @@ import { Icon } from '../../components/Icon';
 import { AuthLayout } from '../../layouts/AuthLayout';
 import { useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
+import { AuthSubmitButton, AuthSuccessOverlay, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
 
 /** Purely a convenience: the last email that was signed in with "Remember me" checked, refilled on this device only. */
@@ -98,6 +98,7 @@ export function LoginPage() {
   const [unverified, setUnverified] = useState(false);
   const [remember, setRemember] = useState(() => !!rememberedEmail());
   const [shaking, shake] = useShake();
+  const [celebrating, setCelebrating] = useState(false);
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema), defaultValues: { email: rememberedEmail(), password: '' },
   });
@@ -107,7 +108,9 @@ export function LoginPage() {
     mutationFn: (v: z.infer<typeof loginSchema>) => login(v.email, v.password),
     onSuccess: (r, v) => {
       try { if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, v.email); else localStorage.removeItem(REMEMBERED_EMAIL_KEY); } catch { /* storage unavailable */ }
-      if (r.mfaChallenge) { setChallenge(r.mfaChallenge); setCode(''); } else nav(redirect, { replace: true });
+      if (r.mfaChallenge) { setChallenge(r.mfaChallenge); setCode(''); return; }
+      setCelebrating(true);
+      window.setTimeout(() => nav(redirect, { replace: true }), 650);
     },
     onError: (e) => {
       setUnverified(e instanceof ApiError && e.code === 'EMAIL_NOT_VERIFIED');
@@ -117,7 +120,7 @@ export function LoginPage() {
   });
   const verify = useMutation({
     mutationFn: () => loginMfa(challenge!, code),
-    onSuccess: () => nav(redirect, { replace: true }),
+    onSuccess: () => { setCelebrating(true); window.setTimeout(() => nav(redirect, { replace: true }), 650); },
     onError: (e) => {
       if (e instanceof ApiError && e.code === 'MFA_CHALLENGE_INVALID') { setChallenge(null); setError(e.message); return; }
       setError(e instanceof ApiError ? e.message : 'Could not verify the code. Please try again.');
@@ -126,10 +129,11 @@ export function LoginPage() {
   });
   const resend = useMutation({ mutationFn: () => authApi.resendVerification(getValues('email')), onSuccess: () => toast('Verification email sent (if the account exists).', 'info') });
 
-  if (status === 'authenticated') return <Navigate to={redirect} replace />;
+  if (status === 'authenticated' && !celebrating) return <Navigate to={redirect} replace />;
   if (challenge) return (
     <AuthLayout title="Two-step verification" sub="Enter the 6-digit code from your authenticator app, or one of your recovery codes." shake={shaking}
       footer={<button type="button" className="link" onClick={() => { setChallenge(null); setError(null); }}>Back to sign in</button>}>
+      {celebrating && <AuthSuccessOverlay title="Verified" sub="Signing you in…" />}
       <form className="auth-form" onSubmit={(e) => { e.preventDefault(); setError(null); if (code.trim()) verify.mutate(); else shake(); }} noValidate>
         {error && <div className="form-error" role="alert">{error}</div>}
         <FloatingField id="mfa-code" icon="shield" label="Verification code" autoComplete="one-time-code" inputMode="text" autoFocus
@@ -141,6 +145,7 @@ export function LoginPage() {
   return (
     <AuthLayout title="Welcome back" sub="Sign in to continue to your workspace." shake={shaking}
       footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link></>}>
+      {celebrating && <AuthSuccessOverlay title="Welcome back!" sub="Taking you to your workspace…" />}
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); }, () => shake())} noValidate>
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
         <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />

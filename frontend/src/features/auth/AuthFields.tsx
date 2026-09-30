@@ -113,3 +113,19 @@ export function AuthSubmitButton({ busy, children }: { busy?: boolean; children:
     </button>
   );
 }
+
+/** Replaces the whole card for a moment after a successful sign-in, so leaving the page reads as a deliberate
+ * handoff rather than an abrupt jump-cut into the app. */
+export function AuthSuccessOverlay({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <div className="auth-success-overlay" role="status">
+      <div className="auth-success-badge">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <div className="auth-success-title">{title}</div>
+      {sub && <div className="auth-success-sub">{sub}</div>}
+    </div>
+  );
+}

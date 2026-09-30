@@ -192,6 +192,32 @@
 .auth-ripple { position: absolute; z-index: 0; border-radius: 50%; background: rgba(255, 255, 255, .42); transform: scale(0); pointer-events: none; animation: auth-ripple .62s ease-out forwards; }
 @keyframes auth-ripple { to { transform: scale(1); opacity: 0; } }
 
+/* ---- success transition (replaces the card for a moment after login / MFA verify) ---- */
+.auth-card > .auth-success-overlay {
+  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; place-content: center; gap: 6px; text-align: center; padding: 24px;
+  border-radius: inherit;
+  /* .auth-card's own --surface tokens are deliberately translucent (they blend with the blurred backdrop behind the
+     card); reused here they'd let the form underneath show through instead of being replaced by this overlay, so
+     this needs the opaque panel color plus its own tint instead. */
+  background-color: var(--panel-solid);
+  background-image: linear-gradient(158deg, rgba(167, 139, 250, .16) 0%, transparent 60%);
+  animation: auth-success-in .3s ease both;
+}
+@keyframes auth-success-in { from { opacity: 0; } to { opacity: 1; } }
+.auth-success-badge {
+  width: 74px; height: 74px; margin-bottom: 8px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 46%, #7c3aed 100%);
+  box-shadow: 0 18px 34px -14px rgba(124, 58, 237, .85), 0 6px 14px -8px rgba(124, 58, 237, .55), inset 0 1px 0 rgba(255, 255, 255, .42);
+  animation: auth-success-pop .5s cubic-bezier(.2, .9, .3, 1.25) both;
+}
+@keyframes auth-success-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.auth-success-badge svg { width: 32px; height: 32px; }
+.auth-success-badge path { stroke-dasharray: 23; stroke-dashoffset: 23; animation: auth-success-draw .36s .22s ease forwards; }
+@keyframes auth-success-draw { to { stroke-dashoffset: 0; } }
+.auth-success-title { font-size: 18px; font-weight: 750; letter-spacing: -.02em; color: var(--text); animation: auth-success-rise .4s .2s ease both; }
+.auth-success-sub { font-size: 13px; color: var(--text-2); animation: auth-success-rise .4s .28s ease both; }
+@keyframes auth-success-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
 /* ---- "or continue with" + social buttons ---- */
 .auth-divider {
   display: flex; align-items: center; gap: 14px; margin: 24px 0 18px;
@@ -261,8 +287,56 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-blob, .auth-glow, .auth-card, .auth-card.shake, .auth-submit .auth-spinner, .auth-ripple { animation: none !important; }
+  .auth-blob, .auth-glow, .auth-card, .auth-card.shake, .auth-submit .auth-spinner, .auth-ripple,
+  .auth-success-overlay, .auth-success-badge, .auth-success-badge path, .auth-success-title, .auth-success-sub,
+  .av-badge-a, .av-badge-b, .av-badge-c { animation: none !important; }
 }
+
+/* ---- left-hand visual panel (auth-visual): a value-prop line plus a few floating "badges", hidden below
+   the breakpoint so the mobile/laptop layout above is completely unaffected. ---- */
+.auth-shell { display: flex; align-items: center; justify-content: center; }
+.auth-visual { display: none; }
+
+@media (min-width: 1040px) {
+  .auth-shell { gap: 6vw; padding-left: 5vw; padding-right: 5vw; }
+  .auth-visual {
+    display: flex; flex-direction: column; justify-content: center; gap: 40px;
+    position: relative; z-index: 1; flex: 1 1 0; max-width: 520px; min-width: 0;
+  }
+}
+
+.av-eyebrow { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); margin-bottom: 14px; }
+.av-copy h2 { font-size: 34px; font-weight: 780; letter-spacing: -.03em; line-height: 1.18; color: var(--text); margin: 0 0 14px; }
+.av-copy p { font-size: 15px; line-height: 1.6; color: var(--text-2); max-width: 380px; margin: 0; }
+
+.av-badges { position: relative; height: 190px; }
+.av-badge {
+  position: absolute; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px;
+  background: linear-gradient(158deg, var(--surface) 0%, var(--surface-2) 60%, var(--surface-3) 100%);
+  border: 1px solid var(--border); box-shadow: var(--shadow-lg), var(--hl);
+  -webkit-backdrop-filter: var(--glass-strong); backdrop-filter: var(--glass-strong);
+  min-width: 230px;
+}
+.av-badge strong { display: block; font-size: 13.5px; font-weight: 650; color: var(--text); }
+.av-badge small { font-size: 11.5px; color: var(--text-3); }
+.av-badge-a { top: 0; left: 10px; animation: av-float-a 7s ease-in-out infinite; }
+.av-badge-b { top: 74px; left: 130px; animation: av-float-b 8s ease-in-out infinite; }
+.av-badge-c { top: 148px; left: 0; animation: av-float-c 9s ease-in-out infinite; }
+@keyframes av-float-a { 0%, 100% { transform: translateY(0) rotate(-1.2deg); } 50% { transform: translateY(-10px) rotate(1deg); } }
+@keyframes av-float-b { 0%, 100% { transform: translateY(0) rotate(1deg); } 50% { transform: translateY(-14px) rotate(-1.2deg); } }
+@keyframes av-float-c { 0%, 100% { transform: translateY(0) rotate(-.8deg); } 50% { transform: translateY(-8px) rotate(1.1deg); } }
+
+.av-badge-icon { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; color: #fff; }
+.av-tone-done { background: linear-gradient(135deg, #34d399, #10b981); }
+.av-tone-progress { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+.av-bar { width: 130px; height: 5px; border-radius: 99px; background: var(--border); margin-top: 6px; overflow: hidden; }
+.av-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a78bfa, #7c3aed); }
+.av-avatars { display: flex; flex-shrink: 0; }
+.av-avatars span {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 2px solid var(--surface); margin-left: -10px;
+}
+.av-avatars span:first-child { margin-left: 0; }
 
 
 /* ---- laptop-width override: the app's base sizing (above) was tuned for a large monitor, so on

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
+import { AuthVisual } from '../components/AuthVisual';
 import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { useUi } from '../stores/ui';
@@ -21,6 +22,7 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
       <button className="icon-btn auth-theme-btn" onClick={toggleTheme} aria-label="Toggle dark mode">
         <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
       </button>
+      <AuthVisual />
       <div className="auth-wrap">
         <span className="auth-glow" aria-hidden="true" />
         <div className={`auth-card ${shake ? 'shake' : ''}`}>
