@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { BrandMark } from './BrandMark';
 import { Icon, type IconName } from './Icon';
 
 /*
@@ -34,7 +35,16 @@ const FIRST_SPRINT = 14;
 const STEP_MS = 3000;
 const COMPLETE_HOLD_MS = 4200;
 const FLY_MS = 950;
-const VISIBLE_SLOTS = 3;
+const VISIBLE_SLOTS = 4;
+/**
+ * The scene is laid out at SCENE_W wide and between SCENE_H and SCENE_H_MAX tall, then scaled to fill whatever room the
+ * panel has (see the ResizeObserver below). When width is what limits the scale, the extra height is spent on a taller
+ * board (more cards visible) rather than left as empty space above and below it.
+ */
+const SCENE_W = 760;
+const SCENE_H = 340;
+const SCENE_H_MAX = 460;
+const MAX_FIT = 1.35;
 
 function makeSprint(n: number): Sim {
   const tasks: Task[] = Array.from({ length: SPRINT_SIZE }, (_, i) => {
@@ -200,15 +210,69 @@ function Activity({ e }: { e: ActivityEvent }) {
   );
 }
 
+const WEEK = [{ d: 'Mon', h: 6.5 }, { d: 'Tue', h: 7.8 }, { d: 'Wed', h: 5.2 }, { d: 'Thu', h: 8.1 }, { d: 'Fri', h: 4.4 }];
+
+/** Hours logged per day this week: the timesheet side of the product. Today's bar keeps growing. */
+function WeekChart() {
+  const total = WEEK.reduce((t, w) => t + w.h, 0);
+  return (
+    <div className="av-chart-in">
+      <div className="av-chart-head">
+        <small>Logged this week</small>
+        <strong>{Math.floor(total)}h {String(Math.round((total % 1) * 60)).padStart(2, '0')}m</strong>
+      </div>
+      <div className="av-bars">
+        {WEEK.map((w, i) => (
+          <div key={w.d} className={i === WEEK.length - 1 ? 'today' : ''}>
+            <span style={{ '--h': `${(w.h / 9) * 100}%`, '--i': i } as CSSProperties} />
+            <em>{w.d[0]}</em>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const FEATURES: { icon: IconName; label: string }[] = [
   { icon: 'kanban', label: 'Boards & sprints' }, { icon: 'clock', label: 'Time tracking' },
   { icon: 'chart', label: 'Reports' }, { icon: 'message', label: 'Team chat' },
+];
+/** Real platform capabilities, worth saying next to a sign-in form. */
+const TRUST: { icon: IconName; label: string }[] = [
+  { icon: 'shield', label: 'Two-step sign-in' }, { icon: 'users', label: 'Role-based access' }, { icon: 'activity', label: 'Audit trail' },
 ];
 
 export function AuthVisual() {
   const reduced = useReducedMotion();
   const [s, dispatch] = useReducer(reducer, FIRST_SPRINT, makeSprint);
   const sceneRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const copyRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  // Scale the scene to the room the panel has left under the headline: as wide as the panel on a wide screen, as tall
+  // as it allows on a short one. The stage then takes exactly the scene's scaled height, so the headline + board sit
+  // together as one group centred in the panel instead of the board floating in an empty band.
+  useLayoutEffect(() => {
+    const body = bodyRef.current, copy = copyRef.current, stage = stageRef.current;
+    if (!body || !copy || !stage) return;
+    const fit = () => {
+      const gap = parseFloat(getComputedStyle(body).rowGap) || 0;
+      const w = body.clientWidth;
+      const h = body.clientHeight - copy.offsetHeight - gap;
+      if (w <= 0 || h <= 0) return;
+      const s = Math.max(0.4, Math.min(w / SCENE_W, h / SCENE_H, MAX_FIT));
+      const sceneH = Math.round(Math.min(SCENE_H_MAX, Math.max(SCENE_H, h / s)));
+      stage.style.setProperty('--fit', s.toFixed(3));
+      stage.style.setProperty('--scene-h', `${sceneH}px`);
+      stage.style.height = `${Math.floor(sceneH * s)}px`;
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(body);
+    ro.observe(copy);
+    return () => ro.disconnect();
+  }, []);
 
   // The board's own clock: finish the top card, move it, repeat; hold on "sprint complete", then start the next sprint.
   useEffect(() => {
@@ -241,38 +305,48 @@ export function AuthVisual() {
 
   return (
     <div className="auth-visual" aria-hidden="true">
-      <div className="av-copy">
-        <span className="av-eyebrow"><span className="av-eyebrow-dot" />Project Tracker</span>
-        <h2>
-          Plan the work.<br />
-          Track it <span className="av-rotator">
-            <span style={{ '--d': '0s' } as CSSProperties}>in real time.</span>
-            <span style={{ '--d': '3s' } as CSSProperties}>sprint by sprint.</span>
-            <span style={{ '--d': '6s' } as CSSProperties}>across every team.</span>
-          </span>
-        </h2>
-        <p>Projects, tasks, timesheets and reporting in one workspace your whole team actually uses.</p>
-        <ul className="av-features">
-          {FEATURES.map((f) => <li key={f.label}><Icon name={f.icon} size={14} />{f.label}</li>)}
+      <div className="av-top">
+        <div className="av-brand"><span className="brand-mark"><BrandMark size={18} /></span>Project Tracker</div>
+        <ul className="av-trust">
+          {TRUST.map((t) => <li key={t.label}><Icon name={t.icon} size={13} />{t.label}</li>)}
         </ul>
       </div>
-
-      <div className="av-scene" ref={sceneRef}>
-        <span className="av-halo" />
-        <div className="av-window">
-          <div className="av-win-bar">
-            <span className="av-lights"><i /><i /><i /></span>
-            <span className="av-win-title"><Icon name="kanban" size={13} />Sprint {s.sprint} · Website relaunch</span>
-            <span className="av-live-pill"><span className="av-live" />Live</span>
-          </div>
-          <Board s={s} />
-          <span className="av-cursor av-cursor-1"><svg viewBox="0 0 16 16"><path d="M1 1l5.5 13.5 2-5.6L14 7z" /></svg><em>Meera</em></span>
-          <span className="av-cursor av-cursor-2"><svg viewBox="0 0 16 16"><path d="M1 1l5.5 13.5 2-5.6L14 7z" /></svg><em>Ravi</em></span>
+      <div className="av-body" ref={bodyRef}>
+        <div className="av-copy" ref={copyRef}>
+          <h2>
+            Plan the work.<br />
+            Track it <span className="av-rotator">
+              <span style={{ '--d': '0s' } as CSSProperties}>in real time.</span>
+              <span style={{ '--d': '3s' } as CSSProperties}>sprint by sprint.</span>
+              <span style={{ '--d': '6s' } as CSSProperties}>across every team.</span>
+            </span>
+          </h2>
+          <p>Projects, tasks, timesheets and reporting in one workspace your whole team actually uses.</p>
+          <ul className="av-features">
+            {FEATURES.map((f) => <li key={f.label}><Icon name={f.icon} size={14} />{f.label}</li>)}
+          </ul>
         </div>
 
-        <div className="av-sat av-sat-ring"><div className="av-float av-float-a"><SprintRing s={s} /></div></div>
-        <div className="av-sat av-sat-activity"><div className="av-float av-float-b"><Activity e={s.event} /></div></div>
-        <div className="av-sat av-sat-timer"><div className="av-float av-float-c"><LiveTimer key={tracking} task={tracking} /></div></div>
+        <div className="av-stage" ref={stageRef}>
+          <div className="av-scene" ref={sceneRef}>
+            <span className="av-halo" />
+            <div className="av-window">
+              <div className="av-win-bar">
+                <span className="av-lights"><i /><i /><i /></span>
+                <span className="av-win-title"><Icon name="kanban" size={13} />Sprint {s.sprint} · Website relaunch</span>
+                <span className="av-live-pill"><span className="av-live" />Live</span>
+              </div>
+              <Board s={s} />
+              <span className="av-cursor av-cursor-1"><svg viewBox="0 0 16 16"><path d="M1 1l5.5 13.5 2-5.6L14 7z" /></svg><em>Meera</em></span>
+              <span className="av-cursor av-cursor-2"><svg viewBox="0 0 16 16"><path d="M1 1l5.5 13.5 2-5.6L14 7z" /></svg><em>Ravi</em></span>
+            </div>
+
+            <div className="av-sat av-sat-ring"><div className="av-float av-float-a"><SprintRing s={s} /></div></div>
+            <div className="av-sat av-sat-timer"><div className="av-float av-float-c"><LiveTimer key={tracking} task={tracking} /></div></div>
+            <div className="av-sat av-sat-chart"><div className="av-float av-float-b"><WeekChart /></div></div>
+            <div className="av-sat av-sat-activity"><div className="av-float av-float-b"><Activity e={s.event} /></div></div>
+          </div>
+        </div>
       </div>
     </div>
   );

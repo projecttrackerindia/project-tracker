@@ -9,7 +9,7 @@ import { useUi } from '../stores/ui';
 export function AuthLayout({ title, sub, children, footer, shake }: { title: string; sub?: string; children: ReactNode; footer?: ReactNode; shake?: boolean }) {
   const { theme, toggleTheme } = useUi();
   return (
-    <div className="auth-shell">
+    <div className="auth-shell auth-split">
       <div className="auth-bg" aria-hidden="true">
         <span className="auth-blob b1" />
         <span className="auth-blob b2" />
