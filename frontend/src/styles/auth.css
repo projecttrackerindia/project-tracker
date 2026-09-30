@@ -205,12 +205,15 @@
 }
 @keyframes auth-success-in { from { opacity: 0; } to { opacity: 1; } }
 .auth-success-badge {
-  width: 74px; height: 74px; margin-bottom: 8px; border-radius: 50%; display: grid; place-items: center;
+  position: relative; width: 74px; height: 74px; margin-bottom: 8px; border-radius: 50%; display: grid; place-items: center;
   background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 46%, #7c3aed 100%);
   box-shadow: 0 18px 34px -14px rgba(124, 58, 237, .85), 0 6px 14px -8px rgba(124, 58, 237, .55), inset 0 1px 0 rgba(255, 255, 255, .42);
   animation: auth-success-pop .5s cubic-bezier(.2, .9, .3, 1.25) both;
 }
 @keyframes auth-success-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.auth-success-ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(139, 92, 246, .55); pointer-events: none; animation: auth-ring-out .9s ease-out both; }
+.auth-success-ring-2 { border-color: rgba(196, 132, 252, .45); animation-delay: .18s; }
+@keyframes auth-ring-out { from { transform: scale(.6); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
 .auth-success-badge svg { width: 32px; height: 32px; }
 .auth-success-badge path { stroke-dasharray: 23; stroke-dashoffset: 23; animation: auth-success-draw .36s .22s ease forwards; }
 @keyframes auth-success-draw { to { stroke-dashoffset: 0; } }
@@ -289,7 +292,10 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-blob, .auth-glow, .auth-card, .auth-card.shake, .auth-submit .auth-spinner, .auth-ripple,
   .auth-success-overlay, .auth-success-badge, .auth-success-badge path, .auth-success-title, .auth-success-sub,
-  .av-badge-a, .av-badge-b, .av-badge-c { animation: none !important; }
+  .auth-success-ring, .auth-success-ring-2, .av-badge-a, .av-badge-b, .av-badge-c, .av-copy h2, .av-dot, .av-live::after {
+    animation: none !important;
+  }
+  .av-dot { display: none; }
 }
 
 /* ---- left-hand visual panel (auth-visual): a value-prop line plus a few floating "badges", hidden below
@@ -306,10 +312,24 @@
 }
 
 .av-eyebrow { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); margin-bottom: 14px; }
-.av-copy h2 { font-size: 34px; font-weight: 780; letter-spacing: -.03em; line-height: 1.18; color: var(--text); margin: 0 0 14px; }
+.av-copy h2 {
+  font-size: 34px; font-weight: 780; letter-spacing: -.03em; line-height: 1.18; margin: 0 0 14px;
+  background: linear-gradient(100deg, var(--text) 25%, #8b5cf6 42%, #c084fc 50%, #8b5cf6 58%, var(--text) 75%);
+  background-size: 250% auto; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: av-shimmer 7s linear infinite;
+}
+@keyframes av-shimmer { from { background-position: 220% center; } to { background-position: -30% center; } }
 .av-copy p { font-size: 15px; line-height: 1.6; color: var(--text-2); max-width: 380px; margin: 0; }
 
 .av-badges { position: relative; height: 190px; }
+.av-path { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.av-dot {
+  position: absolute; top: 0; left: 0; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+  background: #8b5cf6; box-shadow: 0 0 10px 2px rgba(139, 92, 246, .75);
+  offset-path: path('M25 30 C 110 5, 150 55, 145 104 C 140 155, 55 150, 15 178');
+  animation: av-travel 5s linear infinite;
+}
+@keyframes av-travel { to { offset-distance: 100%; } }
 .av-badge {
   position: absolute; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px;
   background: linear-gradient(158deg, var(--surface) 0%, var(--surface-2) 60%, var(--surface-3) 100%);
@@ -337,6 +357,9 @@
   background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 2px solid var(--surface); margin-left: -10px;
 }
 .av-avatars span:first-child { margin-left: 0; }
+.av-live { display: inline-block; position: relative; top: -1px; width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; background: #22c55e; }
+.av-live::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid #22c55e; animation: av-live-ping 1.8s ease-out infinite; }
+@keyframes av-live-ping { from { transform: scale(.6); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
 
 
 /* ---- laptop-width override: the app's base sizing (above) was tuned for a large monitor, so on

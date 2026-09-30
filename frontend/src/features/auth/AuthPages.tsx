@@ -186,6 +186,7 @@ export function RegisterPage() {
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showLegal, setShowLegal] = useState(false);
+  const [celebrating, setCelebrating] = useState(false);
   const redirect = safeRedirect(params.get('redirect'));
   const { policy, field: passwordField } = usePolicyPassword();
   const registerSchema = useMemo(() => z.object({
@@ -202,7 +203,7 @@ export function RegisterPage() {
 
   const m = useMutation({
     mutationFn: (v: RegisterValues) => authApi.register({ email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms }),
-    onSuccess: (_r, v) => setDone(v.email),
+    onSuccess: (_r, v) => { setCelebrating(true); window.setTimeout(() => setDone(v.email), 900); },
     onError: (e) => setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName'])),
   });
 
@@ -217,6 +218,7 @@ export function RegisterPage() {
   return (
     <AuthLayout title="Create your account" sub="Start with a free personal workspace. Create or join an organization anytime."
       footer={<>Already have an account? <Link className="link" to="/login">Sign in</Link></>}>
+      {celebrating && <AuthSuccessOverlay title="Account created!" sub="Setting things up…" />}
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); })} noValidate>
         {error && <div className="form-error" role="alert">{error}</div>}
         <Field label="Full name" error={errors.displayName?.message}><input className="input" autoComplete="name" autoFocus {...register('displayName')} /></Field>

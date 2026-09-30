@@ -120,6 +120,8 @@ export function AuthSuccessOverlay({ title, sub }: { title: string; sub?: string
   return (
     <div className="auth-success-overlay" role="status">
       <div className="auth-success-badge">
+        <span className="auth-success-ring" />
+        <span className="auth-success-ring auth-success-ring-2" />
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
