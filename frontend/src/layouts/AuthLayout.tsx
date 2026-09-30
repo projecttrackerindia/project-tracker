@@ -26,6 +26,7 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
       <div className="auth-wrap">
         <span className="auth-glow" aria-hidden="true" />
         <div className={`auth-card ${shake ? 'shake' : ''}`}>
+          <span className="auth-beam" aria-hidden="true" />
           <div className="auth-brand">
             <div className="brand-mark"><BrandMark /></div>
             <div><strong>Projects</strong><span>Project management</span></div>

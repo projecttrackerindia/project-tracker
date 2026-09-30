@@ -1,0 +1,217 @@
+/* ============================================================
+   SUCCESS CURTAIN — the full-screen moment after signing in or creating an account (components/SuccessCurtain.tsx).
+   One timeline, all CSS:
+     0.00s  a portal opens from the button that was pressed and floods the screen
+     0.25s  the progress ring sweeps closed around the centre
+     0.85s  the core pops in, 1.08s the checkmark draws, sparks (sign-in) or confetti (new account) burst,
+            shockwaves roll out
+     0.60s+ the greeting blurs in word by word; the step list ticks each line off
+     handoff: the page underneath is swapped while the curtain still covers it, then the whole thing zooms
+              through and fades to reveal it.
+   Deliberately theme-independent: it is a deep-space takeover in both light and dark mode.
+   ============================================================ */
+
+.sc {
+  position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; overflow: hidden;
+  color: #fff; -webkit-font-smoothing: antialiased; cursor: default;
+  clip-path: circle(0 at var(--ox) var(--oy));
+  animation: sc-portal .82s cubic-bezier(.65, 0, .25, 1) forwards;
+}
+@keyframes sc-portal { to { clip-path: circle(150vmax at var(--ox) var(--oy)); } }
+.sc.out { clip-path: none; pointer-events: none; animation: sc-out .7s cubic-bezier(.4, 0, .2, 1) forwards; }
+@keyframes sc-out { to { opacity: 0; visibility: hidden; } }
+
+/* ---- backdrop: deep gradient, drifting aurora, stars, a receding grid floor ---- */
+.sc-bg {
+  position: absolute; inset: 0; overflow: hidden;
+  background: radial-gradient(120% 85% at 50% 36%, #3b1d8f 0%, #1c1150 36%, #0b0820 70%, #05040f 100%);
+}
+.sc-aurora { position: absolute; width: 72vmax; height: 72vmax; border-radius: 50%; filter: blur(70px); mix-blend-mode: screen; }
+.sc-aurora-1 { top: -34vmax; left: -22vmax; opacity: .6; background: radial-gradient(circle, #7c3aed 0%, transparent 62%); animation: sc-drift-1 6s ease-in-out infinite alternate; }
+.sc-aurora-2 { bottom: -38vmax; right: -26vmax; opacity: .42; background: radial-gradient(circle, #c026d3 0%, transparent 62%); animation: sc-drift-2 7s ease-in-out infinite alternate; }
+.sc-register .sc-aurora-2 { background: radial-gradient(circle, #059669 0%, transparent 62%); opacity: .5; }
+@keyframes sc-drift-1 { to { transform: translate(8vmax, 6vmax) scale(1.12); } }
+@keyframes sc-drift-2 { to { transform: translate(-7vmax, -5vmax) scale(1.1); } }
+.sc-stars {
+  position: absolute; inset: 0; opacity: .75; animation: sc-twinkle 2.2s ease-in-out infinite alternate;
+  background-image:
+    radial-gradient(1.6px 1.6px at 8% 14%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 22% 36%, #e9d5ff 50%, transparent 55%),
+    radial-gradient(1.8px 1.8px at 34% 9%, #fff 50%, transparent 55%), radial-gradient(1.1px 1.1px at 46% 28%, #c7d2fe 50%, transparent 55%),
+    radial-gradient(1.5px 1.5px at 61% 12%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 73% 31%, #f5d0fe 50%, transparent 55%),
+    radial-gradient(1.9px 1.9px at 86% 18%, #fff 50%, transparent 55%), radial-gradient(1.1px 1.1px at 93% 42%, #e0e7ff 50%, transparent 55%),
+    radial-gradient(1.4px 1.4px at 4% 48%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 16% 60%, #ddd6fe 50%, transparent 55%),
+    radial-gradient(1.5px 1.5px at 82% 58%, #fff 50%, transparent 55%), radial-gradient(1.1px 1.1px at 67% 49%, #fbcfe8 50%, transparent 55%),
+    radial-gradient(1.3px 1.3px at 28% 52%, #fff 50%, transparent 55%), radial-gradient(1.6px 1.6px at 55% 6%, #fff 50%, transparent 55%);
+}
+@keyframes sc-twinkle { from { opacity: .45; } to { opacity: .9; } }
+.sc-floor {
+  position: absolute; left: -50%; right: -50%; bottom: -6%; height: 72%; opacity: .8;
+  background-image: linear-gradient(rgba(167, 139, 250, .6) 1px, transparent 1px), linear-gradient(90deg, rgba(167, 139, 250, .5) 1px, transparent 1px);
+  background-size: 64px 64px;
+  transform: perspective(420px) rotateX(58deg); transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 70%); mask-image: linear-gradient(to top, #000 0%, transparent 70%);
+  animation: sc-floor .9s linear infinite;
+}
+@keyframes sc-floor { to { background-position: 0 64px, 0 0; } }
+
+/* ---- centre stage ---- */
+.sc-stage { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 24px 16px; width: 100%; max-width: 600px; }
+.sc.out .sc-stage { animation: sc-stage-out .7s cubic-bezier(.4, 0, .2, 1) forwards; }
+@keyframes sc-stage-out { to { transform: scale(1.16); filter: blur(12px); opacity: 0; } }
+
+/* ---- emblem: ring sweep -> core pop -> check draw -> flash, shockwaves, particles ---- */
+.sc-emblem { position: relative; width: 140px; height: 140px; display: grid; place-items: center; margin-bottom: 28px; }
+.sc-halo {
+  position: absolute; inset: -46px; border-radius: 50%; filter: blur(20px); opacity: 0;
+  background: radial-gradient(circle, rgba(139, 92, 246, .62), transparent 66%);
+  animation: sc-fade-in .8s .3s ease forwards, sc-breathe 2.4s 1.2s ease-in-out infinite;
+}
+.sc-register .sc-halo { background: radial-gradient(circle, rgba(16, 185, 129, .5), rgba(139, 92, 246, .3) 45%, transparent 68%); }
+@keyframes sc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sc-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+.sc-flash {
+  position: absolute; left: 50%; top: 50%; width: 640px; height: 640px; margin: -320px 0 0 -320px; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, .55) 0%, rgba(196, 181, 253, .16) 26%, transparent 60%);
+  animation: sc-flash .8s 1.04s ease-out forwards;
+}
+@keyframes sc-flash { 0% { opacity: 0; transform: scale(.4); } 20% { opacity: 1; } 100% { opacity: 0; transform: scale(1.1); } }
+
+.sc-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transform: rotate(-90deg); }
+.sc-ring-track { fill: none; stroke: rgba(255, 255, 255, .1); stroke-width: 2; }
+.sc-ring-fill {
+  fill: none; stroke: url(#sc-ring-grad); stroke-width: 3.5; stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100; filter: drop-shadow(0 0 6px rgba(196, 181, 253, .9));
+  animation: sc-ring .78s .25s cubic-bezier(.65, 0, .35, 1) forwards;
+}
+@keyframes sc-ring { to { stroke-dashoffset: 0; } }
+
+.sc-orbit {
+  position: absolute; inset: -16px; border-radius: 50%; border: 1px dashed rgba(196, 181, 253, .22); opacity: 0;
+  animation: sc-fade-in .6s .5s ease forwards, sc-spin 3.2s linear infinite;
+}
+.sc-orbit i { position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #f0abfc; box-shadow: 0 0 12px 3px rgba(240, 171, 252, .8); }
+.sc-orbit-2 { inset: -34px; border: 1px solid rgba(147, 197, 253, .1); animation: sc-fade-in .6s .65s ease forwards, sc-spin 5.4s linear infinite reverse; }
+.sc-orbit-2 i { top: -3px; width: 6px; height: 6px; margin-left: -3px; background: #93c5fd; box-shadow: 0 0 12px 3px rgba(147, 197, 253, .8); }
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+
+.sc-core {
+  position: relative; width: 88px; height: 88px; border-radius: 50%; display: grid; place-items: center; transform: scale(0);
+  background: radial-gradient(circle at 32% 26%, #ddd6fe 0%, #8b5cf6 42%, #5b21b6 100%);
+  box-shadow: 0 0 0 6px rgba(139, 92, 246, .2), 0 0 44px 10px rgba(139, 92, 246, .55), inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -10px 20px rgba(46, 16, 101, .45);
+  animation: sc-pop .56s .85s cubic-bezier(.2, 1.45, .4, 1) forwards;
+}
+.sc-register .sc-core {
+  background: radial-gradient(circle at 32% 26%, #a7f3d0 0%, #10b981 44%, #047857 100%);
+  box-shadow: 0 0 0 6px rgba(16, 185, 129, .2), 0 0 44px 10px rgba(16, 185, 129, .5), inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -10px 20px rgba(6, 78, 59, .45);
+}
+@keyframes sc-pop { 0% { transform: scale(0) rotate(-35deg); } 70% { transform: scale(1.1) rotate(4deg); } 100% { transform: scale(1) rotate(0); } }
+.sc-core svg { width: 46px; height: 46px; filter: drop-shadow(0 2px 4px rgba(30, 10, 70, .45)); }
+.sc-core path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: sc-draw .42s 1.08s cubic-bezier(.65, 0, .35, 1) forwards; }
+@keyframes sc-draw { to { stroke-dashoffset: 0; } }
+
+.sc-wave {
+  position: absolute; left: 50%; top: 50%; width: 88px; height: 88px; margin: -44px 0 0 -44px; border-radius: 50%;
+  border: 2px solid rgba(196, 181, 253, .75); opacity: 0; pointer-events: none;
+  animation: sc-wave 1.3s 1.05s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+.sc-wave-2 { animation-delay: 1.24s; border-color: rgba(240, 171, 252, .6); }
+.sc-wave-3 { animation-delay: 1.43s; border-color: rgba(147, 197, 253, .5); }
+.sc-register .sc-wave { border-color: rgba(110, 231, 183, .7); }
+@keyframes sc-wave { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(4.4); opacity: 0; } }
+
+.sc-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.sc-burst.sparks i {
+  position: absolute; left: 0; top: -1.5px; height: 3px; border-radius: 3px; transform-origin: 0 50%; opacity: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff 55%, #f0abfc);
+  animation: sc-spark .9s calc(1.05s + var(--pd, 0ms)) cubic-bezier(.15, .8, .3, 1) forwards;
+}
+@keyframes sc-spark {
+  0% { opacity: 1; transform: rotate(var(--a)) translateX(42px) scaleX(.2); }
+  60% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) scaleX(1); }
+}
+.sc-burst.confetti i { position: absolute; left: 0; top: 0; opacity: 0; animation: sc-confetti var(--dur, 1.8s) calc(1.05s + var(--pd, 0ms)) linear forwards; }
+@keyframes sc-confetti {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(.4); animation-timing-function: cubic-bezier(.1, .8, .3, 1); }
+  35% { opacity: 1; transform: translate(var(--x), var(--y)) rotate(calc(var(--r) * .4)) scale(1); animation-timing-function: cubic-bezier(.5, 0, .9, .6); }
+  100% { opacity: 0; transform: translate(calc(var(--x) * 1.2), calc(var(--y) + var(--fall))) rotate(var(--r)) scale(.9); }
+}
+
+/* ---- words ---- */
+.sc-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 6px 14px 6px 10px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #ddd6fe;
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14);
+  animation: sc-rise .55s .5s cubic-bezier(.2, .8, .2, 1) both;
+}
+.sc-eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px rgba(52, 211, 153, .25), 0 0 10px #34d399; }
+@keyframes sc-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.sc-title {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0 .28em; margin: 0 0 10px;
+  font-size: clamp(28px, 4vw, 42px); font-weight: 780; letter-spacing: -.035em; line-height: 1.12; color: #fff;
+}
+.sc-word { display: inline-block; opacity: 0; animation: sc-word .7s calc(.6s + var(--i) * 90ms) cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes sc-word { from { opacity: 0; transform: translateY(18px) scale(.96); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
+.sc-name {
+  background: linear-gradient(95deg, #fff 0%, #f0abfc 35%, #a5b4fc 65%, #fff 100%); background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: sc-word .7s calc(.6s + var(--i) * 90ms) cubic-bezier(.2, .8, .2, 1) both, sc-shine 2.6s 1.3s linear infinite;
+}
+@keyframes sc-shine { to { background-position: -200% center; } }
+.sc-sub { margin: 0 0 26px; max-width: 460px; font-size: 15px; line-height: 1.5; color: rgba(226, 232, 240, .78); animation: sc-rise .6s .95s ease both; }
+.sc-ellipsis i { font-style: normal; opacity: .2; animation: sc-dot 1.2s infinite; }
+.sc-ellipsis i:nth-child(2) { animation-delay: .2s; }
+.sc-ellipsis i:nth-child(3) { animation-delay: .4s; }
+@keyframes sc-dot { 0%, 100% { opacity: .2; } 40% { opacity: 1; } }
+
+/* ---- step list: each line spins, then ticks ---- */
+.sc-panel {
+  position: relative; width: min(360px, 88vw); padding: 15px 18px 16px; border-radius: 16px; text-align: left;
+  background: rgba(255, 255, 255, .055); border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .7), inset 0 1px 0 rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  animation: sc-rise .6s .75s cubic-bezier(.2, .8, .2, 1) both;
+}
+.sc-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
+.sc-steps li {
+  display: flex; align-items: center; gap: 11px; font-size: 13.5px; font-weight: 550; color: rgba(255, 255, 255, .5);
+  animation: sc-rise .45s calc(.85s + var(--i) * 140ms) ease both, sc-step-done .3s calc(1.15s + var(--i) * 380ms) ease forwards;
+}
+@keyframes sc-step-done { to { color: #fff; } }
+.sc-step-icon { position: relative; width: 22px; height: 22px; flex-shrink: 0; }
+.sc-step-spin {
+  position: absolute; inset: 2px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .18); border-top-color: #c4b5fd;
+  animation: sc-spin .7s linear infinite, sc-gone .2s calc(1.15s + var(--i) * 380ms) ease forwards;
+}
+@keyframes sc-gone { to { opacity: 0; } }
+.sc-step-check {
+  position: absolute; inset: 0; width: 22px; height: 22px; padding: 4px; border-radius: 50%; color: #fff; transform: scale(0);
+  background: linear-gradient(135deg, #34d399, #059669); box-shadow: 0 0 14px rgba(52, 211, 153, .6);
+  animation: sc-pop .42s calc(1.15s + var(--i) * 380ms) cubic-bezier(.2, 1.45, .4, 1) forwards;
+}
+.sc-steps li.next .sc-step-check { background: linear-gradient(135deg, #f0abfc, #8b5cf6); box-shadow: 0 0 14px rgba(240, 171, 252, .6); }
+.sc-progress { display: block; height: 3px; margin-top: 15px; border-radius: 99px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.sc-progress i {
+  display: block; width: 0; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #8b5cf6, #f0abfc, #60a5fa); box-shadow: 0 0 12px rgba(240, 171, 252, .8);
+  animation: sc-fill var(--sc-fill, 2s) .3s cubic-bezier(.4, 0, .2, 1) forwards;
+}
+@keyframes sc-fill { to { width: 100%; } }
+
+@media (max-height: 600px) {
+  .sc-stage { transform: scale(.86); }
+}
+@media (max-width: 480px) {
+  .sc-emblem { width: 120px; height: 120px; margin-bottom: 22px; }
+  .sc-core { width: 76px; height: 76px; }
+  .sc-core svg { width: 40px; height: 40px; }
+  .sc-sub { font-size: 14px; }
+}
+
+/* Reduced motion: the same message and final state, arriving with a plain fade instead of any movement. */
+@media (prefers-reduced-motion: reduce) {
+  .sc { clip-path: none; animation: sc-fade-in .2s ease both; }
+  .sc *, .sc *::before, .sc *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  .sc-floor, .sc-orbit, .sc-wave, .sc-flash, .sc-stars { display: none; }
+}

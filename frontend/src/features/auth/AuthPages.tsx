@@ -10,14 +10,10 @@ import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerError
 import { Icon } from '../../components/Icon';
 import { AuthLayout } from '../../layouts/AuthLayout';
 import { useAuth } from '../../stores/auth';
+import { celebrate, firstName, originOf, useCelebration, type CelebrationKind } from '../../stores/celebrate';
 import { toast } from '../../stores/ui';
-import { AuthSubmitButton, AuthSuccessOverlay, FloatingField, PasswordField, useShake } from './AuthFields';
+import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
-
-/** How long AuthSuccessOverlay stays up before handing off. Long enough for its own choreography to finish playing
- * (checkmark pop 0.5s, draw to 0.58s, both rings out to 1.08s) with a beat left over to actually register, not just
- * flash past. */
-const CELEBRATION_MS = 1600;
 
 /** Purely a convenience: the last email that was signed in with "Remember me" checked, refilled on this device only. */
 const REMEMBERED_EMAIL_KEY = 'pm_remembered_email';
@@ -103,21 +99,40 @@ export function LoginPage() {
   const [unverified, setUnverified] = useState(false);
   const [remember, setRemember] = useState(() => !!rememberedEmail());
   const [shaking, shake] = useShake();
-  const [celebrating, setCelebrating] = useState(false);
+  /**
+   * True from the moment a sign-in is submitted until it fails. `login()` marks the session authenticated *inside* its
+   * own promise, before onSuccess runs, and that re-renders this page first; without this flag the redirect guard below
+   * would fire on that render and navigate away before the success moment ever started.
+   */
+  const [signingIn, setSigningIn] = useState(false);
+  const celebrating = useCelebration((s) => s.current !== null);
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema), defaultValues: { email: rememberedEmail(), password: '' },
   });
   const redirect = safeRedirect(params.get('redirect'));
 
+  /** Hands off to the full-screen success moment, which navigates into the app while it still covers the screen. */
+  const enterApp = (kind: CelebrationKind) => {
+    const ctx = useAuth.getState().ctx;
+    const ws = ctx?.current;
+    celebrate({
+      kind,
+      name: firstName(ctx?.user.displayName),
+      detail: ws ? (ws.type === 'Personal' ? 'your personal workspace' : ws.name) : undefined,
+      origin: originOf('.auth-submit'),
+      onHandoff: () => nav(redirect, { replace: true }),
+    });
+  };
+
   const m = useMutation({
     mutationFn: (v: z.infer<typeof loginSchema>) => login(v.email, v.password),
     onSuccess: (r, v) => {
       try { if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, v.email); else localStorage.removeItem(REMEMBERED_EMAIL_KEY); } catch { /* storage unavailable */ }
-      if (r.mfaChallenge) { setChallenge(r.mfaChallenge); setCode(''); return; }
-      setCelebrating(true);
-      window.setTimeout(() => nav(redirect, { replace: true }), CELEBRATION_MS);
+      if (r.mfaChallenge) { setSigningIn(false); setChallenge(r.mfaChallenge); setCode(''); return; }
+      enterApp('signin');
     },
     onError: (e) => {
+      setSigningIn(false);
       setUnverified(e instanceof ApiError && e.code === 'EMAIL_NOT_VERIFIED');
       setError(e instanceof ApiError ? e.message : 'Could not sign in. Please try again.');
       shake();
@@ -125,8 +140,9 @@ export function LoginPage() {
   });
   const verify = useMutation({
     mutationFn: () => loginMfa(challenge!, code),
-    onSuccess: () => { setCelebrating(true); window.setTimeout(() => nav(redirect, { replace: true }), CELEBRATION_MS); },
+    onSuccess: () => enterApp('verified'),
     onError: (e) => {
+      setSigningIn(false);
       if (e instanceof ApiError && e.code === 'MFA_CHALLENGE_INVALID') { setChallenge(null); setError(e.message); return; }
       setError(e instanceof ApiError ? e.message : 'Could not verify the code. Please try again.');
       shake();
@@ -134,12 +150,11 @@ export function LoginPage() {
   });
   const resend = useMutation({ mutationFn: () => authApi.resendVerification(getValues('email')), onSuccess: () => toast('Verification email sent (if the account exists).', 'info') });
 
-  if (status === 'authenticated' && !celebrating) return <Navigate to={redirect} replace />;
+  if (status === 'authenticated' && !signingIn && !celebrating) return <Navigate to={redirect} replace />;
   if (challenge) return (
     <AuthLayout title="Two-step verification" sub="Enter the 6-digit code from your authenticator app, or one of your recovery codes." shake={shaking}
       footer={<button type="button" className="link" onClick={() => { setChallenge(null); setError(null); }}>Back to sign in</button>}>
-      {celebrating && <AuthSuccessOverlay title="Verified" sub="Signing you in…" />}
-      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); setError(null); if (code.trim()) verify.mutate(); else shake(); }} noValidate>
+      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); setError(null); if (code.trim()) { setSigningIn(true); verify.mutate(); } else shake(); }} noValidate>
         {error && <div className="form-error" role="alert">{error}</div>}
         <FloatingField id="mfa-code" icon="shield" label="Verification code" autoComplete="one-time-code" inputMode="text" autoFocus
           value={code} onChange={(e) => setCode(e.target.value)} />
@@ -150,8 +165,7 @@ export function LoginPage() {
   return (
     <AuthLayout title="Welcome back" sub="Sign in to continue to your workspace." shake={shaking}
       footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link></>}>
-      {celebrating && <AuthSuccessOverlay title="Welcome back!" sub="Taking you to your workspace…" />}
-      <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); }, () => shake())} noValidate>
+      <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); setSigningIn(true); m.mutate(v); }, () => shake())} noValidate>
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
         <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
         <PasswordField id="password" label="Password" autoComplete="current-password" error={errors.password?.message} {...register('password')} />
@@ -191,7 +205,6 @@ export function RegisterPage() {
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showLegal, setShowLegal] = useState(false);
-  const [celebrating, setCelebrating] = useState(false);
   const redirect = safeRedirect(params.get('redirect'));
   const { policy, field: passwordField } = usePolicyPassword();
   const registerSchema = useMemo(() => z.object({
@@ -208,7 +221,11 @@ export function RegisterPage() {
 
   const m = useMutation({
     mutationFn: (v: RegisterValues) => authApi.register({ email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms }),
-    onSuccess: (_r, v) => { setCelebrating(true); window.setTimeout(() => setDone(v.email), CELEBRATION_MS); },
+    // The "check your email" step is swapped in underneath the success moment, which then lifts to reveal it.
+    onSuccess: (_r, v) => celebrate({
+      kind: 'register', name: firstName(v.displayName), detail: v.email,
+      origin: originOf('.auth-card button[type="submit"]'), onHandoff: () => setDone(v.email),
+    }),
     onError: (e) => setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName'])),
   });
 
@@ -216,6 +233,10 @@ export function RegisterPage() {
   if (done) return (
     <AuthLayout title="Check your email" sub={`We sent a verification link to ${done}. Open it to activate your account, then sign in.`}
       footer={<Link className="link" to={`/login${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Go to sign in</Link>}>
+      <div className="auth-mail-hero" aria-hidden="true">
+        <span className="amh-wave" /><span className="amh-wave amh-wave-2" />
+        <span className="amh-icon"><Icon name="mail" size={26} /></span>
+      </div>
       <div className="form-info"><Icon name="mail" size={14} /> The link expires in 24 hours.</div>
       <DevHint />
     </AuthLayout>
@@ -223,7 +244,6 @@ export function RegisterPage() {
   return (
     <AuthLayout title="Create your account" sub="Start with a free personal workspace. Create or join an organization anytime."
       footer={<>Already have an account? <Link className="link" to="/login">Sign in</Link></>}>
-      {celebrating && <AuthSuccessOverlay title="Account created!" sub="Setting things up…" />}
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); })} noValidate>
         {error && <div className="form-error" role="alert">{error}</div>}
         <Field label="Full name" error={errors.displayName?.message}><input className="input" autoComplete="name" autoFocus {...register('displayName')} /></Field>

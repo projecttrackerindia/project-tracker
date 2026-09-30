@@ -4,6 +4,7 @@ import { ApiError } from './api/client';
 import { consentApi, meApi } from './api/endpoints';
 import type { ConsentDocument } from './api/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SuccessCurtain } from './components/SuccessCurtain';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { AdminPage } from './features/admin/AdminPage';
 import { ActivityPage, AuditPage, NotificationsPage } from './features/activity/ActivityPages';
@@ -242,6 +243,8 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AppRoutes />
+        {/* Outside the routes on purpose: it has to stay up while the route changes underneath it. */}
+        <SuccessCurtain />
       </BrowserRouter>
     </ErrorBoundary>
   );
