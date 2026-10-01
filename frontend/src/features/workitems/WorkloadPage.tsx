@@ -4,7 +4,8 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { workItemApi } from '../../api/endpoints';
 import type { WorkItemKind, WorkloadPerson, WorkloadScope } from '../../api/types';
 import { ChartTip } from '../../components/ChartTip';
-import { Avatar, Badge, EmptyState, ErrorState, Modal, PageHead, PageLoader, StatCard } from '../../components/ui';
+import { Avatar, Badge, EmptyState, ErrorState, Modal, PageHead, PageLoader, RouteTabs, StatCard } from '../../components/ui';
+import { CapacityPage } from './CapacityPage';
 import { useWsQuery } from '../../lib/hooks';
 import { formatMinutes } from '../time/time';
 import { KIND_META, WorkItemRow, fromPersonItem, useVisibleKinds, workItemLink } from './workItems';
@@ -36,11 +37,30 @@ const KIND_KEYS: { kind: WorkItemKind; count: keyof NonNullable<WorkloadPerson['
   { kind: 'Task', count: 'tasks' }, { kind: 'Issue', count: 'issues' }, { kind: 'ActionItem', count: 'actionItems' }, { kind: 'Operational', count: 'operational' },
 ];
 
+const WorkloadTabs = () => (
+  <RouteTabs label="Workload" tabs={[{ to: '/workload', label: 'Open work', icon: 'users' }, { to: '/workload/capacity', label: 'Capacity & cost', icon: 'gauge' }]} />
+);
+
+/** Workload: open work per person, and capacity & cost. Each is its own address (and its own component, so their hooks never mix). */
+export function WorkloadPage({ section = 'workload' }: { section?: 'workload' | 'capacity' }) {
+  return section === 'capacity' ? <CapacityTab /> : <OpenWork />;
+}
+
+function CapacityTab() {
+  return (
+    <>
+      <PageHead title="Workload" sub="Logged time against each person's capacity, how much of it is billable, and what it costs." />
+      <WorkloadTabs />
+      <CapacityPage />
+    </>
+  );
+}
+
 /**
- * Workload: open work per person across every kind (project tasks, test issues, action items, operational work). A manager sees their
- * reporting line, someone with broad reports access can see everyone, and anyone can see their own. A planning aid, not a performance score.
+ * Open work per person across every kind (project tasks, test issues, action items, operational work). A manager sees their reporting
+ * line, someone with broad reports access can see everyone, and anyone can see their own. A planning aid, not a performance score.
  */
-export function WorkloadPage() {
+function OpenWork() {
   const [params, setParams] = useSearchParams();
   const wanted = (params.get('scope') as WorkloadScope | null) ?? undefined;
   const q = useWsQuery(['workload', wanted ?? ''], () => workItemApi.workload(wanted), { refetchInterval: 60_000 });
@@ -66,6 +86,7 @@ export function WorkloadPage() {
           </div>
         )}
       </PageHead>
+      <WorkloadTabs />
 
       {t.members.length === 0 ? (
         <div className="card"><div className="card-body"><EmptyState icon="users" title={t.scope === 'Reports' ? 'Nobody reports to you yet' : 'Nobody to show'} text={t.scope === 'Reports' ? 'When the org chart shows people below you, their work appears here.' : undefined} /></div></div>

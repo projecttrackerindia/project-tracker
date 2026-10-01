@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -266,9 +266,44 @@ export interface TaskDependencies { blockedBy: DependencyLink[]; blocks: Depende
 export interface TimeEntry {
   id: string; taskId: string | null; taskKey: string; taskTitle: string; projectId: string | null; user: { id: string; name: string }; workDate: string; minutes: number;
   note: string | null; isRunning: boolean; startedAt: string | null; canEdit: boolean; workTaskId: string | null; kind: 'task' | 'work';
+  /** Time that can be charged to a client. */
+  billable: boolean;
+  /** In a week that is submitted for approval or approved: it cannot change. */
+  locked: boolean;
 }
-export interface TaskTime { entries: TimeEntry[]; totalMinutes: number; estimatedHours: number | null; myTimer: TimeEntry | null }
-export interface Timesheet { from: string; to: string; user: { id: string; name: string }; entries: TimeEntry[]; totalMinutes: number; byDay: { date: string; minutes: number }[] }
+export interface TaskTime { entries: TimeEntry[]; totalMinutes: number; estimatedHours: number | null; myTimer: TimeEntry | null; billableByDefault: boolean }
+export interface Timesheet { from: string; to: string; user: { id: string; name: string }; entries: TimeEntry[]; totalMinutes: number; byDay: { date: string; minutes: number }[]; billableMinutes: number }
+
+// ---- timesheet approval
+export type TimesheetStatus = 'NotSubmitted' | 'Submitted' | 'Approved' | 'Rejected';
+export interface TimesheetWeek {
+  weekStart: string; weekEnd: string; userId: string; status: TimesheetStatus; totalMinutes: number; billableMinutes: number; note: string | null;
+  submittedAt: string | null; reviewer: UserRef | null; reviewedAt: string | null; reviewNote: string | null; locked: boolean;
+  canSubmit: boolean; canWithdraw: boolean; canReview: boolean; id: string | null; entitled: boolean;
+}
+export interface ApprovalRow {
+  id: string | null; user: UserRef; weekStart: string; status: TimesheetStatus; totalMinutes: number; billableMinutes: number; note: string | null;
+  submittedAt: string | null; reviewer: UserRef | null; reviewedAt: string | null; reviewNote: string | null;
+}
+export interface Approvals { weekStart: string; entitled: boolean; week: ApprovalRow[]; pending: ApprovalRow[] }
+
+// ---- capacity and cost
+export interface MemberRate { userId: string; name: string; email: string; role: Role; weeklyCapacityHours: number; standardCapacity: boolean; costRate: number | null; billRate: number | null }
+export interface Rates { currency: string; entitled: boolean; canEdit: boolean; members: MemberRate[]; currencies: { code: string; name: string }[] }
+export interface UtilisationPerson {
+  userId: string; name: string; capacityMinutes: number; loggedMinutes: number; billableMinutes: number; projectMinutes: number; operationalMinutes: number;
+  utilisation: number | null; billableShare: number | null; cost: number | null; billableValue: number | null;
+}
+export interface Utilisation {
+  from: string; to: string; scope: WorkloadScope; available: WorkloadScope[]; currency: string; showMoney: boolean; entitled: boolean; workingDays: number;
+  people: UtilisationPerson[]; totals: UtilisationPerson;
+}
+export interface ProjectFinancials {
+  projectId: string; currency: string; entitled: boolean; canEdit: boolean; showMoney: boolean; isBillable: boolean; budgetHours: number | null; budgetAmount: number | null;
+  billRate: number | null; loggedMinutes: number; billableMinutes: number; cost: number | null; billableValue: number | null; hoursUsed: number | null; budgetUsed: number | null;
+  forecastHours: number | null; forecastCost: number | null; peopleWithoutCostRate: number;
+  byPerson: { userId: string; name: string; minutes: number; billableMinutes: number; cost: number | null; billableValue: number | null }[];
+}
 export interface ProjectTime { totalMinutes: number; estimatedHours: number | null; byPerson: { userId: string; name: string; minutes: number }[]; topTasks: { taskId: string; key: string; title: string; minutes: number; estimatedHours: number | null }[] }
 
 // ---- automation
@@ -422,7 +457,15 @@ export interface WorkTask {
   completedAt: string | null; createdAt: string; version: number; commentCount: number; attachmentCount: number; can: { edit: boolean; delete: boolean };
   /** Time logged on it, by everyone. */
   loggedMinutes: number;
+  /** Service-level clocks, when a target applies to it. */
+  sla: WorkSla | null;
 }
+export type SlaState = 'OnTrack' | 'AtRisk' | 'Breached' | 'Met' | 'Missed' | 'Paused' | 'Stopped';
+export interface SlaClock { dueAt: string; metAt: string | null; state: SlaState }
+export interface WorkSla { response: SlaClock | null; resolution: SlaClock | null; state: SlaState }
+export interface SlaTarget { priority: Priority; responseMinutes: number | null; resolutionMinutes: number | null }
+export interface SlaSettings { entitled: boolean; canManage: boolean; defaults: SlaTarget[]; overrides: { workTypeId: string; workType: string; targets: SlaTarget[] }[] }
+export interface WorkSlaSummary { tracked: number; met: number; missed: number; compliance: number | null; openBreached: number; openAtRisk: number; responseTracked: number; responseMet: number }
 export interface WorkTaskInput {
   title: string; description?: string | null; workTypeId: string; relatedProjectId?: string | null; assigneeId?: string | null; priority?: string; status?: string;
   startDate?: string | null; dueDate?: string | null;
@@ -435,4 +478,5 @@ export interface WorkPersonCount { userId: string | null; name: string; open: nu
 export interface WorkSummary {
   from: string; to: string; open: number; overdue: number; dueThisWeek: number; unassigned: number; completedInPeriod: number; createdInPeriod: number; mineOpen: number; mineOverdue: number;
   byType: WorkCount[]; byStatus: { status: WorkTaskStatus; count: number }[]; byPerson: WorkPersonCount[]; byProject: WorkCount[]; perDay: { date: string; completed: number; created: number }[];
+  sla: WorkSlaSummary | null;
 }

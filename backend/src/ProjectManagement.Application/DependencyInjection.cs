@@ -61,6 +61,8 @@ public static class DependencyInjection
         services.AddScoped<ActionItemService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
+        services.AddScoped<ProjectManagement.Application.Features.Work.SlaService>();
+        services.AddScoped<ProjectManagement.Application.Features.Work.SlaMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkItemService>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkloadService>();
         services.AddScoped<TaskService>();
@@ -69,6 +71,8 @@ public static class DependencyInjection
         services.AddScoped<TimelineTemplateService>();
         services.AddScoped<PlanningService>();
         services.AddScoped<TimeService>();
+        services.AddScoped<TimesheetApprovalService>();
+        services.AddScoped<CapacityService>();
         services.AddScoped<ProjectManagement.Application.Features.Chat.ChatService>();
         services.AddScoped<PlatformService>();
         services.AddScoped<GoLiveService>();

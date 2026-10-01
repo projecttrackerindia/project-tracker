@@ -31,6 +31,8 @@ namespace ProjectManagement.Domain.Entities
         /// <summary>Set for entries recorded with the timer; null for entries typed in by hand.</summary>
         public DateTime? StartedAt { get; set; }
         public DateTime? EndedAt { get; set; }
+        /// <summary>Time that can be charged to a client. Starts from the project's setting and can be changed per entry.</summary>
+        public bool Billable { get; set; }
 
         public bool IsRunning => StartedAt is not null && EndedAt is null;
 

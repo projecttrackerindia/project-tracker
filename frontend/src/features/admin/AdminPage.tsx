@@ -462,7 +462,7 @@ function PlanModal({ plan, onClose }: { plan: AdminPlan; onClose: () => void }) 
   const [features, setFeatures] = useState<Record<string, number>>(plan.features);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const flags = ['ADVANCED_REPORTS', 'CUSTOM_WORKFLOWS', 'ADVANCED_PERMISSIONS', 'AUDIT_LOG'];
+  const flags = ['ADVANCED_REPORTS', 'CUSTOM_WORKFLOWS', 'ADVANCED_PERMISSIONS', 'AUDIT_LOG', 'ADVANCED_SECURITY', 'RESOURCE_MANAGEMENT', 'SERVICE_LEVELS'];
   return (
     <Modal size="lg" title={`Edit ${plan.code} plan`} subtitle="Limits are enforced immediately for every organization on this plan. Use -1 for unlimited." onClose={onClose}
       onSubmit={async (e) => {

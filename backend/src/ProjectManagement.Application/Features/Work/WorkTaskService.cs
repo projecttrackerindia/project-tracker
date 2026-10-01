@@ -19,7 +19,7 @@ public record WorkTaskCan(bool Edit, bool Delete);
 public record WorkProjectRefDto(Guid Id, string Key, string Name, ProjectStatus Status);
 public record WorkTaskDto(Guid Id, string Key, int Number, string Title, string? Description, Guid WorkTypeId, string WorkType, WorkProjectRefDto? RelatedProject,
     UserRefDto? Assignee, UserRefDto? Reporter, Priority Priority, WorkTaskStatus Status, DateOnly? StartDate, DateOnly? DueDate, bool IsOverdue,
-    DateTime? CompletedAt, DateTime CreatedAt, int Version, int CommentCount, int AttachmentCount, WorkTaskCan Can, int LoggedMinutes = 0);
+    DateTime? CompletedAt, DateTime CreatedAt, int Version, int CommentCount, int AttachmentCount, WorkTaskCan Can, int LoggedMinutes = 0, WorkSlaDto? Sla = null);
 
 public record CreateWorkTaskRequest(string? Title, string? Description, Guid? WorkTypeId, Guid? RelatedProjectId, Guid? AssigneeId, Priority? Priority,
     WorkTaskStatus? Status, DateOnly? StartDate, DateOnly? DueDate);
@@ -30,7 +30,7 @@ public record SetWorkTaskStatusRequest(WorkTaskStatus Status);
 
 public record WorkTaskQuery(string? Q = null, Guid? WorkTypeId = null, Guid? RelatedProjectId = null, bool? NoProject = null, Guid? AssigneeId = null, bool Mine = false,
     Priority? Priority = null, WorkTaskStatus? Status = null, bool? Open = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool? Overdue = null,
-    string? Sort = null, int Page = 1, int PageSize = 25);
+    string? Sort = null, int Page = 1, int PageSize = 25, string? Sla = null);
 
 public record WorkCommentDto(Guid Id, Guid WorkTaskId, UserRefDto? Author, string Body, DateTime CreatedAt, DateTime? EditedAt, bool CanEdit, bool CanDelete);
 /// <summary>A comment, and the people @mentioned in it (they are told, the same way as on a project task).</summary>
@@ -44,7 +44,7 @@ public record WorkStatusCountDto(WorkTaskStatus Status, int Count);
 public record WorkDayDto(DateOnly Date, int Completed, int Created);
 public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, int DueThisWeek, int Unassigned, int CompletedInPeriod, int CreatedInPeriod, int MineOpen, int MineOverdue,
     IReadOnlyList<WorkCountDto> ByType, IReadOnlyList<WorkStatusCountDto> ByStatus, IReadOnlyList<WorkPersonCountDto> ByPerson, IReadOnlyList<WorkCountDto> ByProject,
-    IReadOnlyList<WorkDayDto> PerDay);
+    IReadOnlyList<WorkDayDto> PerDay, WorkSlaSummaryDto? Sla = null);
 
 /// <summary>
 /// Work tasks: operational activities (bug fixes, support, analysis, data preparation ...) kept apart from a project's delivery tasks. A work task may point at a
@@ -54,7 +54,7 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// only ever reads and writes operational work.
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
-    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log)
+    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -170,6 +170,21 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (f.DueTo is { } to) q = q.Where(t => t.DueDate != null && t.DueDate <= to);
         if (f.Overdue == true)
             q = q.Where(t => t.DueDate != null && t.DueDate < today && (t.Status == WorkTaskStatus.ToDo || t.Status == WorkTaskStatus.InProgress || t.Status == WorkTaskStatus.OnHold));
+        var now = clock.Now;
+        switch (f.Sla?.ToLowerInvariant())
+        {
+            case "breached":   // open, and a target has already been missed
+                q = q.Where(t => (t.Status == WorkTaskStatus.ToDo || t.Status == WorkTaskStatus.InProgress || t.Status == WorkTaskStatus.OnHold)
+                                 && ((t.RespondedAt == null && t.ResponseDueAt != null && t.ResponseDueAt < now) || (t.ResolutionDueAt != null && t.ResolutionDueAt < (t.SlaPausedAt ?? now))));
+                break;
+            case "atrisk":     // open, three quarters of the resolution time gone, not missed yet
+                q = q.Where(t => (t.Status == WorkTaskStatus.ToDo || t.Status == WorkTaskStatus.InProgress) && t.SlaPausedAt == null
+                                 && t.ResolutionRiskAt != null && t.ResolutionRiskAt <= now && t.ResolutionDueAt > now);
+                break;
+            case "tracked":
+                q = q.Where(t => t.ResponseDueAt != null || t.ResolutionDueAt != null);
+                break;
+        }
         if (!string.IsNullOrWhiteSpace(f.Q))
         {
             var s = f.Q.Trim().ToLowerInvariant();
@@ -196,6 +211,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             "status" => desc ? q.OrderByDescending(t => t.Status) : q.OrderBy(t => t.Status),
             "due" => desc ? q.OrderBy(t => t.DueDate == null).ThenByDescending(t => t.DueDate) : q.OrderBy(t => t.DueDate == null).ThenBy(t => t.DueDate),
             "created" => desc ? q.OrderBy(t => t.CreatedAt) : q.OrderByDescending(t => t.CreatedAt),
+            "sla" => desc ? q.OrderBy(t => t.ResolutionDueAt == null).ThenByDescending(t => t.ResolutionDueAt) : q.OrderBy(t => t.ResolutionDueAt == null).ThenBy(t => t.ResolutionDueAt),
             // default: what still needs doing first, the soonest due first, then the more urgent
             _ => q.OrderBy(t => t.Status == WorkTaskStatus.Completed || t.Status == WorkTaskStatus.Cancelled).ThenBy(t => t.DueDate == null).ThenBy(t => t.DueDate)
                   .ThenByDescending(t => t.Priority == Priority.Critical ? 3 : t.Priority == Priority.High ? 2 : t.Priority == Priority.Medium ? 1 : 0),
@@ -235,12 +251,13 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         UserRefDto? Ref(Guid? id) => id is { } u && names.TryGetValue(u, out var n) ? new UserRefDto(u, n) : null;
 
         var result = new List<WorkTaskDto>(rows.Count);
+        var now = clock.Now;
         foreach (var r in rows)
         {
             var can = new WorkTaskCan(await CanEditAsync(r, ct), await CanDeleteAsync(r, ct));
             result.Add(new WorkTaskDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.Description, r.WorkTypeId ?? Guid.Empty, r.WorkType?.Name ?? "", r.RelatedProjectId is { } p && projects.TryGetValue(p, out var pr) ? pr : null,
                 Ref(r.AssigneeId), Ref(r.ReporterId), r.Priority, r.Status, r.StartDate, r.DueDate, IsOpen(r.Status) && r.DueDate is { } d && d < today, r.CompletedAt, r.CreatedAt, r.Version,
-                comments.GetValueOrDefault(r.Id), attachments.GetValueOrDefault(r.Id), can, logged.GetValueOrDefault(r.Id)));
+                comments.GetValueOrDefault(r.Id), attachments.GetValueOrDefault(r.Id), can, logged.GetValueOrDefault(r.Id), SlaService.State(r, now)));
         }
         return result;
     }
@@ -276,7 +293,10 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             ReporterId = ctx.RequireUserId(), Priority = req.Priority ?? Priority.Medium, Status = status, StartDate = req.StartDate, DueDate = req.DueDate,
             CompletedAt = status == WorkTaskStatus.Completed ? now : null, CompletedBy = status == WorkTaskStatus.Completed ? ctx.UserId : null,
             CreatedAt = now, CreatedBy = ctx.UserId,
+            // Raised already under way: it has had its response. Raised on hold: the resolution clock starts stopped.
+            RespondedAt = status == WorkTaskStatus.ToDo ? null : now, SlaPausedAt = status == WorkTaskStatus.OnHold ? now : null,
         };
+        await sla.ApplyTargetsAsync(task, ct);
         db.WorkTasks.Add(task);
         // Work activity belongs to the workspace, not to the related project: the project's own history stays about the project.
         recorder.Activity("worktask.created", "WorkTask", task.Id, $"Created work task {KeyOf(task.Number)} “{title}” ({type.Name})", null);
@@ -310,9 +330,12 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (task.StartDate != req.StartDate) changes.Add("start date");
         if (task.Description != description) changes.Add("description");
 
+        var retarget = task.Priority != req.Priority || task.WorkTypeId != type.Id;
         task.Title = title; task.Description = description; task.WorkTypeId = type.Id; task.RelatedProjectId = req.RelatedProjectId;
         task.AssigneeId = req.AssigneeId; task.Priority = req.Priority; task.StartDate = req.StartDate; task.DueDate = req.DueDate;
         ApplyStatus(task, req.Status);
+        // A new priority or type brings its own targets, still measured from when the task was raised.
+        if (retarget && IsOpen(task.Status)) await sla.ApplyTargetsAsync(task, ct);
         task.Version++;
         task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
 
@@ -341,6 +364,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private void ApplyStatus(WorkTask task, WorkTaskStatus status)
     {
         if (task.Status == status) return;
+        sla.OnStatusChanged(task, task.Status, status);
         var done = status == WorkTaskStatus.Completed;
         task.CompletedAt = done ? clock.Now : null;
         task.CompletedBy = done ? ctx.UserId : null;
@@ -396,6 +420,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (await permissions.LevelAsync(Modules.Work, ct) < AccessLevel.Edit) throw new ForbiddenException("You cannot comment on work tasks.", "PERMISSION_DENIED");
         var c = new WorkTaskComment { TenantId = task.TenantId, WorkTaskId = taskId, AuthorId = ctx.RequireUserId(), Body = CleanBody(req.Body), CreatedAt = clock.Now, CreatedBy = ctx.UserId };
         db.WorkTaskComments.Add(c);
+        sla.OnComment(task, c.AuthorId);
         recorder.Activity("worktask.comment", "WorkTask", taskId, $"Commented on {KeyOf(task.Number)}", null);
         var link = LinkOf(taskId);
         var snippet = c.Body.Length > 140 ? c.Body[..140] + "…" : c.Body;
@@ -518,7 +543,8 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var rows = await Operational.AsNoTracking()
             .Where(t => t.Status == WorkTaskStatus.ToDo || t.Status == WorkTaskStatus.InProgress || t.Status == WorkTaskStatus.OnHold
                         || (t.CreatedAt >= startAt && t.CreatedAt < endAt) || (t.CompletedAt != null && t.CompletedAt >= startAt && t.CompletedAt < endAt))
-            .Select(t => new { TypeName = t.WorkType!.Name, t.RelatedProjectId, t.AssigneeId, t.Status, t.DueDate, t.CreatedAt, t.CompletedAt })
+            .Select(t => new { TypeName = t.WorkType!.Name, t.RelatedProjectId, t.AssigneeId, t.Status, t.DueDate, t.CreatedAt, t.CompletedAt,
+                t.RespondedAt, t.ResponseDueAt, t.ResolutionDueAt, t.ResolutionRiskAt, t.SlaPausedAt })
             .Take(50000).ToListAsync(ct);
         var me = ctx.UserId;
         bool Late(DateOnly? d, WorkTaskStatus s) => IsOpen(s) && d is { } x && x < today;
@@ -543,9 +569,19 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var perDay = Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Select(i => start.AddDays(i)).Select(d =>
             new WorkDayDto(d, rows.Count(r => r.CompletedAt is { } c && DateOnly.FromDateTime(c) == d), rows.Count(r => DateOnly.FromDateTime(r.CreatedAt) == d))).ToList();
 
+        // Service levels: of the work resolved in the period that had a resolution target, how much made it; and what is late or at risk now.
+        var now = clock.Now;
+        var resolved = rows.Where(r => r.Status == WorkTaskStatus.Completed && Done(r.CompletedAt) && r.ResolutionDueAt != null).ToList();
+        var met = resolved.Count(r => r.CompletedAt <= r.ResolutionDueAt);
+        var responded = rows.Where(r => r.ResponseDueAt != null && r.RespondedAt != null && Made(r.CreatedAt)).ToList();
+        var slaSummary = new WorkSlaSummaryDto(resolved.Count, met, resolved.Count - met, resolved.Count > 0 ? Math.Round((decimal)met / resolved.Count, 4) : null,
+            open.Count(r => (r.RespondedAt == null && r.ResponseDueAt < now) || (r.ResolutionDueAt != null && r.ResolutionDueAt < (r.SlaPausedAt ?? now))),
+            open.Count(r => r.SlaPausedAt == null && r.Status != WorkTaskStatus.OnHold && r.ResolutionRiskAt <= now && r.ResolutionDueAt > now),
+            responded.Count, responded.Count(r => r.RespondedAt <= r.ResponseDueAt));
+
         return new WorkSummaryDto(start, end, open.Count, open.Count(r => Late(r.DueDate, r.Status)), open.Count(r => r.DueDate is { } d && d >= today && d <= week), open.Count(r => r.AssigneeId == null),
             rows.Count(r => Done(r.CompletedAt)), rows.Count(r => Made(r.CreatedAt)), open.Count(r => r.AssigneeId == me), open.Count(r => r.AssigneeId == me && Late(r.DueDate, r.Status)),
-            byType, byStatus, byPerson, byProject, perDay);
+            byType, byStatus, byPerson, byProject, perDay, slaSummary);
     }
 
     /// <summary>

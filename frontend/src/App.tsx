@@ -233,6 +233,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
         <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />
+        <Route path="timesheet/approvals" element={<Guard allow={mTasks || mWork}><TimesheetPage section="approvals" /></Guard>} />
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
         <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
@@ -243,6 +244,7 @@ function AppRoutes() {
         <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
         {/* Insights */}
         <Route path="workload" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage /></Guard>} />
+        <Route path="workload/capacity" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage section="capacity" /></Guard>} />
         <Route path="reports" element={<Guard allow={canReports || mWork}><ReportsPage section="generate" /></Guard>} />
         <Route path="reports/operations" element={<Guard allow={mWork}><ReportsPage section="operations" /></Guard>} />
         <Route path="activity" element={<Guard allow={mActivity}><ActivityPage /></Guard>} />

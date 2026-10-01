@@ -85,6 +85,8 @@ public static class DependencyInjection
         services.Configure<ProjectManagement.Application.Features.Integrations.WebhookOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.WebhookOptions.Section));
         services.AddSingleton<ProjectManagement.Application.Features.Integrations.IWebhookTransport, HttpWebhookTransport>();
         services.AddHostedService<WebhookWorker>();
+        services.Configure<SlaOptions>(config.GetSection(SlaOptions.Section));
+        services.AddHostedService<SlaWorker>();
         return services;
     }
 }

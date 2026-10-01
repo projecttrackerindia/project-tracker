@@ -23,10 +23,13 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
   const [duration, setDuration] = useState('');
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState('');
+  /** Null until the person touches it: then the project's own setting decides. */
+  const [billable, setBillable] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const data = q.data;
+  const billableNow = billable ?? data?.billableByDefault ?? false;
   const mine = data?.myTimer ?? null;
   const runningHere = !!mine && (onWork ? mine.workTaskId === id : mine.taskId === id);
   const now = useNow(!!mine);
@@ -35,6 +38,7 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
     void qc.invalidateQueries({ queryKey: [wid, ...cacheKey] });
     void qc.invalidateQueries({ queryKey: [wid, 'timer'] });
     void qc.invalidateQueries({ queryKey: [wid, 'timesheet'] });
+    void qc.invalidateQueries({ queryKey: [wid, 'project'] });
     void qc.invalidateQueries({ queryKey: [wid, 'tasks'] });
   };
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
@@ -47,7 +51,7 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
   const log = () => {
     const minutes = parseDuration(duration);
     if (!minutes) return setError('Enter a duration such as 1h 30m, 45m or 1.5h.');
-    const body = { minutes, workDate: date, note: note.trim() || undefined };
+    const body = { minutes, workDate: date, note: note.trim() || undefined, billable: billableNow };
     void run(async () => { await (onWork ? timeApi.logOnWorkTask(id, body) : timeApi.log(id, body)); setDuration(''); setNote(''); }, 'Time logged.');
   };
 
@@ -84,6 +88,9 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
             <input className="input" type="date" aria-label="Date" max={todayISO()} value={date} onChange={(e) => setDate(e.target.value || todayISO())} />
             <input className="input" placeholder="What did you do? (optional)" aria-label="Note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); log(); } }} />
+            <label className={`time-billable ${billableNow ? 'on' : ''}`} title="Time that can be charged to the client">
+              <input type="checkbox" checked={billableNow} onChange={(e) => setBillable(e.target.checked)} /><Icon name="coin" size={13} /> Billable
+            </label>
             <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={log}>Log time</button>
           </div>
         </>
@@ -96,6 +103,13 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
             <div className="time-row" key={e.id}>
               <span className="time-min">{e.isRunning ? <span className="live-dot" title="Running" /> : null}{e.isRunning ? clock(now - new Date(e.startedAt!).getTime()) : formatMinutes(e.minutes)}</span>
               <span className="time-what"><b>{e.user.name}</b> · {formatDate(e.workDate)}{e.note ? <span className="muted"> — {e.note}</span> : null}</span>
+              {e.locked && <span className="time-lock" title="In a week that is submitted or approved: it cannot change"><Icon name="lock" size={12} /></span>}
+              {!e.isRunning && (e.canEdit ? (
+                <button type="button" className={`time-bill-toggle ${e.billable ? 'on' : ''}`} title={e.billable ? 'Billable - click to mark as not billable' : 'Not billable - click to mark as billable'}
+                  aria-pressed={e.billable} aria-label="Billable" onClick={() => void run(() => timeApi.update(e.id, { minutes: e.minutes, workDate: e.workDate, note: e.note, billable: !e.billable }))}>
+                  <Icon name="coin" size={13} />
+                </button>
+              ) : e.billable ? <span className="time-bill-toggle on static" title="Billable"><Icon name="coin" size={13} /></span> : null)}
               {e.canEdit && (
                 <button type="button" className="btn-icon danger" title="Delete entry" aria-label="Delete time entry" onClick={async () => {
                   if (await confirmDialog({ title: 'Delete time entry?', message: `${e.isRunning ? 'The running timer' : formatMinutes(e.minutes)} will be removed from this ${onWork ? 'work task' : 'task'}.`, confirmText: 'Delete' }))

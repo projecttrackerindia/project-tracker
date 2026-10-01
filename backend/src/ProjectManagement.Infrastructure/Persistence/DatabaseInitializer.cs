@@ -68,6 +68,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ActivityRetentionDays] = 30, [FeatureKeys.AdvancedReports] = 0, [FeatureKeys.CustomWorkflows] = 0,
             [FeatureKeys.ApiAccess] = 0, [FeatureKeys.CustomFields] = 0, [FeatureKeys.Automation] = 0, [FeatureKeys.AdvancedPermissions] = 0, [FeatureKeys.AuditLog] = 0,
             [FeatureKeys.StorageLimitMb] = 500, [FeatureKeys.MaxFileSizeMb] = 10, [FeatureKeys.AdvancedSecurity] = 0,
+            [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0,
         }),
         ("PRO", "Pro", "For freelancers and small teams.", 999m, 1, new()
         {
@@ -75,6 +76,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ActivityRetentionDays] = 365, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 0, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 0, [FeatureKeys.AuditLog] = 0,
             [FeatureKeys.StorageLimitMb] = 10240, [FeatureKeys.MaxFileSizeMb] = 100, [FeatureKeys.AdvancedSecurity] = 0,
+            [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0,
         }),
         ("BUSINESS", "Business", "For growing teams and departments.", 2499m, 2, new()
         {
@@ -82,6 +84,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ActivityRetentionDays] = 730, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 1, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 1, [FeatureKeys.AuditLog] = 1,
             [FeatureKeys.StorageLimitMb] = 51200, [FeatureKeys.MaxFileSizeMb] = 250, [FeatureKeys.AdvancedSecurity] = 1,
+            [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1,
         }),
         ("ENTERPRISE", "Enterprise", "Custom pricing, unlimited scale and advanced governance.", null, 3, new()
         {
@@ -89,6 +92,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ActivityRetentionDays] = -1, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 1, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 1, [FeatureKeys.AuditLog] = 1,
             [FeatureKeys.StorageLimitMb] = -1, [FeatureKeys.MaxFileSizeMb] = 512, [FeatureKeys.AdvancedSecurity] = 1,
+            [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1,
         }),
     ];
 

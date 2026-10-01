@@ -5,12 +5,13 @@ import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
 import { DateFilterPicker } from '../../components/DateFilterPicker';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, PageHead, PageLoader, StatCard } from '../../components/ui';
+import { EmptyState, ErrorState, PageHead, PageLoader, RouteTabs, StatCard } from '../../components/ui';
 import { DOW, dateOffset, formatDate, formatDateShort, toISODate, todayISO } from '../../lib/format';
 import { usePersonPicker, useWsQuery } from '../../lib/hooks';
-import { useAuth } from '../../stores/auth';
+import { useAuth, useCan, useIsPersonal } from '../../stores/auth';
 import { formatMinutes } from './time';
 import { Select } from '../../components/Select';
+import { ApprovalsPanel, WeekApprovalBar, addDaysIso, mondayOf } from './Approvals';
 
 type Mode = 'single' | 'range' | 'multiple';
 const TASK_COLORS = ['#8b5cf6', '#38bdf8', '#fb7185', '#34d399', '#f59e0b', '#22d3ee', '#a78bfa', '#f472b6'];
@@ -27,8 +28,33 @@ function MinutesTooltip({ active, payload, label }: { active?: boolean; payload?
   return <div className="chart-tip"><b>{label}</b><span>{formatMinutes(payload[0].value)}</span></div>;
 }
 
-/** Time logged for a chosen date, range or scattered set of dates. Managers and admins can look at someone else's time too. */
-export function TimesheetPage() {
+/**
+ * Timesheet: "My time" - time logged for a chosen date, range or scattered set of dates, with the week's approval (managers and admins can
+ * look at someone else's time too) - and, for people who review others, "Approvals".
+ */
+export function TimesheetPage({ section = 'mine' }: { section?: 'mine' | 'approvals' }) {
+  const [params] = useSearchParams();
+  const reportCount = useAuth((s) => s.ctx?.current?.reportCount) ?? 0;
+  const broad = useCan('reports.broad');
+  const personal = useIsPersonal();
+  const canReview = !personal && (reportCount > 0 || broad);
+  const pending = useWsQuery(['approvals', ''], () => timeApi.approvals(), { enabled: canReview, staleTime: 60_000 });
+  const waiting = pending.data?.pending.length ?? 0;
+  const tabs = canReview ? [
+    { to: '/timesheet', label: 'My time', icon: 'clock' as const },
+    { to: '/timesheet/approvals', label: 'Approvals', icon: 'checks' as const, badge: waiting },
+  ] : [];
+  if (section === 'approvals') return (
+    <>
+      <PageHead title="Timesheet" sub="Review the weeks of the people who report to you: approve them, or return them with a note." />
+      {tabs.length > 0 && <RouteTabs label="Timesheet" tabs={tabs} />}
+      {canReview ? <ApprovalsPanel initialWeek={params.get('week') ?? undefined} /> : <EmptyState icon="users" title="Nobody's timesheet is yours to review" />}
+    </>
+  );
+  return <MyTime tabs={tabs} />;
+}
+
+function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | 'checks'; badge?: number }[] }) {
   const me = useAuth((s) => s.ctx!.user);
   const [params] = useSearchParams();
   const [userId, setUserId] = useState<string>(params.get('user') ?? '');
@@ -36,7 +62,11 @@ export function TimesheetPage() {
 
   const [mode, setMode] = useState<Mode>('range');
   const [single, setSingle] = useState(todayISO());
-  const [range, setRange] = useState(() => ({ from: weekStart(new Date()), to: dateOffset(6, new Date(weekStart(new Date()) + 'T00:00:00')) }));
+  // A link to a particular week (from an approval notification) opens that week.
+  const [range, setRange] = useState(() => {
+    const monday = params.get('week') ? mondayOf(params.get('week')!) : weekStart(new Date());
+    return { from: monday, to: addDaysIso(monday, 6) };
+  });
   const [multi, setMulti] = useState<string[]>([todayISO()]);
 
   const { fetchFrom, fetchTo, onlyDates } = useMemo(() => {
@@ -55,6 +85,11 @@ export function TimesheetPage() {
   const totalMinutes = useMemo(() => entries.filter((e) => !e.isRunning).reduce((s, e) => s + e.minutes, 0), [entries]);
   const loggedDays = byDay.filter((x) => x.minutes > 0).length || byDay.length || 1;
   const workMinutes = useMemo(() => entries.filter((e) => !e.isRunning && e.kind === 'work').reduce((s, e) => s + e.minutes, 0), [entries]);
+  const billableMinutes = useMemo(() => entries.filter((e) => !e.isRunning && e.billable).reduce((s, e) => s + e.minutes, 0), [entries]);
+  // Exactly one Monday-to-Sunday week: that week can be submitted (or reviewed).
+  const personal = useIsPersonal();   // a personal workspace has nobody to approve a week
+  const isWeek = !personal && mode === 'range' && range.from === mondayOf(range.from) && range.to === addDaysIso(range.from, 6);
+  const shiftWeek = (by: number) => { const from = addDaysIso(mondayOf(range.from), by * 7); setRange({ from, to: addDaysIso(from, 6) }); };
 
   const byTask = useMemo(() => {
     const map = new Map<string, { key: string; title: string; minutes: number }>();
@@ -74,6 +109,7 @@ export function TimesheetPage() {
   return (
     <>
       <PageHead title="Timesheet" sub={userId && d ? `${d.user.name}’s time on project tasks and operational work` : 'The time you logged on project tasks and operational work, by day.'} />
+      {tabs.length > 0 && <RouteTabs label="Timesheet" tabs={tabs} />}
       <div className="toolbar" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <div className="seg" role="group" aria-label="Date selection mode">
           {([['single', 'calendar', 'Date'], ['range', 'arrowRight', 'Range'], ['multiple', 'grid', 'Dates']] as const).map(([m, icon, label]) => (
@@ -83,7 +119,9 @@ export function TimesheetPage() {
         <DateFilterPicker mode={mode} single={single} onSingle={setSingle} range={range} onRange={setRange} multi={multi} onMulti={setMulti} />
         {mode === 'range' && (
           <>
+            <button type="button" className="btn-icon" aria-label="Previous week" title="Previous week" onClick={() => shiftWeek(-1)}><Icon name="chevronL" /></button>
             <button className="btn btn-ghost btn-sm" onClick={() => setRange({ from: weekStart(new Date()), to: dateOffset(6, new Date(weekStart(new Date()) + 'T00:00:00')) })}>This week</button>
+            <button type="button" className="btn-icon" aria-label="Next week" title="Next week" disabled={mondayOf(range.from) >= weekStart(new Date())} onClick={() => shiftWeek(1)}><Icon name="chevronR" /></button>
           </>
         )}
         {mode === 'multiple' && (
@@ -109,8 +147,11 @@ export function TimesheetPage() {
       {rangeInvalid ? <div className="card"><div className="card-body"><p className="muted" style={{ fontSize: 13 }}>The end date must not be before the start date.</p></div></div> :
        q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <>
+          {isWeek ? <WeekApprovalBar weekStart={range.from} userId={userId || undefined} />
+            : mode === 'range' && !personal && <p className="muted ts-hint"><Icon name="info" size={13} /> Choose a Monday-to-Sunday week (or press This week) to submit it for approval.</p>}
           <div className="stat-grid">
             <StatCard value={formatMinutes(totalMinutes)} label="Total logged" />
+            <StatCard value={formatMinutes(billableMinutes)} label="Billable" foot={totalMinutes ? `${Math.round((billableMinutes / totalMinutes) * 100)}% of logged` : undefined} />
             <StatCard value={entries.filter((e) => !e.isRunning).length} label="Entries" />
             <StatCard value={formatMinutes(Math.round(totalMinutes / loggedDays))} label="Avg per day logged" />
             <StatCard value={formatMinutes(totalMinutes - workMinutes)} label="On project tasks" />
@@ -165,6 +206,8 @@ export function TimesheetPage() {
                       <span className="time-what">
                         <Link className="link" to={e.kind === 'work' ? `/operations?task=${e.workTaskId}` : `/projects/${e.projectId}?task=${e.taskId}`}>{e.taskKey}</Link> {e.taskTitle} · {formatDate(e.workDate)}
                         {e.kind === 'work' && <span className="badge badge-warning" style={{ marginLeft: 6 }}>Operational</span>}
+                        {e.billable && <span className="badge badge-success" style={{ marginLeft: 6 }}>Billable</span>}
+                        {e.locked && <span className="time-lock" title="In a submitted or approved week"><Icon name="lock" size={12} /></span>}
                         {e.note ? <span className="muted"> — {e.note}</span> : null}
                       </span>
                     </div>

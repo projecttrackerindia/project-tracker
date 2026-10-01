@@ -12,6 +12,7 @@ import { WORK_STATUSES } from '../../lib/workLabels';
 import { useCan, useModule } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { WorkTaskModal } from './WorkTaskModal';
+import { SlaChip } from './Sla';
 
 const NO_PROJECT = '__none';
 type View = 'all' | 'open' | 'closed';
@@ -42,6 +43,7 @@ export function WorkTasksPage() {
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
   const [overdue, setOverdue] = useState(params.get('overdue') === '1');
+  const [sla, setSla] = useState(params.get('sla') ?? '');
   const [sort, setSort] = useState('');
   const [page, setPage] = useState(1);
   const dq = useDebounced(q);
@@ -50,6 +52,7 @@ export function WorkTasksPage() {
     q: dq || undefined, workTypeId: typeId || undefined, relatedProjectId: projectId && projectId !== NO_PROJECT ? projectId : undefined, noProject: projectId === NO_PROJECT || undefined,
     assigneeId: !mine ? assigneeId || undefined : undefined, mine: mine || undefined, priority: priority || undefined, status: status || undefined,
     open: !status && view !== 'all' ? view === 'open' : undefined, dueFrom: dueFrom || undefined, dueTo: dueTo || undefined, overdue: overdue || undefined, sort: sort || undefined, page,
+    sla: sla || undefined,
   };
   const list = useWsQuery(['work', 'list', filters], () => workApi.list(filters));
   const types = useWsQuery(['work', 'types', 'all'], () => workApi.types(true));
@@ -61,8 +64,8 @@ export function WorkTasksPage() {
   const openTask = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('task', id); else n.delete('task'); setParams(n, { replace: true }); };
 
   const on = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
-  const hasFilters = !!(q || typeId || projectId || assigneeId || priority || status || dueFrom || dueTo || overdue || (view !== (mine ? 'open' : 'all')));
-  const reset = () => { setQ(''); setTypeId(''); setProjectId(''); setAssigneeId(''); setPriority(''); setStatus(''); setDueFrom(''); setDueTo(''); setOverdue(false); setView(mine ? 'open' : 'all'); setPage(1); };
+  const hasFilters = !!(q || typeId || projectId || assigneeId || priority || status || dueFrom || dueTo || overdue || sla || (view !== (mine ? 'open' : 'all')));
+  const reset = () => { setQ(''); setTypeId(''); setProjectId(''); setAssigneeId(''); setPriority(''); setStatus(''); setDueFrom(''); setDueTo(''); setOverdue(false); setSla(''); setView(mine ? 'open' : 'all'); setPage(1); };
   const sortBy = (key: string) => { setSort((s) => (s === key ? `-${key}` : key)); setPage(1); };
   const th = (key: string, label: string) => (
     <th aria-sort={sort === key ? 'ascending' : sort === `-${key}` ? 'descending' : 'none'}>
@@ -110,6 +113,9 @@ export function WorkTasksPage() {
           <label className="row" style={{ gap: 6, fontSize: 12.5 }}>Due from <input className="input filter-input" type="date" value={dueFrom} onChange={(e) => on(setDueFrom)(e.target.value)} aria-label="Due from" /></label>
           <label className="row" style={{ gap: 6, fontSize: 12.5 }}>to <input className="input filter-input" type="date" value={dueTo} onChange={(e) => on(setDueTo)(e.target.value)} aria-label="Due to" /></label>
           <button type="button" className={`btn btn-sm ${overdue ? 'btn-soft' : 'btn-ghost'}`} aria-pressed={overdue} onClick={() => on(setOverdue)(!overdue)}><Icon name="alert" /> Overdue only</button>
+          <Select className="select filter-input" value={sla} onChange={(e) => on(setSla)(e.target.value)} aria-label="Service level">
+            <option value="">Any SLA</option><option value="atRisk">SLA at risk</option><option value="breached">SLA breached</option><option value="tracked">With SLA targets</option>
+          </Select>
           {hasFilters && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button>}
         </div>
 
@@ -121,7 +127,7 @@ export function WorkTasksPage() {
           <>
             <div className="table-wrap">
               <table className="work-table">
-                <thead><tr>{th('title', 'Work task')}{th('type', 'Work type')}{th('project', 'Related project')}{th('assignee', 'Assigned to')}{th('priority', 'Priority')}{th('due', 'Due date')}{th('status', 'Status')}</tr></thead>
+                <thead><tr>{th('title', 'Work task')}{th('type', 'Work type')}{th('project', 'Related project')}{th('assignee', 'Assigned to')}{th('priority', 'Priority')}{th('due', 'Due date')}{th('sla', 'SLA')}{th('status', 'Status')}</tr></thead>
                 <tbody>
                   {items.map((t) => (
                     <tr key={t.id} className="clickable" tabIndex={0} onClick={() => openTask(t.id)} onKeyDown={(e) => { if (e.key === 'Enter') openTask(t.id); }} aria-label={`Open ${t.key} ${t.title}`}>
@@ -131,6 +137,7 @@ export function WorkTasksPage() {
                       <td>{t.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={t.assignee.name} size="sm" />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
                       <td><PriorityBadge priority={t.priority} /></td>
                       <td className={t.isOverdue ? 'work-late' : 'cell-muted'}>{t.dueDate ? formatDate(t.dueDate) : '—'}{t.isOverdue ? ' · overdue' : ''}</td>
+                      <td><SlaChip sla={t.sla} /></td>
                       <td><WorkStatusBadge status={t.status} /></td>
                     </tr>
                   ))}

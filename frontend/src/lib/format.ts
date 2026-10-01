@@ -83,6 +83,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   STORAGE_LIMIT_MB: 'File storage (MB)', MAX_FILE_SIZE_MB: 'Largest file (MB)',
   ACTIVITY_RETENTION_DAYS: 'Activity history (days)', ADVANCED_REPORTS: 'Advanced reports & workload',
   CUSTOM_WORKFLOWS: 'Custom task workflows', ADVANCED_PERMISSIONS: 'Advanced role permissions', AUDIT_LOG: 'Audit log',
+  ADVANCED_SECURITY: 'Single sign-on, SCIM & security rules', RESOURCE_MANAGEMENT: 'Timesheet approval, capacity & budgets', SERVICE_LEVELS: 'Service levels (SLA)',
 };
 export const PERMISSION_LABELS: Record<string, string> = {
   'org.manage': 'Manage organization', 'billing.manage': 'Manage billing', 'members.invite': 'Invite members', 'members.manage': 'Manage members & roles',

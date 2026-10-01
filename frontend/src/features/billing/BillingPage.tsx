@@ -14,7 +14,7 @@ const STATUS_TONE: Record<SubscriptionStatus, 'success' | 'info' | 'warning' | '
   Active: 'success', Trial: 'info', PastDue: 'danger', Cancelled: 'warning', Expired: 'neutral',
 };
 const LIMITS = ['PROJECT_LIMIT', 'TASK_LIMIT', 'MAX_MEMBERS', 'MAX_TEAMS', 'STORAGE_LIMIT_MB', 'MAX_FILE_SIZE_MB', 'ACTIVITY_RETENTION_DAYS'];
-const FLAGS = ['ADVANCED_REPORTS', 'CUSTOM_WORKFLOWS', 'ADVANCED_PERMISSIONS', 'AUDIT_LOG'];
+const FLAGS = ['ADVANCED_REPORTS', 'CUSTOM_WORKFLOWS', 'ADVANCED_PERMISSIONS', 'AUDIT_LOG', 'ADVANCED_SECURITY', 'RESOURCE_MANAGEMENT', 'SERVICE_LEVELS'];
 
 /** "5 projects", "1 member", "30-day activity history", "Unlimited tasks". */
 function featureText(key: string, value: number) {

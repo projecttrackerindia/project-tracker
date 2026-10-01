@@ -69,7 +69,7 @@ public class ScimController(ScimService scim, IAppDbContext db, CurrentContext c
         Safe(async () => Json(await scim.ListUsersAsync(filter, startIndex, count, ct)));
 
     [HttpGet("Users/{id:guid}")]
-    public Task<IActionResult> User(Guid id, CancellationToken ct) => Safe(async () => Json(await scim.GetUserAsync(id, ct)));
+    public Task<IActionResult> GetUser(Guid id, CancellationToken ct) => Safe(async () => Json(await scim.GetUserAsync(id, ct)));
 
     [HttpPost("Users")]
     public Task<IActionResult> CreateUser(CancellationToken ct) => Safe(async () => Json((await scim.CreateUserAsync(await BodyAsync(), ct)).Resource, 201));

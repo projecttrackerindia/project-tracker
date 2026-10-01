@@ -78,6 +78,19 @@ namespace ProjectManagement.Domain.Entities
         public Guid? CompletedBy { get; set; }
         public int Version { get; set; } = 1;
 
+        // Service levels (operational work only). Due times are fixed when the task is raised or its priority or type changes.
+        /// <summary>When someone first acted on it: moved it out of To Do, or commented when they did not raise it.</summary>
+        public DateTime? RespondedAt { get; set; }
+        public DateTime? ResponseDueAt { get; set; }
+        public DateTime? ResolutionDueAt { get; set; }
+        /// <summary>When three quarters of the resolution time will have gone: the task counts as at risk from then.</summary>
+        public DateTime? ResolutionRiskAt { get; set; }
+        /// <summary>On Hold stops the resolution clock: when it stopped, and how long it has been stopped in total before that.</summary>
+        public DateTime? SlaPausedAt { get; set; }
+        public int SlaPausedMinutes { get; set; }
+        /// <summary>Which alerts have gone out for the current due times (SlaAlerts flags); cleared when the due times are worked out again.</summary>
+        public int SlaAlerted { get; set; }
+
         public bool IsDeleted { get; set; }
         public DateTime? DeletedAt { get; set; }
         public Guid? DeletedBy { get; set; }

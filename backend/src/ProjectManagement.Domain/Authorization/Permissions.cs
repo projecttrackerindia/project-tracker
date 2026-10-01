@@ -91,10 +91,14 @@ public static class FeatureKeys
     public const string MaxFileSizeMb = "MAX_FILE_SIZE_MB";
     /// <summary>An organization's own access rules on top of the platform's: required two-step verification, IP allowlisting.</summary>
     public const string AdvancedSecurity = "ADVANCED_SECURITY";
+    /// <summary>Timesheet approval, capacity and utilisation, cost and bill rates, project budgets.</summary>
+    public const string ResourceManagement = "RESOURCE_MANAGEMENT";
+    /// <summary>Response and resolution targets (SLAs) on operational work.</summary>
+    public const string ServiceLevels = "SERVICE_LEVELS";
 
     public const long Unlimited = -1;
 
     public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb];
-    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity];
+    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

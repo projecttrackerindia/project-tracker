@@ -81,6 +81,26 @@ export function WorkReportsPage() {
             <Stat icon="user" tone="purple" value={s.mineOpen} label="Assigned to me" foot={`${s.mineOverdue} overdue`} to="/my-work?kind=Operational" />
           </div>
 
+          {s.sla && (s.sla.tracked > 0 || s.sla.responseTracked > 0 || s.sla.openBreached > 0 || s.sla.openAtRisk > 0) && (
+            <div className="card sla-summary" style={{ marginBottom: 18 }}>
+              <div className="card-head"><div><h3>Service levels</h3><p>Work resolved in this period that had a target, and what is late or at risk right now</p></div>
+                <Link className="btn btn-ghost btn-sm" to="/settings/work-types">Targets</Link></div>
+              <div className="card-body sla-summary-body">
+                <div className={`sla-gauge ${s.sla.compliance === null ? '' : s.sla.compliance >= 0.9 ? 'ok' : s.sla.compliance >= 0.75 ? 'risk' : 'bad'}`}
+                  style={{ ['--p' as string]: `${Math.round((s.sla.compliance ?? 0) * 100)}` }}>
+                  <b>{s.sla.compliance === null ? '—' : `${Math.round(s.sla.compliance * 100)}%`}</b><span>resolved in time</span>
+                </div>
+                <div className="sla-facts">
+                  <div><b>{s.sla.met}</b><span>met</span></div>
+                  <div><b className={s.sla.missed ? 'bad' : ''}>{s.sla.missed}</b><span>missed</span></div>
+                  <div><b>{s.sla.responseTracked ? `${Math.round((s.sla.responseMet / s.sla.responseTracked) * 100)}%` : '—'}</b><span>first response in time</span></div>
+                  <Link to="/operations?sla=breached" className="sla-fact-link"><b className={s.sla.openBreached ? 'bad' : ''}>{s.sla.openBreached}</b><span>open and breached</span></Link>
+                  <Link to="/operations?sla=atRisk" className="sla-fact-link"><b className={s.sla.openAtRisk ? 'risk' : ''}>{s.sla.openAtRisk}</b><span>at risk</span></Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="card" style={{ marginBottom: 18 }}>
             <div className="card-head"><div><h3>Raised and completed</h3><p>Work tasks per day</p></div>
               <ul className="chart-key" aria-label="Key"><li><i style={{ background: 'var(--primary)' }} /><b>Raised</b></li><li><i style={{ background: 'var(--success)' }} /><b>Completed</b></li></ul></div>

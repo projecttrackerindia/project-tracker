@@ -75,6 +75,9 @@ const PATHS = {
   smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
   bug: '<path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>',
   checks: '<polyline points="18 6 7 17 2 12"/><polyline points="22 6 11 17 8 14"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M14.8 9.3A2.6 2.6 0 0 0 12.5 8h-1.2a2.3 2.3 0 0 0 0 4.6h1.4a2.3 2.3 0 0 1 0 4.6h-1.3a2.6 2.6 0 0 1-2.3-1.3M12 6.5V8M12 17.2v1.3"/>',
+  gauge: '<path d="M3.3 17a9 9 0 1 1 17.4 0"/><path d="M12 14l4.2-4.2"/><circle cx="12" cy="14" r="1.3"/>',
+  timer: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 1.6M9.5 2.5h5M12 2.5V6"/>',
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -121,6 +121,7 @@ const FEATURES: { key: string; label: string; flag: boolean }[] = [
   { key: 'MAX_TEAMS', label: 'Teams', flag: false }, { key: 'STORAGE_LIMIT_MB', label: 'Storage (MB)', flag: false },
   { key: 'ADVANCED_REPORTS', label: 'Advanced reports', flag: true }, { key: 'CUSTOM_WORKFLOWS', label: 'Custom workflows', flag: true }, { key: 'ADVANCED_PERMISSIONS', label: 'Advanced permissions', flag: true },
   { key: 'AUDIT_LOG', label: 'Audit log', flag: true }, { key: 'AUTOMATION', label: 'Automation', flag: true }, { key: 'CUSTOM_FIELDS', label: 'Custom fields', flag: true }, { key: 'API_ACCESS', label: 'API keys & webhooks', flag: true },
+  { key: 'ADVANCED_SECURITY', label: 'SSO & security rules', flag: true }, { key: 'RESOURCE_MANAGEMENT', label: 'Approvals, capacity & budgets', flag: true }, { key: 'SERVICE_LEVELS', label: 'Service levels (SLA)', flag: true },
 ];
 
 function ExceptionsModal({ org, onClose }: { org: AdminUsage; onClose: () => void }) {

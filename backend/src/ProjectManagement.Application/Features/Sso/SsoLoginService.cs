@@ -92,7 +92,7 @@ public class SsoPolicy(IAppDbContext db)
 /// </summary>
 public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IDistributedCache cache, IOptions<AppOptions> appOptions,
     IOptions<ExternalAuthOptions> externalOptions, IOidcProtocol oidc, IGitHubOAuth github, IAppleClientSecret apple, ISamlProtocol saml, ISecretProtector secrets,
-    AuthService auth, IPasswordHasher hasher, WorkspaceProvisioner provisioner, SsoPolicy policy, EntitlementService entitlements, PlatformSettingsCache platform,
+    AuthService auth, WorkspaceProvisioner provisioner, SsoPolicy policy, EntitlementService entitlements, PlatformSettingsCache platform,
     ILogger<SsoLoginService> log)
 {
     private readonly AppOptions _o = appOptions.Value;
@@ -360,7 +360,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         else if (await policy.EnforcedForAsync(user.Email, user.Id, ct) is { } enforced)
             throw new ForbiddenException($"Your organization requires {enforced.Name}. Use \"Sign in with SSO\" instead.", "SSO_REQUIRED");
         if (!user.IsActive) throw new ForbiddenException("This account has been disabled.", "ACCOUNT_DISABLED");
-        login.LastUsedAt = clock.Now;
+        login!.LastUsedAt = clock.Now;   // a user found here came from this login, or the login was just added
 
         // A social sign-in replaces the password, not the second step: people with two-step verification still enter their code.
         if (user.MfaEnabled)

@@ -30,7 +30,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: ()
 }
 
 const NOTIF_ICON: Record<string, string> = {
-  TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞',
+  TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞', Approval: '✅', ServiceLevel: '⏱️',
 };
 
 // ------------------------------------------------------------------ sidebar

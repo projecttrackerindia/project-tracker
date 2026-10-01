@@ -7,6 +7,7 @@ import type { BillingSettings, TimelineTemplate,
   OrgSecurity, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
   ConsentDocument, MyConsent,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
+  TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget,
 } from './types';
 
 export const authApi = {
@@ -295,18 +296,25 @@ export const planningApi = {
 
 export const timeApi = {
   forTask: (taskId: string) => get<TaskTime>(`/tasks/${taskId}/time`),
-  log: (taskId: string, b: { minutes: number; workDate?: string; note?: string }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
+  log: (taskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
   /** Operational work: the same time tracking as project tasks. */
   forWorkTask: (workTaskId: string) => get<TaskTime>(`/work-tasks/${workTaskId}/time`),
-  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
+  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
   startOnWorkTask: (workTaskId: string) => post<TimeEntry>(`/work-tasks/${workTaskId}/timer/start`),
-  update: (id: string, b: { minutes: number; workDate: string; note?: string }) => put<TimeEntry>(`/time/${id}`, b),
+  update: (id: string, b: { minutes: number; workDate: string; note?: string | null; billable?: boolean }) => put<TimeEntry>(`/time/${id}`, b),
   remove: (id: string) => del(`/time/${id}`),
   start: (taskId: string) => post<TimeEntry>(`/tasks/${taskId}/timer/start`),
   stop: () => post<TimeEntry>('/timer/stop'),
   running: () => get<TimeEntry | null>('/timer'),
   timesheet: (p: { from?: string; to?: string; userId?: string }) => get<Timesheet>(`/time?${new URLSearchParams(Object.entries(p).filter(([, v]) => v) as [string, string][])}`),
   project: (projectId: string) => get<ProjectTime>(`/projects/${projectId}/time`),
+  /** A person's week (mine without a user) and where its approval stands. */
+  week: (weekStart?: string, userId?: string) => get<TimesheetWeek>('/time/week', { weekStart, userId }),
+  submitWeek: (weekStart: string, note?: string) => post<TimesheetWeek>('/time/week/submit', { weekStart, note: note || null }),
+  withdrawWeek: (weekStart: string) => post<TimesheetWeek>('/time/week/withdraw', { weekStart }),
+  approvals: (weekStart?: string) => get<Approvals>('/time/approvals', { weekStart }),
+  approve: (id: string, note?: string) => post<TimesheetWeek>(`/time/approvals/${id}/approve`, { note: note || null }),
+  reject: (id: string, note: string) => post<TimesheetWeek>(`/time/approvals/${id}/reject`, { note }),
 };
 
 export const automationApi = {
@@ -443,10 +451,22 @@ export const consentApi = {
   accept: (types: string[]) => post<MyConsent>('/consent/accept', { types }),
 };
 
+// ---- capacity and cost
+export const resourcesApi = {
+  rates: () => get<Rates>('/resources/rates'),
+  setRates: (userId: string, b: { weeklyCapacityHours: number | null; costRate: number | null; billRate: number | null }) => put<Rates>(`/resources/rates/${userId}`, b),
+  setCurrency: (currency: string) => put<Rates>('/resources/currency', { currency }),
+  utilisation: (p: { from?: string; to?: string; scope?: WorkloadScope }) => get<Utilisation>('/resources/utilisation', p),
+  project: (projectId: string) => get<ProjectFinancials>(`/resources/projects/${projectId}`),
+  setBudget: (projectId: string, b: { isBillable: boolean; budgetHours: number | null; budgetAmount: number | null; billRate: number | null }) => put<ProjectFinancials>(`/resources/projects/${projectId}/budget`, b),
+};
+
 // ---- Work management
 export interface WorkFilters {
   q?: string; workTypeId?: string; relatedProjectId?: string; noProject?: boolean; assigneeId?: string; mine?: boolean; priority?: string; status?: string; open?: boolean;
   dueFrom?: string; dueTo?: string; overdue?: boolean; sort?: string; page?: number; pageSize?: number;
+  /** Service levels: 'breached' (a target already missed), 'atRisk' or 'tracked'. */
+  sla?: string;
 }
 export const workApi = {
   types: (includeInactive = false) => get<WorkType[]>('/work-types', includeInactive ? { includeInactive: true } : undefined),
@@ -454,6 +474,9 @@ export const workApi = {
   updateType: (id: string, b: { name: string; description?: string | null; isActive?: boolean }) => put<WorkType>(`/work-types/${id}`, b),
   reorderTypes: (ids: string[]) => put<void>('/work-types/order', { ids }),
   removeType: (id: string) => del<void>(`/work-types/${id}`),
+  sla: () => get<SlaSettings>('/work/sla'),
+  saveSla: (workTypeId: string | null, targets: SlaTarget[]) => put<SlaSettings>('/work/sla', { workTypeId, targets }),
+  clearSla: (workTypeId: string) => del<SlaSettings>(`/work/sla/${workTypeId}`),
 
   list: (f: WorkFilters = {}) => get<Paged<WorkTask>>('/work-tasks', { pageSize: 25, ...f }),
   get: (id: string) => get<WorkTask>(`/work-tasks/${id}`),

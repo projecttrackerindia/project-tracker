@@ -11,6 +11,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { WORK_STATUSES } from '../../lib/workLabels';
 import { useWorkspaceId } from '../../stores/auth';
 import { TimeTracker } from '../time/TimeTracker';
+import { SlaPanel } from './Sla';
 import { formatMinutes } from '../time/time';
 import type { Member } from '../../api/types';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -89,6 +90,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   const details = (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {formError && <div className="form-error" role="alert">{formError}</div>}
+      {task?.sla && <SlaPanel sla={task.sla} />}
       <div className="form-grid">
         <Field label="Title" required full error={errors.title}>
           <input className="input" value={title} onChange={(e) => { setTitle(e.target.value); setErrors((x) => ({ ...x, title: '' })); }} maxLength={200} placeholder="e.g. Fix production issue in payment calculation" autoFocus={!isEdit} />

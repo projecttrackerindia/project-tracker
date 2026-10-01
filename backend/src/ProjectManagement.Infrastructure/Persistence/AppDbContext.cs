@@ -64,6 +64,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<ReportExport> ReportExports => Set<ReportExport>();
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
+    public DbSet<TimesheetApproval> TimesheetApprovals => Set<TimesheetApproval>();
+    public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();
@@ -115,6 +117,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<InvoiceStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<NotificationType>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<SsoProtocol>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<TimesheetStatus>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -167,6 +170,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => x.OwnerUserId);
             e.Property(x => x.Name).HasMaxLength(80);
             e.Property(x => x.Slug).HasMaxLength(60);
+            e.Property(x => x.CostCurrency).HasMaxLength(3);
         });
         b.Entity<TenantMember>(e =>
         {
@@ -176,6 +180,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OrgRole>().WithMany().HasForeignKey(x => x.OrgRoleId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.ReportsToUserId).OnDelete(DeleteBehavior.SetNull);
+            e.Property(x => x.CostRate).HasPrecision(12, 2);
+            e.Property(x => x.BillRate).HasPrecision(12, 2);
         });
         b.Entity<OrgRole>(e =>
         {
@@ -222,6 +228,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasMany(x => x.Stages).WithOne().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.Property(x => x.DeliveryMethod).HasDefaultValue(DeliveryMethod.Hybrid).HasSentinel(DeliveryMethod.Hybrid);
+            e.Property(x => x.BudgetHours).HasPrecision(10, 2);
+            e.Property(x => x.BudgetAmount).HasPrecision(14, 2);
+            e.Property(x => x.BillRate).HasPrecision(12, 2);
         });
         b.Entity<ProjectMember>(e =>
         {
@@ -250,6 +259,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Description).HasMaxLength(8000);
             e.Property(x => x.Kind).HasDefaultValue(WorkTaskKind.Operational).HasSentinel(WorkTaskKind.Operational);
             e.HasOne(x => x.WorkType).WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Restrict);
+            // The SLA monitor looks for open work whose response or resolution time has run out.
+            e.HasIndex(x => new { x.Status, x.ResolutionDueAt });
+            e.HasIndex(x => new { x.Status, x.ResponseDueAt });
+        });
+        b.Entity<SlaPolicy>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.WorkTypeId, x.Priority });
+            e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<WorkTaskComment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.Body).HasMaxLength(4000); });
         b.Entity<WorkTaskAttachment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.FileName).HasMaxLength(200); e.Property(x => x.ContentType).HasMaxLength(120); e.Property(x => x.StorageKey).HasMaxLength(200); e.Property(x => x.Sha256).HasMaxLength(64); });
@@ -510,6 +527,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             // Time is spent on exactly one thing: a project task or a work task.
             e.ToTable(t => t.HasCheckConstraint("CK_TimeEntries_OneTarget",
                 "(\"TaskId\" IS NOT NULL AND \"WorkTaskId\" IS NULL) OR (\"TaskId\" IS NULL AND \"WorkTaskId\" IS NOT NULL)"));
+        });
+        b.Entity<TimesheetApproval>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.WeekStart }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Status, x.WeekStart });
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.Property(x => x.ReviewNote).HasMaxLength(500);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<AutomationRule>(e =>
         {

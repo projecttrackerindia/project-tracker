@@ -26,6 +26,14 @@ public class Project : TenantEntity, ITenantScoped, ISoftDelete
     public bool EnforceDependencies { get; set; } = true;
     public DateTime? ArchivedAt { get; set; }
     public Guid? ArchivedBy { get; set; }
+    /// <summary>Client work: time logged on it starts out billable.</summary>
+    public bool IsBillable { get; set; }
+    /// <summary>The hours the project may use (null = no hour budget).</summary>
+    public decimal? BudgetHours { get; set; }
+    /// <summary>The money the project may cost, in the workspace's cost currency (null = no money budget).</summary>
+    public decimal? BudgetAmount { get; set; }
+    /// <summary>What an hour on this project is charged at. Null = each person's own bill rate.</summary>
+    public decimal? BillRate { get; set; }
     /// <summary>Optimistic concurrency version (spec section 80).</summary>
     public int Version { get; set; } = 1;
 

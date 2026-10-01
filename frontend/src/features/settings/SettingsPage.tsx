@@ -24,6 +24,7 @@ import { PrivacyRow } from './Privacy';
 import { PrioritySettings } from './PrioritySettings';
 import { CustomFieldSettings } from './CustomFieldSettings';
 import { WorkTypeSettings } from './WorkTypeSettings';
+import { SlaSettings } from '../work/Sla';
 import { ApiKeySettings } from './ApiKeySettings';
 import { WebhookSettings } from './WebhookSettings';
 import { LabelSettings } from './LabelSettings';
@@ -251,7 +252,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'labels' && <LabelSettings />}
       {current.id === 'priorities' && <><PageHead title="Priorities" sub="The names and colours of the four priority levels." /><PrioritySettings /></>}
       {current.id === 'custom-fields' && <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /></>}
-      {current.id === 'work-types' && <><PageHead title="Work types" sub="The kinds of operational work people can raise." /><WorkTypeSettings /></>}
+      {current.id === 'work-types' && <><PageHead title="Work types" sub="The kinds of operational work people can raise, and how fast each must be answered and resolved." /><WorkTypeSettings /><SlaSettings /></>}
       {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
       {current.id === 'webhooks' && <><PageHead title="Webhooks" sub="Tell other systems when something changes here." /><WebhookSettings /></>}
     </SectionLayout>

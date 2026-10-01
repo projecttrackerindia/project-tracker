@@ -60,6 +60,8 @@ public interface IAppDbContext
     DbSet<ReportExport> ReportExports { get; }
     DbSet<Sprint> Sprints { get; }
     DbSet<TimeEntry> TimeEntries { get; }
+    DbSet<TimesheetApproval> TimesheetApprovals { get; }
+    DbSet<SlaPolicy> SlaPolicies { get; }
     DbSet<AutomationRule> AutomationRules { get; }
     DbSet<TaskComment> TaskComments { get; }
     DbSet<Activity> Activities { get; }

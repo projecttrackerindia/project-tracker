@@ -42,3 +42,194 @@
   .linked-item .linked-main b { font-size: 10.4px; }
   .linked-item .linked-main span { font-size: 9.6px; }
 }
+
+/* ============================================================
+   RESOURCING — timesheet approval, billable time, capacity, budgets
+   ============================================================ */
+
+.callout { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5;
+  background: rgba(var(--accent-rgb), .07); border: 1px solid rgba(var(--accent-rgb), .22); color: var(--text-2); }
+.callout > svg { flex-shrink: 0; margin-top: 2px; color: var(--primary); }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Status chip for a week */
+.ts-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.ts-chip.draft { background: var(--surface-3); color: var(--text-2); }
+.ts-chip.pending { background: var(--warning-soft); color: var(--warning); }
+.ts-chip.approved { background: var(--success-soft); color: var(--success); }
+.ts-chip.returned { background: var(--danger-soft); color: var(--danger-text); }
+
+/* The week bar on the timesheet */
+.ts-week { position: relative; display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 18px; border-radius: 16px; overflow: hidden;
+  background: var(--glass-strong); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.ts-week::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--text-3); }
+.ts-week.pending::before { background: var(--warning); }
+.ts-week.approved::before { background: linear-gradient(180deg, var(--success), #34d399); }
+.ts-week.returned::before { background: var(--danger); }
+.ts-week.draft::before { background: linear-gradient(180deg, var(--primary), #c084fc); }
+.ts-week-icon { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; background: rgba(var(--accent-rgb), .12); color: var(--primary); }
+.ts-week.pending .ts-week-icon { background: var(--warning-soft); color: var(--warning); }
+.ts-week.approved .ts-week-icon { background: var(--success-soft); color: var(--success); }
+.ts-week.returned .ts-week-icon { background: var(--danger-soft); color: var(--danger); }
+.ts-week-main { flex: 1; min-width: 0; }
+.ts-week-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.ts-week-sub { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+.ts-week-note { display: inline-flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 12.5px; color: var(--text-2); font-style: italic; }
+.ts-week-lock { margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.ts-week-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ts-hint { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin: -4px 0 14px; }
+.ts-weeknav { align-items: center; }
+.ts-weeknav-label { font-size: 14px; min-width: 220px; text-align: center; }
+.ts-table td .td-sub { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Billable and locked markers on time entries */
+.time-lock { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--text-3); background: var(--surface-2); margin-left: 6px; vertical-align: middle; }
+.time-billable { display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; height: 34px; border-radius: 10px; border: 1px solid var(--field-border);
+  background: var(--field-bg); font-size: 12.5px; font-weight: 600; color: var(--text-3); cursor: pointer; white-space: nowrap; user-select: none; transition: background .15s, color .15s, border-color .15s; }
+.time-billable input { position: absolute; opacity: 0; pointer-events: none; }
+.time-billable.on { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.time-billable:focus-within { outline: 2px solid rgba(var(--accent-rgb), .45); outline-offset: 1px; }
+.time-bill-toggle { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-3); cursor: pointer; flex-shrink: 0; }
+.time-bill-toggle.on { color: var(--success); background: var(--success-soft); border-color: transparent; }
+.time-bill-toggle.static { cursor: default; }
+.time-bill-toggle:not(.static):hover { border-color: var(--success); }
+
+/* Capacity & cost */
+.cap-toolbar { margin-bottom: 16px; flex-wrap: wrap; }
+.util-list { display: flex; flex-direction: column; }
+.util-row { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr) 64px minmax(200px, 280px) auto; gap: 16px; align-items: center; padding: 12px 18px; border-top: 1px solid var(--border); }
+.util-row:first-child { border-top: 0; }
+.util-who { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.util-who > div { min-width: 0; }
+.util-who > div b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.util-who > div span { font-size: 11.5px; color: var(--text-3); }
+.util-bar { position: relative; height: 14px; border-radius: 999px; background: var(--surface-3); overflow: visible; }
+.util-bar .util-logged, .util-bar .util-billable { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width .6s cubic-bezier(.2, .8, .2, 1); }
+.util-bar .util-logged { background: linear-gradient(90deg, rgba(var(--accent-rgb), .45), rgba(var(--accent-rgb), .7)); }
+.util-bar .util-billable { background: linear-gradient(90deg, #10b981, #34d399); height: 6px; top: 4px; left: 4px; max-width: calc(100% - 8px); }
+.util-bar.over .util-logged { background: linear-gradient(90deg, rgba(var(--accent-rgb), .55), #fb7185); }
+.util-bar .util-cap { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 2px; background: var(--text); opacity: .55; }
+.util-pct { font-weight: 800; font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; }
+.util-pct.healthy { color: var(--success); }
+.util-pct.light { color: var(--warning); }
+.util-pct.over { color: var(--danger); }
+.util-meta { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--text-3); }
+.util-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.util-key { display: inline-block; width: 12px; height: 8px; border-radius: 3px; }
+.util-key.logged { background: rgba(var(--accent-rgb), .6); }
+.util-key.billable { background: #10b981; }
+.util-key.cap { width: 2px; height: 12px; background: var(--text); opacity: .55; }
+.rates-table .rate-input { max-width: 130px; height: 34px; }
+@media (max-width: 900px) {
+  .util-row { grid-template-columns: 1fr auto; }
+  .util-row .util-bar { grid-column: 1 / -1; order: 3; }
+  .util-row .util-meta { grid-column: 1 / -1; order: 4; flex-direction: row; flex-wrap: wrap; gap: 10px; }
+  .util-row > .btn { display: none; }
+}
+
+/* Project budget */
+.burn-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.burn-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; margin-bottom: 8px; }
+.burn-head > span { color: var(--text-3); font-weight: 600; min-width: 46px; }
+.burn-head em { margin-left: auto; font-style: normal; font-weight: 800; }
+.burn-track { position: relative; height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.burn-track span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: linear-gradient(90deg, var(--primary), #c084fc); transition: width .7s cubic-bezier(.2, .8, .2, 1); }
+.burn.near .burn-track span { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.burn.over .burn-track span { background: linear-gradient(90deg, #f43f5e, #fb7185); }
+.burn.over .burn-head em { color: var(--danger); }
+.burn.near .burn-head em { color: var(--warning); }
+.burn-track i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: .6; }
+.burn-foot { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: 12px; color: var(--text-3); }
+.burn-foot.bad { color: var(--danger-text); }
+.budget-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); font-size: 12.5px; color: var(--text-2); }
+.budget-facts span { display: inline-flex; align-items: center; gap: 5px; }
+.budget-facts .pos { color: var(--success); }
+.budget-facts .neg, .budget-facts .warn { color: var(--danger-text); }
+
+/* ============================================================
+   SERVICE LEVELS
+   ============================================================ */
+.sla-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sla-chip i { font-style: normal; font-weight: 600; opacity: .7; font-size: 10.5px; }
+.sla-chip.ok { background: rgba(var(--accent-rgb), .1); color: var(--primary); }
+.sla-chip.risk { background: var(--warning-soft); color: var(--warning); }
+.sla-chip.bad { background: var(--danger-soft); color: var(--danger-text); }
+.sla-chip.met { background: var(--success-soft); color: var(--success); }
+.sla-chip.paused { background: var(--surface-3); color: var(--text-3); }
+.sla-chip.risk svg { animation: sla-pulse 1.6s ease-in-out infinite; }
+.sla-chip.bad svg { animation: sla-pulse 1.1s ease-in-out infinite; }
+@keyframes sla-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .sla-chip svg { animation: none !important; } }
+
+.sla-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.sla-clock { display: flex; gap: 10px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.sla-clock.bad { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 6%, var(--surface-2)); }
+.sla-clock.risk { border-color: color-mix(in srgb, var(--warning) 40%, transparent); background: color-mix(in srgb, var(--warning) 6%, var(--surface-2)); }
+.sla-clock-icon { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; background: var(--panel-solid); color: var(--text-2); }
+.sla-clock.ok .sla-clock-icon { color: var(--primary); }
+.sla-clock.met .sla-clock-icon { color: var(--success); }
+.sla-clock.bad .sla-clock-icon { color: var(--danger); }
+.sla-clock.risk .sla-clock-icon { color: var(--warning); }
+.sla-clock-main { min-width: 0; }
+.sla-clock-title { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.sla-clock-sub { font-size: 12.5px; color: var(--text-2); margin-top: 3px; }
+.sla-clock-hint { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+
+.sla-matrix { min-width: 0; }
+.sla-matrix td { padding: 9px 16px; }
+.sla-input { max-width: 200px; height: 34px; }
+.sla-input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.sla-matrix-wrap { border: 1px solid var(--border); border-radius: 12px; }
+
+.sla-summary-body { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+.sla-gauge { --p: 0; --c: var(--primary); width: 128px; height: 128px; border-radius: 50%; flex-shrink: 0; display: grid; place-content: center; text-align: center;
+  background: radial-gradient(closest-side, var(--panel-solid) 76%, transparent 77% 100%), conic-gradient(var(--c) calc(var(--p) * 1%), var(--surface-3) 0); }
+.sla-gauge.ok { --c: var(--success); }
+.sla-gauge.risk { --c: var(--warning); }
+.sla-gauge.bad { --c: var(--danger); }
+.sla-gauge b { font-size: 26px; line-height: 1; }
+.sla-gauge span { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+.sla-facts { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.sla-facts > * { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); display: flex; flex-direction: column; gap: 2px; color: inherit; text-decoration: none; }
+.sla-facts b { font-size: 22px; }
+.sla-facts b.bad { color: var(--danger); }
+.sla-facts b.risk { color: var(--warning); }
+.sla-facts span { font-size: 12px; color: var(--text-3); }
+.sla-fact-link { transition: border-color .15s, transform .15s; }
+.sla-fact-link:hover { border-color: var(--primary); transform: translateY(-1px); }
+
+@media (min-width: 769px) and (max-width: 1600px) {
+  .callout { font-size: 10.4px; padding: 9.6px 11.2px; border-radius: 9.6px; }
+  .ts-chip { font-size: 9.2px; padding: 2.4px 7.2px; }
+  .ts-week { padding: 11.2px 12.8px; gap: 11.2px; border-radius: 12.8px; margin-bottom: 14.4px; }
+  .ts-week-icon { width: 30.4px; height: 30.4px; border-radius: 9.6px; }
+  .ts-week-title { font-size: 11.2px; }
+  .ts-week-sub, .ts-week-note { font-size: 10px; }
+  .ts-week-lock, .ts-hint { font-size: 9.6px; }
+  .ts-weeknav-label { font-size: 11.2px; min-width: 176px; }
+  .time-billable { height: 27.2px; font-size: 10px; padding: 0 8px; border-radius: 8px; }
+  .time-bill-toggle, .time-lock { width: 20.8px; height: 20.8px; border-radius: 6.4px; }
+  .util-row { gap: 12.8px; padding: 9.6px 14.4px; grid-template-columns: minmax(128px, 176px) minmax(0, 1fr) 52px minmax(160px, 224px) auto; }
+  .util-who > div b { font-size: 10.4px; }
+  .util-who > div span, .util-meta { font-size: 9.2px; }
+  .util-pct { font-size: 12px; }
+  .util-bar { height: 11.2px; }
+  .util-bar .util-billable { height: 4.8px; top: 3.2px; left: 3.2px; }
+  .rates-table .rate-input, .sla-input { height: 27.2px; }
+  .burn-head { font-size: 10.4px; }
+  .burn-track { height: 8px; }
+  .burn-foot, .budget-facts { font-size: 9.6px; }
+  .sla-chip { font-size: 9.2px; padding: 2.4px 6.4px; }
+  .sla-chip i { font-size: 8.4px; }
+  .sla-clock { padding: 8.8px 9.6px; border-radius: 9.6px; }
+  .sla-clock-icon { width: 24px; height: 24px; border-radius: 7.2px; }
+  .sla-clock-title { font-size: 10.4px; }
+  .sla-clock-sub { font-size: 10px; }
+  .sla-clock-hint { font-size: 9.2px; }
+  .sla-gauge { width: 102px; height: 102px; }
+  .sla-gauge b { font-size: 20.8px; }
+  .sla-gauge span { font-size: 8.8px; }
+  .sla-facts b { font-size: 17.6px; }
+  .sla-facts span { font-size: 9.6px; }
+  .sla-facts > * { padding: 9.6px 11.2px; border-radius: 9.6px; }
+}

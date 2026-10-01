@@ -3,9 +3,14 @@ import { timeApi } from '../../api/endpoints';
 import { EmptyState, ErrorState, PageLoader, Progress, StatCard } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { formatMinutes } from './time';
+import { ProjectBudget } from './ProjectBudget';
 
-/** Where a project's tracked time went: by person and by task, against the estimate. */
+/** Where a project's tracked time went: by person and by task, against the estimate - and, above it, the project's budget. */
 export function ProjectTime({ projectId }: { projectId: string }) {
+  return <><ProjectBudget projectId={projectId} /><TrackedTime projectId={projectId} /></>;
+}
+
+function TrackedTime({ projectId }: { projectId: string }) {
   const q = useWsQuery(['project', projectId, 'time'], () => timeApi.project(projectId));
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;

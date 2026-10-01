@@ -16,14 +16,17 @@ namespace ProjectManagement.Application.Features.Time;
 /// (<see cref="WorkTaskId"/>, <see cref="Kind"/> "work"); <see cref="TaskKey"/> and <see cref="TaskTitle"/> name whichever it was.
 /// </summary>
 public record TimeEntryDto(Guid Id, Guid? TaskId, string TaskKey, string TaskTitle, Guid? ProjectId, UserRefDto User, DateOnly WorkDate,
-    int Minutes, string? Note, bool IsRunning, DateTime? StartedAt, bool CanEdit, Guid? WorkTaskId = null, string Kind = "task");
+    int Minutes, string? Note, bool IsRunning, DateTime? StartedAt, bool CanEdit, Guid? WorkTaskId = null, string Kind = "task", bool Billable = false, bool Locked = false);
 /// <summary>Everything about the time on one task (or work task), plus the caller's own running timer (on anything).</summary>
-public record TaskTimeDto(IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, decimal? EstimatedHours, TimeEntryDto? MyTimer);
-public record LogTimeRequest(int Minutes, DateOnly? WorkDate, string? Note);
-public record UpdateTimeRequest(int Minutes, DateOnly WorkDate, string? Note);
+/// <summary><see cref="BillableByDefault"/>: whether time logged here starts out billable (the project is billable).</summary>
+public record TaskTimeDto(IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, decimal? EstimatedHours, TimeEntryDto? MyTimer, bool BillableByDefault = false);
+/// <summary><see cref="Billable"/> empty = the project's setting (time on work without a project is not billable).</summary>
+public record LogTimeRequest(int Minutes, DateOnly? WorkDate, string? Note, bool? Billable = null);
+/// <summary><see cref="Billable"/> empty = leave it as it is.</summary>
+public record UpdateTimeRequest(int Minutes, DateOnly WorkDate, string? Note, bool? Billable = null);
 
 public record TimeByDayDto(DateOnly Date, int Minutes);
-public record TimesheetDto(DateOnly From, DateOnly To, UserRefDto User, IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, IReadOnlyList<TimeByDayDto> ByDay);
+public record TimesheetDto(DateOnly From, DateOnly To, UserRefDto User, IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, IReadOnlyList<TimeByDayDto> ByDay, int BillableMinutes = 0);
 public record TimeByPersonDto(Guid UserId, string Name, int Minutes);
 public record TimeByTaskDto(Guid TaskId, string Key, string Title, int Minutes, decimal? EstimatedHours);
 public record ProjectTimeDto(int TotalMinutes, decimal? EstimatedHours, IReadOnlyList<TimeByPersonDto> ByPerson, IReadOnlyList<TimeByTaskDto> TopTasks);
@@ -34,7 +37,7 @@ public record ProjectTimeDto(int TotalMinutes, decimal? EstimatedHours, IReadOnl
 /// number instead of a typed guess next to a tracked one.
 /// </summary>
 public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
-    ProjectManagement.Application.Features.Organization.ReportingLineService reporting, WorkTaskService workTasks)
+    ProjectManagement.Application.Features.Organization.ReportingLineService reporting, WorkTaskService workTasks, TimesheetApprovalService approvals)
 {
     private const int MaxMinutesPerEntry = 24 * 60;
     private const int MaxRangeDays = 92;
@@ -60,6 +63,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         public string? Note { get; init; }
         public DateTime? StartedAt { get; init; }
         public DateTime? EndedAt { get; init; }
+        public bool Billable { get; init; }
     }
 
     private IQueryable<Row> Rows(IQueryable<TimeEntry> entries) =>
@@ -78,20 +82,29 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             Id = e.Id, TaskId = e.TaskId, WorkTaskId = e.WorkTaskId, ProjectKey = p != null ? p.Key : null, TaskNumber = t != null ? t.Number : 0, TaskTitle = t != null ? t.Title : null,
             WorkNumber = w != null ? w.Number : 0, WorkTitle = w != null ? w.Title : null, WorkKind = w != null ? w.Kind : WorkTaskKind.Operational,
             ProjectId = e.ProjectId, UserId = e.UserId, UserName = u.DisplayName, WorkDate = e.WorkDate, Minutes = e.Minutes, Note = e.Note, StartedAt = e.StartedAt, EndedAt = e.EndedAt,
+            Billable = e.Billable,
         };
 
     private bool IsAdmin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
 
-    private TimeEntryDto ToDto(Row r)
+    private TimeEntryDto ToDto(Row r, HashSet<(Guid User, DateOnly Week)> locked)
     {
         var onWork = r.WorkTaskId is not null;
         var key = onWork ? WorkItemService.KeyOf(r.WorkKind, r.WorkNumber) : $"{r.ProjectKey}-{r.TaskNumber}";
         var title = (onWork ? r.WorkTitle : r.TaskTitle) ?? "(deleted)";
+        var isLocked = locked.Contains((r.UserId, TimesheetApprovalService.WeekOf(r.WorkDate)));
         return new TimeEntryDto(r.Id, r.TaskId, key, title, r.ProjectId, new UserRefDto(r.UserId, r.UserName), r.WorkDate, r.Minutes, r.Note,
-            r.StartedAt is not null && r.EndedAt is null, r.StartedAt, r.UserId == ctx.UserId || IsAdmin, r.WorkTaskId, onWork ? "work" : "task");
+            r.StartedAt is not null && r.EndedAt is null, r.StartedAt, (r.UserId == ctx.UserId || IsAdmin) && !isLocked, r.WorkTaskId, onWork ? "work" : "task", r.Billable, isLocked);
     }
 
-    private async Task<TimeEntryDto> DtoAsync(Guid id, CancellationToken ct) => ToDto(await Rows(db.TimeEntries.Where(e => e.Id == id)).OrderBy(r => r.Id).FirstAsync(ct));
+    /// <summary>Rows to entries, marking those in a submitted or approved week (they cannot be changed).</summary>
+    private async Task<List<TimeEntryDto>> ToDtosAsync(IReadOnlyList<Row> rows, CancellationToken ct)
+    {
+        var locked = await approvals.LockedWeeksAsync(rows.Select(r => (r.UserId, r.WorkDate)), ct);
+        return rows.Select(r => ToDto(r, locked)).ToList();
+    }
+
+    private async Task<TimeEntryDto> DtoAsync(Guid id, CancellationToken ct) => (await ToDtosAsync([await Rows(db.TimeEntries.Where(e => e.Id == id)).OrderBy(r => r.Id).FirstAsync(ct)], ct))[0];
 
     private async Task<TaskItem> VisibleTaskAsync(Guid taskId, CancellationToken ct) =>
         await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == taskId, ct) ?? throw new NotFoundException("Task not found.");
@@ -120,8 +133,8 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var task = await VisibleTaskAsync(taskId, ct);
         var rows = await Rows(db.TimeEntries.Where(e => e.TaskId == taskId)).OrderByDescending(r => r.WorkDate).ThenByDescending(r => r.Id).Take(MaxRows).ToListAsync(ct);
-        var entries = rows.Select(ToDto).ToList();
-        return new TaskTimeDto(entries, entries.Where(e => !e.IsRunning).Sum(e => e.Minutes), task.EstimatedHours, await GetRunningAsync(ct));
+        var entries = await ToDtosAsync(rows, ct);
+        return new TaskTimeDto(entries, entries.Where(e => !e.IsRunning).Sum(e => e.Minutes), task.EstimatedHours, await GetRunningAsync(ct), await BillableByDefaultAsync(task.ProjectId, ct));
     }
 
     public async Task<TimeEntryDto> LogAsync(Guid taskId, LogTimeRequest req, CancellationToken ct = default)
@@ -140,10 +153,10 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
     public async Task<TaskTimeDto> GetForWorkTaskAsync(Guid workTaskId, CancellationToken ct = default)
     {
-        await workTasks.RequireVisibleAsync(workTaskId, ct);
+        var work = await workTasks.RequireVisibleAsync(workTaskId, ct);
         var rows = await Rows(db.TimeEntries.Where(e => e.WorkTaskId == workTaskId)).OrderByDescending(r => r.WorkDate).ThenByDescending(r => r.Id).Take(MaxRows).ToListAsync(ct);
-        var entries = rows.Select(ToDto).ToList();
-        return new TaskTimeDto(entries, entries.Where(e => !e.IsRunning).Sum(e => e.Minutes), null, await GetRunningAsync(ct));
+        var entries = await ToDtosAsync(rows, ct);
+        return new TaskTimeDto(entries, entries.Where(e => !e.IsRunning).Sum(e => e.Minutes), null, await GetRunningAsync(ct), await BillableByDefaultAsync(work.RelatedProjectId, ct));
     }
 
     public async Task<TimeEntryDto> LogOnWorkTaskAsync(Guid workTaskId, LogTimeRequest req, CancellationToken ct = default)
@@ -160,11 +173,13 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var userId = ctx.RequireUserId();
         var date = req.WorkDate ?? clock.Today;
         Validate(req.Minutes, date);
+        await approvals.EnsureOpenAsync(userId, date, ct);
         await EnsureDayHasRoomAsync(userId, date, req.Minutes, null, ct);
         var entry = new TimeEntry
         {
             TenantId = tenantId, TaskId = taskId, WorkTaskId = workTaskId, ProjectId = projectId, UserId = userId, WorkDate = date,
             Minutes = req.Minutes, Note = Clean(req.Note), CreatedAt = clock.Now, CreatedBy = userId,
+            Billable = req.Billable ?? await BillableByDefaultAsync(projectId, ct),
         };
         db.TimeEntries.Add(entry);
         return entry;
@@ -198,16 +213,21 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var userId = ctx.RequireUserId();
         var running = await db.TimeEntries.FirstOrDefaultAsync(e => e.UserId == userId && e.StartedAt != null && e.EndedAt == null, ct);
+        if (running is not null && running.TaskId == taskId && running.WorkTaskId == workTaskId) return await DtoAsync(running.Id, ct);
+        await approvals.EnsureOpenAsync(userId, clock.Today, ct);
         if (running is not null)
         {
-            if (running.TaskId == taskId && running.WorkTaskId == workTaskId) return await DtoAsync(running.Id, ct);
             Finish(running);
             await db.SaveChangesAsync(ct);
             await SyncActualHoursAsync(running.TaskId, ct);
         }
 
         var now = clock.Now;
-        var entry = new TimeEntry { TenantId = tenantId, TaskId = taskId, WorkTaskId = workTaskId, ProjectId = projectId, UserId = userId, WorkDate = clock.Today, StartedAt = now, CreatedAt = now, CreatedBy = userId };
+        var entry = new TimeEntry
+        {
+            TenantId = tenantId, TaskId = taskId, WorkTaskId = workTaskId, ProjectId = projectId, UserId = userId, WorkDate = clock.Today, StartedAt = now, CreatedAt = now, CreatedBy = userId,
+            Billable = await BillableByDefaultAsync(projectId, ct),
+        };
         db.TimeEntries.Add(entry);
         await db.SaveChangesAsync(ct);
         return await DtoAsync(entry.Id, ct);
@@ -261,8 +281,11 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var entry = await OwnedAsync(id, ct);
         if (entry.EndedAt is null && entry.StartedAt is not null) throw new ConflictException("Stop the timer before editing this entry.", "TIMER_RUNNING");
         Validate(req.Minutes, req.WorkDate);
+        await approvals.EnsureOpenAsync(entry.UserId, entry.WorkDate, ct);
+        if (req.WorkDate != entry.WorkDate) await approvals.EnsureOpenAsync(entry.UserId, req.WorkDate, ct);
         await EnsureDayHasRoomAsync(entry.UserId, req.WorkDate, req.Minutes, entry.Id, ct);
         entry.Minutes = req.Minutes; entry.WorkDate = req.WorkDate; entry.Note = Clean(req.Note);
+        if (req.Billable is { } billable) entry.Billable = billable;
         entry.UpdatedAt = clock.Now;
         await db.SaveChangesAsync(ct);
         await SyncActualHoursAsync(entry.TaskId, ct);
@@ -273,6 +296,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var entry = await OwnedAsync(id, ct);
+        await approvals.EnsureOpenAsync(entry.UserId, entry.WorkDate, ct);
         db.TimeEntries.Remove(entry);
         await db.SaveChangesAsync(ct);
         await SyncActualHoursAsync(entry.TaskId, ct);
@@ -314,12 +338,13 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
         var query = db.TimeEntries.Where(e => e.UserId == who && e.WorkDate >= start && e.WorkDate <= end);
         if (who != me && !inMyLine) query = await VisibleAsync(query, ct);
-        var entries = (await Rows(query).OrderByDescending(r => r.WorkDate).ThenByDescending(r => r.Id).Take(MaxRows).ToListAsync(ct)).Select(ToDto).ToList();
+        var entries = await ToDtosAsync(await Rows(query).OrderByDescending(r => r.WorkDate).ThenByDescending(r => r.Id).Take(MaxRows).ToListAsync(ct), ct);
         var name = await db.Users.Where(u => u.Id == who).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Unknown";
 
         var days = new List<TimeByDayDto>();
         for (var d = start; d <= end; d = d.AddDays(1)) days.Add(new TimeByDayDto(d, entries.Where(e => e.WorkDate == d && !e.IsRunning).Sum(e => e.Minutes)));
-        return new TimesheetDto(start, end, new UserRefDto(who, name), entries, entries.Where(e => !e.IsRunning).Sum(e => e.Minutes), days);
+        return new TimesheetDto(start, end, new UserRefDto(who, name), entries, entries.Where(e => !e.IsRunning).Sum(e => e.Minutes), days,
+            entries.Where(e => !e.IsRunning && e.Billable).Sum(e => e.Minutes));
     }
 
     /// <summary>Time entries across several people at once, for the team-wide Timesheet report - unlike
@@ -334,7 +359,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var query = db.TimeEntries.Where(e => e.WorkDate >= from && e.WorkDate <= to && (restrictTo == null || restrictTo.Contains(e.UserId)));
         if (projectId is { } pid) { await access.GetProjectAsync(pid, ct); query = query.Where(e => e.ProjectId == pid); }
         query = await VisibleAsync(query, ct);
-        return (await Rows(query).OrderBy(r => r.UserName).ThenByDescending(r => r.WorkDate).Take(MaxRows).ToListAsync(ct)).Select(ToDto).ToList();
+        return await ToDtosAsync(await Rows(query).OrderBy(r => r.UserName).ThenByDescending(r => r.WorkDate).Take(MaxRows).ToListAsync(ct), ct);
     }
 
     /// <summary>Time spent delivering a project: entries on its tasks (work tasks only refer to a project, so their time is not counted here).</summary>
@@ -360,6 +385,10 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     }
 
     // ---------------------------------------------------------------- rules
+
+    /// <summary>Time on a billable project starts out billable; everything else does not.</summary>
+    private async Task<bool> BillableByDefaultAsync(Guid? projectId, CancellationToken ct) =>
+        projectId is { } pid && await db.Projects.Where(p => p.Id == pid).Select(p => p.IsBillable).FirstOrDefaultAsync(ct);
 
     private void Validate(int minutes, DateOnly date)
     {

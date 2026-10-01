@@ -86,6 +86,8 @@ public class Tenant : AuditableEntity, ISoftDelete
     public Guid OwnerUserId { get; set; }
     public TenantStatus Status { get; set; } = TenantStatus.Active;
     public bool TrialUsed { get; set; }
+    /// <summary>The currency of budgets, cost and bill rates (ISO code). Null = the platform's billing currency.</summary>
+    public string? CostCurrency { get; set; }
 
     /// <summary>Soft delete: members lose access, all data is retained and the tenant can be restored by a platform admin.</summary>
     public bool IsDeleted { get; set; }
@@ -103,6 +105,13 @@ public class TenantMember : TenantEntity
     public Guid? OrgRoleId { get; set; }
     /// <summary>The person this member reports to (another member of the same tenant).</summary>
     public Guid? ReportsToUserId { get; set; }
+
+    /// <summary>Hours a week this person is available for work, in minutes. Null = the standard 40 hours.</summary>
+    public int? WeeklyCapacityMinutes { get; set; }
+    /// <summary>What an hour of this person's time costs the organization, in the workspace's cost currency. Seen only by Owners and Admins.</summary>
+    public decimal? CostRate { get; set; }
+    /// <summary>What an hour of this person's billable time is charged at (a project's own rate takes precedence).</summary>
+    public decimal? BillRate { get; set; }
 }
 
 /// <summary>
