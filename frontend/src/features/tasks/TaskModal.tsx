@@ -37,7 +37,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
   const [f, setF] = useState<Form>({ ...EMPTY, statusId: statusId ?? '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  // Why an existing due date is being moved (kept in the task's date history and shown on the Project Status page).
+  // Why an existing due date is being moved (kept in the task's date history and shown on the Portfolio page).
   const [dueReason, setDueReason] = useState('');
   const [dueDependency, setDueDependency] = useState('');
   const isEdit = !!currentId;

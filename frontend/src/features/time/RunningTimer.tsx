@@ -12,7 +12,8 @@ import { clock, useNow } from './time';
 export function RunningTimer() {
   const wid = useWorkspaceId();
   const qc = useQueryClient();
-  const allowed = useModule('tasks') > 0;
+  const [mTasks, mWork] = [useModule('tasks'), useModule('work')];
+  const allowed = mTasks > 0 || mWork > 0;
   const q = useWsQuery(['timer'], timeApi.running, { enabled: allowed, refetchInterval: 60_000 });
   const t = q.data ?? null;
   const now = useNow(!!t);
@@ -23,7 +24,7 @@ export function RunningTimer() {
       await timeApi.stop();
       toast('Timer stopped and time saved.');
       void qc.invalidateQueries({ queryKey: [wid, 'timer'] });
-      void qc.invalidateQueries({ queryKey: [wid, 'task', t.taskId] });
+      void qc.invalidateQueries({ queryKey: t.kind === 'work' ? [wid, 'work', 'task', t.workTaskId] : [wid, 'task', t.taskId] });
       void qc.invalidateQueries({ queryKey: [wid, 'timesheet'] });
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not stop the timer.', 'error'); }
   };
@@ -31,7 +32,7 @@ export function RunningTimer() {
   return (
     <div className="timer-chip" role="status" aria-label="Timer running">
       <span className="live-dot" />
-      <Link to={`/projects/${t.projectId}?task=${t.taskId}`} title={t.taskTitle}>{t.taskKey}</Link>
+      <Link to={t.kind === 'work' ? `/operations?task=${t.workTaskId}` : `/projects/${t.projectId}?task=${t.taskId}`} title={t.taskTitle}>{t.taskKey}</Link>
       <b>{clock(now - new Date(t.startedAt!).getTime())}</b>
       <button type="button" className="icon-btn" onClick={() => void stop()} title="Stop timer" aria-label="Stop timer"><Icon name="pause" size={14} /></button>
     </div>

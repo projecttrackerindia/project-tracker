@@ -62,23 +62,11 @@ export function ActionItemsPanel({ open, projectId, projectName, onClose }: { op
 }
 
 function PanelBody({ projectId, projectName, onClose }: { projectId: string; projectName: string; onClose: () => void }) {
-  const wid = useWorkspaceId();
   const q = useWsQuery(['action-items', projectId], () => actionItemApi.list(projectId));
-  const project = useWsQuery(['project', projectId], () => projectApi.get(projectId));
-  const [view, setView] = useState<View>('open');
-  const [adding, setAdding] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeRef.current?.focus(); }, []);
-
-  const items = useMemo(() => q.data ?? [], [q.data]);
+  const items = q.data ?? [];
   const openCount = items.filter((i) => i.status !== 'Completed').length;
-  const shown = items.filter((i) => view === 'all' || (view === 'open' ? i.status !== 'Completed' : i.status === 'Completed'));
-  const archived = project.data?.project.status === 'Archived';
-  const canAdd = useCan('tasks.create') && !archived;   // guests and view-only roles can read the list but not add to it
-  // Who an item can be given to: the people on the project (guests never get work).
-  const people = useMemo(() => (project.data?.members ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.name })), [project.data]);
-
-  const refresh = () => invalidateWorkspace(wid, 'action-items', projectId);
 
   return (
     <>
@@ -92,7 +80,46 @@ function PanelBody({ projectId, projectName, onClose }: { projectId: string; pro
           <button ref={closeRef} type="button" className="btn btn-ghost btn-sm ai-close" onClick={onClose} aria-label="Close action items" title="Close (Esc)"><Icon name="close" size={14} /> Close</button>
         </div>
       </header>
+      <ActionItemsList projectId={projectId} />
+    </>
+  );
+}
 
+/** The project's Actions tab: the same list as the Portfolio side panel, on the project page itself. */
+export function ActionItemsTab({ projectId, highlightId }: { projectId: string; highlightId?: string | null }) {
+  const q = useWsQuery(['action-items', projectId], () => actionItemApi.list(projectId));
+  const items = q.data ?? [];
+  const openCount = items.filter((i) => i.status !== 'Completed').length;
+  return (
+    <div className="card ai-card">
+      <div className="card-head">
+        <div><h3>Action items</h3><p>Follow-ups agreed for this project: who does what, and by when. {items.length > 0 && <>{openCount} open · {items.length - openCount} done</>}</p></div>
+      </div>
+      <ActionItemsList projectId={projectId} highlightId={highlightId} />
+    </div>
+  );
+}
+
+function ActionItemsList({ projectId, highlightId }: { projectId: string; highlightId?: string | null }) {
+  const wid = useWorkspaceId();
+  const q = useWsQuery(['action-items', projectId], () => actionItemApi.list(projectId));
+  const project = useWsQuery(['project', projectId], () => projectApi.get(projectId));
+  const highlighted = q.data?.find((i) => i.id === highlightId);
+  const [view, setView] = useState<View>(highlighted?.status === 'Completed' ? 'all' : 'open');
+  const [adding, setAdding] = useState(false);
+  const permCreate = useCan('tasks.create');
+
+  const items = useMemo(() => q.data ?? [], [q.data]);
+  const shown = items.filter((i) => view === 'all' || (view === 'open' ? i.status !== 'Completed' : i.status === 'Completed'));
+  const archived = project.data?.project.status === 'Archived';
+  const canAdd = permCreate && !archived;   // guests and view-only roles can read the list but not add to it
+  // Who an item can be given to: the people on the project (guests never get work).
+  const people = useMemo(() => (project.data?.members ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.name })), [project.data]);
+
+  const refresh = () => invalidateWorkspace(wid, 'action-items', projectId);
+
+  return (
+    <>
       <div className="ai-toolbar">
         <div className="seg" role="group" aria-label="Show action items">
           {([['open', 'Open'], ['done', 'Completed'], ['all', 'All']] as const).map(([id, label]) => (
@@ -112,16 +139,18 @@ function PanelBody({ projectId, projectName, onClose }: { projectId: string; pro
             text={items.length === 0 ? (archived ? 'This project is archived.' : canAdd ? 'Add follow-ups for this project: who does what, and by when.' : 'Nothing has been added for this project yet.') : view === 'open' ? 'Every action item is completed.' : undefined}
             action={items.length === 0 && canAdd ? <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" /> Add action item</button> : undefined} />
         )}
-        {shown.map((i) => <ItemRow key={i.id} item={i} people={people} projectId={projectId} onChanged={() => void refresh()} />)}
+        {shown.map((i) => <ItemRow key={i.id} item={i} people={people} projectId={projectId} highlight={i.id === highlightId} onChanged={() => void refresh()} />)}
       </div>
     </>
   );
 }
 
 // ------------------------------------------------------------------ one action item
-function ItemRow({ item, people, projectId, onChanged }: { item: ActionItem; people: { id: string; name: string }[]; projectId: string; onChanged: () => void }) {
+function ItemRow({ item, people, projectId, highlight, onChanged }: { item: ActionItem; people: { id: string; name: string }[]; projectId: string; highlight?: boolean; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(!!highlight);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => { if (highlight) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, [highlight]);
   const [busy, setBusy] = useState(false);
   const done = item.status === 'Completed';
 
@@ -140,13 +169,13 @@ function ItemRow({ item, people, projectId, onChanged }: { item: ActionItem; peo
   if (editing) return <ItemForm item={item} people={people} projectId={projectId} onDone={() => { setEditing(false); onChanged(); }} onCancel={() => setEditing(false)} onDelete={item.can.delete ? remove : undefined} />;
 
   return (
-    <article className={`ai-item ${done ? 'done' : ''} ${item.isOverdue ? 'late' : ''}`} role="listitem">
+    <article ref={ref} className={`ai-item ${done ? 'done' : ''} ${item.isOverdue ? 'late' : ''} ${highlight ? 'highlight' : ''}`} role="listitem">
       <button type="button" className="ai-check" role="checkbox" aria-checked={done} disabled={!item.can.complete || busy} onClick={() => void toggle()}
         aria-label={done ? `Reopen “${item.title}”` : `Mark “${item.title}” completed`} title={item.can.complete ? (done ? 'Reopen' : 'Mark completed') : 'You cannot change this action item'}>
         {busy ? <Spinner /> : done ? <Icon name="tick" size={14} /> : null}
       </button>
       <div className="ai-main">
-        <button type="button" className="ai-title" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>{item.title}</button>
+        <button type="button" className="ai-title" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>{item.key && <span className="task-key" style={{ marginRight: 6 }}>{item.key}</span>}{item.title}</button>
         <div className="ai-meta">
           <span className="ai-who" title={item.assignee ? `Assigned to ${item.assignee.name}` : 'Not assigned'}>
             {item.assignee ? <><Avatar name={item.assignee.name} size="sm" />{item.assignee.name}</> : <em>Unassigned</em>}

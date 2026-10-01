@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { planningApi, workspaceApi } from '../../api/endpoints';
-import type { Milestone, StageStatus } from '../../api/types';
+import type { Milestone, Stage, StageStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState, Field, Modal, Progress, StageBadge, SubmitButton } from '../../components/ui';
 import { STAGE_STATUSES, formatDate, labelize } from '../../lib/format';
@@ -11,8 +11,8 @@ import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { Select } from '../../components/Select';
 
-/** Dated checkpoints of a project, with progress worked out from the tasks that count towards each one. */
-export function MilestonesPanel({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+/** Dated checkpoints of a project, each optionally marking one of its timeline stages, with progress from the tasks that count towards it. */
+export function MilestonesPanel({ projectId, canEdit, stages = [] }: { projectId: string; canEdit: boolean; stages?: Stage[] }) {
   const wid = useWorkspaceId();
   const qc = useQueryClient();
   const [modal, setModal] = useState<{ milestone?: Milestone } | null>(null);
@@ -53,6 +53,7 @@ export function MilestonesPanel({ projectId, canEdit }: { projectId: string; can
                   {m.description && <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>{m.description}</div>}
                   <div className="milestone-meta">
                     <span><Icon name="calendar" size={13} /> {m.dueDate ? formatDate(m.dueDate) : 'No date'}</span>
+                    {m.stageName && <span title="The timeline stage this milestone marks"><Icon name="layers" size={13} /> {m.stageName}</span>}
                     {m.owner && <span><Icon name="user" size={13} /> {m.owner.name}</span>}
                     <span><Icon name="check" size={13} /> {m.taskDone}/{m.taskTotal} tasks</span>
                   </div>
@@ -69,12 +70,12 @@ export function MilestonesPanel({ projectId, canEdit }: { projectId: string; can
           </div>
         )}
       </div>
-      {modal && <MilestoneModal projectId={projectId} milestone={modal.milestone} onClose={() => setModal(null)} onSaved={refresh} />}
+      {modal && <MilestoneModal projectId={projectId} milestone={modal.milestone} stages={stages} onClose={() => setModal(null)} onSaved={refresh} />}
     </div>
   );
 }
 
-function MilestoneModal({ projectId, milestone, onClose, onSaved }: { projectId: string; milestone?: Milestone; onClose: () => void; onSaved: () => void }) {
+function MilestoneModal({ projectId, milestone, stages, onClose, onSaved }: { projectId: string; milestone?: Milestone; stages: Stage[]; onClose: () => void; onSaved: () => void }) {
   const members = useWsQuery(['members'], workspaceApi.members);
   const [name, setName] = useState(milestone?.name ?? '');
   const [description, setDescription] = useState(milestone?.description ?? '');
@@ -82,6 +83,7 @@ function MilestoneModal({ projectId, milestone, onClose, onSaved }: { projectId:
   const [dueDate, setDueDate] = useState(milestone?.dueDate ?? '');
   const [status, setStatus] = useState<StageStatus>(milestone?.status ?? 'Pending');
   const [ownerId, setOwnerId] = useState(milestone?.owner?.id ?? '');
+  const [stageId, setStageId] = useState(milestone?.stageId ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -89,7 +91,7 @@ function MilestoneModal({ projectId, milestone, onClose, onSaved }: { projectId:
     if (name.trim().length < 1) { setError('Give the milestone a name.'); return; }
     if (startDate && dueDate && dueDate < startDate) { setError('The due date must not be before the start date.'); return; }
     setBusy(true); setError(null);
-    const body = { name: name.trim(), description: description.trim() || null, startDate: startDate || null, dueDate: dueDate || null, status, ownerId: ownerId || null };
+    const body = { name: name.trim(), description: description.trim() || null, startDate: startDate || null, dueDate: dueDate || null, status, ownerId: ownerId || null, stageId: stageId || null };
     try {
       if (milestone) await planningApi.updateMilestone(projectId, milestone.id, body); else await planningApi.createMilestone(projectId, body);
       toast(milestone ? 'Milestone updated.' : 'Milestone added.');
@@ -99,7 +101,7 @@ function MilestoneModal({ projectId, milestone, onClose, onSaved }: { projectId:
   };
 
   return (
-    <Modal size="sm" title={milestone ? 'Edit milestone' : 'Add milestone'} subtitle="A dated checkpoint. Tasks are linked to it from the task screen." onClose={onClose}
+    <Modal size="sm" title={milestone ? 'Edit milestone' : 'Add milestone'} subtitle="A dated checkpoint, optionally on one of the project’s stages. Tasks are linked to it from the task screen." onClose={onClose}
       onSubmit={(e) => { e.preventDefault(); void submit(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>{milestone ? 'Save changes' : 'Add milestone'}</SubmitButton></>}>
       {error && <div className="form-error" role="alert">{error}</div>}
@@ -109,6 +111,13 @@ function MilestoneModal({ projectId, milestone, onClose, onSaved }: { projectId:
         <Field label="Due date"><input className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
         <Field label="Status"><Select className="select" value={status} onChange={(e) => setStatus(e.target.value as StageStatus)}>{STAGE_STATUSES.map((s) => <option key={s} value={s}>{labelize(s)}</option>)}</Select></Field>
         <Field label="Owner"><Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}><option value="">— Nobody —</option>{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
+        {stages.length > 0 && (
+          <Field label="Marks the stage" full hint="Optional: the timeline stage this milestone is a checkpoint of, such as “Design approved” at the end of Design.">
+            <Select className="select" value={stageId} onChange={(e) => setStageId(e.target.value)} aria-label="Stage">
+              <option value="">— No particular stage —</option>{[...stages].sort((a, b) => a.order - b.order).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Field>
+        )}
         <Field label="Description" full><textarea className="textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} /></Field>
       </div>
     </Modal>

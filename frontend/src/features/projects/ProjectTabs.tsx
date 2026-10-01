@@ -35,7 +35,7 @@ export function TeamTab({ detail, canEdit }: { detail: ProjectDetail; canEdit: b
   return (
     <div className="card">
       <div className="card-head">
-        <div><h3>Project team</h3><p>People who can see and work on this project. Guests only see projects they belong to.</p></div>
+        <div><h3>Project members</h3><p>People who can see and work on this project. Guests only see projects they belong to.</p></div>
         {canEdit && available.length > 0 && (
           <div className="row">
             <Select className="select" style={{ width: 200 }} value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Add a member">
@@ -50,7 +50,7 @@ export function TeamTab({ detail, canEdit }: { detail: ProjectDetail; canEdit: b
           {detail.members.map((m) => (
             <div className="member-item" key={m.userId}>
               <Avatar name={m.name} size="lg" />
-              <div className="member-main"><div className="member-name">{m.name}</div><div className="member-role">{m.userId === ownerId ? 'Project owner' : 'Team member'}{m.email ? ` · ${m.email}` : ''}</div></div>
+              <div className="member-main"><div className="member-name">{m.name}</div><div className="member-role">{m.userId === ownerId ? 'Project owner' : 'Member'}{m.email ? ` · ${m.email}` : ''}</div></div>
               {m.role && <RoleBadge role={m.role} />}
               {canEdit && m.userId !== ownerId && <button className="btn-icon danger" title="Remove" aria-label={`Remove ${m.name}`} onClick={() => remove(m.userId, m.name)}><Icon name="close" /></button>}
             </div>
@@ -119,7 +119,7 @@ export function WorkflowTab({ projectId, statuses }: { projectId: string; status
         {canManage && entitled && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" /> Add status</button>}
       </div>
       <div className="card-body">
-        {!entitled && <div className="form-warn">Custom workflows are available on the Pro plan and above. <Link className="link" to="/billing">View plans</Link></div>}
+        {!entitled && <div className="form-warn">Custom workflows are available on the Pro plan and above. <Link className="link" to="/settings/billing">View plans</Link></div>}
         {canReorder && <p className="wf-hint">Drag a status onto another to reorder the workflow (or focus one and press Alt + ← / →). The arrows show the order tasks normally flow in, and the board columns follow it.</p>}
         <div className="wf-flow" role="list" ref={flowRef}>
           {ordered.map((s, i) => {

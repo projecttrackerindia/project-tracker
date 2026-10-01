@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
 import type { TimelineTemplate } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { EmptyState, Field, Modal, PageLoader, SubmitButton } from '../../components/ui';
+import { EmptyState, Field, Modal, PageHead, PageLoader, SubmitButton } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useCan, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -38,6 +38,25 @@ export function StageChain({ stages }: { stages: string[] }) {
  * Built-in ones are shown for reference and cannot be changed.
  */
 export function TimelineManagerModal({ onClose, project }: { onClose: () => void; project?: { id: string; name: string } }) {
+  return (
+    <Modal size="lg" title="Project timelines" subtitle="Ready-made lifecycles a new project can start from. A project copies its timeline, so changing one here never changes an existing project." onClose={onClose}
+      footer={<button type="button" className="btn btn-primary" onClick={onClose}>Done</button>}>
+      <TimelineTemplateList project={project} onLeave={onClose} />
+    </Modal>
+  );
+}
+
+/** Workspace settings → Timeline templates: the same list, as a page of its own (they are workspace-wide, not part of any one project). */
+export function TimelineTemplatesSettings() {
+  return (
+    <>
+      <PageHead title="Timeline templates" sub="Ready-made lifecycles a new project can start from. A project copies its timeline, so changing one here never changes an existing project." />
+      <div className="card"><div className="card-body"><TimelineTemplateList /></div></div>
+    </>
+  );
+}
+
+function TimelineTemplateList({ project, onLeave }: { project?: { id: string; name: string }; onLeave?: () => void }) {
   const wid = useWorkspaceId();
   const { allowed, entitled } = useTimelineManagement();
   const q = useTimelineTemplates();
@@ -52,11 +71,9 @@ export function TimelineManagerModal({ onClose, project }: { onClose: () => void
 
   return (
     <>
-      <Modal size="lg" title="Project timelines" subtitle="Ready-made lifecycles a new project can start from. A project copies its timeline, so changing one here never changes an existing project." onClose={onClose}
-        footer={<button type="button" className="btn btn-primary" onClick={onClose}>Done</button>}>
         {!allowed && (
           <div className="form-warn" style={{ marginTop: 0 }}>
-            <Icon name="lock" size={14} /> {entitled ? 'You need the “manage workflows” permission to make your own timelines.' : <>Your own timelines are part of plans with custom workflows. <Link className="link" to="/billing" onClick={onClose}>View plans</Link></>}
+            <Icon name="lock" size={14} /> {entitled ? 'You need the “manage workflows” permission to make your own timelines.' : <>Your own timelines are part of plans with custom workflows. <Link className="link" to="/settings/billing" onClick={onLeave}>View plans</Link></>}
           </div>
         )}
         {allowed && (
@@ -88,7 +105,6 @@ export function TimelineManagerModal({ onClose, project }: { onClose: () => void
             ))}
           </div>
         )}
-      </Modal>
       {editing && <TimelineEditorModal template={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
       {saving && project && <SaveTimelineModal project={project} onClose={() => setSaving(false)} />}
     </>

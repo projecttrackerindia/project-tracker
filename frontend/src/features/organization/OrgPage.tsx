@@ -6,10 +6,8 @@ import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader, Tabs } from '../../components/ui';
 import { formatDate } from '../../lib/format';
 import { invalidateWorkspace } from '../../lib/hooks';
-import { useCan, useWorkspaceId } from '../../stores/auth';
+import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { AccessPanel } from './AccessPanel';
-import { OrgSecurityPanel } from './OrgSecurityPanel';
 import { OrgCanvas, type OrgView } from './OrgCanvas';
 import { DeleteRoleModal, RoleModal } from './OrgModals';
 import { Inspector, UnassignedTray } from './OrgPanels';
@@ -17,15 +15,14 @@ import { useOrg, useOrgActions } from './orgState';
 import { Select } from '../../components/Select';
 import '../../styles/org.css';
 
-type Tab = 'chart' | 'roles' | 'access' | 'security';
+type Tab = 'chart' | 'roles';
 type ModalState = { kind: 'role'; role?: OrgRole; parentId?: string | null } | { kind: 'delete'; role: OrgRole } | null;
 
+/** People → Org chart: job roles and who reports to whom. What each job role can access is set in Workspace settings → Roles & access. */
 export function OrgPage() {
   const wid = useWorkspaceId();
   const q = useOrg();
   const actions = useOrgActions();
-  const canAccess = useCan('access.manage');
-  const canManageOrg = useCan('org.manage');
   const [tab, setTab] = useState<Tab>('chart');
   const [view, setView] = useState<OrgView>('roles');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -75,10 +72,8 @@ export function OrgPage() {
 
   return (
     <>
-      <PageHead title="Organization" sub={`${activeRoles.length} role${activeRoles.length === 1 ? '' : 's'} · ${data.people.length} ${data.people.length === 1 ? 'person' : 'people'}`}>
-        <Tabs value={tab} onChange={setTab} tabs={[{ id: 'chart' as Tab, label: 'Chart', icon: 'org' as const }, { id: 'roles' as Tab, label: 'Roles', icon: 'list' as const },
-          ...(canAccess ? [{ id: 'access' as Tab, label: 'Access', icon: 'shield' as const }] : []),
-          ...(canManageOrg ? [{ id: 'security' as Tab, label: 'Security', icon: 'lock' as const }] : [])]} />
+      <PageHead title="Org chart" sub={`${activeRoles.length} job role${activeRoles.length === 1 ? '' : 's'} · ${data.people.length} ${data.people.length === 1 ? 'person' : 'people'}`}>
+        <Tabs value={tab} onChange={setTab} tabs={[{ id: 'chart' as Tab, label: 'Chart', icon: 'org' as const }, { id: 'roles' as Tab, label: 'Job roles', icon: 'list' as const }]} />
       </PageHead>
 
       {tab === 'chart' ? (
@@ -121,10 +116,6 @@ export function OrgPage() {
           </div>
 
         </div>
-      ) : tab === 'access' ? (
-        <AccessPanel />
-      ) : tab === 'security' ? (
-        <OrgSecurityPanel />
       ) : (
         <RolesTable data={data} onAdd={(parentId) => setModal({ kind: 'role', parentId })} onEdit={(role) => setModal({ kind: 'role', role })}
           onDelete={(role) => setModal({ kind: 'delete', role })} onRestore={(id) => void restore(id)} onTemplate={() => void applyTemplate()} busy={busy} />

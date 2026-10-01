@@ -148,7 +148,7 @@ function GroupModal({ group, onClose }: { group?: ProjectGroup; onClose: () => v
   };
 
   return (
-    <Modal size="sm" title={group ? 'Edit project group' : 'New project group'} subtitle="Groups organize projects on the Project Status page and in the project list." onClose={onClose}
+    <Modal size="sm" title={group ? 'Edit project group' : 'New project group'} subtitle="Groups organize projects on the Portfolio page and in the project list." onClose={onClose}
       onSubmit={(e) => { e.preventDefault(); void submit(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>{group ? 'Save' : 'Add group'}</SubmitButton></>}>
       <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>

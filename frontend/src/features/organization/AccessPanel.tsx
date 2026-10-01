@@ -79,7 +79,7 @@ export function AccessPanel() {
 
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !m) return <ErrorState error={q.error} retry={() => q.refetch()} />;
-  if (m.roles.length === 0) return <div className="card"><div className="card-body"><EmptyState icon="shield" title="No job roles yet" text="Add roles on the Chart tab first, then decide what each one can see and do here." /></div></div>;
+  if (m.roles.length === 0) return <div className="card"><div className="card-body"><EmptyState icon="shield" title="No job roles yet" text="Add job roles under People → Org chart first, then decide what each one can see and do here." /></div></div>;
 
   const canEditRole = !!role && m.canEdit && editable.has(role.roleId);
   const my = m.myLevels;
@@ -132,7 +132,7 @@ export function AccessPanel() {
 
   return (
     <>
-      {!m.planAllows && <div className="form-warn">Editing job-role access is part of the Business plan. What is shown here is what people can do today. <Link className="link" to="/billing">View plans</Link></div>}
+      {!m.planAllows && <div className="form-warn">Editing job-role access is part of the Business plan. What is shown here is what people can do today. <Link className="link" to="/settings/billing">View plans</Link></div>}
 
       <div className="acc-top">
         <div className="seg" role="group" aria-label="Access view">

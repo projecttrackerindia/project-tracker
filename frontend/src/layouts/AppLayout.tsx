@@ -15,6 +15,9 @@ import { ChatRealtime } from '../features/chat/ChatRealtime';
 import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { chatKeys } from '../features/chat/chatStore';
 import { PlatformBanner } from '../components/PlatformBanner';
+import { useVisibleKinds } from '../features/workitems/workItems';
+import { usePeopleSections } from '../features/people/PeoplePage';
+import { useWorkspaceSections } from '../features/settings/SettingsPage';
 
 // ------------------------------------------------------------------ helpers
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -30,18 +33,23 @@ const NOTIF_ICON: Record<string, string> = {
 };
 
 // ------------------------------------------------------------------ sidebar
-interface NavDef { to: string; label: string; icon: IconName; end?: boolean; show?: boolean; badge?: number }
+/** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
+interface NavDef { to: string; label: string; icon: IconName; end?: boolean; show?: boolean; badge?: number; match?: (path: string) => boolean }
 
 function Sidebar() {
   const { sidebarCollapsed, sidebarOpen, closeSidebar } = useUi();
   const ctx = useAuth((s) => s.ctx);
   const personal = useIsPersonal();
   const lv = (m: string) => ctx?.current?.modules?.[m] ?? 0;
-  const canReports = useCan('reports.view') && lv('reports') > 0;
-  const canAudit = useCan('audit.view') && lv('audit') > 0;
-  const canManageGroups = useCan('projectgroups.manage') && lv('projects') > 0;
-  const canSeeOrg = !personal && ctx?.current?.role !== 'Guest' && lv('organization') > 0;
+  const permReports = useCan('reports.view'), broad = useCan('reports.broad');
+  const canReports = permReports && lv('reports') > 0;
   const canChat = !personal && ctx?.current?.role !== 'Guest' && !ctx?.user.isPlatformAdmin;
+  const kinds = useVisibleKinds();
+  const people = usePeopleSections();
+  const settings = useWorkspaceSections();
+  const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
+  const { pathname } = useLocation();
+  const peopleHas = (id: string) => people.some((s) => s.id === id);
   const wid = ctx?.current?.id;
   // Unread messages: kept current by live events; the slow refresh is only a safety net.
   const unread = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
@@ -62,32 +70,30 @@ function Sidebar() {
     ] },
   ];
 
+  // Home: my own day. Delivery: the work itself. Insights: how it is going. Organization: the people. Settings: how the workspace is set up.
   const workspaceGroups: { title: string; items: NavDef[] }[] = [
-    { title: 'Main', items: [
+    { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
-      { to: '/projects', label: 'Projects', icon: 'folder', show: lv('projects') > 0 },
-      { to: '/project-status', label: 'Project status', icon: 'monitor', show: lv('projects') > 0 },
-      { to: '/my-team', label: 'My team', icon: 'users', show: !personal && lv('tasks') > 0 && (ctx?.current?.reportCount ?? 0) > 0 },
+      { to: '/my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0 },
+      { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
-      { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat, badge: unread.data?.count },
     ] },
-    { title: 'Work management', items: [
-      { to: '/work', label: 'All work', icon: 'bolt', end: true, show: lv('work') > 0 },
-      { to: '/work/mine', label: 'My work', icon: 'user', show: lv('work') > 0 },
-      { to: '/work/reports', label: 'Work reports', icon: 'chart', show: lv('work') > 0 },
+    { title: 'Delivery', items: [
+      { to: '/projects', label: 'Projects', icon: 'folder', show: lv('projects') > 0 },
+      { to: '/portfolio', label: 'Portfolio', icon: 'monitor', show: lv('projects') > 0 },
+      { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0 },
     ] },
-    { title: 'Workspace', items: [
-      { to: '/teams', label: 'Teams', icon: 'users', show: !personal && lv('teams') > 0 },
-      { to: '/project-groups', label: 'Project groups', icon: 'layers', show: canManageGroups },
-      { to: '/members', label: 'Members', icon: 'user', show: !personal && lv('members') > 0 },
-      { to: '/reports', label: 'Reports', icon: 'chart', show: canReports },
-      { to: '/organization', label: 'Organization', icon: 'org', show: canSeeOrg },
+    { title: 'Insights', items: [
+      { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },
+      { to: '/reports', label: 'Reports', icon: 'chart', end: false, show: canReports || lv('work') > 0 },
       { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0 },
-      { to: '/audit', label: 'Audit log', icon: 'shield', show: !personal && canAudit },
     ] },
-    { title: 'Admin', items: [
-      { to: '/billing', label: 'Billing', icon: 'card', show: lv('billing') > 0 },
+    { title: 'Organization', items: [
+      { to: '/people', label: 'People', icon: 'user', show: peopleHas('directory'), match: (p) => p === '/people' || p === '/people/invitations' },
+      { to: '/people/org-chart', label: 'Org chart', icon: 'org', show: peopleHas('org-chart') },
+      { to: '/people/teams', label: 'Teams', icon: 'layers', show: peopleHas('teams') },
+      { to: '/settings', label: 'Workspace settings', icon: 'settings', end: false, show: settings.length > 0 },
     ] },
   ];
   const groups = isPlatformAdmin ? adminGroups : workspaceGroups;
@@ -108,7 +114,7 @@ function Sidebar() {
                 <div className="nav-section-title">{g.title}</div>
                 {items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.end} title={i.label} onClick={closeSidebar}
-                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                    className={({ isActive }) => `nav-item ${(i.match ? i.match(pathname) : isActive) ? 'active' : ''}`}>
                     <Icon name={i.icon} /><span>{i.label}</span>
                     {!!i.badge && <em className="nav-count" aria-label={`${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
                   </NavLink>
@@ -185,19 +191,23 @@ function GlobalSearch() {
     setOpen(false); setQ('');
     if (h.type === 'file') nav(h.taskId ? `/projects/${h.projectId}?task=${h.taskId}` : `/projects/${h.projectId}?tab=files`);
     else if (h.type === 'task' || h.type === 'comment') nav(`/projects/${h.projectId}?task=${h.taskId}`);
+    else if (h.type === 'issue') nav(`/projects/${h.projectId}?tab=issues&issue=${h.id}`);
+    else if (h.type === 'action') nav(`/projects/${h.projectId}?tab=actions&action=${h.id}`);
+    else if (h.type === 'work') nav(`/operations?task=${h.id}`);
     else if (h.type === 'project') nav(`/projects/${h.id}`);
-    else if (h.type === 'team') nav('/teams');
-    else if (h.type === 'member') nav('/members');
+    else if (h.type === 'team') nav('/people/teams');
+    else if (h.type === 'member') nav('/people');
+    else if (h.type === 'label') nav('/settings/labels');
     else nav('/projects');
   };
-  const groups: Record<string, string> = { task: 'Tasks', project: 'Projects', team: 'Teams', member: 'People', comment: 'Comments', file: 'Files', label: 'Labels' };
-  const icons: Record<string, IconName> = { task: 'check', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag' };
+  const groups: Record<string, string> = { task: 'Tasks', issue: 'Test issues', action: 'Action items', work: 'Operational work', project: 'Projects', team: 'Teams', member: 'People', comment: 'Comments', file: 'Files', label: 'Labels' };
+  const icons: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag' };
   const hits = data?.hits ?? [];
 
   return (
     <div className="global-search" ref={ref}>
       <span className="search-icon"><Icon name="search" /></span>
-      <input ref={input} type="search" placeholder="Search tasks, projects, people…" autoComplete="off" aria-label="Global search" value={q}
+      <input ref={input} type="search" placeholder="Search work, projects, people… or a key like WT-12" autoComplete="off" aria-label="Global search" value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
         onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); input.current?.blur(); } }} />
       {!q && <span className="kbd">/</span>}
@@ -347,6 +357,7 @@ function UserMenu() {
   const nav = useNavigate();
   useClickOutside(ref, () => setOpen(false));
   const { user, current } = ctx;
+  const settings = useWorkspaceSections();
 
   return (
     <div className="dropdown" ref={ref}>
@@ -365,7 +376,8 @@ function UserMenu() {
             </div>
           </div>
           <div className="dp-sep" />
-          <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/settings'); }}><Icon name="settings" /> Account settings</button>
+          <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/account'); }}><Icon name="user" /> My account</button>
+          {settings.length > 0 && <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/settings'); }}><Icon name="settings" /> Workspace settings</button>}
           <button className="dp-menu-item" onClick={() => { setOpen(false); logout(); }}><Icon name="logout" /> Sign out</button>
         </div>
       )}
@@ -376,6 +388,7 @@ function UserMenu() {
 function Topbar() {
   const { toggleSidebar, theme, toggleTheme } = useUi();
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const settings = useWorkspaceSections();
   return (
     <header className="topbar">
       <button className="icon-btn" onClick={toggleSidebar} title="Toggle sidebar" aria-label="Toggle sidebar"><Icon name="menu" /></button>
@@ -387,7 +400,7 @@ function Topbar() {
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
         </button>
         {!isPlatformAdmin && <NotificationsMenu />}
-        <NavLink to="/settings" className={({ isActive }) => `icon-btn settings-link ${isActive ? 'active' : ''}`} title="Settings" aria-label="Settings"><Icon name="settings" /></NavLink>
+        {settings.length > 0 && <NavLink to="/settings" end={false} className={({ isActive }) => `icon-btn settings-link ${isActive ? 'active' : ''}`} title="Workspace settings" aria-label="Workspace settings"><Icon name="settings" /></NavLink>}
         <UserMenu />
       </div>
     </header>

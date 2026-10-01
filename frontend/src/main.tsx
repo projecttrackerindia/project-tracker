@@ -5,6 +5,7 @@ import '@fontsource-variable/inter';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
+import './styles/layout.css';
 import './styles/chat.css';
 import './styles/auth.css';
 import './styles/celebrate.css';

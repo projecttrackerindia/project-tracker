@@ -1,6 +1,6 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile } from './client';
 import type { BillingSettings, TimelineTemplate,
-  Activity, AdminPlan, AdminStats, AdminTenant, AdminTenantDetail, AdminUser, AdminUserDetail, AppContext, AppNotification, AuditLog, AuthResponse, ApiKey, GoLive, AdminTestEmailResult, PlatformBilling, AdminUsage, FeatureOverride, PlatformSettings, PlatformStatus, SystemHealth, MyTeam, TeamPerson, Webhook, WebhookDelivery, Checklist, CustomField, CustomFieldValue, ImportPreview, ImportResult, PriorityInfo, ReportExport, ReportFormat, ReportKind, Sprint, SprintDetail, AutomationInput, AutomationRule, ProjectTime, TaskTime, TimeEntry, Timesheet, MfaChallenge, MfaSetup, MfaStatus, PasswordPolicy, BillingOverview, CalendarEvent,
+  Activity, AdminPlan, AdminStats, AdminTenant, AdminTenantDetail, AdminUser, AdminUserDetail, AppContext, AppNotification, AuditLog, AuthResponse, ApiKey, GoLive, AdminTestEmailResult, PlatformBilling, AdminUsage, FeatureOverride, PlatformSettings, PlatformStatus, SystemHealth, Workload, WorkloadPersonDetail, WorkloadScope, WorkItem, WorkItemKind, EffectiveAccessList, Webhook, WebhookDelivery, Checklist, CustomField, CustomFieldValue, ImportPreview, ImportResult, PriorityInfo, ReportExport, ReportFormat, ReportKind, Sprint, SprintDetail, AutomationInput, AutomationRule, ProjectTime, TaskTime, TimeEntry, Timesheet, MfaChallenge, MfaSetup, MfaStatus, PasswordPolicy, BillingOverview, CalendarEvent,
   AccessMatrix, DependencyType, Milestone, MilestoneInput, TaskDependencies, ActionItem, ActionItemInput, ActionItemStatus, Attachment, AttachmentLimits, ProjectChatUnread, ProjectGroup, ProjectStatusReport, StatusGroup, Issue, IssueDetail, IssueInput, NotificationPreference, TestEmailResult, Comment, Dashboard, DevEmail, OrgRole, OrgStructure, Invitation, InvitationLookup, Label, Member, Paged, PermissionMatrix, Project, ProjectDetail, ProjectMember,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
@@ -77,6 +77,8 @@ export interface ProjectInput {
   projectGroupId?: string | null;
   /** What the project is for (required when creating). */
   projectType?: string | null;
+  /** Phased, Agile or Hybrid: which planning views the project shows. */
+  deliveryMethod?: string | null;
   /** When an existing due date moves: why (required for a delay) and what it depends on. */
   dueDateReason?: string | null; dueDateDependency?: string | null;
   /** Which ready-made timeline the project starts from (see timelineTemplates). */
@@ -208,6 +210,8 @@ export const orgApi = {
   access: () => get<AccessMatrix>('/org/access'),
   setAccess: (roleId: string, b: { modules: Record<string, number>; actions: Record<string, boolean> }) => put<AccessMatrix>(`/org/roles/${roleId}/access`, b),
   resetAccess: (roleId: string) => del<AccessMatrix>(`/org/roles/${roleId}/access`),
+  /** What every person can open and do right now, and which rule decided it (job role or access level). */
+  effectiveAccess: () => get<EffectiveAccessList>('/org/access/effective'),
 };
 
 /** The workspace's master list of project groups. */
@@ -270,6 +274,10 @@ export const planningApi = {
 export const timeApi = {
   forTask: (taskId: string) => get<TaskTime>(`/tasks/${taskId}/time`),
   log: (taskId: string, b: { minutes: number; workDate?: string; note?: string }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
+  /** Operational work: the same time tracking as project tasks. */
+  forWorkTask: (workTaskId: string) => get<TaskTime>(`/work-tasks/${workTaskId}/time`),
+  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
+  startOnWorkTask: (workTaskId: string) => post<TimeEntry>(`/work-tasks/${workTaskId}/timer/start`),
   update: (id: string, b: { minutes: number; workDate: string; note?: string }) => put<TimeEntry>(`/time/${id}`, b),
   remove: (id: string) => del(`/time/${id}`),
   start: (taskId: string) => post<TimeEntry>(`/tasks/${taskId}/timer/start`),
@@ -355,9 +363,14 @@ export const webhookApi = {
   retry: (id: string, deliveryId: string) => post(`/webhooks/${id}/deliveries/${deliveryId}/retry`),
 };
 
-export const teamViewApi = {
-  get: () => get<MyTeam>('/my-team'),
-  person: (userId: string) => get<TeamPerson>(`/my-team/${userId}`),
+export interface WorkItemFilters { kinds?: WorkItemKind[]; open?: boolean; projectId?: string; dueFrom?: string; dueTo?: string; overdue?: boolean; q?: string; limit?: number }
+/** Work of every kind in one shape: My work and the workload views. */
+export const workItemApi = {
+  /** Everything assigned to me: project tasks, test issues, action items and operational work. */
+  mine: (f: WorkItemFilters = {}) => get<WorkItem[]>('/my-work', { ...f, kinds: f.kinds?.length ? f.kinds.join(',') : undefined }),
+  /** Open work per person: my reporting line, the whole workspace (with broad reports access) or just me. */
+  workload: (scope?: WorkloadScope) => get<Workload>('/workload', { scope }),
+  person: (userId: string, scope?: WorkloadScope) => get<WorkloadPersonDetail>(`/workload/${userId}`, { scope }),
 };
 
 export const platformApi = {
@@ -435,7 +448,7 @@ export const workApi = {
   },
 
   comments: (id: string) => get<WorkComment[]>(`/work-tasks/${id}/comments`),
-  addComment: (id: string, body: string) => post<WorkComment>(`/work-tasks/${id}/comments`, { body }),
+  addComment: (id: string, body: string, mentionUserIds?: string[]) => post<WorkComment>(`/work-tasks/${id}/comments`, { body, mentionUserIds: mentionUserIds ?? null }),
   updateComment: (id: string, commentId: string, body: string) => put<WorkComment>(`/work-tasks/${id}/comments/${commentId}`, { body }),
   deleteComment: (id: string, commentId: string) => del<void>(`/work-tasks/${id}/comments/${commentId}`),
   history: (id: string) => get<WorkActivity[]>(`/work-tasks/${id}/history`),

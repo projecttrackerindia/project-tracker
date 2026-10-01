@@ -54,14 +54,16 @@ export function TimesheetPage() {
   const entries = useMemo(() => (d ? (onlyDates ? d.entries.filter((e) => onlyDates.has(e.workDate)) : d.entries) : []), [d, onlyDates]);
   const totalMinutes = useMemo(() => entries.filter((e) => !e.isRunning).reduce((s, e) => s + e.minutes, 0), [entries]);
   const loggedDays = byDay.filter((x) => x.minutes > 0).length || byDay.length || 1;
+  const workMinutes = useMemo(() => entries.filter((e) => !e.isRunning && e.kind === 'work').reduce((s, e) => s + e.minutes, 0), [entries]);
 
   const byTask = useMemo(() => {
     const map = new Map<string, { key: string; title: string; minutes: number }>();
     for (const e of entries) {
       if (e.isRunning) continue;
-      const row = map.get(e.taskId) ?? { key: e.taskKey, title: e.taskTitle, minutes: 0 };
+      const id = e.taskId ?? e.workTaskId ?? e.id;
+      const row = map.get(id) ?? { key: e.taskKey, title: e.taskTitle, minutes: 0 };
       row.minutes += e.minutes;
-      map.set(e.taskId, row);
+      map.set(id, row);
     }
     return [...map.values()].sort((a, b) => b.minutes - a.minutes).slice(0, 8).reverse();
   }, [entries]);
@@ -71,7 +73,7 @@ export function TimesheetPage() {
 
   return (
     <>
-      <PageHead title="Timesheet" sub={userId && d ? `${d.user.name}’s time` : 'The time you logged, by day.'} />
+      <PageHead title="Timesheet" sub={userId && d ? `${d.user.name}’s time on project tasks and operational work` : 'The time you logged on project tasks and operational work, by day.'} />
       <div className="toolbar" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <div className="seg" role="group" aria-label="Date selection mode">
           {([['single', 'calendar', 'Date'], ['range', 'arrowRight', 'Range'], ['multiple', 'grid', 'Dates']] as const).map(([m, icon, label]) => (
@@ -111,6 +113,8 @@ export function TimesheetPage() {
             <StatCard value={formatMinutes(totalMinutes)} label="Total logged" />
             <StatCard value={entries.filter((e) => !e.isRunning).length} label="Entries" />
             <StatCard value={formatMinutes(Math.round(totalMinutes / loggedDays))} label="Avg per day logged" />
+            <StatCard value={formatMinutes(totalMinutes - workMinutes)} label="On project tasks" />
+            <StatCard value={formatMinutes(workMinutes)} label="On operational work" />
           </div>
           <div className="card mb-22">
             <div className="card-head"><h3>Hours by day</h3></div>
@@ -132,7 +136,7 @@ export function TimesheetPage() {
           </div>
           {byTask.length > 0 && (
             <div className="card mb-22">
-              <div className="card-head"><div><h3>Where the time went</h3><p>Top tasks by time logged in this range</p></div></div>
+              <div className="card-head"><div><h3>Where the time went</h3><p>Top tasks and operational work by time logged in this range</p></div></div>
               <div className="card-body">
                 <div style={{ height: Math.max(120, byTask.length * 34) }}>
                   <ResponsiveContainer width="100%" height="100%">
@@ -153,13 +157,14 @@ export function TimesheetPage() {
           <div className="card">
             <div className="card-head"><h3>Entries</h3></div>
             <div className="card-body">
-              {entries.length === 0 ? <EmptyState icon="clock" title="No time logged" text="Start a timer or log time from any task." /> : (
+              {entries.length === 0 ? <EmptyState icon="clock" title="No time logged" text="Start a timer or log time from any project task or piece of operational work." /> : (
                 <div className="time-list" style={{ marginTop: 0 }}>
                   {entries.map((e: TimeEntry) => (
                     <div className="time-row" key={e.id}>
                       <span className="time-min">{e.isRunning ? 'running' : formatMinutes(e.minutes)}</span>
                       <span className="time-what">
-                        <Link className="link" to={`/projects/${e.projectId}?task=${e.taskId}`}>{e.taskKey}</Link> {e.taskTitle} · {formatDate(e.workDate)}
+                        <Link className="link" to={e.kind === 'work' ? `/operations?task=${e.workTaskId}` : `/projects/${e.projectId}?task=${e.taskId}`}>{e.taskKey}</Link> {e.taskTitle} · {formatDate(e.workDate)}
+                        {e.kind === 'work' && <span className="badge badge-warning" style={{ marginLeft: 6 }}>Operational</span>}
                         {e.note ? <span className="muted"> — {e.note}</span> : null}
                       </span>
                     </div>

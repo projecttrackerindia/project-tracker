@@ -14,7 +14,7 @@ const HEALTH_LABEL: Record<ProjectHealth, string> = { OnTrack: 'On track', AtRis
 const days = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'}`;
 
 /**
- * Project Status presentation page: the projects organized by group on the left (collapsed accordions), and for the selected project a clear
+ * Portfolio (formerly Project Status), the presentation page: the projects organized by group on the left (collapsed accordions), and for the selected project a clear
  * status view on the right: its dates, its tasks, and every change of a delivery date with who / when / from / to / why / what it depended on.
  */
 export function ProjectStatusPage() {
@@ -66,7 +66,7 @@ export function ProjectStatusPage() {
         {selected ? <StatusPanel key={selected} projectId={selected} onOpenTask={setTaskId} onActionItems={() => setActionsOpen(true)} /> : (
           <div className="ps-placeholder">
             <Icon name="monitor" size={40} />
-            <h2>Project status</h2>
+            <h2>Portfolio</h2>
             <p>Open a group on the left and choose a project to see where it stands: its dates, its tasks, and any delay or change to the delivery date.</p>
           </div>
         )}

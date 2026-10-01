@@ -12,6 +12,8 @@ import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { formatMinutes } from '../time/time';
 import { TaskModal } from '../tasks/TaskModal';
 import { ProjectFormModal } from '../projects/ProjectFormModal';
+import { WorkTaskModal } from '../work/WorkTaskModal';
+import { WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from '../workitems/workItems';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = { Todo: '#38bdf8', Active: '#8b5cf6', Done: '#34d399', Cancelled: '#9aa0b5' };
 const CATEGORY_LABEL: Record<StatusCategory, string> = { Todo: 'To do', Active: 'In progress', Done: 'Done', Cancelled: 'Cancelled' };
@@ -36,9 +38,12 @@ export function DashboardPage() {
   const canCreateTask = useCan('tasks.create');
   const canCreateProject = useCan('projects.create');
   const [taskModal, setTaskModal] = useState<{ id?: string } | null>(null);
+  const [workModal, setWorkModal] = useState<string | null>(null);
+  const kinds = useVisibleKinds();
   const [projectModal, setProjectModal] = useState(false);
   const [showTasks, showProjects, showActivity, showMembers] = [useModule('tasks') > 0, useModule('projects') > 0, useModule('activity') > 0, useModule('members') > 0];
-  const canReports = useCan('reports.view') && useModule('reports') > 0;
+  const permReports = useCan('reports.view'), modReports = useModule('reports');
+  const canReports = permReports && modReports > 0;
   const q = useWsQuery(['dashboard'], insightApi.dashboard);
   const reportQ = useWsQuery(['dashboard-report'], () => insightApi.report(14), { enabled: canReports });
   const showWork = useModule('work') > 0;
@@ -47,6 +52,12 @@ export function DashboardPage() {
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const { counts: c, projects, activity } = q.data;
+  const myWork = q.data.myWork ?? [];
+  const openItem = (i: WorkRowItem) => {
+    if (i.kind === 'Task') setTaskModal({ id: i.id });
+    else if (i.kind === 'Operational') setWorkModal(i.id);
+    else nav(workItemLink(i));
+  };
 
   const trend = reportQ.data?.completedPerDay.map((d) => ({ label: formatDateShort(d.date), count: d.count })) ?? [];
   const statusDist = (reportQ.data?.statusDistribution ?? []).filter((s) => s.count > 0);
@@ -60,19 +71,21 @@ export function DashboardPage() {
       </PageHead>
 
       <div className="stat-grid">
-        {showTasks && <>
-          <StatCard icon="calendar" tone="blue" value={c.myDueToday} label="Due today" foot="assigned to you" />
+        {kinds.length > 0 && <>
+          <StatCard icon="calendar" tone="blue" value={c.myDueToday} label="Due today" foot="Assigned to you, every kind" />
           <StatCard icon="checkCircle" tone="green" value={c.myCompletedToday} label="Completed today" foot="Keep the streak going" />
-          <StatCard icon="clock" tone="amber" value={c.myOpen} label="My open tasks" foot={`${c.openTasks} open in workspace`} />
-          <StatCard icon="alert" tone="red" value={c.myOverdue} label="My overdue tasks" foot={c.myOverdue ? 'Needs attention' : 'All caught up'} />
+          <Link className="stat-card" to="/my-work" style={{ display: 'block' }}>
+            <div className="stat-top"><div className="stat-icon amber"><Icon name="inbox" /></div></div>
+            <div className="stat-value">{c.myOpen}</div><div className="stat-label">My open work</div><div className="stat-foot">{showTasks ? `${c.openTasks} open project task${c.openTasks === 1 ? '' : 's'} in the workspace` : 'Assigned to you'}</div>
+          </Link>
+          <Link className="stat-card" to="/my-work?overdue=1" style={{ display: 'block' }}>
+            <div className="stat-top"><div className="stat-icon red"><Icon name="alert" /></div></div>
+            <div className="stat-value">{c.myOverdue}</div><div className="stat-label">My overdue work</div><div className="stat-foot">{c.myOverdue ? 'Needs attention' : 'All caught up'}</div>
+          </Link>
           <StatCard icon="clock" tone="purple" value={formatMinutes(c.myLoggedMinutesThisWeek)} label="Logged this week" foot="Time tracked so far" />
         </>}
         {showWork && workQ.data && <>
-          <Link className="stat-card" to="/work/mine" style={{ display: 'block' }}>
-            <div className="stat-top"><div className="stat-icon blue"><Icon name="bolt" /></div></div>
-            <div className="stat-value">{workQ.data.mineOpen}</div><div className="stat-label">My work tasks</div><div className="stat-foot">{workQ.data.mineOverdue ? `${workQ.data.mineOverdue} overdue` : 'Operational work assigned to you'}</div>
-          </Link>
-          <Link className="stat-card" to="/work?open=1" style={{ display: 'block' }}>
+          <Link className="stat-card" to="/operations?open=1" style={{ display: 'block' }}>
             <div className="stat-top"><div className={`stat-icon ${workQ.data.overdue ? 'red' : 'amber'}`}><Icon name="bolt" /></div></div>
             <div className="stat-value">{workQ.data.open}</div><div className="stat-label">Open work tasks</div><div className="stat-foot">{workQ.data.overdue} overdue · {workQ.data.unassigned} unassigned</div>
           </Link>
@@ -88,6 +101,18 @@ export function DashboardPage() {
           <div style={{ marginTop: 12 }}><Progress value={c.overallProgress} /></div>
         </div>}
       </div>
+
+      {kinds.length > 0 && (
+        <div className="card mb-22">
+          <div className="card-head">
+            <div><h3>My work</h3><p>Next up across project tasks, test issues, action items and operational work</p></div>
+            <Link className="btn btn-ghost btn-sm" to="/my-work">Open My work</Link>
+          </div>
+          {myWork.length === 0
+            ? <div className="card-body"><EmptyState icon="checkCircle" title="Nothing is assigned to you" text="Work of every kind assigned to you shows up here." /></div>
+            : <div className="wi-list">{myWork.slice(0, 6).map((w) => <WorkItemRow key={`${w.kind}:${w.id}`} item={w} onOpen={openItem} />)}</div>}
+        </div>
+      )}
 
       {canReports && (trend.length > 0 || statusDist.length > 0) && <div className="grid-2 mb-22">
         {trend.length > 0 && <div className="card">
@@ -176,6 +201,7 @@ export function DashboardPage() {
       </div>}
 
       {taskModal && <TaskModal taskId={taskModal.id} onClose={() => setTaskModal(null)} />}
+      {workModal && <WorkTaskModal taskId={workModal} onClose={() => setWorkModal(null)} />}
       {projectModal && <ProjectFormModal onClose={() => setProjectModal(false)} onSaved={(id) => nav(`/projects/${id}`)} />}
     </>
   );

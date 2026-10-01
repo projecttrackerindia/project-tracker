@@ -41,7 +41,7 @@ export function ApiKeySettings() {
         {included && <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New key</button>}
       </div>
       <div className="card-body">
-        {!included && <div className="notice">API keys are part of the Business plan and above. <Link className="link" to="/billing">See plans</Link></div>}
+        {!included && <div className="notice">API keys are part of the Business plan and above. <Link className="link" to="/settings/billing">See plans</Link></div>}
         {included && keys.length === 0 && !q.isLoading && <EmptyState icon="lock" title="No API keys" text="Create a key for each tool so you can revoke them separately." />}
         {keys.length > 0 && (
           <div className="cf-list">

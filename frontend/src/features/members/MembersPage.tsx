@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { orgApi, workspaceApi } from '../../api/endpoints';
 import type { Member, Role } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, EmptyState, ErrorState, Field, Modal, PageHead, PageLoader, RoleBadge, SubmitButton, Tabs } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, Field, Modal, PageHead, PageLoader, RoleBadge, SubmitButton } from '../../components/ui';
 import { PERMISSION_LABELS, ROLES, formatDate, limitLabel, timeAgo } from '../../lib/format';
 import { PasswordChecklist, generatePassword, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -14,34 +14,40 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { Select } from '../../components/Select';
 
 const RANK: Record<Role, number> = { Guest: 1, Member: 2, Manager: 3, Admin: 4, Owner: 5 };
-type Tab = 'members' | 'invitations' | 'roles';
 
-export function MembersPage() {
+/** People → Directory: everyone in the workspace, their access level and job role; invite or create people from here. */
+export function DirectoryPanel() {
   const me = useAuth((s) => s.ctx!);
   const canInvite = useCan('members.invite');
   const canCreate = useCan('members.manage');
-  const canOrg = useCan('org.manage');
-  const [tab, setTab] = useState<Tab>('members');
   const [inviting, setInviting] = useState(false);
   const [creating, setCreating] = useState(false);
   const members = useWsQuery(['members'], workspaceApi.members);
   const limit = useEntitlement('MAX_MEMBERS');
-  const tabs = [{ id: 'members' as Tab, label: 'Members', icon: 'users' as const },
-    ...(canInvite ? [{ id: 'invitations' as Tab, label: 'Invitations', icon: 'mail' as const }] : []),
-    ...(canOrg ? [{ id: 'roles' as Tab, label: 'Roles & permissions', icon: 'shield' as const }] : [])];
 
   return (
     <>
-      <PageHead title="Members" sub={members.data ? `${members.data.length} of ${limitLabel(limit)} member${limit === 1 ? '' : 's'} in ${me.current?.name}` : ' '}>
+      <PageHead title="Directory" sub={members.data ? `${members.data.length} of ${limitLabel(limit)} member${limit === 1 ? '' : 's'} in ${me.current?.name}` : ' '}>
         {canCreate && <button className="btn btn-ghost" onClick={() => setCreating(true)}><Icon name="userPlus" /> Create user</button>}
         {canInvite && <button className="btn btn-primary" onClick={() => setInviting(true)}><Icon name="plus" /> Invite member</button>}
       </PageHead>
-      <div style={{ marginBottom: 18 }}><Tabs value={tab} onChange={setTab} tabs={tabs} /></div>
-      {tab === 'members' && <MembersTable />}
-      {tab === 'invitations' && <Invitations onInvite={() => setInviting(true)} />}
-      {tab === 'roles' && <RolesMatrix />}
+      <MembersTable />
       {inviting && <InviteModal onClose={() => setInviting(false)} />}
       {creating && <CreateUserModal onClose={() => setCreating(false)} onInviteInstead={() => { setCreating(false); setInviting(true); }} />}
+    </>
+  );
+}
+
+/** People → Invitations: the ones still waiting to be accepted. */
+export function InvitationsPanel() {
+  const [inviting, setInviting] = useState(false);
+  return (
+    <>
+      <PageHead title="Invitations" sub="Sent invitations that have not been accepted yet.">
+        <button className="btn btn-primary" onClick={() => setInviting(true)}><Icon name="plus" /> Invite member</button>
+      </PageHead>
+      <Invitations onInvite={() => setInviting(true)} />
+      {inviting && <InviteModal onClose={() => setInviting(false)} />}
     </>
   );
 }
@@ -73,7 +79,7 @@ function MembersTable() {
   return (
     <div className="card">
       <div className="table-wrap"><table>
-        <thead><tr><th>Member</th><th>Role</th><th>Job role</th><th>Joined</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
+        <thead><tr><th>Member</th><th title="Owner, Admin, Manager, Member or Guest">Access level</th><th title="Their place on the org chart">Job role</th><th>Joined</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
         <tbody>
           {q.data.map((m) => {
             const editable = canManage && m.role !== 'Owner' && m.userId !== meId && (myRole === 'Owner' || RANK[m.role] < RANK[myRole]);
@@ -142,12 +148,12 @@ function InviteModal({ onClose }: { onClose: () => void }) {
     <Modal size="sm" title="Invite a member" subtitle="They'll receive an email with a link to join." onClose={onClose}
       onSubmit={(e) => { e.preventDefault(); if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setError('Enter a valid email address.'); return; } setError(null); send.mutate(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={send.isPending}>Send invitation</SubmitButton></>}>
-      {error && <div className="form-error" role="alert">{error} {limitHit && <Link className="link" to="/billing" onClick={onClose}>View plans</Link>}</div>}
+      {error && <div className="form-error" role="alert">{error} {limitHit && <Link className="link" to="/settings/billing" onClick={onClose}>View plans</Link>}</div>}
       <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
         <Field label="Email address" required><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
-        <Field label="Role" hint="Guests only see projects they are added to."><Select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>{roles.map((r) => <option key={r}>{r}</option>)}</Select></Field>
+        <Field label="Access level" hint="Guests only see projects they are added to."><Select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>{roles.map((r) => <option key={r}>{r}</option>)}</Select></Field>
         {canPlace && (chart.data?.roles.some((r) => !r.isDeleted) ?? false) && <>
-          <Field label="Job role" hint="Places them on the organization chart. The role's access settings apply from their first sign-in."><Select className="select" value={jobRole} onChange={(e) => setJobRole(e.target.value)}>
+          <Field label="Job role" hint="Places them on the org chart. If the job role has its own access settings, those apply from their first sign-in."><Select className="select" value={jobRole} onChange={(e) => setJobRole(e.target.value)}>
             <option value="">— Not placed yet —</option>{chart.data!.roles.filter((r) => !r.isDeleted).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </Select></Field>
           <Field label="Reports to"><Select className="select" value={boss} onChange={(e) => setBoss(e.target.value)}>
@@ -210,15 +216,15 @@ function CreateUserModal({ onClose, onInviteInstead }: { onClose: () => void; on
         <div className="form-error" role="alert">
           {errors.form}{' '}
           {exists && <button type="button" className="link" onClick={onInviteInstead}>Send an invitation instead</button>}
-          {errors.form.includes('plan') && <Link className="link" to="/billing" onClick={onClose}>View plans</Link>}
+          {errors.form.includes('plan') && <Link className="link" to="/settings/billing" onClick={onClose}>View plans</Link>}
         </div>
       )}
       <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
         <Field label="Full name" required error={errors.displayName}><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus /></Field>
         <Field label="Email address" required error={errors.email}><input className="input" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
-        <Field label="Role" hint="Guests only see projects they are added to."><Select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>{roles.map((r) => <option key={r}>{r}</option>)}</Select></Field>
+        <Field label="Access level" hint="Guests only see projects they are added to."><Select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>{roles.map((r) => <option key={r}>{r}</option>)}</Select></Field>
         {canPlace && (chart.data?.roles.some((r) => !r.isDeleted) ?? false) && <>
-          <Field label="Job role" hint="Places them on the organization chart."><Select className="select" value={jobRole} onChange={(e) => setJobRole(e.target.value)}>
+          <Field label="Job role" hint="Places them on the org chart."><Select className="select" value={jobRole} onChange={(e) => setJobRole(e.target.value)}>
             <option value="">— Not placed yet —</option>{chart.data!.roles.filter((r) => !r.isDeleted).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </Select></Field>
           <Field label="Reports to"><Select className="select" value={boss} onChange={(e) => setBoss(e.target.value)}>
@@ -261,7 +267,11 @@ function CreatedCredentials({ name, email, role, password, onDone }: { name: str
   );
 }
 
-function RolesMatrix() {
+/**
+ * Workspace settings → Roles & access → Access levels: what each access level allows by default. It does not decide anything for
+ * Managers, Members and Guests whose job role has its own access settings, so it names those people.
+ */
+export function AccessLevelMatrix() {
   const wid = useWorkspaceId();
   const q = useWsQuery(['permissions'], workspaceApi.permissions);
   if (q.isLoading) return <PageLoader />;
@@ -275,8 +285,17 @@ function RolesMatrix() {
 
   return (
     <div className="card">
-      <div className="card-head"><div><h3>Roles & permissions</h3><p>Capabilities granted to each role. Owners always have full access.</p></div></div>
-      {!m.canEdit && <div className="card-body" style={{ paddingBottom: 0 }}><div className="form-warn">Editing role permissions is part of the Business plan. <Link className="link" to="/billing">View plans</Link></div></div>}
+      <div className="card-head"><div><h3>Access-level defaults</h3><p>What each access level allows. Owners always have full access.</p></div></div>
+      {((m.notAppliedTo?.length ?? 0) > 0 || !m.canEdit) && (
+        <div className="card-body" style={{ paddingBottom: 0 }}>
+          {(m.notAppliedTo?.length ?? 0) > 0 && (
+            <div className="form-warn" role="note" style={{ marginTop: 0 }}>
+              <Icon name="info" size={14} /> <span><b>Not used for {m.notAppliedTo!.length} {m.notAppliedTo!.length === 1 ? 'person' : 'people'}.</b> Their job role has its own access settings, which decide everything for them instead: {m.notAppliedTo!.join(', ')}. Change those under Job roles.</span>
+            </div>
+          )}
+          {!m.canEdit && <div className="form-warn">Editing access-level defaults is part of the Business plan. <Link className="link" to="/settings/billing">View plans</Link></div>}
+        </div>
+      )}
       <div className="table-wrap"><table className="matrix" style={{ minWidth: 560 }}>
         <thead><tr><th>Capability</th>{m.roles.map((r) => <th key={r}>{r}</th>)}</tr></thead>
         <tbody>{m.permissions.map((p) => (

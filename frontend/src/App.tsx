@@ -7,28 +7,25 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { SuccessCurtain } from './components/SuccessCurtain';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { AdminPage } from './features/admin/AdminPage';
-import { ActivityPage, AuditPage, NotificationsPage } from './features/activity/ActivityPages';
+import { ActivityPage, NotificationsPage } from './features/activity/ActivityPages';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
 import { AcceptInvitePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './features/auth/AuthPages';
-import { BillingPage } from './features/billing/BillingPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
 import { ChatPage } from './features/chat/ChatPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { MailboxPage } from './features/dev/MailboxPage';
-import { MembersPage } from './features/members/MembersPage';
-import { OrgPage } from './features/organization/OrgPage';
+import { PeoplePage } from './features/people/PeoplePage';
 import { ProjectDetailPage } from './features/projects/ProjectDetailPage';
 import { ProjectsPage } from './features/projects/ProjectsPage';
-import { ProjectGroupsPage } from './features/projects/ProjectGroupsPage';
 import { ProjectStatusPage } from './features/projects/ProjectStatusPage';
 import { ReportsPage } from './features/reports/ReportsPage';
-import { SettingsPage } from './features/settings/SettingsPage';
+import { AccountPage, WorkspaceSettingsPage } from './features/settings/SettingsPage';
 import { TwoStepRow } from './features/settings/TwoStep';
 import { TimesheetPage } from './features/time/TimesheetPage';
 import { WorkTasksPage } from './features/work/WorkTasksPage';
-import { WorkReportsPage } from './features/work/WorkReportsPage';
-import { MyTeamPage } from './features/team/MyTeamPage';
-import { TeamsPage } from './features/teams/TeamsPage';
+import { MyWorkPage } from './features/workitems/MyWorkPage';
+import { WorkloadPage } from './features/workitems/WorkloadPage';
+import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
 import { toast } from './stores/ui';
 import { useAuth, useCan, useIsPersonal, useModule } from './stores/auth';
@@ -171,13 +168,26 @@ function RequireAuth() {
   if (ctx?.user.mustChangePassword) return <MustChangePassword />;
   if (!ctx?.current) return <NoWorkspace />;
   // Platform administrators have an admin-only interface; workspace pages are for customers.
-  if (ctx.user.isPlatformAdmin && !loc.pathname.startsWith('/admin') && loc.pathname !== '/settings') return <Navigate to="/admin" replace />;
+  if (ctx.user.isPlatformAdmin && !loc.pathname.startsWith('/admin') && !loc.pathname.startsWith('/account') && loc.pathname !== '/settings') return <Navigate to="/admin" replace />;
   return <AppLayout />;
 }
 
 /** Hide pages the current role / workspace type cannot use, instead of showing a screen of 403s. */
 function Guard({ allow, children }: { allow: boolean; children: React.ReactNode }) {
   return allow ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/**
+ * An address from before the navigation was regrouped: go to where that page lives now, keeping the query (a project, a task ...)
+ * and adding any the new place needs, so bookmarks and links in old notifications and emails keep working.
+ */
+function Moved({ to }: { to: string }) {
+  const loc = useLocation();
+  const [path, extra] = to.split('?');
+  const q = new URLSearchParams(loc.search);
+  new URLSearchParams(extra ?? '').forEach((v, k) => q.set(k, v));
+  const s = q.toString();
+  return <Navigate to={`${path}${s ? `?${s}` : ''}`} replace />;
 }
 
 function NotFound() {
@@ -191,12 +201,12 @@ function NotFound() {
 function AppRoutes() {
   const personal = useIsPersonal();
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
-  const mReports = useModule('reports') > 0, mAudit = useModule('audit') > 0, mTasks = useModule('tasks') > 0, mProjects = useModule('projects') > 0, mWork = useModule('work') > 0;
-  const mCalendar = useModule('calendar') > 0, mTeams = useModule('teams') > 0, mMembers = useModule('members') > 0, mActivity = useModule('activity') > 0;
-  const mBilling = useModule('billing') > 0, mOrg = useModule('organization') > 0;
-  const canReports = useCan('reports.view') && mReports;
-  const canAudit = useCan('audit.view') && mAudit;
+  const mReports = useModule('reports') > 0, mTasks = useModule('tasks') > 0, mProjects = useModule('projects') > 0, mWork = useModule('work') > 0;
+  const mCalendar = useModule('calendar') > 0, mActivity = useModule('activity') > 0;
+  const permReports = useCan('reports.view'), broad = useCan('reports.broad');
+  const canReports = permReports && mReports;
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
+  const kinds = useVisibleKinds();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -208,29 +218,48 @@ function AppRoutes() {
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       <Route element={<RequireAuth />}>
+        {/* Home */}
         <Route index element={<DashboardPage />} />
-        <Route path="work" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
-        <Route path="work/mine" element={<Guard allow={mWork}><WorkTasksPage mine /></Guard>} />
-        <Route path="work/reports" element={<Guard allow={mWork}><WorkReportsPage /></Guard>} />
-        <Route path="timesheet" element={<Guard allow={mTasks}><TimesheetPage /></Guard>} />
-        <Route path="my-team" element={<Guard allow={mTasks && hasReports}><MyTeamPage /></Guard>} />
-        <Route path="projects" element={<Guard allow={mProjects}><ProjectsPage /></Guard>} />
-        <Route path="projects/:id" element={<Guard allow={mProjects}><ProjectDetailPage /></Guard>} />
-        <Route path="project-status" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
-        <Route path="project-groups" element={<Guard allow={mProjects}><ProjectGroupsPage /></Guard>} />
+        <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
+        <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
         <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
-        <Route path="teams" element={<Guard allow={!personal && mTeams}><TeamsPage /></Guard>} />
-        <Route path="members" element={<Guard allow={!personal && mMembers}><MembersPage /></Guard>} />
-        <Route path="organization" element={<Guard allow={!personal && !isGuest && mOrg}><OrgPage /></Guard>} />
-        <Route path="reports" element={<Guard allow={canReports}><ReportsPage /></Guard>} />
+        {/* Delivery */}
+        <Route path="projects" element={<Guard allow={mProjects}><ProjectsPage /></Guard>} />
+        <Route path="projects/:id" element={<Guard allow={mProjects}><ProjectDetailPage /></Guard>} />
+        <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
+        <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
+        {/* Insights */}
+        <Route path="workload" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage /></Guard>} />
+        <Route path="reports" element={<Guard allow={canReports || mWork}><ReportsPage section="generate" /></Guard>} />
+        <Route path="reports/operations" element={<Guard allow={mWork}><ReportsPage section="operations" /></Guard>} />
         <Route path="activity" element={<Guard allow={mActivity}><ActivityPage /></Guard>} />
-        <Route path="audit" element={<Guard allow={!personal && canAudit}><AuditPage /></Guard>} />
+        {/* People (each section checks its own access) */}
+        <Route path="people" element={<PeoplePage section="directory" />} />
+        <Route path="people/invitations" element={<PeoplePage section="invitations" />} />
+        <Route path="people/org-chart" element={<PeoplePage section="org-chart" />} />
+        <Route path="people/teams" element={<PeoplePage section="teams" />} />
+        {/* Workspace settings and My account */}
+        <Route path="settings" element={<WorkspaceSettingsPage />} />
+        <Route path="settings/:section" element={<WorkspaceSettingsPage />} />
+        <Route path="account" element={<AccountPage section="profile" />} />
+        <Route path="account/notifications" element={<AccountPage section="notifications" />} />
+        <Route path="account/security" element={<AccountPage section="security" />} />
         <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="billing" element={<Guard allow={mBilling}><BillingPage /></Guard>} />
-        <Route path="settings" element={<SettingsPage />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
+        {/* Where pages used to be */}
+        <Route path="work" element={<Moved to="/operations" />} />
+        <Route path="work/mine" element={<Moved to="/my-work?kind=Operational" />} />
+        <Route path="work/reports" element={<Moved to="/reports/operations" />} />
+        <Route path="my-team" element={<Moved to="/workload" />} />
+        <Route path="project-status" element={<Moved to="/portfolio" />} />
+        <Route path="project-groups" element={<Moved to="/settings/project-groups" />} />
+        <Route path="members" element={<Moved to="/people" />} />
+        <Route path="teams" element={<Moved to="/people/teams" />} />
+        <Route path="organization" element={<Moved to="/people/org-chart" />} />
+        <Route path="billing" element={<Moved to="/settings/billing" />} />
+        <Route path="audit" element={<Moved to="/settings/audit" />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

@@ -1,15 +1,21 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
-import { Badge, Field, Modal, PageHead, PageLoader, SubmitButton } from '../../components/ui';
+import { Badge, Field, Modal, PageHead, PageLoader, SectionLayout, SubmitButton, type SectionLink } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useAuth, useCan, useIsPersonal, useWorkspaceId } from '../../stores/auth';
+import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast, useUi } from '../../stores/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
+import { AuditPage } from '../activity/ActivityPages';
+import { BillingPage } from '../billing/BillingPage';
+import { RolesAccessPage } from '../organization/RolesAccess';
+import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
+import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
+import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
 import { NotificationSettings } from './NotificationSettings';
 import { TwoStepRow } from './TwoStep';
 import { PrivacyRow } from './Privacy';
@@ -18,6 +24,7 @@ import { CustomFieldSettings } from './CustomFieldSettings';
 import { WorkTypeSettings } from './WorkTypeSettings';
 import { ApiKeySettings } from './ApiKeySettings';
 import { WebhookSettings } from './WebhookSettings';
+import { LabelSettings } from './LabelSettings';
 import { Select } from '../../components/Select';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
@@ -29,37 +36,41 @@ function browserOf(ua: string | null) {
   return `${browser}${os ? ` on ${os}` : ''}`;
 }
 
-export function SettingsPage() {
+// ================================================================== My account (personal, from the avatar menu)
+
+export type AccountSection = 'profile' | 'notifications' | 'security';
+
+/** My account: everything about me, whatever workspace I am in. Workspace administration lives in Workspace settings. */
+export function AccountPage({ section }: { section: AccountSection }) {
+  const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const groups: { items: SectionLink[] }[] = [{ items: [
+    { to: '/account', label: 'Profile', icon: 'user' },
+    ...(!isPlatformAdmin ? [{ to: '/account/notifications', label: 'Notifications', icon: 'bell' as const }] : []),
+    { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
+  ] }];
+  return (
+    <SectionLayout title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
+      {section === 'profile' && <ProfileSection />}
+      {section === 'notifications' && <NotificationSettings />}
+      {section === 'security' && <SecuritySection />}
+    </SectionLayout>
+  );
+}
+
+function ProfileSection() {
   const ctx = useAuth((s) => s.ctx)!;
   const reload = useAuth((s) => s.reloadContext);
-  const logout = useAuth((s) => s.logout);
-  const wid = useWorkspaceId();
-  const nav = useNavigate();
   const { theme, toggleTheme } = useUi();
-  const personal = useIsPersonal();
-  const canOrg = useCan('org.manage');
   const [name, setName] = useState(ctx.user.displayName);
   const [tz, setTz] = useState(ctx.user.timeZone);
-  const [wsName, setWsName] = useState(ctx.current?.name ?? '');
-  const [wsDesc, setWsDesc] = useState(ctx.current?.description ?? '');
-  const [pwOpen, setPwOpen] = useState(false);
-  const sessions = useWsQuery(['sessions'], meApi.sessions);
-
   const profile = useMutation({
     mutationFn: () => meApi.updateProfile({ displayName: name.trim(), timeZone: tz }),
     onSuccess: async () => { toast('Profile saved.'); await reload(); },
     onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not save your profile.', 'error'),
   });
-  const workspace = useMutation({
-    mutationFn: () => workspaceApi.update({ name: wsName.trim(), description: wsDesc.trim() || undefined }),
-    onSuccess: async () => { toast('Workspace updated.'); await reload(); },
-    onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not update the workspace.', 'error'),
-  });
-
   return (
     <>
-      <PageHead title="Settings" sub="Your profile, appearance, security and workspace preferences" />
-
+      <PageHead title="Profile" sub="How you appear to others, and how dates are shown to you." />
       <div className="card mb-22">
         <div className="card-head"><h3>Profile</h3></div>
         <div className="card-body">
@@ -71,7 +82,6 @@ export function SettingsPage() {
           </form>
         </div>
       </div>
-
       <div className="card mb-22">
         <div className="card-head"><h3>Appearance</h3></div>
         <div className="card-body"><div className="setting-row">
@@ -79,35 +89,19 @@ export function SettingsPage() {
           <button className={`switch ${theme === 'dark' ? 'on' : ''}`} onClick={toggleTheme} role="switch" aria-checked={theme === 'dark'} aria-label="Toggle dark mode" />
         </div></div>
       </div>
+    </>
+  );
+}
 
-      {ctx.current && !ctx.user.isPlatformAdmin && (
-        <div className="card mb-22">
-          <div className="card-head"><div><h3>Workspace</h3><p>{ctx.current.type === 'Personal' ? 'Your personal workspace' : 'Organization settings'} · your role: {ctx.current.role}</p></div></div>
-          <div className="card-body">
-            <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (wsName.trim().length >= 2) workspace.mutate(); }}>
-              <Field label="Workspace name"><input className="input" value={wsName} onChange={(e) => setWsName(e.target.value)} disabled={!canOrg} maxLength={80} /></Field>
-              <Field label="Plan"><div className="row" style={{ height: 38 }}><Badge tone="purple">{ctx.current.plan.name}</Badge><button type="button" className="link" onClick={() => nav('/billing')}>Manage billing</button></div></Field>
-              <Field label="Description" full><textarea className="textarea" value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} disabled={!canOrg} maxLength={500} /></Field>
-              {canOrg && <div className="full"><SubmitButton busy={workspace.isPending}>Save workspace</SubmitButton></div>}
-            </form>
-            {personal && <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Want to collaborate? Use the workspace menu in the top bar to create an organization.</p>}
-          </div>
-        </div>
-      )}
-
-      <PrioritySettings />
-      <WorkTypeSettings />
-
-      <CustomFieldSettings />
-
-      <ApiKeySettings />
-
-      <WebhookSettings />
-
-      <NotificationSettings />
-
+function SecuritySection() {
+  const logout = useAuth((s) => s.logout);
+  const wid = useWorkspaceId();
+  const [pwOpen, setPwOpen] = useState(false);
+  const sessions = useWsQuery(['sessions'], meApi.sessions);
+  return (
+    <>
+      <PageHead title="Sign-in & security" sub="Your password, two-step verification and the devices you are signed in on." />
       <div className="card mb-22">
-        <div className="card-head"><h3>Security</h3></div>
         <div className="card-body">
           <div className="setting-row">
             <div className="setting-info"><h4>Password</h4><p>Changing your password signs you out of your other devices.</p></div>
@@ -137,7 +131,6 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
-
       {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </>
   );
@@ -175,5 +168,100 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         <PasswordChecklist policy={policy} password={next} showHistory />
       </div>
     </Modal>
+  );
+}
+
+// ================================================================== Workspace settings (the gear; administration of this workspace)
+
+export type WorkspaceSection = 'general' | 'access' | 'security' | 'billing' | 'audit'
+  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'api-keys' | 'webhooks';
+
+interface SectionDef extends SectionLink { id: WorkspaceSection; group: 'Workspace' | 'Configuration' | 'Integrations' }
+
+/** The Workspace settings sections the signed-in person may open, in menu order. Empty when they administer nothing. */
+export function useWorkspaceSections(): SectionDef[] {
+  const ctx = useAuth((s) => s.ctx);
+  const personal = useIsPersonal();
+  const can = useAuth((s) => s.ctx?.current?.permissions ?? []);
+  const has = (p: string) => can.includes(p);
+  const [mProjects, mTasks, mWork, mBilling, mAudit] = [useModule('projects'), useModule('tasks'), useModule('work'), useModule('billing'), useModule('audit')];
+  if (!ctx?.current || ctx.user.isPlatformAdmin) return [];
+  const isAdmin = ctx.current.role === 'Owner' || ctx.current.role === 'Admin';
+  const all: (SectionDef & { show: boolean })[] = [
+    { id: 'general', group: 'Workspace', to: '/settings/general', label: 'General', icon: 'building', show: true },
+    { id: 'access', group: 'Workspace', to: '/settings/access', label: 'Roles & access', icon: 'shield', show: !personal && (has('org.manage') || has('access.manage') || has('permissions.manage')) },
+    { id: 'security', group: 'Workspace', to: '/settings/security', label: 'Security', icon: 'lock', show: !personal && has('org.manage') },
+    { id: 'billing', group: 'Workspace', to: '/settings/billing', label: 'Billing', icon: 'card', show: mBilling > 0 },
+    { id: 'audit', group: 'Workspace', to: '/settings/audit', label: 'Audit log', icon: 'activity', show: !personal && has('audit.view') && mAudit > 0 },
+    { id: 'project-groups', group: 'Configuration', to: '/settings/project-groups', label: 'Project groups', icon: 'layers', show: has('projectgroups.manage') && mProjects > 0 },
+    { id: 'timeline-templates', group: 'Configuration', to: '/settings/timeline-templates', label: 'Timeline templates', icon: 'flag', show: has('workflow.manage') && mProjects > 0 },
+    { id: 'labels', group: 'Configuration', to: '/settings/labels', label: 'Labels', icon: 'tag', show: has('labels.manage') && mTasks > 0 },
+    { id: 'priorities', group: 'Configuration', to: '/settings/priorities', label: 'Priorities', icon: 'alert', show: has('workflow.manage') },
+    { id: 'custom-fields', group: 'Configuration', to: '/settings/custom-fields', label: 'Custom fields', icon: 'list', show: has('workflow.manage') && mTasks > 0 },
+    { id: 'work-types', group: 'Configuration', to: '/settings/work-types', label: 'Work types', icon: 'bolt', show: has('work.types.manage') && mWork > 0 },
+    { id: 'api-keys', group: 'Integrations', to: '/settings/api-keys', label: 'API keys', icon: 'lock', show: isAdmin },
+    { id: 'webhooks', group: 'Integrations', to: '/settings/webhooks', label: 'Webhooks', icon: 'send', show: isAdmin },
+  ];
+  const visible = all.filter((s) => s.show);
+  // General on its own is just the workspace's name: not worth a settings area for someone who administers nothing.
+  return visible.length === 1 && !has('org.manage') ? [] : visible;
+}
+
+/** Workspace settings: one place for everything an administrator maintains about this workspace. */
+export function WorkspaceSettingsPage() {
+  const { section } = useParams();
+  const sections = useWorkspaceSections();
+  if (!sections.length) return <Navigate to="/account" replace />;
+  const current = sections.find((s) => s.id === section);
+  if (!current) return <Navigate to={sections[0].to} replace />;
+  const groups = (['Workspace', 'Configuration', 'Integrations'] as const).map((g) => ({ title: g, items: sections.filter((s) => s.group === g) }));
+  return (
+    <SectionLayout title="Workspace settings" sub="How this workspace is set up: access, security, master lists, integrations and billing." groups={groups}>
+      {current.id === 'general' && <GeneralSection />}
+      {current.id === 'access' && <RolesAccessPage />}
+      {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /></>}
+      {current.id === 'billing' && <BillingPage />}
+      {current.id === 'audit' && <AuditPage />}
+      {current.id === 'project-groups' && <ProjectGroupsPage />}
+      {current.id === 'timeline-templates' && <TimelineTemplatesSettings />}
+      {current.id === 'labels' && <LabelSettings />}
+      {current.id === 'priorities' && <><PageHead title="Priorities" sub="The names and colours of the four priority levels." /><PrioritySettings /></>}
+      {current.id === 'custom-fields' && <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /></>}
+      {current.id === 'work-types' && <><PageHead title="Work types" sub="The kinds of operational work people can raise." /><WorkTypeSettings /></>}
+      {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
+      {current.id === 'webhooks' && <><PageHead title="Webhooks" sub="Tell other systems when something changes here." /><WebhookSettings /></>}
+    </SectionLayout>
+  );
+}
+
+function GeneralSection() {
+  const ctx = useAuth((s) => s.ctx)!;
+  const reload = useAuth((s) => s.reloadContext);
+  const personal = useIsPersonal();
+  const canOrg = useCan('org.manage');
+  const seeBilling = useModule('billing') > 0;
+  const [wsName, setWsName] = useState(ctx.current?.name ?? '');
+  const [wsDesc, setWsDesc] = useState(ctx.current?.description ?? '');
+  const workspace = useMutation({
+    mutationFn: () => workspaceApi.update({ name: wsName.trim(), description: wsDesc.trim() || undefined }),
+    onSuccess: async () => { toast('Workspace updated.'); await reload(); },
+    onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not update the workspace.', 'error'),
+  });
+  if (!ctx.current) return null;
+  return (
+    <>
+      <PageHead title="General" sub={`${personal ? 'Your personal workspace' : 'Organization'} · your access level: ${ctx.current.role}`} />
+      <div className="card">
+        <div className="card-body">
+          <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (wsName.trim().length >= 2) workspace.mutate(); }}>
+            <Field label="Workspace name"><input className="input" value={wsName} onChange={(e) => setWsName(e.target.value)} disabled={!canOrg} maxLength={80} /></Field>
+            <Field label="Plan"><div className="row" style={{ height: 38 }}><Badge tone="purple">{ctx.current.plan.name}</Badge>{seeBilling && <Link className="link" to="/settings/billing">Plan and billing</Link>}</div></Field>
+            <Field label="Description" full><textarea className="textarea" value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} disabled={!canOrg} maxLength={500} /></Field>
+            {canOrg && <div className="full"><SubmitButton busy={workspace.isPending}>Save workspace</SubmitButton></div>}
+          </form>
+          {personal && <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Want to collaborate? Use the workspace menu in the top bar to create an organization.</p>}
+        </div>
+      </div>
+    </>
   );
 }

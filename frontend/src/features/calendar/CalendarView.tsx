@@ -9,11 +9,13 @@ import { type SelectMode, activeDates as datesOf, dayClasses, monthCells, nextSe
 import { useWsQuery } from '../../lib/hooks';
 
 const cls = (e: CalendarEvent) =>
-  e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : 'blue';
+  e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
+const TYPE_LABEL: Record<CalendarEvent['type'], string> = { task: 'Task', action: 'Action item', work: 'Operational', project: 'Deadline', milestone: 'Milestone', stage: 'Stage' };
+const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ ', milestone: '⚑ ', stage: '◆ ', action: '✓ ', work: '⚡ ' };
 
-/** Month calendar of task deadlines, project deadlines and lifecycle stage ends. Days can be picked one at a time,
+/** Month calendar of task, action item and operational work deadlines, project deadlines and lifecycle stage ends. Days can be picked one at a time,
  *  as a range (click a start then an end), or as a scattered multi-select — whichever the "Dates" mode is set to. */
-export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectId?: string; mine?: boolean; userId?: string; onOpenTask: (taskId: string, projectId: string | null) => void }) {
+export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }: { projectId?: string; mine?: boolean; userId?: string; onOpenTask: (taskId: string, projectId: string | null) => void; onOpenWork?: (workTaskId: string) => void }) {
   const nav = useNavigate();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
@@ -23,7 +25,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectI
   const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
   // The day the pointer (or keyboard focus) is on: it lights up before it is clicked, and once a range is started the days up to it are previewed.
   const [hover, setHover] = useState<string | null>(null);
-  const [show, setShow] = useState({ task: true, project: true, stage: true, milestone: true });
+  const [show, setShow] = useState({ task: true, action: true, work: true, project: true, stage: true, milestone: true });
 
   const cells = useMemo(() => monthCells(year, month), [month, year]);
 
@@ -57,6 +59,8 @@ export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectI
 
   const open = (e: CalendarEvent) => {
     if (e.type === 'task') onOpenTask(e.id, e.projectId);
+    else if (e.type === 'action' && e.projectId) nav(`/projects/${e.projectId}?tab=actions&action=${e.id}`);
+    else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/operations?task=${e.id}`); }
     else if (e.projectId && e.projectId !== projectId) nav(`/projects/${e.projectId}`);
   };
 
@@ -77,7 +81,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectI
               ))}
             </div>
             <div className="legend">
-              {([['task', 'var(--primary)', 'Tasks'], ['project', 'var(--purple)', 'Project deadlines'], ['stage', 'var(--warning)', 'Stage ends'], ['milestone', 'var(--purple)', 'Milestones']] as const).map(([k, c, label]) => (
+              {([['task', 'var(--primary)', 'Tasks'], ['action', '#0ea5e9', 'Action items'], ['work', '#f97316', 'Operational work'], ['project', 'var(--purple)', 'Project deadlines'], ['stage', 'var(--warning)', 'Stage ends'], ['milestone', 'var(--purple)', 'Milestones']] as const).map(([k, c, label]) => (
                 <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
                   <input type="checkbox" checked={show[k]} onChange={(e) => setShow((s) => ({ ...s, [k]: e.target.checked }))} /><i style={{ background: c }} />{label}
                 </label>
@@ -98,7 +102,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectI
                 <button key={iso} type="button" className={`cal-day ${other ? 'other' : ''} ${iso === today ? 'today' : ''} ${state}`} onClick={() => pickDate(iso)} onMouseEnter={() => setHover(iso)} onFocus={() => setHover(iso)} onBlur={() => setHover(null)} aria-pressed={isSelected} aria-label={`${formatDate(iso)}, ${events.length} events`}>
                   <div className="cal-num">{date.getDate()}</div>
                   <div className="cal-events">
-                    {events.slice(0, 3).map((e) => <div key={e.type + e.id} className={`cal-ev ${cls(e)}`} title={e.title}>{e.type === 'project' || e.type === 'milestone' ? '⚑ ' : e.type === 'stage' ? '◆ ' : ''}{e.title}</div>)}
+                    {events.slice(0, 3).map((e) => <div key={e.type + e.id} className={`cal-ev ${cls(e)}`} title={`${TYPE_LABEL[e.type]}: ${e.title}`}>{PREFIX[e.type] ?? ''}{e.title}</div>)}
                     {events.length > 3 && <div className="cal-more">+{events.length - 3} more</div>}
                   </div>
                 </button>
@@ -122,7 +126,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectI
               <div className="member-list">
                 {selectedEvents.map((e) => (
                   <button key={`${e.date}:${e.type}:${e.id}`} className="member-item" style={{ textAlign: 'left' }} onClick={() => open(e)}>
-                    <span className={`cal-ev ${cls(e)}`} style={{ flexShrink: 0 }}>{e.type === 'task' ? 'Task' : e.type === 'project' ? 'Deadline' : e.type === 'milestone' ? 'Milestone' : 'Stage'}</span>
+                    <span className={`cal-ev ${cls(e)}`} style={{ flexShrink: 0 }}>{TYPE_LABEL[e.type]}</span>
                     <span className="member-main"><span className="member-name">{e.title}</span><span className="member-role">{mode !== 'single' ? `${formatDate(e.date)} · ` : ''}{e.projectName ?? ''}{e.status ? ` · ${e.status}` : ''}{e.overdue ? ' · overdue' : ''}</span></span>
                   </button>
                 ))}
@@ -131,7 +135,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask }: { projectI
           </div>
         </div>
       )}
-      {q.data && q.data.length === 0 && activeDates.size === 0 && <EmptyState icon="calendar" title="Nothing scheduled" text="Tasks with due dates appear here." />}
+      {q.data && q.data.length === 0 && activeDates.size === 0 && <EmptyState icon="calendar" title="Nothing scheduled" text="Tasks, action items and operational work with due dates appear here." />}
     </>
   );
 }

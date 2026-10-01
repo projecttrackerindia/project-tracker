@@ -53,7 +53,7 @@ export function OrgSecurityPanel() {
       <div className="card-body">
         {!data.entitled && (
           <div className="form-warn">
-            Organization security rules are available on the Business plan and above. <Link className="link" to="/billing">View plans</Link>
+            Organization security rules are available on the Business plan and above. <Link className="link" to="/settings/billing">View plans</Link>
             {(s.requireMfa || s.ipAllowlistEnabled) && ' Your saved settings are kept but not enforced until you upgrade.'}
           </div>
         )}

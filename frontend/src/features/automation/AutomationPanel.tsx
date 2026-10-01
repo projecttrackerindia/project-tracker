@@ -54,7 +54,7 @@ export function AutomationPanel({ projectId, statuses, canEdit }: { projectId: s
       </div>
       <div className="card-body">
         {!included && (
-          <div className="notice">Automation rules are part of the Pro plan and above. <Link className="link" to="/billing">See plans</Link></div>
+          <div className="notice">Automation rules are part of the Pro plan and above. <Link className="link" to="/settings/billing">See plans</Link></div>
         )}
         {q.isLoading ? null : rules.length === 0 ? (
           <EmptyState icon="bolt" title="No rules yet" text={canEdit && included ? 'For example: when a task moves to Done, notify the reporter.' : 'Rules run automatically when tasks change.'} />

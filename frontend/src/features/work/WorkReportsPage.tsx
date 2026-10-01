@@ -51,7 +51,7 @@ function Breakdown({ title, sub, rows, empty }: { title: string; sub: string; ro
   );
 }
 
-/** Work reports: how much operational work is open, late and finished, by type, person and project, with a daily trend and a CSV download. */
+/** Operations analytics (a tab of Reports): how much operational work is open, late and finished, by type, person and project, with a daily trend and a CSV download. */
 export function WorkReportsPage() {
   const [days, setDays] = useState(30);
   const to = iso(new Date());
@@ -61,7 +61,7 @@ export function WorkReportsPage() {
 
   return (
     <>
-      <PageHead title="Work reports" sub="Operational work: what is open, what is late and what was finished.">
+      <PageHead title="Operations analytics" sub="Operational work: what is open, what is late and what was finished.">
         <div style={{ width: 190 }}>
           <Select className="select" value={String(days)} onChange={(e) => setDays(Number(e.target.value))} aria-label="Period">
             {PERIODS.map((p) => <option key={p.days} value={p.days}>{p.label}</option>)}
@@ -73,12 +73,12 @@ export function WorkReportsPage() {
       {q.isLoading ? <PageLoader /> : q.isError || !s ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : (
         <>
           <div className="stat-grid">
-            <Stat icon="bolt" tone="blue" value={s.open} label="Open work tasks" foot={`${s.unassigned} unassigned`} to="/work?open=1" />
-            <Stat icon="alert" tone="red" value={s.overdue} label="Overdue" foot="Open and past the due date" to="/work?overdue=1" />
+            <Stat icon="bolt" tone="blue" value={s.open} label="Open work tasks" foot={`${s.unassigned} unassigned`} to="/operations?open=1" />
+            <Stat icon="alert" tone="red" value={s.overdue} label="Overdue" foot="Open and past the due date" to="/operations?overdue=1" />
             <Stat icon="clock" tone="amber" value={s.dueThisWeek} label="Due in the next 7 days" />
             <Stat icon="checkCircle" tone="green" value={s.completedInPeriod} label="Completed" foot={`${formatDate(s.from)} – ${formatDate(s.to)}`} />
             <Stat icon="plus" tone="cyan" value={s.createdInPeriod} label="Raised" foot="In the same period" />
-            <Stat icon="user" tone="purple" value={s.mineOpen} label="Assigned to me" foot={`${s.mineOverdue} overdue`} to="/work/mine" />
+            <Stat icon="user" tone="purple" value={s.mineOpen} label="Assigned to me" foot={`${s.mineOverdue} overdue`} to="/my-work?kind=Operational" />
           </div>
 
           <div className="card" style={{ marginBottom: 18 }}>

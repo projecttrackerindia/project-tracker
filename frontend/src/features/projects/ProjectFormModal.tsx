@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { projectApi, projectGroupApi, teamApi, workspaceApi } from '../../api/endpoints';
-import type { Priority, Project, ProjectStatus, ProjectType } from '../../api/types';
+import type { DeliveryMethod, Priority, Project, ProjectStatus, ProjectType } from '../../api/types';
+import { DELIVERY_METHODS } from '../planning/PlanPanel';
 import { Field, Modal, SubmitButton, PriorityOptions } from '../../components/ui';
 import { PROJECT_STATUSES, dateOffset, labelize, todayISO } from '../../lib/format';
 import { PROJECT_TYPES } from '../../lib/workLabels';
@@ -30,6 +31,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
   const [teamId, setTeamId] = useState(project?.teamId ?? '');
   const [groupId, setGroupId] = useState(project?.projectGroupId ?? '');
   const [projectType, setProjectType] = useState<ProjectType | ''>(project?.projectType ?? '');
+  const [method, setMethod] = useState<DeliveryMethod>(project?.deliveryMethod ?? 'Hybrid');
   const [dueReason, setDueReason] = useState('');
   const [dueDependency, setDueDependency] = useState('');
   const groups = useWsQuery(['project-groups'], () => projectGroupApi.list());
@@ -52,7 +54,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
 
   const save = useMutation({
     mutationFn: () => {
-      const base = { name: name.trim(), description: description.trim() || undefined, priority, ownerId: ownerId || null, teamId: teamId || null, startDate: startDate || null, dueDate: dueDate || null, projectGroupId: groupId, projectType };
+      const base = { name: name.trim(), description: description.trim() || undefined, priority, ownerId: ownerId || null, teamId: teamId || null, startDate: startDate || null, dueDate: dueDate || null, projectGroupId: groupId, projectType, deliveryMethod: method };
       const moved = isEdit && dueChange(project!.dueDate, dueDate);
       return isEdit
         ? projectApi.update(project!.id, { ...base, status, version: project!.version, enforceDependencies: enforce, dueDateReason: moved ? dueReason.trim() || null : null, dueDateDependency: moved ? dueDependency.trim() || null : null })
@@ -97,18 +99,27 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
         </Field>
         <Field label="Description" full><textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is this project about?" maxLength={4000} /></Field>
         <Field label="Project group" required error={errors.projectGroupId}
-          hint={pickable.length === 0 && groups.isSuccess ? 'There is no active project group yet.' : 'Every project belongs to one group; the Project Status page is organized by them.'}>
+          hint={pickable.length === 0 && groups.isSuccess ? 'There is no active project group yet.' : 'Every project belongs to one group; the Portfolio page is organized by them.'}>
           <Select className="select" value={groupId} onChange={(e) => { setGroupId(e.target.value); setErrors((x) => ({ ...x, projectGroupId: '' })); }} aria-label="Project group">
             <option value="">Select a project group…</option>
             {pickable.map((g) => <option key={g.id} value={g.id}>{g.name}{g.isActive ? '' : ' (inactive)'}</option>)}
           </Select>
-          {canManageGroups && <Link className="link" style={{ marginTop: 6, display: 'inline-block' }} to="/project-groups" onClick={onClose}>Manage project groups…</Link>}
+          {canManageGroups && <Link className="link" style={{ marginTop: 6, display: 'inline-block' }} to="/settings/project-groups" onClick={onClose}>Manage project groups…</Link>}
         </Field>
         <Field label="Project type" required error={errors.projectType} hint={PROJECT_TYPES.find((t) => t.id === projectType)?.hint ?? 'What the project is for: a new system, a change request, an enhancement, a migration ...'}>
           <Select className="select" value={projectType} onChange={(e) => { setProjectType(e.target.value as ProjectType); setErrors((x) => ({ ...x, projectType: '' })); }} aria-label="Project type">
             <option value="">Select a project type…</option>
             {PROJECT_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           </Select>
+        </Field>
+        <Field label="Delivery method" full hint="Decides which planning views the project shows. It can be changed later.">
+          <div className="method-picker" role="radiogroup" aria-label="Delivery method">
+            {DELIVERY_METHODS.map((m) => (
+              <button key={m.id} type="button" role="radio" aria-checked={method === m.id} className={`method-option ${method === m.id ? 'on' : ''}`} onClick={() => setMethod(m.id)}>
+                <b>{m.label}</b><span>{m.hint}</span>
+              </button>
+            ))}
+          </div>
         </Field>
         <Field label="Project owner" error={errors.ownerId}>
           <Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>

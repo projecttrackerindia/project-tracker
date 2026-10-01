@@ -10,9 +10,12 @@ import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { WORK_STATUSES } from '../../lib/workLabels';
 import { useWorkspaceId } from '../../stores/auth';
+import { TimeTracker } from '../time/TimeTracker';
+import { formatMinutes } from '../time/time';
+import type { Member } from '../../api/types';
 import { confirmDialog, toast } from '../../stores/ui';
 
-type Tab = 'details' | 'comments' | 'files' | 'history';
+type Tab = 'details' | 'time' | 'comments' | 'files' | 'history';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const size = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
@@ -20,14 +23,14 @@ const size = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `
  * A work task: operational work (a bug fix, some analysis, data preparation ...) that is not a task on a project's timeline. It can point at a project for
  * reference; that project is never changed by it. Create, edit and (with the right access) delete it, talk about it, attach files, and see its history.
  */
-export function WorkTaskModal({ taskId, defaults, onClose }: { taskId?: string; defaults?: { relatedProjectId?: string }; onClose: () => void }) {
+export function WorkTaskModal({ taskId, defaults, onClose }: { taskId?: string; defaults?: { relatedProjectId?: string; assigneeId?: string }; onClose: () => void }) {
   const q = useWsQuery(['work', 'task', taskId], () => workApi.get(taskId!), { enabled: !!taskId });
   if (taskId && q.isLoading) return <Modal title="Work task" onClose={onClose}><PageLoader /></Modal>;
   if (taskId && (q.isError || !q.data)) return <Modal title="Work task" onClose={onClose}><ErrorState error={q.error} retry={() => void q.refetch()} /></Modal>;
   return <WorkTaskForm task={q.data} defaults={defaults} onClose={onClose} />;
 }
 
-function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?: { relatedProjectId?: string }; onClose: () => void }) {
+function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?: { relatedProjectId?: string; assigneeId?: string }; onClose: () => void }) {
   const wid = useWorkspaceId();
   const isEdit = !!task;
   const canEdit = !task || task.can.edit;
@@ -41,7 +44,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   const [description, setDescription] = useState(task?.description ?? '');
   const [workTypeId, setWorkTypeId] = useState(task?.workTypeId ?? '');
   const [projectId, setProjectId] = useState(task?.relatedProject?.id ?? defaults?.relatedProjectId ?? '');
-  const [assigneeId, setAssigneeId] = useState(task?.assignee?.id ?? '');
+  const [assigneeId, setAssigneeId] = useState(task?.assignee?.id ?? defaults?.assigneeId ?? '');
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'Medium');
   const [status, setStatus] = useState<WorkTaskStatus>(task?.status ?? 'ToDo');
   const [startDate, setStartDate] = useState(task?.startDate ?? '');
@@ -90,7 +93,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
         <Field label="Title" required full error={errors.title}>
           <input className="input" value={title} onChange={(e) => { setTitle(e.target.value); setErrors((x) => ({ ...x, title: '' })); }} maxLength={200} placeholder="e.g. Fix production issue in payment calculation" autoFocus={!isEdit} />
         </Field>
-        <Field label="Work type" required error={errors.workTypeId} hint="What kind of work this is. The list is managed in Settings.">
+        <Field label="Work type" required error={errors.workTypeId} hint="What kind of work this is. The list is managed in Workspace settings.">
           <Select className="select" value={workTypeId} onChange={(e) => { setWorkTypeId(e.target.value); setErrors((x) => ({ ...x, workTypeId: '' })); }} aria-label="Work type">
             <option value="">Select a work type…</option>
             {pickableTypes.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isActive ? '' : ' (inactive)'}</option>)}
@@ -140,22 +143,34 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
       {task && (
         <div style={{ marginBottom: 16 }}>
           <Tabs<Tab> value={tab} onChange={setTab} tabs={[
-            { id: 'details', label: 'Details', icon: 'note' }, { id: 'comments', label: 'Comments', icon: 'message', badge: task.commentCount || undefined },
+            { id: 'details', label: 'Details', icon: 'note' }, { id: 'time', label: task.loggedMinutes ? `Time · ${formatMinutes(task.loggedMinutes)}` : 'Time', icon: 'clock' },
+            { id: 'comments', label: 'Comments', icon: 'message', badge: task.commentCount || undefined },
             { id: 'files', label: 'Files', icon: 'paperclip', badge: task.attachmentCount || undefined }, { id: 'history', label: 'History', icon: 'activity' },
           ]} />
         </div>
       )}
       {tab === 'details' && details}
-      {task && tab === 'comments' && <Comments task={task} onChanged={refresh} />}
+      {task && tab === 'time' && <TimeTracker workTaskId={task.id} canEdit={task.can.edit} />}
+      {task && tab === 'comments' && <Comments task={task} members={members.data ?? []} onChanged={refresh} />}
       {task && tab === 'files' && <Files task={task} onChanged={refresh} />}
       {task && tab === 'history' && <History task={task} />}
     </Modal>
   );
 }
 
-function Comments({ task, onChanged }: { task: WorkTask; onChanged: () => void }) {
+function Comments({ task, members, onChanged }: { task: WorkTask; members: Member[]; onChanged: () => void }) {
   const list = useWsQuery(['work', 'task', task.id, 'comments'], () => workApi.comments(task.id));
   const [body, setBody] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]);
+  const people = members.filter((m) => m.role !== 'Guest');
+  const mention = (userId: string) => {
+    const m = people.find((x) => x.userId === userId);
+    if (!m) return;
+    setBody((b) => `${b}${b && !b.endsWith(' ') ? ' ' : ''}@${m.displayName} `);
+    setMentions((x) => [...new Set([...x, userId])]);
+  };
+  // Only the people still named in the text are notified.
+  const mentioned = () => mentions.filter((id) => body.includes(`@${people.find((m) => m.userId === id)?.displayName}`));
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const run = async (fn: () => Promise<unknown>, fallback: string) => {
@@ -191,8 +206,13 @@ function Comments({ task, onChanged }: { task: WorkTask; onChanged: () => void }
       )}
       <div style={{ display: 'grid', gap: 8 }}>
         <textarea className="textarea" value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} placeholder="Write a comment…" aria-label="New comment" />
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !body.trim()} onClick={() => void run(async () => { await workApi.addComment(task.id, body); setBody(''); }, 'Could not add the comment.')}>Comment</button>
+        <div className="row">
+          <Select className="select" style={{ width: 'auto', height: 32 }} value="" onChange={(e) => e.target.value && mention(e.target.value)} aria-label="Mention a teammate">
+            <option value="">@ Mention…</option>
+            {people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+          </Select>
+          <span className="spacer" />
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !body.trim()} onClick={() => void run(async () => { await workApi.addComment(task.id, body, mentioned()); setBody(''); setMentions([]); }, 'Could not add the comment.')}>Comment</button>
         </div>
       </div>
     </div>

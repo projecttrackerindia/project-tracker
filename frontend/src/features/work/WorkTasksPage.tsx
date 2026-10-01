@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
 import type { WorkTask } from '../../api/types';
@@ -22,12 +22,16 @@ export function WorkStatusBadge({ status }: { status: WorkTask['status'] }) {
 }
 
 /**
- * Work tasks: operational work (bug fixes, support, analysis, data preparation ...) that is not a project task. "All work" shows everyone's;
- * "My work" (`mine`) shows the ones assigned to the signed-in person. Search, filter, sort and page; create and edit in a dialog.
+ * Operations: operational work (bug fixes, support, analysis, data preparation ...) that is not a project task, everyone's. Search, filter,
+ * sort and page; create and edit in a dialog. What is assigned to me, of every kind, is on My work.
  */
-export function WorkTasksPage({ mine = false }: { mine?: boolean }) {
+export function WorkTasksPage() {
+  const mine = false;
   const [params, setParams] = useSearchParams();
-  const canCreate = useCan('work.create') && useModule('work') >= 2;
+  const permWork = useCan('work.create'), modWork = useModule('work');
+  const canCreate = permWork && modWork >= 2;
+  const permReports = useCan('reports.view'), modReports = useModule('reports');
+  const canReports = permReports && modReports > 0;
   const [q, setQ] = useState('');
   const [typeId, setTypeId] = useState(params.get('type') ?? '');
   const [projectId, setProjectId] = useState(params.get('project') ?? '');
@@ -70,8 +74,10 @@ export function WorkTasksPage({ mine = false }: { mine?: boolean }) {
   const items = list.data?.items ?? [];
   return (
     <>
-      <PageHead title={mine ? 'My work' : 'All work'} sub={mine ? 'Assigned to you: bug fixes, support, analysis and other operational work.' : 'Operational work that is not a project task: bug fixes, support, analysis, data preparation and more.'}>
-        <button type="button" className="btn btn-ghost" onClick={exportCsv} title="Download the filtered list as a CSV file"><Icon name="download" /> Export</button>
+      <PageHead title="Operations" sub="Operational work that is not a project task: bug fixes, support, analysis, data preparation and more.">
+        <Link className="btn btn-ghost" to="/reports/operations" title="Charts of open, late and finished operational work"><Icon name="chart" /> Analytics</Link>
+        <button type="button" className="btn btn-ghost" onClick={exportCsv} title="Download the filtered list as a CSV file now"><Icon name="download" /> Export CSV</button>
+        {canReports && <Link className="btn btn-ghost" to="/reports?kind=WorkTasks" title="Excel or PDF, built in the background"><Icon name="download" /> Excel / PDF</Link>}
         {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
       </PageHead>
 

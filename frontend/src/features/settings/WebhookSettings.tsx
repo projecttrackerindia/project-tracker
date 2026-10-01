@@ -50,7 +50,7 @@ export function WebhookSettings() {
         {included && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> New webhook</button>}
       </div>
       <div className="card-body">
-        {!included && <div className="notice">Webhooks are part of the Business plan and above. <Link className="link" to="/billing">See plans</Link></div>}
+        {!included && <div className="notice">Webhooks are part of the Business plan and above. <Link className="link" to="/settings/billing">See plans</Link></div>}
         {included && hooks.length === 0 && !q.isLoading && <EmptyState icon="bolt" title="No webhooks" text="Add one to be told about new tasks, status changes, sprints and more." />}
         {hooks.length > 0 && (
           <div className="cf-list">

@@ -15,7 +15,8 @@ import { Select } from '../../components/Select';
 export const KIND_INFO: Record<ReportKind, { label: string; hint: string }> = {
   Project: { label: 'Project report', hint: 'Task list, status breakdown and progress — for one project or everything you can see.' },
   Workload: { label: 'Team workload', hint: 'Open, overdue and completed work per person.' },
-  Timesheet: { label: 'Timesheet', hint: 'Logged time by person, date and task.' },
+  Timesheet: { label: 'Timesheet', hint: 'Logged time by person, date and task or operational work.' },
+  WorkTasks: { label: 'Work tasks', hint: 'Operational work with its type, related project, assignee, status, dates and logged time.' },
 };
 const FORMATS: { id: ReportFormat; label: string }[] = [{ id: 'Csv', label: 'CSV' }, { id: 'Xlsx', label: 'Excel (.xlsx)' }, { id: 'Pdf', label: 'PDF' }];
 
@@ -26,6 +27,7 @@ const tone = (s: ReportExport['status']) => (s === 'Ready' ? 'success' : s === '
 export function ReportGenerator({ kind, onRequested }: { kind: ReportKind; onRequested: () => void }) {
   const advanced = useEntitlement('ADVANCED_REPORTS') > 0;
   const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: kind !== 'Workload' });
+  const periodApplies = kind === 'Project' || kind === 'Timesheet';
   const { canPick, choices } = usePersonPicker();
   const [format, setFormat] = useState<ReportFormat>('Xlsx');
   const [projectId, setProjectId] = useState('');
@@ -62,7 +64,7 @@ export function ReportGenerator({ kind, onRequested }: { kind: ReportKind; onReq
             </Select>
           </Field>
           {kind !== 'Workload' && (
-            <Field label="Project">
+            <Field label={kind === 'WorkTasks' ? 'Related project' : 'Project'}>
               <Select className="select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                 <option value="">All projects I can see</option>{projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
@@ -75,7 +77,7 @@ export function ReportGenerator({ kind, onRequested }: { kind: ReportKind; onReq
               </Select>
             </Field>
           )}
-          {kind !== 'Workload' && (
+          {periodApplies && (
             <Field label="Period">
               <Select className="select" value={days} onChange={(e) => setDays(Number(e.target.value))}>
                 {[7, 14, 30, 90].map((d) => <option key={d} value={d}>Last {d} days</option>)}
@@ -83,7 +85,7 @@ export function ReportGenerator({ kind, onRequested }: { kind: ReportKind; onReq
             </Field>
           )}
         </div>
-        {!advanced && <div className="notice" style={{ marginTop: 14 }}>Want Excel and PDF? <Link className="link" to="/billing">See plans</Link></div>}
+        {!advanced && <div className="notice" style={{ marginTop: 14 }}>Want Excel and PDF? <Link className="link" to="/settings/billing">See plans</Link></div>}
         <div style={{ marginTop: 16 }}><SubmitButton busy={busy}><Icon name="download" size={14} /> Generate report</SubmitButton></div>
       </form>
     </div>
@@ -113,7 +115,7 @@ export function ExportList({ refreshKey }: { refreshKey: number }) {
     <div className="card">
       <div className="card-head"><div><h3>Your reports</h3><p>Files are kept for 7 days.</p></div></div>
       <div className="card-body">
-        {items.length === 0 ? <EmptyState icon="download" title="No reports yet" text="Generate a project, workload or timesheet report above." /> : (
+        {items.length === 0 ? <EmptyState icon="download" title="No reports yet" text="Generate a report above. It appears here when it is ready." /> : (
           <div className="export-list">
             {items.map((e) => (
               <div className="export-row" key={e.id}>

@@ -46,7 +46,13 @@ export interface Invitation { id: string; email: string; role: Role; status: str
 export interface InvitationLookup { workspaceName: string; email: string; role: Role; invitedBy: string | null; expired: boolean; accepted: boolean; jobRole: string | null }
 export interface PermissionMatrix {
   roles: Role[]; permissions: string[]; locked: string[]; matrix: Record<string, Record<string, boolean>>; canEdit: boolean;
+  /** People this matrix does not decide for: their job role has its own access settings ("Name (Job role)"). */
+  notAppliedTo?: string[] | null;
 }
+/** Where a person's access comes from: Owner and Admin have everything; JobRole means their job role's access settings decide; AccessLevel means the defaults of their access level do. */
+export type AccessSource = 'Owner' | 'Admin' | 'JobRole' | 'AccessLevel';
+export interface EffectiveAccess { userId: string; name: string; email: string; accessLevel: Role; jobRole: string | null; source: AccessSource; modules: Record<string, number>; permissions: string[] }
+export interface EffectiveAccessList { people: EffectiveAccess[]; byJobRole: number; byAccessLevel: number }
 
 export interface UserRef { id: string; name: string }
 export interface Team { id: string; name: string; description: string | null; memberCount: number; projectCount: number; lead: UserRef | null }
@@ -55,17 +61,19 @@ export interface TeamDetail { team: Team; members: TeamMember[] }
 
 /** What a project is for; chosen when it is created. */
 export type ProjectType = 'NewProject' | 'ChangeRequest' | 'Enhancement' | 'Migration' | 'Integration' | 'Upgrade' | 'Maintenance' | 'Compliance' | 'Other';
+/** How a project is planned: Phased (stages and milestones), Agile (sprints and a backlog) or Hybrid (both). It decides which planning views the project shows. */
+export type DeliveryMethod = 'Hybrid' | 'Phased' | 'Agile';
 export interface ProjectStats { total: number; done: number; inProgress: number; todo: number; cancelled: number; overdue: number }
 export interface Project {
   id: string; key: string; name: string; description: string | null; status: ProjectStatus; priority: Priority;
   owner: UserRef | null; teamId: string | null; teamName: string | null; startDate: string | null; dueDate: string | null;
   progress: number; health: ProjectHealth; stats: ProjectStats; memberCount: number; version: number; position: number; enforceDependencies: boolean;
-  projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType;
+  projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
 }
-/** A follow-up for a project, with an owner, a due date and a priority (shown on the Project Status page). */
+/** A follow-up for a project, with an owner, a due date and a priority (on the project's Actions tab and the Portfolio page). */
 export type ActionItemStatus = 'Open' | 'InProgress' | 'Completed';
 export interface ActionItem {
-  id: string; projectId: string; title: string; details: string | null; assignee: UserRef | null; dueDate: string | null; priority: Priority; status: ActionItemStatus;
+  id: string; projectId: string; key: string; number: number; title: string; details: string | null; assignee: UserRef | null; dueDate: string | null; priority: Priority; status: ActionItemStatus;
   isOverdue: boolean; createdAt: string; createdBy: UserRef | null; completedAt: string | null; completedBy: UserRef | null;
   can: { edit: boolean; delete: boolean; complete: boolean };
 }
@@ -142,9 +150,11 @@ export interface Dashboard {
     totalProjects: number; openTasks: number; overdueTasks: number; members: number; overallProgress: number; myLoggedMinutesThisWeek: number;
   };
   myTasks: Task[]; projects: Project[]; activity: Activity[];
+  /** My next open work of every kind (project tasks, test issues, action items, operational work). */
+  myWork: WorkItem[];
 }
 export interface CalendarEvent {
-  type: 'task' | 'project' | 'stage' | 'milestone'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
+  type: 'task' | 'action' | 'work' | 'project' | 'stage' | 'milestone'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
   overdue: boolean; projectId: string | null; projectName: string | null; priority: Priority | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
@@ -220,8 +230,10 @@ export type DependencyType = 'FinishToStart' | 'StartToStart' | 'FinishToFinish'
 export interface Milestone {
   id: string; projectId: string; name: string; description: string | null; startDate: string | null; dueDate: string | null; status: StageStatus;
   owner: UserRef | null; sortOrder: number; completedAt: string | null; taskTotal: number; taskDone: number; progress: number; isOverdue: boolean;
+  /** The timeline stage this milestone is a checkpoint of (optional). */
+  stageId: string | null; stageName: string | null;
 }
-export interface MilestoneInput { name: string; description: string | null; startDate: string | null; dueDate: string | null; status: StageStatus; ownerId: string | null }
+export interface MilestoneInput { name: string; description: string | null; startDate: string | null; dueDate: string | null; status: StageStatus; ownerId: string | null; stageId?: string | null }
 export interface DependencyLink {
   id: string; type: DependencyType; satisfied: boolean;
   task: { id: string; key: string; title: string; category: StatusCategory; statusName: string; dueDate: string | null };
@@ -229,7 +241,11 @@ export interface DependencyLink {
 export interface TaskDependencies { blockedBy: DependencyLink[]; blocks: DependencyLink[]; enforced: boolean; blockedReason: string | null }
 
 // ---- time tracking
-export interface TimeEntry { id: string; taskId: string; taskKey: string; taskTitle: string; projectId: string; user: { id: string; name: string }; workDate: string; minutes: number; note: string | null; isRunning: boolean; startedAt: string | null; canEdit: boolean }
+/** Time spent on a project task (kind "task", taskId set) or on operational work (kind "work", workTaskId set). taskKey and taskTitle name whichever it was. */
+export interface TimeEntry {
+  id: string; taskId: string | null; taskKey: string; taskTitle: string; projectId: string | null; user: { id: string; name: string }; workDate: string; minutes: number;
+  note: string | null; isRunning: boolean; startedAt: string | null; canEdit: boolean; workTaskId: string | null; kind: 'task' | 'work';
+}
 export interface TaskTime { entries: TimeEntry[]; totalMinutes: number; estimatedHours: number | null; myTimer: TimeEntry | null }
 export interface Timesheet { from: string; to: string; user: { id: string; name: string }; entries: TimeEntry[]; totalMinutes: number; byDay: { date: string; minutes: number }[] }
 export interface ProjectTime { totalMinutes: number; estimatedHours: number | null; byPerson: { userId: string; name: string; minutes: number }[]; topTasks: { taskId: string; key: string; title: string; minutes: number; estimatedHours: number | null }[] }
@@ -255,7 +271,7 @@ export interface BurndownPoint { date: string; remaining: number; ideal: number 
 export interface SprintDetail { sprint: Sprint; burndown: BurndownPoint[] }
 
 // ---- generated reports
-export type ReportKind = 'Project' | 'Workload' | 'Timesheet';
+export type ReportKind = 'Project' | 'Workload' | 'Timesheet' | 'WorkTasks';
 export type ReportFormat = 'Csv' | 'Xlsx' | 'Pdf';
 export interface ReportExport {
   id: string; kind: ReportKind; format: ReportFormat; status: 'Queued' | 'Running' | 'Ready' | 'Failed'; projectId: string | null; targetUserId: string | null; days: number;
@@ -296,14 +312,28 @@ export interface WebhookDelivery {
   createdAt: string; deliveredAt: string | null; nextAttemptAt: string | null;
 }
 
-// ---- reporting line ("my team")
-export interface TeamTask { id: string; projectId: string; projectName: string; key: string; title: string; statusName: string; category: StatusCategory; priority: Priority; dueDate: string | null; isOverdue: boolean }
-export interface TeamMember {
-  userId: string; name: string; email: string; jobRole: string | null; level: number; reportsTo: string | null; open: number; overdue: number;
-  doneLast30Days: number; loggedMinutesLast7Days: number; nextUp: TeamTask[];
+// ---- work of every kind: My work, workload
+/** Task: a project task. Issue: a test issue. ActionItem: a project follow-up. Operational: work outside projects. */
+export type WorkItemKind = 'Task' | 'Issue' | 'ActionItem' | 'Operational';
+/** One piece of assigned work of any kind; `category` puts every kind's own statuses on one scale. */
+export interface WorkItem {
+  kind: WorkItemKind; id: string; key: string; title: string; projectId: string | null; projectKey: string | null; projectName: string | null;
+  status: string; category: StatusCategory; priority: Priority; dueDate: string | null; isOverdue: boolean; assignee: UserRef | null; typeName: string | null; updatedAt: string;
 }
-export interface MyTeam { members: TeamMember[]; totals: { people: number; open: number; overdue: number } }
-export interface TeamPerson { person: TeamMember; openTasks: TeamTask[] }
+export interface WorkKindCounts { tasks: number; issues: number; actionItems: number; operational: number; total: number }
+/** One open item of a person in a workload view. */
+export interface PersonWorkItem {
+  id: string; projectId: string | null; projectName: string | null; key: string; title: string; statusName: string; category: StatusCategory; priority: Priority;
+  dueDate: string | null; isOverdue: boolean; kind: WorkItemKind;
+}
+export interface WorkloadPerson {
+  userId: string; name: string; email: string; jobRole: string | null; level: number; reportsTo: string | null; open: number; overdue: number;
+  doneLast30Days: number; loggedMinutesLast7Days: number; nextUp: PersonWorkItem[]; dueThisWeek: number; openByKind: WorkKindCounts | null;
+}
+/** Reports: my reporting line. Everyone: the whole workspace (Owner, Admin, or broad reports access). Me: just me. */
+export type WorkloadScope = 'Reports' | 'Everyone' | 'Me';
+export interface Workload { scope: WorkloadScope; available: WorkloadScope[]; members: WorkloadPerson[]; totals: { people: number; open: number; overdue: number } }
+export interface WorkloadPersonDetail { person: WorkloadPerson; openTasks: PersonWorkItem[] }
 
 // ---- platform administration
 export interface PlatformBilling {
@@ -369,6 +399,8 @@ export interface WorkTask {
   id: string; key: string; number: number; title: string; description: string | null; workTypeId: string; workType: string; relatedProject: WorkProjectRef | null;
   assignee: UserRef | null; reporter: UserRef | null; priority: Priority; status: WorkTaskStatus; startDate: string | null; dueDate: string | null; isOverdue: boolean;
   completedAt: string | null; createdAt: string; version: number; commentCount: number; attachmentCount: number; can: { edit: boolean; delete: boolean };
+  /** Time logged on it, by everyone. */
+  loggedMinutes: number;
 }
 export interface WorkTaskInput {
   title: string; description?: string | null; workTypeId: string; relatedProjectId?: string | null; assigneeId?: string | null; priority?: string; status?: string;

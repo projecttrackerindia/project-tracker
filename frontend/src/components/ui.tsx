@@ -1,5 +1,6 @@
-import { forwardRef, useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { NavLink } from 'react-router-dom';
 import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
 import { ApiError } from '../api/client';
 import { clamp, initials, labelize } from '../lib/format';
@@ -111,12 +112,65 @@ export function ErrorState({ error, retry }: { error: unknown; retry?: () => voi
   );
 }
 
+/**
+ * Set by a hub page (People, Insights, Workspace settings, My account) around the section it shows: the section's own PageHead then
+ * renders as a section heading under the hub's title instead of as a second page title.
+ */
+const EmbeddedContext = createContext(false);
+export const Embedded = ({ children }: { children: ReactNode }) => <EmbeddedContext.Provider value>{children}</EmbeddedContext.Provider>;
+
 export function PageHead({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+  const embedded = useContext(EmbeddedContext);
+  if (embedded) return (
+    <div className="section-head">
+      <div><h2 className="hub-section-title">{title}</h2>{sub && <p className="page-sub">{sub}</p>}</div>
+      {children && <div className="page-actions">{children}</div>}
+    </div>
+  );
   return (
     <div className="page-head">
       <div><h1 className="page-title">{title}</h1>{sub && <p className="page-sub">{sub}</p>}</div>
       {children && <div className="page-actions">{children}</div>}
     </div>
+  );
+}
+
+export interface SectionLink { to: string; label: string; icon?: IconName; end?: boolean; badge?: number }
+
+/** Tabs that are links: each tab is its own address, so it can be bookmarked, shared and reached with Back. */
+export function RouteTabs({ tabs, label }: { tabs: SectionLink[]; label: string }) {
+  return (
+    <nav className="tabs route-tabs" aria-label={label}>
+      {tabs.map((t) => (
+        <NavLink key={t.to} to={t.to} end={t.end ?? true} className={({ isActive }) => `tab ${isActive ? 'active' : ''}`}>
+          {t.icon && <Icon name={t.icon} />}{t.label}{!!t.badge && <span className="tab-badge">{t.badge}</span>}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+/** A settings-style page: a title, a list of sections down the left (grouped), and the chosen section on the right. */
+export function SectionLayout({ title, sub, groups, children }: { title: string; sub?: string; groups: { title?: string; items: SectionLink[] }[]; children: ReactNode }) {
+  return (
+    <>
+      <PageHead title={title} sub={sub} />
+      <div className="section-layout">
+        <nav className="section-nav" aria-label={`${title} sections`}>
+          {groups.filter((g) => g.items.length).map((g, i) => (
+            <div className="section-nav-group" key={g.title ?? i}>
+              {g.title && <div className="section-nav-title">{g.title}</div>}
+              {g.items.map((t) => (
+                <NavLink key={t.to} to={t.to} end={t.end ?? true} className={({ isActive }) => `section-nav-item ${isActive ? 'active' : ''}`}>
+                  {t.icon && <Icon name={t.icon} size={16} />}<span>{t.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="section-body"><Embedded>{children}</Embedded></div>
+      </div>
+    </>
   );
 }
 

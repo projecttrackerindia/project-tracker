@@ -40,7 +40,7 @@ export function PrioritySettings() {
     <div className="card mb-22">
       <div className="card-head"><div><h3>Priorities</h3><p>How this workspace names and colours its four priority levels.</p></div></div>
       <div className="card-body">
-        {!included && <div className="notice">Custom priority names and colours are part of the Pro plan and above. <Link className="link" to="/billing">See plans</Link></div>}
+        {!included && <div className="notice">Custom priority names and colours are part of the Pro plan and above. <Link className="link" to="/settings/billing">See plans</Link></div>}
         <div className="priority-rows">
           {rows.map((r, i) => (
             <div className="priority-row" key={r.level}>

@@ -9,11 +9,17 @@ import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { clock, formatMinutes, parseDuration, useNow } from './time';
 
-/** Time on one task: a start/stop timer, a quick "log time" form and the list of entries. Actual hours follows the total. */
-export function TimeTracker({ taskId, canEdit }: { taskId: string; canEdit: boolean }) {
+/**
+ * Time on one project task (taskId) or one piece of operational work (workTaskId): a start/stop timer, a quick "log time" form and
+ * the list of entries. On a project task, actual hours follow the total.
+ */
+export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; workTaskId?: string; canEdit: boolean }) {
   const wid = useWorkspaceId();
   const qc = useQueryClient();
-  const q = useWsQuery(['task', taskId, 'time'], () => timeApi.forTask(taskId));
+  const onWork = !!workTaskId;
+  const id = (workTaskId ?? taskId)!;
+  const cacheKey = onWork ? ['work', 'task', id] : ['task', id];
+  const q = useWsQuery([...cacheKey, 'time'], () => (onWork ? timeApi.forWorkTask(id) : timeApi.forTask(id)));
   const [duration, setDuration] = useState('');
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState('');
@@ -22,11 +28,11 @@ export function TimeTracker({ taskId, canEdit }: { taskId: string; canEdit: bool
 
   const data = q.data;
   const mine = data?.myTimer ?? null;
-  const runningHere = mine?.taskId === taskId;
+  const runningHere = !!mine && (onWork ? mine.workTaskId === id : mine.taskId === id);
   const now = useNow(!!mine);
 
   const refresh = () => {
-    void qc.invalidateQueries({ queryKey: [wid, 'task', taskId] });
+    void qc.invalidateQueries({ queryKey: [wid, ...cacheKey] });
     void qc.invalidateQueries({ queryKey: [wid, 'timer'] });
     void qc.invalidateQueries({ queryKey: [wid, 'timesheet'] });
     void qc.invalidateQueries({ queryKey: [wid, 'tasks'] });
@@ -41,7 +47,8 @@ export function TimeTracker({ taskId, canEdit }: { taskId: string; canEdit: bool
   const log = () => {
     const minutes = parseDuration(duration);
     if (!minutes) return setError('Enter a duration such as 1h 30m, 45m or 1.5h.');
-    void run(async () => { await timeApi.log(taskId, { minutes, workDate: date, note: note.trim() || undefined }); setDuration(''); setNote(''); }, 'Time logged.');
+    const body = { minutes, workDate: date, note: note.trim() || undefined };
+    void run(async () => { await (onWork ? timeApi.logOnWorkTask(id, body) : timeApi.log(id, body)); setDuration(''); setNote(''); }, 'Time logged.');
   };
 
   const total = data?.totalMinutes ?? 0;
@@ -65,7 +72,7 @@ export function TimeTracker({ taskId, canEdit }: { taskId: string; canEdit: bool
                 <Icon name="pause" size={14} /> Stop · {clock(now - new Date(mine!.startedAt!).getTime())}
               </button>
             ) : (
-              <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void run(() => timeApi.start(taskId))}>
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void run(() => (onWork ? timeApi.startOnWorkTask(id) : timeApi.start(id)))}>
                 <Icon name="play" size={14} /> Start timer
               </button>
             )}
@@ -91,7 +98,7 @@ export function TimeTracker({ taskId, canEdit }: { taskId: string; canEdit: bool
               <span className="time-what"><b>{e.user.name}</b> · {formatDate(e.workDate)}{e.note ? <span className="muted"> — {e.note}</span> : null}</span>
               {e.canEdit && (
                 <button type="button" className="btn-icon danger" title="Delete entry" aria-label="Delete time entry" onClick={async () => {
-                  if (await confirmDialog({ title: 'Delete time entry?', message: `${e.isRunning ? 'The running timer' : formatMinutes(e.minutes)} will be removed from this task.`, confirmText: 'Delete' }))
+                  if (await confirmDialog({ title: 'Delete time entry?', message: `${e.isRunning ? 'The running timer' : formatMinutes(e.minutes)} will be removed from this ${onWork ? 'work task' : 'task'}.`, confirmText: 'Delete' }))
                     void run(() => timeApi.remove(e.id));
                 }}><Icon name="trash" size={14} /></button>
               )}

@@ -28,7 +28,7 @@ export function DueChangeFields({ previous, revised, reason, dependency, onReaso
         {c.days !== null && c.days !== 0 && <em className={c.days > 0 ? 'late' : 'early'}>{c.days > 0 ? `+${c.days}` : c.days} day{Math.abs(c.days) === 1 ? '' : 's'}</em>}
       </div>
       <div className="form-grid">
-        <Field label="Reason for the change" required={c.delay} error={error} hint={c.delay ? 'Shown on the Project Status page, so management can see why the delivery moved.' : 'Optional when a date is brought forward.'}>
+        <Field label="Reason for the change" required={c.delay} error={error} hint={c.delay ? 'Shown on the Portfolio page, so management can see why the delivery moved.' : 'Optional when a date is brought forward.'}>
           <textarea className="textarea" rows={2} maxLength={500} value={reason} onChange={(e) => onReason(e.target.value)} placeholder="e.g. Waiting for the client to sign off the design" />
         </Field>
         <Field label="Dependency causing it" hint="Optional: a task, a client answer, a vendor…">

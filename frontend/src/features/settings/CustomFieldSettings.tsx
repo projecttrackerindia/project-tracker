@@ -46,7 +46,7 @@ export function CustomFieldSettings() {
         {editable && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> New field</button>}
       </div>
       <div className="card-body">
-        {!included && <div className="notice">Custom fields are part of the Pro plan and above. <Link className="link" to="/billing">See plans</Link></div>}
+        {!included && <div className="notice">Custom fields are part of the Pro plan and above. <Link className="link" to="/settings/billing">See plans</Link></div>}
         {fields.length === 0 ? (
           <EmptyState icon="list" title="No custom fields" text={editable ? 'Add a field and it appears in every task.' : 'Nobody has defined custom fields yet.'} />
         ) : (

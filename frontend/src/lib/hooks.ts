@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
-import { teamViewApi, workspaceApi } from '../api/endpoints';
+import { workItemApi, workspaceApi } from '../api/endpoints';
 import { queryClient, useAuth, useCan, useWorkspaceId } from '../stores/auth';
 
 /**
@@ -36,7 +36,7 @@ export function usePersonPicker() {
   const canSeeOthers = useCan('reports.broad');
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
   const members = useWsQuery(['members'], () => workspaceApi.members(), { enabled: canSeeOthers });
-  const team = useWsQuery(['my-team'], () => teamViewApi.get(), { enabled: !canSeeOthers && hasReports });
+  const team = useWsQuery(['workload', 'Reports'], () => workItemApi.workload('Reports'), { enabled: !canSeeOthers && hasReports });
   const choices: PersonChoice[] = canSeeOthers
     ? (members.data ?? []).map((m) => ({ id: m.userId, name: m.displayName }))
     : (team.data?.members ?? []).map((m) => ({ id: m.userId, name: m.name }));

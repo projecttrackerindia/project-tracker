@@ -1,0 +1,188 @@
+/* ============================================================
+   HUB PAGES — sections inside People, Insights, Workspace settings and My account;
+   the work-item list shared by My work, the dashboard and the workload views
+   ============================================================ */
+
+/* A section heading inside a hub page (the hub owns the page title). */
+.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.hub-section-title { font-size: 16.5px; font-weight: 720; letter-spacing: -.015em; }
+.section-head .page-sub { margin-top: 2px; }
+
+/* Tabs that are links (People, Insights, project settings). */
+.route-tabs { margin-bottom: 18px; }
+.route-tabs .tab { text-decoration: none; }
+
+/* Settings-style layout: section list on the left, the section on the right. */
+.section-layout { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 22px; align-items: start; }
+.section-nav {
+  position: sticky; top: calc(var(--topbar-h) + 18px);
+  background: var(--surface); -webkit-backdrop-filter: var(--glass); backdrop-filter: var(--glass);
+  border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--hl), var(--shadow-sm);
+  padding: 10px;
+}
+.section-nav-group + .section-nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.section-nav-title { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); padding: 4px 10px 6px; }
+.section-nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px;
+  color: var(--text-2); font-size: 13px; font-weight: 550; text-decoration: none;
+  transition: background .16s, color .16s;
+}
+.section-nav-item svg { flex-shrink: 0; color: var(--text-3); }
+.section-nav-item:hover { background: var(--hover-bg); color: var(--text); }
+.section-nav-item.active { background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(192, 132, 252, .14)); color: var(--primary); font-weight: 650; }
+.section-nav-item.active svg { color: var(--primary); }
+.section-body { min-width: 0; }
+.section-body > .card + .card, .section-body > .card + .mb-22 { margin-top: 0; }
+
+@media (max-width: 1024px) {
+  .section-layout { grid-template-columns: 1fr; gap: 14px; }
+  .section-nav { position: static; display: flex; gap: 4px; overflow-x: auto; padding: 6px; }
+  .section-nav-group { display: contents; }
+  .section-nav-title { display: none; }
+  .section-nav-item { white-space: nowrap; }
+}
+
+/* An explanation at the top of a section: what this screen decides and how it relates to the others. */
+.explainer { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(139, 92, 246, .08); border: 1px solid rgba(139, 92, 246, .22); margin-bottom: 18px; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+.explainer > svg { flex-shrink: 0; margin-top: 2px; color: var(--primary); }
+.explainer b { color: var(--text); }
+.explainer ol, .explainer ul { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 2px; }
+.explainer ol { list-style: decimal; }
+.explainer ul { list-style: disc; }
+
+/* ---------------- work items (every kind in one list) ---------------- */
+.wi-list { display: flex; flex-direction: column; }
+.wi-row {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  padding: 11px 14px; border-bottom: 1px solid var(--border); text-align: left; width: 100%;
+  transition: background .14s;
+}
+.wi-row:last-child { border-bottom: 0; }
+button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
+.wi-kind { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
+.wi-kind svg { width: 14px; height: 14px; }
+.wi-kind.Task { background: rgba(139, 92, 246, .14); color: #7c3aed; }
+.wi-kind.Issue { background: rgba(225, 29, 72, .12); color: #e11d48; }
+.wi-kind.ActionItem { background: rgba(14, 165, 233, .14); color: #0284c7; }
+.wi-kind.Operational { background: rgba(245, 158, 11, .16); color: #b45309; }
+.wi-main { min-width: 0; }
+.wi-title { display: block; font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-title .task-key { margin-right: 6px; }
+.wi-sub { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; font-size: 12px; }
+.wi-due { color: var(--text-3); white-space: nowrap; }
+.wi-due.late { color: var(--danger); font-weight: 650; }
+@media (max-width: 720px) {
+  .wi-row { grid-template-columns: 26px minmax(0, 1fr); }
+  .wi-meta { grid-column: 2; justify-content: flex-start; }
+}
+
+/* Kind filter chips (My work). */
+.kind-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.kind-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 99px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 12.5px; font-weight: 600;
+  transition: background .14s, border-color .14s, color .14s;
+}
+.kind-chip svg { width: 14px; height: 14px; }
+.kind-chip b { font-size: 11px; font-weight: 700; background: rgba(139, 92, 246, .14); color: var(--text-2); border-radius: 99px; padding: 0 7px; line-height: 18px; }
+.kind-chip:hover { border-color: var(--border-strong); color: var(--text); }
+.kind-chip.on { background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(192, 132, 252, .14)); color: var(--primary); border-color: rgba(139, 92, 246, .35); }
+
+/* Day groups in My work. */
+.wi-group-title { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.wi-group-title.late { color: var(--danger); }
+
+/* Open work by kind: one stacked bar per person (workload). */
+:root { --kind-Task: #8b5cf6; --kind-Issue: #fb7185; --kind-ActionItem: #38bdf8; --kind-Operational: #f59e0b; }
+.kind-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--surface-2); min-width: 120px; }
+.kind-bar span { height: 100%; }
+.kind-bar .Task { background: #8b5cf6; }
+.kind-bar .Issue { background: #fb7185; }
+.kind-bar .ActionItem { background: #38bdf8; }
+.kind-bar .Operational { background: #f59e0b; }
+.kind-key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.kind-key i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* Effective access table. */
+.access-cell { display: inline-flex; min-width: 54px; justify-content: center; font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 99px; }
+.access-cell.l0 { color: var(--text-3); background: transparent; }
+.access-cell.l1 { color: #0369a1; background: rgba(14, 165, 233, .12); }
+.access-cell.l2 { color: #6d28d9; background: rgba(139, 92, 246, .14); }
+.access-cell.l3 { color: #047857; background: rgba(16, 185, 129, .14); }
+[data-theme='dark'] .access-cell.l1 { color: #7dd3fc; }
+[data-theme='dark'] .access-cell.l2 { color: #c4b5fd; }
+[data-theme='dark'] .access-cell.l3 { color: #6ee7b7; }
+[data-theme='dark'] .wi-kind.Task { color: #c4b5fd; }
+[data-theme='dark'] .wi-kind.Issue { color: #fda4af; }
+[data-theme='dark'] .wi-kind.ActionItem { color: #7dd3fc; }
+[data-theme='dark'] .wi-kind.Operational { color: #fcd34d; }
+
+/* Project page header: the "More" menu. */
+.menu-wrap { position: relative; }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 230px; padding: 6px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 18px 40px rgba(20, 16, 40, .18)); }
+.menu-pop button, .menu-pop a { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--text-2); text-align: left; text-decoration: none; }
+.menu-pop button:hover, .menu-pop a:hover { background: var(--hover-bg); color: var(--text); }
+.menu-pop .danger { color: var(--danger); }
+.menu-pop hr { border: 0; border-top: 1px solid var(--border); margin: 5px 2px; }
+
+/* Delivery method picker in the project form. */
+.method-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.method-option { display: grid; gap: 3px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface-2); text-align: left; transition: border-color .14s, background .14s; }
+.method-option b { font-size: 13px; }
+.method-option span { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+.method-option.on { border-color: rgba(139, 92, 246, .55); background: linear-gradient(135deg, rgba(139, 92, 246, .16), rgba(192, 132, 252, .08)); }
+.method-option.on b { color: var(--primary); }
+@media (max-width: 640px) { .method-picker { grid-template-columns: 1fr; } }
+
+/* Labels settings. */
+.label-rows { display: flex; flex-direction: column; }
+.label-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.label-row:last-child { border-bottom: 0; }
+
+/* Action items as a project tab (the same list as the Portfolio side panel). */
+.ai-card .ai-toolbar { padding-top: 12px; }
+.ai-card .ai-list { overflow: visible; }
+.ai-item.highlight { border-color: rgba(139, 92, 246, .6); box-shadow: 0 0 0 3px rgba(139, 92, 246, .16); }
+
+/* Project settings dialog. */
+.project-settings .tabs { margin-bottom: 16px; }
+.project-settings .card { box-shadow: none; }
+
+/* Calendar: action items and operational work. */
+.cal-ev.cyan { background: rgba(14, 165, 233, .14); color: #0284c7; }
+.cal-ev.orange { background: rgba(249, 115, 22, .14); color: #c2410c; }
+[data-theme='dark'] .cal-ev.cyan { color: #7dd3fc; }
+[data-theme='dark'] .cal-ev.orange { color: #fdba74; }
+
+/* Laptop widths: the same ~20% step down the rest of the app takes in this range (see base.css). */
+@media (min-width: 769px) and (max-width: 1600px) {
+  .hub-section-title { font-size: 13.2px; }
+  .section-head { margin-bottom: 12.8px; gap: 11.2px; }
+  .route-tabs { margin-bottom: 14.4px; }
+  .section-layout { grid-template-columns: 184px minmax(0, 1fr); gap: 17.6px; }
+  .section-nav { padding: 8px; top: calc(var(--topbar-h) + 14.4px); }
+  .section-nav-title { font-size: 8.4px; padding: 3.2px 8px 4.8px; }
+  .section-nav-item { gap: 8px; padding: 6.4px 8px; border-radius: 8px; font-size: 10.8px; }
+  .section-nav-item svg { width: 13px; height: 13px; }
+  .explainer { gap: 9.6px; padding: 11.2px 12.8px; font-size: 10.4px; margin-bottom: 14.4px; }
+  .wi-row { grid-template-columns: 20.8px minmax(0, 1fr) auto; gap: 9.6px; padding: 8.8px 11.2px; }
+  .wi-kind { width: 20.8px; height: 20.8px; border-radius: 6.4px; }
+  .wi-kind svg { width: 11.2px; height: 11.2px; }
+  .wi-title { font-size: 10.8px; }
+  .wi-sub { font-size: 9.6px; }
+  .wi-meta { gap: 6.4px; font-size: 9.6px; }
+  .kind-chip { height: 25.6px; padding: 0 9.6px; gap: 5.6px; font-size: 10px; }
+  .kind-chip svg { width: 11.2px; height: 11.2px; }
+  .kind-chip b { font-size: 8.8px; line-height: 14.4px; padding: 0 5.6px; }
+  .wi-group-title { padding: 8px 11.2px 4.8px; font-size: 8.8px; }
+  .kind-key { font-size: 9.6px; gap: 11.2px; }
+  .kind-bar { height: 6.4px; }
+  .access-cell { font-size: 9.2px; min-width: 43px; padding: 1.6px 6.4px; }
+  .menu-pop { min-width: 184px; padding: 4.8px; border-radius: 9.6px; }
+  .menu-pop button, .menu-pop a { gap: 7.2px; padding: 6.4px 8px; font-size: 10.4px; border-radius: 6.4px; }
+  .method-option { padding: 8px 9.6px; border-radius: 8.8px; }
+  .method-option b { font-size: 10.4px; }
+  .method-option span { font-size: 9.2px; }
+  .label-row { padding: 8px 0; }
+}
