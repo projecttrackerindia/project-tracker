@@ -6,6 +6,7 @@ import { useAuth } from '../../stores/auth';
 import { TaskModal } from '../tasks/TaskModal';
 import { WorkTaskModal } from '../work/WorkTaskModal';
 import { CalendarView } from './CalendarView';
+import { CalendarSubscribe } from '../settings/IntegrationSettings';
 import { Select } from '../../components/Select';
 
 /** Regular users only ever see their own calendar; managers/admins can additionally pick someone in their reach. */
@@ -30,6 +31,7 @@ export function CalendarPage() {
             </Select>
           )}
           {!userId && <label className="cal-mine"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Only my work</label>}
+          <CalendarSubscribe />
         </div>
       </PageHead>
       <CalendarView mine={mine} userId={userId || undefined} onOpenTask={(taskId, projectId) => { if (projectId) nav(`/projects/${projectId}?task=${taskId}`); else setModal({ id: taskId }); }} onOpenWork={setWork} />

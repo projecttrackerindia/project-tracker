@@ -45,11 +45,18 @@ public static class WebhookEvents
         "milestone.created", "milestone.status_changed", "milestone.deleted",
         "sprint.created", "sprint.started", "sprint.completed", "sprint.deleted",
         "attachment.added", "attachment.deleted", "member.invited", "member.role_changed", "team.created", "team.deleted",
+        "worktask.created", "worktask.updated", "worktask.status", "worktask.comment", "worktask.deleted",
+        "timesheet.submitted", "timesheet.approved", "timesheet.rejected",
+        Audit,
     ];
+
+    /// <summary>Every audit record (sign-ins, permission and security changes...), for a SIEM. Only sent to webhooks that name it - "*" does not include it.</summary>
+    public const string Audit = "audit.logged";
 
     public static bool IsValidPattern(string p) => p == "*" || All.Contains(p) || (p.EndsWith(".*") && All.Any(e => e.StartsWith(p[..^1])));
     public static bool Matches(string patterns, string action) =>
-        patterns.Split(',', StringSplitOptions.RemoveEmptyEntries).Any(p => p == "*" || p == action || (p.EndsWith(".*") && action.StartsWith(p[..^1])));
+        patterns.Split(',', StringSplitOptions.RemoveEmptyEntries).Any(p => (p == "*" && !action.StartsWith("audit.")) || p == action || (p.EndsWith(".*") && action.StartsWith(p[..^1])));
+    public static bool WantsAudit(string patterns) => Matches(patterns, Audit);
 }
 
 /// <summary>Which addresses a webhook may point at. Anything that reaches the server's own or an internal network is refused (SSRF).</summary>
@@ -92,9 +99,10 @@ public static class WebhookUrlRules
 }
 
 public record WebhookDto(Guid Id, string Name, string Url, IReadOnlyList<string> Events, bool IsActive, string? DisabledReason, DateTime CreatedAt,
-    DateTime? LastDeliveryAt, string? LastStatus, int ConsecutiveFailures);
+    DateTime? LastDeliveryAt, string? LastStatus, int ConsecutiveFailures, WebhookFormat Format = WebhookFormat.Json);
 public record CreatedWebhookDto(WebhookDto Webhook, string Secret);
-public record UpsertWebhookRequest(string Name, string Url, IReadOnlyList<string>? Events, bool? IsActive);
+/// <summary><see cref="Format"/>: Json (signed, for your own systems), Slack or Teams (a message for a channel's incoming webhook).</summary>
+public record UpsertWebhookRequest(string Name, string Url, IReadOnlyList<string>? Events, bool? IsActive, WebhookFormat? Format = null);
 public record WebhookDeliveryDto(Guid Id, string EventType, WebhookDeliveryStatus Status, int Attempts, int? ResponseStatus, string? Error, DateTime CreatedAt, DateTime? DeliveredAt, DateTime? NextAttemptAt);
 
 /// <summary>Managing a workspace's webhooks. Owners and admins only, on plans with API access.</summary>
@@ -109,7 +117,7 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     }
 
     public static WebhookDto ToDto(Webhook w) => new(w.Id, w.Name, w.Url, w.Events.Split(',', StringSplitOptions.RemoveEmptyEntries), w.IsActive, w.DisabledReason,
-        w.CreatedAt, w.LastDeliveryAt, w.LastStatus, w.ConsecutiveFailures);
+        w.CreatedAt, w.LastDeliveryAt, w.LastStatus, w.ConsecutiveFailures, w.Format);
 
     public static string NewSecret() => "whsec_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
@@ -129,7 +137,12 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var events = (req.Events is { Count: > 0 } ? req.Events : ["*"]).Select(e => (e ?? "").Trim()).Where(e => e.Length > 0).Distinct().ToList();
         var bad = events.FirstOrDefault(e => !WebhookEvents.IsValidPattern(e));
         if (bad is not null) throw new ValidationException("events", $"“{bad}” is not an event this system sends.");
-        return (name, req.Url!.Trim(), string.Join(',', events));
+        var joined = string.Join(',', events);
+        // Streaming the audit log is part of the audit log feature.
+        if (WebhookEvents.WantsAudit(joined) && await entitlements.GetValueAsync(FeatureKeys.AuditLog, ct) <= 0)
+            throw new ValidationException("events", "Streaming the audit log needs a plan with the audit log.");
+        if (req.Format is { } f && !Enum.IsDefined(f)) throw new ValidationException("format", "Choose JSON, Slack or Teams.");
+        return (name, req.Url!.Trim(), joined);
     }
 
     public async Task<CreatedWebhookDto> CreateAsync(UpsertWebhookRequest req, CancellationToken ct = default)
@@ -143,7 +156,7 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var hook = new Webhook
         {
             TenantId = ctx.RequireTenantId(), Name = name, Url = url, Events = events, SecretProtected = protector.Protect(secret),
-            CursorAt = clock.Now, CreatedAt = clock.Now, CreatedBy = ctx.RequireUserId(),
+            CursorAt = clock.Now, AuditCursorAt = clock.Now, CreatedAt = clock.Now, CreatedBy = ctx.RequireUserId(), Format = req.Format ?? WebhookFormat.Json,
         };
         db.Webhooks.Add(hook);
         recorder.Audit("webhook.created", "Webhook", hook.Id, newValue: new { hook.Name, hook.Url, hook.Events });
@@ -156,14 +169,17 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         RequireAdmin();
         var hook = await db.Webhooks.FirstOrDefaultAsync(w => w.Id == id, ct) ?? throw new NotFoundException("Webhook not found.");
         var (name, url, events) = await CleanAsync(req, ct);
+        // Newly asking for the audit stream starts it from now, not from the beginning of the log.
+        if (WebhookEvents.WantsAudit(events) && !WebhookEvents.WantsAudit(hook.Events)) hook.AuditCursorAt = clock.Now;
         hook.Name = name; hook.Url = url; hook.Events = events; hook.UpdatedAt = clock.Now;
+        if (req.Format is { } format) hook.Format = format;
         if (req.IsActive is { } active && active != hook.IsActive)
         {
             if (active) await entitlements.EnsureFeatureAsync(FeatureKeys.ApiAccess, ct);
             hook.IsActive = active; hook.DisabledReason = active ? null : "Turned off by an administrator.";
-            if (active) { hook.ConsecutiveFailures = 0; hook.CursorAt = clock.Now; } // do not flood it with what happened while it was off
+            if (active) { hook.ConsecutiveFailures = 0; hook.CursorAt = clock.Now; hook.AuditCursorAt = clock.Now; } // do not flood it with what happened while it was off
         }
-        recorder.Audit("webhook.updated", "Webhook", id, newValue: new { hook.Name, hook.Url, hook.Events, hook.IsActive });
+        recorder.Audit("webhook.updated", "Webhook", id, newValue: new { hook.Name, hook.Url, hook.Events, hook.IsActive, hook.Format });
         await db.SaveChangesAsync(ct);
         return ToDto(hook);
     }
@@ -274,6 +290,28 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
             hook.CursorAt = activities[^1].CreatedAt;
             await db.SaveChangesAsync(ct);
         }
+
+        // Audit log streaming: the same delivery queue, from the tenant's audit records.
+        foreach (var hook in hooks.Where(h => WebhookEvents.WantsAudit(h.Events)))
+        {
+            var since = hook.AuditCursorAt ?? hook.CreatedAt;
+            var records = await db.AuditLogs.IgnoreQueryFilters().AsNoTracking().Where(a => a.TenantId == hook.TenantId && a.CreatedAt >= since && a.CreatedAt <= until)
+                .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).Take(200).ToListAsync(ct);
+            if (records.Count == 0) continue;
+            var ids = records.Select(a => a.Id).ToList();
+            var done = (await db.WebhookDeliveries.IgnoreQueryFilters().Where(d => d.WebhookId == hook.Id && d.ActivityId != null && ids.Contains(d.ActivityId.Value)).Select(d => d.ActivityId!.Value).ToListAsync(ct)).ToHashSet();
+            var people = records.Where(a => a.UserId != null).Select(a => a.UserId!.Value).Distinct().ToList();
+            var names = await db.Users.IgnoreQueryFilters().Where(u => people.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => new { u.DisplayName, u.Email }, ct);
+            foreach (var a in records.Where(a => !done.Contains(a.Id)))
+                db.WebhookDeliveries.Add(NewDelivery(hook, a.Id, WebhookEvents.Audit, a.CreatedAt, new
+                {
+                    action = a.Action, entityType = a.EntityType, entityId = a.EntityId, ipAddress = a.IpAddress, userAgent = a.UserAgent,
+                    user = a.UserId is { } u ? new { id = u, name = names.GetValueOrDefault(u)?.DisplayName, email = names.GetValueOrDefault(u)?.Email } : null,
+                    oldValue = a.OldValue, newValue = a.NewValue,
+                }));
+            hook.AuditCursorAt = records[^1].CreatedAt;
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     // ---------------------------------------------------------------- deliveries → HTTP
@@ -317,9 +355,16 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
             return;
         }
 
+        // Slack and Teams want a message, not our event: it is written now from the stored event (which the delivery log keeps showing).
+        var body = d.Payload;
+        if (hook.Format != WebhookFormat.Json)
+        {
+            var workspace = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == hook.TenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Workspace";
+            body = ChatMessages.Render(hook.Format, d.Payload, ProjectManagement.Application.Features.Sso.PublicUrls.Web(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Common.AppOptions>>().Value), workspace);
+        }
         var secret = sp.GetRequiredService<ISecretProtector>().Unprotect(hook.SecretProtected);
         var stamp = new DateTimeOffset(now).ToUnixTimeSeconds();
-        var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes($"{stamp}.{d.Payload}"))).ToLowerInvariant();
+        var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes($"{stamp}.{body}"))).ToLowerInvariant();
         var headers = new Dictionary<string, string>
         {
             ["X-PM-Event"] = d.EventType, ["X-PM-Delivery"] = d.Id.ToString(), ["X-PM-Timestamp"] = stamp.ToString(), ["X-PM-Signature"] = $"t={stamp},v1={signature}",
@@ -327,7 +372,7 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
 
         using var span = ProjectManagement.Application.Common.AppTelemetry.Source.StartActivity("webhook.deliver");
         span?.SetTag("webhook.event", d.EventType);
-        var result = await sp.GetRequiredService<IWebhookTransport>().SendAsync(hook.Url, headers, d.Payload, ct);
+        var result = await sp.GetRequiredService<IWebhookTransport>().SendAsync(hook.Url, headers, body, ct);
         d.Attempts++;
         d.ResponseStatus = result.Status; d.ResponseSnippet = result.Snippet;
         var ok = result.Status is >= 200 and < 300;

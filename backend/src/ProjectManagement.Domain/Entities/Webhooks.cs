@@ -18,8 +18,12 @@ namespace ProjectManagement.Domain.Entities
         public string Url { get; set; } = "";
         /// <summary>The signing secret, encrypted. Shown to the person once, when it is created or rotated.</summary>
         public string SecretProtected { get; set; } = "";
-        /// <summary>Comma-separated event patterns: "*", "task.*" or an exact name such as "task.created".</summary>
+        /// <summary>Comma-separated event patterns: "*", "task.*" or an exact name such as "task.created". Audit events ("audit.logged") are only sent when named.</summary>
         public string Events { get; set; } = "*";
+        /// <summary>Signed JSON for your own systems, or a ready-made message for a Slack or Microsoft Teams channel.</summary>
+        public WebhookFormat Format { get; set; } = WebhookFormat.Json;
+        /// <summary>Audit log streaming: audit records up to this moment have already been turned into deliveries.</summary>
+        public DateTime? AuditCursorAt { get; set; }
         public bool IsActive { get; set; } = true;
         public string? DisabledReason { get; set; }
 

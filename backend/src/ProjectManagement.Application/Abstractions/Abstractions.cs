@@ -62,6 +62,11 @@ public interface IAppDbContext
     DbSet<TimeEntry> TimeEntries { get; }
     DbSet<TimesheetApproval> TimesheetApprovals { get; }
     DbSet<SlaPolicy> SlaPolicies { get; }
+    DbSet<CalendarFeed> CalendarFeeds { get; }
+    DbSet<InboundMailbox> InboundMailboxes { get; }
+    DbSet<GitConnection> GitConnections { get; }
+    DbSet<DevLink> DevLinks { get; }
+    DbSet<TenantDataPolicy> TenantDataPolicies { get; }
     DbSet<AutomationRule> AutomationRules { get; }
     DbSet<TaskComment> TaskComments { get; }
     DbSet<Activity> Activities { get; }

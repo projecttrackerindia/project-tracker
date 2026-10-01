@@ -327,8 +327,22 @@ export interface BurndownPoint { date: string; remaining: number; ideal: number 
 export interface SprintDetail { sprint: Sprint; burndown: BurndownPoint[] }
 
 // ---- generated reports
-export type ReportKind = 'Project' | 'Workload' | 'Timesheet' | 'WorkTasks';
-export type ReportFormat = 'Csv' | 'Xlsx' | 'Pdf';
+export type ReportKind = 'Project' | 'Workload' | 'Timesheet' | 'WorkTasks' | 'WorkspaceExport';
+export type ReportFormat = 'Csv' | 'Xlsx' | 'Pdf' | 'Zip';
+
+// ---- integrations
+export interface CalendarFeed { enabled: boolean; url: string | null; createdAt: string | null; lastUsedAt: string | null }
+export interface InboundMailbox {
+  configured: boolean; enabled: boolean; address: string | null; webhookUrl: string | null; workTypeId: string | null; priority: Priority;
+  received: number; lastReceivedAt: string | null; lastError: string | null; canManage: boolean;
+}
+export type GitProvider = 'GitHub' | 'AzureDevOps';
+export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
+export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
+export interface DataPolicy {
+  activityRetentionDays: number | null; notificationRetentionDays: number | null; chatRetentionDays: number | null; auditRetentionDays: number | null;
+  planActivityDays: number; lastPurgedAt: string | null; canManage: boolean;
+}
 export interface ReportExport {
   id: string; kind: ReportKind; format: ReportFormat; status: 'Queued' | 'Running' | 'Ready' | 'Failed'; projectId: string | null; targetUserId: string | null; days: number;
   fileName: string | null; sizeBytes: number; error: string | null; createdAt: string; completedAt: string | null; expiresAt: string | null;
@@ -362,7 +376,10 @@ export interface ApiKey {
 export interface Webhook {
   id: string; name: string; url: string; events: string[]; isActive: boolean; disabledReason: string | null; createdAt: string;
   lastDeliveryAt: string | null; lastStatus: string | null; consecutiveFailures: number;
+  /** Json: signed events for your own systems. Slack / Teams: a ready-made message for a channel. */
+  format: WebhookFormat;
 }
+export type WebhookFormat = 'Json' | 'Slack' | 'Teams';
 export interface WebhookDelivery {
   id: string; eventType: string; status: 'Pending' | 'Succeeded' | 'Failed'; attempts: number; responseStatus: number | null; error: string | null;
   createdAt: string; deliveredAt: string | null; nextAttemptAt: string | null;

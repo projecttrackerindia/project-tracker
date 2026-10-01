@@ -29,6 +29,7 @@ const ProjectDetailPage = page(() => import('./features/projects/ProjectDetailPa
 const ProjectsPage = page(() => import('./features/projects/ProjectsPage'), 'ProjectsPage');
 const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPage'), 'ProjectStatusPage');
 const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
+const SecurityPage = page(() => import('./features/legal/SecurityPage'), 'SecurityPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
@@ -226,6 +227,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/auth/complete" element={<AuthCompletePage />} />
+      <Route path="/security" element={<SecurityPage />} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       <Route element={<RequireAuth />}>

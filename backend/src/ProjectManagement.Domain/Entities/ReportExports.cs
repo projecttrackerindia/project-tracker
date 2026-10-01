@@ -7,9 +7,10 @@ namespace ProjectManagement.Domain.Enums
     /// Timesheet = logged time. Numeric values are stable (matter for rows already stored): Project keeps Tasks' old 0, Workload
     /// takes Summary's old 1 (a Summary report generated before this change would now be mislabeled "Workload" in the list, but
     /// report exports only live 7 days, so nothing long-lived is affected), Timesheet is unchanged at 2. WorkTasks = operational work
-    /// tasks (the same columns as the instant "export this list" button, which uses the same writer).</summary>
-    public enum ReportKind { Project, Workload, Timesheet, WorkTasks }
-    public enum ReportFormat { Csv, Xlsx, Pdf }
+    /// tasks (the same columns as the instant "export this list" button, which uses the same writer). WorkspaceExport = everything the
+    /// workspace holds, as JSON files in a zip (Owners only).</summary>
+    public enum ReportKind { Project, Workload, Timesheet, WorkTasks, WorkspaceExport }
+    public enum ReportFormat { Csv, Xlsx, Pdf, Zip }
     public enum ReportExportStatus { Queued, Running, Ready, Failed }
 }
 

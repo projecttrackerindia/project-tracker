@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { webhookApi } from '../../api/endpoints';
-import type { Webhook } from '../../api/types';
+import type { Webhook, WebhookFormat } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, EmptyState, Field, Modal, SubmitButton } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
@@ -40,13 +40,13 @@ export function WebhookSettings() {
     try { const r = await webhookApi.rotate(h.id); setSecret(r.secret); refresh(); } catch (e) { fail(e, 'Could not rotate the secret.'); }
   };
   const toggle = async (h: Webhook) => {
-    try { await webhookApi.update(h.id, { name: h.name, url: h.url, events: h.events, isActive: !h.isActive }); refresh(); } catch (e) { fail(e, 'Could not change the webhook.'); }
+    try { await webhookApi.update(h.id, { name: h.name, url: h.url, events: h.events, isActive: !h.isActive, format: h.format }); refresh(); } catch (e) { fail(e, 'Could not change the webhook.'); }
   };
 
   return (
     <div className="card mb-22">
       <div className="card-head">
-        <div><h3>Webhooks</h3><p>Send a signed HTTPS request to another system whenever something happens in this workspace.</p></div>
+        <div><h3>Webhooks, Slack &amp; Teams</h3><p>Post to a Slack or Microsoft Teams channel, stream the audit log to your SIEM, or send a signed HTTPS request to another system whenever something happens.</p></div>
         {included && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> New webhook</button>}
       </div>
       <div className="card-body">
@@ -58,6 +58,8 @@ export function WebhookSettings() {
               <div className="cf-row" key={h.id}>
                 <div className="cf-main">
                   <b>{h.name}</b> <Badge tone={h.isActive ? 'success' : 'danger'}>{h.isActive ? 'On' : 'Off'}</Badge>{' '}
+                  {h.format !== 'Json' && <Badge tone="purple">{h.format === 'Slack' ? 'Slack' : 'Teams'}</Badge>}{' '}
+                  {h.events.includes('audit.logged') && <Badge tone="info">Audit stream</Badge>}{' '}
                   {h.lastStatus && <Badge tone={h.lastStatus === 'ok' ? 'success' : 'warning'}>{h.lastStatus === 'ok' ? 'Last delivery ok' : 'Last delivery failed'}</Badge>}
                   <div className="muted" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>{h.url}</div>
                   <div className="muted" style={{ fontSize: 12 }}>{h.events.join(', ')}{h.lastDeliveryAt ? ` · last sent ${timeAgo(h.lastDeliveryAt)}` : ' · nothing sent yet'}</div>
@@ -94,7 +96,9 @@ function HookModal({ hook, onClose, onSaved }: { hook?: Webhook; onClose: () => 
   const [name, setName] = useState(hook?.name ?? '');
   const [url, setUrl] = useState(hook?.url ?? '');
   const [all, setAll] = useState(!hook || hook.events.includes('*'));
-  const [picked, setPicked] = useState<string[]>(hook?.events.filter((e) => e !== '*') ?? []);
+  const [picked, setPicked] = useState<string[]>(hook?.events.filter((e) => e !== '*' && (hook.events.includes('*') ? e !== 'audit.logged' : true)) ?? []);
+  const [format, setFormat] = useState<WebhookFormat>(hook?.format ?? 'Json');
+  const [audit, setAudit] = useState(!!hook?.events.includes('*') && hook.events.includes('audit.logged'));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const groups = [...new Set((catalogue.data ?? []).map((e) => e.split('.')[0]))];
@@ -111,9 +115,13 @@ function HookModal({ hook, onClose, onSaved }: { hook?: Webhook; onClose: () => 
     if (!all && picked.length === 0) return setError('Choose at least one event, or send everything.');
     setBusy(true); setError(null);
     try {
-      const events = all ? ['*'] : picked;
-      if (hook) { await webhookApi.update(hook.id, { name: name.trim(), url: url.trim(), events, isActive: hook.isActive }); toast('Webhook updated.'); onSaved(); }
-      else { const r = await webhookApi.create({ name: name.trim(), url: url.trim(), events }); toast('Webhook created.'); onSaved(r.secret); }
+      const events = all ? (audit ? ['*', 'audit.logged'] : ['*']) : picked;
+      if (hook) { await webhookApi.update(hook.id, { name: name.trim(), url: url.trim(), events, isActive: hook.isActive, format }); toast('Webhook updated.'); onSaved(); }
+      else {
+        const r = await webhookApi.create({ name: name.trim(), url: url.trim(), events, format });
+        toast(format === 'Json' ? 'Webhook created.' : `Connected. Send a test to see it in the ${format === 'Slack' ? 'Slack' : 'Teams'} channel.`);
+        onSaved(format === 'Json' ? r.secret : undefined);   // chat channels do not check signatures
+      }
     } catch (e) { setError(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not save the webhook.'); }
     finally { setBusy(false); }
   };
@@ -122,14 +130,29 @@ function HookModal({ hook, onClose, onSaved }: { hook?: Webhook; onClose: () => 
     <Modal size="lg" title={hook ? 'Edit webhook' : 'New webhook'} onClose={onClose} onSubmit={(e) => { e.preventDefault(); void submit(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>{hook ? 'Save webhook' : 'Create webhook'}</SubmitButton></>}>
       {error && <div className="form-error" role="alert">{error}</div>}
-      <Field label="Name" required><input className="input" maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Slack bridge" /></Field>
-      <Field label="Address" required hint="Must start with https://. Addresses on private or internal networks are refused."><input className="input" maxLength={500} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hooks/project-management" /></Field>
+      <div className="hook-form">
+      <div className="field">
+        <label>Send to</label>
+        <div className="method-picker hook-formats" role="radiogroup" aria-label="Send to">
+          {([['Json', 'Your own system', 'Signed JSON events (X-PM-Signature).'], ['Slack', 'A Slack channel', 'A readable message with a link back.'], ['Teams', 'A Microsoft Teams channel', 'An Adaptive Card with a link back.']] as const).map(([id, label, hint]) => (
+            <button key={id} type="button" role="radio" aria-checked={format === id} className={`method-option ${format === id ? 'on' : ''}`} onClick={() => setFormat(id)}><b>{label}</b><span>{hint}</span></button>
+          ))}
+        </div>
+      </div>
+      <Field label="Name" required><input className="input" maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={format === 'Json' ? 'Billing system' : format === 'Slack' ? '#delivery in Slack' : 'Delivery channel in Teams'} /></Field>
+      <Field label="Address" required hint={format === 'Slack' ? 'In Slack: Apps → Incoming Webhooks → Add to a channel, then paste the https://hooks.slack.com/... address.'
+        : format === 'Teams' ? 'In the Teams channel: ⋯ → Workflows → “Post to a channel when a webhook request is received”, then paste the address it gives you.'
+        : 'Must start with https://. Addresses on private or internal networks are refused.'}>
+        <input className="input" maxLength={500} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={format === 'Slack' ? 'https://hooks.slack.com/services/…' : format === 'Teams' ? 'https://….logic.azure.com/workflows/…' : 'https://example.com/hooks/project-management'} />
+      </Field>
+      </div>
       <label className="check" style={{ display: 'flex', gap: 8, margin: '6px 0 10px' }}><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Send every event</label>
+      {all && format === 'Json' && <label className="check" style={{ display: 'flex', gap: 8, margin: '-4px 0 10px' }}><input type="checkbox" checked={audit} onChange={(e) => setAudit(e.target.checked)} /> Also stream the audit log (sign-ins, permission and security changes) to this address</label>}
       {!all && (
         <div className="event-picker">
           {groups.map((g) => (
             <div key={g} className="event-group">
-              <button type="button" className="link" onClick={() => toggleGroup(g)}><b>{g}</b></button>
+              <button type="button" className="link" onClick={() => toggleGroup(g)}><b>{g === 'audit' ? 'audit log (for a SIEM)' : g}</b></button>
               {(catalogue.data ?? []).filter((e) => e.startsWith(g + '.')).map((e) => (
                 <label key={e} className="check"><input type="checkbox" checked={picked.includes(e)} onChange={() => toggleEvent(e)} /> {e.slice(g.length + 1).replace(/_/g, ' ')}</label>
               ))}

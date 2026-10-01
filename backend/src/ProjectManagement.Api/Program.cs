@@ -31,6 +31,9 @@ if (builder.Environment.IsDevelopment()) builder.Services.AddApiSwagger();
 var app = builder.Build();
 
 app.UseMiddleware<MetricsMiddleware>();
+// Outside the exception handler, so each request is logged with the status the caller really got: an expected refusal (401, 403,
+// 404, 422...) is an ordinary line, not a "500" error with a stack trace. Unexpected failures are logged by ApiExceptionMiddleware.
+app.UseSerilogRequestLogging();
 app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 if (app.Configuration.GetValue("Proxy:Trust", false)) app.UseForwardedHeaders();
@@ -39,7 +42,6 @@ if (!app.Environment.IsDevelopment() && app.Configuration.GetValue("Https:Redire
     app.UseHsts();
     app.UseHttpsRedirection();
 }
-app.UseSerilogRequestLogging();
 app.UseCors();
 app.UseMiddleware<ApiKeyAuthMiddleware>();
 app.UseAuthentication();

@@ -235,7 +235,8 @@ export function LoginPage() {
   );
   return (
     <AuthLayout title="Welcome back" sub="Sign in to continue to your workspace." shake={shaking}
-      footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link></>}>
+      footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link>
+        <span className="auth-foot-sep">·</span><Link className="link" to="/security">Security</Link></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); setSigningIn(true); m.mutate(v); }, () => shake())} noValidate>
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
         <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />

@@ -41,8 +41,11 @@ public class ReportExportService(IAppDbContext db, ICurrentContext ctx, AppClock
         if (!Enum.IsDefined(req.Kind) || !Enum.IsDefined(req.Format)) throw new ValidationException("kind", "Unknown report type or format.");
         if (req.Kind == ReportKind.WorkTasks && await permissions.LevelAsync(Modules.Work, ct) == AccessLevel.None)
             throw new ForbiddenException("Your role does not have access to Work management.", "MODULE_ACCESS_DENIED");
-        // CSV stays available on every plan; spreadsheets and PDFs are part of the advanced reports feature.
-        if (req.Format != ReportFormat.Csv) await entitlements.EnsureFeatureAsync(FeatureKeys.AdvancedReports, ct);
+        var whole = req.Kind == ReportKind.WorkspaceExport;
+        if (whole && ctx.Role != TenantRole.Owner) throw new ForbiddenException("Only the workspace owner can export all of its data.", "PERMISSION_DENIED");
+        if (whole != (req.Format == ReportFormat.Zip)) throw new ValidationException("format", whole ? "A workspace export is a zip file." : "Choose CSV, Excel or PDF.");
+        // CSV stays available on every plan; spreadsheets and PDFs are part of the advanced reports feature. The workspace export is every plan's right.
+        if (!whole && req.Format != ReportFormat.Csv) await entitlements.EnsureFeatureAsync(FeatureKeys.AdvancedReports, ct);
         if (req.ProjectId is { } pid)
         {
             if (req.Kind == ReportKind.Workload) throw new ValidationException("projectId", "A workload report is not limited to one project.");
@@ -105,6 +108,7 @@ public class ReportExportService(IAppDbContext db, ICurrentContext ctx, AppClock
     public static string ContentTypeOf(ReportFormat f) => f switch
     {
         ReportFormat.Csv => "text/csv",
+        ReportFormat.Zip => "application/zip",
         ReportFormat.Xlsx => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         _ => "application/pdf",
     };
@@ -198,19 +202,36 @@ public class ReportExportProcessor(IServiceScopeFactory scopes, TimeProvider tim
         var cc = sp.GetRequiredService<CurrentContext>();
         cc.UserId = export.UserId; cc.TenantId = export.TenantId; cc.Role = member.Role; cc.WorkspaceType = tenant.Type; cc.IsPlatformAdmin = false;
 
-        var doc = await sp.GetRequiredService<ReportBuilder>().BuildAsync(export, tenant.Name, ct);
-        var file = ReportWriter.Write(doc, export.Format);
-
         var storage = sp.GetRequiredService<IFileStorage>();
-        var key = $"{export.TenantId:N}/exports/{export.Id:N}.{file.Extension}";
-        using (var ms = new MemoryStream(file.Content)) await storage.SaveAsync(key, ms, ct);
+        string extension; long size;
+        if (export.Kind == ReportKind.WorkspaceExport)
+        {
+            // Everything the workspace holds: written to a temporary zip on disk (it can be large), then stored like any report.
+            var temp = await sp.GetRequiredService<ProjectManagement.Application.Features.Compliance.WorkspaceExporter>().WriteAsync(tenant.Name, ct);
+            try
+            {
+                extension = "zip"; size = new FileInfo(temp).Length;
+                await using var fs = File.OpenRead(temp);
+                await storage.SaveAsync($"{export.TenantId:N}/exports/{export.Id:N}.zip", fs, ct);
+            }
+            finally { try { File.Delete(temp); } catch (IOException) { /* best effort */ } }
+        }
+        else
+        {
+            var doc = await sp.GetRequiredService<ReportBuilder>().BuildAsync(export, tenant.Name, ct);
+            var file = ReportWriter.Write(doc, export.Format);
+            extension = file.Extension; size = file.Content.Length;
+            using var ms = new MemoryStream(file.Content);
+            await storage.SaveAsync($"{export.TenantId:N}/exports/{export.Id:N}.{extension}", ms, ct);
+        }
+        var key = $"{export.TenantId:N}/exports/{export.Id:N}.{extension}";
 
-        var name = $"{export.Kind.ToString().ToLowerInvariant()}-{Now:yyyyMMdd-HHmm}.{file.Extension}";
-        export.StorageKey = key; export.FileName = name; export.SizeBytes = file.Content.Length;
+        var name = export.Kind == ReportKind.WorkspaceExport ? $"workspace-export-{Now:yyyyMMdd-HHmm}.zip" : $"{export.Kind.ToString().ToLowerInvariant()}-{Now:yyyyMMdd-HHmm}.{extension}";
+        export.StorageKey = key; export.FileName = name; export.SizeBytes = size;
         export.Status = ReportExportStatus.Ready; export.CompletedAt = Now; export.ExpiresAt = Now + ReportExportService.Retention; export.Error = null;
-        var label = export.Kind == ReportKind.WorkTasks ? "Work tasks" : export.Kind.ToString();
-        await sp.GetRequiredService<NotificationService>().AddAsync(export.UserId, NotificationType.ReportReady, $"Your {label} report is ready",
-            $"{name} ({file.Content.Length / 1024 + 1} KB) can be downloaded for {ReportExportService.Retention.Days} days.", "/reports", toSelf: true, ct: ct);
+        var label = export.Kind switch { ReportKind.WorkTasks => "Work tasks report", ReportKind.WorkspaceExport => "workspace data export", _ => $"{export.Kind} report" };
+        await sp.GetRequiredService<NotificationService>().AddAsync(export.UserId, NotificationType.ReportReady, $"Your {label} is ready",
+            $"{name} ({size / 1024 + 1:N0} KB) can be downloaded for {ReportExportService.Retention.Days} days.", "/reports", toSelf: true, ct: ct);
         await db.SaveChangesAsync(ct);
     }
 

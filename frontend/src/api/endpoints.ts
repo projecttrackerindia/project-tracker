@@ -7,7 +7,8 @@ import type { BillingSettings, TimelineTemplate,
   OrgSecurity, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
   ConsentDocument, MyConsent,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
-  TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget,
+  TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
+  CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
 } from './types';
 
 export const authApi = {
@@ -384,8 +385,8 @@ export const apiKeyApi = {
 export const webhookApi = {
   list: () => get<Webhook[]>('/webhooks'),
   events: () => get<string[]>('/webhooks/events'),
-  create: (b: { name: string; url: string; events: string[] }) => post<{ webhook: Webhook; secret: string }>('/webhooks', b),
-  update: (id: string, b: { name: string; url: string; events: string[]; isActive: boolean }) => put<Webhook>(`/webhooks/${id}`, b),
+  create: (b: { name: string; url: string; events: string[]; format?: WebhookFormat }) => post<{ webhook: Webhook; secret: string }>('/webhooks', b),
+  update: (id: string, b: { name: string; url: string; events: string[]; isActive: boolean; format?: WebhookFormat }) => put<Webhook>(`/webhooks/${id}`, b),
   rotate: (id: string) => post<{ webhook: Webhook; secret: string }>(`/webhooks/${id}/rotate-secret`),
   remove: (id: string) => del(`/webhooks/${id}`),
   deliveries: (id: string) => get<WebhookDelivery[]>(`/webhooks/${id}/deliveries`),
@@ -449,6 +450,24 @@ export const consentApi = {
   documents: () => get<ConsentDocument[]>('/consent/documents', undefined, { auth: false }),
   status: () => get<MyConsent>('/consent/status'),
   accept: (types: string[]) => post<MyConsent>('/consent/accept', { types }),
+};
+
+// ---- integrations and compliance
+export const integrationsApi = {
+  calendarFeed: () => get<CalendarFeed>('/calendar/feed'),
+  resetCalendarFeed: () => post<CalendarFeed>('/calendar/feed'),
+  removeCalendarFeed: () => del('/calendar/feed'),
+  mailbox: () => get<InboundMailbox>('/integrations/inbound-email'),
+  saveMailbox: (b: { enabled: boolean; workTypeId: string | null; priority: Priority }) => put<InboundMailbox>('/integrations/inbound-email', b),
+  resetMailbox: () => post<InboundMailbox>('/integrations/inbound-email/reset'),
+  git: () => get<GitConnection[]>('/integrations/git'),
+  createGit: (b: { provider: GitProvider; name: string; closeOnKeyword: boolean }) => post<{ connection: GitConnection; secret: string }>('/integrations/git', b),
+  updateGit: (id: string, b: { provider: GitProvider; name: string; closeOnKeyword: boolean }) => put<GitConnection>(`/integrations/git/${id}`, b),
+  removeGit: (id: string) => del(`/integrations/git/${id}`),
+  taskLinks: (taskId: string) => get<DevLink[]>(`/tasks/${taskId}/dev-links`),
+  workTaskLinks: (workTaskId: string) => get<DevLink[]>(`/work-tasks/${workTaskId}/dev-links`),
+  dataPolicy: () => get<DataPolicy>('/workspace/data-policy'),
+  saveDataPolicy: (b: { activityRetentionDays: number | null; notificationRetentionDays: number | null; chatRetentionDays: number | null; auditRetentionDays: number | null }) => put<DataPolicy>('/workspace/data-policy', b),
 };
 
 // ---- capacity and cost

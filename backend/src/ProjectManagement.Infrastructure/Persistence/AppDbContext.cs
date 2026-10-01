@@ -66,6 +66,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
     public DbSet<TimesheetApproval> TimesheetApprovals => Set<TimesheetApproval>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+    public DbSet<CalendarFeed> CalendarFeeds => Set<CalendarFeed>();
+    public DbSet<InboundMailbox> InboundMailboxes => Set<InboundMailbox>();
+    public DbSet<GitConnection> GitConnections => Set<GitConnection>();
+    public DbSet<DevLink> DevLinks => Set<DevLink>();
+    public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();
@@ -118,6 +123,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<NotificationType>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<SsoProtocol>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<TimesheetStatus>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<WebhookFormat>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<GitProvider>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -405,7 +412,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Events).HasMaxLength(1000);
             e.Property(x => x.DisabledReason).HasMaxLength(200);
             e.Property(x => x.LastStatus).HasMaxLength(20);
+            e.Property(x => x.Format).HasDefaultValue(WebhookFormat.Json).HasSentinel(WebhookFormat.Json);
         });
+        b.Entity<CalendarFeed>(e =>
+        {
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.TokenProtected).HasMaxLength(300);
+            e.Property(x => x.Prefix).HasMaxLength(16);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<InboundMailbox>(e =>
+        {
+            e.HasIndex(x => x.Token).IsUnique();
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.Token).HasMaxLength(40);
+            e.Property(x => x.LastError).HasMaxLength(300);
+            e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<GitConnection>(e =>
+        {
+            e.HasIndex(x => x.Token).IsUnique();
+            e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.Property(x => x.Token).HasMaxLength(40);
+            e.Property(x => x.SecretProtected).HasMaxLength(300);
+            e.Property(x => x.LastError).HasMaxLength(300);
+        });
+        b.Entity<DevLink>(e =>
+        {
+            e.HasIndex(x => new { x.TaskId, x.OccurredAt });
+            e.HasIndex(x => new { x.WorkTaskId, x.OccurredAt });
+            e.HasIndex(x => new { x.TenantId, x.Provider, x.Kind, x.ExternalId });
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.ExternalId).HasMaxLength(80);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Url).HasMaxLength(500);
+            e.Property(x => x.Repository).HasMaxLength(200);
+            e.Property(x => x.Author).HasMaxLength(120);
+            e.Property(x => x.State).HasMaxLength(20);
+            e.HasOne<TaskItem>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<TenantDataPolicy>(e => e.HasIndex(x => x.TenantId).IsUnique());
         b.Entity<WebhookDelivery>(e =>
         {
             e.HasIndex(x => new { x.WebhookId, x.ActivityId }).IsUnique();

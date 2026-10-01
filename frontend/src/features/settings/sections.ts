@@ -1,8 +1,8 @@
 import type { SectionLink } from '../../components/ui';
 import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 
-export type WorkspaceSection = 'general' | 'access' | 'security' | 'sso' | 'billing' | 'audit'
-  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'api-keys' | 'webhooks';
+export type WorkspaceSection = 'general' | 'access' | 'security' | 'sso' | 'billing' | 'audit' | 'data'
+  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'api-keys' | 'webhooks' | 'email' | 'git';
 
 interface SectionDef extends SectionLink { id: WorkspaceSection; group: 'Workspace' | 'Configuration' | 'Integrations' }
 
@@ -22,6 +22,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'sso', group: 'Workspace', to: '/settings/sso', label: 'Single sign-on', icon: 'key', show: !personal && isAdmin },
     { id: 'billing', group: 'Workspace', to: '/settings/billing', label: 'Billing', icon: 'card', show: mBilling > 0 },
     { id: 'audit', group: 'Workspace', to: '/settings/audit', label: 'Audit log', icon: 'activity', show: !personal && has('audit.view') && mAudit > 0 },
+    { id: 'data', group: 'Workspace', to: '/settings/data', label: 'Data & retention', icon: 'database', show: isAdmin },
     { id: 'project-groups', group: 'Configuration', to: '/settings/project-groups', label: 'Project groups', icon: 'layers', show: has('projectgroups.manage') && mProjects > 0 },
     { id: 'timeline-templates', group: 'Configuration', to: '/settings/timeline-templates', label: 'Timeline templates', icon: 'flag', show: has('workflow.manage') && mProjects > 0 },
     { id: 'labels', group: 'Configuration', to: '/settings/labels', label: 'Labels', icon: 'tag', show: has('labels.manage') && mTasks > 0 },
@@ -29,7 +30,9 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'custom-fields', group: 'Configuration', to: '/settings/custom-fields', label: 'Custom fields', icon: 'list', show: has('workflow.manage') && mTasks > 0 },
     { id: 'work-types', group: 'Configuration', to: '/settings/work-types', label: 'Work types', icon: 'bolt', show: has('work.types.manage') && mWork > 0 },
     { id: 'api-keys', group: 'Integrations', to: '/settings/api-keys', label: 'API keys', icon: 'lock', show: isAdmin },
-    { id: 'webhooks', group: 'Integrations', to: '/settings/webhooks', label: 'Webhooks', icon: 'send', show: isAdmin },
+    { id: 'webhooks', group: 'Integrations', to: '/settings/webhooks', label: 'Webhooks, Slack & Teams', icon: 'send', show: isAdmin },
+    { id: 'email', group: 'Integrations', to: '/settings/email', label: 'Email to work', icon: 'mail', show: isAdmin && mWork > 0 },
+    { id: 'git', group: 'Integrations', to: '/settings/git', label: 'GitHub & Azure DevOps', icon: 'git', show: isAdmin },
   ];
   const visible = all.filter((s) => s.show);
   // General on its own is just the workspace's name: not worth a settings area for someone who administers nothing.

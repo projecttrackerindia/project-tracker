@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.Configure<StorageOptions>(config.GetSection(StorageOptions.Section));
         services.Configure<MfaOptions>(config.GetSection(MfaOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Integrations.InboundEmailOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.InboundEmailOptions.Section));
 
         var provider = config["Database:Provider"] ?? "Postgres";
         var connection = config.GetConnectionString("Default")

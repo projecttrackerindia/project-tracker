@@ -155,6 +155,7 @@ public class MaintenanceService(IAppDbContext db, IPaymentProvider payments, App
         await exports.PurgeExpiredAsync(ct: ct);
         await webhooks.PurgeAsync(ct);
         await files.PurgeOrphansAsync(TimeSpan.FromDays(7), ct: ct); // files of projects / tasks deleted more than a week ago
+        await ProjectManagement.Application.Features.Compliance.DataPolicyService.PurgeAllAsync(db, clock.Now, log, ct); // each workspace's own retention
     }
 
     public async Task RunSubscriptionLifecycleAsync(CancellationToken ct = default)

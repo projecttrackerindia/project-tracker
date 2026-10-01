@@ -1,0 +1,5 @@
+Contact: mailto:security@projecttracker.in
+Expires: 2027-10-01T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://projecttracker.in/.well-known/security.txt
+Policy: https://projecttracker.in/security#report

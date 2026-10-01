@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icon';
 import { Attachments } from '../files/Attachments';
 import { Dependencies } from '../planning/Dependencies';
 import { TimeTracker } from '../time/TimeTracker';
+import { DevLinks } from '../settings/IntegrationSettings';
 import { Checklist } from './Checklist';
 import { CustomFieldsSection } from '../customfields/CustomFieldsSection';
 import { customFieldApi, sprintApi } from '../../api/endpoints';
@@ -240,6 +241,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
           <CustomFieldsSection taskId={task.id} canEdit={task.canEdit} />
           <Checklist taskId={task.id} canEdit={task.canEdit} />
           <TimeTracker taskId={task.id} canEdit={task.canEdit} />
+          <DevLinks taskId={task.id} />
           <Dependencies taskId={task.id} projectId={task.projectId} canEdit={task.canEdit} />
           <Attachments projectId={task.projectId} taskId={task.id} canEdit={task.canEdit} compact />
           {!task.parentTaskId && <Subtasks parent={task} subtasks={detail.data.subtasks} statuses={sortedStatuses} canCreate={canCreate && task.canEdit} onOpen={setCurrentId} />}

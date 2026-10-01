@@ -73,6 +73,11 @@ public static class DependencyInjection
         services.AddScoped<TimeService>();
         services.AddScoped<TimesheetApprovalService>();
         services.AddScoped<CapacityService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.InboundEmailService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.GitLinkService>();
+        services.AddScoped<ProjectManagement.Application.Features.Compliance.DataPolicyService>();
+        services.AddScoped<ProjectManagement.Application.Features.Compliance.WorkspaceExporter>();
         services.AddScoped<ProjectManagement.Application.Features.Chat.ChatService>();
         services.AddScoped<PlatformService>();
         services.AddScoped<GoLiveService>();

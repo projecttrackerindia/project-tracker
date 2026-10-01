@@ -27,6 +27,7 @@ import { WorkTypeSettings } from './WorkTypeSettings';
 import { SlaSettings } from '../work/Sla';
 import { ApiKeySettings } from './ApiKeySettings';
 import { WebhookSettings } from './WebhookSettings';
+import { DataSettings, GitSettings, InboundEmailSettings } from './IntegrationSettings';
 import { LabelSettings } from './LabelSettings';
 import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
@@ -254,7 +255,10 @@ export function WorkspaceSettingsPage() {
       {current.id === 'custom-fields' && <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /></>}
       {current.id === 'work-types' && <><PageHead title="Work types" sub="The kinds of operational work people can raise, and how fast each must be answered and resolved." /><WorkTypeSettings /><SlaSettings /></>}
       {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
-      {current.id === 'webhooks' && <><PageHead title="Webhooks" sub="Tell other systems when something changes here." /><WebhookSettings /></>}
+      {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
+      {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
+      {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
+      {current.id === 'data' && <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /></>}
     </SectionLayout>
   );
 }

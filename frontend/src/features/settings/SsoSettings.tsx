@@ -13,12 +13,13 @@ import { confirmDialog, toast } from '../../stores/ui';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 
-async function copy(text: string, what: string) {
+export async function copy(text: string, what: string) {
   try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
   catch { toast('Could not copy. Select the text and copy it by hand.', 'warning'); }
 }
 
-function CopyRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
+/** A label and a value with a copy button (addresses, records, secrets to paste elsewhere). */
+export function CopyRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="copy-row">
       <div className="copy-label">{label}{hint && <span className="muted"> · {hint}</span>}</div>

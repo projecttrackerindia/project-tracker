@@ -12,6 +12,7 @@ import { WORK_STATUSES } from '../../lib/workLabels';
 import { useWorkspaceId } from '../../stores/auth';
 import { TimeTracker } from '../time/TimeTracker';
 import { SlaPanel } from './Sla';
+import { DevLinks } from '../settings/IntegrationSettings';
 import { formatMinutes } from '../time/time';
 import type { Member } from '../../api/types';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -127,6 +128,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
           <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={8000} placeholder="What needs to be done, and any context that helps." />
         </Field>
       </div>
+      {task && <DevLinks workTaskId={task.id} />}
       {task && <p className="field-hint" style={{ marginTop: 12 }}>Raised by {task.reporter?.name ?? 'someone'} on {formatDate(task.createdAt)}{task.completedAt ? ` · completed ${formatDate(task.completedAt)}` : ''}.</p>}
     </fieldset>
   );
