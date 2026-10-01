@@ -54,7 +54,12 @@ public static class DependencyInjection
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         services.AddSingleton<IPaymentProvider, MockPaymentProvider>();
         services.AddSingleton<DevMailbox>();
-        services.AddSingleton<IFileStorage, LocalFileStorage>();
+        if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IFileStorage, S3FileStorage>();
+            services.AddHostedService<StorageMigrationWorker>();
+        }
+        else services.AddSingleton<IFileStorage, LocalFileStorage>();
 
         var emailProvider = config["Email:Provider"] ?? "Log";
         if (emailProvider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))

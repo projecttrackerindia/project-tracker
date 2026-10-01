@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, notificationApi, workspaceApi } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
-import { Field, Modal, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
+import { Field, Modal, PageLoader, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
 import { queryClient, useAuth, useCan, useIsPersonal } from '../stores/auth';
 import { toast, useUi } from '../stores/ui';
@@ -18,7 +18,7 @@ import { PlatformBanner } from '../components/PlatformBanner';
 import { ThemeSwitch } from '../components/ThemeSwitch';
 import { AccountDock, TopbarMe } from './AccountDock';
 import { useVisibleKinds } from '../features/workitems/workItems';
-import { usePeopleSections } from '../features/people/PeoplePage';
+import { usePeopleSections } from '../features/people/sections';
 
 // ------------------------------------------------------------------ helpers
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -381,7 +381,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <div className={`main ${collapsed ? 'expanded' : ''}`}>
         <PlatformBanner />
         <Topbar />
-        <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{children ?? <Outlet />}</main>
+        <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></main>
       </div>
       <ToastRoot />
       <ConfirmRoot />

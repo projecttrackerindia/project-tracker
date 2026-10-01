@@ -17,7 +17,7 @@ namespace ProjectManagement.Api.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddApiControllers(this IServiceCollection services)
+    public static IServiceCollection AddApiControllers(this IServiceCollection services, IConfiguration config)
     {
         services.AddControllers(o =>
             {
@@ -29,9 +29,25 @@ public static class ServiceCollectionExtensions
             .AddJsonOptions(o => Json.Configure(o.JsonSerializerOptions));
         services.ConfigureHttpJsonOptions(o => Json.Configure(o.SerializerOptions));
 
-        // Live chat: the hub carries events out; sending goes through the normal API.
-        services.AddSignalR(o => { o.MaximumReceiveMessageSize = 16 * 1024; o.KeepAliveInterval = TimeSpan.FromSeconds(15); })
+        // Live events (chat, presence, changes): the hub carries events out; changes go through the normal API.
+        var signalR = services.AddSignalR(o => { o.MaximumReceiveMessageSize = 16 * 1024; o.KeepAliveInterval = TimeSpan.FromSeconds(15); })
             .AddJsonProtocol(o => Json.Configure(o.PayloadSerializerOptions));
+        if (!string.IsNullOrWhiteSpace(config["Redis:ConnectionString"]))
+        {
+            // Several API servers: messages published on one server reach the clients connected to the others (Redis backplane), and
+            // presence is counted in Redis too. The connection to Redis is the one the infrastructure already opened.
+            signalR.AddStackExchangeRedis();
+            services.AddOptions<Microsoft.AspNetCore.SignalR.StackExchangeRedis.RedisOptions>()
+                .Configure<StackExchange.Redis.IConnectionMultiplexer>((o, mux) =>
+                {
+                    o.ConnectionFactory = _ => Task.FromResult(mux);
+                    o.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("pm:signalr");
+                });
+            services.AddSingleton<ProjectManagement.Api.Realtime.RedisPresenceStore>();
+            services.AddSingleton<ProjectManagement.Api.Realtime.IPresenceStore>(sp => sp.GetRequiredService<ProjectManagement.Api.Realtime.RedisPresenceStore>());
+            services.AddHostedService(sp => sp.GetRequiredService<ProjectManagement.Api.Realtime.RedisPresenceStore>());
+        }
+        else services.AddSingleton<ProjectManagement.Api.Realtime.IPresenceStore, ProjectManagement.Api.Realtime.InMemoryPresenceStore>();
         services.AddSingleton<ProjectManagement.Api.Realtime.ChatPresence>();
         services.AddSingleton<ProjectManagement.Application.Features.Chat.IChatPresence>(sp => sp.GetRequiredService<ProjectManagement.Api.Realtime.ChatPresence>());
         services.AddSingleton<ProjectManagement.Application.Features.Chat.IChatNotifier, ProjectManagement.Api.Realtime.SignalRChatNotifier>();

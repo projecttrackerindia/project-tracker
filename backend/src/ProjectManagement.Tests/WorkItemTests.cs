@@ -199,6 +199,23 @@ public class WorkItemTests(ApiFactory factory)
         Assert.Equal(2, dash["myWork"]!.AsArray().Count);
     }
 
+    [Fact]
+    public async Task Search_ignores_case_and_takes_wildcard_characters_literally()
+    {
+        var w = await Setup();
+        await Work(w.Owner, "Raise the quota to 100% for EU_WEST", w.Dev.UserId);
+        await Work(w.Owner, "Rotate keys", w.Dev.UserId);
+
+        async Task<List<string>> Titles(string q) =>
+            (await w.Dev.Get($"/api/v1/search?q={Uri.EscapeDataString(q)}")).Data!["hits"]!.AsArray().Where(h => S(h!["type"]) == "work").Select(h => S(h!["title"])).ToList();
+
+        Assert.Equal(["Raise the quota to 100% for EU_WEST"], await Titles("100%"));      // % is a character here, not "anything"
+        Assert.Equal(["Raise the quota to 100% for EU_WEST"], await Titles("eu_west"));   // and so is _; case does not matter
+        Assert.Empty(await Titles("%%"));
+        Assert.Equal(2, (await Titles("TA")).Count);                                       // quoTA, roTAte
+        Assert.Equal(["Rotate keys"], await Titles("ROTATE"));
+    }
+
     // ------------------------------------------------------------------ comments
 
     [Fact]

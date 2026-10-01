@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Services;
@@ -126,7 +127,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.DueFrom is { } f) tq = tq.Where(t => t.DueDate != null && t.DueDate >= f);
             if (query.DueTo is { } to) tq = tq.Where(t => t.DueDate != null && t.DueDate <= to);
             if (query.Overdue) tq = tq.Where(t => t.DueDate != null && t.DueDate < today && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
-            if (q is not null) tq = tq.Where(t => t.Title.ToLower().Contains(q) || (t.Description != null && t.Description.ToLower().Contains(q)) || t.Number == number);
+            if (q is not null) tq = tq.Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || t.Number == number);
             var tasks = await tq.OrderBy(t => t.DueDate == null).ThenBy(t => t.DueDate).Take(limit)
                 .Select(t => new { t.Id, t.Number, t.Title, t.ProjectId, ProjectKey = t.Project!.Key, ProjectName = t.Project.Name, Status = t.Status!.Name, t.Status.Category,
                     t.Priority, t.DueDate, t.AssigneeId, Updated = t.UpdatedAt ?? t.CreatedAt })
@@ -141,7 +142,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (assignee is { } a) iq = iq.Where(i => i.AssigneeId == a);
             if (query.OpenOnly) iq = iq.Where(i => i.Status != IssueStatus.Resolved);
             if (query.ProjectId is { } pid) iq = iq.Where(i => i.ProjectId == pid);
-            if (q is not null) iq = iq.Where(i => i.Title.ToLower().Contains(q) || (i.Details != null && i.Details.ToLower().Contains(q)) || i.Number == number);
+            if (q is not null) iq = iq.Where(i => EF.Functions.Like(i.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (i.Details != null && EF.Functions.Like(i.Details.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || i.Number == number);
             var issues = await (from i in iq
                                 join p in db.Projects.AsNoTracking() on i.ProjectId equals p.Id
                                 orderby i.CreatedAt descending
@@ -161,7 +162,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.DueFrom is { } f) wq = wq.Where(w => w.DueDate != null && w.DueDate >= f);
             if (query.DueTo is { } to) wq = wq.Where(w => w.DueDate != null && w.DueDate <= to);
             if (query.Overdue) wq = wq.Where(w => w.DueDate != null && w.DueDate < today && (w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold));
-            if (q is not null) wq = wq.Where(w => w.Title.ToLower().Contains(q) || (w.Description != null && w.Description.ToLower().Contains(q)) || w.Number == number);
+            if (q is not null) wq = wq.Where(w => EF.Functions.Like(w.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (w.Description != null && EF.Functions.Like(w.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || w.Number == number);
             var work = await wq.OrderBy(w => w.DueDate == null).ThenBy(w => w.DueDate).Take(limit)
                 .Select(w => new { w.Id, w.Number, w.Title, w.RelatedProjectId, w.Status, w.Priority, w.DueDate, w.AssigneeId, TypeName = w.WorkType != null ? w.WorkType.Name : null,
                     Updated = w.UpdatedAt ?? w.CreatedAt })

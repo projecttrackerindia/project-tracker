@@ -6,10 +6,14 @@ namespace ProjectManagement.Infrastructure.Services;
 public class StorageOptions
 {
     public const string Section = "Storage";
-    /// <summary>Only "Local" is built in. Add a provider (S3, Azure Blob, GCS) by implementing <see cref="IFileStorage"/>.</summary>
+    /// <summary>"Local" (this server's disk) or "S3" (any S3-compatible bucket: AWS S3, Cloudflare R2, MinIO ...). Use S3 in production:
+    /// local disk is lost when a server is replaced and is not shared between servers.</summary>
     public string Provider { get; set; } = "Local";
     /// <summary>Folder for the Local provider. Relative paths are resolved from the application's working directory.</summary>
     public string LocalPath { get; set; } = "data/files";
+    /// <summary>With S3: copy files left on local disk into the bucket at start-up (skipping ones already there).</summary>
+    public bool MigrateLocal { get; set; } = true;
+    public S3StorageOptions S3 { get; set; } = new();
 }
 
 /// <summary>

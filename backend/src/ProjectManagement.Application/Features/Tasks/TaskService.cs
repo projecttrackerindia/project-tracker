@@ -133,7 +133,7 @@ public class TaskService(
         if (!string.IsNullOrWhiteSpace(query.Q))
         {
             var s = query.Q.Trim().ToLowerInvariant();
-            q = q.Where(t => t.Title.ToLower().Contains(s) || (t.Description != null && t.Description.ToLower().Contains(s)));
+            q = q.Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(s), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(s), SearchText.Escape)));
         }
 
         var sort = query.Sort ?? (query.ProjectId is null ? "due" : "position");

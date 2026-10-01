@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using ProjectManagement.Application.Common;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
@@ -731,7 +732,7 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var hits = await (from msg in db.ChatMessages.AsNoTracking()
                           join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
                           join c in db.Conversations.AsNoTracking() on msg.ConversationId equals c.Id
-                          where c.Type != ConversationType.Project && m.UserId == me && msg.CreatedAt >= m.CreatedAt && msg.Kind == ChatMessageKind.User && msg.DeletedAt == null && msg.Body.ToLower().Contains(q)
+                          where c.Type != ConversationType.Project && m.UserId == me && msg.CreatedAt >= m.CreatedAt && msg.Kind == ChatMessageKind.User && msg.DeletedAt == null && EF.Functions.Like(msg.Body.ToLower(), SearchText.Pattern(q), SearchText.Escape)
                           orderby msg.CreatedAt descending
                           select new { msg.Id, msg.ConversationId, msg.SenderId, msg.Body, msg.CreatedAt }).Take(30).ToListAsync(ct);
         if (hits.Count == 0) return [];

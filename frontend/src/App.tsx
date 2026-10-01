@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ApiError } from './api/client';
 import { consentApi, meApi } from './api/endpoints';
@@ -6,27 +6,37 @@ import type { ConsentDocument } from './api/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SuccessCurtain } from './components/SuccessCurtain';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
-import { AdminPage } from './features/admin/AdminPage';
-import { ActivityPage, NotificationsPage } from './features/activity/ActivityPages';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
 import { AcceptInvitePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './features/auth/AuthPages';
-import { CalendarPage } from './features/calendar/CalendarPage';
-import { ChatPage } from './features/chat/ChatPage';
-import { DashboardPage } from './features/dashboard/DashboardPage';
-import { MailboxPage } from './features/dev/MailboxPage';
-import { PeoplePage } from './features/people/PeoplePage';
-import { ProjectDetailPage } from './features/projects/ProjectDetailPage';
-import { ProjectsPage } from './features/projects/ProjectsPage';
-import { ProjectStatusPage } from './features/projects/ProjectStatusPage';
-import { ReportsPage } from './features/reports/ReportsPage';
-import { AccountPage, WorkspaceSettingsPage } from './features/settings/SettingsPage';
 import { TwoStepRow } from './features/settings/TwoStep';
-import { TimesheetPage } from './features/time/TimesheetPage';
-import { WorkTasksPage } from './features/work/WorkTasksPage';
-import { MyWorkPage } from './features/workitems/MyWorkPage';
-import { WorkloadPage } from './features/workitems/WorkloadPage';
 import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
+
+/**
+ * Pages are loaded when they are first opened rather than all up front, so the first visit downloads a fraction of the app. Each page
+ * module exports its page by name; `page` picks that export for React.lazy.
+ */
+function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
+  return lazy(() => load().then((m) => ({ default: m[name] })));
+}
+const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
+const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
+const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
+const DashboardPage = page(() => import('./features/dashboard/DashboardPage'), 'DashboardPage');
+const MailboxPage = page(() => import('./features/dev/MailboxPage'), 'MailboxPage');
+const PeoplePage = page(() => import('./features/people/PeoplePage'), 'PeoplePage');
+const ProjectDetailPage = page(() => import('./features/projects/ProjectDetailPage'), 'ProjectDetailPage');
+const ProjectsPage = page(() => import('./features/projects/ProjectsPage'), 'ProjectsPage');
+const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPage'), 'ProjectStatusPage');
+const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
+const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
+const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
+const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
+const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
+const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
+const NotificationsPage = page(() => import('./features/activity/ActivityPages'), 'NotificationsPage');
+const AccountPage = page(() => import('./features/settings/SettingsPage'), 'AccountPage');
+const WorkspaceSettingsPage = page(() => import('./features/settings/SettingsPage'), 'WorkspaceSettingsPage');
 import { toast } from './stores/ui';
 import { useAuth, useCan, useIsPersonal, useModule } from './stores/auth';
 
@@ -271,7 +281,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <AppRoutes />
+        <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>}>
+          <AppRoutes />
+        </Suspense>
         {/* Outside the routes on purpose: it has to stay up while the route changes underneath it. */}
         <SuccessCurtain />
       </BrowserRouter>

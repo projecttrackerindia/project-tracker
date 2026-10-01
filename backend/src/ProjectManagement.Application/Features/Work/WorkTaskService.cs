@@ -174,7 +174,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             var s = f.Q.Trim().ToLowerInvariant();
             var number = s.StartsWith("wt-") && int.TryParse(s[3..], out var n) ? n : -1;
-            q = q.Where(t => t.Title.ToLower().Contains(s) || (t.Description != null && t.Description.ToLower().Contains(s)) || t.Number == number);
+            q = q.Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(s), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(s), SearchText.Escape)) || t.Number == number);
         }
         return q;
     }

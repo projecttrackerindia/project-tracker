@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -28,42 +27,28 @@ public class SignalRChatNotifier(IHubContext<ChatHub> hub) : IChatNotifier
 
 /// <summary>
 /// Who has the app open, counted per connection (a person can have several tabs). "Online" flips at once, "offline" only after a short
-/// pause, so reloading a page does not make someone flicker offline. Held in memory: with several API servers this would need a shared
-/// store, which is why the deployment guide runs one.
+/// pause, so reloading a page does not make someone flicker offline. The counts live in <see cref="IPresenceStore"/>: in memory for one
+/// server, in Redis when several share the load (with the Redis backplane, the presence events also reach every server's clients).
 /// </summary>
-public class ChatPresence(IHubContext<ChatHub> hub) : IChatPresence
+public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : IChatPresence
 {
     private static readonly TimeSpan OfflineDelay = TimeSpan.FromSeconds(4);
-    private readonly ConcurrentDictionary<string, (Guid Tenant, Guid User)> _connections = new();
-    private readonly ConcurrentDictionary<(Guid Tenant, Guid User), int> _counts = new();
-    private readonly object _gate = new();
 
-    public bool IsOnline(Guid tenantId, Guid userId) => _counts.TryGetValue((tenantId, userId), out var n) && n > 0;
+    public bool IsOnline(Guid tenantId, Guid userId) => store.IsOnline(tenantId, userId);
 
     public async Task ConnectedAsync(string connectionId, Guid tenant, Guid user)
     {
-        bool first;
-        lock (_gate)
-        {
-            _connections[connectionId] = (tenant, user);
-            first = _counts.AddOrUpdate((tenant, user), 1, (_, v) => v + 1) == 1;
-        }
-        if (first) await hub.Clients.Group(ChatGroups.Workspace(tenant)).SendAsync("presence", new { userId = user, online = true });
+        if (await store.AddAsync(connectionId, tenant, user))
+            await hub.Clients.Group(ChatGroups.Workspace(tenant)).SendAsync("presence", new { userId = user, online = true });
     }
 
     public void Disconnected(string connectionId)
     {
-        (Guid Tenant, Guid User) who;
-        lock (_gate)
-        {
-            if (!_connections.TryRemove(connectionId, out who)) return;
-            _counts.AddOrUpdate(who, 0, (_, v) => Math.Max(0, v - 1));
-        }
         _ = Task.Run(async () =>
         {
+            if (await store.RemoveAsync(connectionId) is not { } who) return;
             await Task.Delay(OfflineDelay);
-            if (IsOnline(who.Tenant, who.User)) return;
-            _counts.TryRemove(who, out _);
+            if (store.IsOnline(who.Tenant, who.User)) return;
             await hub.Clients.Group(ChatGroups.Workspace(who.Tenant)).SendAsync("presence", new { userId = who.User, online = false });
         });
     }

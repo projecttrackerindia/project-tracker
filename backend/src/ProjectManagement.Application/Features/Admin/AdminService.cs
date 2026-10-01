@@ -119,8 +119,8 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         if (!string.IsNullOrWhiteSpace(q))
         {
             var s = q.Trim().ToLowerInvariant();
-            query = query.Where(x => x.Name.ToLower().Contains(s) || x.Slug.Contains(s)
-                || db.Users.Any(u => u.Id == x.OwnerUserId && u.Email.ToLower().Contains(s)));
+            query = query.Where(x => EF.Functions.Like(x.Name.ToLower(), SearchText.Pattern(s), SearchText.Escape) || x.Slug.Contains(s)
+                || db.Users.Any(u => u.Id == x.OwnerUserId && EF.Functions.Like(u.Email.ToLower(), SearchText.Pattern(s), SearchText.Escape)));
         }
 
         var p = new PageQuery(page, pageSize);
@@ -281,7 +281,7 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
     {
         RequireAdmin();
         var query = db.Users.AsNoTracking().AsQueryable();
-        if (!string.IsNullOrWhiteSpace(q)) { var s = q.Trim().ToLowerInvariant(); query = query.Where(u => u.Email.ToLower().Contains(s) || u.DisplayName.ToLower().Contains(s)); }
+        if (!string.IsNullOrWhiteSpace(q)) { var s = q.Trim().ToLowerInvariant(); query = query.Where(u => EF.Functions.Like(u.Email.ToLower(), SearchText.Pattern(s), SearchText.Escape) || EF.Functions.Like(u.DisplayName.ToLower(), SearchText.Pattern(s), SearchText.Escape)); }
         var p = new PageQuery(page, pageSize);
         var total = await query.CountAsync(ct);
         var users = await query.OrderByDescending(u => u.CreatedAt).Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);

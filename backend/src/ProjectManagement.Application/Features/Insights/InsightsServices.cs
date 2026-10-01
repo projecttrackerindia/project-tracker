@@ -255,7 +255,7 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
         var lv = await permissions.LevelsAsync(ct); // results only come from areas the person's job role can open
 
         var tasks = lv[Modules.Tasks] == 0 ? [] : await access.VisibleTasks().AsNoTracking()
-            .Where(t => t.Title.ToLower().Contains(q) || (t.Description != null && t.Description.ToLower().Contains(q)))
+            .Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)))
             .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).Take(PerType)
             .Select(t => new { t.Id, t.Title, t.ProjectId, t.Number, Key = t.Project!.Key, Status = t.Status!.Name }).ToListAsync(ct);
         hits.AddRange(tasks.Select(t => new SearchHit("task", t.Id, t.Title, $"{t.Key}-{t.Number} · {t.Status}", t.ProjectId, t.Id)));
@@ -268,17 +268,17 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
                 i.Id, i.Title, $"{i.Key} · {i.Status}", i.ProjectId, null)));
 
         var projects = lv[Modules.Projects] == 0 ? [] : await access.VisibleProjects().AsNoTracking()
-            .Where(p => p.Name.ToLower().Contains(q) || p.Key.ToLower().Contains(q) || (p.Description != null && p.Description.ToLower().Contains(q)))
+            .Where(p => EF.Functions.Like(p.Name.ToLower(), SearchText.Pattern(q), SearchText.Escape) || EF.Functions.Like(p.Key.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (p.Description != null && EF.Functions.Like(p.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)))
             .OrderBy(p => p.Name).Take(PerType).Select(p => new { p.Id, p.Name, p.Key, p.Status }).ToListAsync(ct);
         hits.AddRange(projects.Select(p => new SearchHit("project", p.Id, p.Name, $"{p.Key} · {p.Status}", p.Id, null)));
 
-        var teams = lv[Modules.Teams] == 0 ? [] : await db.Teams.AsNoTracking().Where(t => t.Name.ToLower().Contains(q)).OrderBy(t => t.Name).Take(PerType).ToListAsync(ct);
+        var teams = lv[Modules.Teams] == 0 ? [] : await db.Teams.AsNoTracking().Where(t => EF.Functions.Like(t.Name.ToLower(), SearchText.Pattern(q), SearchText.Escape)).OrderBy(t => t.Name).Take(PerType).ToListAsync(ct);
         hits.AddRange(teams.Select(t => new SearchHit("team", t.Id, t.Name, t.Description, null, null)));
 
         if (!access.IsRestricted && lv[Modules.Members] > 0)
         {
             var users = await (from m in db.TenantMembers join u in db.Users on m.UserId equals u.Id
-                               where m.TenantId == tid && (u.DisplayName.ToLower().Contains(q) || u.Email.ToLower().Contains(q))
+                               where m.TenantId == tid && (EF.Functions.Like(u.DisplayName.ToLower(), SearchText.Pattern(q), SearchText.Escape) || EF.Functions.Like(u.Email.ToLower(), SearchText.Pattern(q), SearchText.Escape))
                                orderby u.DisplayName select new { u.Id, u.DisplayName, u.Email, m.Role }).AsNoTracking().Take(PerType).ToListAsync(ct);
             hits.AddRange(users.Select(u => new SearchHit("member", u.Id, u.DisplayName, $"{u.Email} · {u.Role}", null, null)));
 
@@ -287,20 +287,20 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
         if (!access.IsRestricted && lv[Modules.Tasks] > 0)
         {
             var visibleTasks = access.VisibleTasks().Select(t => t.Id);
-            var comments = await db.TaskComments.AsNoTracking().Where(c => c.Body.ToLower().Contains(q) && visibleTasks.Contains(c.TaskId))
+            var comments = await db.TaskComments.AsNoTracking().Where(c => EF.Functions.Like(c.Body.ToLower(), SearchText.Pattern(q), SearchText.Escape) && visibleTasks.Contains(c.TaskId))
                 .OrderByDescending(c => c.CreatedAt).Take(PerType)
                 .Select(c => new { c.Id, c.Body, c.TaskId, ProjectId = db.Tasks.Where(t => t.Id == c.TaskId).Select(t => t.ProjectId).FirstOrDefault() })
                 .ToListAsync(ct);
             hits.AddRange(comments.Select(c => new SearchHit("comment", c.Id, Text.Truncate(c.Body, 90)!, "Comment", c.ProjectId, c.TaskId)));
         }
 
-        var labels = lv[Modules.Tasks] == 0 && lv[Modules.Projects] == 0 ? [] : await db.Labels.AsNoTracking().Where(l => l.Name.ToLower().Contains(q)).OrderBy(l => l.Name).Take(PerType).ToListAsync(ct);
+        var labels = lv[Modules.Tasks] == 0 && lv[Modules.Projects] == 0 ? [] : await db.Labels.AsNoTracking().Where(l => EF.Functions.Like(l.Name.ToLower(), SearchText.Pattern(q), SearchText.Escape)).OrderBy(l => l.Name).Take(PerType).ToListAsync(ct);
         hits.AddRange(labels.Select(l => new SearchHit("label", l.Id, l.Name, null, null, null)));
 
         // Files, by name: only those of projects (and tasks) the person can see.
         var seesTasks = lv[Modules.Tasks] > 0;
         var files = lv[Modules.Projects] == 0 ? [] : await db.Attachments.AsNoTracking()
-            .Where(a => a.FileName.ToLower().Contains(q) && access.VisibleProjects().Any(p => p.Id == a.ProjectId)
+            .Where(a => EF.Functions.Like(a.FileName.ToLower(), SearchText.Pattern(q), SearchText.Escape) && access.VisibleProjects().Any(p => p.Id == a.ProjectId)
                         && (a.TaskId == null || (seesTasks && access.VisibleTasks().Any(t => t.Id == a.TaskId))))
             .OrderByDescending(a => a.CreatedAt).Take(PerType)
             .Select(a => new { a.Id, a.FileName, a.ProjectId, a.TaskId, a.SizeBytes }).ToListAsync(ct);

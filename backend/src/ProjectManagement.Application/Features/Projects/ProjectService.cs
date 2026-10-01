@@ -147,7 +147,7 @@ public class ProjectService(
         if (!string.IsNullOrWhiteSpace(query.Q))
         {
             var s = query.Q.Trim().ToLowerInvariant();
-            q = q.Where(p => p.Name.ToLower().Contains(s) || p.Key.ToLower().Contains(s) || (p.Description != null && p.Description.ToLower().Contains(s)));
+            q = q.Where(p => EF.Functions.Like(p.Name.ToLower(), SearchText.Pattern(s), SearchText.Escape) || EF.Functions.Like(p.Key.ToLower(), SearchText.Pattern(s), SearchText.Escape) || (p.Description != null && EF.Functions.Like(p.Description.ToLower(), SearchText.Pattern(s), SearchText.Escape)));
         }
 
         q = query.Sort switch

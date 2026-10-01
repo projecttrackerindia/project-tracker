@@ -18,7 +18,7 @@ builder.Host.UseSerilog((context, services, cfg) => cfg
 builder.Services
     .AddApplication()
     .AddInfrastructure(builder.Configuration)
-    .AddApiControllers()
+    .AddApiControllers(builder.Configuration)
     .AddJwtAuthentication(builder.Configuration, builder.Environment)
     .AddApiCors(builder.Configuration)
     .AddApiRateLimiting(builder.Configuration)

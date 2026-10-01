@@ -6,7 +6,7 @@ import { RoleBadge } from '../components/ui';
 import { formatDate, initials } from '../lib/format';
 import { useAuth, useModule } from '../stores/auth';
 import { useUi } from '../stores/ui';
-import { useWorkspaceSections } from '../features/settings/SettingsPage';
+import { useWorkspaceSections } from '../features/settings/sections';
 
 type Tone = 'ok' | 'info' | 'warn' | 'bad';
 
