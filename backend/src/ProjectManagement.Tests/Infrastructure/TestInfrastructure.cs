@@ -42,7 +42,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Dev__Mailbox", "true");
         Environment.SetEnvironmentVariable("Seed__Demo", "false");
         Environment.SetEnvironmentVariable("Proxy__Trust", "true"); // lets tests simulate a caller address via X-Forwarded-For (org IP-allowlist tests)
+        Environment.SetEnvironmentVariable("Auth__Google__ClientId", "google-client");   // social sign-in tests (the fake provider answers for Google)
+        Environment.SetEnvironmentVariable("Auth__Google__ClientSecret", "google-secret");
     }
+
+    /// <summary>Stands in for OpenID Connect providers (single sign-on and Google): every "oidc" HTTP call lands here.</summary>
+    public FakeIdentityProvider Idp { get; } = new();
+    /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
+    public FakeDns Dns { get; } = new();
 
     /// <summary>Stands in for the internet: records every webhook request and answers with whatever the test asks for.</summary>
     public RecordingWebhookTransport Webhooks { get; } = new();
@@ -54,6 +61,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<ProjectManagement.Application.Features.Integrations.IWebhookTransport>();
             services.AddSingleton<ProjectManagement.Application.Features.Integrations.IWebhookTransport>(Webhooks);
+            services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => Idp);
+            services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
+            services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
         });
     }
 

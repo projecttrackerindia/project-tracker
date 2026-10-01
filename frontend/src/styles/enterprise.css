@@ -1,0 +1,44 @@
+/* ============================================================
+   ENTERPRISE — single sign-on settings, connected accounts, copyable values
+   ============================================================ */
+
+/* A label and a value that can be copied with one click (DNS records, provider values, URLs). */
+.copy-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 0; }
+.copy-label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.copy-value { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.copy-value code {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;
+  padding: 6px 9px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (max-width: 640px) { .copy-row { grid-template-columns: 1fr; gap: 4px; } }
+
+.sso-domains { display: flex; flex-direction: column; gap: 10px; }
+.sso-domain { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.sso-txt { margin-top: 4px; }
+.sso-note { font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
+.sso-provider-values { padding: 12px 14px; border-radius: 12px; background: rgba(139, 92, 246, .06); border: 1px dashed rgba(139, 92, 246, .35); }
+.sso-switches { margin-top: 14px; border-top: 1px solid var(--border); }
+.secret-box { display: block; margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12.5px; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Connected accounts (My account → Sign-in & security). */
+.linked-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.linked-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.linked-item .linked-mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--panel-solid); border: 1px solid var(--border); flex-shrink: 0; }
+.linked-item .linked-main { flex: 1; min-width: 0; }
+.linked-item .linked-main b { display: block; font-size: 13px; }
+.linked-item .linked-main span { font-size: 12px; color: var(--text-3); }
+.linked-connect { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+@media (min-width: 769px) and (max-width: 1600px) {
+  .copy-row { grid-template-columns: 152px minmax(0, 1fr); gap: 8px; padding: 4.8px 0; }
+  .copy-label { font-size: 10px; }
+  .copy-value code { font-size: 9.6px; padding: 4.8px 7.2px; }
+  .sso-domain, .sso-provider-values { padding: 9.6px 11.2px; border-radius: 9.6px; }
+  .secret-box { font-size: 10px; padding: 9.6px; }
+  .sso-note { font-size: 10px; }
+  .linked-item { gap: 9.6px; padding: 8px 9.6px; border-radius: 9.6px; }
+  .linked-item .linked-mark { width: 24px; height: 24px; border-radius: 7.2px; }
+  .linked-item .linked-main b { font-size: 10.4px; }
+  .linked-item .linked-main span { font-size: 9.6px; }
+}

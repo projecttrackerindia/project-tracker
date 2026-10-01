@@ -6,6 +6,7 @@ import type { BillingSettings, TimelineTemplate,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   OrgSecurity, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
   ConsentDocument, MyConsent,
+  ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
 } from './types';
 
 export const authApi = {
@@ -19,6 +20,10 @@ export const authApi = {
   resendVerification: (email: string) => post('/auth/resend-verification', { email }, { auth: false }),
   forgotPassword: (email: string) => post('/auth/forgot-password', { email }, { auth: false }),
   resetPassword: (b: { token: string; password: string }) => post('/auth/reset-password', b, { auth: false }),
+  /** Google / Microsoft / GitHub / Apple sign-in options this installation has set up. */
+  providers: () => get<{ providers: ExternalProvider[] }>('/auth/providers', undefined, { auth: false }),
+  /** Whether an email address signs in through its organization's single sign-on. */
+  ssoDiscover: (email: string) => post<SsoDiscovery>('/auth/sso/discover', { email }, { auth: false }),
 };
 
 export const meApi = {
@@ -36,6 +41,23 @@ export const meApi = {
   notificationPrefs: () => get<NotificationPreference[]>('/me/notification-preferences'),
   setNotificationPrefs: (items: { type: string; inApp: boolean; email: boolean; browser: boolean }[]) => put<NotificationPreference[]>('/me/notification-preferences', { items }),
   testEmail: () => post<TestEmailResult>('/me/notification-preferences/test-email'),
+  /** Outside accounts connected to mine. */
+  logins: () => get<UserLogin[]>('/me/logins'),
+  unlinkLogin: (id: string) => del(`/me/logins/${id}`),
+  /** Starts connecting Google / Microsoft / GitHub / Apple: returns where to send the browser. */
+  linkLogin: (provider: string) => post<{ url: string }>(`/auth/external/${provider}/link`),
+};
+
+/** Workspace settings → Single sign-on (owners and admins of an organization). */
+export const ssoApi = {
+  get: () => get<SsoSettings>('/workspace/sso'),
+  save: (b: SsoConnectionInput) => put<SsoSettings>('/workspace/sso/connection', b),
+  check: () => post<{ ok: boolean; message: string; issuer: string | null }>('/workspace/sso/check'),
+  addDomain: (domain: string) => post<SsoSettings>('/workspace/sso/domains', { domain }),
+  verifyDomain: (id: string) => post<SsoSettings>(`/workspace/sso/domains/${id}/verify`),
+  removeDomain: (id: string) => del<SsoSettings>(`/workspace/sso/domains/${id}`),
+  createScimToken: (name: string) => post<{ token: ScimToken; secret: string }>('/workspace/sso/scim-tokens', { name }),
+  revokeScimToken: (id: string) => del<SsoSettings>(`/workspace/sso/scim-tokens/${id}`),
 };
 
 export const workspaceApi = {

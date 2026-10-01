@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
@@ -27,6 +27,8 @@ import { WorkTypeSettings } from './WorkTypeSettings';
 import { ApiKeySettings } from './ApiKeySettings';
 import { WebhookSettings } from './WebhookSettings';
 import { LabelSettings } from './LabelSettings';
+import { SsoSettings } from './SsoSettings';
+import { PROVIDER_ICON } from '../auth/AuthPages';
 import { Select } from '../../components/Select';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
@@ -109,6 +111,7 @@ function SecuritySection() {
             <button className="btn btn-ghost" onClick={() => setPwOpen(true)}><Icon name="lock" /> Change password</button>
           </div>
           <TwoStepRow />
+          <ConnectedAccounts />
           <PrivacyRow />
           <div className="setting-row" style={{ alignItems: 'flex-start' }}>
             <div className="setting-info" style={{ flex: 1 }}>
@@ -134,6 +137,59 @@ function SecuritySection() {
       </div>
       {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </>
+  );
+}
+
+/** Outside accounts that can sign in to this one: connect Google / Microsoft / GitHub / Apple, or disconnect them. */
+function ConnectedAccounts() {
+  const wid = useWorkspaceId();
+  const [params, setParams] = useSearchParams();
+  const logins = useWsQuery(['me', 'logins'], meApi.logins);
+  const providers = useWsQuery(['auth', 'providers'], authApi.providers, { staleTime: 5 * 60_000 });
+  // Back from connecting one: say how it went, once.
+  useEffect(() => {
+    const linked = params.get('linked'), failed = params.get('link_error');
+    if (!linked && !failed) return;
+    if (linked) toast(`${linked[0].toUpperCase()}${linked.slice(1)} is connected. You can sign in with it now.`);
+    else toast(params.get('message') ?? 'Could not connect the account.', 'error');
+    const n = new URLSearchParams(params); ['linked', 'link_error', 'message'].forEach((k) => n.delete(k)); setParams(n, { replace: true });
+    void invalidateWorkspace(wid, 'me', 'logins');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const connect = async (id: string) => {
+    try { window.location.assign((await meApi.linkLogin(id)).url); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not start connecting.', 'error'); }
+  };
+  const remove = async (id: string, name: string) => {
+    if (!(await confirmDialog({ title: `Disconnect ${name}?`, message: `You will no longer be able to sign in with ${name}.`, confirmText: 'Disconnect' }))) return;
+    try { await meApi.unlinkLogin(id); toast(`${name} disconnected.`, 'warning'); void invalidateWorkspace(wid, 'me', 'logins'); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not disconnect.', 'error'); }
+  };
+  const rows = logins.data ?? [];
+  const available = (providers.data?.providers ?? []).filter((p) => !rows.some((r) => r.provider === p.id));
+  return (
+    <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+      <div className="setting-info" style={{ flex: 1 }}>
+        <h4>Connected accounts</h4><p>Other ways to sign in to this account. Two-step verification still applies.</p>
+        {rows.length > 0 && (
+          <div className="linked-list">
+            {rows.map((r) => (
+              <div className="linked-item" key={r.id}>
+                <span className="linked-mark">{r.provider === 'sso' ? <Icon name="key" size={15} /> : PROVIDER_ICON[r.provider as keyof typeof PROVIDER_ICON] ?? <Icon name="user" size={15} />}</span>
+                <span className="linked-main"><b>{r.name}</b><span>{r.email ?? ''}{r.lastUsedAt ? ` · last used ${timeAgo(r.lastUsedAt)}` : ''}</span></span>
+                {r.provider !== 'sso' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void remove(r.id, r.name)}>Disconnect</button>}
+              </div>
+            ))}
+          </div>
+        )}
+        {available.length > 0 && (
+          <div className="linked-connect">
+            {available.map((p) => <button key={p.id} type="button" className="btn btn-ghost btn-sm" onClick={() => void connect(p.id)}>{PROVIDER_ICON[p.id]} Connect {p.name}</button>)}
+          </div>
+        )}
+        {rows.length === 0 && available.length === 0 && <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>No other sign-in options are set up on this installation.</p>}
+      </div>
+    </div>
   );
 }
 
@@ -187,6 +243,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'general' && <GeneralSection />}
       {current.id === 'access' && <RolesAccessPage />}
       {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /></>}
+      {current.id === 'sso' && <SsoSettings />}
       {current.id === 'billing' && <BillingPage />}
       {current.id === 'audit' && <AuditPage />}
       {current.id === 'project-groups' && <ProjectGroupsPage />}

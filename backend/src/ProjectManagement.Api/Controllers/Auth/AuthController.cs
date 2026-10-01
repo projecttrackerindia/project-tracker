@@ -8,6 +8,20 @@ using ProjectManagement.Application.Features.Workspaces;
 
 namespace ProjectManagement.Api.Controllers.Auth;
 
+/// <summary>The cookies of sign-in: the refresh token (HttpOnly, only sent to /api/v1/auth) and, during a redirect sign-in, the browser binding.</summary>
+public static class AuthCookies
+{
+    public const string Refresh = "pm_refresh";
+    public const string Binding = "pm_signin";
+
+    public static void WriteRefresh(HttpResponse response, bool https, AuthResult r) =>
+        response.Cookies.Append(Refresh, r.RefreshToken, new CookieOptions
+        {
+            HttpOnly = true, Secure = https, SameSite = SameSiteMode.Strict, Path = "/api/v1/auth",
+            Expires = r.RefreshExpiresAt, IsEssential = true,
+        });
+}
+
 [Route("api/v1/auth")]
 public class AuthController(AuthService auth, PasswordPolicyService passwordPolicy) : ApiControllerBase
 {
@@ -15,18 +29,14 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
     [HttpGet("password-policy"), AllowAnonymous]
     public async Task<IActionResult> PasswordPolicy(CancellationToken ct) => Ok(await passwordPolicy.GetAsync(ct));
 
-    private const string CookieName = "pm_refresh";
+    private const string CookieName = AuthCookies.Refresh;
 
     /// <summary>The refresh token lives in an HttpOnly cookie for browsers; API clients can opt in to receiving it in the body.</summary>
     private bool BodyDelivery => Request.Headers["X-Token-Delivery"] == "body";
 
     private AuthResponse Deliver(AuthResult r)
     {
-        Response.Cookies.Append(CookieName, r.RefreshToken, new CookieOptions
-        {
-            HttpOnly = true, Secure = Request.IsHttps, SameSite = SameSiteMode.Strict, Path = "/api/v1/auth",
-            Expires = r.RefreshExpiresAt, IsEssential = true,
-        });
+        AuthCookies.WriteRefresh(Response, Request.IsHttps, r);
         return new AuthResponse(r.AccessToken, r.ExpiresAt, r.User, BodyDelivery ? r.RefreshToken : null);
     }
 

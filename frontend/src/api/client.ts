@@ -2,6 +2,9 @@ import type { ApiErrorItem, AuthResponse } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
+/** Full address of an API path, for pages the browser itself goes to (sign-in redirects). */
+export const apiUrl = (path: string) => `${BASE}/api/v1${path}`;
+
 export class ApiError extends Error {
   status: number;
   code: string;

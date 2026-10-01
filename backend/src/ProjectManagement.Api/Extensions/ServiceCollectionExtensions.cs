@@ -109,6 +109,7 @@ public static class ServiceCollectionExtensions
         int anon = config.GetValue("RateLimiting:AnonymousPerMinute", 60);
         int authed = config.GetValue("RateLimiting:AuthenticatedPerMinute", 300);
         int auth = config.GetValue("RateLimiting:AuthPerMinute", 10);
+        int scim = config.GetValue("RateLimiting:ScimPerMinute", 600);
 
         FixedWindowRateLimiterOptions Window(int limit) => new() { PermitLimit = limit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 };
         static string Ip(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -132,6 +133,13 @@ public static class ServiceCollectionExtensions
             o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
             {
                 if (!enabled) return RateLimitPartition.GetNoLimiter("off");
+                // Identity providers synchronise in bursts: SCIM gets its own allowance per token (by its non-secret prefix).
+                if (http.Request.Path.StartsWithSegments("/scim"))
+                {
+                    var bearer = http.Request.Headers.Authorization.ToString();
+                    var prefix = bearer.Length > 19 ? bearer.Substring(7, 12) : "none";
+                    return Limited(http, $"scim:{prefix}", scim);
+                }
                 var uid = http.User.FindFirst("sub")?.Value;
                 var keyId = http.User.FindFirst("api_key")?.Value; // integrations get their own allowance, separate from the person's browser use
                 if (keyId is not null) return Limited(http, $"key:{keyId}", authed);

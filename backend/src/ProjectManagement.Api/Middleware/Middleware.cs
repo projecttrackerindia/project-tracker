@@ -241,7 +241,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var session = await (from s in db.UserSessions
                                  join u in db.Users on s.UserId equals u.Id
                                  where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, s.SsoTenantId }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
@@ -253,7 +253,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
             ctx.IsPlatformAdmin = session.IsPlatformAdmin;
             ctx.MustChangePassword = session.MustChangePassword;
 
-            await ApplyMembershipAsync(http, ctx, db, orgSecurity, userId, session.MfaEnabled);
+            await ApplyMembershipAsync(http, ctx, db, orgSecurity, userId, session.MfaEnabled, session.SsoTenantId);
         }
         await next(http);
     }
@@ -264,9 +264,11 @@ public class CurrentContextMiddleware(RequestDelegate next)
     /// different workspace, must still work) — it is recorded on ctx.BlockedWorkspace so the app can explain it specifically.
     /// </summary>
     private static async Task ApplyMembershipAsync(HttpContext http, CurrentContext ctx, IAppDbContext db,
-        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, Guid userId, bool mfaEnabled)
+        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, Guid userId, bool mfaEnabled, Guid? ssoTenantId = null)
     {
         if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out var workspaceId)) return;
+        // Signed in through this organization's own single sign-on: its identity provider vouched for the person (and applies its MFA).
+        if (ssoTenantId == workspaceId) mfaEnabled = true;
         var membership = await (from m in db.TenantMembers
                                 join t in db.Tenants on m.TenantId equals t.Id
                                 where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active

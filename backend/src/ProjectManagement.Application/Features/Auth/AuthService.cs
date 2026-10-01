@@ -63,7 +63,8 @@ public class WorkspaceProvisioner(IAppDbContext db, AppClock clock)
 public class AuthService(
     IAppDbContext db, ICurrentContext ctx, IPasswordHasher hasher, ITokenService tokens, IEmailSender email,
     IOptions<AppOptions> options, AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, MfaService mfa, SecurityAlerts alerts, ProjectManagement.Application.Features.Admin.PlatformSettingsCache platform,
-    PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent, ILogger<AuthService> log)
+    PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent, ProjectManagement.Application.Features.Sso.SsoPolicy ssoPolicy,
+    ILogger<AuthService> log)
 {
     private readonly AppOptions _opt = options.Value;
 
@@ -166,6 +167,9 @@ public class AuthService(
             AppTelemetry.Count(AppTelemetry.Logins, "locked");
             throw new TooManyRequestsException("Too many failed sign-in attempts. Try again later.", "ACCOUNT_LOCKED");
         }
+        // An organization that requires its own single sign-on for this email's domain: the password is not the way in (Owners excepted).
+        if (await ssoPolicy.EnforcedForAsync(user.Email, user.Id, ct) is { } enforced)
+            throw new ForbiddenException($"{enforced.Name} is required for this account. Use \"Sign in with SSO\".", "SSO_REQUIRED");
 
         if (!user.IsActive || !hasher.Verify(user.PasswordHash, req.Password))
         {
@@ -211,13 +215,19 @@ public class AuthService(
         return await SignInAsync(user, "password+mfa", ct);
     }
 
-    private async Task<AuthResult> SignInAsync(User user, string method, CancellationToken ct)
+    private Task<AuthResult> SignInAsync(User user, string method, CancellationToken ct) => SignInExternalAsync(user, method, null, null, ct);
+
+    /// <summary>
+    /// Opens a session for someone already authenticated (password, a social sign-in, or an organization's single sign-on). With
+    /// <paramref name="ssoTenantId"/>, that organization's identity provider vouched for the person, which satisfies its two-step rule.
+    /// </summary>
+    public async Task<AuthResult> SignInExternalAsync(User user, string method, Guid? preferredWorkspace, Guid? ssoTenantId, CancellationToken ct)
     {
         user.FailedLoginCount = 0;
         user.LockoutEnd = null;
         user.LastLoginAt = clock.Now;
-        var workspaceId = await PickWorkspaceAsync(user.Id, null, ct);
-        var result = await IssueSessionAsync(user, workspaceId, ct);
+        var workspaceId = await PickWorkspaceAsync(user.Id, preferredWorkspace, ct);
+        var result = await IssueSessionAsync(user, workspaceId, ct, method, ssoTenantId);
         recorder.Audit("user.login", "User", user.Id, newValue: new { Method = method }, userId: user.Id, tenantId: workspaceId);
         AppTelemetry.Count(AppTelemetry.Logins, "success");
         await db.SaveChangesAsync(ct);
@@ -236,13 +246,17 @@ public class AuthService(
         return memberships.FirstOrDefault()?.Id;
     }
 
-    private Task<AuthResult> IssueSessionAsync(User user, Guid? workspaceId, CancellationToken ct)
+    /// <summary>A short-lived proof that the first step of a sign-in succeeded; the second step (an authenticator code) completes it.</summary>
+    public string CreateMfaChallenge(User user) => tokens.CreateChallenge(user.Id, TimeSpan.FromMinutes(5));
+
+    private Task<AuthResult> IssueSessionAsync(User user, Guid? workspaceId, CancellationToken ct, string? method = null, Guid? ssoTenantId = null)
     {
         var now = clock.Now;
         var session = new UserSession
         {
             UserId = user.Id, WorkspaceId = workspaceId, CreatedAt = now, LastSeenAt = now,
             ExpiresAt = now.AddDays(_opt.RefreshTokenDays), IpAddress = ctx.IpAddress, UserAgent = Text.Truncate(ctx.UserAgent, 300),
+            AuthMethod = method, SsoTenantId = ssoTenantId,
         };
         db.UserSessions.Add(session);
         var (raw, refresh) = NewRefreshToken(session, user.Id);

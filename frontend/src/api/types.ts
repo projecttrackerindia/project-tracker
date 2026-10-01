@@ -38,6 +38,27 @@ export interface AppContext {
   blocked?: AccessBlocked | null; pendingConsent?: ConsentDocument[] | null;
 }
 
+// ---- single sign-on, SCIM and outside sign-in
+export interface ExternalProvider { id: 'google' | 'microsoft' | 'github' | 'apple'; name: string }
+export interface SsoDiscovery { sso: boolean; name: string | null; enforced: boolean }
+export interface UserLogin { id: string; provider: string; name: string; email: string | null; createdAt: string; lastUsedAt: string | null }
+export type SsoProtocol = 'Oidc' | 'Saml';
+export interface SsoConnection {
+  protocol: SsoProtocol; name: string; enabled: boolean; enforceForDomains: boolean; autoProvision: boolean; defaultRole: Role;
+  authority: string | null; clientId: string | null; hasClientSecret: boolean; samlEntityId: string | null; samlSsoUrl: string | null; hasSamlCertificate: boolean;
+  certificateSubject: string | null; certificateExpiresAt: string | null; lastUsedAt: string | null;
+}
+export interface SsoDomain { id: string; domain: string; txtName: string; txtValue: string; verified: boolean; verifiedAt: string | null; lastCheckedAt: string | null }
+export interface ScimToken { id: string; name: string; prefix: string; createdAt: string; lastUsedAt: string | null; revoked: boolean }
+export interface SsoSettings {
+  entitled: boolean; canManage: boolean; connection: SsoConnection | null; domains: SsoDomain[]; scimTokens: ScimToken[];
+  serviceProvider: { oidcRedirectUri: string; samlEntityId: string; samlAcsUrl: string; samlMetadataUrl: string; scimBaseUrl: string };
+}
+export interface SsoConnectionInput {
+  protocol: SsoProtocol; name: string; enabled: boolean; enforceForDomains: boolean; autoProvision: boolean; defaultRole: Role;
+  authority?: string | null; clientId?: string | null; clientSecret?: string | null; samlEntityId?: string | null; samlSsoUrl?: string | null; samlCertificate?: string | null;
+}
+
 export interface OrgSecurity { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[]; myIp: string | null; entitled: boolean }
 export interface MyConsent { upToDate: boolean; pending: ConsentDocument[] }
 

@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.Configure<NotificationOptions>(config.GetSection(NotificationOptions.Section));
         services.Configure<StorageOptions>(config.GetSection(StorageOptions.Section));
         services.Configure<MfaOptions>(config.GetSection(MfaOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
 
         var provider = config["Database:Provider"] ?? "Postgres";
         var connection = config.GetConnectionString("Default")
@@ -53,6 +54,14 @@ public static class DependencyInjection
         services.AddSingleton<ITokenService, TokenService>();
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         services.AddSingleton<IPaymentProvider, MockPaymentProvider>();
+
+        // Single sign-on and social sign-in: identity providers are reached through the "oidc" HTTP client.
+        services.AddHttpClient("oidc", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddSingleton<ProjectManagement.Application.Features.Sso.IOidcProtocol, OidcProtocol>();
+        services.AddSingleton<ProjectManagement.Application.Features.Sso.IGitHubOAuth, GitHubOAuth>();
+        services.AddSingleton<ProjectManagement.Application.Features.Sso.IAppleClientSecret, AppleClientSecret>();
+        services.AddSingleton<ProjectManagement.Application.Features.Sso.ISamlProtocol, SamlProtocol>();
+        services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier, DnsDomainVerifier>();
         services.AddSingleton<DevMailbox>();
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {

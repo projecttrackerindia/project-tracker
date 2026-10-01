@@ -33,8 +33,13 @@ public class PasswordHasherAdapter : Application.Abstractions.IPasswordHasher
 
     public string Hash(string password) => _hasher.HashPassword(null!, password);
 
-    public bool Verify(string hash, string password) =>
-        _hasher.VerifyHashedPassword(null!, hash, password) != PasswordVerificationResult.Failed;
+    /// <summary>False for accounts without a password of their own (made by single sign-on or a social sign-in) and for malformed hashes.</summary>
+    public bool Verify(string hash, string password)
+    {
+        if (string.IsNullOrEmpty(hash) || hash == Application.Abstractions.PasswordHashes.None) return false;
+        try { return _hasher.VerifyHashedPassword(null!, hash, password) != PasswordVerificationResult.Failed; }
+        catch (FormatException) { return false; }
+    }
 }
 
 public class TokenService(IOptions<JwtOptions> options, TimeProvider clock) : ITokenService

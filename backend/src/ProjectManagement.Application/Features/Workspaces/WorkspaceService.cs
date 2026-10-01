@@ -151,10 +151,11 @@ public class WorkspaceService(
         if (!allowed) throw new NotFoundException("Workspace not found.");
 
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
-        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, user.MfaEnabled, ctx.IpAddress, ct);
+        var session = await db.UserSessions.FirstAsync(s => s.Id == sessionId, ct);
+        // A session opened by this organization's own single sign-on meets its two-step rule (the identity provider applies its own).
+        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, user.MfaEnabled || session.SsoTenantId == workspaceId, ctx.IpAddress, ct);
         if (blocked is not null) throw new ForbiddenException(blocked.Message, blocked.Code);
 
-        var session = await db.UserSessions.FirstAsync(s => s.Id == sessionId, ct);
         session.WorkspaceId = workspaceId;
         await db.SaveChangesAsync(ct);
         var token = tokens.CreateAccessToken(user, sessionId, workspaceId);

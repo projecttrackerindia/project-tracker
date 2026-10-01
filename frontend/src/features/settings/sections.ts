@@ -1,7 +1,7 @@
 import type { SectionLink } from '../../components/ui';
 import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 
-export type WorkspaceSection = 'general' | 'access' | 'security' | 'billing' | 'audit'
+export type WorkspaceSection = 'general' | 'access' | 'security' | 'sso' | 'billing' | 'audit'
   | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'api-keys' | 'webhooks';
 
 interface SectionDef extends SectionLink { id: WorkspaceSection; group: 'Workspace' | 'Configuration' | 'Integrations' }
@@ -19,6 +19,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'general', group: 'Workspace', to: '/settings/general', label: 'General', icon: 'building', show: true },
     { id: 'access', group: 'Workspace', to: '/settings/access', label: 'Roles & access', icon: 'shield', show: !personal && (has('org.manage') || has('access.manage') || has('permissions.manage')) },
     { id: 'security', group: 'Workspace', to: '/settings/security', label: 'Security', icon: 'lock', show: !personal && has('org.manage') },
+    { id: 'sso', group: 'Workspace', to: '/settings/sso', label: 'Single sign-on', icon: 'key', show: !personal && isAdmin },
     { id: 'billing', group: 'Workspace', to: '/settings/billing', label: 'Billing', icon: 'card', show: mBilling > 0 },
     { id: 'audit', group: 'Workspace', to: '/settings/audit', label: 'Audit log', icon: 'activity', show: !personal && has('audit.view') && mAudit > 0 },
     { id: 'project-groups', group: 'Configuration', to: '/settings/project-groups', label: 'Project groups', icon: 'layers', show: has('projectgroups.manage') && mProjects > 0 },

@@ -9,8 +9,20 @@ using ProjectManagement.Application.Features.Workspaces;
 namespace ProjectManagement.Api.Controllers.Auth;
 
 [Route("api/v1/me")]
-public class MeController(AuthService auth, WorkspaceService workspaces, NotificationPreferenceService preferences, MfaService mfa) : ApiControllerBase
+public class MeController(AuthService auth, WorkspaceService workspaces, NotificationPreferenceService preferences, MfaService mfa,
+    ProjectManagement.Application.Features.Sso.SsoLoginService logins) : ApiControllerBase
 {
+    /// <summary>Outside accounts connected to mine (Google, Microsoft, GitHub, Apple, an organization's single sign-on).</summary>
+    [HttpGet("logins")]
+    public async Task<IActionResult> Logins(CancellationToken ct) => Ok(await logins.MyLoginsAsync(ct));
+
+    [HttpDelete("logins/{id:guid}")]
+    public async Task<IActionResult> Unlink(Guid id, CancellationToken ct)
+    {
+        await logins.UnlinkAsync(id, ct);
+        return NoContent();
+    }
+
     /// <summary>User, all workspaces, and the current workspace with role, permissions and entitlements.</summary>
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct) => Ok(await workspaces.GetContextAsync(ct));

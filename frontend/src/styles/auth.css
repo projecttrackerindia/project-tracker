@@ -676,3 +676,8 @@
   .auth-socials { gap: 8px; }
   .auth-social { height: 38.4px; gap: 5.6px; border-radius: 10.4px; font-size: 10.4px; }
 }
+
+/* Outside sign-in: one row of equal buttons for however many options are set up (SSO is always there); three per row when there are many. */
+.auth-socials { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.auth-socials.four { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.auth-social.sso svg { color: var(--primary); }

@@ -9,6 +9,8 @@ public class AppOptions
     public const string Section = "App";
     /// <summary>Public URL of the web client; used to build links in emails.</summary>
     public string WebBaseUrl { get; set; } = "http://localhost:5173";
+    /// <summary>Public URL of the API when it is not served from the same address as the web client (identity providers call back here).</summary>
+    public string? ApiBaseUrl { get; set; }
     public bool RequireEmailVerification { get; set; } = true;
     public int MaxFailedLogins { get; set; } = 5;
     public int LockoutMinutes { get; set; } = 15;

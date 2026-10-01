@@ -7,7 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { SuccessCurtain } from './components/SuccessCurtain';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
-import { AcceptInvitePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './features/auth/AuthPages';
+import { AcceptInvitePage, AuthCompletePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './features/auth/AuthPages';
 import { TwoStepRow } from './features/settings/TwoStep';
 import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
@@ -225,6 +225,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/invite" element={<AcceptInvitePage />} />
+      <Route path="/auth/complete" element={<AuthCompletePage />} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       <Route element={<RequireAuth />}>

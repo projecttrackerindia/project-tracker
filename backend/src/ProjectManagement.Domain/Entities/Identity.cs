@@ -57,6 +57,13 @@ public class UserSession : Entity
     public DateTime? RevokedAt { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+    /// <summary>How the session was opened: password, password+mfa, sso, google, microsoft, github, apple.</summary>
+    public string? AuthMethod { get; set; }
+    /// <summary>
+    /// Set when an organization's own single sign-on opened the session: that organization's identity provider vouched for the person,
+    /// so its "require two-step verification" rule counts as met for this session (the provider applies its own MFA).
+    /// </summary>
+    public Guid? SsoTenantId { get; set; }
 }
 
 public class RefreshToken : Entity

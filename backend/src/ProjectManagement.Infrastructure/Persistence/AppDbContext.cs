@@ -53,6 +53,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<ChatMention> ChatMentions => Set<ChatMention>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<SsoConnection> SsoConnections => Set<SsoConnection>();
+    public DbSet<SsoDomain> SsoDomains => Set<SsoDomain>();
+    public DbSet<ScimToken> ScimTokens => Set<ScimToken>();
+    public DbSet<UserLogin> UserLogins => Set<UserLogin>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<CustomFieldValue> CustomFieldValues => Set<CustomFieldValue>();
     public DbSet<ChecklistItem> ChecklistItems => Set<ChecklistItem>();
@@ -110,6 +114,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<InvitationStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<InvoiceStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<NotificationType>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<SsoProtocol>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -143,7 +148,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => x.EmailVerificationTokenHash);
             e.HasIndex(x => x.PasswordResetTokenHash);
         });
-        b.Entity<UserSession>(e => e.HasIndex(x => x.UserId));
+        b.Entity<UserSession>(e => { e.HasIndex(x => x.UserId); e.Property(x => x.AuthMethod).HasMaxLength(32); });
         b.Entity<RefreshToken>(e =>
         {
             e.HasIndex(x => x.TokenHash).IsUnique();
@@ -398,6 +403,45 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         {
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.IpRanges).HasMaxLength(6000);
+        });
+        b.Entity<SsoConnection>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();   // one identity provider per organization
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.Authority).HasMaxLength(400);
+            e.Property(x => x.ClientId).HasMaxLength(300);
+            e.Property(x => x.ClientSecret).HasMaxLength(1000);
+            e.Property(x => x.SamlEntityId).HasMaxLength(400);
+            e.Property(x => x.SamlSsoUrl).HasMaxLength(800);
+            e.Property(x => x.SamlCertificate).HasMaxLength(12000);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<SsoDomain>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Domain }).IsUnique();
+            // A domain can be verified by one organization only.
+            e.HasIndex(x => x.Domain).IsUnique().HasFilter("\"VerifiedAt\" IS NOT NULL").HasDatabaseName("IX_SsoDomains_Domain_Verified");
+            e.Property(x => x.Domain).HasMaxLength(253);
+            e.Property(x => x.VerificationToken).HasMaxLength(64);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ScimToken>(e =>
+        {
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.Prefix).HasMaxLength(16);
+            e.Property(x => x.TokenHash).HasMaxLength(128);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<UserLogin>(e =>
+        {
+            e.HasIndex(x => new { x.Provider, x.Subject }).IsUnique();
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Provider).HasMaxLength(64);
+            e.Property(x => x.Subject).HasMaxLength(256);
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<PasswordHistory>(e =>
         {

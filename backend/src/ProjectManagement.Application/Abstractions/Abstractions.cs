@@ -49,6 +49,10 @@ public interface IAppDbContext
     DbSet<ChatMessage> ChatMessages { get; }
     DbSet<ChatMention> ChatMentions { get; }
     DbSet<ApiKey> ApiKeys { get; }
+    DbSet<SsoConnection> SsoConnections { get; }
+    DbSet<SsoDomain> SsoDomains { get; }
+    DbSet<ScimToken> ScimTokens { get; }
+    DbSet<UserLogin> UserLogins { get; }
     DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; }
     DbSet<CustomFieldValue> CustomFieldValues { get; }
     DbSet<ChecklistItem> ChecklistItems { get; }
@@ -137,6 +141,12 @@ public interface ITokenService
 }
 
 /// <summary>Encrypts secrets that must be recoverable (for example authenticator-app secrets) before they reach the database.</summary>
+/// <summary>Accounts created by single sign-on or a social sign-in have no password until the person sets one (forgot / reset password).</summary>
+public static class PasswordHashes
+{
+    public const string None = "!";
+}
+
 public interface ISecretProtector
 {
     string Protect(string plainText);

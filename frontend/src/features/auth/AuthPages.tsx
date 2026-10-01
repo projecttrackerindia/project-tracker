@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ApiError } from '../../api/client';
+import { ApiError, apiUrl } from '../../api/client';
+import type { ExternalProvider } from '../../api/types';
 import { authApi, consentApi, workspaceApi } from '../../api/endpoints';
 import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerErrors } from '../../components/ui';
 import { Icon } from '../../components/Icon';
@@ -36,40 +37,94 @@ function usePolicyPassword() {
 
 const safeRedirect = (r: string | null) => (r && r.startsWith('/') && !r.startsWith('//') ? r : '/');
 
-/**
- * Google / GitHub / Apple sign-in, matching the reference design. None of these are wired up yet (that needs OAuth app
- * credentials for each provider), so a click says so plainly rather than pretending to sign the person in.
- */
-function SocialButtons() {
-  const notReady = (provider: string) => toast(`Sign in with ${provider} isn't set up yet. Use your email and password for now.`, 'info');
-  return (
-    <>
-      <div className="auth-divider">or continue with</div>
-      <div className="auth-socials">
-        <button type="button" className="auth-social" onClick={() => notReady('Google')} aria-label="Continue with Google">
-          <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
+/** The mark of each outside sign-in option. */
+export const PROVIDER_ICON: Record<ExternalProvider['id'], ReactNode> = {
+  google: (<svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
             <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
             <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
             <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-          </svg>
-          <span>Google</span>
-        </button>
-        <button type="button" className="auth-social" onClick={() => notReady('GitHub')} aria-label="Continue with GitHub">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+          </svg>),
+  microsoft: (<svg viewBox="0 0 23 23" width="17" height="17" aria-hidden="true"><path fill="#f35325" d="M1 1h10v10H1z" /><path fill="#81bc06" d="M12 1h10v10H12z" /><path fill="#05a6f0" d="M1 12h10v10H1z" /><path fill="#ffba08" d="M12 12h10v10H12z" /></svg>),
+  github: (<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
             <path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z" />
-          </svg>
-          <span>GitHub</span>
-        </button>
-        <button type="button" className="auth-social" onClick={() => notReady('Apple')} aria-label="Continue with Apple">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+          </svg>),
+  apple: (<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
             <path d="M16.36 12.72c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3.01-.79-1.55.02-2.98.9-3.78 2.29-1.61 2.79-.41 6.93 1.16 9.2.77 1.11 1.68 2.36 2.88 2.31 1.16-.05 1.6-.75 3-.75s1.79.75 3.01.73c1.24-.02 2.03-1.13 2.79-2.25.88-1.29 1.24-2.54 1.26-2.6-.03-.01-2.42-.93-2.44-3.68l-.03-.03ZM14.1 5.4c.64-.77 1.07-1.85.95-2.92-.92.04-2.03.61-2.69 1.38-.59.68-1.11 1.78-.97 2.83 1.03.08 2.07-.52 2.71-1.29Z" />
-          </svg>
-          <span>Apple</span>
+          </svg>),
+};
+
+/**
+ * Outside sign-in: the Google / Microsoft / GitHub / Apple options this installation has set up (none are shown until their settings are
+ * in place), and "Sign in with SSO" for organizations with their own identity provider. Each one sends the browser away to sign in and
+ * back through /auth/complete.
+ */
+function SocialButtons({ redirect, email, onSso }: { redirect: string; email: string; onSso: () => void }) {
+  const q = useQuery({ queryKey: ['auth', 'providers'], queryFn: authApi.providers, staleTime: 5 * 60_000, retry: false });
+  const providers = q.data?.providers ?? [];
+  const go = (id: string) => window.location.assign(apiUrl(`/auth/external/${id}/start?returnUrl=${encodeURIComponent(redirect)}`));
+  return (
+    <>
+      <div className="auth-divider">or continue with</div>
+      <div className={`auth-socials ${providers.length + 1 >= 4 ? 'four' : ''}`}>
+        {providers.map((p) => (
+          <button key={p.id} type="button" className="auth-social" onClick={() => go(p.id)} aria-label={`Continue with ${p.name}`}>
+            {PROVIDER_ICON[p.id]}<span>{p.name}</span>
+          </button>
+        ))}
+        <button type="button" className="auth-social sso" onClick={onSso} aria-label="Sign in with single sign-on" title={email ? `Single sign-on for ${email}` : 'Your organization\'s single sign-on'}>
+          <Icon name="building" size={17} /><span>SSO</span>
         </button>
       </div>
     </>
   );
+}
+
+/** Single sign-on: the work email decides which organization's identity provider to use. */
+function SsoStep({ email: initial, redirect, onBack }: { email: string; redirect: string; onBack: () => void }) {
+  const [email, setEmail] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setError('Enter your work email address.'); return; }
+    setBusy(true); setError(null);
+    try {
+      const d = await authApi.ssoDiscover(email.trim());
+      if (!d.sso) { setError(`Single sign-on is not set up for ${email.trim().split('@')[1]}. Sign in with your password instead.`); setBusy(false); return; }
+      window.location.assign(apiUrl(`/auth/sso/start?email=${encodeURIComponent(email.trim())}&returnUrl=${encodeURIComponent(redirect)}`));
+    } catch (e) { setError(e instanceof ApiError ? e.message : 'Could not check single sign-on. Please try again.'); setBusy(false); }
+  };
+  return (
+    <AuthLayout title="Single sign-on" sub="Sign in with your organization's identity provider (Microsoft Entra ID, Okta, Google Workspace ...)."
+      footer={<button type="button" className="link" onClick={onBack}>Back to sign in with a password</button>}>
+      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void submit(); }} noValidate>
+        {error && <div className="form-error" role="alert">{error}</div>}
+        <FloatingField id="sso-email" icon="mail" label="Work email" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+        <AuthSubmitButton busy={busy}>Continue with SSO<Icon name="arrowRight" /></AuthSubmitButton>
+      </form>
+    </AuthLayout>
+  );
+}
+
+/**
+ * Where a redirect sign-in lands (single sign-on, Google ...): the session cookie is already set, so the app's start-up refresh signs the
+ * person in; this page then plays the success moment and goes on to where they were headed.
+ */
+export function AuthCompletePage() {
+  const status = useAuth((s) => s.status);
+  const [params] = useSearchParams();
+  const nav = useNavigate();
+  const to = safeRedirect(params.get('to'));
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || status === 'loading') return;
+    started.current = true;
+    if (status !== 'authenticated') { nav('/login?sso_error=SSO_FAILED&message=' + encodeURIComponent('The sign-in could not be completed. Please try again.'), { replace: true }); return; }
+    const ctx = useAuth.getState().ctx;
+    const ws = ctx?.current;
+    celebrate({ kind: 'signin', name: firstName(ctx?.user.displayName), detail: ws ? (ws.type === 'Personal' ? 'your personal workspace' : ws.name) : undefined, onHandoff: () => nav(to, { replace: true }) });
+  }, [status, nav, to]);
+  return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
 }
 
 function DevHint() {
@@ -91,11 +146,13 @@ export function LoginPage() {
   const status = useAuth((s) => s.status);
   const login = useAuth((s) => s.login);
   const loginMfa = useAuth((s) => s.loginMfa);
-  const [challenge, setChallenge] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  // A redirect sign-in that needs the second step (Google ... for someone with two-step verification) comes back with its challenge.
+  const [challenge, setChallenge] = useState<string | null>(() => params.get('mfa_challenge'));
   const [code, setCode] = useState('');
-  const [params] = useSearchParams();
   const nav = useNavigate();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => params.get('sso_error') ? params.get('message') ?? 'Sign-in could not be completed.' : null);
+  const [sso, setSso] = useState(false);
   const [unverified, setUnverified] = useState(false);
   const [remember, setRemember] = useState(() => !!rememberedEmail());
   const [shaking, shake] = useShake();
@@ -109,7 +166,14 @@ export function LoginPage() {
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema), defaultValues: { email: rememberedEmail(), password: '' },
   });
-  const redirect = safeRedirect(params.get('redirect'));
+  const redirect = safeRedirect(params.get('redirect') ?? params.get('to'));
+  // The hand-off parameters are read once; keep them out of the address bar (and out of a reload).
+  useEffect(() => {
+    if (!params.has('sso_error') && !params.has('mfa_challenge')) return;
+    const n = new URLSearchParams(params); ['sso_error', 'message', 'mfa_challenge', 'via'].forEach((k) => n.delete(k));
+    setParams(n, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Hands off to the full-screen success moment, which navigates into the app while it still covers the screen. */
   const enterApp = (kind: CelebrationKind) => {
@@ -131,7 +195,13 @@ export function LoginPage() {
       if (r.mfaChallenge) { setSigningIn(false); setChallenge(r.mfaChallenge); setCode(''); return; }
       enterApp('signin');
     },
-    onError: (e) => {
+    onError: (e, v) => {
+      // The organization requires its own single sign-on for this address: go there instead of showing an error.
+      if (e instanceof ApiError && e.code === 'SSO_REQUIRED') {
+        toast('Your organization signs you in through its single sign-on. Taking you there…', 'info');
+        window.location.assign(apiUrl(`/auth/sso/start?email=${encodeURIComponent(v.email)}&returnUrl=${encodeURIComponent(redirect)}`));
+        return;
+      }
       setSigningIn(false);
       setUnverified(e instanceof ApiError && e.code === 'EMAIL_NOT_VERIFIED');
       setError(e instanceof ApiError ? e.message : 'Could not sign in. Please try again.');
@@ -151,6 +221,7 @@ export function LoginPage() {
   const resend = useMutation({ mutationFn: () => authApi.resendVerification(getValues('email')), onSuccess: () => toast('Verification email sent (if the account exists).', 'info') });
 
   if (status === 'authenticated' && !signingIn && !celebrating) return <Navigate to={redirect} replace />;
+  if (sso) return <SsoStep email={getValues('email')} redirect={redirect} onBack={() => setSso(false)} />;
   if (challenge) return (
     <AuthLayout title="Two-step verification" sub="Enter the 6-digit code from your authenticator app, or one of your recovery codes." shake={shaking}
       footer={<button type="button" className="link" onClick={() => { setChallenge(null); setError(null); }}>Back to sign in</button>}>
@@ -174,7 +245,7 @@ export function LoginPage() {
           <Link className="link" to="/forgot-password" style={{ fontSize: 13.5 }}>Forgot password?</Link>
         </div>
         <AuthSubmitButton busy={m.isPending}>Sign in<Icon name="arrowRight" /></AuthSubmitButton>
-        <SocialButtons />
+        <SocialButtons redirect={redirect} email={getValues('email')} onSso={() => { setError(null); setSso(true); }} />
       </form>
       <DevHint />
     </AuthLayout>
