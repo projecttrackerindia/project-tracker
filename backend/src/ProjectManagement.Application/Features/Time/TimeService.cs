@@ -27,7 +27,7 @@ public record ProjectTimeDto(int TotalMinutes, decimal? EstimatedHours, IReadOnl
 /// there is one honest number instead of a typed guess next to a tracked one.
 /// </summary>
 public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
-    ProjectManagement.Application.Features.Organization.ReportingService reporting)
+    ProjectManagement.Application.Features.Organization.ReportingLineService reporting)
 {
     private const int MaxMinutesPerEntry = 24 * 60;
     private const int MaxRangeDays = 92;

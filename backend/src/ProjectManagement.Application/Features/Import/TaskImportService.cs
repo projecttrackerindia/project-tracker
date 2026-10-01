@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Configuration;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Tasks;
 using ProjectManagement.Application.Services;

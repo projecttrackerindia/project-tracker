@@ -25,7 +25,7 @@ public record RequestExportRequest(ReportKind Kind, ReportFormat Format, Guid? P
 /// </summary>
 public class ReportExportService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, ProjectAccess access, IFileStorage storage, ILogger<ReportExportService> log,
-    ProjectManagement.Application.Features.Organization.ReportingService reporting)
+    ProjectManagement.Application.Features.Organization.ReportingLineService reporting)
 {
     public static readonly TimeSpan Retention = TimeSpan.FromDays(7);
     private const int MaxPending = 3;
@@ -221,8 +221,8 @@ public class ReportExportProcessor(IServiceScopeFactory scopes, TimeProvider tim
 
 /// <summary>Collects the data of a report into a format-neutral document. Uses the current (requester's) access rights throughout.</summary>
 public class ReportBuilder(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ReportService reports, TimeService time,
-    PermissionService permissions, ProjectManagement.Application.Features.Organization.ReportingService reporting,
-    ProjectManagement.Application.Features.Projects.PriorityService priorities)
+    PermissionService permissions, ProjectManagement.Application.Features.Organization.ReportingLineService reporting,
+    ProjectManagement.Application.Features.Configuration.PriorityService priorities)
 {
     public async Task<ReportDocument> BuildAsync(ReportExport e, string workspaceName, CancellationToken ct)
     {

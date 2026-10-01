@@ -42,7 +42,7 @@ public record SetPermissionRequest(TenantRole Role, string Permission, bool Allo
 public class WorkspaceService(
     IAppDbContext db, ICurrentContext ctx, ITokenService tokens, IEmailSender email, IOptions<AppOptions> options,
     AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, PermissionService permissions, EntitlementService entitlements,
-    ProjectManagement.Application.Features.Organization.ReportingService reporting, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity,
+    ProjectManagement.Application.Features.Organization.ReportingLineService reporting, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity,
     ProjectManagement.Application.Features.Consent.ConsentService consent, IPasswordHasher hasher, PasswordPolicyService passwordPolicy, ILogger<WorkspaceService> log)
 {
     private readonly AppOptions _opt = options.Value;

@@ -8,6 +8,7 @@ using ProjectManagement.Application.Features.Automation;
 using ProjectManagement.Application.Features.Reports;
 using ProjectManagement.Application.Features.Time;
 using ProjectManagement.Application.Features.Billing;
+using ProjectManagement.Application.Features.Configuration;
 using ProjectManagement.Application.Features.Files;
 using ProjectManagement.Application.Features.Insights;
 using ProjectManagement.Application.Features.Issues;
@@ -68,7 +69,7 @@ public static class DependencyInjection
         services.AddSingleton<PlatformSettingsCache>();
         services.AddSingleton<SystemMetrics>();
         services.AddSingleton<WorkerHeartbeats>();
-        services.AddScoped<ReportingService>();
+        services.AddScoped<ReportingLineService>();
         services.AddScoped<WebhookService>();
         services.AddSingleton<WebhookProcessor>();
         services.AddScoped<ApiKeyService>();

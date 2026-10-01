@@ -137,7 +137,7 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
 }
 
 public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access,
-    ProjectManagement.Application.Features.Organization.ReportingService reporting, PermissionService permissions)
+    ProjectManagement.Application.Features.Organization.ReportingLineService reporting, PermissionService permissions)
 {
     /// <summary>
     /// Regular users see only their own task assignments; a manager's default view adds everyone in their reporting
