@@ -38,6 +38,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Cache__EntitlementSeconds", "0"); // most tests change plans directly in the database; cache tests switch it on themselves
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
+        Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
+        Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
         Environment.SetEnvironmentVariable("Webhooks__AllowPrivateTargets", "true");
         Environment.SetEnvironmentVariable("Webhooks__SettleSeconds", "0");
         Environment.SetEnvironmentVariable("Dev__Mailbox", "true");
@@ -51,6 +53,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeIdentityProvider Idp { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
+    /// <summary>Stands in for Claude (off until a test switches it on).</summary>
+    public FakeAiClient Ai { get; } = new();
+    /// <summary>Stands in for the Web Push services.</summary>
+    public RecordingPushHandler Push { get; } = new();
+    /// <summary>What would be broadcast to open screens.</summary>
+    public RecordingChangeFeed Changes { get; } = new();
 
     /// <summary>Stands in for the internet: records every webhook request and answers with whatever the test asks for.</summary>
     public RecordingWebhookTransport Webhooks { get; } = new();
@@ -65,6 +73,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => Idp);
             services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
+            services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiClient>();
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(Ai);
+            services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
+            services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
+            services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);
         });
     }
 

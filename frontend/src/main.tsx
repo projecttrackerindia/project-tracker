@@ -8,6 +8,7 @@ import './styles/components.css';
 import './styles/layout.css';
 import './styles/account.css';
 import './styles/enterprise.css';
+import './styles/advanced.css';
 import './styles/chat.css';
 import './styles/auth.css';
 import './styles/celebrate.css';
@@ -18,6 +19,11 @@ import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
+
+// The installable app: the service worker lets it start offline and receive push notifications (production builds only).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js').catch(() => undefined); });
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

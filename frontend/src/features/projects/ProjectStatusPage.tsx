@@ -9,6 +9,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { useModule } from '../../stores/auth';
 import { TaskModal } from '../tasks/TaskModal';
 import { ActionItemsPanel } from './ActionItemsPanel';
+import { PortfolioSummaryButton } from '../ai/Assistant';
 
 const HEALTH_LABEL: Record<ProjectHealth, string> = { OnTrack: 'On track', AtRisk: 'At risk', Delayed: 'Delayed', Completed: 'Completed', Cancelled: 'Cancelled', Archived: 'Archived' };
 const days = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'}`;
@@ -68,6 +69,7 @@ export function ProjectStatusPage() {
             <Icon name="monitor" size={40} />
             <h2>Portfolio</h2>
             <p>Open a group on the left and choose a project to see where it stands: its dates, its tasks, and any delay or change to the delivery date.</p>
+            <PortfolioSummaryButton />
           </div>
         )}
       </section>

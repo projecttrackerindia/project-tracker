@@ -290,6 +290,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("ActionStatusCategory")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid?>("ActionStatusId")
                         .HasColumnType("uuid");
 
@@ -317,12 +321,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LastRunAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("MoreActionsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<Guid>("ProjectId")
+                    b.Property<Guid?>("ProjectId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("RunCount")
@@ -336,6 +344,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<int?>("TriggerDays")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -346,6 +357,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("WhenStatusCategory")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid?>("WhenStatusId")
                         .HasColumnType("uuid");
 
@@ -353,7 +368,51 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProjectId", "Trigger");
 
+                    b.HasIndex("TenantId", "Trigger");
+
                     b.ToTable("AutomationRules");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AutomationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("RuleId", "TaskId", "Period")
+                        .IsUnique();
+
+                    b.ToTable("AutomationRuns");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.CalendarFeed", b =>
@@ -1291,6 +1350,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("Link")
                         .HasColumnType("text");
 
+                    b.Property<bool>("PushPending")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("ReadAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1320,6 +1382,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("DedupeKey");
 
                     b.HasIndex("EmailPending");
+
+                    b.HasIndex("PushPending");
 
                     b.HasIndex("UserId", "ReadAt");
 
@@ -1855,6 +1919,53 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId", "Order");
 
                     b.ToTable("ProjectStages");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.PushSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(800)
+                        .HasColumnType("character varying(800)");
+
+                    b.Property<int>("Failures")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushSubscriptions");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.RefreshToken", b =>
@@ -2822,6 +2933,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("AiDisabled")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("CostCurrency")
                         .HasMaxLength(3)
@@ -4056,6 +4170,20 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasOne("ProjectManagement.Domain.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AutomationRun", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.AutomationRule", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProjectManagement.Domain.Entities.TaskItem", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -4246,6 +4374,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasOne("ProjectManagement.Domain.Entities.Project", null)
                         .WithMany("Stages")
                         .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.PushSubscription", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

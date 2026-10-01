@@ -307,13 +307,19 @@ export interface ProjectFinancials {
 export interface ProjectTime { totalMinutes: number; estimatedHours: number | null; byPerson: { userId: string; name: string; minutes: number }[]; topTasks: { taskId: string; key: string; title: string; minutes: number; estimatedHours: number | null }[] }
 
 // ---- automation
-export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged';
+/** Event triggers run when a task changes; DueSoon, Overdue and Stale are checked every few minutes (with `triggerDays`). */
+export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale';
 export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment';
 export type AutomationTarget = 'User' | 'Reporter' | 'Assignee';
-export interface AutomationRule {
-  id: string; projectId: string; name: string; isEnabled: boolean; trigger: AutomationTrigger; whenStatusId: string | null; whenPriority: string | null;
-  action: AutomationAction; actionPriority: string | null; actionStatusId: string | null; actionLabelId: string | null; actionTarget: AutomationTarget; actionUserId: string | null;
-  actionText: string | null; summary: string; runCount: number; lastRunAt: string | null;
+/** One thing a rule does. Workspace rules name a status by category (the project's first status in it). */
+export interface AutomationStep {
+  action: AutomationAction; actionPriority: string | null; actionStatusId: string | null; actionStatusCategory: StatusCategory | null; actionLabelId: string | null;
+  actionTarget: AutomationTarget; actionUserId: string | null; actionText: string | null;
+}
+export interface AutomationRule extends AutomationStep {
+  id: string; projectId: string | null; name: string; isEnabled: boolean; trigger: AutomationTrigger; whenStatusId: string | null; whenPriority: string | null;
+  whenStatusCategory: StatusCategory | null; triggerDays: number | null; moreActions: AutomationStep[];
+  summary: string; runCount: number; lastRunAt: string | null;
 }
 export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt'>;
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Chat;
 using ProjectManagement.Domain.Enums;
@@ -22,6 +23,23 @@ public class SignalRChatNotifier(IHubContext<ChatHub> hub) : IChatNotifier
     {
         var groups = userIds.Distinct().Select(u => ChatGroups.User(tenantId, u)).ToList();
         return groups.Count == 0 ? Task.CompletedTask : hub.Clients.Groups(groups).SendAsync(eventName, payload, ct);
+    }
+}
+
+/// <summary>
+/// Live updates: what changed in a workspace goes to everyone there who has the app open, so boards, lists and dashboards refresh by
+/// themselves. Only the kind of thing, its id and its project are sent - each screen reloads through the API with its own permissions.
+/// </summary>
+public class SignalRChangeFeed(IHubContext<ChatHub> hub, ILogger<SignalRChangeFeed> log) : IChangeFeed
+{
+    public void Publish(IReadOnlyList<ChangeEvent> changes)
+    {
+        foreach (var group in changes.GroupBy(c => c.TenantId))
+        {
+            var payload = group.Select(c => new { entityType = c.EntityType, entityId = c.EntityId, projectId = c.ProjectId, action = c.Action, actorId = c.ActorId }).ToList();
+            _ = hub.Clients.Group(ChatGroups.Workspace(group.Key)).SendAsync("changed", payload).ContinueWith(
+                t => log.LogDebug(t.Exception, "Could not send live changes"), TaskContinuationOptions.OnlyOnFaulted);
+        }
     }
 }
 
@@ -62,7 +80,7 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
 [Authorize]
 public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock) : Hub
 {
-    private const string TenantKey = "tenant", UserKey = "user", NameKey = "name";
+    private const string TenantKey = "tenant", UserKey = "user", NameKey = "name", WatchingKey = "watching";
 
     public override async Task OnConnectedAsync()
     {
@@ -108,10 +126,59 @@ public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock
         await base.OnConnectedAsync();
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         presence.Disconnected(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
+        // Leaving the app closes whatever the person was looking at.
+        if (Context.Items[WatchingKey] is HashSet<string> watching && Context.Items[TenantKey] is Guid tenant && Context.Items[UserKey] is Guid user)
+            foreach (var key in watching) await Clients.Group(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, on = false });
+        await base.OnDisconnectedAsync(exception);
+    }
+
+    // ---- who else is looking at the same task: each open task is a group; people announce themselves and answer newcomers.
+
+    private static string ViewGroup(Guid tenant, string key) => $"v:{tenant:N}:{key}";
+
+    /// <summary>"task:{id}" or "work:{id}" of a task or work task in the caller's workspace, else null.</summary>
+    private async Task<string?> CheckKeyAsync(string key, Guid tenant)
+    {
+        var parts = key.Split(':');
+        if (parts.Length != 2 || !Guid.TryParse(parts[1], out var id)) return null;
+        var exists = parts[0] switch
+        {
+            "task" => await db.Tasks.IgnoreQueryFilters().AnyAsync(t => t.Id == id && t.TenantId == tenant && !t.IsDeleted),
+            "work" => await db.WorkTasks.IgnoreQueryFilters().AnyAsync(t => t.Id == id && t.TenantId == tenant && !t.IsDeleted),
+            _ => false,
+        };
+        return exists ? $"{parts[0]}:{id:N}" : null;
+    }
+
+    /// <summary>The caller opened a task: join its viewers and say so (the others answer with <see cref="Here"/>).</summary>
+    public async Task Watch(string key)
+    {
+        if (Context.Items[TenantKey] is not Guid tenant || Context.Items[UserKey] is not Guid user) return;
+        if (await CheckKeyAsync(key, tenant) is not { } k) return;
+        if (Context.Items[WatchingKey] is not HashSet<string> watching) Context.Items[WatchingKey] = watching = [];
+        if (watching.Count >= 10) return;
+        watching.Add(k);
+        await Groups.AddToGroupAsync(Context.ConnectionId, ViewGroup(tenant, k));
+        await Clients.OthersInGroup(ViewGroup(tenant, k)).SendAsync("viewing", new { key = k, userId = user, name = Context.Items[NameKey] as string, on = true, hello = true });
+    }
+
+    /// <summary>"I am still here", in answer to a newcomer and every so often (a viewer who stops saying it is dropped).</summary>
+    public async Task Here(string key)
+    {
+        if (Context.Items[TenantKey] is not Guid tenant || Context.Items[UserKey] is not Guid user) return;
+        if (Context.Items[WatchingKey] is not HashSet<string> watching || !watching.Contains(key)) return;
+        await Clients.OthersInGroup(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, name = Context.Items[NameKey] as string, on = true });
+    }
+
+    public async Task Unwatch(string key)
+    {
+        if (Context.Items[TenantKey] is not Guid tenant || Context.Items[UserKey] is not Guid user) return;
+        if (Context.Items[WatchingKey] is not HashSet<string> watching || !watching.Remove(key)) return;
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, ViewGroup(tenant, key));
+        await Clients.Group(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, on = false });
     }
 
     /// <summary>Tells the other people in a conversation that the caller is typing. Ignored unless the caller is in it.</summary>

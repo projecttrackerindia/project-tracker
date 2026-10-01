@@ -9,6 +9,7 @@ import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useCan, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
+import { NotesToActionsButton } from '../ai/Assistant';
 
 const SLIDE_MS = 260;
 const STATUS_LABEL: Record<ActionItemStatus, string> = { Open: 'Open', InProgress: 'In progress', Completed: 'Completed' };
@@ -94,6 +95,7 @@ export function ActionItemsTab({ projectId, highlightId }: { projectId: string; 
     <div className="card ai-card">
       <div className="card-head">
         <div><h3>Action items</h3><p>Follow-ups agreed for this project: who does what, and by when. {items.length > 0 && <>{openCount} open · {items.length - openCount} done</>}</p></div>
+        <NotesToActionsButton projectId={projectId} />
       </div>
       <ActionItemsList projectId={projectId} highlightId={highlightId} />
     </div>

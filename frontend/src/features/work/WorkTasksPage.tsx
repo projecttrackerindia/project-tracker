@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
@@ -61,6 +61,12 @@ export function WorkTasksPage() {
 
   const openId = params.get('task');
   const [creating, setCreating] = useState(false);
+  // "?new=1" (from the command palette) opens the new work task form, then leaves the address clean.
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    setCreating(true);
+    const n = new URLSearchParams(params); n.delete('new'); setParams(n, { replace: true });
+  }, [params, setParams]);
   const openTask = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('task', id); else n.delete('task'); setParams(n, { replace: true }); };
 
   const on = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };

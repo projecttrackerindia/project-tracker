@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { projectApi, workItemApi } from '../../api/endpoints';
 import type { WorkItem, WorkItemKind } from '../../api/types';
@@ -7,10 +7,11 @@ import { Select } from '../../components/Select';
 import { EmptyState, ErrorState, PageHead, PageLoader, StatCard } from '../../components/ui';
 import { todayISO, dateOffset } from '../../lib/format';
 import { useDebounced, useWsQuery } from '../../lib/hooks';
-import { useCan, useModule } from '../../stores/auth';
+import { useAuth, useCan, useModule } from '../../stores/auth';
 import { TaskModal } from '../tasks/TaskModal';
 import { WorkTaskModal } from '../work/WorkTaskModal';
 import { KIND_META, WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from './workItems';
+import { saveOfflineSnapshot } from '../offline/storage';
 
 type View = 'open' | 'all';
 
@@ -44,6 +45,11 @@ export function MyWorkPage() {
   const [creating, setCreating] = useState(false);
 
   const list = useWsQuery(['my-work', view, overdue, projectId, dq], () => workItemApi.mine({ open: view === 'open', overdue: overdue || undefined, projectId: projectId || undefined, q: dq || undefined }));
+  // The unfiltered open list is kept on this device for the installed app's offline view.
+  const who = useAuth((s) => s.ctx);
+  useEffect(() => {
+    if (list.data && view === 'open' && !overdue && !projectId && !dq && who?.current) saveOfflineSnapshot(list.data, who.user.displayName, who.current.name);
+  }, [list.data, view, overdue, projectId, dq, who]);
   const projects = useWsQuery(['projects', 'work-picker'], () => projectApi.list({ pageSize: 200, includeArchived: true, sort: 'name' }), { enabled: visible.some((k) => k !== 'Operational') });
 
   const all = useMemo(() => list.data ?? [], [list.data]);

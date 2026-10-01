@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ProjectManagement.Api.Realtime.ChatPresence>();
         services.AddSingleton<ProjectManagement.Application.Features.Chat.IChatPresence>(sp => sp.GetRequiredService<ProjectManagement.Api.Realtime.ChatPresence>());
         services.AddSingleton<ProjectManagement.Application.Features.Chat.IChatNotifier, ProjectManagement.Api.Realtime.SignalRChatNotifier>();
+        services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed, ProjectManagement.Api.Realtime.SignalRChangeFeed>();
         return services;
     }
 

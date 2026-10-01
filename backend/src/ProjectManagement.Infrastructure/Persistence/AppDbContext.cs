@@ -9,7 +9,8 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Infrastructure.Persistence;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContext current, TimeProvider clock, ProjectManagement.Application.Services.EntitlementCache? entitlementCache = null)
+public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContext current, TimeProvider clock, ProjectManagement.Application.Services.EntitlementCache? entitlementCache = null,
+    IChangeFeed? changeFeed = null)
     : DbContext(options), IAppDbContext
 {
     public DbSet<User> Users => Set<User>();
@@ -71,6 +72,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<GitConnection> GitConnections => Set<GitConnection>();
     public DbSet<DevLink> DevLinks => Set<DevLink>();
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
+    public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();
@@ -456,6 +459,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<TenantDataPolicy>(e => e.HasIndex(x => x.TenantId).IsUnique());
+        b.Entity<PushSubscription>(e =>
+        {
+            e.HasIndex(x => x.Endpoint).IsUnique();
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Endpoint).HasMaxLength(800);
+            e.Property(x => x.P256dh).HasMaxLength(200);
+            e.Property(x => x.Auth).HasMaxLength(100);
+            e.Property(x => x.UserAgent).HasMaxLength(300);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<WebhookDelivery>(e =>
         {
             e.HasIndex(x => new { x.WebhookId, x.ActivityId }).IsUnique();
@@ -591,7 +604,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => new { x.ProjectId, x.Trigger });
             e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.ActionText).HasMaxLength(500);
+            e.Property(x => x.MoreActionsJson).HasMaxLength(4000);
+            e.HasIndex(x => new { x.TenantId, x.Trigger });
             e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<AutomationRun>(e =>
+        {
+            e.HasIndex(x => new { x.RuleId, x.TaskId, x.Period }).IsUnique();
+            e.Property(x => x.Period).HasMaxLength(20);
+            e.HasOne<AutomationRule>().WithMany().HasForeignKey(x => x.RuleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<TaskItem>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<TaskLabel>(e =>
         {
@@ -616,6 +638,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => new { x.UserId, x.ReadAt });
             e.HasIndex(x => x.DedupeKey);
             e.HasIndex(x => x.EmailPending);
+            e.HasIndex(x => x.PushPending);
             e.Property(x => x.DedupeKey).HasMaxLength(100);
         });
         b.Entity<Attachment>(e =>
@@ -711,12 +734,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
                 else if (e.Entity is Plan or PlanFeature) plansChanged = true;
             }
         }
+        // Activity written in this save is what other people's open screens need to hear about (sent only once it is committed).
+        var changes = changeFeed is null ? null : ChangeTracker.Entries<Activity>().Where(e => e.State == EntityState.Added)
+            .Select(e => new ChangeEvent(e.Entity.TenantId, e.Entity.EntityType, e.Entity.EntityId, e.Entity.ProjectId, e.Entity.Action, e.Entity.ActorId)).ToList();
         var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         if (entitlementCache is not null)
         {
             if (plansChanged) entitlementCache.InvalidateAllPlans();
             foreach (var t in tenants) await entitlementCache.InvalidateTenantAsync(t, cancellationToken);
         }
+        if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
         return saved;
     }
 

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, projectGroupApi, workspaceApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
@@ -79,6 +79,13 @@ export function ProjectsPage() {
   const [archived, setArchived] = useState(false);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState<{ project?: Project } | null>(null);
+  // "?new=1" (from the command palette) opens the new-project form, then leaves the address clean.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    setModal({});
+    const n = new URLSearchParams(params); n.delete('new'); setParams(n, { replace: true });
+  }, [params, setParams]);
   const dq = useDebounced(q, 300);
 
   const board = view === 'board';

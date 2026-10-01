@@ -252,6 +252,8 @@ public class Notification : TenantEntity, ITenantScoped
     public bool EmailPending { get; set; }
     public DateTime? EmailedAt { get; set; }
     public int EmailAttempts { get; set; }
+    /// <summary>Waiting to be pushed to the person's devices (installed app or browser), even when the app is closed.</summary>
+    public bool PushPending { get; set; }
 }
 
 public class AuditLog : Entity

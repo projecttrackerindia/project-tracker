@@ -28,10 +28,12 @@ import { SlaSettings } from '../work/Sla';
 import { ApiKeySettings } from './ApiKeySettings';
 import { WebhookSettings } from './WebhookSettings';
 import { DataSettings, GitSettings, InboundEmailSettings } from './IntegrationSettings';
+import { WorkspaceAutomationSettings } from '../automation/AutomationPanel';
 import { LabelSettings } from './LabelSettings';
 import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { Select } from '../../components/Select';
+import { AiWorkspaceSwitch } from '../ai/Assistant';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -258,6 +260,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
       {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
+      {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}
       {current.id === 'data' && <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /></>}
     </SectionLayout>
   );
@@ -291,6 +294,7 @@ function GeneralSection() {
           {personal && <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Want to collaborate? Use the workspace menu in the top bar to create an organization.</p>}
         </div>
       </div>
+      {(ctx.current.role === 'Owner' || ctx.current.role === 'Admin') && <AiWorkspaceSwitch />}
     </>
   );
 }

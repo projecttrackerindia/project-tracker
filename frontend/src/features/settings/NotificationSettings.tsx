@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { meApi } from '../../api/endpoints';
+import { meApi, pushApi } from '../../api/endpoints';
 import type { NotificationPreference, TestEmailResult } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
@@ -12,6 +12,64 @@ type Permission = 'granted' | 'denied' | 'default' | 'unsupported';
 const currentPermission = (): Permission => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
 
 const KEY = ['notification-prefs'];
+
+const keyBytes = (b64: string) => {
+  const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+
+/**
+ * Push on this device: the events ticked in the Desktop column also arrive when the app is closed (an installed app, or this browser),
+ * through the browser's push service. Needs the service worker, which production builds register.
+ */
+function PushRow({ onPermission }: { onPermission: (p: Permission) => void }) {
+  const [state, setState] = useState<'checking' | 'on' | 'off' | 'unsupported'>('checking');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setState('unsupported'); return; }
+    void navigator.serviceWorker.getRegistration().then(async (reg) => {
+      if (!reg) { setState('unsupported'); return; }
+      setState((await reg.pushManager.getSubscription()) ? 'on' : 'off');
+    });
+  }, []);
+  const turnOn = async () => {
+    setBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      onPermission(permission);
+      if (permission !== 'granted') { toast('Notifications are blocked for this site. Allow them in the browser settings first.', 'warning'); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const { publicKey } = await pushApi.status();
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
+      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+      await pushApi.subscribe({ endpoint: json.endpoint, keys: json.keys });
+      setState('on');
+      toast('Push is on for this device. Events in the Desktop column now arrive even when the app is closed.');
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not turn on push for this device.', 'error'); }
+    finally { setBusy(false); }
+  };
+  const turnOff = async () => {
+    setBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      if (sub) { await pushApi.unsubscribe(sub.endpoint); await sub.unsubscribe(); }
+      setState('off');
+      toast('Push is off for this device.');
+    } catch { toast('Could not turn push off.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="setting-row">
+      <div className="setting-info"><h4>Push on this device</h4>
+        <p>{state === 'unsupported' ? 'Install the app (or use a browser that supports push) to get notifications while it is closed.'
+          : state === 'on' ? 'On. Events ticked in the Desktop column arrive even when the app is closed.'
+          : 'Get the events ticked in the Desktop column even when the app is closed.'}</p></div>
+      {state === 'off' && <button className="btn btn-ghost" disabled={busy} onClick={() => void turnOn()}><Icon name="bell" /> Turn on</button>}
+      {state === 'on' && <button className="btn btn-ghost" disabled={busy} onClick={() => void turnOff()}>Turn off</button>}
+    </div>
+  );
+}
 
 /** Which events reach me, and where: in the app, by e-mail, or as a desktop notification while the app is open. */
 export function NotificationSettings() {
@@ -75,6 +133,7 @@ export function NotificationSettings() {
           {permission === 'default' && <button className="btn btn-ghost" onClick={() => void enableDesktop()}><Icon name="bell" /> Allow desktop notifications</button>}
           {permission === 'granted' && <span className="badge badge-success">Allowed</span>}
         </div>
+        <PushRow onPermission={setPermission} />
         <div className="setting-row" style={{ alignItems: 'flex-start' }}>
           <div className="setting-info" style={{ flex: 1 }}><h4>Check that email works</h4>
             <p>Sends a test message to your address right now.</p>

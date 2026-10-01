@@ -78,6 +78,9 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GitLinkService>();
         services.AddScoped<ProjectManagement.Application.Features.Compliance.DataPolicyService>();
         services.AddScoped<ProjectManagement.Application.Features.Compliance.WorkspaceExporter>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiAssistant>();
+        services.AddScoped<ProjectManagement.Application.Features.Automation.AutomationScheduler>();
+        services.AddScoped<ProjectManagement.Application.Features.Notifications.PushService>();
         services.AddScoped<ProjectManagement.Application.Features.Chat.ChatService>();
         services.AddScoped<PlatformService>();
         services.AddScoped<GoLiveService>();

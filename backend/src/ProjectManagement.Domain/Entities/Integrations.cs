@@ -95,4 +95,20 @@ namespace ProjectManagement.Domain.Entities
         public int? AuditRetentionDays { get; set; }
         public DateTime? LastPurgedAt { get; set; }
     }
+
+    /// <summary>
+    /// One browser or installed app that accepts push notifications for a person (Web Push). It belongs to the person, not a workspace, and
+    /// is removed when the push service says it is gone.
+    /// </summary>
+    public class PushSubscription : Entity
+    {
+        public Guid UserId { get; set; }
+        public string Endpoint { get; set; } = "";
+        public string P256dh { get; set; } = "";
+        public string Auth { get; set; } = "";
+        public string? UserAgent { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? LastSuccessAt { get; set; }
+        public int Failures { get; set; }
+    }
 }

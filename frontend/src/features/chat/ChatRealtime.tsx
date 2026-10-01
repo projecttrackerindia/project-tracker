@@ -8,6 +8,12 @@ import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
 import { chatKeys, useChat } from './chatStore';
 import { useProjectChat } from './projectChatStore';
+import { emitViewing, notifyLiveConnected, setLiveConnection, type ViewingEvent } from '../live/bus';
+
+/** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
+const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar', 'dashboard', 'dashboard-report', 'dev-links', 'issues', 'milestones', 'my-work',
+  'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'timesheet', 'work', 'workload', 'capacity']);
+const LIVE_THROTTLE_MS = 1200;
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 const RETRY_MS = 10_000;        // after a failed attempt
@@ -61,6 +67,23 @@ export function ChatRealtime() {
       .configureLogging(LogLevel.None)
       .build();
     current = connection;
+    setLiveConnection(connection);
+
+    // Live updates: someone changed something - refresh the work screens that are open (at most about once a second).
+    let liveTimer: number | undefined;
+    const refreshWork = () => {
+      if (liveTimer) return;
+      liveTimer = window.setTimeout(() => {
+        liveTimer = undefined;
+        void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === wid && LIVE_KEYS.has(String(q.queryKey[1])) });
+      }, LIVE_THROTTLE_MS);
+    };
+    connection.on('changed', (changes: { actorId: string | null }[]) => {
+      // This tab already refreshed what it changed itself; other people's changes (and my other tabs') are news.
+      if (changes.every((c) => c.actorId === me) && !document.hidden) return;
+      refreshWork();
+    });
+    connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
 
     const refreshLists = () => {
       void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });
@@ -133,6 +156,8 @@ export function ChatRealtime() {
     connection.onreconnected(() => {
       useChat.setState({ link: 'connected', online: {} });                   // presence may have changed while offline
       void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });    // and so may everything else
+      notifyLiveConnected();                                                  // open tasks announce their viewers again
+      refreshWork();
     });
     connection.onclose(() => {
       if (stopped) return;
@@ -149,6 +174,7 @@ export function ChatRealtime() {
         await connection.start();
         if (stopped) return;
         useChat.getState().setLink('connected');
+        notifyLiveConnected();
         void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });
       } catch {
         if (stopped) return;
@@ -161,7 +187,8 @@ export function ChatRealtime() {
     return () => {
       stopped = true;
       window.clearTimeout(retry);
-      if (current === connection) current = null;
+      window.clearTimeout(liveTimer);
+      if (current === connection) { current = null; setLiveConnection(null); }
       void connection.stop();
     };
   }, [wid, me]);

@@ -22,6 +22,7 @@ import { Timeline } from './Timeline';
 import { ProjectChatButton, useProjectChat } from '../chat/ProjectChat';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { IssuesPanel } from '../issues/IssuesPanel';
+import { RiskButton } from '../ai/Assistant';
 
 type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'files' | 'time' | 'activity';
 /** Addresses from before the tabs were regrouped: planning tabs open Plan, configuration tabs open Project settings. */
@@ -133,6 +134,7 @@ export function ProjectDetailPage() {
           <p className="page-sub">{p.key}{p.teamName ? ` · ${p.teamName}` : ''}</p>
         </div>
         <div className="page-actions">
+          <RiskButton projectId={p.id} />
           <ProjectChatButton projectId={p.id} name={p.name} label />
           {canEdit && <button className="btn btn-ghost" onClick={() => setSettings('members')} title="Members, task workflow and automation"><Icon name="settings" /> Settings</button>}
           <MoreMenu>{(close) => <>

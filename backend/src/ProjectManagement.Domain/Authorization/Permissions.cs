@@ -95,10 +95,12 @@ public static class FeatureKeys
     public const string ResourceManagement = "RESOURCE_MANAGEMENT";
     /// <summary>Response and resolution targets (SLAs) on operational work.</summary>
     public const string ServiceLevels = "SERVICE_LEVELS";
+    /// <summary>The AI assistant (Claude): plain-language search, summaries, delay risk, triage and action items from notes.</summary>
+    public const string AiAssistant = "AI_ASSISTANT";
 
     public const long Unlimited = -1;
 
     public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb];
-    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels];
+    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

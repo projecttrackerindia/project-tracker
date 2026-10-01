@@ -40,6 +40,7 @@ const AccountPage = page(() => import('./features/settings/SettingsPage'), 'Acco
 const WorkspaceSettingsPage = page(() => import('./features/settings/SettingsPage'), 'WorkspaceSettingsPage');
 import { toast } from './stores/ui';
 import { useAuth, useCan, useIsPersonal, useModule } from './stores/auth';
+import { OfflineWork } from './features/offline/offline';
 
 /** No workspace is active right now: either the account genuinely has none, or one specific workspace refused this sign-in. */
 function NoWorkspace() {
@@ -172,6 +173,7 @@ function RequireAuth() {
   const ctx = useAuth((s) => s.ctx);
   const loc = useLocation();
   if (status === 'loading') return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
+  if (status === 'offline') return <OfflineWork />;
   if (status === 'anonymous') return <Navigate to={`/login?redirect=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   // Terms first: accepting them works while the password is still temporary, but the password change is a write that the terms gate
   // refuses until they have been accepted.

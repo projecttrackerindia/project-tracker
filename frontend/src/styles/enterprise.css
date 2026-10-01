@@ -303,3 +303,8 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .retention-row span { font-size: 10px; }
   .retention-row input { width: 96px; }
 }
+
+/* Automation: several actions per rule */
+.rule-action { position: relative; }
+.rule-action.more { margin-top: 6px; padding: 10px 12px 2px; border-radius: 12px; border: 1px dashed var(--border); background: var(--surface-2); }
+.rule-action .row > .field { flex: 1; margin-bottom: 0; }

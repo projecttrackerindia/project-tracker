@@ -7,7 +7,7 @@ import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { Field, Modal, PageLoader, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
-import { queryClient, useAuth, useCan, useIsPersonal } from '../stores/auth';
+import { queryClient, useAuth, useIsPersonal } from '../stores/auth';
 import { toast, useUi } from '../stores/ui';
 import { RunningTimer } from '../features/time/RunningTimer';
 import { AccessWatcher } from './AccessWatcher';
@@ -17,8 +17,9 @@ import { chatKeys } from '../features/chat/chatStore';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { ThemeSwitch } from '../components/ThemeSwitch';
 import { AccountDock, TopbarMe } from './AccountDock';
-import { useVisibleKinds } from '../features/workitems/workItems';
-import { usePeopleSections } from '../features/people/sections';
+import { useMainNav } from './navigation';
+import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
+import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
 
 // ------------------------------------------------------------------ helpers
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -34,69 +35,18 @@ const NOTIF_ICON: Record<string, string> = {
 };
 
 // ------------------------------------------------------------------ sidebar
-/** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
-interface NavDef { to: string; label: string; icon: IconName; end?: boolean; show?: boolean; badge?: number; match?: (path: string) => boolean }
-
 function Sidebar() {
   const { sidebarCollapsed, sidebarOpen, closeSidebar } = useUi();
   const ctx = useAuth((s) => s.ctx);
   const personal = useIsPersonal();
-  const lv = (m: string) => ctx?.current?.modules?.[m] ?? 0;
-  const permReports = useCan('reports.view'), broad = useCan('reports.broad');
-  const canReports = permReports && lv('reports') > 0;
   const canChat = !personal && ctx?.current?.role !== 'Guest' && !ctx?.user.isPlatformAdmin;
-  const kinds = useVisibleKinds();
-  const people = usePeopleSections();
-  const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const { pathname } = useLocation();
-  const peopleHas = (id: string) => people.some((s) => s.id === id);
   const wid = ctx?.current?.id;
   // Unread messages: kept current by live events; the slow refresh is only a safety net.
   const unread = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
-
   const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
-  // Platform administrators run the product (tenants, users, plans, billing, audit) — they get no workspace menus.
-  const adminGroups: { title: string; items: NavDef[] }[] = [
-    { title: 'Platform', items: [
-      { to: '/admin', label: 'Overview', icon: 'dashboard', end: true },
-      { to: '/admin/tenants', label: 'Organizations', icon: 'building' },
-      { to: '/admin/users', label: 'Users', icon: 'users' },
-      { to: '/admin/billing', label: 'Billing', icon: 'chart' },
-      { to: '/admin/usage', label: 'Usage', icon: 'building' },
-      { to: '/admin/plans', label: 'Plans', icon: 'card' },
-      { to: '/admin/health', label: 'System health', icon: 'activity' },
-      { to: '/admin/settings', label: 'Platform settings', icon: 'settings' },
-      { to: '/admin/audit', label: 'Audit log', icon: 'shield' },
-    ] },
-  ];
-
-  // Home: my own day. Delivery: the work itself. Insights: how it is going. Organization: the people.
-  // The signed-in person, their plan and Workspace settings are in the account card at the foot of the sidebar.
-  const workspaceGroups: { title: string; items: NavDef[] }[] = [
-    { title: 'Home', items: [
-      { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
-      { to: '/my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0 },
-      { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
-      { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
-      { to: '/chat', label: 'Chat', icon: 'message', show: canChat, badge: unread.data?.count },
-    ] },
-    { title: 'Delivery', items: [
-      { to: '/projects', label: 'Projects', icon: 'folder', show: lv('projects') > 0 },
-      { to: '/portfolio', label: 'Portfolio', icon: 'monitor', show: lv('projects') > 0 },
-      { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0 },
-    ] },
-    { title: 'Insights', items: [
-      { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },
-      { to: '/reports', label: 'Reports', icon: 'chart', end: false, show: canReports || lv('work') > 0 },
-      { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0 },
-    ] },
-    { title: 'Organization', items: [
-      { to: '/people', label: 'People', icon: 'user', show: peopleHas('directory'), match: (p) => p === '/people' || p === '/people/invitations' },
-      { to: '/people/org-chart', label: 'Org chart', icon: 'org', show: peopleHas('org-chart') },
-      { to: '/people/teams', label: 'Teams', icon: 'layers', show: peopleHas('teams') },
-    ] },
-  ];
-  const groups = isPlatformAdmin ? adminGroups : workspaceGroups;
+  // The same menu as the command palette; the sidebar adds the unread count to Chat.
+  const groups = useMainNav().map((g) => ({ ...g, items: g.items.map((i) => (i.to === '/chat' ? { ...i, badge: unread.data?.count } : i)) }));
 
   return (
     <>
@@ -190,16 +140,7 @@ function GlobalSearch() {
 
   const go = (h: { type: string; id: string; projectId: string | null; taskId: string | null }) => {
     setOpen(false); setQ('');
-    if (h.type === 'file') nav(h.taskId ? `/projects/${h.projectId}?task=${h.taskId}` : `/projects/${h.projectId}?tab=files`);
-    else if (h.type === 'task' || h.type === 'comment') nav(`/projects/${h.projectId}?task=${h.taskId}`);
-    else if (h.type === 'issue') nav(`/projects/${h.projectId}?tab=issues&issue=${h.id}`);
-    else if (h.type === 'action') nav(`/projects/${h.projectId}?tab=actions&action=${h.id}`);
-    else if (h.type === 'work') nav(`/operations?task=${h.id}`);
-    else if (h.type === 'project') nav(`/projects/${h.id}`);
-    else if (h.type === 'team') nav('/people/teams');
-    else if (h.type === 'member') nav('/people');
-    else if (h.type === 'label') nav('/settings/labels');
-    else nav('/projects');
+    nav(searchHitLink(h));
   };
   const groups: Record<string, string> = { task: 'Tasks', issue: 'Test issues', action: 'Action items', work: 'Operational work', project: 'Projects', team: 'Teams', member: 'People', comment: 'Comments', file: 'Files', label: 'Labels' };
   const icons: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag' };
@@ -211,7 +152,7 @@ function GlobalSearch() {
       <input ref={input} type="search" placeholder="Search work, projects, people… or a key like WT-12" autoComplete="off" aria-label="Global search" value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
         onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); input.current?.blur(); } }} />
-      {!q && <span className="kbd">/</span>}
+      {!q && <button type="button" className="kbd kbd-btn" title="Command palette (Ctrl K)" onClick={openPalette}>Ctrl K</button>}
       {open && debounced.length >= 2 && (
         <div className="search-results">
           {isFetching && !hits.length ? <div className="sr-empty">Searching…</div>
@@ -358,6 +299,7 @@ function Topbar() {
       <button className="icon-btn" onClick={toggleSidebar} title="Toggle sidebar" aria-label="Toggle sidebar"><Icon name="menu" /></button>
       {isPlatformAdmin ? null : <GlobalSearch />}
       <div className="topbar-actions">
+        {!isPlatformAdmin && <AssistantButton />}
         {!isPlatformAdmin && <RunningTimer />}
         {!isPlatformAdmin && <WorkspaceSwitcher />}
         <ThemeSwitch className="theme-toggle" />
@@ -387,6 +329,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <ConfirmRoot />
       <DesktopNotifier />
       <AccessWatcher />
+      <CommandPalette />
+      <AssistantPanel />
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
     </div>

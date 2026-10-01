@@ -8,6 +8,7 @@ import { Attachments } from '../files/Attachments';
 import { Dependencies } from '../planning/Dependencies';
 import { TimeTracker } from '../time/TimeTracker';
 import { DevLinks } from '../settings/IntegrationSettings';
+import { Viewers } from '../live/Viewers';
 import { Checklist } from './Checklist';
 import { CustomFieldsSection } from '../customfields/CustomFieldsSection';
 import { customFieldApi, sprintApi } from '../../api/endpoints';
@@ -146,6 +147,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
         {!readOnly && <SubmitButton busy={save.isPending}>{isEdit ? 'Save changes' : 'Save task'}</SubmitButton>}
       </>}>
       {task?.parentTaskId && <button type="button" className="link" style={{ marginBottom: 12, fontSize: 12.5 }} onClick={() => setCurrentId(task.parentTaskId!)}>← Back to parent task</button>}
+      {isEdit && <Viewers kind="task" id={task?.id} />}
       {formError && <div className="form-error" role="alert">{formError}</div>}
 
       <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

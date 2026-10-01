@@ -63,6 +63,7 @@ public class NotificationRouter(IAppDbContext db)
         n.InApp = c.InApp;
         n.EmailPending = c.Email;
         n.Browser = c.Browser && c.InApp; // a desktop notification needs the in-app item to open
+        n.PushPending = n.Browser;        // and is also pushed to the person's devices, for when the app is closed
         return c.Any;
     }
 }

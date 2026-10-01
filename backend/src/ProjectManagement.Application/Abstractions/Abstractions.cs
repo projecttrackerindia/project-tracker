@@ -67,6 +67,8 @@ public interface IAppDbContext
     DbSet<GitConnection> GitConnections { get; }
     DbSet<DevLink> DevLinks { get; }
     DbSet<TenantDataPolicy> TenantDataPolicies { get; }
+    DbSet<AutomationRun> AutomationRuns { get; }
+    DbSet<PushSubscription> PushSubscriptions { get; }
     DbSet<AutomationRule> AutomationRules { get; }
     DbSet<TaskComment> TaskComments { get; }
     DbSet<Activity> Activities { get; }
@@ -152,6 +154,15 @@ public interface ITokenService
 public static class PasswordHashes
 {
     public const string None = "!";
+}
+
+/// <summary>Something changed in a workspace (one activity record): enough for open screens to know what to reload, nothing more.</summary>
+public record ChangeEvent(Guid TenantId, string EntityType, Guid? EntityId, Guid? ProjectId, string Action, Guid? ActorId);
+
+/// <summary>Tells the people who have the app open that something changed, so boards and lists update without a reload.</summary>
+public interface IChangeFeed
+{
+    void Publish(IReadOnlyList<ChangeEvent> changes);
 }
 
 public interface ISecretProtector

@@ -88,6 +88,8 @@ public class Tenant : AuditableEntity, ISoftDelete
     public bool TrialUsed { get; set; }
     /// <summary>The currency of budgets, cost and bill rates (ISO code). Null = the platform's billing currency.</summary>
     public string? CostCurrency { get; set; }
+    /// <summary>The workspace has switched the AI assistant off (nothing of its data is ever sent to the model).</summary>
+    public bool AiDisabled { get; set; }
 
     /// <summary>Soft delete: members lose access, all data is retained and the tenant can be restored by a platform admin.</summary>
     public bool IsDeleted { get; set; }

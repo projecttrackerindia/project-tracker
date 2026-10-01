@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { setAccessToken, setAuthLostHandler, refreshSession } from '../api/client';
 import { authApi, meApi, workspaceApi } from '../api/endpoints';
 import type { AppContext } from '../api/types';
+import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,7 +15,8 @@ export const queryClient = new QueryClient({
 });
 
 interface AuthState {
-  status: 'loading' | 'authenticated' | 'anonymous';
+  /** offline: started without a connection - the saved My work is shown until it is back. */
+  status: 'loading' | 'authenticated' | 'anonymous' | 'offline';
   ctx: AppContext | null;
   bootstrap: () => Promise<void>;
   /** Resolves with a challenge when two-step verification is on; finish with `loginMfa`. */
@@ -32,7 +34,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   /** On page load: trade the HttpOnly refresh cookie for an access token, then load the user's context. */
   bootstrap: async () => {
     const auth = await refreshSession();
-    if (!auth) { set({ status: 'anonymous', ctx: null }); return; }
+    if (!auth) { set({ status: !navigator.onLine && readOfflineSnapshot() ? 'offline' : 'anonymous', ctx: null }); return; }
     try { await get().reloadContext(); }
     catch { setAccessToken(null); set({ status: 'anonymous', ctx: null }); }
   },
@@ -55,6 +57,7 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try { await authApi.logout(); } catch { /* session may already be gone */ }
+    clearOfflineData();   // nothing of this person stays on the device
     setAccessToken(null);
     queryClient.clear();
     set({ status: 'anonymous', ctx: null });

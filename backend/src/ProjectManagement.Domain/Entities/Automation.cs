@@ -4,7 +4,8 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Domain.Enums
 {
     public enum SprintStatus { Planned, Active, Completed }
-    public enum AutomationTrigger { TaskCreated, StatusChanged, PriorityChanged }
+    /// <summary>Event triggers run when a task changes; DueSoon, Overdue and Stale are checked on a schedule (with <c>TriggerDays</c>).</summary>
+    public enum AutomationTrigger { TaskCreated, StatusChanged, PriorityChanged, DueSoon, Overdue, Stale }
     public enum AutomationAction { SetPriority, SetAssignee, MoveToStatus, AddLabel, Notify, AddComment }
     /// <summary>Who an action refers to: a chosen person, or whoever reported / is assigned the task.</summary>
     public enum AutomationTarget { User, Reporter, Assignee }
@@ -39,10 +40,14 @@ namespace ProjectManagement.Domain.Entities
         public User? User { get; set; }
     }
 
-    /// <summary>"When this happens to a task, do that" (spec section on automation). Rules belong to one project.</summary>
+    /// <summary>
+    /// "When this happens to a task, do that" (spec section on automation). A rule belongs to one project, or - with no project - to the
+    /// whole workspace, where statuses are named by category ("a Done status") because each project has its own. A rule can do several
+    /// things: the first action is in the Action* columns, the rest in <see cref="MoreActionsJson"/>.
+    /// </summary>
     public class AutomationRule : TenantEntity, ITenantScoped
     {
-        public Guid ProjectId { get; set; }
+        public Guid? ProjectId { get; set; }
         public string Name { get; set; } = "";
         public bool IsEnabled { get; set; } = true;
 
@@ -51,16 +56,32 @@ namespace ProjectManagement.Domain.Entities
         public Guid? WhenStatusId { get; set; }
         /// <summary>PriorityChanged: only when the task gets this priority (null = any).</summary>
         public Priority? WhenPriority { get; set; }
+        /// <summary>Workspace rules, StatusChanged: only when the new status is in this category (null = any).</summary>
+        public StatusCategory? WhenStatusCategory { get; set; }
+        /// <summary>DueSoon: this many days before the due date. Overdue: this many days after it. Stale: no change for this many days.</summary>
+        public int? TriggerDays { get; set; }
 
         public AutomationAction Action { get; set; }
         public Priority? ActionPriority { get; set; }
         public Guid? ActionStatusId { get; set; }
+        /// <summary>Workspace rules, MoveToStatus: the project's first status in this category.</summary>
+        public StatusCategory? ActionStatusCategory { get; set; }
         public Guid? ActionLabelId { get; set; }
         public AutomationTarget ActionTarget { get; set; } = AutomationTarget.User;
         public Guid? ActionUserId { get; set; }
         public string? ActionText { get; set; }
+        /// <summary>The second and later actions, as JSON (the same fields as the first).</summary>
+        public string? MoreActionsJson { get; set; }
 
         public int RunCount { get; set; }
         public DateTime? LastRunAt { get; set; }
+    }
+
+    /// <summary>A scheduled rule already ran for this task in this period (a due date, or a day without changes), so it does not run again.</summary>
+    public class AutomationRun : TenantEntity, ITenantScoped
+    {
+        public Guid RuleId { get; set; }
+        public Guid TaskId { get; set; }
+        public string Period { get; set; } = "";
     }
 }

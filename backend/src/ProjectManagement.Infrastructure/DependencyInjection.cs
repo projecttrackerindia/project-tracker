@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.Configure<MfaOptions>(config.GetSection(MfaOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.InboundEmailOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.InboundEmailOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Ai.AiOptions>(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section));
 
         var provider = config["Database:Provider"] ?? "Postgres";
         var connection = config.GetConnectionString("Default")
@@ -64,6 +65,9 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Sso.ISamlProtocol, SamlProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier, DnsDomainVerifier>();
         services.AddSingleton<DevMailbox>();
+        // The AI assistant: Claude through the Anthropic API, only when Ai:AnthropicApiKey is set.
+        services.AddHttpClient("anthropic", c => c.Timeout = TimeSpan.FromSeconds(90));
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AnthropicClient>();
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IFileStorage, S3FileStorage>();
@@ -88,6 +92,14 @@ public static class DependencyInjection
         services.AddHostedService<WebhookWorker>();
         services.Configure<SlaOptions>(config.GetSection(SlaOptions.Section));
         services.AddHostedService<SlaWorker>();
+        services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
+        services.AddHostedService<AutomationWorker>();
+        // Push notifications to devices (Web Push with VAPID; keys are made on first use).
+        services.Configure<ProjectManagement.Application.Features.Notifications.PushOptions>(config.GetSection(ProjectManagement.Application.Features.Notifications.PushOptions.Section));
+        services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddSingleton<ProjectManagement.Application.Features.Notifications.IWebPushSender, WebPushSender>();
+        services.AddSingleton<ProjectManagement.Application.Features.Notifications.PushDispatcher>();
+        services.AddHostedService<PushWorker>();
         return services;
     }
 }

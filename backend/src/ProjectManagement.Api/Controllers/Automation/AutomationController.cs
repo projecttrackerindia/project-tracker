@@ -26,3 +26,24 @@ public class AutomationController(AutomationService automation) : ApiControllerB
         return NoContent();
     }
 }
+
+/// <summary>Workspace-wide automation rules: they apply to every project's tasks.</summary>
+[Route("api/v1/automations"), RequireWorkspace]
+public class WorkspaceAutomationController(AutomationService automation) : ApiControllerBase
+{
+    [HttpGet, RequireModule(Modules.Projects)]
+    public async Task<IActionResult> List(CancellationToken ct) => Ok(await automation.ListWorkspaceAsync(ct));
+
+    [HttpPost, RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Create([FromBody] UpsertAutomationRequest req, CancellationToken ct) => Created(await automation.CreateWorkspaceAsync(req, ct));
+
+    [HttpPut("{id:guid}"), RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpsertAutomationRequest req, CancellationToken ct) => Ok(await automation.UpdateWorkspaceAsync(id, req, ct));
+
+    [HttpDelete("{id:guid}"), RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await automation.DeleteWorkspaceAsync(id, ct);
+        return NoContent();
+    }
+}

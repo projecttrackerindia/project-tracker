@@ -13,9 +13,11 @@ import { useWorkspaceId } from '../../stores/auth';
 import { TimeTracker } from '../time/TimeTracker';
 import { SlaPanel } from './Sla';
 import { DevLinks } from '../settings/IntegrationSettings';
+import { Viewers } from '../live/Viewers';
 import { formatMinutes } from '../time/time';
 import type { Member } from '../../api/types';
 import { confirmDialog, toast } from '../../stores/ui';
+import { TriageButton } from '../ai/Assistant';
 
 type Tab = 'details' | 'time' | 'comments' | 'files' | 'history';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -96,6 +98,15 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
         <Field label="Title" required full error={errors.title}>
           <input className="input" value={title} onChange={(e) => { setTitle(e.target.value); setErrors((x) => ({ ...x, title: '' })); }} maxLength={200} placeholder="e.g. Fix production issue in payment calculation" autoFocus={!isEdit} />
         </Field>
+        {!isEdit && (
+          <div className="field full" style={{ marginTop: -6 }}>
+            <TriageButton title={title} description={description} onApply={(t) => {
+              if (t.workTypeId) setWorkTypeId(t.workTypeId);
+              if (t.priority) setPriority(t.priority);
+              if (t.assigneeId) setAssigneeId(t.assigneeId);
+            }} />
+          </div>
+        )}
         <Field label="Work type" required error={errors.workTypeId} hint="What kind of work this is. The list is managed in Workspace settings.">
           <Select className="select" value={workTypeId} onChange={(e) => { setWorkTypeId(e.target.value); setErrors((x) => ({ ...x, workTypeId: '' })); }} aria-label="Work type">
             <option value="">Select a work type…</option>
@@ -144,6 +155,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   return (
     <Modal title={task ? `${task.key} · Work task` : 'New work task'} subtitle={task ? (canEdit ? 'Update the details of this work task.' : 'You can read this work task but not change it.') : 'Operational work that is not a task on a project’s timeline.'}
       onClose={onClose} size="lg" footer={footer} onSubmit={tab === 'details' && canEdit ? submit : undefined}>
+      {task && <Viewers kind="work" id={task.id} />}
       {task && (
         <div style={{ marginBottom: 16 }}>
           <Tabs<Tab> value={tab} onChange={setTab} tabs={[

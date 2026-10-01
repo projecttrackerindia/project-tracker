@@ -325,6 +325,14 @@ export const automationApi = {
   remove: (projectId: string, id: string) => del(`/projects/${projectId}/automations/${id}`),
 };
 
+/** Workspace-wide automation rules (they apply to every project). */
+export const workspaceAutomationApi = {
+  list: () => get<AutomationRule[]>('/automations'),
+  create: (b: AutomationInput) => post<AutomationRule>('/automations', b),
+  update: (id: string, b: AutomationInput) => put<AutomationRule>(`/automations/${id}`, b),
+  remove: (id: string) => del(`/automations/${id}`),
+};
+
 export const sprintApi = {
   list: (projectId: string) => get<Sprint[]>(`/projects/${projectId}/sprints`),
   get: (projectId: string, id: string) => get<SprintDetail>(`/projects/${projectId}/sprints/${id}`),
@@ -450,6 +458,13 @@ export const consentApi = {
   documents: () => get<ConsentDocument[]>('/consent/documents', undefined, { auth: false }),
   status: () => get<MyConsent>('/consent/status'),
   accept: (types: string[]) => post<MyConsent>('/consent/accept', { types }),
+};
+
+// ---- push notifications on this person's devices
+export const pushApi = {
+  status: () => get<{ publicKey: string; devices: number }>('/push'),
+  subscribe: (b: { endpoint: string; keys: { p256dh: string; auth: string } }) => post<{ publicKey: string; devices: number }>('/push/subscriptions', b),
+  unsubscribe: (endpoint: string) => post<{ publicKey: string; devices: number }>('/push/unsubscribe', { endpoint }),
 };
 
 // ---- integrations and compliance
