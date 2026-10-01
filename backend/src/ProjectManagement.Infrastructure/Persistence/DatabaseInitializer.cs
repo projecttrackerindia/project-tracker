@@ -267,7 +267,8 @@ internal static class DemoSeeder
             var projects = s.GetRequiredService<ProjectService>();
             var personalGroup = await s.GetRequiredService<ProjectGroupService>().DefaultGroupIdAsync(ct);
             var project = await projects.CreateAsync(new CreateProjectRequest("Learn Rust", "RUST", "Weekend learning plan.", Priority.Medium,
-                ProjectStatus.Active, null, null, clock.Today.AddDays(-7), clock.Today.AddDays(60), null, ProjectGroupId: personalGroup), ct);
+                ProjectStatus.Active, null, null, clock.Today.AddDays(-7), clock.Today.AddDays(60), null, ProjectGroupId: personalGroup,
+                ProjectType: ProjectType.Other, DeliveryMethod: DeliveryMethod.Agile), ct);
             await AddTasksAsync(s, project.Project.Id, users,
             [
                 new("Finish the Rust book — chapters 1-6", "Done", Priority.Medium, "Ravi Kumar", -3),
@@ -312,7 +313,8 @@ internal static class DemoSeeder
         var portal = await projects.CreateAsync(new CreateProjectRequest("Customer Portal Revamp", "CPR",
             "Rebuild the customer portal with the new design system, SSO and a faster dashboard.", Priority.High, ProjectStatus.Active,
             users["Ravi Kumar"].Id, dev.Team.Id, today.AddDays(-25), today.AddDays(35),
-            [users["Arun S"].Id, users["Kumar R"].Id, users["Priya M"].Id, users["Umar F"].Id], ProjectGroupId: groupId), ct);
+            [users["Arun S"].Id, users["Kumar R"].Id, users["Priya M"].Id, users["Umar F"].Id], ProjectGroupId: groupId,
+            ProjectType: ProjectType.Enhancement, DeliveryMethod: DeliveryMethod.Hybrid), ct);
         await AddTasksAsync(s, portal.Project.Id, users,
         [
             new("Design system tokens", "Done", Priority.Medium, "Arun S", -10, 8, Labels: ["Frontend"]),
@@ -331,7 +333,7 @@ internal static class DemoSeeder
 
         var mobile = await projects.CreateAsync(new CreateProjectRequest("Mobile App v2", "MOB", "Native mobile client for tasks and notifications.",
             Priority.Medium, ProjectStatus.Active, users["Priya M"].Id, null, today.AddDays(-10), today.AddDays(60),
-            [users["Kumar R"].Id, users["Sridhar P"].Id], ProjectGroupId: groupId), ct);
+            [users["Kumar R"].Id, users["Sridhar P"].Id], ProjectGroupId: groupId, ProjectType: ProjectType.NewProject, DeliveryMethod: DeliveryMethod.Agile), ct);
         await AddTasksAsync(s, mobile.Project.Id, users,
         [
             new("Choose cross-platform stack", "Done", Priority.High, "Sridhar P", -6),
@@ -343,7 +345,7 @@ internal static class DemoSeeder
 
         var payments = await projects.CreateAsync(new CreateProjectRequest("Payments API Migration", "PAY", "Move billing to the new payments platform.",
             Priority.Critical, ProjectStatus.Active, users["Ravi Kumar"].Id, dev.Team.Id, today.AddDays(-40), today.AddDays(6),
-            [users["Arun S"].Id, users["Kumar R"].Id], ProjectGroupId: groupId), ct);
+            [users["Arun S"].Id, users["Kumar R"].Id], ProjectGroupId: groupId, ProjectType: ProjectType.Migration, DeliveryMethod: DeliveryMethod.Phased), ct);
         await AddTasksAsync(s, payments.Project.Id, users,
         [
             new("Inventory existing billing endpoints", "Done", Priority.Medium, "Arun S", -30),
@@ -357,7 +359,8 @@ internal static class DemoSeeder
         await SetStagesAsync(db, payments.Project.Id, completed: 3, inProgress: 3, today);
 
         var web = await projects.CreateAsync(new CreateProjectRequest("Website Refresh", "WEB", "Marketing site refresh — shipped.",
-            Priority.Low, ProjectStatus.Completed, users["Priya M"].Id, null, today.AddDays(-90), today.AddDays(-20), null, ProjectGroupId: groupId), ct);
+            Priority.Low, ProjectStatus.Completed, users["Priya M"].Id, null, today.AddDays(-90), today.AddDays(-20), null, ProjectGroupId: groupId,
+            ProjectType: ProjectType.Enhancement, DeliveryMethod: DeliveryMethod.Phased), ct);
         await AddTasksAsync(s, web.Project.Id, users,
         [
             new("New landing page", "Done", Priority.Medium, "Kumar R", -50),

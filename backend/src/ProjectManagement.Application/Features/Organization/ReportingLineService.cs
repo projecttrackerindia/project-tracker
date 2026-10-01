@@ -1,24 +1,27 @@
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Organization;
 
-public record TeamTaskDto(Guid Id, Guid ProjectId, string ProjectName, string Key, string Title, string StatusName, StatusCategory Category, Priority Priority,
-    DateOnly? DueDate, bool IsOverdue);
+/// <summary>One open item of a person in my reporting line: a project task, a test issue, an action item or operational work.</summary>
+public record TeamTaskDto(Guid Id, Guid? ProjectId, string? ProjectName, string Key, string Title, string StatusName, StatusCategory Category, Priority Priority,
+    DateOnly? DueDate, bool IsOverdue, WorkItemKind Kind = WorkItemKind.Task);
 public record TeamMemberDto(Guid UserId, string Name, string Email, string? JobRole, int Level, string? ReportsTo, int Open, int Overdue, int DoneLast30Days,
-    int LoggedMinutesLast7Days, IReadOnlyList<TeamTaskDto> NextUp);
+    int LoggedMinutesLast7Days, IReadOnlyList<TeamTaskDto> NextUp, int DueThisWeek = 0, WorkKindCounts? OpenByKind = null);
 public record TeamTotalsDto(int People, int Open, int Overdue);
 public record MyTeamDto(IReadOnlyList<TeamMemberDto> Members, TeamTotalsDto Totals);
 public record TeamPersonDto(TeamMemberDto Person, IReadOnlyList<TeamTaskDto> OpenTasks);
 
 /// <summary>
-/// Reporting-line visibility: the people who report to me in the organization chart (directly or through others) and how their work is going.
-/// This is read-only and does not depend on project membership or the reports permission: managing people means seeing their work.
+/// Reporting lines: the people who report to me in the organization chart (directly or through others) and how their work is going,
+/// across every kind of work they have. This is read-only and does not depend on project membership or the reports permission:
+/// managing people means seeing their work.
 /// </summary>
-public class ReportingLineService(IAppDbContext db, ICurrentContext ctx, AppClock clock)
+public class ReportingLineService(IAppDbContext db, ICurrentContext ctx, AppClock clock, WorkItemService workItems)
 {
     private const int MaxDepth = 12;   // deeper than any real organization; also stops a data cycle from looping
     private const int NextUpPerPerson = 5;
@@ -52,7 +55,7 @@ public class ReportingLineService(IAppDbContext db, ICurrentContext ctx, AppCloc
     {
         var me = ctx.RequireUserId(); var tid = ctx.RequireTenantId();
         var levels = await ReportsOfAsync(me, tid, ct);
-        var members = await BuildAsync(levels, tid, ct);
+        var members = await BuildAsync(levels, tid, WorkItemScope.ReportingLine, ct);
         return new MyTeamDto(members, new TeamTotalsDto(members.Count, members.Sum(m => m.Open), members.Sum(m => m.Overdue)));
     }
 
@@ -61,25 +64,25 @@ public class ReportingLineService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var me = ctx.RequireUserId(); var tid = ctx.RequireTenantId();
         var levels = await ReportsOfAsync(me, tid, ct);
         if (!levels.TryGetValue(userId, out var level)) throw new NotFoundException("That person does not report to you.");
-        var person = (await BuildAsync(new Dictionary<Guid, int> { [userId] = level }, tid, ct)).First();
-        var today = clock.Today;
-        var open = await OpenTasks(userId).OrderBy(t => t.DueDate == null).ThenBy(t => t.DueDate).Take(100)
-            .Select(t => new { t.Id, t.ProjectId, Project = t.Project!.Name, Key = t.Project.Key, t.Number, t.Title, Status = t.Status!.Name, t.Status.Category, t.Priority, t.DueDate }).ToListAsync(ct);
-        return new TeamPersonDto(person, open.Select(t => ToTask(t.Id, t.ProjectId, t.Project, t.Key, t.Number, t.Title, t.Status, t.Category, t.Priority, t.DueDate, today)).ToList());
+        return await PersonAsync(userId, level, tid, WorkItemScope.ReportingLine, ct);
     }
 
-    private IQueryable<Domain.Entities.TaskItem> OpenTasks(Guid assignee) =>
-        db.Tasks.Where(t => t.AssigneeId == assignee && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
+    /// <summary>One person's row and all of their open work, under the given visibility rules.</summary>
+    public async Task<TeamPersonDto> PersonAsync(Guid userId, int level, Guid tid, WorkItemScope scope, CancellationToken ct)
+    {
+        var person = (await BuildAsync(new Dictionary<Guid, int> { [userId] = level }, tid, scope, ct)).First();
+        var open = await workItems.ListAsync(new WorkItemQuery(AssigneeId: userId, OpenOnly: true, Limit: 100), scope, ct);
+        return new TeamPersonDto(person, open.Select(ToTask).ToList());
+    }
 
-    private static TeamTaskDto ToTask(Guid id, Guid projectId, string project, string key, int number, string title, string status, StatusCategory cat, Priority prio, DateOnly? due, DateOnly today) =>
-        new(id, projectId, project, $"{key}-{number}", title, status, cat, prio, due, due is { } d && d < today);
+    public static TeamTaskDto ToTask(WorkItemDto w) =>
+        new(w.Id, w.ProjectId, w.ProjectName, w.Key, w.Title, w.Status, w.Category, w.Priority, w.DueDate, w.IsOverdue, w.Kind);
 
-    private async Task<IReadOnlyList<TeamMemberDto>> BuildAsync(Dictionary<Guid, int> levels, Guid tid, CancellationToken ct)
+    /// <summary>A row per person: who they are in the chart, and their work across every kind (open, overdue, due this week, done, time).</summary>
+    public async Task<IReadOnlyList<TeamMemberDto>> BuildAsync(Dictionary<Guid, int> levels, Guid tid, WorkItemScope scope, CancellationToken ct)
     {
         if (levels.Count == 0) return [];
         var ids = levels.Keys.ToList();
-        var today = clock.Today;
-        var since30 = clock.Now.AddDays(-30);
         var since7 = clock.Today.AddDays(-6);
 
         var people = await (from m in db.TenantMembers.AsNoTracking()
@@ -90,27 +93,17 @@ public class ReportingLineService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var bossIds = people.Where(p => p.ReportsToUserId != null).Select(p => p.ReportsToUserId!.Value).Distinct().ToList();
         var bossNames = await db.Users.Where(u => bossIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
 
-        var counts = await db.Tasks.Where(t => t.AssigneeId != null && ids.Contains(t.AssigneeId.Value))
-            .GroupBy(t => new { Who = t.AssigneeId!.Value, t.Status!.Category, Overdue = t.DueDate != null && t.DueDate < today })
-            .Select(g => new { g.Key.Who, g.Key.Category, g.Key.Overdue, N = g.Count() }).ToListAsync(ct);
-        var done30 = await db.Tasks.Where(t => t.AssigneeId != null && ids.Contains(t.AssigneeId.Value) && t.CompletedAt != null && t.CompletedAt >= since30 && t.Status!.Category == StatusCategory.Done)
-            .GroupBy(t => t.AssigneeId!.Value).Select(g => new { Who = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Who, x => x.N, ct);
+        var counts = await workItems.CountsAsync(ids, scope, ct);
         var logged = await db.TimeEntries.Where(e => ids.Contains(e.UserId) && e.WorkDate >= since7 && !(e.StartedAt != null && e.EndedAt == null))
             .GroupBy(e => e.UserId).Select(g => new { Who = g.Key, Minutes = g.Sum(x => x.Minutes) }).ToDictionaryAsync(x => x.Who, x => x.Minutes, ct);
-
-        var upcoming = await db.Tasks.Where(t => t.AssigneeId != null && ids.Contains(t.AssigneeId.Value) && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled)
-            .OrderBy(t => t.DueDate == null).ThenBy(t => t.DueDate).Take(1000)
-            .Select(t => new { Who = t.AssigneeId!.Value, t.Id, t.ProjectId, Project = t.Project!.Name, Key = t.Project.Key, t.Number, t.Title, Status = t.Status!.Name, t.Status.Category, t.Priority, t.DueDate }).ToListAsync(ct);
+        var next = await workItems.NextUpAsync(ids, scope, NextUpPerPerson, ct);
 
         return people.Select(p =>
         {
-            var mine = counts.Where(c => c.Who == p.UserId).ToList();
-            var open = mine.Where(c => c.Category is not (StatusCategory.Done or StatusCategory.Cancelled)).ToList();
-            var next = upcoming.Where(t => t.Who == p.UserId).Take(NextUpPerPerson)
-                .Select(t => ToTask(t.Id, t.ProjectId, t.Project, t.Key, t.Number, t.Title, t.Status, t.Category, t.Priority, t.DueDate, today)).ToList();
+            var c = counts[p.UserId];
             return new TeamMemberDto(p.UserId, p.DisplayName, p.Email, p.OrgRoleId is { } r ? roleNames.GetValueOrDefault(r) : null, levels[p.UserId],
-                p.ReportsToUserId is { } b ? bossNames.GetValueOrDefault(b) : null, open.Sum(c => c.N), open.Where(c => c.Overdue).Sum(c => c.N),
-                done30.GetValueOrDefault(p.UserId), logged.GetValueOrDefault(p.UserId), next);
+                p.ReportsToUserId is { } b ? bossNames.GetValueOrDefault(b) : null, c.Open, c.Overdue, c.DoneLast30Days, logged.GetValueOrDefault(p.UserId),
+                next[p.UserId].Select(ToTask).ToList(), c.DueThisWeek, c.OpenByKind);
         }).OrderBy(m => m.Level).ThenBy(m => m.Name).ToList();
     }
 }

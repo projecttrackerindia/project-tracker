@@ -19,6 +19,18 @@ public record AccessMatrixDto(IReadOnlyList<ModuleInfoDto> Modules, IReadOnlyLis
 public record SetAccessRequest(IReadOnlyDictionary<string, int> Modules, IReadOnlyDictionary<string, bool>? Actions);
 
 /// <summary>
+/// Where a person's access comes from. Owner: everything, always. Admin: the Admin access level (never narrowed by a job role).
+/// JobRole: their job role has its own access settings, and those decide everything for them. AccessLevel: the defaults of their access
+/// level (Manager, Member or Guest), as set on the access-level matrix.
+/// </summary>
+public enum AccessSource { Owner, Admin, JobRole, AccessLevel }
+
+/// <summary>What one person can actually open and do right now, and which single rule decided it.</summary>
+public record EffectiveAccessDto(Guid UserId, string Name, string Email, TenantRole AccessLevel, string? JobRole, AccessSource Source,
+    IReadOnlyDictionary<string, int> Modules, IReadOnlyList<string> Permissions);
+public record EffectiveAccessListDto(IReadOnlyList<EffectiveAccessDto> People, int ByJobRole, int ByAccessLevel);
+
+/// <summary>
 /// What each job role can see and do. The organization's admins (Owner / Admin) have this by default and can hand it to others.
 /// A person who has been handed it (a "delegate") can only change roles below their own in the chart, can never give a role
 /// more than they have themselves, and can never hand out the permissions that themselves grant access to others.
@@ -134,6 +146,55 @@ public class AccessService(IAppDbContext db, ICurrentContext ctx, PermissionServ
         role.AccessJson = profile.ToJson();
         recorder.Audit("org.access_changed", "OrgRole", roleId, new { role.Name, Levels = before.Levels }, new { role.Name, profile.Levels, profile.Overrides });
         await db.SaveChangesAsync(ct);
+    }
+
+    // ---------------------------------------------------------------- effective access
+
+    /// <summary>
+    /// Everyone's effective access, computed with exactly the rules <see cref="PermissionService"/> enforces: one source per person, so an
+    /// administrator can see who a change to the access-level matrix or to a job role actually reaches.
+    /// </summary>
+    public async Task<EffectiveAccessListDto> EffectiveAsync(CancellationToken ct = default)
+    {
+        var tid = RequireOrganization();
+        if (!await permissions.HasAsync(Permissions.AccessManage, ct) && !await permissions.HasAsync(Permissions.PermissionsManage, ct))
+            throw new ForbiddenException("You cannot see everyone's access.", "PERMISSION_DENIED");
+
+        var members = await (from m in db.TenantMembers.AsNoTracking()
+                             join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                             where m.TenantId == tid
+                             orderby u.DisplayName
+                             select new { m.UserId, u.DisplayName, u.Email, m.Role, m.OrgRoleId }).ToListAsync(ct);
+        var roles = await db.OrgRoles.AsNoTracking().ToDictionaryAsync(r => r.Id, r => new { r.Name, r.AccessJson }, ct);
+
+        // An access level's defaults are the same for everyone at that level: work each out once.
+        var byLevel = new Dictionary<TenantRole, (Dictionary<string, int> Modules, List<string> Permissions)>();
+        async Task<(Dictionary<string, int>, List<string>)> DefaultsAsync(TenantRole level)
+        {
+            if (byLevel.TryGetValue(level, out var known)) return known;
+            var mods = new Dictionary<string, int>();
+            foreach (var m in Modules.All) mods[m.Id] = level == TenantRole.Owner ? m.Max : m.Snap(await permissions.TierLevelAsync(m.Id, level, ct));
+            var perms = new List<string>();
+            foreach (var p in Permissions.All) if (await permissions.RoleHasAsync(level, p, ct)) perms.Add(p);
+            return byLevel[level] = (mods, perms);
+        }
+
+        var people = new List<EffectiveAccessDto>();
+        foreach (var m in members)
+        {
+            var role = m.OrgRoleId is { } rid && roles.TryGetValue(rid, out var r) ? r : null;
+            var profile = m.Role is TenantRole.Manager or TenantRole.Member or TenantRole.Guest ? AccessProfile.Parse(role?.AccessJson) : null;
+            if (profile is not null)
+            {
+                people.Add(new EffectiveAccessDto(m.UserId, m.DisplayName, m.Email, m.Role, role?.Name, AccessSource.JobRole,
+                    Modules.All.ToDictionary(x => x.Id, x => profile.Level(x.Id)), profile.Permissions().OrderBy(p => p).ToList()));
+                continue;
+            }
+            var (mods, perms) = await DefaultsAsync(m.Role);
+            var source = m.Role switch { TenantRole.Owner => AccessSource.Owner, TenantRole.Admin => AccessSource.Admin, _ => AccessSource.AccessLevel };
+            people.Add(new EffectiveAccessDto(m.UserId, m.DisplayName, m.Email, m.Role, role?.Name, source, mods, perms));
+        }
+        return new EffectiveAccessListDto(people, people.Count(p => p.Source == AccessSource.JobRole), people.Count(p => p.Source == AccessSource.AccessLevel));
     }
 
     /// <summary>Back to "use each person's access level defaults".</summary>

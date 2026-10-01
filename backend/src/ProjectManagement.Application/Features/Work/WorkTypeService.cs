@@ -56,7 +56,8 @@ public class WorkTypeService(IAppDbContext db, ICurrentContext ctx, Recorder rec
     {
         await EnsureDefaultsAsync(ct);
         var types = await db.WorkTypes.AsNoTracking().OrderBy(t => t.Order).ThenBy(t => t.Name).ToListAsync(ct);
-        var counts = await db.WorkTasks.AsNoTracking().GroupBy(t => t.WorkTypeId).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N, ct);
+        var counts = await db.WorkTasks.AsNoTracking().Where(t => t.WorkTypeId != null).GroupBy(t => t.WorkTypeId!.Value)
+            .Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N, ct);
         return types.Where(t => includeInactive || t.IsActive).Select(t => new WorkTypeDto(t.Id, t.Name, t.Description, t.Order, t.IsActive, counts.GetValueOrDefault(t.Id))).ToList();
     }
 

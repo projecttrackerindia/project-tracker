@@ -17,7 +17,8 @@ public record UserRefDto(Guid Id, string Name);
 public record ProjectStatsDto(int Total, int Done, int InProgress, int Todo, int Cancelled, int Overdue);
 public record ProjectListItemDto(Guid Id, string Key, string Name, string? Description, ProjectStatus Status, Priority Priority,
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
-    ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other);
+    ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
+    DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid);
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
@@ -27,10 +28,11 @@ public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusD
 public record LabelDto(Guid Id, string Name, string Color);
 
 public record CreateProjectRequest(string Name, string? Key, string? Description, Priority Priority, ProjectStatus? Status, Guid? OwnerId,
-    Guid? TeamId, DateOnly? StartDate, DateOnly? DueDate, IReadOnlyList<Guid>? MemberIds, string? TimelineTemplate = null, Guid? ProjectGroupId = null, ProjectType? ProjectType = null);
+    Guid? TeamId, DateOnly? StartDate, DateOnly? DueDate, IReadOnlyList<Guid>? MemberIds, string? TimelineTemplate = null, Guid? ProjectGroupId = null, ProjectType? ProjectType = null,
+    DeliveryMethod? DeliveryMethod = null);
 public record UpdateProjectRequest(string Name, string? Description, Priority Priority, ProjectStatus Status, Guid? OwnerId,
     Guid? TeamId, DateOnly? StartDate, DateOnly? DueDate, int Version, bool? EnforceDependencies = null, Guid? ProjectGroupId = null,
-    string? DueDateReason = null, string? DueDateDependency = null, ProjectType? ProjectType = null);
+    string? DueDateReason = null, string? DueDateDependency = null, ProjectType? ProjectType = null, DeliveryMethod? DeliveryMethod = null);
 public record ProjectQuery(string? Q, ProjectStatus? Status, Priority? Priority, Guid? OwnerId, Guid? TeamId, bool IncludeArchived = false,
     string? Sort = null, int Page = 1, int PageSize = 25, bool MineOnly = false, Guid? ProjectGroupId = null, ProjectType? ProjectType = null);
 public record AddProjectMemberRequest(Guid UserId);
@@ -120,7 +122,8 @@ public class ProjectService(
     private ProjectListItemDto ToItem(Project p, string? ownerName, string? teamName, int memberCount, ProjectStatsDto stats, string? groupName = null) =>
         new(p.Id, p.Key, p.Name, p.Description, p.Status, p.Priority,
             ownerName is null ? null : new UserRefDto(p.OwnerId, ownerName), p.TeamId, teamName, p.StartDate, p.DueDate,
-            ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType);
+            ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType,
+            p.DeliveryMethod);
 
     // ---------------------------------------------------------------- queries
 
@@ -211,7 +214,7 @@ public class ProjectService(
         {
             TenantId = tid, Name = req.Name.Trim(), Key = key, Description = req.Description?.Trim(), Status = req.Status ?? ProjectStatus.Planning,
             Priority = req.Priority, OwnerId = ownerId, TeamId = req.TeamId, StartDate = req.StartDate, DueDate = req.DueDate, ProjectGroupId = groupId, ProjectType = projectType,
-            Position = await NextPositionAsync(ct), CreatedAt = now, CreatedBy = userId,
+            DeliveryMethod = req.DeliveryMethod ?? DeliveryMethod.Hybrid, Position = await NextPositionAsync(ct), CreatedAt = now, CreatedBy = userId,
         };
         db.Projects.Add(project);
 
@@ -316,6 +319,11 @@ public class ProjectService(
         ValidateDates(req.StartDate, req.DueDate);
         var dueNote = DueDateHistory.Prepare(project.DueDate, req.DueDate, req.DueDateReason, req.DueDateDependency);   // a delay needs a reason
         if (req.ProjectType is { } newType) project.ProjectType = newType;
+        if (req.DeliveryMethod is { } method && method != project.DeliveryMethod)
+        {
+            recorder.Activity("project.delivery_method", "Project", id, $"Delivery method {project.DeliveryMethod} → {method}", id, project.DeliveryMethod.ToString(), method.ToString());
+            project.DeliveryMethod = method;
+        }
         if (req.ProjectGroupId is { } newGroup && newGroup != project.ProjectGroupId) project.ProjectGroupId = await RequireGroupAsync(newGroup, project.ProjectGroupId, ct);
 
         if (req.OwnerId is { } ownerId && ownerId != project.OwnerId)

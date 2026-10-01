@@ -24,7 +24,6 @@ public interface IAppDbContext
     DbSet<WorkflowStatus> WorkflowStatuses { get; }
     DbSet<ProjectStage> ProjectStages { get; }
     DbSet<StageIssue> StageIssues { get; }
-    DbSet<ActionItem> ActionItems { get; }
     DbSet<WorkType> WorkTypes { get; }
     DbSet<WorkTask> WorkTasks { get; }
     DbSet<WorkTaskComment> WorkTaskComments { get; }

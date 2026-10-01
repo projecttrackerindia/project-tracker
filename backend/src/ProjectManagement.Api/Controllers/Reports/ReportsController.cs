@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Insights;
@@ -7,19 +6,15 @@ using ProjectManagement.Domain;
 
 namespace ProjectManagement.Api.Controllers.Reports;
 
-/// <summary>The report summary and generated report files (built in the background, downloaded when ready).</summary>
+/// <summary>
+/// The report summary and generated report files (built in the background, downloaded when ready). This is the one export
+/// path: every report kind, project tasks and work tasks included, is produced by the same builder and writer.
+/// </summary>
 [Route("api/v1/reports"), RequireWorkspace, RequireModule(Modules.Reports)]
 public class ReportsController(ReportService reports, ReportExportService exports) : ApiControllerBase
 {
     [HttpGet("summary")]
     public async Task<IActionResult> Summary([FromQuery] int days = 7, CancellationToken ct = default) => Ok(await reports.GetSummaryAsync(days, ct));
-
-    [HttpGet("tasks.csv")]
-    public async Task<IActionResult> ExportTasks(CancellationToken ct)
-    {
-        var csv = await reports.ExportTasksCsvAsync(ct);
-        return File(new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(csv)).ToArray(), "text/csv", $"tasks-{DateTime.UtcNow:yyyyMMdd}.csv");
-    }
 
     [HttpGet("exports")]
     public async Task<IActionResult> Exports(CancellationToken ct) => Ok(await exports.ListAsync(ct));

@@ -12,6 +12,8 @@ public class Project : TenantEntity, ITenantScoped, ISoftDelete
     public Priority Priority { get; set; } = Priority.Medium;
     /// <summary>What the project is for (new project, change request, enhancement ...). Chosen when it is created.</summary>
     public ProjectType ProjectType { get; set; } = ProjectType.Other;
+    /// <summary>Which planning tools the project uses: a stage timeline, sprints, or both.</summary>
+    public DeliveryMethod DeliveryMethod { get; set; } = DeliveryMethod.Hybrid;
     public Guid OwnerId { get; set; }
     public Guid? TeamId { get; set; }
     /// <summary>The project group this project belongs to. Required for every new project; empty only on projects that predate groups until the next start-up assigns them one.</summary>
@@ -144,10 +146,15 @@ public class TaskDependency : TenantEntity, ITenantScoped
     public TaskItem? DependsOnTask { get; set; }
 }
 
-/// <summary>A dated checkpoint in a project (spec section 19). Tasks can be counted towards it.</summary>
+/// <summary>
+/// A dated checkpoint in a project (spec section 19). Tasks can be counted towards it. A milestone usually marks the end of one stage
+/// of the timeline (<see cref="StageId"/>), so it is shown on that stage instead of as a second, parallel plan.
+/// </summary>
 public class Milestone : TenantEntity, ITenantScoped, ISoftDelete
 {
     public Guid ProjectId { get; set; }
+    /// <summary>The timeline stage this milestone is the checkpoint of, or null for a project-level milestone.</summary>
+    public Guid? StageId { get; set; }
     public string Name { get; set; } = "";
     public string? Description { get; set; }
     public DateOnly? StartDate { get; set; }

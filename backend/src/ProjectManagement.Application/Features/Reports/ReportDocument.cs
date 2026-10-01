@@ -58,6 +58,19 @@ public static class ReportWriter
         return new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
     }
 
+    /// <summary>
+    /// One table as a plain CSV (header row first, no title lines), for an instant "download this list" button. Same cell
+    /// formatting and formula-injection protection as the generated reports, because it is the same writer.
+    /// </summary>
+    public static byte[] WriteTableCsv(ReportSection section)
+    {
+        var sb = new StringBuilder();
+        sb.AppendJoin(',', section.Headers.Select(h => Csv(Safe(h)))).Append("\r\n");
+        foreach (var row in section.Rows)
+            sb.AppendJoin(',', row.Select(c => Csv(c is string str ? Safe(str) : Text(c)))).Append("\r\n");
+        return new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+    }
+
     // ---------------------------------------------------------------- xlsx
 
     private static byte[] WriteXlsx(ReportDocument doc)

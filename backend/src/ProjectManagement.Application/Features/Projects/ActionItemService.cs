@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Notifications;
+using ProjectManagement.Application.Features.Work;
+using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
@@ -13,7 +15,7 @@ namespace ProjectManagement.Application.Features.Projects;
 public record ActionItemCan(bool Edit, bool Delete, bool Complete);
 
 public record ActionItemDto(Guid Id, Guid ProjectId, string Title, string? Details, UserRefDto? Assignee, DateOnly? DueDate, Priority Priority, ActionItemStatus Status,
-    bool IsOverdue, DateTime CreatedAt, UserRefDto? CreatedBy, DateTime? CompletedAt, UserRefDto? CompletedBy, ActionItemCan Can);
+    bool IsOverdue, DateTime CreatedAt, UserRefDto? CreatedBy, DateTime? CompletedAt, UserRefDto? CompletedBy, ActionItemCan Can, string Key = "", int Number = 0);
 
 public record CreateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority? Priority);
 /// <summary>All the editable fields at once: what is sent replaces what was there (an empty assignee or due date clears it).</summary>
@@ -21,12 +23,33 @@ public record UpdateActionItemRequest(string? Title, string? Details, Guid? Assi
 public record SetActionItemStatusRequest(ActionItemStatus Status);
 
 /// <summary>
-/// Action items of a project: follow-ups with an owner, a due date and a priority, kept next to the project's status. Anyone who can see the project can
-/// read them; people who may create tasks can add them; the person who added an item, the person it is assigned to and managers can change it.
+/// Action items of a project: follow-ups with an owner, a due date and a priority. They are work tasks of the kind
+/// <see cref="WorkTaskKind.ActionItem"/> (numbered AI-n in the workspace's shared work sequence), so they appear in My work, workload
+/// and search with everything else - but they follow their project's rules: anyone who can see the project can read them; people who
+/// may create tasks can add them; the person who added an item, the person it is assigned to and managers can change it.
 /// </summary>
 public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access, NotificationService notifications)
 {
     private const int MaxListed = 500;
+
+    private static ActionItemStatus ToApi(WorkTaskStatus s) => s switch
+    {
+        WorkTaskStatus.ToDo => ActionItemStatus.Open,
+        WorkTaskStatus.Completed => ActionItemStatus.Completed,
+        _ => ActionItemStatus.InProgress,
+    };
+
+    private static WorkTaskStatus FromApi(ActionItemStatus s) => s switch
+    {
+        ActionItemStatus.Open => WorkTaskStatus.ToDo,
+        ActionItemStatus.Completed => WorkTaskStatus.Completed,
+        _ => WorkTaskStatus.InProgress,
+    };
+
+    /// <summary>Where a notification about this action item takes the person: the project's Actions tab with the item open.</summary>
+    public static string LinkOf(Guid projectId, Guid itemId) => $"/projects/{projectId}?tab=actions&action={itemId}";
+
+    private IQueryable<WorkTask> Items(Guid projectId) => db.WorkTasks.Where(w => w.Kind == WorkTaskKind.ActionItem && w.RelatedProjectId == projectId);
 
     // ------------------------------------------------------------------ rules
 
@@ -63,8 +86,8 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         return d;
     }
 
-    private async Task<ActionItem> FindAsync(Guid projectId, Guid id, CancellationToken ct) =>
-        await db.ActionItems.FirstOrDefaultAsync(a => a.Id == id && a.ProjectId == projectId, ct) ?? throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
+    private async Task<WorkTask> FindAsync(Guid projectId, Guid id, CancellationToken ct) =>
+        await Items(projectId).FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
 
     /// <summary>The assignee must be someone in the workspace who can be given work (not a guest).</summary>
     private async Task CheckAssigneeAsync(Guid? assigneeId, CancellationToken ct)
@@ -81,17 +104,17 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
     public async Task<IReadOnlyList<ActionItemDto>> ListAsync(Guid projectId, CancellationToken ct = default)
     {
         var project = await ViewableProjectAsync(projectId, ct);
-        var all = await db.ActionItems.AsNoTracking().Where(a => a.ProjectId == projectId).OrderByDescending(a => a.CreatedAt).Take(MaxListed).ToListAsync(ct);
+        var all = await Items(projectId).AsNoTracking().OrderByDescending(a => a.CreatedAt).Take(MaxListed).ToListAsync(ct);
         // Open ones first, the soonest due first (undated last), then the more urgent; finished ones after them, the latest finished first.
-        var rows = all.OrderBy(a => a.Status == ActionItemStatus.Completed)
-            .ThenBy(a => a.Status == ActionItemStatus.Completed ? 0 : a.DueDate is null ? 1 : 0)
-            .ThenBy(a => a.Status == ActionItemStatus.Completed ? DateOnly.MinValue : a.DueDate ?? DateOnly.MaxValue)
+        var rows = all.OrderBy(a => a.Status == WorkTaskStatus.Completed)
+            .ThenBy(a => a.Status == WorkTaskStatus.Completed ? 0 : a.DueDate is null ? 1 : 0)
+            .ThenBy(a => a.Status == WorkTaskStatus.Completed ? DateOnly.MinValue : a.DueDate ?? DateOnly.MaxValue)
             .ThenByDescending(a => (int)a.Priority)
-            .ThenByDescending(a => a.Status == ActionItemStatus.Completed ? a.CompletedAt : a.CreatedAt).ToList();
+            .ThenByDescending(a => a.Status == WorkTaskStatus.Completed ? a.CompletedAt : a.CreatedAt).ToList();
         return await ToDtosAsync(project, rows, ct);
     }
 
-    private async Task<IReadOnlyList<ActionItemDto>> ToDtosAsync(Project project, IReadOnlyList<ActionItem> rows, CancellationToken ct)
+    private async Task<IReadOnlyList<ActionItemDto>> ToDtosAsync(Project project, IReadOnlyList<WorkTask> rows, CancellationToken ct)
     {
         if (rows.Count == 0) return [];
         var me = ctx.UserId;
@@ -107,20 +130,22 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         {
             var mine = r.CreatedBy == me; var assigned = r.AssigneeId == me;
             var can = new ActionItemCan(Edit: !archived && (manager || mine || assigned), Delete: !archived && (manager || (mine && canCreate)), Complete: !archived && (manager || mine || assigned));
-            return new ActionItemDto(r.Id, r.ProjectId, r.Title, r.Details, Ref(r.AssigneeId), r.DueDate, r.Priority, r.Status,
-                r.Status != ActionItemStatus.Completed && r.DueDate is { } d && d < today, r.CreatedAt, Ref(r.CreatedBy), r.CompletedAt, Ref(r.CompletedBy), can);
+            var done = r.Status == WorkTaskStatus.Completed;
+            return new ActionItemDto(r.Id, project.Id, r.Title, r.Description, Ref(r.AssigneeId), r.DueDate, r.Priority, ToApi(r.Status),
+                !done && r.DueDate is { } d && d < today, r.CreatedAt, Ref(r.CreatedBy), r.CompletedAt, Ref(r.CompletedBy), can,
+                WorkItemService.KeyOf(WorkTaskKind.ActionItem, r.Number), r.Number);
         }).ToList();
     }
 
-    private async Task<ActionItemDto> OneAsync(Project project, ActionItem item, CancellationToken ct) => (await ToDtosAsync(project, [item], ct))[0];
+    private async Task<ActionItemDto> OneAsync(Project project, WorkTask item, CancellationToken ct) => (await ToDtosAsync(project, [item], ct))[0];
 
     // ------------------------------------------------------------------ write
 
-    private async Task NotifyAssignedAsync(Project project, ActionItem item, CancellationToken ct)
+    private async Task NotifyAssignedAsync(Project project, WorkTask item, CancellationToken ct)
     {
         if (item.AssigneeId is not { } who) return;
         await notifications.AddAsync(who, NotificationType.TaskAssigned, $"Action item assigned to you: {item.Title}", $"{project.Name}{(item.DueDate is { } d ? $" · due {d:dd MMM yyyy}" : "")}",
-            $"/project-status?project={project.Id}&actions=1", ct: ct);
+            LinkOf(project.Id, item.Id), ct: ct);
     }
 
     public async Task<ActionItemDto> CreateAsync(Guid projectId, CreateActionItemRequest req, CancellationToken ct = default)
@@ -132,12 +157,13 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var details = CleanDetails(req.Details);
         await CheckAssigneeAsync(req.AssigneeId, ct);
 
-        var item = new ActionItem
+        var item = new WorkTask
         {
-            TenantId = project.TenantId, ProjectId = projectId, Title = title, Details = details, AssigneeId = req.AssigneeId, DueDate = req.DueDate,
-            Priority = req.Priority ?? Priority.Medium, Status = ActionItemStatus.Open, CreatedAt = clock.Now,
+            TenantId = project.TenantId, Kind = WorkTaskKind.ActionItem, Number = await WorkTaskService.NextNumberAsync(db, project.TenantId, ct),
+            RelatedProjectId = projectId, Title = title, Description = details, AssigneeId = req.AssigneeId, DueDate = req.DueDate,
+            ReporterId = ctx.RequireUserId(), Priority = req.Priority ?? Priority.Medium, Status = WorkTaskStatus.ToDo, CreatedAt = clock.Now, CreatedBy = ctx.UserId,
         };
-        db.ActionItems.Add(item);
+        db.WorkTasks.Add(item);
         recorder.Activity("actionitem.created", "ActionItem", item.Id, $"Added action item “{title}” to \"{project.Name}\"", projectId);
         await NotifyAssignedAsync(project, item, ct);
         await db.SaveChangesAsync(ct);
@@ -157,12 +183,14 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var details = CleanDetails(req.Details);
         await CheckAssigneeAsync(req.AssigneeId, ct);
 
-        var was = item.Status;
+        var was = ToApi(item.Status);
         var reassigned = req.AssigneeId != item.AssigneeId;
-        item.Title = title; item.Details = details; item.AssigneeId = req.AssigneeId; item.DueDate = req.DueDate; item.Priority = req.Priority;
+        item.Title = title; item.Description = details; item.AssigneeId = req.AssigneeId; item.DueDate = req.DueDate; item.Priority = req.Priority;
         ApplyStatus(item, req.Status);
-        recorder.Activity("actionitem.updated", "ActionItem", id, was != item.Status ? $"Action item “{title}”: {was} → {item.Status}" : $"Updated action item “{title}”", projectId,
-            was.ToString(), item.Status.ToString());
+        item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
+        var now = ToApi(item.Status);
+        recorder.Activity("actionitem.updated", "ActionItem", id, was != now ? $"Action item “{title}”: {was} → {now}" : $"Updated action item “{title}”", projectId,
+            was.ToString(), now.ToString());
         if (reassigned) await NotifyAssignedAsync(project, item, ct);
         await db.SaveChangesAsync(ct);
         return await OneAsync(project, item, ct);
@@ -176,10 +204,11 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var manager = await IsManagerAsync(project, ct);
         if (!(manager || item.CreatedBy == ctx.UserId || item.AssigneeId == ctx.UserId))
             throw new ForbiddenException("Only the person who added an action item, the person it is assigned to, or a manager can change it.", "PERMISSION_DENIED");
-        var was = item.Status;
+        var was = ToApi(item.Status);
         if (was == req.Status) return await OneAsync(project, item, ct);
         ApplyStatus(item, req.Status);
-        recorder.Activity("actionitem.status", "ActionItem", id, $"Action item “{item.Title}”: {was} → {item.Status}", projectId, was.ToString(), item.Status.ToString());
+        item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
+        recorder.Activity("actionitem.status", "ActionItem", id, $"Action item “{item.Title}”: {was} → {req.Status}", projectId, was.ToString(), req.Status.ToString());
         await db.SaveChangesAsync(ct);
         return await OneAsync(project, item, ct);
     }
@@ -192,16 +221,17 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var manager = await IsManagerAsync(project, ct);
         if (!(manager || (item.CreatedBy == ctx.UserId && await permissions.HasAsync(Permissions.TasksCreate, ct))))
             throw new ForbiddenException("Only the person who added an action item, or a manager, can delete it.", "PERMISSION_DENIED");
-        db.ActionItems.Remove(item);
+        item.IsDeleted = true; item.DeletedAt = clock.Now; item.DeletedBy = ctx.UserId;
         recorder.Activity("actionitem.deleted", "ActionItem", id, $"Deleted action item “{item.Title}”", projectId);
         await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Completing stamps who and when; reopening clears it.</summary>
-    private void ApplyStatus(ActionItem item, ActionItemStatus next)
+    private void ApplyStatus(WorkTask item, ActionItemStatus next)
     {
-        if (next == ActionItemStatus.Completed && item.Status != ActionItemStatus.Completed) { item.CompletedAt = clock.Now; item.CompletedBy = ctx.UserId; }
-        else if (next != ActionItemStatus.Completed) { item.CompletedAt = null; item.CompletedBy = null; }
-        item.Status = next;
+        var status = FromApi(next);
+        if (status == WorkTaskStatus.Completed && item.Status != WorkTaskStatus.Completed) { item.CompletedAt = clock.Now; item.CompletedBy = ctx.UserId; }
+        else if (status != WorkTaskStatus.Completed) { item.CompletedAt = null; item.CompletedBy = null; }
+        item.Status = status;
     }
 }

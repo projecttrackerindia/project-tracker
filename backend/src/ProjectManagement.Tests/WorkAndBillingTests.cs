@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
 
@@ -315,17 +316,19 @@ public class WorkAndBillingTests(ApiFactory factory)
         Assert.True(ok.Ok, ok.ToString());
     }
 
+    /// <summary>Every export goes through the one report writer (the old instant tasks.csv endpoint is gone), which neutralises formulas.</summary>
     [Fact]
     public async Task Csv_export_neutralises_formula_injection()
     {
         var c = await TestClient.RegisterAsync(factory);
         var project = await c.CreateProjectAsync();
         await c.CreateTaskAsync(project, "=HYPERLINK(\"http://evil\",\"x\")");
+        Assert.Equal(HttpStatusCode.NotFound, (await c.Raw("/api/v1/reports/tasks.csv")).StatusCode);
 
-        var res = await c.Http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/v1/reports/tasks.csv")
-        {
-            Headers = { Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", c.Token) },
-        });
+        var requested = await c.Post("/api/v1/reports/exports", new { kind = "Project", format = "Csv" });
+        Assert.Equal(HttpStatusCode.Accepted, requested.Status);
+        await factory.Services.GetRequiredService<ProjectManagement.Application.Features.Reports.ReportExportProcessor>().ProcessPendingAsync();
+        var res = await c.Raw($"/api/v1/reports/exports/{requested.Data!["id"]!.GetValue<string>()}/file");
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var csv = await res.Content.ReadAsStringAsync();
         Assert.DoesNotContain(",=HYPERLINK", csv);

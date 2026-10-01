@@ -327,7 +327,7 @@ public class WorkTaskTests(ApiFactory factory)
         var w = await Setup();
         var id = Id(await Create(w.Dev, "Sort out access", "Configuration Change", new { assigneeId = w.Other.UserId, dueDate = Iso(2) }));
         var note = (await w.Other.Get("/api/v1/notifications")).Data!["items"]!.AsArray().Single(n => S(n!["title"]).Contains("Sort out access"))!;
-        Assert.Contains("/work", S(note["link"]));
+        Assert.Equal($"/operations?task={id}", S(note["link"]));
         Assert.DoesNotContain((await w.Dev.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => S(n!["title"]).Contains("Sort out access"));
 
         var v = (await w.Dev.Get($"/api/v1/work-tasks/{id}")).Data!["version"]!.GetValue<int>();

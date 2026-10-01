@@ -157,11 +157,11 @@ public class NotificationPreferenceService(IAppDbContext db, ICurrentContext ctx
     {
         var uid = ctx.RequireUserId();
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == uid, ct);
-        var link = options.Value.WebBaseUrl.TrimEnd('/') + "/settings";
+        var link = options.Value.WebBaseUrl.TrimEnd('/') + "/account";
         try
         {
             await email.SendAsync(new EmailMessage(user.Email, "Test notification",
-                EmailTemplates.Wrap("Your notifications work", WebUtility.HtmlEncode($"Hi {user.DisplayName},"), "This is a test message from your project workspace.", "Open settings", link),
+                EmailTemplates.Wrap("Your notifications work", WebUtility.HtmlEncode($"Hi {user.DisplayName},"), "This is a test message from your project workspace.", "Open my account", link),
                 $"This is a test message from your project workspace. {link}"), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

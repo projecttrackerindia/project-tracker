@@ -57,6 +57,8 @@ public static class DependencyInjection
         services.AddScoped<ActionItemService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkItemService>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkloadService>();
         services.AddScoped<TaskService>();
         services.AddScoped<TaskCompletionService>();
         services.AddScoped<IssueService>();

@@ -35,8 +35,12 @@ public record InvitationDto(Guid Id, string Email, TenantRole Role, InvitationSt
 public record InvitationLookupDto(string WorkspaceName, string Email, TenantRole Role, string? InvitedBy, bool Expired, bool Accepted, string? JobRole = null);
 public record AcceptInvitationRequest(string Token);
 
+/// <summary>
+/// The defaults of each access level. They apply to everyone except Owners (who always have everything) and the people whose job role
+/// has its own access settings: <see cref="NotAppliedTo"/> names those people, so a change here never silently misses anyone.
+/// </summary>
 public record PermissionMatrixDto(IReadOnlyList<TenantRole> Roles, IReadOnlyList<string> Permissions, IReadOnlyList<string> Locked,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, bool>> Matrix, bool CanEdit);
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, bool>> Matrix, bool CanEdit, IReadOnlyList<string>? NotAppliedTo = null);
 public record SetPermissionRequest(TenantRole Role, string Permission, bool Allowed);
 
 public class WorkspaceService(
@@ -477,7 +481,16 @@ public class WorkspaceService(
         }
         var canEdit = await permissions.HasAsync(Permissions.PermissionsManage, ct)
             && await entitlements.GetValueAsync(FeatureKeys.AdvancedPermissions, ct) != 0;
-        return new PermissionMatrixDto(roles, Permissions.All, Permissions.Locked, matrix, canEdit);
+        // Managers, Members and Guests whose job role has its own access get exactly that instead (see PermissionService).
+        var tid = ctx.RequireTenantId();
+        var profiled = await (from m in db.TenantMembers.AsNoTracking()
+                              join r in db.OrgRoles.AsNoTracking() on m.OrgRoleId equals (Guid?)r.Id
+                              join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                              where m.TenantId == tid && r.AccessJson != null
+                                    && (m.Role == TenantRole.Manager || m.Role == TenantRole.Member || m.Role == TenantRole.Guest)
+                              orderby u.DisplayName
+                              select new { u.DisplayName, Role = r.Name }).ToListAsync(ct);
+        return new PermissionMatrixDto(roles, Permissions.All, Permissions.Locked, matrix, canEdit, profiled.Select(p => $"{p.DisplayName} ({p.Role})").ToList());
     }
 
     public async Task SetPermissionAsync(SetPermissionRequest req, CancellationToken ct = default)

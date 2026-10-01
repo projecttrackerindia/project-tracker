@@ -191,7 +191,7 @@ public class MaintenanceService(IAppDbContext db, IPaymentProvider payments, App
                 var owner = await db.Tenants.Where(t => t.Id == sub.TenantId).Select(t => t.OwnerUserId).FirstOrDefaultAsync(ct);
                 var note = new Notification
                 {
-                    TenantId = sub.TenantId, UserId = owner, Type = NotificationType.Subscription, CreatedAt = now, Link = "/billing",
+                    TenantId = sub.TenantId, UserId = owner, Type = NotificationType.Subscription, CreatedAt = now, Link = "/settings/billing",
                     Title = sub.Status == SubscriptionStatus.PastDue ? "Payment failed — please update billing" : "Your subscription has ended",
                     Body = sub.Status == SubscriptionStatus.PastDue ? "We could not renew your plan." : "The workspace is now on the Free plan.",
                 };

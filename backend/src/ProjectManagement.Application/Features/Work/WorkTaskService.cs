@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
@@ -7,6 +6,8 @@ using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Files;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Projects;
+using ProjectManagement.Application.Features.Reports;
+using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
@@ -18,7 +19,7 @@ public record WorkTaskCan(bool Edit, bool Delete);
 public record WorkProjectRefDto(Guid Id, string Key, string Name, ProjectStatus Status);
 public record WorkTaskDto(Guid Id, string Key, int Number, string Title, string? Description, Guid WorkTypeId, string WorkType, WorkProjectRefDto? RelatedProject,
     UserRefDto? Assignee, UserRefDto? Reporter, Priority Priority, WorkTaskStatus Status, DateOnly? StartDate, DateOnly? DueDate, bool IsOverdue,
-    DateTime? CompletedAt, DateTime CreatedAt, int Version, int CommentCount, int AttachmentCount, WorkTaskCan Can);
+    DateTime? CompletedAt, DateTime CreatedAt, int Version, int CommentCount, int AttachmentCount, WorkTaskCan Can, int LoggedMinutes = 0);
 
 public record CreateWorkTaskRequest(string? Title, string? Description, Guid? WorkTypeId, Guid? RelatedProjectId, Guid? AssigneeId, Priority? Priority,
     WorkTaskStatus? Status, DateOnly? StartDate, DateOnly? DueDate);
@@ -32,7 +33,8 @@ public record WorkTaskQuery(string? Q = null, Guid? WorkTypeId = null, Guid? Rel
     string? Sort = null, int Page = 1, int PageSize = 25);
 
 public record WorkCommentDto(Guid Id, Guid WorkTaskId, UserRefDto? Author, string Body, DateTime CreatedAt, DateTime? EditedAt, bool CanEdit, bool CanDelete);
-public record WorkCommentRequest(string? Body);
+/// <summary>A comment, and the people @mentioned in it (they are told, the same way as on a project task).</summary>
+public record WorkCommentRequest(string? Body, IReadOnlyList<Guid>? MentionUserIds = null);
 public record WorkAttachmentDto(Guid Id, Guid WorkTaskId, string FileName, string ContentType, long SizeBytes, UserRefDto? UploadedBy, DateTime CreatedAt, bool CanDelete, bool IsImage);
 public record WorkActivityDto(Guid Id, string Action, string Summary, UserRefDto? Actor, DateTime CreatedAt);
 
@@ -48,6 +50,8 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// Work tasks: operational activities (bug fixes, support, analysis, data preparation ...) kept apart from a project's delivery tasks. A work task may point at a
 /// project for reference, but nothing here ever changes that project - a completed project stays completed. Anyone with access to Work management can see every
 /// work task; people who may create them can add; the assignee, the person who raised it and those allowed to edit any work task can change it.
+/// Action items share the same table (<see cref="WorkTaskKind.ActionItem"/>) but follow their project's rules, in <see cref="ActionItemService"/>; this service
+/// only ever reads and writes operational work.
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
     NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log)
@@ -57,7 +61,14 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private const int MaxExport = 5000;
 
     private static bool IsOpen(WorkTaskStatus s) => s is WorkTaskStatus.ToDo or WorkTaskStatus.InProgress or WorkTaskStatus.OnHold;
-    public static string KeyOf(int number) => $"WT-{number}";
+    public static string KeyOf(int number) => WorkItemService.KeyOf(WorkTaskKind.Operational, number);
+
+    /// <summary>Operational work only: action items live in the same table but are handled by <see cref="ActionItemService"/>.</summary>
+    private IQueryable<WorkTask> Operational => db.WorkTasks.Where(t => t.Kind == WorkTaskKind.Operational);
+
+    /// <summary>The next number of the workspace's shared WT / AI sequence.</summary>
+    public static async Task<int> NextNumberAsync(IAppDbContext db, Guid tenantId, CancellationToken ct) =>
+        (await db.WorkTasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId).MaxAsync(t => (int?)t.Number, ct) ?? 0) + 1;
 
     // ------------------------------------------------------------------ rules
 
@@ -120,13 +131,31 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 
     private async Task<WorkTask> FindAsync(Guid id, CancellationToken ct) =>
-        await db.WorkTasks.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Work task not found.", "WORK_TASK_NOT_FOUND");
+        await Operational.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Work task not found.", "WORK_TASK_NOT_FOUND");
+
+    /// <summary>
+    /// The work task, when the caller may log time on it: the same people who may change it (its assignee, the person who raised it,
+    /// and those allowed to edit any work task).
+    /// </summary>
+    public async Task<WorkTask> RequireTimeLoggableAsync(Guid id, CancellationToken ct = default)
+    {
+        var task = await FindAsync(id, ct);
+        if (!await CanEditAsync(task, ct)) throw new ForbiddenException("You can only log time on work tasks that are assigned to you or that you raised.", "PERMISSION_DENIED");
+        return task;
+    }
+
+    /// <summary>The work task, when the caller may see it (anyone with access to Work management).</summary>
+    public async Task<WorkTask> RequireVisibleAsync(Guid id, CancellationToken ct = default)
+    {
+        await permissions.RequireModuleAsync(Modules.Work, AccessLevel.View, ct);
+        return await FindAsync(id, ct);
+    }
 
     // ------------------------------------------------------------------ read
 
     private IQueryable<WorkTask> Filtered(WorkTaskQuery f)
     {
-        var q = db.WorkTasks.AsNoTracking().AsQueryable();
+        var q = Operational.AsNoTracking();
         var today = clock.Today;
         if (f.Mine) { var me = ctx.UserId; q = q.Where(t => t.AssigneeId == me); }
         else if (f.AssigneeId is { } a) q = q.Where(t => t.AssigneeId == a);
@@ -186,7 +215,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
     public async Task<WorkTaskDto> GetAsync(Guid id, CancellationToken ct = default)
     {
-        var t = await db.WorkTasks.AsNoTracking().Include(x => x.WorkType).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Work task not found.", "WORK_TASK_NOT_FOUND");
+        var t = await Operational.AsNoTracking().Include(x => x.WorkType).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Work task not found.", "WORK_TASK_NOT_FOUND");
         return (await ToDtosAsync([t], ct))[0];
     }
 
@@ -201,25 +230,30 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var projects = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new WorkProjectRefDto(p.Id, p.Key, p.Name, p.Status), ct);
         var comments = await db.WorkTaskComments.AsNoTracking().Where(c => ids.Contains(c.WorkTaskId)).GroupBy(c => c.WorkTaskId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var attachments = await db.WorkTaskAttachments.AsNoTracking().Where(a => ids.Contains(a.WorkTaskId)).GroupBy(a => a.WorkTaskId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+        var logged = await db.TimeEntries.AsNoTracking().Where(e => e.WorkTaskId != null && ids.Contains(e.WorkTaskId.Value) && !(e.StartedAt != null && e.EndedAt == null))
+            .GroupBy(e => e.WorkTaskId!.Value).Select(g => new { g.Key, Minutes = g.Sum(x => x.Minutes) }).ToDictionaryAsync(x => x.Key, x => x.Minutes, ct);
         UserRefDto? Ref(Guid? id) => id is { } u && names.TryGetValue(u, out var n) ? new UserRefDto(u, n) : null;
 
         var result = new List<WorkTaskDto>(rows.Count);
         foreach (var r in rows)
         {
             var can = new WorkTaskCan(await CanEditAsync(r, ct), await CanDeleteAsync(r, ct));
-            result.Add(new WorkTaskDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.Description, r.WorkTypeId, r.WorkType?.Name ?? "", r.RelatedProjectId is { } p && projects.TryGetValue(p, out var pr) ? pr : null,
+            result.Add(new WorkTaskDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.Description, r.WorkTypeId ?? Guid.Empty, r.WorkType?.Name ?? "", r.RelatedProjectId is { } p && projects.TryGetValue(p, out var pr) ? pr : null,
                 Ref(r.AssigneeId), Ref(r.ReporterId), r.Priority, r.Status, r.StartDate, r.DueDate, IsOpen(r.Status) && r.DueDate is { } d && d < today, r.CompletedAt, r.CreatedAt, r.Version,
-                comments.GetValueOrDefault(r.Id), attachments.GetValueOrDefault(r.Id), can));
+                comments.GetValueOrDefault(r.Id), attachments.GetValueOrDefault(r.Id), can, logged.GetValueOrDefault(r.Id)));
         }
         return result;
     }
 
     // ------------------------------------------------------------------ write
 
+    /// <summary>Where a notification about this work task takes the person: the Operations list with the task open.</summary>
+    public static string LinkOf(Guid taskId) => $"/operations?task={taskId}";
+
     private async Task NotifyAssignedAsync(WorkTask t, CancellationToken ct)
     {
         if (t.AssigneeId is not { } who || who == ctx.UserId) return;
-        await notifications.AddAsync(who, NotificationType.TaskAssigned, $"Work task assigned to you: {t.Title}", $"{KeyOf(t.Number)}{(t.DueDate is { } d ? $" · due {d:dd MMM yyyy}" : "")}", $"/work?task={t.Id}", ct: ct);
+        await notifications.AddAsync(who, NotificationType.TaskAssigned, $"Work task assigned to you: {t.Title}", $"{KeyOf(t.Number)}{(t.DueDate is { } d ? $" · due {d:dd MMM yyyy}" : "")}", LinkOf(t.Id), ct: ct);
     }
 
     public async Task<WorkTaskDto> CreateAsync(CreateWorkTaskRequest req, CancellationToken ct = default)
@@ -237,10 +271,11 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
         var task = new WorkTask
         {
-            TenantId = tid, Number = (await db.WorkTasks.IgnoreQueryFilters().Where(t => t.TenantId == tid).MaxAsync(t => (int?)t.Number, ct) ?? 0) + 1,
+            TenantId = tid, Kind = WorkTaskKind.Operational, Number = await NextNumberAsync(db, tid, ct),
             Title = title, Description = CleanDescription(req.Description), WorkTypeId = type.Id, RelatedProjectId = req.RelatedProjectId, AssigneeId = req.AssigneeId,
             ReporterId = ctx.RequireUserId(), Priority = req.Priority ?? Priority.Medium, Status = status, StartDate = req.StartDate, DueDate = req.DueDate,
-            CompletedAt = status == WorkTaskStatus.Completed ? now : null, CreatedAt = now, CreatedBy = ctx.UserId,
+            CompletedAt = status == WorkTaskStatus.Completed ? now : null, CompletedBy = status == WorkTaskStatus.Completed ? ctx.UserId : null,
+            CreatedAt = now, CreatedBy = ctx.UserId,
         };
         db.WorkTasks.Add(task);
         // Work activity belongs to the workspace, not to the related project: the project's own history stays about the project.
@@ -306,7 +341,9 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private void ApplyStatus(WorkTask task, WorkTaskStatus status)
     {
         if (task.Status == status) return;
-        task.CompletedAt = status == WorkTaskStatus.Completed ? clock.Now : null;
+        var done = status == WorkTaskStatus.Completed;
+        task.CompletedAt = done ? clock.Now : null;
+        task.CompletedBy = done ? ctx.UserId : null;
         task.Status = status;
     }
 
@@ -360,8 +397,16 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var c = new WorkTaskComment { TenantId = task.TenantId, WorkTaskId = taskId, AuthorId = ctx.RequireUserId(), Body = CleanBody(req.Body), CreatedAt = clock.Now, CreatedBy = ctx.UserId };
         db.WorkTaskComments.Add(c);
         recorder.Activity("worktask.comment", "WorkTask", taskId, $"Commented on {KeyOf(task.Number)}", null);
-        foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x != null && x != ctx.UserId).Select(x => x!.Value).Distinct())
-            await notifications.AddAsync(who, NotificationType.Comment, $"New comment on {KeyOf(task.Number)}: {task.Title}", c.Body.Length > 140 ? c.Body[..140] + "…" : c.Body, $"/work?task={taskId}", ct: ct);
+        var link = LinkOf(taskId);
+        var snippet = c.Body.Length > 140 ? c.Body[..140] + "…" : c.Body;
+        // @mentions: anyone in the workspace who can open Work management (not guests), told as a mention like on a project task.
+        var mentioned = (req.MentionUserIds ?? []).Distinct().Where(u => u != ctx.UserId).ToList();
+        var valid = mentioned.Count == 0 ? [] : await db.TenantMembers.Where(m => m.TenantId == task.TenantId && mentioned.Contains(m.UserId) && m.Role != TenantRole.Guest)
+            .Select(m => m.UserId).ToListAsync(ct);
+        foreach (var who in valid)
+            await notifications.AddAsync(who, NotificationType.Mention, $"You were mentioned on {KeyOf(task.Number)}: {task.Title}", snippet, link, ct: ct);
+        foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x != null && x != ctx.UserId).Select(x => x!.Value).Distinct().Where(u => !valid.Contains(u)))
+            await notifications.AddAsync(who, NotificationType.Comment, $"New comment on {KeyOf(task.Number)}: {task.Title}", snippet, link, ct: ct);
         await db.SaveChangesAsync(ct);
         return ToComment(c, await NamesAsync([c.AuthorId], ct), await permissions.HasAsync(Permissions.WorkDelete, ct));
     }
@@ -470,7 +515,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (end.DayNumber - start.DayNumber > 366) start = end.AddDays(-366);
         var startAt = start.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc); var endAt = end.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-        var rows = await db.WorkTasks.AsNoTracking()
+        var rows = await Operational.AsNoTracking()
             .Where(t => t.Status == WorkTaskStatus.ToDo || t.Status == WorkTaskStatus.InProgress || t.Status == WorkTaskStatus.OnHold
                         || (t.CreatedAt >= startAt && t.CreatedAt < endAt) || (t.CompletedAt != null && t.CompletedAt >= startAt && t.CompletedAt < endAt))
             .Select(t => new { TypeName = t.WorkType!.Name, t.RelatedProjectId, t.AssigneeId, t.Status, t.DueDate, t.CreatedAt, t.CompletedAt })
@@ -503,25 +548,25 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             byType, byStatus, byPerson, byProject, perDay);
     }
 
-    private static string Csv(string? v)
-    {
-        var s = v ?? "";
-        if (s.Length > 0 && "=+-@\t\r".Contains(s[0])) s = "'" + s;   // never let a cell run as a formula in a spreadsheet
-        return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
-    }
-
-    /// <summary>The filtered work tasks as CSV (UTF-8 with a byte-order mark so Excel reads it), at most 5,000 rows.</summary>
-    public async Task<byte[]> ExportAsync(WorkTaskQuery query, CancellationToken ct = default)
+    /// <summary>
+    /// The filtered work tasks as one report table (at most 5,000 rows). The single definition of the work-task columns: the instant
+    /// "export this list" download and the generated Work tasks report both use it, through the same report writer.
+    /// </summary>
+    public async Task<ReportSection> ExportSectionAsync(WorkTaskQuery query, CancellationToken ct = default)
     {
         var rows = await Sorted(Filtered(query), query.Sort).Include(t => t.WorkType).Take(MaxExport).ToListAsync(ct);
         var dtos = await ToDtosAsync(rows, ct);
-        var sb = new StringBuilder("Key,Title,Work type,Related project,Assigned to,Priority,Status,Start date,Due date,Created,Completed\n");
-        foreach (var t in dtos)
-            sb.Append(string.Join(',', new[]
+        return new ReportSection("Work tasks",
+            ["Key", "Title", "Work type", "Related project", "Assigned to", "Priority", "Status", "Start date", "Due date", "Logged h", "Created", "Completed"],
+            dtos.Select(t => (IReadOnlyList<object?>)new object?[]
             {
-                t.Key, Csv(t.Title), Csv(t.WorkType), Csv(t.RelatedProject is { } p ? $"{p.Key} {p.Name}" : ""), Csv(t.Assignee?.Name), t.Priority.ToString(), Label(t.Status),
-                t.StartDate?.ToString("yyyy-MM-dd") ?? "", t.DueDate?.ToString("yyyy-MM-dd") ?? "", t.CreatedAt.ToString("yyyy-MM-dd"), t.CompletedAt?.ToString("yyyy-MM-dd") ?? "",
-            })).Append('\n');
-        return [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(sb.ToString())];
+                t.Key, t.Title, t.WorkType, t.RelatedProject is { } p ? $"{p.Key} {p.Name}" : null, t.Assignee?.Name, t.Priority.ToString(), Label(t.Status),
+                t.StartDate, t.DueDate, t.LoggedMinutes > 0 ? Math.Round(t.LoggedMinutes / 60m, 2) : null, DateOnly.FromDateTime(t.CreatedAt),
+                t.CompletedAt is { } done ? DateOnly.FromDateTime(done) : null,
+            }).ToList());
     }
+
+    /// <summary>The filtered work tasks as CSV (UTF-8 with a byte-order mark so Excel reads it), written by the shared report writer.</summary>
+    public async Task<byte[]> ExportAsync(WorkTaskQuery query, CancellationToken ct = default) =>
+        ReportWriter.WriteTableCsv(await ExportSectionAsync(query, ct));
 }

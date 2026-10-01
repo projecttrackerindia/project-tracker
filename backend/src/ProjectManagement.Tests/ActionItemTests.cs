@@ -161,7 +161,7 @@ public class ActionItemTests(ApiFactory factory)
         var item = Id(await w.Owner.Post(Url(w.Project), new { title = "Sort out access", assigneeId = w.Dev.UserId, dueDate = Iso(3) }));
         var note = (await w.Dev.Get("/api/v1/notifications")).Data!["items"]!.AsArray().Single(n => n!["title"]!.GetValue<string>().Contains("Sort out access"))!;
         Assert.StartsWith("Action item assigned to you", note["title"]!.GetValue<string>());
-        Assert.Equal($"/project-status?project={w.Project}&actions=1", note["link"]!.GetValue<string>());
+        Assert.Equal($"/projects/{w.Project}?tab=actions&action={item}", note["link"]!.GetValue<string>());   // action items live on the project page
         Assert.Contains("Atlas", note["body"]!.GetValue<string>());
 
         // Handing it to somebody else tells them; assigning it to yourself tells nobody.

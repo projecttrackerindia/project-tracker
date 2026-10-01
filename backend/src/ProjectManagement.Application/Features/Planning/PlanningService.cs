@@ -9,9 +9,12 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Planning;
 
+/// <summary>A milestone, and the timeline stage it is the checkpoint of (if any), so it can be shown on that stage.</summary>
 public record MilestoneDto(Guid Id, Guid ProjectId, string Name, string? Description, DateOnly? StartDate, DateOnly? DueDate,
-    StageStatus Status, UserRefDto? Owner, int SortOrder, DateTime? CompletedAt, int TaskTotal, int TaskDone, int Progress, bool IsOverdue);
-public record UpsertMilestoneRequest(string Name, string? Description, DateOnly? StartDate, DateOnly? DueDate, StageStatus Status, Guid? OwnerId, int? SortOrder);
+    StageStatus Status, UserRefDto? Owner, int SortOrder, DateTime? CompletedAt, int TaskTotal, int TaskDone, int Progress, bool IsOverdue,
+    Guid? StageId = null, string? StageName = null);
+public record UpsertMilestoneRequest(string Name, string? Description, DateOnly? StartDate, DateOnly? DueDate, StageStatus Status, Guid? OwnerId, int? SortOrder,
+    Guid? StageId = null);
 
 public record DependencyTaskDto(Guid Id, string Key, string Title, StatusCategory Category, string StatusName, DateOnly? DueDate);
 public record DependencyDto(Guid Id, DependencyType Type, DependencyTaskDto Task, bool Satisfied);
@@ -68,6 +71,7 @@ public class PlanningService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             {
                 Milestone = m,
                 OwnerName = m.Owner!.DisplayName,
+                StageName = db.ProjectStages.Where(s => s.Id == m.StageId).Select(s => s.Name).FirstOrDefault(),
                 Total = db.Tasks.Count(t => t.MilestoneId == m.Id),
                 Done = db.Tasks.Count(t => t.MilestoneId == m.Id && t.Status!.Category == StatusCategory.Done),
                 Cancelled = db.Tasks.Count(t => t.MilestoneId == m.Id && t.Status!.Category == StatusCategory.Cancelled),
@@ -80,8 +84,18 @@ public class PlanningService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             var progress = m.Status == StageStatus.Completed ? 100 : counted == 0 ? 0 : (int)Math.Round(r.Done * 100.0 / counted);
             return new MilestoneDto(m.Id, m.ProjectId, m.Name, m.Description, m.StartDate, m.DueDate, m.Status,
                 r.OwnerName is null ? null : new UserRefDto(m.OwnerId!.Value, r.OwnerName), m.SortOrder, m.CompletedAt,
-                r.Total, r.Done, progress, m.Status != StageStatus.Completed && m.DueDate is { } d && d < today);
+                r.Total, r.Done, progress, m.Status != StageStatus.Completed && m.DueDate is { } d && d < today,
+                r.StageName is null ? null : m.StageId, r.StageName);
         }).ToList();
+    }
+
+    /// <summary>The stage a milestone marks must be one of the same project's stages.</summary>
+    private async Task<Guid?> ResolveStageAsync(Guid projectId, Guid? stageId, CancellationToken ct)
+    {
+        if (stageId is not { } sid) return null;
+        if (!await db.ProjectStages.AnyAsync(s => s.Id == sid && s.ProjectId == projectId, ct))
+            throw new ValidationException("stageId", "That stage is not part of this project's timeline.");
+        return sid;
     }
 
     private async Task<Milestone> FindMilestoneAsync(Guid projectId, Guid id, CancellationToken ct) =>
@@ -108,6 +122,7 @@ public class PlanningService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             TenantId = ctx.RequireTenantId(), ProjectId = projectId, Name = req.Name.Trim(), Description = req.Description?.Trim(),
             StartDate = req.StartDate, DueDate = req.DueDate, Status = req.Status, SortOrder = req.SortOrder ?? next + 1,
             OwnerId = await ResolveOwnerAsync(req.OwnerId, ct), CompletedAt = req.Status == StageStatus.Completed ? clock.Now : null,
+            StageId = await ResolveStageAsync(projectId, req.StageId, ct),
         };
         db.Milestones.Add(milestone);
         recorder.Activity("milestone.created", "Milestone", milestone.Id, $"Added milestone \"{milestone.Name}\" to {project.Key}", projectId);
@@ -128,6 +143,7 @@ public class PlanningService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         milestone.DueDate = req.DueDate;
         milestone.Status = req.Status;
         milestone.OwnerId = await ResolveOwnerAsync(req.OwnerId, ct);
+        milestone.StageId = await ResolveStageAsync(projectId, req.StageId, ct);
         if (req.SortOrder is { } order) milestone.SortOrder = order;
         milestone.CompletedAt = req.Status == StageStatus.Completed ? milestone.CompletedAt ?? clock.Now : null;
 

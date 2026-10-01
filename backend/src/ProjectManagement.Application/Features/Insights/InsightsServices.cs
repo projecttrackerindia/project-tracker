@@ -1,10 +1,11 @@
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Organization;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Tasks;
+using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
 using ProjectManagement.Domain.Enums;
@@ -15,11 +16,16 @@ public record ActivityDto(Guid Id, string Action, string EntityType, Guid? Entit
 public record AuditLogDto(Guid Id, Guid? TenantId, string? TenantName, Guid? UserId, string? UserName, string Action, string EntityType,
     Guid? EntityId, string? OldValue, string? NewValue, string? IpAddress, DateTime CreatedAt);
 
+/// <summary>
+/// The dashboard's numbers. The "My" counts cover every kind of work assigned to me that I can see (project tasks, test issues, action
+/// items, operational work); OpenTasks / OverdueTasks / OverallProgress are about project delivery and count project tasks only.
+/// </summary>
 public record DashboardCounts(int MyDueToday, int MyCompletedToday, int MyOpen, int MyOverdue, int ActiveProjects, int CompletedProjects,
     int TotalProjects, int OpenTasks, int OverdueTasks, int Members, int OverallProgress, int MyLoggedMinutesThisWeek);
 public record WorkloadItem(Guid UserId, string Name, int Open, int Overdue, int Done);
+/// <summary><see cref="MyWork"/> is my next open work of every kind; <see cref="MyTasks"/> keeps the project-task list for existing API clients.</summary>
 public record DashboardDto(DashboardCounts Counts, IReadOnlyList<TaskDto> MyTasks, IReadOnlyList<ProjectListItemDto> Projects,
-    IReadOnlyList<ActivityDto> Activity);
+    IReadOnlyList<ActivityDto> Activity, IReadOnlyList<WorkItemDto> MyWork);
 
 public record CalendarEventDto(string Type, Guid Id, string Title, DateOnly Date, string? Status, StatusCategory? Category, bool Overdue,
     Guid? ProjectId, string? ProjectName, Priority? Priority);
@@ -84,7 +90,7 @@ public class ActivityService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 }
 
 public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
-    TaskService tasks, ActivityService activity, PermissionService permissions)
+    TaskService tasks, ActivityService activity, PermissionService permissions, WorkItemService workItems)
 {
     public async Task<DashboardDto> GetAsync(CancellationToken ct = default)
     {
@@ -94,9 +100,14 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
 
         var visible = access.VisibleTasks().Where(t => t.ParentTaskId == null);
         var open = visible.Where(t => t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
-        var mine = open.Where(t => t.AssigneeId == me);
 
-        var doneToday = await access.VisibleTasks().CountAsync(t => t.AssigneeId == me && t.CompletedAt != null && t.CompletedAt >= LocalDayStartUtc(today), ct);
+        // Everything assigned to me, of every kind I can see.
+        var myWork = await workItems.ListAsync(new WorkItemQuery(Mine: true, OpenOnly: true, Limit: WorkItemService.MaxLimit), ct: ct);
+        var kinds = await workItems.VisibleKindsAsync(WorkItemScope.Caller, ct);
+        var dayStart = LocalDayStartUtc(today);
+        var doneToday = (kinds.Contains(WorkItemKind.Task) ? await access.VisibleTasks().CountAsync(t => t.AssigneeId == me && t.CompletedAt != null && t.CompletedAt >= dayStart, ct) : 0)
+            + await db.WorkTasks.CountAsync(w => w.AssigneeId == me && w.Status == WorkTaskStatus.Completed && w.CompletedAt != null && w.CompletedAt >= dayStart
+                && ((w.Kind == WorkTaskKind.Operational && kinds.Contains(WorkItemKind.Operational)) || (w.Kind == WorkTaskKind.ActionItem && kinds.Contains(WorkItemKind.ActionItem))), ct);
         var projectRows = await access.VisibleProjects().AsNoTracking().Select(p => new { p.Id, p.Status }).ToListAsync(ct);
         var stats = await projects.GetStatsAsync(projectRows.Select(p => p.Id).ToList(), ct);
         var allTotal = stats.Values.Sum(s => s.Total - s.Cancelled);
@@ -106,10 +117,10 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
             .SumAsync(e => (int?)e.Minutes, ct) ?? 0;
 
         var counts = new DashboardCounts(
-            MyDueToday: await mine.CountAsync(t => t.DueDate == today, ct),
+            MyDueToday: myWork.Count(w => w.DueDate == today),
             MyCompletedToday: doneToday,
-            MyOpen: await mine.CountAsync(ct),
-            MyOverdue: await mine.CountAsync(t => t.DueDate != null && t.DueDate < today, ct),
+            MyOpen: myWork.Count,
+            MyOverdue: myWork.Count(w => w.IsOverdue),
             ActiveProjects: projectRows.Count(p => p.Status is ProjectStatus.Planning or ProjectStatus.Active or ProjectStatus.OnHold),
             CompletedProjects: projectRows.Count(p => p.Status == ProjectStatus.Completed),
             TotalProjects: projectRows.Count(p => p.Status != ProjectStatus.Archived),
@@ -123,13 +134,14 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var projectList = await projects.ListAsync(new ProjectQuery(null, null, null, null, null, Sort: "due", PageSize: 5), ct);
         var recent = await activity.ListAsync(null, 1, 8, ct);
 
-        // Sections the person's job role cannot open are emptied rather than leaked through the dashboard.
+        // Sections the person's job role cannot open are emptied rather than leaked through the dashboard. (My work is already limited to
+        // the kinds they can open.)
         var lv = await permissions.LevelsAsync(ct);
         var (showTasks, showProjects, showActivity) = (lv[Modules.Tasks] > 0, lv[Modules.Projects] > 0, lv[Modules.Activity] > 0);
-        if (!showTasks) counts = counts with { MyDueToday = 0, MyCompletedToday = 0, MyOpen = 0, MyOverdue = 0, OpenTasks = 0, OverdueTasks = 0, OverallProgress = 0, MyLoggedMinutesThisWeek = 0 };
+        if (!showTasks) counts = counts with { OpenTasks = 0, OverdueTasks = 0, OverallProgress = 0 };
         if (!showProjects) counts = counts with { ActiveProjects = 0, CompletedProjects = 0, TotalProjects = 0, OverallProgress = 0 };
         return new DashboardDto(counts, showTasks ? myTasks.Items : myTasks.Items.Take(0).ToList(), showProjects ? projectList.Items : projectList.Items.Take(0).ToList(),
-            showActivity ? recent.Items : recent.Items.Take(0).ToList());
+            showActivity ? recent.Items : recent.Items.Take(0).ToList(), myWork.Take(8).ToList());
     }
 
     private DateTime LocalDayStartUtc(DateOnly today) =>
@@ -137,7 +149,7 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
 }
 
 public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access,
-    ProjectManagement.Application.Features.Organization.ReportingLineService reporting, PermissionService permissions)
+    ReportingLineService reporting, PermissionService permissions, WorkItemService workItems)
 {
     /// <summary>
     /// Regular users see only their own task assignments; a manager's default view adds everyone in their reporting
@@ -157,11 +169,14 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var events = new List<CalendarEventDto>();
 
         HashSet<Guid>? assignees; bool showWorkspaceEvents;
+        var workScope = WorkItemScope.Caller;   // whose rules decide which action items and operational work show
         if (userId is { } who && who != me)
         {
-            if (!await reporting.IsInMyLineAsync(who, ct) && !await permissions.HasBroadReportsAccessAsync(ct))
+            var inLine = await reporting.IsInMyLineAsync(who, ct);
+            if (!inLine && !await permissions.HasBroadReportsAccessAsync(ct))
                 throw new ForbiddenException("You can only view the calendar of people in your reporting line.", "PERMISSION_DENIED");
             (assignees, showWorkspaceEvents) = ([who], false);
+            if (inLine) workScope = WorkItemScope.ReportingLine;
         }
         else if (mine || userId == me)
             (assignees, showWorkspaceEvents) = ([me], false);
@@ -172,6 +187,7 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             var team = (await reporting.ReportsOfAsync(me, tid, ct)).Keys.ToHashSet();
             team.Add(me);
             (assignees, showWorkspaceEvents) = (team, true);
+            workScope = WorkItemScope.ReportingLine;
         }
 
         var tq = access.VisibleTasks().Where(t => t.DueDate != null && t.DueDate >= from && t.DueDate <= to);
@@ -182,6 +198,17 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             .ToListAsync(ct);
         events.AddRange(taskRows.Select(t => new CalendarEventDto("task", t.Id, t.Title, t.DueDate!.Value, t.Status, t.Category,
             t.Category is not (StatusCategory.Done or StatusCategory.Cancelled) && t.DueDate < today, t.ProjectId, t.ProjectName, t.Priority)));
+
+        // Action items and operational work with a due date in the range, for the same people.
+        var workKinds = new[] { WorkItemKind.ActionItem, WorkItemKind.Operational };
+        var work = new List<WorkItemDto>();
+        if (assignees is null)
+            work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 500), workScope, ct));
+        else
+            foreach (var person in assignees)
+                work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, AssigneeId: person, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 200), workScope, ct));
+        events.AddRange(work.Where(w => w.DueDate is not null).Select(w => new CalendarEventDto(w.Kind == WorkItemKind.ActionItem ? "action" : "work", w.Id, w.Title, w.DueDate!.Value,
+            w.Status, w.Category, w.IsOverdue, w.ProjectId, w.ProjectName, w.Priority)));
 
         if (showWorkspaceEvents)
         {
@@ -215,7 +242,7 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 }
 
-public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess access, PermissionService permissions)
+public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess access, PermissionService permissions, WorkItemService workItems)
 {
     private const int PerType = 5;
 
@@ -232,6 +259,13 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
             .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).Take(PerType)
             .Select(t => new { t.Id, t.Title, t.ProjectId, t.Number, Key = t.Project!.Key, Status = t.Status!.Name }).ToListAsync(ct);
         hits.AddRange(tasks.Select(t => new SearchHit("task", t.Id, t.Title, $"{t.Key}-{t.Number} · {t.Status}", t.ProjectId, t.Id)));
+
+        // Test issues, action items and operational work, by title, description or key (WT-12, AI-3, ATLAS-I2) - each only when the
+        // person may open that kind.
+        var items = await workItems.ListAsync(new WorkItemQuery([WorkItemKind.Issue, WorkItemKind.ActionItem, WorkItemKind.Operational], OpenOnly: false, Q: q, Limit: PerType * 3), ct: ct);
+        foreach (var kind in items.GroupBy(i => i.Kind))
+            hits.AddRange(kind.Take(PerType).Select(i => new SearchHit(kind.Key switch { WorkItemKind.Issue => "issue", WorkItemKind.ActionItem => "action", _ => "work" },
+                i.Id, i.Title, $"{i.Key} · {i.Status}", i.ProjectId, null)));
 
         var projects = lv[Modules.Projects] == 0 ? [] : await access.VisibleProjects().AsNoTracking()
             .Where(p => p.Name.ToLower().Contains(q) || p.Key.ToLower().Contains(q) || (p.Description != null && p.Description.ToLower().Contains(q)))
@@ -276,22 +310,22 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
 }
 
 public class ReportService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
-    PermissionService permissions, EntitlementService entitlements)
+    PermissionService permissions, EntitlementService entitlements, WorkItemService workItems)
 {
-    public static async Task<IReadOnlyList<WorkloadItem>> BuildWorkloadAsync(IAppDbContext db, ProjectAccess access, DateOnly today, IReadOnlySet<Guid>? restrictTo, CancellationToken ct)
+    /// <summary>
+    /// Open, overdue and done work per person, across every kind the caller can see, for <paramref name="restrictTo"/> (or every member who
+    /// can be given work). People with nothing assigned are left out, as before.
+    /// </summary>
+    public async Task<IReadOnlyList<WorkloadItem>> BuildWorkloadAsync(IReadOnlySet<Guid>? restrictTo, CancellationToken ct)
     {
-        var rows = await access.VisibleTasks().Where(t => t.AssigneeId != null && (restrictTo == null || restrictTo.Contains(t.AssigneeId.Value)))
-            .GroupBy(t => new { Id = t.AssigneeId!.Value, t.Status!.Category, Overdue = t.DueDate != null && t.DueDate < today })
-            .Select(g => new { g.Key.Id, g.Key.Category, g.Key.Overdue, Count = g.Count() }).ToListAsync(ct);
-        var ids = rows.Select(r => r.Id).Distinct().ToList();
+        var tid = ctx.RequireTenantId();
+        var people = restrictTo?.ToList() ?? await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest).Select(m => m.UserId).ToListAsync(ct);
+        var counts = await workItems.CountsAsync(people, WorkItemScope.Caller, ct);
+        var busy = counts.Values.Where(c => c.Open + c.DoneTotal > 0).ToList();
+        var ids = busy.Select(c => c.UserId).ToList();
         var names = await db.Users.Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
-        return ids.Select(id =>
-        {
-            var mine = rows.Where(r => r.Id == id).ToList();
-            var open = mine.Where(r => r.Category is not (StatusCategory.Done or StatusCategory.Cancelled)).ToList();
-            return new WorkloadItem(id, names.GetValueOrDefault(id, "Unknown"), open.Sum(r => r.Count), open.Where(r => r.Overdue).Sum(r => r.Count),
-                mine.Where(r => r.Category == StatusCategory.Done).Sum(r => r.Count));
-        }).OrderByDescending(w => w.Open).ToList();
+        return busy.Select(c => new WorkloadItem(c.UserId, names.GetValueOrDefault(c.UserId, "Unknown"), c.Open, c.Overdue, c.DoneTotal))
+            .OrderByDescending(w => w.Open).ThenBy(w => w.Name).ToList();
     }
 
     public async Task<ReportSummaryDto> GetSummaryAsync(int days, CancellationToken ct = default)
@@ -324,36 +358,10 @@ public class ReportService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         var progress = list.Items.Select(p => new ProjectProgressItem(p.Id, p.Key, p.Name, p.Progress, p.Health, p.DueDate, p.Stats.Total, p.Stats.Done)).ToList();
 
         var advanced = await entitlements.GetValueAsync(FeatureKeys.AdvancedReports, ct) != 0;
-        var workload = advanced && ctx.WorkspaceType == WorkspaceType.Organization ? await BuildWorkloadAsync(db, access, today, null, ct) : null;
+        var workload = advanced && ctx.WorkspaceType == WorkspaceType.Organization ? await BuildWorkloadAsync(null, ct) : null;
 
         return new ReportSummaryDto(days, totals, perDay,
             Enum.GetValues<StatusCategory>().Select(c => new StatusCount(c, Sum(x => x == c))).Where(s => s.Count > 0).ToList(), progress,
             localDates.Count(d => d >= today.AddDays(-6)), localDates.Count(d => d >= today.AddDays(-29)), workload, advanced);
-    }
-
-    public async Task<string> ExportTasksCsvAsync(CancellationToken ct = default)
-    {
-        await permissions.RequireAsync(Permissions.ReportsView, ct);
-        var rows = await access.VisibleTasks().AsNoTracking().OrderBy(t => t.ProjectId).ThenBy(t => t.Number).Take(10_000)
-            .Select(t => new
-            {
-                ProjectKey = t.Project!.Key, t.Number, t.Title, Status = t.Status!.Name, t.Priority, Assignee = t.Assignee!.DisplayName,
-                Reporter = t.Reporter!.DisplayName, t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours, t.CreatedAt, t.CompletedAt,
-            }).ToListAsync(ct);
-
-        var sb = new StringBuilder("Key,Title,Status,Priority,Assignee,Reporter,Start date,Due date,Estimated hours,Actual hours,Created,Completed\r\n");
-        foreach (var r in rows)
-            sb.AppendJoin(',', Csv($"{r.ProjectKey}-{r.Number}"), Csv(r.Title), Csv(r.Status), Csv(r.Priority.ToString()), Csv(r.Assignee), Csv(r.Reporter),
-                Csv(r.StartDate?.ToString("yyyy-MM-dd")), Csv(r.DueDate?.ToString("yyyy-MM-dd")), Csv(r.EstimatedHours?.ToString()), Csv(r.ActualHours?.ToString()),
-                Csv(r.CreatedAt.ToString("u")), Csv(r.CompletedAt?.ToString("u"))).Append("\r\n");
-        return sb.ToString();
-    }
-
-    /// <summary>Quotes a CSV cell and neutralises spreadsheet formula injection.</summary>
-    private static string Csv(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        if (value[0] is '=' or '+' or '-' or '@' or '\t' or '\r') value = "'" + value;
-        return value.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? $"\"{value.Replace("\"", "\"\"")}\"" : value;
     }
 }

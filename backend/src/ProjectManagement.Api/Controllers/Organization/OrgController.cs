@@ -75,6 +75,10 @@ public class OrgController(OrgService org, AccessService access) : ApiController
         return Ok(await access.GetAsync(ct));
     }
 
+    /// <summary>Everyone's effective access and which rule decided it (job role, or access-level defaults).</summary>
+    [HttpGet("access/effective")]
+    public async Task<IActionResult> EffectiveAccess(CancellationToken ct) => Ok(await access.EffectiveAsync(ct));
+
     /// <summary>Remove a role's own profile: its people fall back to their access level's defaults.</summary>
     [HttpDelete("roles/{id:guid}/access")]
     public async Task<IActionResult> ResetAccess(Guid id, CancellationToken ct)

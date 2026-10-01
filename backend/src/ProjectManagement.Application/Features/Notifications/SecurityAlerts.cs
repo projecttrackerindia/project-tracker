@@ -18,10 +18,10 @@ public class SecurityAlerts(ICurrentContext ctx, NotificationService notificatio
     {
         if (ctx.TenantId is not null && ctx.UserId == user.Id)
         {
-            await notifications.AddAsync(user.Id, NotificationType.Security, title, body, "/settings", toSelf: true, ct: ct);
+            await notifications.AddAsync(user.Id, NotificationType.Security, title, body, "/account", toSelf: true, ct: ct);
             return;
         }
-        var link = options.Value.WebBaseUrl.TrimEnd('/') + "/settings";
+        var link = options.Value.WebBaseUrl.TrimEnd('/') + "/account";
         try
         {
             await email.SendAsync(new EmailMessage(user.Email, title,

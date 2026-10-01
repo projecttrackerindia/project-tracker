@@ -39,6 +39,8 @@ public class ReportExportService(IAppDbContext db, ICurrentContext ctx, AppClock
         await permissions.RequireAsync(Permissions.ReportsView, ct);
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         if (!Enum.IsDefined(req.Kind) || !Enum.IsDefined(req.Format)) throw new ValidationException("kind", "Unknown report type or format.");
+        if (req.Kind == ReportKind.WorkTasks && await permissions.LevelAsync(Modules.Work, ct) == AccessLevel.None)
+            throw new ForbiddenException("Your role does not have access to Work management.", "MODULE_ACCESS_DENIED");
         // CSV stays available on every plan; spreadsheets and PDFs are part of the advanced reports feature.
         if (req.Format != ReportFormat.Csv) await entitlements.EnsureFeatureAsync(FeatureKeys.AdvancedReports, ct);
         if (req.ProjectId is { } pid)
@@ -206,7 +208,8 @@ public class ReportExportProcessor(IServiceScopeFactory scopes, TimeProvider tim
         var name = $"{export.Kind.ToString().ToLowerInvariant()}-{Now:yyyyMMdd-HHmm}.{file.Extension}";
         export.StorageKey = key; export.FileName = name; export.SizeBytes = file.Content.Length;
         export.Status = ReportExportStatus.Ready; export.CompletedAt = Now; export.ExpiresAt = Now + ReportExportService.Retention; export.Error = null;
-        await sp.GetRequiredService<NotificationService>().AddAsync(export.UserId, NotificationType.ReportReady, $"Your {export.Kind} report is ready",
+        var label = export.Kind == ReportKind.WorkTasks ? "Work tasks" : export.Kind.ToString();
+        await sp.GetRequiredService<NotificationService>().AddAsync(export.UserId, NotificationType.ReportReady, $"Your {label} report is ready",
             $"{name} ({file.Content.Length / 1024 + 1} KB) can be downloaded for {ReportExportService.Retention.Days} days.", "/reports", toSelf: true, ct: ct);
         await db.SaveChangesAsync(ct);
     }
@@ -222,7 +225,7 @@ public class ReportExportProcessor(IServiceScopeFactory scopes, TimeProvider tim
 /// <summary>Collects the data of a report into a format-neutral document. Uses the current (requester's) access rights throughout.</summary>
 public class ReportBuilder(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ReportService reports, TimeService time,
     PermissionService permissions, ProjectManagement.Application.Features.Organization.ReportingLineService reporting,
-    ProjectManagement.Application.Features.Configuration.PriorityService priorities)
+    ProjectManagement.Application.Features.Configuration.PriorityService priorities, ProjectManagement.Application.Features.Work.WorkTaskService workTasks)
 {
     public async Task<ReportDocument> BuildAsync(ReportExport e, string workspaceName, CancellationToken ct)
     {
@@ -232,8 +235,16 @@ public class ReportBuilder(IAppDbContext db, ICurrentContext ctx, AppClock clock
         {
             ReportKind.Project => await ProjectReportAsync(e, subtitle, ct),
             ReportKind.Workload => await WorkloadReportAsync(e, subtitle, ct),
+            ReportKind.WorkTasks => await WorkTasksReportAsync(e, subtitle, ct),
             _ => await TimesheetReportAsync(e, subtitle, ct),
         };
+    }
+
+    /// <summary>Operational work tasks (optionally those related to one project, or assigned to one person): the same columns as the instant export.</summary>
+    private async Task<ReportDocument> WorkTasksReportAsync(ReportExport e, string subtitle, CancellationToken ct)
+    {
+        var section = await workTasks.ExportSectionAsync(new ProjectManagement.Application.Features.Work.WorkTaskQuery(RelatedProjectId: e.ProjectId, AssigneeId: e.TargetUserId, Sort: "due"), ct);
+        return new ReportDocument("Work tasks", subtitle, [section]);
     }
 
     private async Task<ReportDocument> ProjectReportAsync(ReportExport e, string subtitle, CancellationToken ct)
@@ -289,7 +300,7 @@ public class ReportBuilder(IAppDbContext db, ICurrentContext ctx, AppClock clock
 
     private async Task<ReportDocument> WorkloadReportAsync(ReportExport e, string subtitle, CancellationToken ct)
     {
-        var workload = await ReportService.BuildWorkloadAsync(db, access, clock.Today, await AudienceAsync(e, ct), ct);
+        var workload = await reports.BuildWorkloadAsync(await AudienceAsync(e, ct), ct);
         return new ReportDocument("Team workload", subtitle,
             [new ReportSection("Workload", ["Person", "Open", "Overdue", "Done"], workload.Select(w => (IReadOnlyList<object?>)new object?[] { w.Name, w.Open, w.Overdue, w.Done }).ToList())]);
     }

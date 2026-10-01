@@ -18,8 +18,12 @@ namespace ProjectManagement.Domain.Entities
     /// </summary>
     public class TimeEntry : TenantEntity, ITenantScoped
     {
-        public Guid TaskId { get; set; }
-        public Guid ProjectId { get; set; }
+        /// <summary>The project task the time was spent on. Exactly one of <see cref="TaskId"/> and <see cref="WorkTaskId"/> is set.</summary>
+        public Guid? TaskId { get; set; }
+        /// <summary>The work task (operational work or an action item) the time was spent on.</summary>
+        public Guid? WorkTaskId { get; set; }
+        /// <summary>The task's project, or the work task's related project when it has one (for project time reports and filters).</summary>
+        public Guid? ProjectId { get; set; }
         public Guid UserId { get; set; }
         public DateOnly WorkDate { get; set; }
         public int Minutes { get; set; }

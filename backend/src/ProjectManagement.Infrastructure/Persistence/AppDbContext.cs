@@ -28,7 +28,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<WorkflowStatus> WorkflowStatuses => Set<WorkflowStatus>();
     public DbSet<ProjectStage> ProjectStages => Set<ProjectStage>();
     public DbSet<StageIssue> StageIssues => Set<StageIssue>();
-    public DbSet<ActionItem> ActionItems => Set<ActionItem>();
     public DbSet<WorkType> WorkTypes => Set<WorkType>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<WorkTaskComment> WorkTaskComments => Set<WorkTaskComment>();
@@ -102,9 +101,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<StatusCategory>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<StageStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<IssueStatus>().HaveConversion<string>().HaveMaxLength(32);
-        builder.Properties<ActionItemStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<ProjectType>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<DeliveryMethod>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<WorkTaskStatus>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<WorkTaskKind>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<DependencyType>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<SubscriptionStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<InvitationStatus>().HaveConversion<string>().HaveMaxLength(32);
@@ -216,6 +216,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasMany(x => x.Statuses).WithOne().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Stages).WithOne().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.DeliveryMethod).HasDefaultValue(DeliveryMethod.Hybrid).HasSentinel(DeliveryMethod.Hybrid);
         });
         b.Entity<ProjectMember>(e =>
         {
@@ -225,13 +226,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         });
         b.Entity<WorkflowStatus>(e => { e.HasIndex(x => new { x.ProjectId, x.Order }); e.Property(x => x.Name).HasMaxLength(40); e.Property(x => x.Color).HasMaxLength(9); });
         b.Entity<ProjectStage>(e => { e.HasIndex(x => new { x.ProjectId, x.Order }); e.Property(x => x.Name).HasMaxLength(80); });
-        b.Entity<ActionItem>(e =>
-        {
-            e.HasIndex(x => new { x.ProjectId, x.Status });
-            e.HasIndex(x => new { x.TenantId, x.AssigneeId });
-            e.Property(x => x.Title).HasMaxLength(200);
-            e.Property(x => x.Details).HasMaxLength(2000);
-        });
         b.Entity<WorkType>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.Order });
@@ -246,8 +240,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => new { x.TenantId, x.AssigneeId });
             e.HasIndex(x => new { x.TenantId, x.RelatedProjectId });
             e.HasIndex(x => new { x.TenantId, x.WorkTypeId });
+            e.HasIndex(x => new { x.TenantId, x.Kind, x.RelatedProjectId });
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Description).HasMaxLength(8000);
+            e.Property(x => x.Kind).HasDefaultValue(WorkTaskKind.Operational).HasSentinel(WorkTaskKind.Operational);
             e.HasOne(x => x.WorkType).WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<WorkTaskComment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.Body).HasMaxLength(4000); });
@@ -324,6 +320,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.Description).HasMaxLength(2000);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<ProjectStage>().WithMany().HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => x.StageId);
         });
         b.Entity<Sprint>(e =>
         {
@@ -458,11 +456,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         {
             e.Ignore(x => x.IsRunning);
             e.HasIndex(x => new { x.TaskId, x.WorkDate });
+            e.HasIndex(x => new { x.WorkTaskId, x.WorkDate });
             e.HasIndex(x => new { x.UserId, x.WorkDate });
             e.HasIndex(x => new { x.ProjectId, x.WorkDate });
             e.Property(x => x.Note).HasMaxLength(500);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TaskItem>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
+            // Time is spent on exactly one thing: a project task or a work task.
+            e.ToTable(t => t.HasCheckConstraint("CK_TimeEntries_OneTarget",
+                "(\"TaskId\" IS NOT NULL AND \"WorkTaskId\" IS NULL) OR (\"TaskId\" IS NULL AND \"WorkTaskId\" IS NOT NULL)"));
         });
         b.Entity<AutomationRule>(e =>
         {
