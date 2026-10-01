@@ -15,6 +15,7 @@ import { ChatRealtime } from '../features/chat/ChatRealtime';
 import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { chatKeys } from '../features/chat/chatStore';
 import { PlatformBanner } from '../components/PlatformBanner';
+import { ThemeSwitch } from '../components/ThemeSwitch';
 import { useVisibleKinds } from '../features/workitems/workItems';
 import { usePeopleSections } from '../features/people/PeoplePage';
 import { useWorkspaceSections } from '../features/settings/SettingsPage';
@@ -46,7 +47,6 @@ function Sidebar() {
   const canChat = !personal && ctx?.current?.role !== 'Guest' && !ctx?.user.isPlatformAdmin;
   const kinds = useVisibleKinds();
   const people = usePeopleSections();
-  const settings = useWorkspaceSections();
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const { pathname } = useLocation();
   const peopleHas = (id: string) => people.some((s) => s.id === id);
@@ -70,7 +70,8 @@ function Sidebar() {
     ] },
   ];
 
-  // Home: my own day. Delivery: the work itself. Insights: how it is going. Organization: the people. Settings: how the workspace is set up.
+  // Home: my own day. Delivery: the work itself. Insights: how it is going. Organization: the people.
+  // Workspace settings is the gear in the top bar (and in the avatar menu), not a sidebar item as well.
   const workspaceGroups: { title: string; items: NavDef[] }[] = [
     { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
@@ -93,7 +94,6 @@ function Sidebar() {
       { to: '/people', label: 'People', icon: 'user', show: peopleHas('directory'), match: (p) => p === '/people' || p === '/people/invitations' },
       { to: '/people/org-chart', label: 'Org chart', icon: 'org', show: peopleHas('org-chart') },
       { to: '/people/teams', label: 'Teams', icon: 'layers', show: peopleHas('teams') },
-      { to: '/settings', label: 'Workspace settings', icon: 'settings', end: false, show: settings.length > 0 },
     ] },
   ];
   const groups = isPlatformAdmin ? adminGroups : workspaceGroups;
@@ -386,7 +386,7 @@ function UserMenu() {
 }
 
 function Topbar() {
-  const { toggleSidebar, theme, toggleTheme } = useUi();
+  const { toggleSidebar } = useUi();
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   const settings = useWorkspaceSections();
   return (
@@ -396,9 +396,7 @@ function Topbar() {
       <div className="topbar-actions">
         {!isPlatformAdmin && <RunningTimer />}
         {!isPlatformAdmin && <WorkspaceSwitcher />}
-        <button className="icon-btn theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle dark mode">
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-        </button>
+        <ThemeSwitch className="theme-toggle" />
         {!isPlatformAdmin && <NotificationsMenu />}
         {settings.length > 0 && <NavLink to="/settings" end={false} className={({ isActive }) => `icon-btn settings-link ${isActive ? 'active' : ''}`} title="Workspace settings" aria-label="Workspace settings"><Icon name="settings" /></NavLink>}
         <UserMenu />

@@ -17,12 +17,43 @@ const savedTheme = (): Theme => {
 
 const THEME_COLOR: Record<Theme, string> = { light: '#7c3aed', dark: '#131c2a' };   // the browser's own toolbar colour on phones
 
+/** Where a theme switch starts from: the new theme spreads out from this point (the switch that was pressed). */
+export interface ThemeOrigin { x: number; y: number }
+
+const REVEAL_MS = 900;
+const REVEAL_EASE = 'cubic-bezier(.68, 0, .25, 1)';
+
 /**
- * Switches the page between light and dark with a short cross-fade instead of a hard flash: the whole page fades where the
- * browser supports view transitions, otherwise every colour fades (the theme-fade class, see base.css).
- * Nothing animates for people who have asked for reduced motion.
+ * A ring of light on the edge of the new theme as it spreads: cool neon going into dark, warm gold coming back to light. It is started
+ * at the same moment and with the same timing as the reveal, so it rides exactly on its edge, then fades. Decorative, removed when done.
  */
-function applyTheme(theme: Theme) {
+function wavefront(theme: Theme, x: number, y: number, radius: number) {
+  const size = radius * 2;
+  const wave = document.createElement('div');
+  wave.className = `theme-wave to-${theme}`;
+  wave.setAttribute('aria-hidden', 'true');
+  Object.assign(wave.style, { left: `${x}px`, top: `${y}px`, width: `${size}px`, height: `${size}px` });
+  const core = document.createElement('div');
+  core.className = `theme-core to-${theme}`;
+  core.setAttribute('aria-hidden', 'true');
+  Object.assign(core.style, { left: `${x}px`, top: `${y}px` });
+  document.body.append(wave, core);
+  const grow = wave.animate(
+    [{ transform: 'translate(-50%, -50%) scale(0)' }, { transform: 'translate(-50%, -50%) scale(1)' }],
+    { duration: REVEAL_MS, easing: REVEAL_EASE, fill: 'forwards' });
+  const fade = wave.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, delay: REVEAL_MS - 120, easing: 'ease-out', fill: 'forwards' });
+  core.animate(
+    [{ transform: 'translate(-50%, -50%) scale(.2)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.25 }, { transform: 'translate(-50%, -50%) scale(2.6)', opacity: 0 }],
+    { duration: 700, easing: 'cubic-bezier(.2, .7, .3, 1)', fill: 'forwards' });
+  Promise.all([grow.finished, fade.finished]).catch(() => undefined).finally(() => { wave.remove(); core.remove(); });
+}
+
+/**
+ * Switches the page between light and dark. The new theme spreads out in a circle from the switch that was pressed, with a ring of
+ * light on its edge (view transitions); browsers without those get a colour cross-fade and the same ring. Nothing animates for
+ * people who have asked for reduced motion.
+ */
+function applyTheme(theme: Theme, origin?: ThemeOrigin) {
   const root = document.documentElement;
   if (root.getAttribute('data-theme') === theme) return;
   const apply = () => {
@@ -30,17 +61,32 @@ function applyTheme(theme: Theme) {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
   };
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(); return; }
-  const doc = document as unknown as { startViewTransition?: (update: () => void) => unknown };
-  if (typeof doc.startViewTransition === 'function') { doc.startViewTransition(apply); return; }
+  const x = origin?.x ?? window.innerWidth - 120, y = origin?.y ?? 28;
+  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+  const doc = document as unknown as { startViewTransition?: (update: () => void) => { ready: Promise<void>; finished: Promise<void> } };
+  if (typeof doc.startViewTransition === 'function') {
+    root.classList.add('theme-vt');
+    const vt = doc.startViewTransition(apply);
+    vt.ready.then(() => {
+      // Both start in the same frame with the same timing: the ring stays on the edge of the circle.
+      root.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        { duration: REVEAL_MS, easing: REVEAL_EASE, pseudoElement: '::view-transition-new(root)' });
+      wavefront(theme, x, y, radius);
+    }).catch(() => undefined);
+    vt.finished.catch(() => undefined).finally(() => root.classList.remove('theme-vt'));
+    return;
+  }
   root.classList.add('theme-fade');
   apply();
-  window.setTimeout(() => root.classList.remove('theme-fade'), 400);
+  wavefront(theme, x, y, radius);
+  window.setTimeout(() => root.classList.remove('theme-fade'), 500);
 }
 
 interface UiState {
   theme: Theme;
-  setTheme: (t: Theme) => void;
-  toggleTheme: () => void;
+  setTheme: (t: Theme, origin?: ThemeOrigin) => void;
+  /** `origin`: where on screen the switch is, so the new theme can spread out from it. */
+  toggleTheme: (origin?: ThemeOrigin) => void;
   sidebarCollapsed: boolean;
   sidebarOpen: boolean;
   toggleSidebar: () => void;
@@ -56,12 +102,12 @@ let toastId = 0;
 
 export const useUi = create<UiState>((set, get) => ({
   theme: savedTheme(),
-  setTheme: (theme) => {
-    applyTheme(theme);
+  setTheme: (theme, origin) => {
+    applyTheme(theme, origin);
     try { localStorage.setItem('pm_theme', theme); } catch { /* ignore */ }
     set({ theme });
   },
-  toggleTheme: () => get().setTheme(get().theme === 'dark' ? 'light' : 'dark'),
+  toggleTheme: (origin) => get().setTheme(get().theme === 'dark' ? 'light' : 'dark', origin),
   sidebarCollapsed: false,
   sidebarOpen: false,
   toggleSidebar: () => {

@@ -186,3 +186,10 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
   .method-option span { font-size: 9.2px; }
   .label-row { padding: 8px 0; }
 }
+
+/* Calendar: an event never spills into the next day. Older Chrome sizes the contents of a <button> day by their text, so the
+   widths are pinned here instead of left to stretching: equal columns, a full-width event list, and clipped titles with "…". */
+.cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-day { overflow: hidden; align-items: stretch; }
+.cal-day > .cal-events { width: 100%; min-width: 0; }
+.cal-ev { display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }

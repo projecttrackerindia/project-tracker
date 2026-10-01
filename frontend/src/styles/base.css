@@ -252,7 +252,7 @@ svg { display: block; flex-shrink: 0; }
   .workspace-switch .ws-name { display: none; }
   .topbar { gap: 6px; padding: 0 10px; }
   .topbar-actions { gap: 2px; }
-  .topbar .theme-toggle { display: none; } /* still available in the sidebar and Settings */
+  .topbar .theme-toggle { display: none; } /* still available in My account → Profile */
   .icon-btn { width: 34px; }
   .workspace-switch { padding: 0 8px 0 6px; gap: 6px; }
   .workspace-switch > svg { display: none; }

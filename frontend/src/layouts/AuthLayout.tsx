@@ -1,13 +1,11 @@
 import type { ReactNode } from 'react';
-import { Icon } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { AuthVisual } from '../components/AuthVisual';
 import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
-import { useUi } from '../stores/ui';
+import { ThemeSwitch } from '../components/ThemeSwitch';
 
 export function AuthLayout({ title, sub, children, footer, shake }: { title: string; sub?: string; children: ReactNode; footer?: ReactNode; shake?: boolean }) {
-  const { theme, toggleTheme } = useUi();
   return (
     <div className="auth-shell auth-split">
       <div className="auth-bg" aria-hidden="true">
@@ -19,9 +17,7 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
         <span className="auth-grain" />
       </div>
       <PlatformBanner />
-      <button className="icon-btn auth-theme-btn" onClick={toggleTheme} aria-label="Toggle dark mode">
-        <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-      </button>
+      <ThemeSwitch className="auth-theme-btn" />
       <AuthVisual />
       <div className="auth-wrap">
         <span className="auth-glow" aria-hidden="true" />

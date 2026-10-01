@@ -8,7 +8,8 @@ import { Badge, Field, Modal, PageHead, PageLoader, SectionLayout, SubmitButton,
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
-import { confirmDialog, toast, useUi } from '../../stores/ui';
+import { confirmDialog, toast } from '../../stores/ui';
+import { ThemeSwitch } from '../../components/ThemeSwitch';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
 import { AuditPage } from '../activity/ActivityPages';
 import { BillingPage } from '../billing/BillingPage';
@@ -60,7 +61,6 @@ export function AccountPage({ section }: { section: AccountSection }) {
 function ProfileSection() {
   const ctx = useAuth((s) => s.ctx)!;
   const reload = useAuth((s) => s.reloadContext);
-  const { theme, toggleTheme } = useUi();
   const [name, setName] = useState(ctx.user.displayName);
   const [tz, setTz] = useState(ctx.user.timeZone);
   const profile = useMutation({
@@ -86,7 +86,7 @@ function ProfileSection() {
         <div className="card-head"><h3>Appearance</h3></div>
         <div className="card-body"><div className="setting-row">
           <div className="setting-info"><h4>Dark mode</h4><p>Switch between light and dark themes. Your preference is remembered on this device.</p></div>
-          <button className={`switch ${theme === 'dark' ? 'on' : ''}`} onClick={toggleTheme} role="switch" aria-checked={theme === 'dark'} aria-label="Toggle dark mode" />
+          <ThemeSwitch />
         </div></div>
       </div>
     </>

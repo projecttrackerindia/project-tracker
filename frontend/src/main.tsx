@@ -10,6 +10,7 @@ import './styles/chat.css';
 import './styles/auth.css';
 import './styles/celebrate.css';
 import './styles/dark.css';
+import './styles/theme.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
