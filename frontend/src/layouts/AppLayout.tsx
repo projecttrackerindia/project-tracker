@@ -5,7 +5,7 @@ import { chatApi, insightApi, notificationApi, workspaceApi } from '../api/endpo
 import { ApiError } from '../api/client';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
-import { Field, Modal, RoleBadge, SubmitButton, ToastRoot, ConfirmRoot, Avatar } from '../components/ui';
+import { Field, Modal, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
 import { queryClient, useAuth, useCan, useIsPersonal } from '../stores/auth';
 import { toast, useUi } from '../stores/ui';
@@ -16,9 +16,9 @@ import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { chatKeys } from '../features/chat/chatStore';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { ThemeSwitch } from '../components/ThemeSwitch';
+import { AccountDock, TopbarMe } from './AccountDock';
 import { useVisibleKinds } from '../features/workitems/workItems';
 import { usePeopleSections } from '../features/people/PeoplePage';
-import { useWorkspaceSections } from '../features/settings/SettingsPage';
 
 // ------------------------------------------------------------------ helpers
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -71,7 +71,7 @@ function Sidebar() {
   ];
 
   // Home: my own day. Delivery: the work itself. Insights: how it is going. Organization: the people.
-  // Workspace settings is the gear in the top bar (and in the avatar menu), not a sidebar item as well.
+  // The signed-in person, their plan and Workspace settings are in the account card at the foot of the sidebar.
   const workspaceGroups: { title: string; items: NavDef[] }[] = [
     { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
@@ -123,6 +123,7 @@ function Sidebar() {
             );
           })}
         </nav>
+        {ctx && <AccountDock />}
       </aside>
       <div className={`sidebar-overlay ${sidebarOpen ? 'show' : ''}`} onClick={closeSidebar} />
     </>
@@ -349,46 +350,9 @@ function NotificationsMenu() {
   );
 }
 
-function UserMenu() {
-  const ctx = useAuth((s) => s.ctx)!;
-  const logout = useAuth((s) => s.logout);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const nav = useNavigate();
-  useClickOutside(ref, () => setOpen(false));
-  const { user, current } = ctx;
-  const settings = useWorkspaceSections();
-
-  return (
-    <div className="dropdown" ref={ref}>
-      <button className="user-chip" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        <span className="user-avatar">{user.displayName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>
-        <span>{user.displayName}</span>
-      </button>
-      {open && (
-        <div className="dropdown-panel" style={{ width: 260 }} role="menu">
-          <div style={{ padding: '8px 10px 10px', display: 'flex', gap: 10, alignItems: 'center' }}>
-            <Avatar name={user.displayName} size="lg" />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{user.displayName}</div>
-              <div className="muted" style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
-              <div style={{ marginTop: 4 }}>{user.isPlatformAdmin ? <span className="badge badge-purple">Platform administrator</span> : current && <RoleBadge role={current.role} />}</div>
-            </div>
-          </div>
-          <div className="dp-sep" />
-          <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/account'); }}><Icon name="user" /> My account</button>
-          {settings.length > 0 && <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/settings'); }}><Icon name="settings" /> Workspace settings</button>}
-          <button className="dp-menu-item" onClick={() => { setOpen(false); logout(); }}><Icon name="logout" /> Sign out</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Topbar() {
   const { toggleSidebar } = useUi();
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  const settings = useWorkspaceSections();
   return (
     <header className="topbar">
       <button className="icon-btn" onClick={toggleSidebar} title="Toggle sidebar" aria-label="Toggle sidebar"><Icon name="menu" /></button>
@@ -398,8 +362,7 @@ function Topbar() {
         {!isPlatformAdmin && <WorkspaceSwitcher />}
         <ThemeSwitch className="theme-toggle" />
         {!isPlatformAdmin && <NotificationsMenu />}
-        {settings.length > 0 && <NavLink to="/settings" end={false} className={({ isActive }) => `icon-btn settings-link ${isActive ? 'active' : ''}`} title="Workspace settings" aria-label="Workspace settings"><Icon name="settings" /></NavLink>}
-        <UserMenu />
+        <TopbarMe />
       </div>
     </header>
   );

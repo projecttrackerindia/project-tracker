@@ -1,0 +1,152 @@
+/* ============================================================
+   ACCOUNT CARD — the signed-in person and their plan, at the foot of the sidebar, with the account menu above it
+   ============================================================ */
+.sidebar-foot { position: relative; flex-shrink: 0; padding: 10px; border-top: 1px solid var(--border); }
+.account-dock {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px 8px 8px; border-radius: 14px; text-align: left;
+  border: 1px solid var(--border); background: var(--surface-2); box-shadow: var(--hl-2);
+  transition: border-color .18s, background .18s, box-shadow .18s, transform .12s;
+}
+.account-dock:hover, .account-dock[aria-expanded="true"] { border-color: rgba(139, 92, 246, .42); background: var(--hover-bg); box-shadow: var(--hl-2), 0 8px 22px rgba(139, 92, 246, .16); }
+.account-dock:active { transform: translateY(1px); }
+.account-dock:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* the avatar, with a slowly turning ring of colour and a presence dot */
+.ad-avatar {
+  position: relative; isolation: isolate; flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; font-size: 12px; font-weight: 750; letter-spacing: .02em;
+  background: linear-gradient(135deg, #8b5cf6, #c084fc 60%, #f0abfc); box-shadow: 0 0 0 2px var(--panel-solid), 0 4px 12px rgba(139, 92, 246, .4);
+}
+/* only a thin band outside the avatar (the gap between is the avatar's own 2px shadow), so the initials keep their plain fill */
+.ad-avatar::before {
+  content: ""; position: absolute; inset: -5px; z-index: -1; border-radius: 50%; opacity: .9;
+  background: conic-gradient(from 0deg, #8b5cf6, #38bdf8, #f472b6, #fbbf24, #8b5cf6);
+  -webkit-mask: radial-gradient(closest-side, transparent 86%, #000 88%); mask: radial-gradient(closest-side, transparent 86%, #000 88%);
+  animation: ad-spin 7s linear infinite; animation-play-state: paused;
+}
+.account-dock:hover .ad-avatar::before, .account-dock[aria-expanded="true"] .ad-avatar::before, .ad-menu .ad-avatar::before { animation-play-state: running; }
+@keyframes ad-spin { to { rotate: 360deg; } }
+.ad-avatar.lg { width: 44px; height: 44px; font-size: 15px; }
+.ad-avatar.sm { width: 30px; height: 30px; font-size: 11px; }
+.ad-presence { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 50%; background: #22c55e; border: 2px solid var(--panel-solid); box-shadow: 0 0 8px rgba(34, 197, 94, .7); }
+.ad-avatar.lg .ad-presence { width: 13px; height: 13px; }
+
+.ad-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.ad-name { font-size: 13px; font-weight: 680; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-sub { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.ad-status { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.ad-status.info { color: var(--primary); }
+.ad-status.warn { color: var(--warning); }
+.ad-status.bad { color: var(--danger); }
+.ad-caret { flex-shrink: 0; color: var(--text-3); transform: rotate(180deg); transition: transform .22s ease; }
+.account-dock[aria-expanded="true"] .ad-caret { transform: none; }
+
+/* plan tiers */
+.plan-pill { display: inline-flex; align-items: center; flex-shrink: 0; height: 17px; padding: 0 7px; border-radius: 99px; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.plan-pill.tier-free { background: rgba(100, 116, 139, .16); color: #475569; }
+.plan-pill.tier-pro { background: linear-gradient(135deg, #8b5cf6, #c084fc); color: #fff; box-shadow: 0 2px 8px rgba(139, 92, 246, .35); }
+.plan-pill.tier-business { background: linear-gradient(135deg, #f59e0b, #f97316); color: #fff; box-shadow: 0 2px 8px rgba(249, 115, 22, .35); }
+.plan-pill.tier-enterprise { background: linear-gradient(135deg, #0f172a, #334155); color: #fde68a; box-shadow: 0 2px 8px rgba(15, 23, 42, .35); }
+.plan-pill.tier-admin { background: linear-gradient(135deg, #0ea5e9, #6366f1); color: #fff; }
+[data-theme="dark"] .plan-pill.tier-free { background: rgba(148, 163, 184, .18); color: #cbd5e1; }
+[data-theme="dark"] .plan-pill.tier-enterprise { background: linear-gradient(135deg, #fde68a, #f59e0b); color: #1c1917; }
+
+/* the menu, opening upwards from the card */
+.ad-menu {
+  position: absolute; left: 10px; bottom: calc(100% + 6px); z-index: 70; width: 288px; padding: 8px; border-radius: 16px;
+  background: var(--panel-solid); border: 1px solid var(--border); box-shadow: var(--hl), var(--shadow-lg);
+  transform-origin: bottom left; animation: ad-pop .2s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes ad-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+.ad-head { display: flex; align-items: center; gap: 12px; padding: 8px 8px 12px; }
+.ad-who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ad-who b { font-size: 14px; font-weight: 720; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-who > span { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-badges { display: flex; align-items: center; gap: 6px; margin-top: 4px; min-width: 0; }
+.ad-badges em { font-style: normal; font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ad-plan {
+  position: relative; overflow: hidden; margin: 0 2px 8px; padding: 12px; border-radius: 13px;
+  border: 1px solid rgba(139, 92, 246, .28); background: linear-gradient(135deg, rgba(139, 92, 246, .16), rgba(56, 189, 248, .08) 70%);
+}
+.ad-plan.tier-business { border-color: rgba(249, 115, 22, .32); background: linear-gradient(135deg, rgba(245, 158, 11, .18), rgba(244, 114, 182, .08) 70%); }
+.ad-plan.tier-enterprise { border-color: rgba(251, 191, 36, .35); background: linear-gradient(135deg, rgba(15, 23, 42, .1), rgba(251, 191, 36, .12) 70%); }
+.ad-plan.tier-free { border-color: var(--border-strong); background: var(--surface-2); }
+/* a sweep of light across the plan card as the menu opens */
+.ad-plan::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-120%);
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .45) 48%, transparent 66%);
+  animation: ad-sheen 1.1s .15s ease forwards;
+}
+[data-theme="dark"] .ad-plan::after { background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .12) 48%, transparent 66%); }
+@keyframes ad-sheen { to { transform: translateX(120%); } }
+.ad-plan-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ad-plan-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 750; color: var(--text); }
+.ad-plan-name svg { color: var(--primary); }
+.ad-plan.tier-business .ad-plan-name svg { color: #f97316; }
+.ad-plan.tier-enterprise .ad-plan-name svg { color: #f59e0b; }
+.ad-plan-status { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.ad-plan-status.ok { color: #047857; background: rgba(16, 185, 129, .14); }
+.ad-plan-status.info { color: #6d28d9; background: rgba(139, 92, 246, .14); }
+.ad-plan-status.warn { color: #b45309; background: rgba(245, 158, 11, .16); }
+.ad-plan-status.bad { color: #be123c; background: rgba(225, 29, 72, .13); }
+[data-theme="dark"] .ad-plan-status.ok { color: #6ee7b7; }
+[data-theme="dark"] .ad-plan-status.info { color: #c4b5fd; }
+[data-theme="dark"] .ad-plan-status.warn { color: #fcd34d; }
+[data-theme="dark"] .ad-plan-status.bad { color: #fda4af; }
+.ad-plan-ws { margin-top: 5px; font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-plan-cta {
+  position: relative; z-index: 1; margin-top: 10px; width: 100%; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 12px; font-weight: 680; color: var(--primary); background: var(--panel-solid); border: 1px solid var(--border);
+  transition: background .16s, border-color .16s, gap .16s;
+}
+.ad-plan-cta:hover, .ad-plan-cta:focus-visible { border-color: rgba(139, 92, 246, .45); gap: 9px; outline: none; }
+.ad-items { display: flex; flex-direction: column; }
+.ad-menu .dp-menu-item:focus-visible { outline: none; background: rgba(139, 92, 246, .12); color: var(--text); }
+.dp-menu-item.danger { color: var(--danger); }
+.dp-menu-item.danger:hover, .dp-menu-item.danger:focus-visible { background: rgba(225, 29, 72, .1); color: var(--danger); }
+
+/* collapsed sidebar: just the avatar; the menu opens beside the sidebar */
+.sidebar.collapsed .sidebar-foot { padding: 10px 6px; }
+.sidebar.collapsed .account-dock { justify-content: center; padding: 6px; border-color: transparent; background: none; box-shadow: none; }
+.sidebar.collapsed .ad-main, .sidebar.collapsed .ad-caret { display: none; }
+.sidebar.collapsed .ad-menu { left: calc(100% + 10px); bottom: 8px; }
+
+/* the small avatar in the top bar: only on small screens, where the sidebar is a drawer */
+.topbar-me { display: none; padding: 2px; border-radius: 50%; flex-shrink: 0; }
+.topbar-me:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 1024px) {
+  .topbar-me { display: grid; place-items: center; }
+  .sidebar.collapsed .sidebar-foot { padding: 10px; }
+  .sidebar.collapsed .account-dock { justify-content: flex-start; padding: 8px 10px 8px 8px; border-color: var(--border); background: var(--surface-2); box-shadow: var(--hl-2); }
+  .sidebar.collapsed .ad-main { display: flex; }
+  .sidebar.collapsed .ad-caret { display: block; }
+  .sidebar.collapsed .ad-menu { left: 10px; bottom: calc(100% + 6px); }
+  .ad-menu { width: min(288px, calc(100vw - 32px)); }
+}
+
+/* laptop widths: the same ~20% step down as the rest of the app */
+@media (min-width: 769px) and (max-width: 1600px) {
+  .sidebar-foot { padding: 8px; }
+  .account-dock { gap: 8px; padding: 6.4px 8px 6.4px 6.4px; border-radius: 11.2px; }
+  .ad-avatar { width: 28px; height: 28px; font-size: 10px; }
+  .ad-avatar.lg { width: 36px; height: 36px; font-size: 12px; }
+  .ad-avatar::before { inset: -3px; }
+  .ad-presence { width: 9px; height: 9px; }
+  .ad-avatar.lg .ad-presence { width: 11px; height: 11px; }
+  .ad-name { font-size: 10.8px; }
+  .ad-sub { font-size: 9px; gap: 5px; }
+  .plan-pill { height: 14px; padding: 0 5.6px; font-size: 7.8px; }
+  .ad-menu { left: 8px; width: 240px; padding: 6.4px; border-radius: 12.8px; }
+  .ad-head { gap: 9.6px; padding: 6.4px 6.4px 9.6px; }
+  .ad-who b { font-size: 11.2px; }
+  .ad-who > span { font-size: 9.6px; }
+  .ad-badges em { font-size: 9.2px; }
+  .ad-plan { padding: 9.6px; border-radius: 10.4px; margin-bottom: 6.4px; }
+  .ad-plan-name { font-size: 10.8px; gap: 4.8px; }
+  .ad-plan-status { font-size: 8.4px; padding: 1.6px 6.4px; }
+  .ad-plan-ws { font-size: 9.2px; }
+  .ad-plan-cta { height: 24px; font-size: 9.6px; border-radius: 7.2px; margin-top: 8px; }
+  .sidebar.collapsed .sidebar-foot { padding: 8px 4.8px; }
+}
+@media (prefers-reduced-motion: reduce) { .ad-avatar::before, .ad-plan::after, .ad-menu { animation: none !important; } }
