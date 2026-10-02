@@ -93,6 +93,15 @@ public class AssistantAutomationPushTests(ApiFactory factory)
             Assert.Equal(4, failed.Count);
             Assert.Single(failed, v => v!.Contains("failed"));
 
+            // Only platform administrators, who hold the provider settings, see the provider's own words.
+            factory.Ai.Answer = (_, _) => throw new AiProviderException(503, "AI_KEY_REFUSED", "Google Gemini", "refused its key", "HTTP 400: Invalid Auth key.");
+            var plain = await o.Owner.Post("/api/v1/ai/search", new { query = "overdue work" });
+            Assert.Equal("AI_KEY_REFUSED", plain.ErrorCode);
+            Assert.DoesNotContain("Invalid Auth key", plain.ToString());
+            factory.WithDb(db => { db.Users.First(u => u.Id == o.Owner.UserId).IsPlatformAdmin = true; db.SaveChanges(); return 0; });
+            Assert.Contains("Google Gemini refused its key. An administrator needs to check the AI settings. (HTTP 400: Invalid Auth key.)", (await o.Owner.Post("/api/v1/ai/search", new { query = "overdue work" })).ToString());
+            factory.WithDb(db => { db.Users.First(u => u.Id == o.Owner.UserId).IsPlatformAdmin = false; db.SaveChanges(); return 0; });
+
             // A workspace can switch it off; members cannot.
             Assert.Equal(HttpStatusCode.Forbidden, (await o.Member.Put("/api/v1/ai/status", new { allowed = false })).Status);
             Assert.False((await o.Owner.Put("/api/v1/ai/status", new { allowed = false })).Data!["enabled"]!.GetValue<bool>());
@@ -240,6 +249,9 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         var both = await Assert.ThrowsAsync<AiProviderException>(() => router.CompleteAsync("Be brief.", "Hi", 300, default));
         Assert.Equal("AI_KEY_REFUSED", both.Code);
         Assert.Equal("Claude has run out of credit and the backup (Google Gemini) refused its key. An administrator needs to check the AI settings.", both.Message);
+        // The providers' own words, for platform administrators.
+        Assert.Equal("Claude: HTTP 400: Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.; " +
+            "Google Gemini: HTTP 400: Invalid Auth key.", both.Detail);
         // While Claude rests, the next failure still says why Claude was skipped.
         Assert.Equal(both.Message, (await Assert.ThrowsAsync<AiProviderException>(() => router.CompleteAsync("Be brief.", "Again", 300, default))).Message);
 

@@ -59,6 +59,27 @@ public interface IAiClient
 
 public record AiAnswer(string Text, string Model);
 
+/// <summary>
+/// A model provider's failure in words people can act on: who failed ("Claude", "Google Gemini"), why, and what to do about it. When the
+/// backup fails after Claude, one message carries both reasons. <see cref="Detail"/> keeps the provider's own words for the people who
+/// hold the provider settings.
+/// </summary>
+public sealed class AiProviderException(int statusCode, string code, string who, string reason, string? detail = null, string? message = null)
+    : AppException(statusCode, code, message ?? $"{who} {reason}. {AdviceFor(code)}")
+{
+    public string Who { get; } = who;
+    public string Reason { get; } = reason;
+    /// <summary>The provider's status and message, e.g. "HTTP 400: Invalid Auth key." Shown to platform administrators only.</summary>
+    public string? Detail { get; } = detail;
+
+    /// <summary>Settings an administrator has to fix; the rest may pass by themselves.</summary>
+    public static bool NeedsAdmin(string code) => code is "AI_NO_CREDIT" or "AI_KEY_REFUSED" or "AI_MODEL_UNKNOWN" or "AI_REGION";
+
+    public static string AdviceFor(string code) => NeedsAdmin(code) ? "An administrator needs to check the AI settings."
+        : code == "AI_FAILED" ? "Try again; if it keeps happening, an administrator can find the reason in the server log."
+        : "Try again in a moment.";
+}
+
 public record AiStatusDto(bool Enabled, bool Configured, bool Entitled, bool AllowedHere, string? Model, string? Provider, string? Backup);
 public record AiSummaryDto(string Summary, DateTime GeneratedAt);
 public record AiRiskDto(string Risk, int Score, string Headline, IReadOnlyList<string> Reasons, IReadOnlyList<string> Actions, DateTime GeneratedAt);
@@ -112,10 +133,13 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         AiAnswer answer;
         try { answer = await ai.CompleteAsync(Voice, prompt, maxTokens, ct); }
-        catch (AppException)
+        catch (AppException ex)
         {
-            recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, failed = true });
+            recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, failed = true, code = ex.Code });
             await db.SaveChangesAsync(CancellationToken.None);
+            // Platform administrators hold the provider settings, so they also see the provider's own words.
+            if (ex is AiProviderException { Detail: { } detail } p && ctx.IsPlatformAdmin)
+                throw new AiProviderException(p.StatusCode, p.Code, p.Who, p.Reason, detail, $"{p.Message} ({detail})");
             throw;
         }
         recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, model = answer.Model });

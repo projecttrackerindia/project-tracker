@@ -58,7 +58,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "The backup model ({Name}) could not be reached", Name);
-            throw AiFailure.Unreachable(Name);
+            throw AiFailure.Unreachable(Name, ex);
         }
         using (res)
         {
@@ -80,7 +80,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
             if (string.IsNullOrWhiteSpace(content))
             {
                 log.LogWarning("The backup model ({Name}) gave no answer (finish reason {Reason})", Name, choice?["finish_reason"]?.ToString());
-                throw AiFailure.NoAnswer(Name);
+                throw AiFailure.NoAnswer(Name, choice?["finish_reason"]?.ToString());
             }
             return content.Trim();
         }
@@ -115,7 +115,7 @@ public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient back
                 catch (AiProviderException ex) when (backup.Configured)
                 {
                     claudeFailed = _claudeFailure = ex;
-                    if (AiFailure.NeedsAdmin(ex.Code)) Interlocked.Exchange(ref _claudeRestsUntil, (DateTime.UtcNow + Rest).Ticks);
+                    if (AiProviderException.NeedsAdmin(ex.Code)) Interlocked.Exchange(ref _claudeRestsUntil, (DateTime.UtcNow + Rest).Ticks);
                     log.LogWarning("Claude could not answer ({Code}); asking the backup model ({Backup})", ex.Code, backup.Name);
                 }
             }
@@ -124,8 +124,9 @@ public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient back
         try { return new AiAnswer(await backup.CompleteAsync(system, user, maxTokens, ct), backup.Model); }
         catch (AiProviderException b) when (claudeFailed is not null)
         {
-            var advice = AiFailure.AdviceFor(AiFailure.NeedsAdmin(claudeFailed.Code) && !AiFailure.NeedsAdmin(b.Code) ? claudeFailed.Code : b.Code);
-            throw new AiProviderException(b.StatusCode, b.Code, b.Who, b.Reason,
+            var advice = AiProviderException.AdviceFor(AiProviderException.NeedsAdmin(claudeFailed.Code) && !AiProviderException.NeedsAdmin(b.Code) ? claudeFailed.Code : b.Code);
+            var detail = string.Join("; ", new[] { claudeFailed.Detail is { } c ? $"{claudeFailed.Who}: {c}" : null, b.Detail is { } d ? $"{b.Who}: {d}" : null }.Where(x => x is not null));
+            throw new AiProviderException(b.StatusCode, b.Code, b.Who, b.Reason, detail.Length > 0 ? detail : null,
                 $"{claudeFailed.Who} {claudeFailed.Reason} and the backup ({b.Who}) {b.Reason}. {advice}");
         }
     }
