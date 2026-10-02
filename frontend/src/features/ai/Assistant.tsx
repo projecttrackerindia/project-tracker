@@ -11,6 +11,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { WorkItemRow, fromWorkItem, workItemLink } from '../workitems/workItems';
+import { openReminderComposer } from '../reminders/store';
 
 // ------------------------------------------------------------------ API
 export interface AiStatus { enabled: boolean; configured: boolean; entitled: boolean; allowedHere: boolean; model: string | null; provider: string | null; backup: string | null }
@@ -117,6 +118,7 @@ export function AssistantPanel() {
 
   const search = async (text: string) => {
     if (text.trim().length < 3) return;
+    if (/^(remind|reminder|remember|don'?t forget)\b/i.test(text.trim())) { close(); openReminderComposer({ text: text.trim() }); return; }
     setBusy('search'); setError(null); setSummary(null);
     try { setResult(await aiApi.search(text.trim())); } catch (e) { setError(errText(e, 'The assistant could not answer.')); } finally { setBusy(null); }
   };

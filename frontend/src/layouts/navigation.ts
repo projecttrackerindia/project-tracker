@@ -42,6 +42,7 @@ export function useMainNav(): NavGroup[] {
     { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
       { to: '/my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0 },
+      { to: '/reminders', label: 'Reminders', icon: 'alarm' },
       { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat },

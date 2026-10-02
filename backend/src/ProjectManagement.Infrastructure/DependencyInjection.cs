@@ -98,6 +98,8 @@ public static class DependencyInjection
         services.AddHostedService<SlaWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
+        services.Configure<ReminderOptions>(config.GetSection(ReminderOptions.Section));
+        services.AddHostedService<ReminderWorker>();
         // Push notifications to devices (Web Push with VAPID; keys are made on first use).
         services.Configure<ProjectManagement.Application.Features.Notifications.PushOptions>(config.GetSection(ProjectManagement.Application.Features.Notifications.PushOptions.Section));
         services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15));

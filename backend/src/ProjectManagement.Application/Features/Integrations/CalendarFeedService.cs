@@ -135,6 +135,32 @@ public class CalendarFeedService(IAppDbContext db, ICurrentContext ctx, AppClock
             if (i.Category == StatusCategory.Cancelled) Line("STATUS:CANCELLED");
             Line("END:VEVENT");
         }
+        var reminders = await db.Reminders.AsNoTracking().Where(r => r.UserId == feed.UserId && (r.State == ReminderState.Scheduled || r.State == ReminderState.Fired)
+            && r.NextFireAt != null && r.NextFireAt <= now.AddDays(FutureDays)).OrderBy(r => r.NextFireAt).Take(300).ToListAsync(ct);
+        foreach (var r in reminders)
+        {
+            Line("BEGIN:VEVENT");
+            Line($"UID:reminder-{r.Id:N}@projecttracker");
+            Line($"DTSTAMP:{now:yyyyMMdd'T'HHmmss'Z'}");
+            if (r.Recurrence is not null && ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(r.TimeZone)
+                && ProjectManagement.Application.Features.Reminders.ZoneTime.TryParseLocal(r.LocalAt, out var first))
+            {
+                Line($"DTSTART;TZID={r.TimeZone}:{first:yyyyMMdd'T'HHmmss}");
+                Line($"RRULE:{r.Recurrence}");
+            }
+            else Line($"DTSTART:{r.NextFireAt!.Value:yyyyMMdd'T'HHmmss'Z'}");
+            Line("DURATION:PT15M");
+            Line($"SUMMARY:{Esc("⏰ " + r.Title)}");
+            Line($"DESCRIPTION:{Esc($"{(r.Note is null ? "" : r.Note + "\n")}{(r.TargetKey is null ? "" : $"{r.TargetKey} · {r.TargetTitle}\n")}{web}/reminders")}");
+            Line($"URL:{web}/reminders");
+            Line("CATEGORIES:Reminder");
+            Line("BEGIN:VALARM");
+            Line("ACTION:DISPLAY");
+            Line($"DESCRIPTION:{Esc(r.Title)}");
+            Line("TRIGGER:PT0M");
+            Line("END:VALARM");
+            Line("END:VEVENT");
+        }
         Line("END:VCALENDAR");
 
         // Remember when the calendar app last fetched it (at most once an hour, to keep it cheap).

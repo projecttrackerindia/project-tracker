@@ -146,7 +146,8 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
             var now = DateTime.UtcNow;
             foreach (var n in pending)
             {
-                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = n.Link, tag = n.Id, type = n.Type.ToString() }, Json);
+                var token = n.Link is { } l && l.StartsWith("/r/", StringComparison.Ordinal) ? l[3..] : null;
+                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = n.Link, tag = n.Id, type = n.Type.ToString(), token }, Json);
                 foreach (var s in subs.Where(s => s.UserId == n.UserId && s.Failures < 20))
                 {
                     int? status;

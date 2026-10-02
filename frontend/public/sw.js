@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v1';
+const SHELL = 'pm-shell-v2';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
@@ -45,13 +45,27 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { title: event.data ? event.data.text() : 'Project Tracker' }; }
+  // A reminder carries its one-time key: Done and Snooze work right from the notification, even with the app closed
+  // (where the browser shows buttons - Chrome, Edge, Android; elsewhere a tap opens it).
+  const reminder = !!data.token;
   event.waitUntil(self.registration.showNotification(data.title || 'Project Tracker', {
-    body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { link: data.link || '/' },
+    body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
+    data: { link: data.link || '/', token: data.token || null },
+    requireInteraction: reminder,
+    actions: reminder ? [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: 'Snooze 1 hour' }] : [],
   }));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const token = event.notification.data && event.notification.data.token;
+  if (token && (event.action === 'done' || event.action === 'snooze')) {
+    event.waitUntil(fetch(`/api/v1/reminder-actions/${encodeURIComponent(token)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+      body: JSON.stringify(event.action === 'done' ? { action: 'done' } : { action: 'snooze', preset: '1h' }),
+    }).catch(() => undefined));
+    return;
+  }
   const link = new URL((event.notification.data && event.notification.data.link) || '/', self.location.origin).href;
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
     const open = wins.find((w) => new URL(w.url).origin === self.location.origin);

@@ -20,6 +20,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { reportTaskError } from './actions';
 import { Select } from '../../components/Select';
 import { DueChangeFields, dueChange } from '../projects/DueChangeFields';
+import { RemindMeButton } from '../reminders/RemindMe';
 
 interface Form {
   title: string; description: string; statusId: string; priority: Priority; assigneeId: string;
@@ -147,7 +148,10 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
         {!readOnly && <SubmitButton busy={save.isPending}>{isEdit ? 'Save changes' : 'Save task'}</SubmitButton>}
       </>}>
       {task?.parentTaskId && <button type="button" className="link" style={{ marginBottom: 12, fontSize: 12.5 }} onClick={() => setCurrentId(task.parentTaskId!)}>← Back to parent task</button>}
-      {isEdit && <Viewers kind="task" id={task?.id} />}
+      {isEdit && task && (
+        <div className="rm-bar"><Viewers kind="task" id={task.id} />
+          <RemindMeButton subject={{ type: 'Task', id: task.id, title: task.title, key: task.key, due: task.dueDate, assigneeId: task.assignee?.id, assigneeName: task.assignee?.name }} /></div>
+      )}
       {formError && <div className="form-error" role="alert">{formError}</div>}
 
       <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

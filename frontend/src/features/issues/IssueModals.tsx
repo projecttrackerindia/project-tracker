@@ -11,6 +11,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { Attachments } from '../files/Attachments';
 import { ISSUE_STATUS_LABEL, IssueStatusBadge, SEVERITIES, moveLabel, needsNote } from './issueMeta';
 import { Select } from '../../components/Select';
+import { RemindMeButton } from '../reminders/RemindMe';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 
@@ -175,6 +176,7 @@ export function IssueDetailModal({ projectId, issueId, stages, members, onClose 
         {i.can.delete && <button type="button" className="btn btn-danger" style={{ marginRight: 'auto' }} disabled={busy} onClick={() => void remove()}><Icon name="trash" /> Delete</button>}
         <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
       </>}>
+      <div className="rm-bar"><RemindMeButton subject={{ type: 'Issue', id: i.id, title: i.title, key: i.key, assigneeId: i.assignee?.id, assigneeName: i.assignee?.name }} /></div>
       <div className="issue-layout">
         <div className="issue-main">
           <section className="form-section">

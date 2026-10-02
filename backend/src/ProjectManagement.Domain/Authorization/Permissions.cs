@@ -97,10 +97,16 @@ public static class FeatureKeys
     public const string ServiceLevels = "SERVICE_LEVELS";
     /// <summary>The AI assistant (Claude): plain-language search, summaries, delay risk, triage and action items from notes.</summary>
     public const string AiAssistant = "AI_ASSISTANT";
+    /// <summary>Open reminders a person may have set (their own and from others) per workspace.</summary>
+    public const string ReminderLimit = "REMINDER_LIMIT";
+    /// <summary>Repeating reminders a person may have per workspace.</summary>
+    public const string RecurringReminderLimit = "RECURRING_REMINDER_LIMIT";
+    /// <summary>An escalation ladder for overdue work: the manager, then the project owner, hear about it.</summary>
+    public const string ReminderEscalation = "REMINDER_ESCALATION";
 
     public const long Unlimited = -1;
 
-    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb];
-    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant];
+    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit];
+    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, ReminderEscalation];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

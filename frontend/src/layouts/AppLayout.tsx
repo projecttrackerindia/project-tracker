@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, notificationApi, workspaceApi } from '../api/endpoints';
@@ -20,6 +20,10 @@ import { AccountDock, TopbarMe } from './AccountDock';
 import { useMainNav } from './navigation';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
 import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
+import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
+import { useReminderComposer, useReminderCounts } from '../features/reminders/store';
+
+const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
 // ------------------------------------------------------------------ helpers
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -32,6 +36,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: ()
 
 const NOTIF_ICON: Record<string, string> = {
   TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞', Approval: '✅', ServiceLevel: '⏱️',
+  Reminder: '⏰', Nudge: '👋', Briefing: '☀️',
 };
 
 // ------------------------------------------------------------------ sidebar
@@ -45,8 +50,10 @@ function Sidebar() {
   // Unread messages: kept current by live events; the slow refresh is only a safety net.
   const unread = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
   const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
-  // The same menu as the command palette; the sidebar adds the unread count to Chat.
-  const groups = useMainNav().map((g) => ({ ...g, items: g.items.map((i) => (i.to === '/chat' ? { ...i, badge: unread.data?.count } : i)) }));
+  const reminders = useReminderCounts(!!wid && !isPlatformAdmin);
+  // The same menu as the command palette; the sidebar adds the unread count to Chat and what needs attention to Reminders.
+  const groups = useMainNav().map((g) => ({ ...g, items: g.items.map((i) => (i.to === '/chat' ? { ...i, badge: unread.data?.count }
+    : i.to === '/reminders' ? { ...i, badge: reminders.data?.now } : i)) }));
 
   return (
     <>
@@ -66,7 +73,7 @@ function Sidebar() {
                   <NavLink key={i.to} to={i.to} end={i.end} title={i.label} onClick={closeSidebar}
                     className={({ isActive }) => `nav-item ${(i.match ? i.match(pathname) : isActive) ? 'active' : ''}`}>
                     <Icon name={i.icon} /><span>{i.label}</span>
-                    {!!i.badge && <em className="nav-count" aria-label={`${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                    {!!i.badge && <em className={`nav-count ${i.to === '/reminders' ? 'nav-count-alarm' : ''}`} aria-label={i.to === '/reminders' ? `${i.badge} need attention` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
                   </NavLink>
                 ))}
               </div>
@@ -310,6 +317,12 @@ function Topbar() {
   );
 }
 
+/** The reminder form, loaded the first time someone opens it. */
+function ComposerSlot() {
+  const open = useReminderComposer((s) => !!s.draft);
+  return open ? <Suspense fallback={null}><ReminderComposerHost /></Suspense> : null;
+}
+
 export function AppLayout({ children }: { children?: ReactNode }) {
   const collapsed = useUi((s) => s.sidebarCollapsed);
   const loc = useLocation();
@@ -331,6 +344,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <AccessWatcher />
       <CommandPalette />
       <AssistantPanel />
+      <ReminderAlerts />
+      <ComposerSlot />
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
     </div>

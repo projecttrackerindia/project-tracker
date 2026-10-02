@@ -10,6 +10,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useCan, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { NotesToActionsButton } from '../ai/Assistant';
+import { RemindMeButton } from '../reminders/RemindMe';
 
 const SLIDE_MS = 260;
 const STATUS_LABEL: Record<ActionItemStatus, string> = { Open: 'Open', InProgress: 'In progress', Completed: 'Completed' };
@@ -195,6 +196,7 @@ function ItemRow({ item, people, projectId, highlight, onChanged }: { item: Acti
         )}
       </div>
       <div className="ai-actions">
+        {!done && <RemindMeButton compact subject={{ type: 'ActionItem', id: item.id, title: item.title, key: item.key, due: item.dueDate, assigneeId: item.assignee?.id, assigneeName: item.assignee?.name }} />}
         {item.can.edit && <button type="button" className="btn-icon" title="Edit" aria-label={`Edit “${item.title}”`} onClick={() => setEditing(true)}><Icon name="edit" size={15} /></button>}
         {item.can.delete && <button type="button" className="btn-icon danger" title="Delete" aria-label={`Delete “${item.title}”`} onClick={() => void remove()}><Icon name="trash" size={15} /></button>}
       </div>

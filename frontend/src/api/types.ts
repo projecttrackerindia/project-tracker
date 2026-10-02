@@ -441,6 +441,7 @@ export interface SystemHealth {
   traffic: { requests: number; serverErrors: number; clientErrors: number; lastServerErrorAt: string | null };
   attachmentStorageMb: number;
   cache: { provider: string; reachable: boolean; latencyMs: number; error: string | null };
+  reminders?: { waiting: number; late: number; sentSinceStart: number; lagP95Seconds: number; lastRunAt: string | null } | null;
 }
 
 // ---- go-live checklist

@@ -11,6 +11,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
 import { sendTyping } from './ChatRealtime';
+import { openReminderComposer } from '../reminders/store';
 
 const MAX_LENGTH = 4000;
 const GROUP_WITHIN_MS = 5 * 60_000;
@@ -266,6 +267,8 @@ function MessageRow({ m, mine, grouped, showName, canModerate, ticks, aboutMe, r
         {!m.isDeleted && (
           <div className="msg-actions" role="group" aria-label="Message actions">
             <button className="btn-icon" onClick={onReply} aria-label="Reply" title="Reply"><Icon name="undo" size={14} /></button>
+            <button className="btn-icon" aria-label="Remind me about this" title="Remind me about this"
+              onClick={() => openReminderComposer({ subject: { type: 'ChatMessage', id: m.id, title: m.body.replace(/\s+/g, ' ').slice(0, 117) + (m.body.length > 117 ? '…' : ''), key: 'Message' } })}><Icon name="alarm" size={14} /></button>
             {mine && <button className="btn-icon" onClick={onEdit} aria-label="Edit" title="Edit"><Icon name="edit" size={14} /></button>}
             {(mine || canModerate) && <button className="btn-icon danger" onClick={onDelete} aria-label="Delete" title="Delete"><Icon name="trash" size={14} /></button>}
           </div>

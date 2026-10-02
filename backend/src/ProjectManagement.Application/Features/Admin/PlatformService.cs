@@ -47,7 +47,9 @@ public record QueueHealthDto(int EmailsWaiting, int EmailsStuck, int ReportsWait
 public record CacheHealthDto(string Provider, bool Reachable, long LatencyMs, string? Error);
 public record TrafficHealthDto(long Requests, long ServerErrors, long ClientErrors, DateTime? LastServerErrorAt);
 public record SystemHealthDto(string Status, string Version, string Runtime, DateTime StartedAt, long UptimeSeconds, DatabaseHealthDto Database,
-    IReadOnlyList<WorkerHealthDto> Workers, QueueHealthDto Queues, TrafficHealthDto Traffic, double AttachmentStorageMb, CacheHealthDto Cache);
+    IReadOnlyList<WorkerHealthDto> Workers, QueueHealthDto Queues, TrafficHealthDto Traffic, double AttachmentStorageMb, CacheHealthDto Cache, RemindersHealthDto? Reminders = null);
+/// <summary>Waiting: still to go off. Late: should have gone off more than two minutes ago. Sent and lag: this server since it started.</summary>
+public record RemindersHealthDto(int Waiting, int Late, long SentSinceStart, double LagP95Seconds, DateTime? LastRunAt);
 
 /// <summary>Platform-wide flags, read by the middleware and registration; cached for a few seconds so it costs nothing per request.</summary>
 public class PlatformSettingsCache(IServiceScopeFactory scopes, TimeProvider time)
@@ -100,7 +102,8 @@ public class PlatformSettingsCache(IServiceScopeFactory scopes, TimeProvider tim
 
 /// <summary>Platform administration beyond tenants and plans: money, usage, exceptions to plans, platform switches and system health.</summary>
 public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PlatformSettingsCache settingsCache, SystemMetrics metrics,
-    WorkerHeartbeats heartbeats, Microsoft.Extensions.Caching.Distributed.IDistributedCache cache, Microsoft.Extensions.Configuration.IConfiguration config)
+    WorkerHeartbeats heartbeats, Microsoft.Extensions.Caching.Distributed.IDistributedCache cache, Microsoft.Extensions.Configuration.IConfiguration config,
+    ProjectManagement.Application.Features.Reminders.ReminderMetrics? reminderMetrics = null)
 {
     public const string KeyBillingCurrency = "billing_currency";
     public const string KeySignups = "signups_enabled", KeyMaintenance = "maintenance_mode", KeyAnnouncement = "announcement", KeyAnnouncementLevel = "announcement_level";
@@ -464,8 +467,14 @@ public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
         QueueHealthDto queues;
         double storageMb = 0;
+        RemindersHealthDto? reminders = null;
         if (reachable)
         {
+            var lateBefore = now.AddMinutes(-2);
+            reminders = new RemindersHealthDto(
+                await db.Reminders.IgnoreQueryFilters().CountAsync(r => r.State == ReminderState.Scheduled && r.NextFireAt != null, ct),
+                await db.Reminders.IgnoreQueryFilters().CountAsync(r => (r.State == ReminderState.Scheduled || r.State == ReminderState.Fired) && r.NextFireAt != null && r.NextFireAt < lateBefore, ct),
+                reminderMetrics?.FiredTotal ?? 0, reminderMetrics?.LagP95 ?? 0, reminderMetrics?.LastRunAt);
             queues = new QueueHealthDto(
                 await db.Notifications.IgnoreQueryFilters().CountAsync(n => n.EmailPending && n.EmailAttempts < 5, ct),
                 await db.Notifications.IgnoreQueryFilters().CountAsync(n => n.EmailPending && n.EmailAttempts >= 5, ct),
@@ -480,6 +489,6 @@ public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var status = !reachable ? "down" : pending > 0 || workers.Any(w => w.Status != "ok") || queues.EmailsStuck > 0 || !cacheHealth.Reachable ? "degraded" : "ok";
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
         return new SystemHealthDto(status, version, RuntimeInformation.FrameworkDescription, metrics.StartedAt, (long)(now - metrics.StartedAt).TotalSeconds, database, workers, queues,
-            new TrafficHealthDto(metrics.Requests, metrics.ServerErrors, metrics.ClientErrors, metrics.LastServerErrorAt), storageMb, cacheHealth);
+            new TrafficHealthDto(metrics.Requests, metrics.ServerErrors, metrics.ClientErrors, metrics.LastServerErrorAt), storageMb, cacheHealth, reminders);
     }
 }

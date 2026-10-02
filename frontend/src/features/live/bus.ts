@@ -17,6 +17,12 @@ const viewingListeners = new Set<(e: ViewingEvent) => void>();
 const reconnectListeners = new Set<() => void>();
 export const emitViewing = (e: ViewingEvent) => viewingListeners.forEach((l) => l(e));
 export function onViewing(l: (e: ViewingEvent) => void) { viewingListeners.add(l); return () => { viewingListeners.delete(l); }; }
+/** A reminder just went off for the signed-in person (sent by the server to their open tabs). */
+export interface ReminderEvent { id: string; title: string; note: string | null; targetKey: string | null; link: string | null; source: string; from: string | null }
+const reminderListeners = new Set<(e: ReminderEvent[]) => void>();
+export const emitReminders = (e: ReminderEvent[]) => reminderListeners.forEach((l) => l(e));
+export function onReminders(l: (e: ReminderEvent[]) => void) { reminderListeners.add(l); return () => { reminderListeners.delete(l); }; }
+
 /** Called when the connection is (re)established, so screens can announce themselves again. */
 export function onLiveConnected(l: () => void) { reconnectListeners.add(l); return () => { reconnectListeners.delete(l); }; }
 export const notifyLiveConnected = () => reconnectListeners.forEach((l) => l());

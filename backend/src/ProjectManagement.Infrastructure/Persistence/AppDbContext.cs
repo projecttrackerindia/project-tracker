@@ -74,6 +74,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<Reminder> Reminders => Set<Reminder>();
+    public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
+    public DbSet<ReminderPolicy> ReminderPolicies => Set<ReminderPolicy>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();
@@ -128,6 +131,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<TimesheetStatus>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<WebhookFormat>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<GitProvider>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<ReminderSource>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<ReminderState>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<ReminderTarget>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -459,6 +465,39 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<TenantDataPolicy>(e => e.HasIndex(x => x.TenantId).IsUnique());
+        b.Entity<Reminder>(e =>
+        {
+            e.HasIndex(x => new { x.State, x.NextFireAt });                 // the scheduler's question: what is due
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.State });
+            e.HasIndex(x => new { x.TenantId, x.SystemKey }).IsUnique();    // one automatic reminder per date and step
+            e.HasIndex(x => new { x.TargetType, x.TargetId });
+            e.HasIndex(x => x.ActionTokenHash);
+            e.HasIndex(x => x.CreatedBy);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.Property(x => x.TargetKey).HasMaxLength(40);
+            e.Property(x => x.TargetTitle).HasMaxLength(200);
+            e.Property(x => x.Link).HasMaxLength(300);
+            e.Property(x => x.TimeZone).HasMaxLength(64);
+            e.Property(x => x.LocalAt).HasMaxLength(16);
+            e.Property(x => x.Recurrence).HasMaxLength(120);
+            e.Property(x => x.SystemKey).HasMaxLength(160);
+            e.Property(x => x.ActionTokenHash).HasMaxLength(64);
+        });
+        b.Entity<ReminderSettings>(e =>
+        {
+            e.HasIndex(x => x.UserId).IsUnique();
+            e.Property(x => x.WorkDays).HasMaxLength(20);
+            e.Property(x => x.DueLeads).HasMaxLength(40);
+            e.Property(x => x.OverdueSteps).HasMaxLength(40);
+            e.Property(x => x.LastBriefingDay).HasMaxLength(8);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ReminderPolicy>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.Steps).HasMaxLength(120);
+        });
         b.Entity<PushSubscription>(e =>
         {
             e.HasIndex(x => x.Endpoint).IsUnique();

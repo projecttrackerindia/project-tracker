@@ -205,7 +205,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             try
             {
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
-                    EmailTemplates.Wrap(n.Title, WebUtility.HtmlEncode($"Hi {user.DisplayName},"), body, "Open in the app", link,
+                    EmailTemplates.Wrap(n.Title, WebUtility.HtmlEncode($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
                         "You get this email because of your notification settings. Change them under Settings → Notifications."),
                     $"{n.Title}\n{body}\n{link}"), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 n.EmailPending = false;

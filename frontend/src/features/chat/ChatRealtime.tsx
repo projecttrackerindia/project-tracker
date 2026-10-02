@@ -8,7 +8,7 @@ import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
 import { chatKeys, useChat } from './chatStore';
 import { useProjectChat } from './projectChatStore';
-import { emitViewing, notifyLiveConnected, setLiveConnection, type ViewingEvent } from '../live/bus';
+import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type ViewingEvent } from '../live/bus';
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
 const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar', 'dashboard', 'dashboard-report', 'dev-links', 'issues', 'milestones', 'my-work',
@@ -84,6 +84,7 @@ export function ChatRealtime() {
       refreshWork();
     });
     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
+    connection.on('reminder', (e: ReminderEvent[]) => emitReminders(e));
 
     const refreshLists = () => {
       void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });

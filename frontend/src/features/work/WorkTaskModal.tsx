@@ -18,6 +18,7 @@ import { formatMinutes } from '../time/time';
 import type { Member } from '../../api/types';
 import { confirmDialog, toast } from '../../stores/ui';
 import { TriageButton } from '../ai/Assistant';
+import { RemindMeButton } from '../reminders/RemindMe';
 
 type Tab = 'details' | 'time' | 'comments' | 'files' | 'history';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -155,7 +156,10 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   return (
     <Modal title={task ? `${task.key} · Work task` : 'New work task'} subtitle={task ? (canEdit ? 'Update the details of this work task.' : 'You can read this work task but not change it.') : 'Operational work that is not a task on a project’s timeline.'}
       onClose={onClose} size="lg" footer={footer} onSubmit={tab === 'details' && canEdit ? submit : undefined}>
-      {task && <Viewers kind="work" id={task.id} />}
+      {task && (
+        <div className="rm-bar"><Viewers kind="work" id={task.id} />
+          <RemindMeButton subject={{ type: 'Operational', id: task.id, title: task.title, key: task.key, due: task.dueDate, assigneeId: task.assignee?.id, assigneeName: task.assignee?.name }} /></div>
+      )}
       {task && (
         <div style={{ marginBottom: 16 }}>
           <Tabs<Tab> value={tab} onChange={setTab} tabs={[

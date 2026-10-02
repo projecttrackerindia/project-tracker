@@ -33,6 +33,8 @@ const SecurityPage = page(() => import('./features/legal/SecurityPage'), 'Securi
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
+const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
+const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
 const NotificationsPage = page(() => import('./features/activity/ActivityPages'), 'NotificationsPage');
@@ -230,12 +232,15 @@ function AppRoutes() {
       <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/auth/complete" element={<AuthCompletePage />} />
       <Route path="/security" element={<SecurityPage />} />
+      {/* Done / snooze from a reminder e-mail or push notification: the link's one-time key stands in for signing in. */}
+      <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       <Route element={<RequireAuth />}>
         {/* Home */}
         <Route index element={<DashboardPage />} />
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
+        <Route path="reminders" element={<RemindersPage />} />
         <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />
         <Route path="timesheet/approvals" element={<Guard allow={mTasks || mWork}><TimesheetPage section="approvals" /></Guard>} />
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />

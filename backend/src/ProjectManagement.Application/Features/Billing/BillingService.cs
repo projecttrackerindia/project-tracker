@@ -142,7 +142,7 @@ public class BillingService(
     internal static string NewInvoiceNumber(DateTime now) => $"INV-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..5].ToUpperInvariant()}";
 }
 
-/// <summary>Background housekeeping: subscription lifecycle, due-date reminders and stale-token cleanup.</summary>
+/// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
 public class MaintenanceService(IAppDbContext db, IPaymentProvider payments, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
 {
     private const int PastDueGraceDays = 7;
@@ -150,7 +150,6 @@ public class MaintenanceService(IAppDbContext db, IPaymentProvider payments, App
     public async Task RunAllAsync(CancellationToken ct = default)
     {
         await RunSubscriptionLifecycleAsync(ct);
-        await RunDueDateRemindersAsync(ct);
         await CleanupAsync(ct);
         await exports.PurgeExpiredAsync(ct: ct);
         await webhooks.PurgeAsync(ct);
@@ -198,43 +197,6 @@ public class MaintenanceService(IAppDbContext db, IPaymentProvider payments, App
                 };
                 if (await router.ApplyAsync(note, ct)) db.Notifications.Add(note);
             }
-        }
-        await db.SaveChangesAsync(ct);
-    }
-
-    public async Task RunDueDateRemindersAsync(CancellationToken ct = default)
-    {
-        var today = clock.Today;
-        var tomorrow = today.AddDays(1);
-        var now = clock.Now;
-
-        var due = await db.Tasks.IgnoreQueryFilters().AsNoTracking()
-            .Where(t => !t.IsDeleted && t.AssigneeId != null && t.DueDate != null && t.DueDate <= tomorrow
-                        && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == t.TenantId && !x.IsDeleted)
-                        && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled)
-            .OrderBy(t => t.DueDate).Take(2000)
-            .Select(t => new { t.Id, t.TenantId, t.ProjectId, Assignee = t.AssigneeId!.Value, t.Title, Due = t.DueDate!.Value, Key = t.Project!.Key, t.Number })
-            .ToListAsync(ct);
-        if (due.Count == 0) return;
-
-        string KeyFor(Guid id, DateOnly d) => d < today ? $"overdue:{id}" : $"due:{id}:{d:yyyyMMdd}";
-        var keys = due.Select(t => KeyFor(t.Id, t.Due)).ToList();
-        var existing = (await db.Notifications.IgnoreQueryFilters().Where(n => n.DedupeKey != null && keys.Contains(n.DedupeKey))
-            .Select(n => n.DedupeKey!).ToListAsync(ct)).ToHashSet();
-
-        await router.PreloadAsync(due.Select(t => t.Assignee), ct);
-        foreach (var t in due)
-        {
-            var key = KeyFor(t.Id, t.Due);
-            if (!existing.Add(key)) continue;
-            var overdue = t.Due < today;
-            var note = new Notification
-            {
-                TenantId = t.TenantId, UserId = t.Assignee, DedupeKey = key, CreatedAt = now, Body = t.Title,
-                Type = overdue ? NotificationType.Overdue : NotificationType.DueSoon, Link = $"/projects/{t.ProjectId}?task={t.Id}",
-                Title = overdue ? $"{t.Key}-{t.Number} is overdue" : t.Due == today ? $"{t.Key}-{t.Number} is due today" : $"{t.Key}-{t.Number} is due tomorrow",
-            };
-            if (await router.ApplyAsync(note, ct)) db.Notifications.Add(note);
         }
         await db.SaveChangesAsync(ct);
     }

@@ -69,6 +69,9 @@ public interface IAppDbContext
     DbSet<TenantDataPolicy> TenantDataPolicies { get; }
     DbSet<AutomationRun> AutomationRuns { get; }
     DbSet<PushSubscription> PushSubscriptions { get; }
+    DbSet<Reminder> Reminders { get; }
+    DbSet<ReminderSettings> ReminderSettings { get; }
+    DbSet<ReminderPolicy> ReminderPolicies { get; }
     DbSet<AutomationRule> AutomationRules { get; }
     DbSet<TaskComment> TaskComments { get; }
     DbSet<Activity> Activities { get; }

@@ -29,6 +29,7 @@ import { ApiKeySettings } from './ApiKeySettings';
 import { WebhookSettings } from './WebhookSettings';
 import { DataSettings, GitSettings, InboundEmailSettings } from './IntegrationSettings';
 import { WorkspaceAutomationSettings } from '../automation/AutomationPanel';
+import { ReminderPolicySettings } from '../reminders/Policy';
 import { LabelSettings } from './LabelSettings';
 import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
@@ -261,6 +262,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
       {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
       {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}
+      {current.id === 'reminders' && <><PageHead title="Reminders" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><ReminderPolicySettings /></>}
       {current.id === 'data' && <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /></>}
     </SectionLayout>
   );

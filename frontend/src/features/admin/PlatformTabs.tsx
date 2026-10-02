@@ -122,6 +122,8 @@ const FEATURES: { key: string; label: string; flag: boolean }[] = [
   { key: 'ADVANCED_REPORTS', label: 'Advanced reports', flag: true }, { key: 'CUSTOM_WORKFLOWS', label: 'Custom workflows', flag: true }, { key: 'ADVANCED_PERMISSIONS', label: 'Advanced permissions', flag: true },
   { key: 'AUDIT_LOG', label: 'Audit log', flag: true }, { key: 'AUTOMATION', label: 'Automation', flag: true }, { key: 'CUSTOM_FIELDS', label: 'Custom fields', flag: true }, { key: 'API_ACCESS', label: 'API keys & webhooks', flag: true },
   { key: 'ADVANCED_SECURITY', label: 'SSO & security rules', flag: true }, { key: 'RESOURCE_MANAGEMENT', label: 'Approvals, capacity & budgets', flag: true }, { key: 'SERVICE_LEVELS', label: 'Service levels (SLA)', flag: true },
+  { key: 'REMINDER_LIMIT', label: 'Open reminders per person', flag: false }, { key: 'RECURRING_REMINDER_LIMIT', label: 'Repeating reminders per person', flag: false },
+  { key: 'REMINDER_ESCALATION', label: 'Reminder escalation', flag: true },
 ];
 
 function ExceptionsModal({ org, onClose }: { org: AdminUsage; onClose: () => void }) {
@@ -434,6 +436,8 @@ export function HealthTab() {
               <tr><td>Notification e-mails</td><td>{h.queues.emailsWaiting} waiting</td><td>{h.queues.emailsStuck > 0 ? <Badge tone="danger">{h.queues.emailsStuck} stuck</Badge> : <span className="muted">none stuck</span>}</td></tr>
               <tr><td>Report exports</td><td>{h.queues.reportsWaiting} waiting</td><td>{h.queues.reportsFailed > 0 ? <Badge tone="warning">{h.queues.reportsFailed} failed</Badge> : <span className="muted">none failed</span>}</td></tr>
               <tr><td>Webhook deliveries</td><td>{h.queues.webhooksWaiting} waiting</td><td>{h.queues.webhooksFailed > 0 ? <Badge tone="warning">{h.queues.webhooksFailed} failed</Badge> : <span className="muted">none failed</span>}</td></tr>
+              {h.reminders && <tr><td>Reminders</td><td>{h.reminders.waiting} waiting · {h.reminders.sentSinceStart} sent (this server)</td>
+                <td>{h.reminders.late > 0 ? <Badge tone="warning">{h.reminders.late} late</Badge> : <span className="muted">on time · p95 {h.reminders.lagP95Seconds}s</span>}</td></tr>}
             </tbody></table></div>
           </div>
         </div>

@@ -8,6 +8,7 @@ import { useMainNav } from '../layouts/navigation';
 import { useWorkspaceSections } from '../features/settings/sections';
 import { Sparkle, useAi, useAssistant } from '../features/ai/Assistant';
 import { useAuth, useCan, useModule } from '../stores/auth';
+import { openReminderComposer } from '../features/reminders/store';
 import { useUi } from '../stores/ui';
 
 /** Where a search hit opens. Shared with the search box in the top bar. */
@@ -100,6 +101,7 @@ export function CommandPalette() {
     }
     if (canProject) list.push({ id: 'new:project', group: 'Create', label: 'New project', icon: 'folder', keywords: 'create add', run: go('/projects?new=1') });
     if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New work task', icon: 'bolt', keywords: 'create add operational ticket bug', run: go('/operations?new=1') });
+    if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:reminder', group: 'Create', label: 'New reminder', icon: 'alarm', keywords: 'create add remind me alarm later', run: () => { close(); openReminderComposer(); } });
     list.push({ id: 'ui:theme', group: 'Preferences', label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode', icon: theme === 'dark' ? 'sun' : 'moon', keywords: 'theme dark light', run: () => { close(); toggleTheme(); } });
     list.push({ id: 'ui:sidebar', group: 'Preferences', label: 'Collapse or expand the sidebar', icon: 'menu', keywords: 'sidebar menu', run: () => { close(); toggleSidebar(); } });
     list.push({ id: 'help:security', group: 'Help', label: 'How we keep your data safe', icon: 'shield', keywords: 'security privacy', run: go('/security') });
@@ -120,8 +122,11 @@ export function CommandPalette() {
       id: `hit:${h.type}:${h.id}`, group: 'Search results', label: h.title, hint: h.subtitle ?? undefined, icon: HIT_ICON[h.type] ?? 'search', run: go(searchHitLink(h)),
     }));
     const askAi: Command[] = ai && query.length >= 3 ? [{ id: 'ai:ask', group: 'Assistant', label: `Ask the assistant: “${query}”`, icon: 'ai', run: () => { close(); ask(query); } }] : [];
+    // "remind me to call Priya tomorrow" is a reminder, not a search.
+    const remind: Command[] = /^(remind|reminder|remember|don'?t forget)\b/i.test(query) && ctx && !ctx.user.isPlatformAdmin
+      ? [{ id: 'new:reminder-typed', group: 'Create', label: `Set a reminder: “${query}”`, icon: 'alarm', run: () => { close(); openReminderComposer({ text: query }); } }] : [];
     // A command that matches what was typed wins; asking the assistant is the fallback at the end.
-    return [...shown, ...hits, ...askAi];
+    return [...remind, ...shown, ...hits, ...askAi];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commands, q, search.data, ai]);
 
