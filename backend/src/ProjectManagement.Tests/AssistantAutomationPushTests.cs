@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Automation;
 using ProjectManagement.Application.Features.Notifications;
@@ -48,7 +49,9 @@ public class AssistantAutomationPushTests(ApiFactory factory)
             Assert.Equal("AI_NOT_CONFIGURED", (await o.Owner.Post("/api/v1/ai/search", new { query = "overdue work" })).ErrorCode);
 
             factory.Ai.Configured = true;
-            Assert.True((await o.Owner.Get("/api/v1/ai/status")).Data!["enabled"]!.GetValue<bool>());
+            var status = (await o.Owner.Get("/api/v1/ai/status")).Data!;
+            Assert.True(status["enabled"]!.GetValue<bool>());
+            Assert.Equal("Claude (Anthropic)", S(status["provider"]));   // named in the privacy notes
 
             // Plain-language search: the model only turns words into a filter; the app runs it with the caller's access.
             await o.Owner.CreateTaskAsync(o.Project, "Renew the SSL certificate", new { title = "Renew the SSL certificate", priority = "High", assigneeId = o.Owner.UserId, dueDate = Iso(-2) });
@@ -81,6 +84,14 @@ public class AssistantAutomationPushTests(ApiFactory factory)
             var audit = factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == o.Owner.WorkspaceId && a.Action == "ai.used").Select(a => a.NewValue).ToList());
             Assert.Equal(3, audit.Count);
             Assert.DoesNotContain(audit, v => v!.Contains("contract"));
+            Assert.All(audit, v => Assert.Contains("claude-test", v));   // the model that answered
+
+            // A failed request is recorded too: what was gathered may have reached a provider.
+            factory.Ai.Answer = (_, _) => throw new AppException(503, "AI_BUSY", "The AI assistant is busy. Try again in a moment.");
+            Assert.Equal("AI_BUSY", (await o.Owner.Post("/api/v1/ai/search", new { query = "overdue work" })).ErrorCode);
+            var failed = factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == o.Owner.WorkspaceId && a.Action == "ai.used").Select(a => a.NewValue).ToList());
+            Assert.Equal(4, failed.Count);
+            Assert.Single(failed, v => v!.Contains("failed"));
 
             // A workspace can switch it off; members cannot.
             Assert.Equal(HttpStatusCode.Forbidden, (await o.Member.Put("/api/v1/ai/status", new { allowed = false })).Status);
@@ -134,6 +145,82 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         Assert.Equal(300, body["max_tokens"]!.GetValue<int>());
         Assert.Equal("Be brief.", S(body["system"]));
         Assert.Equal("user", S(body["messages"]![0]!["role"]));
+    }
+
+    /// <summary>Answers every request with one status and body, and counts them.</summary>
+    private sealed class FixedStub(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        public int Calls; public HttpRequestMessage? Request; public string? Body;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++; Request = request; Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(status) { Content = new StringContent(body) };
+        }
+    }
+
+    private const string NoCredit = """{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}""";
+    private const string BackupSays = """{"choices":[{"index":0,"message":{"role":"assistant","content":"Hello from the backup"},"finish_reason":"stop"}]}""";
+
+    private static AiOptions WithGemini(string? anthropicKey) => new()
+    {
+        AnthropicApiKey = anthropicKey, Model = "claude-sonnet-5",
+        Fallback = new AiFallbackOptions { BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/", ApiKey = "gm-test", Model = "gemini-flash-test", ReasoningEffort = "low" },
+    };
+
+    [Fact]
+    public async Task The_backup_client_sends_an_OpenAI_style_request()
+    {
+        var stub = new FixedStub(HttpStatusCode.OK, BackupSays);
+        var client = new OpenAiCompatibleClient(new OneClient(stub), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance);
+        Assert.Equal("Google Gemini", client.Name);
+        Assert.Equal("Hello from the backup", await client.CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", stub.Request!.RequestUri!.ToString());
+        Assert.Equal("Bearer gm-test", stub.Request.Headers.Authorization!.ToString());
+        var body = JsonNode.Parse(stub.Body!)!;
+        Assert.Equal("gemini-flash-test", S(body["model"]));
+        Assert.Equal(300 + 2048, body["max_tokens"]!.GetValue<int>());   // room for thinking on top of the answer
+        Assert.Equal("low", S(body["reasoning_effort"]));
+        Assert.Equal(["system", "user"], body["messages"]!.AsArray().Select(m => S(m!["role"])));
+        Assert.Equal("Be brief.", S(body["messages"]![0]!["content"]));
+
+        Assert.Equal("Groq", OpenAiCompatibleClient.NameFor("https://api.groq.com/openai/v1"));
+        Assert.Equal("a model on your own server", OpenAiCompatibleClient.NameFor("http://ollama:11434/v1"));
+    }
+
+    [Fact]
+    public async Task When_Claude_runs_out_of_credit_the_backup_answers()
+    {
+        var anthropic = new FixedStub(HttpStatusCode.BadRequest, NoCredit);
+        var openai = new FixedStub(HttpStatusCode.OK, BackupSays);
+        AiRouter Router(AiOptions o)
+        {
+            var opt = Options.Create(o);
+            return new AiRouter(new AnthropicClient(new OneClient(anthropic), opt, NullLogger<AnthropicClient>.Instance),
+                new OpenAiCompatibleClient(new OneClient(openai), opt, NullLogger<OpenAiCompatibleClient>.Instance), NullLogger<AiRouter>.Instance);
+        }
+
+        var router = Router(WithGemini("sk-test"));
+        Assert.Equal("Claude (Anthropic)", router.Provider);
+        Assert.Equal("Google Gemini", router.Backup);
+        Assert.Equal(new AiAnswer("Hello from the backup", "gemini-flash-test"), await router.CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal(1, anthropic.Calls);
+        // Running out of credit does not mend itself in seconds: the backup answers straight away for a while.
+        await router.CompleteAsync("Be brief.", "Again", 300, default);
+        Assert.Equal(1, anthropic.Calls);
+        Assert.Equal(2, openai.Calls);
+
+        // Without a backup the person is told plainly what is wrong.
+        var alone = Router(new AiOptions { AnthropicApiKey = "sk-test" });
+        Assert.Null(alone.Backup);
+        Assert.Equal("AI_NO_CREDIT", (await Assert.ThrowsAsync<AppException>(() => alone.CompleteAsync("Be brief.", "Hi", 300, default))).Code);
+
+        // The backup on its own (no Anthropic key) runs the assistant by itself.
+        var backupOnly = Router(WithGemini(null));
+        Assert.True(backupOnly.Configured);
+        Assert.Equal("Google Gemini", backupOnly.Provider);
+        Assert.Null(backupOnly.Backup);
+        Assert.Equal("gemini-flash-test", (await backupOnly.CompleteAsync("Be brief.", "Hi", 300, default)).Model);
+        Assert.Equal(2, anthropic.Calls);   // only the call made without a backup
     }
 
     // ------------------------------------------------------------------ live changes

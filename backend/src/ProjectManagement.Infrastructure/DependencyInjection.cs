@@ -65,9 +65,13 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Sso.ISamlProtocol, SamlProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier, DnsDomainVerifier>();
         services.AddSingleton<DevMailbox>();
-        // The AI assistant: Claude through the Anthropic API, only when Ai:AnthropicApiKey is set.
+        // The AI assistant: Claude through the Anthropic API when Ai:AnthropicApiKey is set, and the backup model (Ai:Fallback:*) when
+        // Claude cannot answer or on its own.
         services.AddHttpClient("anthropic", c => c.Timeout = TimeSpan.FromSeconds(90));
-        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AnthropicClient>();
+        services.AddHttpClient("ai-backup", c => c.Timeout = TimeSpan.FromSeconds(90));
+        services.AddSingleton<AnthropicClient>();
+        services.AddSingleton<OpenAiCompatibleClient>();
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AiRouter>();
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IFileStorage, S3FileStorage>();

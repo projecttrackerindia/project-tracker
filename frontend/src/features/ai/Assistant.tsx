@@ -13,7 +13,7 @@ import { toast } from '../../stores/ui';
 import { WorkItemRow, fromWorkItem, workItemLink } from '../workitems/workItems';
 
 // ------------------------------------------------------------------ API
-export interface AiStatus { enabled: boolean; configured: boolean; entitled: boolean; allowedHere: boolean; model: string | null }
+export interface AiStatus { enabled: boolean; configured: boolean; entitled: boolean; allowedHere: boolean; model: string | null; provider: string | null; backup: string | null }
 interface AiSummary { summary: string; generatedAt: string }
 interface AiRisk { risk: 'low' | 'medium' | 'high'; score: number; headline: string; reasons: string[]; actions: string[]; generatedAt: string }
 interface AiSearch { interpretation: string; items: WorkItem[] }
@@ -30,11 +30,17 @@ export const aiApi = {
   notes: (projectId: string, notes: string) => post<{ items: AiActionItem[] }>(`/ai/projects/${projectId}/action-items`, { notes }),
 };
 
+const useAiStatus = () => useWsQuery(['ai', 'status'], aiApi.status, { staleTime: 5 * 60_000, retry: false }).data;
+
 /** Whether the assistant can be used here (configured, in the plan, switched on for the workspace). */
 export function useAi() {
-  const q = useWsQuery(['ai', 'status'], aiApi.status, { staleTime: 5 * 60_000, retry: false });
-  return q.data?.enabled ?? false;
+  return useAiStatus()?.enabled ?? false;
 }
+
+/** The model people are told about: "Claude", or the backup's provider when it runs the assistant on its own. */
+const poweredBy = (s?: AiStatus) => (!s?.provider || s.provider === 'Claude (Anthropic)' ? 'Claude' : s.provider);
+/** Where what people ask can go, for the privacy notes - including the backup, which answers when Claude cannot. */
+const sentTo = (s?: AiStatus) => `${s?.provider ?? 'Claude (Anthropic)'}${s?.backup ? `, or to ${s.backup} when Claude is unavailable` : ''}`;
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 
@@ -98,7 +104,8 @@ export function AssistantButton() {
 /** The slide-over assistant: ask for work in plain words, or get a portfolio summary. */
 export function AssistantPanel() {
   const { open, question, summary: summaryAsked, close } = useAssistant();
-  const enabled = useAi();
+  const status = useAiStatus();
+  const enabled = status?.enabled ?? false;
   const nav = useNavigate();
   const [q, setQ] = useState(question);
   const [busy, setBusy] = useState<'search' | 'summary' | null>(null);
@@ -138,7 +145,7 @@ export function AssistantPanel() {
     <div className="asst-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <aside className="asst-panel" role="dialog" aria-label="AI assistant">
         <header className="asst-head">
-          <div className="asst-title"><span className="asst-badge"><Sparkle size={16} /></span><div><b>Assistant</b><span>Powered by Claude</span></div></div>
+          <div className="asst-title"><span className="asst-badge"><Sparkle size={16} /></span><div><b>Assistant</b><span>Powered by {poweredBy(status)}</span></div></div>
           <button type="button" className="btn-icon" aria-label="Close" onClick={close}><Icon name="close" /></button>
         </header>
         <form className="asst-ask" onSubmit={(e) => { e.preventDefault(); void search(q); }}>
@@ -171,7 +178,7 @@ export function AssistantPanel() {
             </>
           )}
         </div>
-        <footer className="asst-privacy"><Icon name="lock" size={12} /> Only what you can already see is sent to Claude (Anthropic) to answer. Your workspace can switch this off.</footer>
+        <footer className="asst-privacy"><Icon name="lock" size={12} /> To answer, only what you can already see is sent to {sentTo(status)}. Your workspace can switch this off.</footer>
       </aside>
     </div>
   );
@@ -307,7 +314,7 @@ export function AiWorkspaceSwitch() {
     <div className="card" style={{ marginTop: 18 }}><div className="card-body" style={{ paddingTop: 6, paddingBottom: 6 }}>
     <div className="setting-row">
       <div className="setting-info"><h4><Sparkle size={14} /> AI assistant</h4>
-        <p>{s.entitled ? 'Plain-language search, portfolio summaries, delay risk, triage suggestions and action items from meeting notes, powered by Claude. Only what each person can already see is sent.' : 'Comes with the Business plan.'}</p></div>
+        <p>{s.entitled ? `Plain-language search, portfolio summaries, delay risk, triage suggestions and action items from meeting notes, powered by ${poweredBy(s)}. Only what each person can already see is sent to ${sentTo(s)}.` : 'Comes with the Business plan.'}</p></div>
       <button type="button" className={`switch ${s.allowedHere ? 'on' : ''}`} role="switch" aria-checked={s.allowedHere} aria-label="AI assistant" disabled={busy || !s.entitled} onClick={() => void toggle()} />
     </div>
     </div></div>

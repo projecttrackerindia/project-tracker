@@ -13,13 +13,15 @@ public sealed class FakeAiClient : IAiClient
 {
     public bool Configured { get; set; }
     public string Model => "claude-test";
+    public string? Provider => Configured ? "Claude (Anthropic)" : null;
+    public string? Backup => null;
     public Func<string, string, string> Answer { get; set; } = (_, _) => "{}";
     public ConcurrentQueue<(string System, string User)> Prompts { get; } = new();
 
-    public Task<string> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
+    public Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
     {
         Prompts.Enqueue((system, user));
-        return Task.FromResult(Answer(system, user));
+        return Task.FromResult(new AiAnswer(Answer(system, user), Model));
     }
 
     public void Reset() { Configured = false; Answer = (_, _) => "{}"; Prompts.Clear(); }

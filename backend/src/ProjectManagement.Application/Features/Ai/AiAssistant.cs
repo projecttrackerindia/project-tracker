@@ -17,24 +17,49 @@ namespace ProjectManagement.Application.Features.Ai;
 public class AiOptions
 {
     public const string Section = "Ai";
-    /// <summary>The Anthropic API key. Empty = the assistant is off and nothing is ever sent anywhere.</summary>
+    /// <summary>The Anthropic API key. Empty, with no backup either = the assistant is off and nothing is ever sent anywhere.</summary>
     public string? AnthropicApiKey { get; set; }
     public string Model { get; set; } = "claude-sonnet-5";
     public string BaseUrl { get; set; } = "https://api.anthropic.com";
     public int MaxTokens { get; set; } = 2000;
     /// <summary>Requests per person per hour.</summary>
     public int HourlyLimit { get; set; } = 60;
+    /// <summary>A second model, asked when Claude cannot answer (out of credit, key refused, busy) or on its own without an Anthropic key.</summary>
+    public AiFallbackOptions Fallback { get; set; } = new();
 }
 
-/// <summary>A language model behind one call: a system prompt and a user message in, text out.</summary>
+/// <summary>
+/// Any provider that speaks the OpenAI chat-completions API: Google Gemini (https://generativelanguage.googleapis.com/v1beta/openai), Groq
+/// (https://api.groq.com/openai/v1), OpenRouter, Mistral, or a self-hosted Ollama (http://host:11434/v1). BaseUrl and Model turn it on.
+/// </summary>
+public class AiFallbackOptions
+{
+    public string? BaseUrl { get; set; }
+    public string? ApiKey { get; set; }
+    public string? Model { get; set; }
+    /// <summary>The name people see in the privacy notes; worked out from the address when empty ("Google Gemini", "Groq" ...).</summary>
+    public string? Name { get; set; }
+    /// <summary>Sent as reasoning_effort when set ("low" suits Gemini and gpt-oss); left out otherwise, as some models refuse it.</summary>
+    public string? ReasoningEffort { get; set; }
+    /// <summary>Room on top of each answer for models that think first: their thinking counts against the same token limit.</summary>
+    public int ThinkingTokens { get; set; } = 2048;
+}
+
+/// <summary>A language model behind one call: a system prompt and a user message in, the answer and the model that gave it out.</summary>
 public interface IAiClient
 {
     bool Configured { get; }
     string Model { get; }
-    Task<string> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct);
+    /// <summary>Who normally answers, for the privacy notes ("Claude (Anthropic)"); null when nothing is configured.</summary>
+    string? Provider { get; }
+    /// <summary>Who answers when the provider cannot; null without a backup.</summary>
+    string? Backup { get; }
+    Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct);
 }
 
-public record AiStatusDto(bool Enabled, bool Configured, bool Entitled, bool AllowedHere, string? Model);
+public record AiAnswer(string Text, string Model);
+
+public record AiStatusDto(bool Enabled, bool Configured, bool Entitled, bool AllowedHere, string? Model, string? Provider, string? Backup);
 public record AiSummaryDto(string Summary, DateTime GeneratedAt);
 public record AiRiskDto(string Risk, int Score, string Headline, IReadOnlyList<string> Reasons, IReadOnlyList<string> Actions, DateTime GeneratedAt);
 public record AiSearchRequest(string? Query);
@@ -62,10 +87,10 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var entitled = await entitlements.GetValueAsync(FeatureKeys.AiAssistant, ct) > 0;
         var tid = ctx.RequireTenantId();
         var allowed = !await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct);
-        return new AiStatusDto(ai.Configured && entitled && allowed, ai.Configured, entitled, allowed, ai.Configured ? ai.Model : null);
+        return new AiStatusDto(ai.Configured && entitled && allowed, ai.Configured, entitled, allowed, ai.Configured ? ai.Model : null, ai.Provider, ai.Backup);
     }
 
-    private async Task GateAsync(string feature, CancellationToken ct)
+    private async Task GateAsync(CancellationToken ct)
     {
         if (!ai.Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
         await entitlements.EnsureFeatureAsync(FeatureKeys.AiAssistant, ct);
@@ -77,9 +102,25 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var used = int.TryParse(await cache.GetStringAsync(key, ct), out var n) ? n : 0;
         if (used >= options.Value.HourlyLimit) throw new ConflictException("You have used the assistant a lot in the last hour. Try again later.", "AI_LIMIT");
         await cache.SetStringAsync(key, (used + 1).ToString(), new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) }, ct);
-        // Which feature was used, never what was sent or answered.
-        recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, model = ai.Model });
+    }
+
+    /// <summary>
+    /// Asks the model and records the use: which feature and which model answered (the backup's, when Claude could not), or that it
+    /// failed - never what was sent or answered.
+    /// </summary>
+    private async Task<string> AskAsync(string feature, string prompt, int maxTokens, CancellationToken ct)
+    {
+        AiAnswer answer;
+        try { answer = await ai.CompleteAsync(Voice, prompt, maxTokens, ct); }
+        catch (AppException)
+        {
+            recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, failed = true });
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+        recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, model = answer.Model });
         await db.SaveChangesAsync(ct);
+        return answer.Text;
     }
 
     private const string Voice = "You are the assistant inside Project Tracker, a project and work management app. Be concise, concrete and factual. " +
@@ -100,7 +141,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     public async Task<AiSummaryDto> PortfolioSummaryAsync(CancellationToken ct = default)
     {
         await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
-        await GateAsync("portfolio_summary", ct);
+        await GateAsync(ct);
         var groups = await status.GroupsAsync(ct);
         var projects = groups.SelectMany(g => g.Projects.Select(p => new { group = g.Name, p.Key, p.Name, status = p.Status.ToString(), health = p.Health.ToString(), progress = p.Progress }))
             .Where(p => p.status is not ("Completed" or "Archived" or "Cancelled")).Take(80).ToList();
@@ -111,7 +152,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             today = clock.Today, projects,
             overdue = overdue.Select(i => new { i.Key, i.Title, project = i.ProjectName, i.DueDate, assignee = i.Assignee?.Name, priority = i.Priority.ToString() }),
         }, Json);
-        var text = await ai.CompleteAsync(Voice,
+        var text = await AskAsync("portfolio_summary",
             "Write an executive portfolio summary from this data. Structure: one-sentence overall picture; then '## Needs attention' with up to 5 bullets " +
             "(project or item, why, suggested next step); then '## Going well' with up to 3 bullets. Mention project keys. Under 250 words.\n\nDATA:\n" + data, 900, ct);
         return new AiSummaryDto(text, clock.Now);
@@ -122,7 +163,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     public async Task<AiRiskDto> ProjectRiskAsync(Guid projectId, CancellationToken ct = default)
     {
         var report = await status.ReportAsync(projectId, ct);
-        await GateAsync("project_risk", ct);
+        await GateAsync(ct);
         var p = report.Project;
         var weeks = Enumerable.Range(0, 4).Select(i => clock.Today.AddDays(-7 * (i + 1))).ToList();
         var done = await db.Tasks.AsNoTracking().Where(t => t.ProjectId == projectId && t.CompletedAt != null && t.CompletedAt >= clock.Now.AddDays(-28))
@@ -137,7 +178,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
                 .Select(t => new { t.Key, t.Title, status = t.StatusName, t.DueDate, t.OverdueDays, t.DelayedDays, t.Revisions, assignee = t.Assignee?.Name, blockedBy = t.BlockedBy.Select(b => b.Key) }),
             dateChanges = report.Changes.Take(15).Select(c => new { c.Scope, c.TaskKey, c.Previous, c.Revised, c.DaysShifted, c.Reason }),
         }, Json);
-        var text = await ai.CompleteAsync(Voice,
+        var text = await AskAsync("project_risk",
             "Assess the risk that this project misses its due date. Answer with JSON only, no prose: " +
             "{\"risk\":\"low|medium|high\",\"score\":0-100,\"headline\":\"one sentence\",\"reasons\":[\"up to 4, each citing data\"],\"actions\":[\"up to 4 concrete next steps\"]}\n\nDATA:\n" + data, 700, ct);
         var j = JsonIn(text) ?? throw new AppException(502, "AI_FAILED", "The assistant's answer could not be read. Try again.");
@@ -153,11 +194,11 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var q = (req.Query ?? "").Trim();
         if (q.Length is < 3 or > 300) throw new ValidationException("query", "Ask in a few words, e.g. “overdue high priority bugs assigned to Priya”.");
-        await GateAsync("search", ct);
+        await GateAsync(ct);
         var tid = ctx.RequireTenantId();
         var people = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest).Select(m => new { id = m.UserId, name = m.User!.DisplayName }).Take(300).ToListAsync(ct);
         var projects = await access.VisibleProjects().AsNoTracking().Select(p => new { id = p.Id, p.Key, p.Name }).Take(300).ToListAsync(ct);
-        var text = await ai.CompleteAsync(Voice,
+        var text = await AskAsync("search",
             "Turn the request into a filter for work items. Answer with JSON only: {\"interpretation\":\"what you understood, one short sentence\"," +
             "\"kinds\":[subset of \"Task\",\"Issue\",\"ActionItem\",\"Operational\" or empty for all],\"assigneeId\":\"id from PEOPLE, or 'me', or null\"," +
             "\"projectId\":\"id from PROJECTS or null\",\"openOnly\":true|false,\"overdue\":true|false,\"dueFrom\":\"yyyy-mm-dd or null\",\"dueTo\":\"yyyy-mm-dd or null\"," +
@@ -183,13 +224,13 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var title = (req.Title ?? "").Trim();
         if (title.Length < 3) throw new ValidationException("title", "Write a title first.");
         await permissions.RequireModuleAsync(Modules.Work, AccessLevel.Edit, ct);
-        await GateAsync("triage", ct);
+        await GateAsync(ct);
         var tid = ctx.RequireTenantId();
         var types = await db.WorkTypes.AsNoTracking().Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => new { id = t.Id, t.Name, t.Description }).ToListAsync(ct);
         var people = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest)
             .Select(m => new { id = m.UserId, name = m.User!.DisplayName, jobRole = db.OrgRoles.Where(r => r.Id == m.OrgRoleId).Select(r => r.Name).FirstOrDefault() }).Take(200).ToListAsync(ct);
         var counts = await workItems.CountsAsync(people.Select(p => p.id).ToList(), WorkItemScope.Caller, ct);
-        var text = await ai.CompleteAsync(Voice,
+        var text = await AskAsync("triage",
             "Suggest how to triage this new piece of operational work. Prefer people whose job role fits and who have less open work. Answer with JSON only: " +
             "{\"workTypeId\":\"id from TYPES\",\"priority\":\"Low|Medium|High|Critical\",\"assigneeId\":\"id from PEOPLE or null\",\"reason\":\"one or two sentences\"}\n" +
             $"TYPES: {JsonSerializer.Serialize(types, Json)}\nPEOPLE: {JsonSerializer.Serialize(people.Select(p => new { p.id, p.name, p.jobRole, open = counts.GetValueOrDefault(p.id)?.Open ?? 0, overdue = counts.GetValueOrDefault(p.id)?.Overdue ?? 0 }), Json)}\n" +
@@ -209,10 +250,10 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         if (notes.Length < 20) throw new ValidationException("notes", "Paste the meeting notes first.");
         if (notes.Length > 20_000) throw new ValidationException("notes", "Keep the notes under 20,000 characters.");
         var project = await access.GetProjectAsync(projectId, ct);
-        await GateAsync("action_items", ct);
+        await GateAsync(ct);
         var tid = ctx.RequireTenantId();
         var people = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest).Select(m => new { id = m.UserId, name = m.User!.DisplayName }).Take(300).ToListAsync(ct);
-        var text = await ai.CompleteAsync(Voice,
+        var text = await AskAsync("action_items",
             "Extract the action items agreed in these meeting notes. Only real commitments (someone will do something), not discussion. " +
             "Answer with JSON only: {\"items\":[{\"title\":\"imperative, under 120 characters\",\"assigneeId\":\"id from PEOPLE or null\",\"dueDate\":\"yyyy-mm-dd or null\"}]} (at most 20).\n" +
             $"TODAY: {clock.Today:yyyy-MM-dd}\nPROJECT: {project.Key} {project.Name}\nPEOPLE: {JsonSerializer.Serialize(people, Json)}\nNOTES:\n{notes}", 1500, ct);

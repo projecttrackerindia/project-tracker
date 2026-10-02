@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,7 +12,7 @@ namespace ProjectManagement.Infrastructure.Services;
 /// Claude through the Anthropic Messages API (POST /v1/messages). The key stays on the server; nothing is called unless
 /// <c>Ai:AnthropicApiKey</c> is set. Overload and rate-limit answers become a friendly "try again" instead of an error page.
 /// </summary>
-public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> options, ILogger<AnthropicClient> log) : IAiClient
+public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> options, ILogger<AnthropicClient> log)
 {
     public bool Configured => !string.IsNullOrWhiteSpace(options.Value.AnthropicApiKey);
     public string Model => options.Value.Model;
@@ -46,15 +45,25 @@ public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> option
             if (!res.IsSuccessStatusCode)
             {
                 log.LogWarning("Claude answered {Status}: {Body}", (int)res.StatusCode, body.Length > 300 ? body[..300] : body);
-                throw (int)res.StatusCode is 429 or 529 or 503
-                    ? new AppException(503, "AI_BUSY", "The AI assistant is busy. Try again in a moment.")
-                    : res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                        ? new AppException(503, "AI_KEY_REFUSED", "The AI assistant's key was refused. An administrator needs to check it.")
-                        : new AppException(502, "AI_FAILED", "The AI assistant could not answer that.");
+                throw AiFailure.For(res.StatusCode, body);
             }
             var json = JsonNode.Parse(body);
             var text = string.Concat((json?["content"]?.AsArray() ?? []).Where(c => c?["type"]?.GetValue<string>() == "text").Select(c => c!["text"]!.GetValue<string>()));
             return text.Trim();
         }
     }
+}
+
+/// <summary>What a model provider's error answer means for the person asking.</summary>
+public static class AiFailure
+{
+    public static AppException For(HttpStatusCode status, string body) =>
+        (int)status is 429 or 529 or 503
+            ? new AppException(503, "AI_BUSY", "The AI assistant is busy. Try again in a moment.")
+            // Anthropic says "Your credit balance is too low" with a 400; others use 402 Payment Required.
+            : status is HttpStatusCode.PaymentRequired || body.Contains("credit balance", StringComparison.OrdinalIgnoreCase)
+                ? new AppException(503, "AI_NO_CREDIT", "The AI assistant has run out of credit. An administrator needs to top it up.")
+                : status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                    ? new AppException(503, "AI_KEY_REFUSED", "The AI assistant's key was refused. An administrator needs to check it.")
+                    : new AppException(502, "AI_FAILED", "The AI assistant could not answer that.");
 }
