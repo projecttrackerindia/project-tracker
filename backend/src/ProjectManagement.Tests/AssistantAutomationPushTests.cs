@@ -167,6 +167,12 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         }
     }
 
+    /// <summary>What HttpClient does when its time limit passes without an answer.</summary>
+    private sealed class SilentStub : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+    }
+
     private const string NoCredit = """{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}""";
     private const string BackupSays = """{"choices":[{"index":0,"message":{"role":"assistant","content":"Hello from the backup"},"finish_reason":"stop"}]}""";
     private const string GeminiSays = """{"candidates":[{"content":{"role":"model","parts":[{"text":"Planning the answer","thought":true},{"text":"Hello from the backup"}]},"finishReason":"STOP"}]}""";
@@ -227,6 +233,11 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         var ex = await Assert.ThrowsAsync<AiProviderException>(() => new OpenAiCompatibleClient(new OneClient(refused), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance).CompleteAsync("Be brief.", "Hi", 300, default));
         Assert.Equal("AI_KEY_REFUSED", ex.Code);
         Assert.Equal("HTTP 401: Request had invalid authentication credentials.", ex.Detail);
+
+        // A provider that takes the request and stays silent is not "unreachable".
+        var silent = await Assert.ThrowsAsync<AiProviderException>(() => new OpenAiCompatibleClient(new OneClient(new SilentStub()), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance).CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("AI_TIMEOUT", silent.Code);
+        Assert.Equal("Google Gemini did not answer within 90 seconds. Try again in a moment.", silent.Message);
 
         // A good key on an account Google has blocked (its real answer) is not a key problem.
         var denied = new FixedStub(HttpStatusCode.Forbidden, """{"error":{"code":403,"message":"Your project has been denied access. Please contact support.","status":"PERMISSION_DENIED"}}""");

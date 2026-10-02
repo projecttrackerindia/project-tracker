@@ -58,8 +58,10 @@ public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> option
 /// <summary>Turns a model provider's failure into an <see cref="AiProviderException"/>.</summary>
 public static class AiFailure
 {
-    public static AiProviderException Unreachable(string who, Exception ex) =>
-        new(503, "AI_UNAVAILABLE", who, "could not be reached", ex is TaskCanceledException ? "no answer within 90 seconds" : ex.Message);
+    /// <summary>No answer at all: the connection failed, or the provider took the request and stayed silent past the time limit.</summary>
+    public static AiProviderException Unreachable(string who, Exception ex) => ex is TaskCanceledException
+        ? new(504, "AI_TIMEOUT", who, "did not answer within 90 seconds", "timed out after 90 seconds")
+        : new(503, "AI_UNAVAILABLE", who, "could not be reached", ex.Message);
     public static AiProviderException NoAnswer(string who, string? finishReason) =>
         new(502, "AI_FAILED", who, "gave no answer", $"empty answer (finish reason {finishReason ?? "none"})");
 
