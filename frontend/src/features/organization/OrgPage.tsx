@@ -13,7 +13,6 @@ import { DeleteRoleModal, RoleModal } from './OrgModals';
 import { Inspector, UnassignedTray } from './OrgPanels';
 import { useOrg, useOrgActions } from './orgState';
 import { Select } from '../../components/Select';
-import '../../styles/org.css';
 
 type Tab = 'chart' | 'roles';
 type ModalState = { kind: 'role'; role?: OrgRole; parentId?: string | null } | { kind: 'delete'; role: OrgRole } | null;
