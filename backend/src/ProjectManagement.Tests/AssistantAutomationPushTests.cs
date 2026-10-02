@@ -227,6 +227,12 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         var ex = await Assert.ThrowsAsync<AiProviderException>(() => new OpenAiCompatibleClient(new OneClient(refused), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance).CompleteAsync("Be brief.", "Hi", 300, default));
         Assert.Equal("AI_KEY_REFUSED", ex.Code);
         Assert.Equal("HTTP 401: Request had invalid authentication credentials.", ex.Detail);
+
+        // A good key on an account Google has blocked (its real answer) is not a key problem.
+        var denied = new FixedStub(HttpStatusCode.Forbidden, """{"error":{"code":403,"message":"Your project has been denied access. Please contact support.","status":"PERMISSION_DENIED"}}""");
+        var blocked = await Assert.ThrowsAsync<AiProviderException>(() => new OpenAiCompatibleClient(new OneClient(denied), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance).CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("AI_ACCESS_DENIED", blocked.Code);
+        Assert.Equal("Google Gemini has blocked the account behind its key. An administrator needs to check the AI settings.", blocked.Message);
     }
 
     [Fact]

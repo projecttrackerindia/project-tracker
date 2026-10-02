@@ -95,8 +95,11 @@ public static class AiFailure
             return new(503, "AI_NO_CREDIT", who, "has run out of credit", detail);
         if (Says("location is not supported", "not available in your country", "unsupported_country", "not supported in your region"))
             return new(503, "AI_REGION", who, "is not available from where this server runs", detail);
-        if (s is 401 or 403 || Says("Invalid Auth key", "API key not valid", "API_KEY_INVALID", "invalid_api_key", "Incorrect API key", "invalid x-api-key"))
+        if (s == 401 || Says("Invalid Auth key", "API key not valid", "API_KEY_INVALID", "invalid_api_key", "Incorrect API key", "invalid x-api-key"))
             return new(503, "AI_KEY_REFUSED", who, "refused its key", detail);
+        // The key is fine but the account behind it may not use the service (Google: "Your project has been denied access").
+        if (s == 403)
+            return new(503, "AI_ACCESS_DENIED", who, "has blocked the account behind its key", detail);
         if (s == 404 || Says("model_not_found", "is not found for API version", "model not found", "Unknown model"))
             return new(502, "AI_MODEL_UNKNOWN", who, "does not recognise the model name", detail);
         if (s is 429 or 529 or 503)

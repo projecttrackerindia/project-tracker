@@ -73,7 +73,7 @@ public sealed class AiProviderException(int statusCode, string code, string who,
     public string? Detail { get; } = detail;
 
     /// <summary>Settings an administrator has to fix; the rest may pass by themselves.</summary>
-    public static bool NeedsAdmin(string code) => code is "AI_NO_CREDIT" or "AI_KEY_REFUSED" or "AI_MODEL_UNKNOWN" or "AI_REGION";
+    public static bool NeedsAdmin(string code) => code is "AI_NO_CREDIT" or "AI_KEY_REFUSED" or "AI_ACCESS_DENIED" or "AI_MODEL_UNKNOWN" or "AI_REGION";
 
     public static string AdviceFor(string code) => NeedsAdmin(code) ? "An administrator needs to check the AI settings."
         : code == "AI_FAILED" ? "Try again; if it keeps happening, an administrator can find the reason in the server log."
