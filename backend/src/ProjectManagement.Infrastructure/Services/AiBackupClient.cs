@@ -58,7 +58,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "The backup model ({Name}) could not be reached", Name);
-            throw new AppException(503, "AI_UNAVAILABLE", "The AI assistant could not be reached. Try again in a moment.");
+            throw AiFailure.Unreachable(Name);
         }
         using (res)
         {
@@ -66,7 +66,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
             if (!res.IsSuccessStatusCode)
             {
                 log.LogWarning("The backup model ({Name}) answered {Status}: {Body}", Name, (int)res.StatusCode, text.Length > 300 ? text[..300] : text);
-                throw AiFailure.For(res.StatusCode, text);
+                throw AiFailure.For(Name, res.StatusCode, text);
             }
             JsonNode? choice;
             try { choice = JsonNode.Parse(text)?["choices"]?[0]; } catch (JsonException) { choice = null; }
@@ -80,7 +80,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
             if (string.IsNullOrWhiteSpace(content))
             {
                 log.LogWarning("The backup model ({Name}) gave no answer (finish reason {Reason})", Name, choice?["finish_reason"]?.ToString());
-                throw new AppException(502, "AI_FAILED", "The AI assistant could not answer that.");
+                throw AiFailure.NoAnswer(Name);
             }
             return content.Trim();
         }
@@ -88,13 +88,15 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
 }
 
 /// <summary>
-/// The assistant's model: Claude, and the backup when Claude cannot answer - or the backup alone when no Anthropic key is set. Running out
-/// of credit or a refused key does not mend itself in seconds, so after either the backup answers straight away for a while.
+/// The assistant's model: Claude, and the backup when Claude cannot answer - or the backup alone when no Anthropic key is set. A setting
+/// that is wrong (no credit, a refused key, an unknown model) does not mend itself in seconds, so after one the backup answers straight
+/// away for a while. When both fail, the person hears both reasons.
 /// </summary>
 public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient backup, ILogger<AiRouter> log) : IAiClient
 {
     private static readonly TimeSpan Rest = TimeSpan.FromMinutes(15);
     private long _claudeRestsUntil;   // UTC ticks
+    private AiProviderException? _claudeFailure;
 
     public bool Configured => claude.Configured || backup.Configured;
     public string Model => claude.Configured ? claude.Model : backup.Model;
@@ -104,15 +106,27 @@ public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient back
     public async Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
-        if (claude.Configured && (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil)))
+        AiProviderException? claudeFailed = null;
+        if (claude.Configured)
         {
-            try { return new AiAnswer(await claude.CompleteAsync(system, user, maxTokens, ct), claude.Model); }
-            catch (AppException ex) when (backup.Configured)
+            if (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil))
             {
-                if (ex.Code is "AI_NO_CREDIT" or "AI_KEY_REFUSED") Interlocked.Exchange(ref _claudeRestsUntil, (DateTime.UtcNow + Rest).Ticks);
-                log.LogWarning("Claude could not answer ({Code}); asking the backup model ({Backup})", ex.Code, backup.Name);
+                try { return new AiAnswer(await claude.CompleteAsync(system, user, maxTokens, ct), claude.Model); }
+                catch (AiProviderException ex) when (backup.Configured)
+                {
+                    claudeFailed = _claudeFailure = ex;
+                    if (AiFailure.NeedsAdmin(ex.Code)) Interlocked.Exchange(ref _claudeRestsUntil, (DateTime.UtcNow + Rest).Ticks);
+                    log.LogWarning("Claude could not answer ({Code}); asking the backup model ({Backup})", ex.Code, backup.Name);
+                }
             }
+            else claudeFailed = _claudeFailure;   // resting after a failure that needs an administrator
         }
-        return new AiAnswer(await backup.CompleteAsync(system, user, maxTokens, ct), backup.Model);
+        try { return new AiAnswer(await backup.CompleteAsync(system, user, maxTokens, ct), backup.Model); }
+        catch (AiProviderException b) when (claudeFailed is not null)
+        {
+            var advice = AiFailure.AdviceFor(AiFailure.NeedsAdmin(claudeFailed.Code) && !AiFailure.NeedsAdmin(b.Code) ? claudeFailed.Code : b.Code);
+            throw new AiProviderException(b.StatusCode, b.Code, b.Who, b.Reason,
+                $"{claudeFailed.Who} {claudeFailed.Reason} and the backup ({b.Who}) {b.Reason}. {advice}");
+        }
     }
 }

@@ -37,7 +37,7 @@ public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> option
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "Claude could not be reached");
-            throw new AppException(503, "AI_UNAVAILABLE", "The AI assistant could not be reached. Try again in a moment.");
+            throw AiFailure.Unreachable("Claude");
         }
         using (res)
         {
@@ -45,7 +45,7 @@ public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> option
             if (!res.IsSuccessStatusCode)
             {
                 log.LogWarning("Claude answered {Status}: {Body}", (int)res.StatusCode, body.Length > 300 ? body[..300] : body);
-                throw AiFailure.For(res.StatusCode, body);
+                throw AiFailure.For("Claude", res.StatusCode, body);
             }
             var json = JsonNode.Parse(body);
             var text = string.Concat((json?["content"]?.AsArray() ?? []).Where(c => c?["type"]?.GetValue<string>() == "text").Select(c => c!["text"]!.GetValue<string>()));
@@ -54,16 +54,47 @@ public class AnthropicClient(IHttpClientFactory http, IOptions<AiOptions> option
     }
 }
 
-/// <summary>What a model provider's error answer means for the person asking.</summary>
+/// <summary>
+/// A model provider's failure in words people can act on: who failed ("Claude", "Google Gemini"), why, and what to do about it. When the
+/// backup fails after Claude, one message carries both reasons.
+/// </summary>
+public sealed class AiProviderException(int statusCode, string code, string who, string reason, string? message = null)
+    : AppException(statusCode, code, message ?? $"{who} {reason}. {AiFailure.AdviceFor(code)}")
+{
+    public string Who { get; } = who;
+    public string Reason { get; } = reason;
+}
+
 public static class AiFailure
 {
-    public static AppException For(HttpStatusCode status, string body) =>
-        (int)status is 429 or 529 or 503
-            ? new AppException(503, "AI_BUSY", "The AI assistant is busy. Try again in a moment.")
-            // Anthropic says "Your credit balance is too low" with a 400; others use 402 Payment Required.
-            : status is HttpStatusCode.PaymentRequired || body.Contains("credit balance", StringComparison.OrdinalIgnoreCase)
-                ? new AppException(503, "AI_NO_CREDIT", "The AI assistant has run out of credit. An administrator needs to top it up.")
-                : status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                    ? new AppException(503, "AI_KEY_REFUSED", "The AI assistant's key was refused. An administrator needs to check it.")
-                    : new AppException(502, "AI_FAILED", "The AI assistant could not answer that.");
+    /// <summary>Settings an administrator has to fix; the rest may pass by themselves.</summary>
+    public static bool NeedsAdmin(string code) => code is "AI_NO_CREDIT" or "AI_KEY_REFUSED" or "AI_MODEL_UNKNOWN" or "AI_REGION";
+
+    public static string AdviceFor(string code) => NeedsAdmin(code) ? "An administrator needs to check the AI settings."
+        : code == "AI_FAILED" ? "Try again; if it keeps happening, an administrator can find the reason in the server log."
+        : "Try again in a moment.";
+
+    public static AiProviderException Unreachable(string who) => new(503, "AI_UNAVAILABLE", who, "could not be reached");
+    public static AiProviderException NoAnswer(string who) => new(502, "AI_FAILED", who, "gave no answer");
+
+    /// <summary>
+    /// Reads a provider's error answer. Providers disagree on status codes - Google answers a bad key with 400, Anthropic an empty balance
+    /// with 400 - so the wording of the answer counts as much as the code.
+    /// </summary>
+    public static AiProviderException For(string who, HttpStatusCode status, string body)
+    {
+        var s = (int)status;
+        bool Says(params string[] words) => words.Any(w => body.Contains(w, StringComparison.OrdinalIgnoreCase));
+        if (s == 402 || Says("credit balance", "insufficient_quota", "billing_hard_limit"))
+            return new(503, "AI_NO_CREDIT", who, "has run out of credit");
+        if (Says("location is not supported", "not available in your country", "unsupported_country", "not supported in your region"))
+            return new(503, "AI_REGION", who, "is not available from where this server runs");
+        if (s is 401 or 403 || Says("Invalid Auth key", "API key not valid", "API_KEY_INVALID", "invalid_api_key", "Incorrect API key", "invalid x-api-key"))
+            return new(503, "AI_KEY_REFUSED", who, "refused its key");
+        if (s == 404 || Says("model_not_found", "is not found for API version", "model not found", "Unknown model"))
+            return new(502, "AI_MODEL_UNKNOWN", who, "does not recognise the model name");
+        if (s is 429 or 529 or 503)
+            return new(503, "AI_BUSY", who, "is busy");
+        return new(502, "AI_FAILED", who, "could not answer");
+    }
 }

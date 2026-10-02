@@ -212,7 +212,9 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         // Without a backup the person is told plainly what is wrong.
         var alone = Router(new AiOptions { AnthropicApiKey = "sk-test" });
         Assert.Null(alone.Backup);
-        Assert.Equal("AI_NO_CREDIT", (await Assert.ThrowsAsync<AppException>(() => alone.CompleteAsync("Be brief.", "Hi", 300, default))).Code);
+        var noCredit = await Assert.ThrowsAsync<AiProviderException>(() => alone.CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("AI_NO_CREDIT", noCredit.Code);
+        Assert.Equal("Claude has run out of credit. An administrator needs to check the AI settings.", noCredit.Message);
 
         // The backup on its own (no Anthropic key) runs the assistant by itself.
         var backupOnly = Router(WithGemini(null));
@@ -221,6 +223,32 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         Assert.Null(backupOnly.Backup);
         Assert.Equal("gemini-flash-test", (await backupOnly.CompleteAsync("Be brief.", "Hi", 300, default)).Model);
         Assert.Equal(2, anthropic.Calls);   // only the call made without a backup
+    }
+
+    [Fact]
+    public async Task When_both_models_fail_the_person_hears_both_reasons()
+    {
+        AiRouter Router(HttpMessageHandler anthropic, HttpMessageHandler google, AiOptions o)
+        {
+            var opt = Options.Create(o);
+            return new AiRouter(new AnthropicClient(new OneClient(anthropic), opt, NullLogger<AnthropicClient>.Instance),
+                new OpenAiCompatibleClient(new OneClient(google), opt, NullLogger<OpenAiCompatibleClient>.Instance), NullLogger<AiRouter>.Instance);
+        }
+        // Google answers a bad key with a 400 (this is its real answer to an unknown key), not a 401.
+        var badKey = new FixedStub(HttpStatusCode.BadRequest, """[{"error":{"code":400,"message":"Invalid Auth key.","status":"INVALID_ARGUMENT"}}]""");
+        var router = Router(new FixedStub(HttpStatusCode.BadRequest, NoCredit), badKey, WithGemini("sk-test"));
+        var both = await Assert.ThrowsAsync<AiProviderException>(() => router.CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("AI_KEY_REFUSED", both.Code);
+        Assert.Equal("Claude has run out of credit and the backup (Google Gemini) refused its key. An administrator needs to check the AI settings.", both.Message);
+        // While Claude rests, the next failure still says why Claude was skipped.
+        Assert.Equal(both.Message, (await Assert.ThrowsAsync<AiProviderException>(() => router.CompleteAsync("Be brief.", "Again", 300, default))).Message);
+
+        // A model name the provider does not know.
+        var unknown = new FixedStub(HttpStatusCode.NotFound, """[{"error":{"code":404,"message":"models/gemini-9 is not found for API version v1main","status":"NOT_FOUND"}}]""");
+        var backupOnly = Router(new FixedStub(HttpStatusCode.OK, "{}"), unknown, WithGemini(null));
+        var model = await Assert.ThrowsAsync<AiProviderException>(() => backupOnly.CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("AI_MODEL_UNKNOWN", model.Code);
+        Assert.Equal("Google Gemini does not recognise the model name. An administrator needs to check the AI settings.", model.Message);
     }
 
     // ------------------------------------------------------------------ live changes
