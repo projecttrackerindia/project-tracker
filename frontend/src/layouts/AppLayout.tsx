@@ -34,6 +34,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: ()
   });
 }
 
+const REMINDER_TYPES = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue']);
 const NOTIF_ICON: Record<string, string> = {
   TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞', Approval: '✅', ServiceLevel: '⏱️',
   Reminder: '⏰', Nudge: '👋', Briefing: '☀️',
@@ -107,7 +108,7 @@ function DesktopNotifier() {
         const last = read();
         const newest = Math.max(last, ...times, 0);
         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
-        for (const n of page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last).reverse()) {
+        for (const n of page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type)).reverse()) {
           const note = new Notification(n.title, { body: n.body ?? undefined, tag: n.id });
           note.onclick = () => { window.focus(); if (n.link) window.location.assign(n.link); note.close(); };
         }

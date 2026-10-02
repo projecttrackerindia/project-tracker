@@ -6,6 +6,7 @@ import { toast } from '../../stores/ui';
 import { onReminders, type ReminderEvent } from '../live/bus';
 import { reminderApi, type SnoozePreset } from './api';
 import { refreshReminders, useReminderCounts } from './store';
+import { deviceAlerts, playChime, primeSound, pushCoversThisDevice, soundOn, systemNotification } from './device';
 import { deviceZone } from './time';
 
 const SOURCE_LABEL: Record<string, string> = { Personal: 'Reminder', Nudge: 'Reminder', DueDate: 'Due soon', Overdue: 'Overdue', Escalation: 'Overdue work' };
@@ -31,7 +32,16 @@ export function ReminderAlerts() {
     shown.current.set(id, Date.now());
     return true;
   };
-  const push = (items: ReminderEvent[]) => setAlerts((a) => [...items.filter((i) => !a.some((x) => x.id === i.id)), ...a].slice(0, 4));
+  const push = (items: ReminderEvent[]) => {
+    if (!items.length) return;
+    setAlerts((a) => [...items.filter((i) => !a.some((x) => x.id === i.id)), ...a].slice(0, 4));
+    if (soundOn()) playChime();
+    // Someone in another app: the operating system shows it now (unless a push is already bringing it to this device).
+    if ((document.hidden || !document.hasFocus()) && !pushCoversThisDevice())
+      for (const i of items) void systemNotification(i.from ? `${i.from}: ${i.title}` : `⏰ ${i.title}`, i.note ?? i.targetKey, `reminder-${i.id}`);
+  };
+
+  useEffect(() => { primeSound(); void deviceAlerts(); }, []);
 
   useEffect(() => onReminders((items) => { push(items.filter((i) => fresh(i.id))); void refreshReminders(wid); }), [wid]);
 
