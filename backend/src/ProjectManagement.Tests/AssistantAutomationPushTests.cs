@@ -169,6 +169,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
 
     private const string NoCredit = """{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}""";
     private const string BackupSays = """{"choices":[{"index":0,"message":{"role":"assistant","content":"Hello from the backup"},"finish_reason":"stop"}]}""";
+    private const string GeminiSays = """{"candidates":[{"content":{"role":"model","parts":[{"text":"Planning the answer","thought":true},{"text":"Hello from the backup"}]},"finishReason":"STOP"}]}""";
 
     private static AiOptions WithGemini(string? anthropicKey) => new()
     {
@@ -180,27 +181,59 @@ public class AssistantAutomationPushTests(ApiFactory factory)
     public async Task The_backup_client_sends_an_OpenAI_style_request()
     {
         var stub = new FixedStub(HttpStatusCode.OK, BackupSays);
-        var client = new OpenAiCompatibleClient(new OneClient(stub), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance);
-        Assert.Equal("Google Gemini", client.Name);
+        var groq = new AiOptions { Fallback = new AiFallbackOptions { BaseUrl = "https://api.groq.com/openai/v1", ApiKey = "gq-test", Model = "openai/gpt-oss-120b", ReasoningEffort = "low" } };
+        var client = new OpenAiCompatibleClient(new OneClient(stub), Options.Create(groq), NullLogger<OpenAiCompatibleClient>.Instance);
+        Assert.Equal("Groq", client.Name);
         Assert.Equal("Hello from the backup", await client.CompleteAsync("Be brief.", "Hi", 300, default));
-        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", stub.Request!.RequestUri!.ToString());
-        Assert.Equal("Bearer gm-test", stub.Request.Headers.Authorization!.ToString());
+        Assert.Equal("https://api.groq.com/openai/v1/chat/completions", stub.Request!.RequestUri!.ToString());
+        Assert.Equal("Bearer gq-test", stub.Request.Headers.Authorization!.ToString());
         var body = JsonNode.Parse(stub.Body!)!;
-        Assert.Equal("gemini-flash-test", S(body["model"]));
+        Assert.Equal("openai/gpt-oss-120b", S(body["model"]));
         Assert.Equal(300 + 2048, body["max_tokens"]!.GetValue<int>());   // room for thinking on top of the answer
         Assert.Equal("low", S(body["reasoning_effort"]));
         Assert.Equal(["system", "user"], body["messages"]!.AsArray().Select(m => S(m!["role"])));
         Assert.Equal("Be brief.", S(body["messages"]![0]!["content"]));
 
-        Assert.Equal("Groq", OpenAiCompatibleClient.NameFor("https://api.groq.com/openai/v1"));
         Assert.Equal("a model on your own server", OpenAiCompatibleClient.NameFor("http://ollama:11434/v1"));
+    }
+
+    [Fact]
+    public async Task Gemini_addresses_use_Googles_own_API_with_the_key_in_x_goog_api_key()
+    {
+        // The address people copy from Google's OpenAI guide still works: only the host and version are used.
+        var stub = new FixedStub(HttpStatusCode.OK, GeminiSays);
+        var client = new OpenAiCompatibleClient(new OneClient(stub), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance);
+        Assert.Equal("Google Gemini", client.Name);
+        Assert.Equal("Hello from the backup", await client.CompleteAsync("Be brief.", "Hi", 300, default));   // the thought summary is left out
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-test:generateContent", stub.Request!.RequestUri!.ToString());
+        Assert.Equal("gm-test", stub.Request.Headers.GetValues("x-goog-api-key").Single());
+        Assert.Null(stub.Request.Headers.Authorization);
+        var body = JsonNode.Parse(stub.Body!)!;
+        Assert.Equal("Be brief.", S(body["systemInstruction"]!["parts"]![0]!["text"]));
+        Assert.Equal("user", S(body["contents"]![0]!["role"]));
+        Assert.Equal("Hi", S(body["contents"]![0]!["parts"]![0]!["text"]));
+        Assert.Equal(300 + 2048, body["generationConfig"]!["maxOutputTokens"]!.GetValue<int>());
+        Assert.Equal("low", S(body["generationConfig"]!["thinkingConfig"]!["thinkingLevel"]));
+
+        // Gemini 2.x takes a thinking budget instead, and a "models/" prefix is dropped.
+        var old = WithGemini(null); old.Fallback.Model = "models/gemini-2.5-flash"; old.Fallback.BaseUrl = "https://generativelanguage.googleapis.com/v1beta";
+        var stub2 = new FixedStub(HttpStatusCode.OK, GeminiSays);
+        await new OpenAiCompatibleClient(new OneClient(stub2), Options.Create(old), NullLogger<OpenAiCompatibleClient>.Instance).CompleteAsync("Be brief.", "Hi", 300, default);
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", stub2.Request!.RequestUri!.ToString());
+        Assert.Equal(1024, JsonNode.Parse(stub2.Body!)!["generationConfig"]!["thinkingConfig"]!["thinkingBudget"]!.GetValue<int>());
+
+        // Google's answer to a key it does not accept reads as a refused key.
+        var refused = new FixedStub(HttpStatusCode.Unauthorized, """{"error":{"code":401,"message":"Request had invalid authentication credentials.","status":"UNAUTHENTICATED"}}""");
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => new OpenAiCompatibleClient(new OneClient(refused), Options.Create(WithGemini(null)), NullLogger<OpenAiCompatibleClient>.Instance).CompleteAsync("Be brief.", "Hi", 300, default));
+        Assert.Equal("AI_KEY_REFUSED", ex.Code);
+        Assert.Equal("HTTP 401: Request had invalid authentication credentials.", ex.Detail);
     }
 
     [Fact]
     public async Task When_Claude_runs_out_of_credit_the_backup_answers()
     {
         var anthropic = new FixedStub(HttpStatusCode.BadRequest, NoCredit);
-        var openai = new FixedStub(HttpStatusCode.OK, BackupSays);
+        var openai = new FixedStub(HttpStatusCode.OK, GeminiSays);
         AiRouter Router(AiOptions o)
         {
             var opt = Options.Create(o);
