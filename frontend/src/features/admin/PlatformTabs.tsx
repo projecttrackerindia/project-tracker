@@ -124,6 +124,9 @@ const FEATURES: { key: string; label: string; flag: boolean }[] = [
   { key: 'ADVANCED_SECURITY', label: 'SSO & security rules', flag: true }, { key: 'RESOURCE_MANAGEMENT', label: 'Approvals, capacity & budgets', flag: true }, { key: 'SERVICE_LEVELS', label: 'Service levels (SLA)', flag: true },
   { key: 'REMINDER_LIMIT', label: 'Open reminders per person', flag: false }, { key: 'RECURRING_REMINDER_LIMIT', label: 'Repeating reminders per person', flag: false },
   { key: 'REMINDER_ESCALATION', label: 'Reminder escalation', flag: true },
+  { key: 'AI_ASSISTANT', label: 'AI assistant', flag: true }, { key: 'AI_MODEL_TIER', label: 'AI model level (1 Quick, 2 Standard, 3 Deep)', flag: false },
+  { key: 'AI_MONTHLY_CREDITS', label: 'AI credits per month', flag: false }, { key: 'AI_ATTACHMENTS', label: 'AI: read images & documents', flag: true },
+  { key: 'AI_ACTIONS', label: 'AI: take actions & send reports', flag: true },
 ];
 
 function ExceptionsModal({ org, onClose }: { org: AdminUsage; onClose: () => void }) {

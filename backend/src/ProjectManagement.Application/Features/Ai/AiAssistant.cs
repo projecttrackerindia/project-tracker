@@ -19,13 +19,15 @@ public class AiOptions
     public const string Section = "Ai";
     /// <summary>The Anthropic API key. Empty, with no backup either = the assistant is off and nothing is ever sent anywhere.</summary>
     public string? AnthropicApiKey { get; set; }
-    public string Model { get; set; } = "claude-sonnet-5";
+    public string Model { get; set; } = "claude-sonnet-5-5";
     public string BaseUrl { get; set; } = "https://api.anthropic.com";
     public int MaxTokens { get; set; } = 2000;
     /// <summary>Requests per person per hour.</summary>
     public int HourlyLimit { get; set; } = 60;
     /// <summary>A second model, asked when Claude cannot answer (out of credit, key refused, busy) or on its own without an Anthropic key.</summary>
     public AiFallbackOptions Fallback { get; set; } = new();
+    /// <summary>The AI workspace page: model levels, routing, attachments (<c>Ai:Chat</c>).</summary>
+    public AiChatOptions Chat { get; set; } = new();
 }
 
 /// <summary>

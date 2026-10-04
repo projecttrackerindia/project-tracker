@@ -97,6 +97,14 @@ public static class FeatureKeys
     public const string ServiceLevels = "SERVICE_LEVELS";
     /// <summary>The AI assistant (Claude): plain-language search, summaries, delay risk, triage and action items from notes.</summary>
     public const string AiAssistant = "AI_ASSISTANT";
+    /// <summary>The most capable model level the plan may use: 1 = Quick, 2 = Standard, 3 = Deep (extended reasoning). -1 = all levels.</summary>
+    public const string AiModelTier = "AI_MODEL_TIER";
+    /// <summary>AI credits per workspace per calendar month (a Quick answer costs 1, Standard 4, Deep 15 by default). -1 = unlimited.</summary>
+    public const string AiMonthlyCredits = "AI_MONTHLY_CREDITS";
+    /// <summary>Images and documents can be attached to a question for the assistant to read.</summary>
+    public const string AiAttachments = "AI_ATTACHMENTS";
+    /// <summary>The assistant may propose changes (create work, set reminders, send reports) for the person to confirm.</summary>
+    public const string AiActions = "AI_ACTIONS";
     /// <summary>Open reminders a person may have set (their own and from others) per workspace.</summary>
     public const string ReminderLimit = "REMINDER_LIMIT";
     /// <summary>Repeating reminders a person may have per workspace.</summary>
@@ -106,7 +114,7 @@ public static class FeatureKeys
 
     public const long Unlimited = -1;
 
-    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit];
-    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, ReminderEscalation];
+    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, AiModelTier, AiMonthlyCredits];
+    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

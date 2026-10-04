@@ -32,6 +32,20 @@ function featureText(key: string, value: number) {
   }
 }
 
+const AI_LEVELS = ['', 'Quick', 'Standard', 'Deep'];
+/** What the plan's AI includes, in a few lines: "AI assistant (Quick, Standard and Deep reasoning)", "2,000 AI credits / month", ... */
+function aiLines(f: Record<string, number>): string[] {
+  if (!f.AI_ASSISTANT) return [];
+  const top = f.AI_MODEL_TIER < 0 ? 3 : Math.min(Math.max(f.AI_MODEL_TIER, 1), 3);
+  const levels = AI_LEVELS.slice(1, top + 1);
+  return [
+    `AI assistant: ${levels.length > 1 ? `${levels.slice(0, -1).join(', ')} and ${levels[levels.length - 1]}` : levels[0]} answers${top === 3 ? ' with deep reasoning' : ''}`,
+    f.AI_MONTHLY_CREDITS < 0 ? 'Unlimited AI credits' : `${limitLabel(f.AI_MONTHLY_CREDITS)} AI credits per month`,
+    ...(f.AI_ATTACHMENTS ? ['AI reads images & documents'] : []),
+    ...(f.AI_ACTIONS ? ['AI takes actions & sends reports'] : []),
+  ];
+}
+
 function PlanCard({ plan, current, canManage, trialAvailable, busy, onChoose }: {
   plan: Plan; current: boolean; canManage: boolean; trialAvailable: boolean; busy: boolean; onChoose: (plan: Plan, trial: boolean) => void;
 }) {
@@ -44,6 +58,9 @@ function PlanCard({ plan, current, canManage, trialAvailable, busy, onChoose }: 
       <ul className="plan-features">
         {LIMITS.map((k) => <li key={k}><Icon name="tick" />{featureText(k, plan.features[k])}</li>)}
         {FLAGS.map((k) => <li key={k} className={plan.features[k] ? '' : 'off'}><Icon name={plan.features[k] ? 'tick' : 'close'} />{FEATURE_LABELS[k]}</li>)}
+        {plan.features.AI_ASSISTANT
+          ? aiLines(plan.features).map((t) => <li key={t}><Icon name="tick" />{t}</li>)
+          : <li className="off"><Icon name="close" />AI assistant</li>}
       </ul>
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {current ? <button className="btn btn-ghost" disabled>Your plan</button>
