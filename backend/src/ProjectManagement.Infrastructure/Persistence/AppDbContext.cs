@@ -75,6 +75,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
     public DbSet<ReminderPolicy> ReminderPolicies => Set<ReminderPolicy>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
@@ -187,6 +190,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Name).HasMaxLength(80);
             e.Property(x => x.Slug).HasMaxLength(60);
             e.Property(x => x.CostCurrency).HasMaxLength(3);
+            e.Property(x => x.AiInstructions).HasMaxLength(4000);
         });
         b.Entity<TenantMember>(e =>
         {
@@ -465,6 +469,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<TenantDataPolicy>(e => e.HasIndex(x => x.TenantId).IsUnique());
+        b.Entity<AiConversation>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.LastMessageAt });
+            e.Property(x => x.Title).HasMaxLength(120);
+        });
+        b.Entity<AiMessage>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            e.HasIndex(x => new { x.TenantId, x.CreatedAt });               // a workspace's credits used this month
+            e.Property(x => x.Role).HasMaxLength(12);
+            e.Property(x => x.Tier).HasMaxLength(12);
+            e.Property(x => x.Model).HasMaxLength(64);
+            e.Property(x => x.RouteReason).HasMaxLength(120);
+            e.Property(x => x.Status).HasMaxLength(12);
+            e.HasOne<AiConversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<AiAttachment>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.MessageId });
+            e.HasIndex(x => x.MessageId);
+            e.Property(x => x.FileName).HasMaxLength(150);
+            e.Property(x => x.ContentType).HasMaxLength(120);
+            e.Property(x => x.StorageKey).HasMaxLength(200);
+        });
         b.Entity<Reminder>(e =>
         {
             e.HasIndex(x => new { x.State, x.NextFireAt });                 // the scheduler's question: what is due

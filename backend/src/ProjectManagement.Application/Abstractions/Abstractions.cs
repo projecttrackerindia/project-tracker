@@ -70,6 +70,9 @@ public interface IAppDbContext
     DbSet<AutomationRun> AutomationRuns { get; }
     DbSet<PushSubscription> PushSubscriptions { get; }
     DbSet<Reminder> Reminders { get; }
+    DbSet<AiConversation> AiConversations { get; }
+    DbSet<AiMessage> AiMessages { get; }
+    DbSet<AiAttachment> AiAttachments { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }
     DbSet<ReminderPolicy> ReminderPolicies { get; }
     DbSet<AutomationRule> AutomationRules { get; }

@@ -90,6 +90,8 @@ public class Tenant : AuditableEntity, ISoftDelete
     public string? CostCurrency { get; set; }
     /// <summary>The workspace has switched the AI assistant off (nothing of its data is ever sent to the model).</summary>
     public bool AiDisabled { get; set; }
+    /// <summary>What the organization tells the assistant about itself and how it works (written by an Owner or Admin, shared with every answer).</summary>
+    public string? AiInstructions { get; set; }
 
     /// <summary>Soft delete: members lose access, all data is retained and the tenant can be restored by a platform admin.</summary>
     public bool IsDeleted { get; set; }
