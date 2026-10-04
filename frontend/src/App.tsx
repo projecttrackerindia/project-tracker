@@ -20,6 +20,7 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>
   return lazy(() => load().then((m) => ({ default: m[name] })));
 }
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
+const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
 const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
 const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
 const DashboardPage = page(() => import('./features/dashboard/DashboardPage'), 'DashboardPage');
@@ -240,6 +241,8 @@ function AppRoutes() {
         {/* Home */}
         <Route index element={<DashboardPage />} />
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
+        <Route path="ai" element={<AiPage />} />
+        <Route path="ai/:id" element={<AiPage />} />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />
         <Route path="timesheet/approvals" element={<Guard allow={mTasks || mWork}><TimesheetPage section="approvals" /></Guard>} />

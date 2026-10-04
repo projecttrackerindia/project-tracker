@@ -14,9 +14,10 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>A change the assistant suggested, kept with everything needed to carry it out once the person confirms it.</summary>
-public sealed record AiProposal(string Id, string Kind, string Title, string Summary, string PayloadJson, string Status = "proposed", string? Link = null, string? Error = null)
+public sealed record AiProposal(string Id, string Kind, string Title, string Summary, string PayloadJson, string Status = "proposed", string? Link = null, string? Error = null,
+    string? Preview = null)
 {
-    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error);
+    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview);
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>
@@ -215,7 +216,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var due = Date(a, "due_date");
         var payload = new { projectId = project.Id, projectKey = project.Key, title, description = Str(a, "description"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due };
         var summary = $"In {project.Key}{Join(assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", due is null ? null : $"due {Day(due)}")}";
-        return Propose("create_task", $"Create task “{title}”", summary, payload);
+        return Propose("create_task", $"Create task “{title}”", summary, payload, Str(a, "description"));
     }
 
     private async Task<AiToolOutcome> ProposeWorkAsync(JsonElement a, CancellationToken ct)
@@ -232,7 +233,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var due = Date(a, "due_date");
         var payload = new { title, description = Str(a, "description"), workTypeId = type.Id, workType = type.Name, projectId = project?.Id, projectKey = project?.Key, assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due };
         var summary = $"{type.Name}{Join(project is null ? null : $"related to {project.Key}", assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", due is null ? null : $"due {Day(due)}")}";
-        return Propose("create_work", $"Create work “{title}”", summary, payload);
+        return Propose("create_work", $"Create work “{title}”", summary, payload, Str(a, "description"));
     }
 
     private async Task<AiToolOutcome> ProposeActionItemAsync(JsonElement a, CancellationToken ct)
@@ -244,7 +245,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var due = Date(a, "due_date");
         var payload = new { projectId = project.Id, projectKey = project.Key, title, details = Str(a, "details"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due };
         var summary = $"On {project.Key}{Join(assignee is null ? null : $"for {assignee.Name}", due is null ? null : $"due {Day(due)}")}";
-        return Propose("create_action_item", $"Add action item “{title}”", summary, payload);
+        return Propose("create_action_item", $"Add action item “{title}”", summary, payload, Str(a, "details"));
     }
 
     private async Task<AiToolOutcome> ProposeReminderAsync(JsonElement a, string? timeZone, CancellationToken ct)
@@ -270,12 +271,13 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         foreach (var n in names.Count == 0 ? ["me"] : names) { var p = await PersonAsync(n, ct); if (people.All(x => x.Id != p.Id)) people.Add(p); }
         if (people.Count > 10) throw new AiToolException("A report can go to at most 10 people at a time.");
         var payload = new { title, body, recipientIds = people.Select(p => p.Id), recipientNames = people.Select(p => p.Name) };
-        return Propose("send_report", $"Email report “{title}”", $"To {string.Join(", ", people.Select(p => p.Id == ctx.UserId ? "you" : p.Name))}", payload);
+        return Propose("send_report", $"Email report “{title}”", $"To {string.Join(", ", people.Select(p => p.Id == ctx.UserId ? "you" : p.Name))}", payload, body);
     }
 
-    private static AiToolOutcome Propose(string kind, string title, string summary, object payload)
+    private static AiToolOutcome Propose(string kind, string title, string summary, object payload, string? preview = null)
     {
-        var p = new AiProposal(Guid.NewGuid().ToString("N")[..8], kind, title, summary, JsonSerializer.Serialize(payload, Json));
+        var p = new AiProposal(Guid.NewGuid().ToString("N")[..8], kind, title, summary, JsonSerializer.Serialize(payload, Json),
+            Preview: string.IsNullOrWhiteSpace(preview) ? null : preview.Length > 4000 ? preview[..4000] + "…" : preview);
         return new AiToolOutcome($"Proposed: {title} ({summary}). The person will see a card and decide; it has NOT been done. Do not say it is done.", "Prepared a suggestion for you to confirm", 1, p);
     }
 

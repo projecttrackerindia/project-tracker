@@ -2,6 +2,7 @@ import type { IconName } from '../components/Icon';
 import { useAuth, useCan, useIsPersonal } from '../stores/auth';
 import { useVisibleKinds } from '../features/workitems/workItems';
 import { usePeopleSections } from '../features/people/sections';
+import { useAi } from '../features/ai/Assistant';
 
 /** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
 export interface NavDef { to: string; label: string; icon: IconName; end?: boolean; show?: boolean; badge?: number; match?: (path: string) => boolean }
@@ -22,6 +23,7 @@ export function useMainNav(): NavGroup[] {
   const people = usePeopleSections();
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const peopleHas = (id: string) => people.some((s) => s.id === id);
+  const ai = useAi();
 
   if (ctx?.user.isPlatformAdmin) return [
     { title: 'Platform', items: [
@@ -41,6 +43,7 @@ export function useMainNav(): NavGroup[] {
   return [
     { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
+      { to: '/ai', label: 'AI assistant', icon: 'sparkle', show: ai, match: (p) => p === '/ai' || p.startsWith('/ai/') },
       { to: '/my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0 },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
       { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },

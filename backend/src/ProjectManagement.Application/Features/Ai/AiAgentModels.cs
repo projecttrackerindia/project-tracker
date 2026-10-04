@@ -16,9 +16,10 @@ public record AiAttachmentDto(Guid Id, string Name, string ContentType, long Siz
 
 /// <summary>
 /// A change the assistant proposed. Nothing happens until the person confirms it: <see cref="Status"/> goes from "proposed" to "done"
-/// (with a link to the result), "failed" (with the reason) or "dismissed".
+/// (with a link to the result), "failed" (with the reason) or "dismissed". <see cref="Preview"/> is the full text of what would be created or sent,
+/// so the person can read it before confirming.
 /// </summary>
-public record AiActionDto(string Id, string Kind, string Title, string Summary, string Status, string? Link = null, string? Error = null);
+public record AiActionDto(string Id, string Kind, string Title, string Summary, string Status, string? Link = null, string? Error = null, string? Preview = null);
 
 public record AiMessageDto(Guid Id, string Role, string Content, string? Reasoning, string? Tier, string? Model, string? RouteReason, int Credits, string Status,
     IReadOnlyList<AiToolUseDto> Tools, IReadOnlyList<AiActionDto> Actions, IReadOnlyList<AiAttachmentDto> Attachments, DateTime CreatedAt);
@@ -44,7 +45,7 @@ public sealed record AiStreamRoute(string Tier, string Model, string Reason, boo
 public sealed record AiStreamReasoning(string Delta) : AiStreamEvent("reasoning");
 public sealed record AiStreamText(string Delta) : AiStreamEvent("text");
 /// <summary><paramref name="State"/> is "running" or "done".</summary>
-public sealed record AiStreamTool(string Id, string Name, string Label, string State, int? Count) : AiStreamEvent("tool");
+public sealed record AiStreamTool(string Id, string Tool, string Label, string State, int? Count) : AiStreamEvent("tool");
 public sealed record AiStreamAction(AiActionDto Action) : AiStreamEvent("action");
 public sealed record AiStreamDone(AiMessageDto Message, long CreditsLeft, bool Unlimited) : AiStreamEvent("done");
 public sealed record AiStreamError(string Code, string Message) : AiStreamEvent("error");

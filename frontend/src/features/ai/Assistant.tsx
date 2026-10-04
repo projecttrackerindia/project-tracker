@@ -10,8 +10,6 @@ import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { WorkItemRow, fromWorkItem, workItemLink } from '../workitems/workItems';
-import { openReminderComposer } from '../reminders/store';
 
 // ------------------------------------------------------------------ API
 export interface AiStatus { enabled: boolean; configured: boolean; entitled: boolean; allowedHere: boolean; model: string | null; provider: string | null; backup: string | null }
@@ -31,7 +29,7 @@ export const aiApi = {
   notes: (projectId: string, notes: string) => post<{ items: AiActionItem[] }>(`/ai/projects/${projectId}/action-items`, { notes }),
 };
 
-const useAiStatus = () => useWsQuery(['ai', 'status'], aiApi.status, { staleTime: 5 * 60_000, retry: false }).data;
+export const useAiStatus = () => useWsQuery(['ai', 'status'], aiApi.status, { staleTime: 5 * 60_000, retry: false }).data;
 
 /** Whether the assistant can be used here (configured, in the plan, switched on for the workspace). */
 export function useAi() {
@@ -102,88 +100,23 @@ export function AssistantButton() {
   return <button type="button" className="asst-top-btn" onClick={() => ask()} title="Ask the AI assistant (Ctrl K, then type)"><Sparkle size={15} /><span>Ask AI</span></button>;
 }
 
-/** The slide-over assistant: ask for work in plain words, or get a portfolio summary. */
+/**
+ * The assistant has its own page (/ai). Anything that used to open the slide-over - the top bar, the command palette, "AI summary" on the
+ * portfolio - still just asks the store to open it, and lands there with the question in hand.
+ */
 export function AssistantPanel() {
-  const { open, question, summary: summaryAsked, close } = useAssistant();
-  const status = useAiStatus();
-  const enabled = status?.enabled ?? false;
+  const { open, question, summary, close } = useAssistant();
   const nav = useNavigate();
-  const [q, setQ] = useState(question);
-  const [busy, setBusy] = useState<'search' | 'summary' | null>(null);
-  const [result, setResult] = useState<AiSearch | null>(null);
-  const [summary, setSummary] = useState<AiSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const asked = useRef('');
-
-  const search = async (text: string) => {
-    if (text.trim().length < 3) return;
-    if (/^(remind|reminder|remember|don'?t forget)\b/i.test(text.trim())) { close(); openReminderComposer({ text: text.trim() }); return; }
-    setBusy('search'); setError(null); setSummary(null);
-    try { setResult(await aiApi.search(text.trim())); } catch (e) { setError(errText(e, 'The assistant could not answer.')); } finally { setBusy(null); }
-  };
+  const handledSummary = useRef(0);
   useEffect(() => {
     if (!open) return;
-    setQ(question); setTimeout(() => input.current?.focus(), 50);
-    if (question && question !== asked.current) { asked.current = question; void search(question); }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, question]);
-  useEffect(() => {
-    if (open && summaryAsked > 0) void portfolio();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [summaryAsked]);
-  if (!open || !enabled) return null;
-
-  async function portfolio() {
-    setBusy('summary'); setError(null); setResult(null);
-    try { setSummary(await aiApi.portfolio()); } catch (e) { setError(errText(e, 'The assistant could not answer.')); } finally { setBusy(null); }
-  }
-  const examples = ['Overdue work assigned to me', 'High priority bugs raised this week', 'What is due next Friday?', 'Unassigned operational work'];
-
-  return (
-    <div className="asst-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <aside className="asst-panel" role="dialog" aria-label="AI assistant">
-        <header className="asst-head">
-          <div className="asst-title"><span className="asst-badge"><Sparkle size={16} /></span><div><b>Assistant</b><span>Powered by {poweredBy(status)}</span></div></div>
-          <button type="button" className="btn-icon" aria-label="Close" onClick={close}><Icon name="close" /></button>
-        </header>
-        <form className="asst-ask" onSubmit={(e) => { e.preventDefault(); void search(q); }}>
-          <input ref={input} className="input" value={q} maxLength={300} placeholder="Ask for work in plain words…" onChange={(e) => setQ(e.target.value)} aria-label="Ask the assistant" />
-          <button type="submit" className="btn btn-primary" disabled={!!busy || q.trim().length < 3}><Icon name="send" size={14} /></button>
-        </form>
-        <div className="asst-body">
-          {!result && !summary && !busy && !error && (
-            <>
-              <div className="asst-section-title">Try</div>
-              <div className="asst-chips">{examples.map((x) => <button key={x} type="button" className="asst-chip" onClick={() => { setQ(x); void search(x); }}>{x}</button>)}</div>
-              <div className="asst-section-title">Or</div>
-              <button type="button" className="asst-action" onClick={() => void portfolio()}><Sparkle size={14} /><span><b>Summarise the portfolio</b><i>What needs attention across your projects, and what is going well</i></span></button>
-            </>
-          )}
-          {busy && <Thinking label={busy === 'search' ? 'Looking through the work you can see…' : 'Reading your portfolio…'} />}
-          {error && <div className="form-error" role="alert">{error}</div>}
-          {result && !busy && (
-            <>
-              <div className="asst-understood"><Sparkle size={13} /> {result.interpretation}</div>
-              {result.items.length === 0 ? <EmptyState icon="search" title="Nothing matches" /> : (
-                <div className="wi-list">{result.items.map((i) => <WorkItemRow key={`${i.kind}:${i.id}`} item={fromWorkItem(i)} onOpen={() => { close(); nav(workItemLink(i)); }} />)}</div>
-              )}
-            </>
-          )}
-          {summary && !busy && (
-            <>
-              <Prose text={summary.summary} />
-              <div className="asst-foot-note">Generated {formatDateTime(summary.generatedAt)} from the projects you can see. Check before sharing.</div>
-            </>
-          )}
-        </div>
-        <footer className="asst-privacy"><Icon name="lock" size={12} /> To answer, only what you can already see is sent to {sentTo(status)}. Your workspace can switch this off.</footer>
-      </aside>
-    </div>
-  );
+    const summarise = summary !== handledSummary.current;
+    handledSummary.current = summary;
+    close();
+    const ask = summarise ? 'Give me an executive summary of all active projects: what needs attention, what is going well and what I should do next.' : question || undefined;
+    nav('/ai', { state: ask ? { ask, ts: Date.now() } : null });
+  }, [open, question, summary, close, nav]);
+  return null;
 }
 
 // ------------------------------------------------------------------ contextual features

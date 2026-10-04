@@ -393,6 +393,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         var res = await Ask(o.Owner, "Email me a weekly status report");
         var card = res.Last("action")["action"]!;
         Assert.Contains("Weekly status", S(card["title"]));
+        Assert.Contains("Atlas is on track.", S(card["preview"]));   // the person can read exactly what would be sent before confirming
         Assert.DoesNotContain((await o.Owner.Send(HttpMethod.Get, "/api/v1/dev/emails", null, true)).Data!.AsArray(), m => S(m!["subject"]).Contains("Weekly status"));   // not before confirming
 
         var confirm = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");

@@ -13,6 +13,7 @@ import './styles/chat.css';
 import './styles/auth.css';
 import './styles/celebrate.css';
 import './styles/dark.css';
+import './styles/ai.css';
 import './styles/theme.css';
 import './styles/org.css';
 import './styles/reminders.css';

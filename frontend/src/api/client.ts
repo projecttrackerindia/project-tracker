@@ -113,6 +113,21 @@ export async function uploadFile<T>(path: string, file: File, fields?: Record<st
   return data as T;
 }
 
+/**
+ * POST whose answer is read as it arrives (server-sent events). Returns the open response once the server has accepted the request;
+ * a refusal (no plan, no credits, a bad file ...) comes back as an ordinary error response and is thrown as an ApiError.
+ */
+export async function streamPost(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  const send = () => fetch(`${BASE}/api/v1${path}`, {
+    method: 'POST', credentials: 'include', signal, body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+  });
+  let res = await send();
+  if (res.status === 401 && (await refreshSession())) res = await send();
+  if (!res.ok || !res.body) throw (await parse(res)).error ?? new ApiError(res.status, 'The assistant could not be reached.', []);
+  return res;
+}
+
 /** Fetches a protected file and returns an object URL; the caller revokes it when the element goes away. */
 export async function fetchBlobUrl(path: string, signal?: AbortSignal): Promise<string> {
   const send = async () => fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include', signal });
