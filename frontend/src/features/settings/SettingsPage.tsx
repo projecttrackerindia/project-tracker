@@ -36,6 +36,7 @@ import { PROVIDER_ICON } from '../auth/AuthPages';
 import { Select } from '../../components/Select';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiInstructionsCard } from '../ai/AiInstructions';
+import { AiUsageCard } from '../ai/AiUsageCard';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -297,7 +298,7 @@ function GeneralSection() {
           {personal && <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Want to collaborate? Use the workspace menu in the top bar to create an organization.</p>}
         </div>
       </div>
-      {(ctx.current.role === 'Owner' || ctx.current.role === 'Admin') && <><AiWorkspaceSwitch /><AiInstructionsCard /></>}
+      {(ctx.current.role === 'Owner' || ctx.current.role === 'Admin') && <><AiWorkspaceSwitch /><AiInstructionsCard /><AiUsageCard /></>}
     </>
   );
 }

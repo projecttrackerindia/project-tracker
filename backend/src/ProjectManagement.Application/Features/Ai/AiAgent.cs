@@ -224,6 +224,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var tier = route.Tier; var reason = route.Reason; var limited = route.Limited;
         while (tier > AiTier.Quick && run.CreditsLeft < Opt.For(tier).Credits) { tier--; limited = true; reason += " (credits are running low)"; }
         var cfg = Opt.For(tier);
+        var model = cfg.Model;
+        var fellBack = false;
         yield return new AiStreamRoute(TierId(tier), cfg.Model, reason, limited, TierId(route.Wanted), cfg.Credits);
 
         // ---- what the model is given
@@ -239,7 +241,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         for (var step = 0; ; step++)
         {
             if (answer.Length > 0 && !char.IsWhiteSpace(answer[^1])) { answer.Append("\n\n"); yield return new AiStreamText("\n\n"); }
-            var request = new AiChatRequest(cfg.Model, system, context, turns, tools, cfg.MaxTokens, cfg.Effort, cfg.ShowReasoning);
+            var turnStart = answer.Length;
+            var request = new AiChatRequest(model, system, context, turns, tools, cfg.MaxTokens, cfg.Effort, cfg.ShowReasoning);
             AiTurnEnd? end = null;
             var events = chat.StreamAsync(request, ct).GetAsyncEnumerator(ct);
             try
@@ -263,7 +266,20 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             if (failure is not null || cancelled || end is null) break;
 
             inTokens += end.InputTokens; outTokens += end.OutputTokens;
-            if (end.StopReason == "refusal") { note = "\n\nI can't help with that request."; break; }
+            if (end.StopReason == "refusal")
+            {
+                // The model's safety checks sometimes decline harmless work. If nothing has been written yet, the same request gets one try on the
+                // backup model; its reasoning does not come along (it is bound to the model that wrote it).
+                if (!fellBack && answer.Length == turnStart && Opt.RefusalFallbackModel is { Length: > 0 } backup && backup != model)
+                {
+                    fellBack = true; model = backup; reason += " (answered by a backup model)";
+                    turns = turns.Select(t => t.Role == "assistant" ? t with { Blocks = t.Blocks.Where(b => b is not (AiThinking or AiRedactedThinking)).ToList() } : t).ToList();
+                    log.LogInformation("{Model} declined a request; trying {Backup}", cfg.Model, backup);
+                    step--;
+                    continue;
+                }
+                note = "\n\nI can't help with that request."; break;
+            }
             if (end.StopReason == "max_tokens") { note = "\n\n_The answer was cut short. Ask me to continue._"; break; }
             if (!end.WantsTools) break;
             if (step >= Opt.MaxToolSteps) { note = "\n\n_I stopped looking things up after several steps. Ask a narrower question to go deeper._"; break; }
@@ -295,13 +311,13 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             ConversationId = run.Conversation.Id, UserId = run.Question.UserId, Role = "assistant",
             Content = status == "failed" && answer.Length == 0 ? failureText! : answer.ToString().Trim(),
             Reasoning = thinking.Length == 0 ? null : thinking.ToString(),
-            Tier = TierId(tier), Model = cfg.Model, RouteReason = reason, InputTokens = inTokens, OutputTokens = outTokens, Credits = credits, Status = status,
+            Tier = TierId(tier), Model = model, RouteReason = reason, InputTokens = inTokens, OutputTokens = outTokens, Credits = credits, Status = status,
             ToolsJson = used.Count == 0 ? null : JsonSerializer.Serialize(Merge(used), Json),
             ActionsJson = proposals.Count == 0 ? null : JsonSerializer.Serialize(proposals, Json),
         };
         db.AiMessages.Add(reply);
         run.Conversation.LastMessageAt = clock.Now;
-        recorder.Audit("ai.used", "AiAssistant", null, null, new { feature = "workspace", tier = reply.Tier, model = cfg.Model, credits, status, tokensIn = inTokens, tokensOut = outTokens });
+        recorder.Audit("ai.used", "AiAssistant", null, null, new { feature = "workspace", tier = reply.Tier, model, fellBack, credits, status, tokensIn = inTokens, tokensOut = outTokens });
         // Saved even if the person has already gone: the answer is in the history and the credits it used are counted.
         await db.SaveChangesAsync(CancellationToken.None);
 

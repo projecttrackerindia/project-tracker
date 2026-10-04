@@ -65,10 +65,19 @@ public sealed class FakeAiChat : IAiChat
         yield return new AiTurnEnd(blocks, "end_turn", 200, 40);
     }
 
-    /// <summary>A turn that ends by calling a tool.</summary>
-    public static IEnumerable<AiChatEvent> UseTool(string name, object input, string? text = null, string id = "toolu_1")
+    /// <summary>A turn the model declined to answer.</summary>
+    public static IEnumerable<AiChatEvent> Refuse(string? writtenFirst = null)
     {
         var blocks = new List<AiBlock>();
+        if (writtenFirst is not null) { yield return new AiTextDelta(writtenFirst); blocks.Add(new AiText(writtenFirst)); }
+        yield return new AiTurnEnd(blocks, "refusal", 120, 5);
+    }
+
+    /// <summary>A turn that ends by calling a tool.</summary>
+    public static IEnumerable<AiChatEvent> UseTool(string name, object input, string? text = null, string id = "toolu_1", string? thinking = null)
+    {
+        var blocks = new List<AiBlock>();
+        if (thinking is not null) { yield return new AiThinkingDelta(thinking); blocks.Add(new AiThinking(thinking, "sig-tool")); }
         if (text is not null) { yield return new AiTextDelta(text); blocks.Add(new AiText(text)); }
         blocks.Add(new AiToolUse(id, name, System.Text.Json.JsonSerializer.Serialize(input)));
         yield return new AiTurnEnd(blocks, "tool_use", 150, 30);

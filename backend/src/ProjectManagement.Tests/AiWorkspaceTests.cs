@@ -527,4 +527,113 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.Equal(4, detail["messages"]!.AsArray().Count);
         Assert.Equal("How is Atlas doing?", S(detail["conversation"]!["title"]));
     }
+
+    // ------------------------------------------------------------------ a model that declines
+
+    [Fact]
+    public async Task A_declined_request_is_retried_once_on_the_backup_model_without_the_first_models_reasoning()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("find_work", new { overdue = true }, thinking: "Look at the overdue work first."));
+        Chat.Script.Enqueue(_ => FakeAiChat.Refuse());
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Here is the answer."));
+        var res = await Ask(o.Owner, "Analyze why the Atlas project is late and recommend how to fix it");
+
+        var requests = Chat.Requests.ToArray();
+        Assert.Equal(3, requests.Length);
+        Assert.Equal("claude-opus-5-5", requests[1].Model);                         // the tool round trip stays on the first model, thinking and all
+        Assert.Contains(requests[1].Turns.SelectMany(t => t.Blocks), b => b is AiThinking);
+        Assert.Equal("claude-opus-4-8", requests[2].Model);                         // the retry
+        Assert.DoesNotContain(requests[2].Turns.SelectMany(t => t.Blocks), b => b is AiThinking or AiRedactedThinking);   // reasoning is bound to the model that wrote it
+        Assert.Equal("claude-opus-4-8", S(res.Done["model"]));
+        Assert.Contains("backup model", S(res.Done["routeReason"]));
+        Assert.EndsWith("Here is the answer.", S(res.Done["content"]));
+        Assert.Equal(15, res.Done["credits"]!.GetValue<int>());                     // one answer, one price
+    }
+
+    [Fact]
+    public async Task A_request_that_is_declined_twice_or_after_writing_has_started_is_not_retried_again()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.Refuse());
+        Chat.Script.Enqueue(_ => FakeAiChat.Refuse());
+        var twice = await Ask(o.Owner, "Which tasks are overdue?");
+        Assert.Equal(2, Chat.Requests.Count);
+        Assert.Contains("can't help with that request", S(twice.Done["content"]));
+
+        Chat.Requests.Clear();
+        Chat.Script.Enqueue(_ => FakeAiChat.Refuse("Here is the start of"));
+        var started = await Ask(o.Owner, "Which tasks are overdue?");
+        Assert.Single(Chat.Requests);                                               // part of an answer was already shown: no second try
+        Assert.StartsWith("Here is the start of", S(started.Done["content"]));
+        Assert.Contains("can't help with that request", S(started.Done["content"]));
+    }
+
+    // ------------------------------------------------------------------ usage reports
+
+    [Fact]
+    public async Task Owners_see_the_months_use_per_person_and_level_but_never_what_was_said()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Hello!"));
+        await Ask(o.Owner, "hi");
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("The delay is the vendor."));
+        await Ask(o.Owner, "Analyze why the Atlas project is late and recommend how to fix it");
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Hi again."));
+        await Ask(o.Manager, "hello");
+        Chat.Fail = new AiProviderException(503, "AI_BUSY", "Claude", "is busy");
+        await Ask(o.Manager, "this one fails");
+        Chat.Fail = null;
+
+        var report = await o.Owner.Get("/api/v1/ai/usage/report");
+        Assert.True(report.Ok, report.ToString());
+        var d = report.Data!;
+        Assert.Equal(DateTime.UtcNow.ToString("yyyy-MM"), S(d["month"]));
+        Assert.Equal(17, d["creditsUsed"]!.GetValue<long>());                       // 1 + 15 + 1; the failed answer was free
+        Assert.Equal(2000, d["creditsLimit"]!.GetValue<long>());
+        Assert.Equal(4, d["answers"]!.GetValue<int>());
+        Assert.Equal(1, d["failed"]!.GetValue<int>());
+        var tiers = d["byTier"]!.AsArray().ToDictionary(t => S(t!["tier"]), t => t!["answers"]!.GetValue<int>());
+        Assert.Equal((3, 0, 1), (tiers["quick"], tiers["standard"], tiers["deep"]));   // the failed answer still counts under its level, at no credits
+        var people = d["people"]!.AsArray();
+        Assert.Equal("Olivia Owner", S(people[0]!["name"]));                        // most credits first
+        Assert.Equal(16, people[0]!["credits"]!.GetValue<long>());
+        Assert.Equal("Max Manager", S(people[1]!["name"]));
+        // Counts only: nothing anyone typed or was answered appears.
+        var raw = report.Json!.ToJsonString();
+        Assert.DoesNotContain("vendor", raw);
+        Assert.DoesNotContain("Analyze", raw);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await o.Manager.Get("/api/v1/ai/usage/report")).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await o.Owner.Get("/api/v1/ai/usage/report?month=banana")).Status);
+        var last = DateTime.UtcNow.AddMonths(-1).ToString("yyyy-MM");
+        Assert.Equal(0, (await o.Owner.Get($"/api/v1/ai/usage/report?month={last}")).Data!["answers"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task The_platform_sees_each_organizations_use_with_a_cost_estimate_and_only_administrators_may()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Looks fine."));
+        await Ask(o.Owner, "Analyze why the Atlas project is late and recommend how to fix it");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await o.Owner.Get("/api/v1/admin/ai-usage")).Status);
+
+        var admin = await TestClient.RegisterAsync(factory, "Platform Admin");
+        factory.WithDb(db => { db.Users.IgnoreQueryFilters().Where(u => u.Id == admin.UserId).ExecuteUpdate(s => s.SetProperty(u => u.IsPlatformAdmin, true)); return 0; });
+        await admin.LoginAsync();
+        var res = await admin.Get("/api/v1/admin/ai-usage");
+        Assert.True(res.Ok, res.ToString());
+        var row = res.Data!["rows"]!.AsArray().Single(r => Guid.Parse(S(r!["tenantId"])) == o.Owner.WorkspaceId)!;
+        Assert.Equal("BUSINESS", S(row["planCode"]));
+        Assert.Equal(15, row["creditsUsed"]!.GetValue<long>());
+        Assert.Equal(2000, row["creditsLimit"]!.GetValue<long>());
+        Assert.Equal(1, row["deep"]!.GetValue<int>());
+        Assert.Equal(200, row["tokensIn"]!.GetValue<long>());
+        Assert.Equal(40, row["tokensOut"]!.GetValue<long>());
+        Assert.Equal("USD", S(res.Data["currency"]));
+        Assert.True(res.Data["estimatedCost"]!.GetValue<decimal>() >= 0);
+        Assert.DoesNotContain("Analyze", res.Json!.ToJsonString());                 // counts only
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.Get("/api/v1/admin/ai-usage?month=2026-13")).Status);
+    }
 }

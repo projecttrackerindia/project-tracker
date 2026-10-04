@@ -21,7 +21,18 @@ export interface AiMessage {
 export interface AiConversationDetail { conversation: AiConversation; messages: AiMessage[] }
 export interface AiInstructions { text: string | null; canEdit: boolean }
 
+export interface AiTierCount { tier: AiTier; answers: number; credits: number }
+export interface AiPersonUsage { userId: string; name: string; answers: number; credits: number; byTier: AiTierCount[] }
+export interface AiWorkspaceReport { month: string; creditsUsed: number; creditsLimit: number; unlimited: boolean; answers: number; failed: number; byTier: AiTierCount[]; people: AiPersonUsage[] }
+export interface AdminAiUsageRow {
+  tenantId: string; name: string; planCode: string; answers: number; failed: number; creditsUsed: number; creditsLimit: number; quick: number; standard: number; deep: number;
+  tokensIn: number; tokensOut: number; estimatedCost: number; lastUsedAt: string | null;
+}
+export interface AdminAiUsage { month: string; organizations: number; answers: number; creditsUsed: number; tokensIn: number; tokensOut: number; estimatedCost: number; currency: string; rows: AdminAiUsageRow[] }
+
 export interface AskBody { text: string; mode: AiMode; attachmentIds: string[]; timeZone: string }
+
+export const aiAdminApi = { usage: (month: string) => get<AdminAiUsage>('/admin/ai-usage', { month }) };
 
 /** What arrives while an answer is written. */
 export type AiStreamEvent =
@@ -46,6 +57,7 @@ export const aiWorkspaceApi = {
   dismiss: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/dismiss`),
   upload: (file: File) => uploadFile<AiAttachment>('/ai/files', file),
   removeFile: (id: string) => del(`/ai/files/${id}`),
+  report: (month: string) => get<AiWorkspaceReport>('/ai/usage/report', { month }),
   instructions: () => get<AiInstructions>('/ai/instructions'),
   setInstructions: (text: string) => put<AiInstructions>('/ai/instructions', { text }),
 };

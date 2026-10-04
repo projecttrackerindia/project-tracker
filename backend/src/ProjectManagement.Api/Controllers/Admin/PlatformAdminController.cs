@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Application.Features.Admin;
+using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Auth;
 using ProjectManagement.Domain.Enums;
 
@@ -11,7 +12,7 @@ namespace ProjectManagement.Api.Controllers.Admin;
 /// services from the server-resolved user, never from anything the client sends.
 /// </summary>
 [Route("api/v1/admin")]
-public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive) : ApiControllerBase
+public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage) : ApiControllerBase
 {
     // ---------------------------------------------------------------- organizations, users, plans, audit
     [HttpGet("stats")]
@@ -116,6 +117,10 @@ public class PlatformAdminController(AdminService admin, PlatformService platfor
     [HttpGet("usage")]
     public async Task<IActionResult> Usage([FromQuery] string? q, [FromQuery] WorkspaceType? type, [FromQuery] string? sort, [FromQuery] bool warningsOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
         Ok(await platform.UsageAsync(q, type, sort, warningsOnly, page, pageSize, ct));
+
+    /// <summary>The AI workspace's use per organization for a month, with an estimate of its cost at the providers' prices. Counts only.</summary>
+    [HttpGet("ai-usage")]
+    public async Task<IActionResult> AiUsage([FromQuery] string? month, CancellationToken ct) => Ok(await aiUsage.PlatformAsync(month, ct));
 
     [HttpGet("health")]
     public async Task<IActionResult> Health(CancellationToken ct) => Ok(await platform.HealthAsync(ct));

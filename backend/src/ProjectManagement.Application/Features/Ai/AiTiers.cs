@@ -19,19 +19,28 @@ public class AiTierOptions
     public string? Effort { get; set; }
     /// <summary>Show the model's reasoning summary while it works (Standard and Deep only).</summary>
     public bool ShowReasoning { get; set; }
+    /// <summary>What the provider charges per million tokens (US dollars), used only for the administrator's cost estimate. Set to the provider's current prices.</summary>
+    public decimal InputPerMTok { get; set; }
+    public decimal OutputPerMTok { get; set; }
 }
 
 /// <summary>Settings of the AI workspace (<c>Ai:Chat</c>): the three model levels, routing, attachments and limits.</summary>
 public class AiChatOptions
 {
     // Quick answers lookups and small talk without thinking; Standard handles most real questions; Deep is for analysis and planning.
-    public AiTierOptions Quick { get; set; } = new() { Model = "claude-haiku-4-5", Credits = 1, MaxTokens = 1500 };
-    public AiTierOptions Standard { get; set; } = new() { Model = "claude-sonnet-5-5", Credits = 4, MaxTokens = 6000, Effort = "low", ShowReasoning = true };
-    public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 15, MaxTokens = 16000, Effort = "high", ShowReasoning = true };
+    public AiTierOptions Quick { get; set; } = new() { Model = "claude-haiku-4-5", Credits = 1, MaxTokens = 1500, InputPerMTok = 1m, OutputPerMTok = 5m };
+    public AiTierOptions Standard { get; set; } = new() { Model = "claude-sonnet-5-5", Credits = 4, MaxTokens = 6000, Effort = "low", ShowReasoning = true, InputPerMTok = 2m, OutputPerMTok = 10m };
+    public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 15, MaxTokens = 16000, Effort = "high", ShowReasoning = true, InputPerMTok = 4m, OutputPerMTok = 20m };
 
     /// <summary>For questions the free rules cannot place, ask the smallest model how hard the question is (a few tokens).</summary>
     public bool UseClassifier { get; set; } = true;
     public string ClassifierModel { get; set; } = "claude-haiku-4-5";
+
+    /// <summary>
+    /// When the model declines a request (its safety checks sometimes stop harmless work), the same request is tried once on this model before
+    /// the person is told. Empty turns it off. The reasoning of the first model is not carried over: it is bound to that model.
+    /// </summary>
+    public string? RefusalFallbackModel { get; set; } = "claude-opus-4-8";
 
     public int MaxFilesPerMessage { get; set; } = 5;
     public int MaxImageMb { get; set; } = 5;

@@ -84,6 +84,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiActionRunner>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiFileService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAgent>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiUsageService>();
         services.AddScoped<ProjectManagement.Application.Features.Automation.AutomationScheduler>();
         services.AddScoped<ProjectManagement.Application.Features.Notifications.PushService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderService>();

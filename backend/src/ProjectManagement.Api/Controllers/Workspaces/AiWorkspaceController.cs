@@ -13,7 +13,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 /// signed-in person; the assistant reads only what they may read (see <see cref="AiAgent"/>).
 /// </summary>
 [Route("api/v1/ai"), RequireWorkspace]
-public class AiWorkspaceController(AiAgent agent, AiFileService files) : ApiControllerBase
+public class AiWorkspaceController(AiAgent agent, AiFileService files, AiUsageService usage) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -22,6 +22,10 @@ public class AiWorkspaceController(AiAgent agent, AiFileService files) : ApiCont
     /// <summary>The plan's AI levels and what is left of the month's credits.</summary>
     [HttpGet("usage")]
     public async Task<IActionResult> Usage(CancellationToken ct) => Ok(await agent.UsageAsync(ct));
+
+    /// <summary>Owners and admins: who used the assistant this month and how much (counts only, never what was asked).</summary>
+    [HttpGet("usage/report")]
+    public async Task<IActionResult> UsageReport([FromQuery] string? month, CancellationToken ct) => Ok(await usage.WorkspaceAsync(month, ct));
 
     // ---- conversations
 
