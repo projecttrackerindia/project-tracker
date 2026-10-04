@@ -142,7 +142,8 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
             Model = r.Model,
             MaxTokens = r.MaxTokens,
             // The instructions are the same for every question, so they are cached: later turns of a conversation read them at a fraction of the price.
-            System = new List<TextBlockParam> { new() { Text = r.System, CacheControl = new CacheControlEphemeral() } },
+            // What changes per person and day follows in its own block, after the cached part.
+            System = SystemBlocks(r),
             Messages = r.Turns.Select(ToMessage).ToList(),
         };
         if (r.Tools.Count > 0) p = p with { Tools = r.Tools.Select(ToTool).ToList() };
@@ -150,6 +151,13 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
         if (r.Effort is { Length: > 0 } effort && ParseEffort(effort) is { } level) p = p with { OutputConfig = new OutputConfig { Effort = level } };
         if (r.ShowReasoning) p = p with { Thinking = new ThinkingConfigAdaptive { Display = Display.Summarized } };
         return p;
+    }
+
+    private static List<TextBlockParam> SystemBlocks(AiChatRequest r)
+    {
+        var blocks = new List<TextBlockParam> { new() { Text = r.System, CacheControl = new CacheControlEphemeral() } };
+        if (!string.IsNullOrWhiteSpace(r.Context)) blocks.Add(new TextBlockParam { Text = r.Context });
+        return blocks;
     }
 
     private static Effort? ParseEffort(string e) => e.ToLowerInvariant() switch

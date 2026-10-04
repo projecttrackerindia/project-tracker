@@ -72,7 +72,7 @@ public sealed class AnthropicChatTests : IDisposable
         ("message_stop", """{"type":"message_stop"}"""));
 
     private static AiChatRequest Request(string model = "claude-opus-5-5", string? effort = "high", bool reasoning = true, IReadOnlyList<AiTurn>? turns = null, IReadOnlyList<AiToolDef>? tools = null) =>
-        new(model, "You are the assistant.", turns ?? [AiTurn.User("What is overdue?")], tools ?? [], 4000, effort, reasoning);
+        new(model, "You are the assistant.", "Today is Monday.", turns ?? [AiTurn.User("What is overdue?")], tools ?? [], 4000, effort, reasoning);
 
     private static async Task<List<AiChatEvent>> Collect(IAsyncEnumerable<AiChatEvent> stream)
     {
@@ -123,6 +123,9 @@ public sealed class AnthropicChatTests : IDisposable
         Assert.Equal("overdue", sent["tools"]![0]!["input_schema"]!["required"]![0]!.GetValue<string>());
         // The instructions are marked cacheable.
         Assert.Equal("ephemeral", sent["system"]![0]!["cache_control"]!["type"]!.GetValue<string>());
+        // ... and what changes per person follows, outside the cached part.
+        Assert.Equal("Today is Monday.", sent["system"]![1]!["text"]!.GetValue<string>());
+        Assert.Null(sent["system"]![1]!["cache_control"]);
     }
 
     [Fact]

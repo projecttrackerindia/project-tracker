@@ -79,6 +79,11 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Compliance.DataPolicyService>();
         services.AddScoped<ProjectManagement.Application.Features.Compliance.WorkspaceExporter>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAssistant>();
+        // The AI workspace: conversations, the tools it reads the workspace with, the changes it proposes, and attached files.
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiToolbox>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiActionRunner>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiFileService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiAgent>();
         services.AddScoped<ProjectManagement.Application.Features.Automation.AutomationScheduler>();
         services.AddScoped<ProjectManagement.Application.Features.Notifications.PushService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderService>();

@@ -22,7 +22,11 @@ public sealed record AiTurn(string Role, IReadOnlyList<AiBlock> Blocks)
 /// <summary>A tool the model may call. <paramref name="SchemaJson"/> is the JSON Schema of its input (an object).</summary>
 public sealed record AiToolDef(string Name, string Description, string SchemaJson);
 
-public sealed record AiChatRequest(string Model, string System, IReadOnlyList<AiTurn> Turns, IReadOnlyList<AiToolDef> Tools, int MaxTokens,
+/// <summary>
+/// <paramref name="System"/> is the same for every question (so the provider can cache it); <paramref name="Context"/> is what changes from
+/// person to person and day to day (who is asking, the date, the organization's own description) and follows it uncached.
+/// </summary>
+public sealed record AiChatRequest(string Model, string System, string Context, IReadOnlyList<AiTurn> Turns, IReadOnlyList<AiToolDef> Tools, int MaxTokens,
     string? Effort, bool ShowReasoning);
 
 public abstract record AiChatEvent;

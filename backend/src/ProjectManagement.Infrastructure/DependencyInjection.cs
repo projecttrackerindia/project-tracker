@@ -72,6 +72,7 @@ public static class DependencyInjection
         services.AddSingleton<AnthropicClient>();
         services.AddSingleton<OpenAiCompatibleClient>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AiRouter>();
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat, AnthropicChat>();   // the AI workspace: streamed, with tools and files
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IFileStorage, S3FileStorage>();

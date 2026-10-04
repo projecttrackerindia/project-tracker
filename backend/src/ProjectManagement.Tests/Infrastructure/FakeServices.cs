@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Runtime.CompilerServices;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Ai;
 
@@ -25,6 +26,55 @@ public sealed class FakeAiClient : IAiClient
     }
 
     public void Reset() { Configured = false; Answer = (_, _) => "{}"; Prompts.Clear(); }
+}
+
+/// <summary>
+/// Stands in for Claude in the AI workspace. A test scripts the model's turns (what it says, which tool it calls), can read every request it
+/// was sent (model, effort, system text, history, files) and can make it fail. Off until a test switches it on; <see cref="Reset"/> puts it back.
+/// </summary>
+public sealed class FakeAiChat : IAiChat
+{
+    public bool Configured { get; set; }
+    public ConcurrentQueue<Func<AiChatRequest, IEnumerable<AiChatEvent>>> Script { get; } = new();
+    public ConcurrentQueue<AiChatRequest> Requests { get; } = new();
+    public ConcurrentQueue<string> Classified { get; } = new();
+    /// <summary>What the small classifier model answers for a question.</summary>
+    public Func<string, string> Classifier { get; set; } = _ => "standard";
+    public Exception? Fail { get; set; }
+
+    public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
+    {
+        Requests.Enqueue(request);
+        if (Fail is { } f) throw f;
+        var events = Script.TryDequeue(out var next) ? next(request) : Say("Fine.");
+        foreach (var e in events) { await Task.Yield(); yield return e; }
+    }
+
+    public Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct)
+    {
+        Classified.Enqueue(user);
+        return Task.FromResult(Classifier(user));
+    }
+
+    /// <summary>A finished turn of plain text, optionally with reasoning before it.</summary>
+    public static IEnumerable<AiChatEvent> Say(string text, string? thinking = null)
+    {
+        var blocks = new List<AiBlock>();
+        if (thinking is not null) { yield return new AiThinkingDelta(thinking); blocks.Add(new AiThinking(thinking, "sig")); }
+        yield return new AiTextDelta(text); blocks.Add(new AiText(text));
+        yield return new AiTurnEnd(blocks, "end_turn", 200, 40);
+    }
+
+    /// <summary>A turn that ends by calling a tool.</summary>
+    public static IEnumerable<AiChatEvent> UseTool(string name, object input, string? text = null, string id = "toolu_1")
+    {
+        var blocks = new List<AiBlock>();
+        if (text is not null) { yield return new AiTextDelta(text); blocks.Add(new AiText(text)); }
+        blocks.Add(new AiToolUse(id, name, System.Text.Json.JsonSerializer.Serialize(input)));
+        yield return new AiTurnEnd(blocks, "tool_use", 150, 30);
+    }
+
+    public void Reset() { Configured = false; Script.Clear(); Requests.Clear(); Classified.Clear(); Classifier = _ => "standard"; Fail = null; }
 }
 
 /// <summary>Stands in for the push services (FCM, Mozilla, Apple): records each request and answers with the status a test chose.</summary>

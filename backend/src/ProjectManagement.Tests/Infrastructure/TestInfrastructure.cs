@@ -56,6 +56,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
     public FakeAiClient Ai { get; } = new();
+    /// <summary>Stands in for Claude in the AI workspace (streamed, with tools and files).</summary>
+    public FakeAiChat Chat { get; } = new();
     /// <summary>Stands in for the Web Push services.</summary>
     public RecordingPushHandler Push { get; } = new();
     /// <summary>What would be broadcast to open screens.</summary>
@@ -76,6 +78,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiClient>();
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(Ai);
+            services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiChat>();
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(Chat);
             services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);

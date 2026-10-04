@@ -20,6 +20,8 @@
 	}
 
 	reverse_proxy web:80 {
+		# Send each piece of a streamed response (the AI assistant's live answers) as soon as it arrives instead of collecting it first.
+		flush_interval -1
 		# Tell the app the visitor used https, so cookies are marked Secure and links use https.
 		header_up X-Forwarded-Proto {scheme}
 		transport http {

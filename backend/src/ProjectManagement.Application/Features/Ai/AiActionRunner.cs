@@ -1,0 +1,138 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
+using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Projects;
+using ProjectManagement.Application.Features.Reminders;
+using ProjectManagement.Application.Features.Tasks;
+using ProjectManagement.Application.Features.Work;
+using ProjectManagement.Application.Services;
+using ProjectManagement.Domain.Entities;
+using ProjectManagement.Domain.Enums;
+
+namespace ProjectManagement.Application.Features.Ai;
+
+public sealed record AiActionResult(string? Link);
+
+/// <summary>
+/// Carries out a change the assistant proposed, after the person pressed Confirm. It goes through the same services as the app's own
+/// screens, as the person, so their permissions, plan limits, validation, notifications and audit trail all apply exactly as if they had
+/// made the change by hand.
+/// </summary>
+public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
+    ReminderService reminders, IEmailSender email, ILogger<AiActionRunner> log)
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+
+    public async Task<AiActionResult> RunAsync(AiProposal p, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(p.PayloadJson);
+        var a = doc.RootElement;
+        switch (p.Kind)
+        {
+            case "create_task":
+            {
+                var projectId = Guid(a, "projectId")!.Value;
+                var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), null, Date(a, "dueDate"), null, null, null), ct);
+                return new AiActionResult($"/projects/{projectId}");
+            }
+            case "create_work":
+            {
+                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId"), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate")), ct);
+                return new AiActionResult("/operations");
+            }
+            case "create_action_item":
+            {
+                var projectId = Guid(a, "projectId")!.Value;
+                await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
+                return new AiActionResult($"/projects/{projectId}");
+            }
+            case "reminder":
+            {
+                await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, ReminderTarget.None, null, Guid(a, "forUserId"),
+                    new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, null), null, null), ct);
+                return new AiActionResult("/reminders");
+            }
+            case "send_report":
+                await SendReportAsync(a, ct);
+                return new AiActionResult(null);
+            default:
+                throw new ValidationException("action", "This kind of suggestion is not supported.");
+        }
+    }
+
+    private async Task SendReportAsync(JsonElement a, CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId(); var me = ctx.RequireUserId();
+        var ids = a.TryGetProperty("recipientIds", out var arr) && arr.ValueKind == JsonValueKind.Array ? arr.EnumerateArray().Select(x => System.Guid.Parse(x.GetString()!)).ToList() : [me];
+        // The people are checked again now: only active, non-guest members of this workspace, whatever was proposed earlier.
+        var people = await db.TenantMembers.AsNoTracking().Where(m => ids.Contains(m.UserId) && m.Role != TenantRole.Guest && m.User!.IsActive).Select(m => new { m.User!.Email, m.User.DisplayName }).ToListAsync(ct);
+        if (people.Count == 0) throw new ConflictException("None of the recipients can receive the report any more.", "AI_NO_RECIPIENTS");
+        var sender = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstAsync(ct);
+        var workspace = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => t.Name).FirstAsync(ct);
+        var title = Str(a, "title")!; var body = Str(a, "body")!;
+        var sent = 0;
+        foreach (var person in people)
+        {
+            var message = new EmailMessage(person.Email, $"{title} — {workspace}", ReportMail.Html(title, body, sender, workspace), $"{title}\n\n{body}\n\nPrepared with the AI assistant for {sender}. Check it before relying on it.");
+            if (await email.TrySendAsync(message, log, ct)) sent++;
+        }
+        if (sent == 0) throw new ConflictException("The email could not be sent. Try again in a moment.", "AI_EMAIL_FAILED");
+        recorder.Audit("ai.report_sent", "AiAssistant", null, null, new { title, recipients = sent });
+    }
+
+    private static string? Str(JsonElement a, string n) => a.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static Guid? Guid(JsonElement a, string n) => Str(a, n) is { } s && System.Guid.TryParse(s, out var g) ? g : null;
+    private static DateOnly? Date(JsonElement a, string n) => DateOnly.TryParse(Str(a, n), out var d) ? d : null;
+    private static Priority Prio(JsonElement a) => Enum.TryParse<Priority>(Str(a, "priority"), true, out var p) ? p : Priority.Medium;
+}
+
+/// <summary>A written report as an email. Everything the model wrote is HTML-encoded first; only a few Markdown shapes are then turned into markup.</summary>
+public static class ReportMail
+{
+    private static string E(string s) => WebUtility.HtmlEncode(s);
+    private static string Inline(string s) => Regex.Replace(E(s), @"\*\*(.+?)\*\*", "<b>$1</b>");
+
+    public static string Html(string title, string markdown, string sender, string workspace)
+    {
+        var sb = new StringBuilder();
+        sb.Append("<div style=\"font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:0 auto;color:#1f2430;line-height:1.55\">");
+        sb.Append($"<h2 style=\"margin:0 0 4px\">{E(title)}</h2><div style=\"color:#6b7280;font-size:13px;margin-bottom:18px\">{E(workspace)}</div>");
+        var inList = false; var inTable = false;
+        void CloseBlocks() { if (inList) { sb.Append("</ul>"); inList = false; } if (inTable) { sb.Append("</table>"); inTable = false; } }
+        foreach (var raw in markdown.Replace("\r", "").Split('\n'))
+        {
+            var line = raw.TrimEnd();
+            if (Regex.IsMatch(line, @"^\s*[-*•]\s+") || Regex.IsMatch(line, @"^\s*\d+[.)]\s+"))
+            {
+                if (inTable) { sb.Append("</table>"); inTable = false; }
+                if (!inList) { sb.Append("<ul style=\"padding-left:20px\">"); inList = true; }
+                sb.Append("<li>").Append(Inline(Regex.Replace(line, @"^\s*([-*•]|\d+[.)])\s+", ""))).Append("</li>");
+                continue;
+            }
+            if (line.TrimStart().StartsWith('|'))
+            {
+                if (Regex.IsMatch(line, @"^\s*\|[\s:|-]+\|?\s*$")) continue;   // the --- separator row
+                if (inList) { sb.Append("</ul>"); inList = false; }
+                if (!inTable) { sb.Append("<table style=\"border-collapse:collapse;margin:8px 0;font-size:14px\">"); inTable = true; }
+                var cells = line.Trim().Trim('|').Split('|').Select(c => c.Trim());
+                sb.Append("<tr>").Append(string.Concat(cells.Select(c => $"<td style=\"border:1px solid #e5e7eb;padding:5px 9px\">{Inline(c)}</td>"))).Append("</tr>");
+                continue;
+            }
+            CloseBlocks();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var h = Regex.Match(line, @"^(#{1,4})\s+(.*)$");
+            if (h.Success) sb.Append($"<h{h.Groups[1].Length + 2} style=\"margin:18px 0 6px\">{Inline(h.Groups[2].Value)}</h{h.Groups[1].Length + 2}>");
+            else sb.Append($"<p style=\"margin:8px 0\">{Inline(line)}</p>");
+        }
+        CloseBlocks();
+        sb.Append($"<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:24px 0 10px\"><div style=\"color:#6b7280;font-size:12px\">Prepared with the AI assistant for {E(sender)}. Check it before relying on it.</div></div>");
+        return sb.ToString();
+    }
+}
