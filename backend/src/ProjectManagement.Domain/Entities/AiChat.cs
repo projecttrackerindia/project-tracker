@@ -13,6 +13,10 @@ namespace ProjectManagement.Domain.Entities
         public string Title { get; set; } = "New conversation";
         public DateTime LastMessageAt { get; set; }
         public bool IsPinned { get; set; }
+        /// <summary>A rolling summary of the older part of the conversation, so long chats keep their context without re-sending every message.</summary>
+        public string? Summary { get; set; }
+        /// <summary>Messages created at or before this moment are folded into <see cref="Summary"/>.</summary>
+        public DateTime? SummarizedThroughAt { get; set; }
 
         public bool IsDeleted { get; set; }
         public DateTime? DeletedAt { get; set; }
@@ -40,6 +44,16 @@ namespace ProjectManagement.Domain.Entities
         public string? RouteReason { get; set; }
         public int InputTokens { get; set; }
         public int OutputTokens { get; set; }
+        /// <summary>Input tokens read from the provider's prompt cache (billed at a fraction) and written to it (billed at a premium). InputTokens is only the uncached part.</summary>
+        public int CacheReadTokens { get; set; }
+        public int CacheWriteTokens { get; set; }
+        /// <summary>JSON: short next-step questions the assistant suggested after its answer.</summary>
+        public string? FollowUpsJson { get; set; }
+        /// <summary>JSON: work item keys the answer mentions that were nowhere in the data it looked at (so the person knows to check them).</summary>
+        public string? UnverifiedJson { get; set; }
+        /// <summary>The person's verdict on an answer: "up" or "down", with an optional reason ("too_long", "too_short", "wrong", "off_topic").</summary>
+        public string? Feedback { get; set; }
+        public string? FeedbackReason { get; set; }
         /// <summary>Credits this answer cost. Counts towards the workspace's month.</summary>
         public int Credits { get; set; }
         /// <summary>"complete", "stopped" (the person pressed Stop) or "failed".</summary>
@@ -68,5 +82,22 @@ namespace ProjectManagement.Domain.Entities
         public string StorageKey { get; set; } = "";
         /// <summary>The text of a document (docx, xlsx, csv, txt ...), cut to a sensible length. Images and PDFs are read from the file itself.</summary>
         public string? ExtractedText { get; set; }
+    }
+
+    /// <summary>
+    /// What the assistant has learned about how one person likes to work, kept deterministic and visible: their own notes, the answer length
+    /// they prefer (from their feedback) and which kinds of suggestions they keep turning down. Private to the person; they can read, edit and
+    /// erase it at any time.
+    /// </summary>
+    public class AiUserProfile : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        /// <summary>-2 (very brief) to +2 (very detailed); 0 is the assistant's normal style.</summary>
+        public int DetailLevel { get; set; }
+        /// <summary>Anything the person asked the assistant to keep in mind ("answer in Hindi", "always include risks").</summary>
+        public string? Notes { get; set; }
+        /// <summary>JSON: counts per kind of suggestion ({"reminder":{"done":0,"dismissed":3}}) and thumbs given.</summary>
+        public string? CountersJson { get; set; }
+        public DateTime? LearnedAt { get; set; }
     }
 }

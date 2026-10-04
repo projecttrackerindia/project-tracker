@@ -73,6 +73,7 @@ public interface IAppDbContext
     DbSet<AiConversation> AiConversations { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<AiAttachment> AiAttachments { get; }
+    DbSet<AiUserProfile> AiUserProfiles { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }
     DbSet<ReminderPolicy> ReminderPolicies { get; }
     DbSet<AutomationRule> AutomationRules { get; }

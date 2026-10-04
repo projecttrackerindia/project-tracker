@@ -636,4 +636,149 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.DoesNotContain("Analyze", res.Json!.ToJsonString());                 // counts only
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.Get("/api/v1/admin/ai-usage?month=2026-13")).Status);
     }
+
+    // ------------------------------------------------------------------ spending fewer tokens
+
+    [Fact]
+    public async Task Cached_input_is_counted_apart_and_priced_at_a_fraction_in_the_platform_report()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Looks fine.", cacheRead: 1_000_000, cacheWrite: 0));
+        await Ask(o.Owner, "Analyze why the Atlas project is late and recommend how to fix it");
+
+        var stored = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().Where(m => m.TenantId == o.Owner.WorkspaceId && m.Role == "assistant").Select(m => new { m.InputTokens, m.CacheReadTokens }).Single());
+        Assert.Equal((200, 1_000_000), (stored.InputTokens, stored.CacheReadTokens));
+
+        var admin = await TestClient.RegisterAsync(factory, "Platform Admin");
+        factory.WithDb(db => { db.Users.IgnoreQueryFilters().Where(u => u.Id == admin.UserId).ExecuteUpdate(s => s.SetProperty(u => u.IsPlatformAdmin, true)); return 0; });
+        await admin.LoginAsync();
+        var data = (await admin.Get("/api/v1/admin/ai-usage")).Data!;
+        var row = data["rows"]!.AsArray().Single(r => Guid.Parse(S(r!["tenantId"])) == o.Owner.WorkspaceId)!;
+        Assert.Equal(100, row["cacheHitPercent"]!.GetValue<int>());
+        Assert.Equal(1_000_200, row["tokensIn"]!.GetValue<long>());                 // everything the model read, cached or not
+        // Deep: (200 x $4 + 1,000,000 cached x $4 x 0.05 + 40 x $20) / 1M = about $0.20, against about $4 had nothing been cached.
+        Assert.InRange(row["estimatedCost"]!.GetValue<decimal>(), 0.19m, 0.21m);
+        Assert.InRange(data["estimatedSavedByCache"]!.GetValue<decimal>(), 3.7m, 3.9m);
+    }
+
+    [Fact]
+    public async Task A_long_conversation_keeps_its_context_in_a_summary_and_sends_only_the_recent_messages()
+    {
+        var o = await Setup();
+        Guid? conv = null;
+        for (var i = 1; i <= 5; i++)
+        {
+            Chat.Script.Enqueue(_ => FakeAiChat.Say($"Answer {i}."));
+            var r = await Ask(o.Owner, $"Question number {i} about Atlas", conversation: conv);
+            conv = r.Conversation;
+        }
+        // After the fifth answer there were ten messages (more than eight): the oldest six were folded into a summary by the small model.
+        var summarized = Assert.Single(Chat.Summarized);
+        Assert.Contains("Question number 1 about Atlas", summarized);
+        Assert.Contains("Answer 3.", summarized);
+        Assert.DoesNotContain("Question number 5 about Atlas", summarized);          // the recent ones stay word for word
+        Assert.Equal(0, factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().Where(m => m.ConversationId == conv).Sum(m => m.Credits)) - 5 * 1);   // summarizing cost nothing: five Quick answers, five credits
+
+        Chat.Requests.Clear();
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Answer 6."));
+        await Ask(o.Owner, "Question number 6 about Atlas", conversation: conv);
+        var turns = Chat.Requests.Single().Turns;
+        Assert.Equal(["user", "assistant", "user", "assistant", "user"], turns.Select(t => t.Role).ToArray());   // 5 turns instead of 11
+        var first = turns[0].Blocks.OfType<AiText>().Select(t => t.Text).ToList();
+        Assert.Contains(first, t => t.Contains("<earlier_in_this_conversation>") && t.Contains("SUMMARY: they were looking at the Atlas project."));
+        Assert.Contains(first, t => t == "Question number 4 about Atlas");             // the kept messages start with a question
+        Assert.DoesNotContain(turns.SelectMany(t => t.Blocks).OfType<AiText>(), t => t.Text.Contains("Question number 1 about"));
+
+        // Deleting the conversation erases the summary with everything else.
+        await o.Owner.Delete($"/api/v1/ai/conversations/{conv}");
+        Assert.Null(factory.WithDb(db => db.AiConversations.IgnoreQueryFilters().Where(c => c.Id == conv).Select(c => c.Summary).Single()));
+    }
+
+    [Fact]
+    public async Task Follow_up_suggestions_are_taken_off_the_answer_and_an_invented_work_item_key_is_flagged()
+    {
+        var o = await Setup();
+        var key = factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == o.Owner.WorkspaceId).Select(p => p.Key).First());
+        Chat.Script.Enqueue(_ => FakeAiChat.Say($"Atlas is on track. {key}-9999 is the one to watch, and UTF-8 is fine.\n\n<followups>Who is overloaded? | Draft a status report | Show overdue work</followups>"));
+        var res = await Ask(o.Owner, "How is Atlas doing?");
+        var done = res.Done;
+        var msg = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().Where(m => m.TenantId == o.Owner.WorkspaceId && m.Role == "assistant").OrderByDescending(m => m.CreatedAt).First());
+        Assert.DoesNotContain("followups", msg.Content);
+        Assert.StartsWith("Atlas is on track.", msg.Content);
+        Assert.Contains("Draft a status report", msg.FollowUpsJson);
+        Assert.Contains($"{key}-9999", msg.UnverifiedJson);          // never seen in any data
+        Assert.DoesNotContain("UTF-8", msg.UnverifiedJson);          // not one of the workspace's project keys
+        Assert.NotNull(done);
+
+        // A trailer that was cut off (the answer ran out) is dropped rather than shown.
+        var (body, items) = ProjectManagement.Application.Features.Ai.AiAgent.SplitFollowUps("Done.\n<followups>One | Tw");
+        Assert.Equal("Done.", body); Assert.Empty(items);
+    }
+
+    [Fact]
+    public async Task The_assistant_learns_from_feedback_and_the_person_can_see_edit_and_erase_it()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("A very long answer."));
+        var res = await Ask(o.Owner, "How is Atlas doing?");
+        var id = S(res.Done["id"]);
+        async Task<System.Text.Json.Nodes.JsonNode> Profile(TestClient who) => (await who.Get("/api/v1/ai/profile")).Data!;
+
+        // "Too long" teaches a shorter style, which then reaches the model as one plain line.
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{id}/feedback", new { rating = "down", reason = "too_long" })).Ok);
+        var profile = await Profile(o.Owner);
+        Assert.Equal(-1, (int)profile["detailLevel"]!);
+        Assert.Contains("short answers", profile["learned"]!.ToJsonString());
+        Chat.Requests.Clear(); Chat.Script.Enqueue(_ => FakeAiChat.Say("Short."));
+        await Ask(o.Owner, "And what about Orion?", conversation: res.Conversation);
+        Assert.Contains("prefer short answers", Chat.Requests.Single().Context);
+
+        // Changing their mind does not count twice.
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{id}/feedback", new { rating = "up" })).Ok);
+        Assert.Equal(0, (int)(await Profile(o.Owner))["detailLevel"]!);
+
+        // Their own notes are kept in their words and are private to them.
+        Assert.True((await o.Owner.Put("/api/v1/ai/profile", new { notes = "Always include the risks" })).Ok);
+        Chat.Requests.Clear(); Chat.Script.Enqueue(_ => FakeAiChat.Say("Ok."));
+        await Ask(o.Owner, "Anything else to add?", conversation: res.Conversation);
+        Assert.Contains("Always include the risks", Chat.Requests.Single().Context);
+        Assert.DoesNotContain("Always include the risks", (await Profile(o.Manager)).ToJsonString());
+        Assert.Equal(HttpStatusCode.NotFound, (await o.Manager.Post($"/api/v1/ai/messages/{id}/feedback", new { rating = "up" })).Status);   // somebody else's answer
+
+        // Erasing brings the defaults back.
+        Assert.True((await o.Owner.Delete("/api/v1/ai/profile")).Ok);
+        Assert.Empty((await Profile(o.Owner))["learned"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task Three_declined_suggestions_of_one_kind_stop_the_assistant_offering_it_unasked()
+    {
+        var o = await Setup();
+        for (var i = 0; i < 3; i++)
+        {
+            Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_task", new { project = "Atlas", title = $"Idea {Guid.NewGuid():N}" }));
+            Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+            var r = await Ask(o.Owner, "Add a task to Atlas for an idea");
+            var card = r.Done["actions"]![0]!;
+            Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(r.Done["id"])}/actions/{S(card["id"])}/dismiss")).Ok);
+        }
+        Chat.Requests.Clear(); Chat.Script.Enqueue(_ => FakeAiChat.Say("Fine."));
+        await Ask(o.Owner, "How is Atlas doing today?");
+        Assert.Contains("turned down 3", Chat.Requests.Single().Context);
+    }
+
+    [Fact]
+    public async Task Starters_come_from_the_persons_live_work_without_calling_the_model()
+    {
+        var o = await Setup();
+        var before = Chat.Requests.Count; var classified = Chat.Classified.Count;
+        var s = (await o.Owner.Get("/api/v1/ai/starters")).Data!;
+        Assert.StartsWith("Good", S(s["greeting"]));
+        var prompts = s["starters"]!.AsArray().Select(x => S(x!["prompt"])).ToList();
+        Assert.Contains(prompts, p => p.Contains("briefing"));
+        Assert.Contains(prompts, p => p.Contains("too much on their plate"));          // a manager-level view for the owner
+        var guest = (await o.Guest.Get("/api/v1/ai/starters")).Data!["starters"]!.AsArray().Select(x => S(x!["prompt"])).ToList();
+        Assert.DoesNotContain(guest, p => p.Contains("too much on their plate"));
+        Assert.Equal(before, Chat.Requests.Count); Assert.Equal(classified, Chat.Classified.Count);
+    }
 }

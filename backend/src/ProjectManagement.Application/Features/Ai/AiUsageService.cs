@@ -16,10 +16,10 @@ public record AiWorkspaceReportDto(string Month, long CreditsUsed, long CreditsL
     IReadOnlyList<AiPersonUsageDto> People);
 
 public record AdminAiUsageRowDto(Guid TenantId, string Name, string PlanCode, int Answers, int Failed, long CreditsUsed, long CreditsLimit, int Quick, int Standard, int Deep,
-    long TokensIn, long TokensOut, decimal EstimatedCost, DateTime? LastUsedAt);
+    long TokensIn, long TokensOut, decimal EstimatedCost, DateTime? LastUsedAt, long CacheReadTokens = 0, int CacheHitPercent = 0);
 /// <summary>The platform's month of AI use across organizations, with an estimate of what it cost at the providers' prices (counts only, never content).</summary>
 public record AdminAiUsageDto(string Month, int Organizations, int Answers, long CreditsUsed, long TokensIn, long TokensOut, decimal EstimatedCost, string Currency,
-    IReadOnlyList<AdminAiUsageRowDto> Rows);
+    IReadOnlyList<AdminAiUsageRowDto> Rows, decimal EstimatedSavedByCache = 0, int CacheHitPercent = 0);
 
 /// <summary>Usage reports of the AI workspace. Everything here is counted from what each answer recorded about itself (level, credits, tokens, outcome).</summary>
 public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementService entitlements, IOptions<AiOptions> options)
@@ -39,11 +39,17 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         return (start.ToString("yyyy-MM", CultureInfo.InvariantCulture), start, start.AddMonths(1));
     }
 
-    private decimal CostOf(string? tier, long tokensIn, long tokensOut)
+    private AiTierOptions? TierOf(string? tier) => tier switch { "quick" => options.Value.Chat.Quick, "standard" => options.Value.Chat.Standard, "deep" => options.Value.Chat.Deep, _ => null };
+
+    /// <summary>What the answers cost at the provider's prices: uncached input at full price, cached input at a fraction, cache writes at a premium.</summary>
+    private decimal CostOf(string? tier, long tokensIn, long tokensOut, long cacheRead, long cacheWrite)
     {
-        var t = tier switch { "quick" => options.Value.Chat.Quick, "standard" => options.Value.Chat.Standard, "deep" => options.Value.Chat.Deep, _ => null };
-        return t is null ? 0 : (tokensIn * t.InputPerMTok + tokensOut * t.OutputPerMTok) / 1_000_000m;
+        var t = TierOf(tier);
+        return t is null ? 0 : (tokensIn * t.InputPerMTok + cacheRead * t.InputPerMTok * t.CacheReadFactor + cacheWrite * t.InputPerMTok * t.CacheWriteFactor + tokensOut * t.OutputPerMTok) / 1_000_000m;
     }
+
+    /// <summary>What the cached reads would have cost at full input price, minus what they cost.</summary>
+    private decimal SavedBy(string? tier, long cacheRead) => TierOf(tier) is { } t ? cacheRead * t.InputPerMTok * (1 - t.CacheReadFactor) / 1_000_000m : 0;
 
     // ------------------------------------------------------------------ one workspace
 
@@ -77,7 +83,7 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var groups = await db.AiMessages.IgnoreQueryFilters().AsNoTracking().Where(m => m.Role == "assistant" && m.CreatedAt >= from && m.CreatedAt < to)
             .GroupBy(m => new { m.TenantId, m.Tier })
             .Select(g => new { g.Key.TenantId, g.Key.Tier, Answers = g.Count(), Failed = g.Count(x => x.Status == "failed"), Credits = g.Sum(x => (long)x.Credits),
-                In = g.Sum(x => (long)x.InputTokens), Out = g.Sum(x => (long)x.OutputTokens), Last = g.Max(x => x.CreatedAt) }).ToListAsync(ct);
+                In = g.Sum(x => (long)x.InputTokens), Out = g.Sum(x => (long)x.OutputTokens), CacheRead = g.Sum(x => (long)x.CacheReadTokens), CacheWrite = g.Sum(x => (long)x.CacheWriteTokens), Last = g.Max(x => x.CreatedAt) }).ToListAsync(ct);
         var ids = groups.Select(g => g.TenantId).Distinct().ToList();
         var tenants = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => ids.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         var now = clock.Now;
@@ -93,11 +99,15 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             var plan = sub?.Plan is not null && !EntitlementService.IsLapsed(sub, now) ? sub.Plan : free;
             var limit = overrides.FirstOrDefault(o => o.TenantId == id)?.Value ?? plan.Features.FirstOrDefault(f => f.FeatureKey == FeatureKeys.AiMonthlyCredits)?.Value ?? 0;
             int N(string t) => mine.Where(g => g.Tier == t).Sum(g => g.Answers);
+            long read = mine.Sum(g => g.CacheRead), uncached = mine.Sum(g => g.In), written = mine.Sum(g => g.CacheWrite);
+            var seen = read + uncached + written;
             return new AdminAiUsageRowDto(id, tenants.GetValueOrDefault(id, "—"), plan.Code, mine.Sum(g => g.Answers), mine.Sum(g => g.Failed), mine.Sum(g => g.Credits), limit,
-                N("quick"), N("standard"), N("deep"), mine.Sum(g => g.In), mine.Sum(g => g.Out), Math.Round(mine.Sum(g => CostOf(g.Tier, g.In, g.Out)), 2), mine.Max(g => g.Last));
+                N("quick"), N("standard"), N("deep"), mine.Sum(g => g.In + g.CacheRead + g.CacheWrite), mine.Sum(g => g.Out),
+                Math.Round(mine.Sum(g => CostOf(g.Tier, g.In, g.Out, g.CacheRead, g.CacheWrite)), 2), mine.Max(g => g.Last), read, seen == 0 ? 0 : (int)Math.Round(read * 100d / seen));
         }).OrderByDescending(r => r.CreditsUsed).ThenBy(r => r.Name).Take(500).ToList();
 
-        return new AdminAiUsageDto(label, rows.Count, rows.Sum(r => r.Answers), rows.Sum(r => r.CreditsUsed), rows.Sum(r => r.TokensIn), rows.Sum(r => r.TokensOut),
-            Math.Round(rows.Sum(r => r.EstimatedCost), 2), "USD", rows);
+        long totalRead = rows.Sum(r => r.CacheReadTokens), totalIn = rows.Sum(r => r.TokensIn);
+        return new AdminAiUsageDto(label, rows.Count, rows.Sum(r => r.Answers), rows.Sum(r => r.CreditsUsed), totalIn, rows.Sum(r => r.TokensOut),
+            Math.Round(rows.Sum(r => r.EstimatedCost), 2), "USD", rows, Math.Round(groups.Sum(g => SavedBy(g.Tier, g.CacheRead)), 2), totalIn == 0 ? 0 : (int)Math.Round(totalRead * 100d / totalIn));
     }
 }

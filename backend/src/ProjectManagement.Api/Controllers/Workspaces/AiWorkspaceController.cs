@@ -13,7 +13,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 /// signed-in person; the assistant reads only what they may read (see <see cref="AiAgent"/>).
 /// </summary>
 [Route("api/v1/ai"), RequireWorkspace]
-public class AiWorkspaceController(AiAgent agent, AiFileService files, AiUsageService usage) : ApiControllerBase
+public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiFileService files, AiUsageService usage) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -113,6 +113,23 @@ public class AiWorkspaceController(AiAgent agent, AiFileService files, AiUsageSe
         await files.RemovePendingAsync(id, ct);
         return NoContent();
     }
+
+    // ---- getting to know the person (no model involved)
+
+    [HttpGet("starters")]
+    public async Task<IActionResult> Starters(CancellationToken ct) => Ok(await guidance.StartersAsync(ct));
+
+    [HttpPost("messages/{id:guid}/feedback")]
+    public async Task<IActionResult> Feedback(Guid id, [FromBody] AiFeedbackRequest req, CancellationToken ct) { await guidance.FeedbackAsync(id, req.Rating, req.Reason, ct); return NoContent(); }
+
+    [HttpGet("profile")]
+    public async Task<IActionResult> Profile(CancellationToken ct) => Ok(await guidance.ProfileAsync(ct));
+
+    [HttpPut("profile")]
+    public async Task<IActionResult> SetProfile([FromBody] SetAiProfileRequest req, CancellationToken ct) => Ok(await guidance.SetNotesAsync(req.Notes, ct));
+
+    [HttpDelete("profile")]
+    public async Task<IActionResult> ResetProfile(CancellationToken ct) => Ok(await guidance.ResetAsync(ct));
 
     // ---- what the organization tells the assistant about itself
 

@@ -24,11 +24,12 @@ export function AiUsageTab() {
             <StatCard icon="message" value={d.answers.toLocaleString()} label="Answers" />
             <StatCard icon="gauge" value={d.creditsUsed.toLocaleString()} label="Credits used" />
             <StatCard icon="coin" value={money(d.estimatedCost, d.currency)} label="Estimated provider cost" foot={`${(d.tokensIn / 1000).toFixed(0)}k in · ${(d.tokensOut / 1000).toFixed(0)}k out tokens`} />
+            <StatCard icon="gauge" value={`${d.cacheHitPercent}%`} label="Input served from cache" foot={`about ${money(d.estimatedSavedByCache, d.currency)} saved this month`} />
           </div>
           <div className="card">
             {d.rows.length === 0 ? <EmptyState icon="inbox" title="No AI use in this month" /> : (
               <div className="table-wrap"><table>
-                <thead><tr><th>Organization</th><th>Plan</th><th>Answers (quick / standard / deep)</th><th>Credits</th><th>Tokens in / out</th><th>Est. cost</th><th>Last used</th></tr></thead>
+                <thead><tr><th>Organization</th><th>Plan</th><th>Answers (quick / standard / deep)</th><th>Credits</th><th>Tokens in / out</th><th>Cached</th><th>Est. cost</th><th>Last used</th></tr></thead>
                 <tbody>{d.rows.map((r) => {
                   const pct = r.creditsLimit > 0 ? Math.round((r.creditsUsed / r.creditsLimit) * 100) : 0;
                   return (
@@ -39,6 +40,7 @@ export function AiUsageTab() {
                       <td>{r.creditsUsed.toLocaleString()}{r.creditsLimit < 0 ? <span className="muted"> / unlimited</span> : <span className="muted"> / {r.creditsLimit.toLocaleString()}</span>}
                         {r.creditsLimit > 0 && pct >= 80 && <> <Badge tone={pct >= 100 ? 'danger' : 'warning'}>{pct}%</Badge></>}</td>
                       <td>{(r.tokensIn / 1000).toFixed(1)}k / {(r.tokensOut / 1000).toFixed(1)}k</td>
+                      <td>{r.cacheHitPercent}%</td>
                       <td>{money(r.estimatedCost, d.currency)}</td>
                       <td>{r.lastUsedAt ? timeAgo(r.lastUsedAt) : <span className="muted">never</span>}</td>
                     </tr>

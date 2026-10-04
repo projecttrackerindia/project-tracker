@@ -50,19 +50,24 @@ public sealed class FakeAiChat : IAiChat
         foreach (var e in events) { await Task.Yield(); yield return e; }
     }
 
+    /// <summary>What the small model writes when it is asked to summarize a conversation.</summary>
+    public string Summary { get; set; } = "SUMMARY: they were looking at the Atlas project.";
+    public ConcurrentQueue<string> Summarized { get; } = new();
+
     public Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct)
     {
+        if (system.Contains("running memory")) { Summarized.Enqueue(user); return Task.FromResult(Summary); }
         Classified.Enqueue(user);
         return Task.FromResult(Classifier(user));
     }
 
     /// <summary>A finished turn of plain text, optionally with reasoning before it.</summary>
-    public static IEnumerable<AiChatEvent> Say(string text, string? thinking = null)
+    public static IEnumerable<AiChatEvent> Say(string text, string? thinking = null, int cacheRead = 0, int cacheWrite = 0)
     {
         var blocks = new List<AiBlock>();
         if (thinking is not null) { yield return new AiThinkingDelta(thinking); blocks.Add(new AiThinking(thinking, "sig")); }
         yield return new AiTextDelta(text); blocks.Add(new AiText(text));
-        yield return new AiTurnEnd(blocks, "end_turn", 200, 40);
+        yield return new AiTurnEnd(blocks, "end_turn", 200, 40, cacheRead, cacheWrite);
     }
 
     /// <summary>A turn the model declined to answer.</summary>
@@ -83,7 +88,7 @@ public sealed class FakeAiChat : IAiChat
         yield return new AiTurnEnd(blocks, "tool_use", 150, 30);
     }
 
-    public void Reset() { Configured = false; Script.Clear(); Requests.Clear(); Classified.Clear(); Classifier = _ => "standard"; Fail = null; }
+    public void Reset() { Configured = false; Summarized.Clear(); Script.Clear(); Requests.Clear(); Classified.Clear(); Classifier = _ => "standard"; Fail = null; }
 }
 
 /// <summary>Stands in for the push services (FCM, Mozilla, Apple): records each request and answers with the status a test chose.</summary>

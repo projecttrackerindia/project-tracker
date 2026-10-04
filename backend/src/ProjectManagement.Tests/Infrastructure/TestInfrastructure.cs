@@ -40,6 +40,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
+        Environment.SetEnvironmentVariable("Ai__Chat__CompactAfterMessages", "8"); // small, so a test can reach the point where an AI conversation is summarized
+        Environment.SetEnvironmentVariable("Ai__Chat__KeepRecentMessages", "4");
         Environment.SetEnvironmentVariable("Reminders__WorkerEnabled", "false"); // tests run the reminder engine explicitly
         Environment.SetEnvironmentVariable("Webhooks__AllowPrivateTargets", "true");
         Environment.SetEnvironmentVariable("Webhooks__SettleSeconds", "0");

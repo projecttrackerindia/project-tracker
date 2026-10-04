@@ -35,7 +35,7 @@ import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { Select } from '../../components/Select';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
-import { AiInstructionsCard } from '../ai/AiInstructions';
+import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
 import { AiUsageCard } from '../ai/AiUsageCard';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
@@ -299,6 +299,7 @@ function GeneralSection() {
         </div>
       </div>
       {(ctx.current.role === 'Owner' || ctx.current.role === 'Admin') && <><AiWorkspaceSwitch /><AiInstructionsCard /><AiUsageCard /></>}
+      <AiProfileCard />
     </>
   );
 }

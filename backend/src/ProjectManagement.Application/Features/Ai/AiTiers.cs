@@ -22,6 +22,9 @@ public class AiTierOptions
     /// <summary>What the provider charges per million tokens (US dollars), used only for the administrator's cost estimate. Set to the provider's current prices.</summary>
     public decimal InputPerMTok { get; set; }
     public decimal OutputPerMTok { get; set; }
+    /// <summary>Cached input costs a fraction of normal input (0.1 on most models, 0.05 on Opus 5.5) and writing to the cache a premium (1.25).</summary>
+    public decimal CacheReadFactor { get; set; } = 0.1m;
+    public decimal CacheWriteFactor { get; set; } = 1.25m;
 }
 
 /// <summary>Settings of the AI workspace (<c>Ai:Chat</c>): the three model levels, routing, attachments and limits.</summary>
@@ -30,7 +33,7 @@ public class AiChatOptions
     // Quick answers lookups and small talk without thinking; Standard handles most real questions; Deep is for analysis and planning.
     public AiTierOptions Quick { get; set; } = new() { Model = "claude-haiku-4-5", Credits = 1, MaxTokens = 1500, InputPerMTok = 1m, OutputPerMTok = 5m };
     public AiTierOptions Standard { get; set; } = new() { Model = "claude-sonnet-5-5", Credits = 4, MaxTokens = 6000, Effort = "low", ShowReasoning = true, InputPerMTok = 2m, OutputPerMTok = 10m };
-    public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 15, MaxTokens = 16000, Effort = "high", ShowReasoning = true, InputPerMTok = 4m, OutputPerMTok = 20m };
+    public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 15, MaxTokens = 16000, Effort = "high", ShowReasoning = true, InputPerMTok = 4m, OutputPerMTok = 20m, CacheReadFactor = 0.05m };
 
     /// <summary>For questions the free rules cannot place, ask the smallest model how hard the question is (a few tokens).</summary>
     public bool UseClassifier { get; set; } = true;
@@ -50,6 +53,13 @@ public class AiChatOptions
     public int MaxQuestionChars { get; set; } = 8000;
     /// <summary>Earlier messages of the conversation that go along with a new question.</summary>
     public int HistoryMessages { get; set; } = 24;
+    /// <summary>
+    /// Once a conversation has more than this many messages that are not yet summarized, the older ones are folded into a short summary (made
+    /// by the classifier model) and only the most recent <see cref="KeepRecentMessages"/> go to the model word for word.
+    /// </summary>
+    public int CompactAfterMessages { get; set; } = 16;
+    public int KeepRecentMessages { get; set; } = 6;
+    public int SummaryMaxTokens { get; set; } = 700;
     /// <summary>Tool calls the assistant may chain to answer one question.</summary>
     public int MaxToolSteps { get; set; } = 8;
     /// <summary>Characters of each document's text kept for the assistant.</summary>
@@ -111,6 +121,8 @@ public static class AiModelRouter
 
         if (score >= 4) return (AiTier.Deep, "A question that needs analysis or planning");
         if (r.Images > 0 || r.Documents > 0) return (AiTier.Standard, "Reading an attachment");
+        // The wording rules know English. Written in another script they cannot tell how hard it is, so a score of 0 means "unknown", not "easy".
+        if (score == 0 && text.Any(c => char.IsLetter(c) && c > '\u024F')) return (null, "");
         if (score == 0 && Small.IsMatch(text)) return (AiTier.Quick, "A short message");
         if (score == 0 && text.Length <= 220 && (Lookup.IsMatch(text) || text.Length <= 80)) return (AiTier.Quick, "A quick lookup");
         if (score == 0) return (AiTier.Standard, "A regular question");

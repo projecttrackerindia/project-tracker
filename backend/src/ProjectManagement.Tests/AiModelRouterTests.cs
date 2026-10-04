@@ -9,6 +9,12 @@ public class AiModelRouterTests
         AiModelRouter.Decide(new AiRouteRequest(text, images, docs, mode, plan), classified);
 
     [Theory]
+    [InlineData("मेरी टीम में सबसे ज्यादा काम किस पर है और क्यों देरी हो रही है")]
+    [InlineData("为什么这个项目延期了，应该怎么办")]
+    public void Questions_in_other_scripts_are_left_to_the_classifier_instead_of_being_called_easy(string q) =>
+        Assert.Null(AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
+
+    [Theory]
     [InlineData("hi")]
     [InlineData("Thanks!")]
     [InlineData("Which tasks are overdue?")]

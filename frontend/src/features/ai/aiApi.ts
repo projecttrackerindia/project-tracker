@@ -17,7 +17,12 @@ export interface AiAction { id: string; kind: string; title: string; summary: st
 export interface AiMessage {
   id: string; role: 'user' | 'assistant'; content: string; reasoning: string | null; tier: AiTier | null; model: string | null; routeReason: string | null;
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
+  followUps?: string[]; unverifiedKeys?: string[]; feedback?: 'up' | 'down' | null;
 }
+export interface AiStarter { label: string; prompt: string; hint: string | null }
+export interface AiStarters { greeting: string; starters: AiStarter[] }
+export interface AiProfile { detailLevel: number; detailLabel: string; notes: string | null; learned: string[]; learnedAt: string | null }
+export type AiFeedbackReason = 'too_long' | 'too_short' | 'wrong' | 'off_topic';
 export interface AiConversationDetail { conversation: AiConversation; messages: AiMessage[] }
 export interface AiInstructions { text: string | null; canEdit: boolean }
 
@@ -26,9 +31,9 @@ export interface AiPersonUsage { userId: string; name: string; answers: number; 
 export interface AiWorkspaceReport { month: string; creditsUsed: number; creditsLimit: number; unlimited: boolean; answers: number; failed: number; byTier: AiTierCount[]; people: AiPersonUsage[] }
 export interface AdminAiUsageRow {
   tenantId: string; name: string; planCode: string; answers: number; failed: number; creditsUsed: number; creditsLimit: number; quick: number; standard: number; deep: number;
-  tokensIn: number; tokensOut: number; estimatedCost: number; lastUsedAt: string | null;
+  tokensIn: number; tokensOut: number; cacheReadTokens: number; cacheHitPercent: number; estimatedCost: number; lastUsedAt: string | null;
 }
-export interface AdminAiUsage { month: string; organizations: number; answers: number; creditsUsed: number; tokensIn: number; tokensOut: number; estimatedCost: number; currency: string; rows: AdminAiUsageRow[] }
+export interface AdminAiUsage { month: string; organizations: number; answers: number; creditsUsed: number; tokensIn: number; tokensOut: number; estimatedCost: number; estimatedSavedByCache: number; cacheHitPercent: number; currency: string; rows: AdminAiUsageRow[] }
 
 export interface AskBody { text: string; mode: AiMode; attachmentIds: string[]; timeZone: string }
 
@@ -58,6 +63,11 @@ export const aiWorkspaceApi = {
   upload: (file: File) => uploadFile<AiAttachment>('/ai/files', file),
   removeFile: (id: string) => del(`/ai/files/${id}`),
   report: (month: string) => get<AiWorkspaceReport>('/ai/usage/report', { month }),
+  starters: () => get<AiStarters>('/ai/starters'),
+  feedback: (messageId: string, rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => post<void>(`/ai/messages/${messageId}/feedback`, { rating, reason }),
+  profile: () => get<AiProfile>('/ai/profile'),
+  setProfileNotes: (notes: string) => put<AiProfile>('/ai/profile', { notes }),
+  resetProfile: () => del('/ai/profile'),
   instructions: () => get<AiInstructions>('/ai/instructions'),
   setInstructions: (text: string) => put<AiInstructions>('/ai/instructions', { text }),
 };

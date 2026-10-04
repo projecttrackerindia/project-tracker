@@ -54,7 +54,7 @@ public sealed class AnthropicChatTests : IDisposable
     private static string Sse(params (string Event, string Data)[] events) => string.Concat(events.Select(e => $"event: {e.Event}\ndata: {e.Data}\n\n"));
 
     private static readonly string Weather = Sse(
-        ("message_start", """{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":120,"output_tokens":1}}}"""),
+        ("message_start", """{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":120,"cache_read_input_tokens":800,"cache_creation_input_tokens":40,"output_tokens":1}}}"""),
         ("content_block_start", """{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}"""),
         ("content_block_delta", """{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Check the "}}"""),
         ("content_block_delta", """{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"overdue work."}}"""),
@@ -95,7 +95,8 @@ public sealed class AnthropicChatTests : IDisposable
         // The finished turn: everything the model produced, ready to go back with the tool's result.
         var end = Assert.IsType<AiTurnEnd>(events[^1]);
         Assert.True(end.WantsTools);
-        Assert.Equal(120, end.InputTokens);
+        Assert.Equal(120, end.InputTokens);          // only the part that was not cached
+        Assert.Equal((800, 40), (end.CacheReadTokens, end.CacheWriteTokens));   // cached reads and cache writes are counted apart: they are billed differently
         Assert.Equal(55, end.OutputTokens);
         var thinking = Assert.IsType<AiThinking>(end.Assistant[0]);
         Assert.Equal("Check the overdue work.", thinking.Text);
@@ -121,6 +122,8 @@ public sealed class AnthropicChatTests : IDisposable
         Assert.Equal("high", sent["output_config"]!["effort"]!.GetValue<string>());
         Assert.Equal("find_work", sent["tools"]![0]!["name"]!.GetValue<string>());
         Assert.Equal("overdue", sent["tools"]![0]!["input_schema"]!["required"]![0]!.GetValue<string>());
+        // The conversation so far is cached automatically (top-level marker), so each turn pays a fraction for what it already read.
+        Assert.Equal("ephemeral", sent["cache_control"]!["type"]!.GetValue<string>());
         // The instructions are marked cacheable.
         Assert.Equal("ephemeral", sent["system"]![0]!["cache_control"]!["type"]!.GetValue<string>());
         // ... and what changes per person follows, outside the cached part.

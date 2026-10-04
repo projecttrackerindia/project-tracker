@@ -8,8 +8,8 @@ import { timeAgo } from '../../lib/format';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
-import { aiWorkspaceApi, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
-import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, type PendingFile, type Suggestion } from './AiParts';
+import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
+import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
 import { Markdown } from './Markdown';
 
 /** What the page shows while an answer is being written. */
@@ -38,6 +38,7 @@ export function AiPage() {
   const status = useAiStatus();
   const usageQ = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !!status?.enabled, staleTime: 20_000 });
   const listQ = useWsQuery(['ai', 'conversations'], aiWorkspaceApi.conversations, { enabled: !!status?.enabled });
+  const startersQ = useWsQuery(['ai', 'starters'], aiWorkspaceApi.starters, { enabled: !!status?.enabled, staleTime: 60_000 });
   const usage = usageQ.data;
 
   const [convId, setConvId] = useState<string | null>(id ?? null);
@@ -159,6 +160,7 @@ export function AiPage() {
           run.finished = true;
           setMessages((m) => [...m, e.message]);
           setLive(null);
+          setStreaming(false);   // the answer is complete; the box is usable while the server tidies up a long conversation
           break;
         case 'error': run.failure = { code: e.code, message: e.message }; break;
       }
@@ -190,9 +192,16 @@ export function AiPage() {
         }
         setLive(null);
       }
-      setStreaming(false); abort.current = null;
+      if (abort.current === ac) { setStreaming(false); abort.current = null; }
       refresh();
     }
+  };
+
+  const rate = async (m: AiMessage, rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => {
+    const was = { feedback: m.feedback ?? null };
+    setMessages((all) => all.map((x) => x.id === m.id ? { ...x, feedback: rating === 'none' ? null : rating } : x));
+    try { await aiWorkspaceApi.feedback(m.id, rating, reason); if (reason === 'too_long' || reason === 'too_short') toast('Thanks. I will keep my answers ' + (reason === 'too_long' ? 'shorter.' : 'more detailed.')); }
+    catch { setMessages((all) => all.map((x) => x.id === m.id ? { ...x, ...was } : x)); toast('Could not save that.', 'error'); }
   };
 
   const sendFromBox = () => void send(text);
@@ -290,13 +299,14 @@ export function AiPage() {
 
         <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
           {messages.length === 0 && !live ? (
-            <Hero name={firstName} onPick={pick} canAttach={canAttach} />
+            <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} />
           ) : (
             <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
               {messages.map((m, i) => (
                 <MessageView key={m.id} m={m} busyAction={busyAction} canEmail={canAct && !streaming} canRegenerate={!streaming && i === lastAssistantIndex}
                   onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
-                  onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')} />
+                  onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')}
+                  onFollowUp={(t) => void send(t)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
               ))}
               {live && <LiveAnswer live={live} />}
             </div>
@@ -328,7 +338,7 @@ function LiveAnswer({ live }: { live: Live }) {
         )}
         {(live.reasoning || (live.route && live.route.tier !== 'quick' && !live.text)) && <Reasoning text={live.reasoning} live={!live.text} />}
         <ToolChips tools={live.tools} />
-        {live.text ? <div className="ai-streaming"><Markdown text={live.text} /><span className="ai-caret" /></div> : !live.reasoning && live.tools.length === 0 && <div className="ai-dots"><i /><i /><i /></div>}
+        {live.text ? <div className="ai-streaming"><Markdown text={withoutTrailer(live.text)} /><span className="ai-caret" /></div> : !live.reasoning && live.tools.length === 0 && <div className="ai-dots"><i /><i /><i /></div>}
         {live.actions.map((a) => <ActionCard key={a.id} action={a} busy onConfirm={() => undefined} onDismiss={() => undefined} />)}
       </div>
     </div>

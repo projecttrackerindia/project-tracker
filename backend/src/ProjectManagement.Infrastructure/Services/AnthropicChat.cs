@@ -64,7 +64,7 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
         if (!Configured) throw new Application.Exceptions.ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
         var parameters = Build(request);
         var blocks = new SortedDictionary<long, Acc>();
-        int input = 0, output = 0;
+        int input = 0, output = 0, cacheRead = 0, cacheWrite = 0;
         string stop = "end_turn";
 
         var stream = Client().Messages.CreateStreaming(parameters, ct);
@@ -80,7 +80,7 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
             if (e.TryPickStart(out var start))
             {
                 var u = start.Message.Usage;
-                input = (int)(u.InputTokens + (u.CacheReadInputTokens ?? 0) + (u.CacheCreationInputTokens ?? 0));
+                (input, cacheRead, cacheWrite) = ((int)u.InputTokens, (int)(u.CacheReadInputTokens ?? 0), (int)(u.CacheCreationInputTokens ?? 0));
             }
             else if (e.TryPickContentBlockStart(out var open))
             {
@@ -106,7 +106,10 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
                 // The SDK's enum prints its JSON form ("tool_use" with the quotes), so the quotes come off.
                 if (md.Delta.StopReason is { } sr) stop = sr.ToString()?.Trim('"') is { Length: > 0 } reason ? reason : stop;
                 output = (int)md.Usage.OutputTokens;
+                // The closing figures, when the provider sends them, are the final ones.
                 if (md.Usage.InputTokens is { } it) input = (int)it;
+                if (md.Usage.CacheReadInputTokens is { } cr) cacheRead = (int)cr;
+                if (md.Usage.CacheCreationInputTokens is { } cw) cacheWrite = (int)cw;
             }
         }
 
@@ -121,8 +124,8 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
                 case "tool": assistant.Add(new AiToolUse(acc.Id ?? "", acc.Name ?? "", acc.Json.Length == 0 ? "{}" : acc.Json.ToString())); break;
             }
         }
-        log.LogDebug("Claude turn on {Model}: {Stop}, {In} in / {Out} out", request.Model, stop, input, output);
-        yield return new AiTurnEnd(assistant, stop, input, output);
+        log.LogDebug("Claude turn on {Model}: {Stop}, {In} in ({Read} from cache, {Write} written) / {Out} out", request.Model, stop, input, cacheRead, cacheWrite, output);
+        yield return new AiTurnEnd(assistant, stop, input, output, cacheRead, cacheWrite);
     }
 
     private sealed class Acc
@@ -145,6 +148,9 @@ public sealed class AnthropicChat(IOptions<AiOptions> options, ILogger<Anthropic
             // What changes per person and day follows in its own block, after the cached part.
             System = SystemBlocks(r),
             Messages = r.Turns.Select(ToMessage).ToList(),
+            // Automatic caching: the provider keeps the conversation so far, so the next turn pays a fraction for everything it already read.
+            // (The instructions above carry their own marker, so they stay cached whatever happens in the conversation.)
+            CacheControl = new CacheControlEphemeral(),
         };
         if (r.Tools.Count > 0) p = p with { Tools = r.Tools.Select(ToTool).ToList() };
         // Haiku does not think and rejects an effort setting; the larger models think adaptively and take one.

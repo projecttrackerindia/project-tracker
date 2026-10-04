@@ -35,7 +35,7 @@ public sealed class AiToolException(string message) : Exception(message);
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ILogger<AiToolbox> log)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
 
     public const string FindWork = "find_work", ListProjects = "list_projects", ProjectReport = "project_report", TeamWorkload = "team_workload",

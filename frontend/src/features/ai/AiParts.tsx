@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { fetchBlobUrl } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
 import { formatDateTime } from '../../lib/format';
-import type { AiAction, AiAttachment, AiMessage, AiMode, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
+import type { AiAction, AiAttachment, AiFeedbackReason, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
 import { Markdown } from './Markdown';
 
 // ------------------------------------------------------------------ small marks
@@ -157,9 +157,33 @@ export function AttachmentView({ file }: { file: AiAttachment }) {
 
 // ------------------------------------------------------------------ one message
 
-export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onRegenerate, onEmail, busyAction, canEmail, canRegenerate }: {
+/** The "<followups>…" line the assistant ends with is for the chips below the answer, not for reading; this hides it, even while it is still being typed. */
+export function withoutTrailer(text: string): string {
+  const at = text.search(/<followups/i);
+  return at < 0 ? text : text.slice(0, at).trimEnd();
+}
+
+const REASONS: { id: AiFeedbackReason; label: string }[] = [{ id: 'too_long', label: 'Too long' }, { id: 'too_short', label: 'Too short' }, { id: 'wrong', label: 'Wrong' }, { id: 'off_topic', label: 'Off topic' }];
+
+function Feedback({ m, onFeedback }: { m: AiMessage; onFeedback: (rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => void }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button type="button" className={`ai-foot-btn${m.feedback === 'up' ? ' on' : ''}`} aria-pressed={m.feedback === 'up'} onClick={() => { setAsking(false); onFeedback(m.feedback === 'up' ? 'none' : 'up'); }}><Icon name="checkCircle" size={13} /> Helpful</button>
+      <button type="button" className={`ai-foot-btn${m.feedback === 'down' ? ' on' : ''}`} aria-pressed={m.feedback === 'down'} onClick={() => { if (m.feedback === 'down') onFeedback('none'); else setAsking((a) => !a); }}><Icon name="close" size={13} /> Not helpful</button>
+      {asking && m.feedback !== 'down' && (
+        <span className="ai-why" role="group" aria-label="What was wrong?">
+          {REASONS.map((r) => <button key={r.id} type="button" onClick={() => { setAsking(false); onFeedback('down', r.id); }}>{r.label}</button>)}
+        </span>
+      )}
+    </>
+  );
+}
+
+export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, busyAction, canEmail, canRegenerate }: {
   m: AiMessage; onConfirm: (a: AiAction) => void; onDismiss: (a: AiAction) => void; onCopy: () => void; onDownload: () => void;
-  onRegenerate?: () => void; onEmail?: () => void; busyAction: string | null; canEmail: boolean; canRegenerate: boolean;
+  onRegenerate?: () => void; onEmail?: () => void; onFollowUp?: (text: string) => void; onFeedback?: (rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => void;
+  busyAction: string | null; canEmail: boolean; canRegenerate: boolean;
 }) {
   if (m.role === 'user') {
     return (
@@ -184,7 +208,10 @@ export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onReg
         </div>
         {m.reasoning && <Reasoning text={m.reasoning} live={false} />}
         <ToolChips tools={m.tools} />
-        {failed ? <div className="ai-error" role="alert"><Icon name="alert" size={15} /><span>{m.content}</span></div> : <Markdown text={m.content} />}
+        {failed ? <div className="ai-error" role="alert"><Icon name="alert" size={15} /><span>{m.content}</span></div> : <Markdown text={withoutTrailer(m.content)} />}
+        {!failed && (m.unverifiedKeys?.length ?? 0) > 0 && (
+          <div className="ai-check" role="note"><Icon name="alert" size={14} /><span>Please check <b>{m.unverifiedKeys!.join(', ')}</b>: I mentioned {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} but did not find {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} in your data.</span></div>
+        )}
         {m.actions.map((a) => <ActionCard key={a.id} action={a} busy={busyAction === a.id} onConfirm={() => onConfirm(a)} onDismiss={() => onDismiss(a)} />)}
         {!failed && m.content && (
           <div className="ai-foot">
@@ -192,7 +219,11 @@ export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onReg
             <button type="button" className="ai-foot-btn" onClick={onDownload}><Icon name="download" size={13} /> Download</button>
             {canEmail && onEmail && <button type="button" className="ai-foot-btn" onClick={onEmail}><Icon name="mail" size={13} /> Email me this</button>}
             {canRegenerate && onRegenerate && <button type="button" className="ai-foot-btn" onClick={onRegenerate}><Icon name="refresh" size={13} /> Try again</button>}
+            {onFeedback && <Feedback m={m} onFeedback={onFeedback} />}
           </div>
+        )}
+        {!failed && canRegenerate && onFollowUp && (m.followUps?.length ?? 0) > 0 && (
+          <div className="ai-next" role="group" aria-label="Suggested next steps">{m.followUps!.map((f) => <button key={f} type="button" onClick={() => onFollowUp(f)}>{f}</button>)}</div>
         )}
         {failed && canRegenerate && onRegenerate && <div className="ai-foot"><button type="button" className="ai-foot-btn" onClick={onRegenerate}><Icon name="refresh" size={13} /> Try again</button></div>}
       </div>
@@ -213,7 +244,7 @@ export const SUGGESTIONS: Suggestion[] = [
   { icon: 'image', title: 'Read a file for me', text: 'A screenshot, spreadsheet, PDF or document.', prompt: '', attach: true },
 ];
 
-export function Hero({ name, onPick, canAttach }: { name: string; onPick: (s: Suggestion) => void; canAttach: boolean }) {
+export function Hero({ name, onPick, onAsk, canAttach, starters }: { name: string; onPick: (s: Suggestion) => void; onAsk: (prompt: string) => void; canAttach: boolean; starters?: AiStarter[] }) {
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   return (
@@ -221,6 +252,11 @@ export function Hero({ name, onPick, canAttach }: { name: string; onPick: (s: Su
       <Orb size={92} />
       <h1>{greeting}{name ? `, ${name}` : ''}.</h1>
       <p>Ask anything about your work. I read your projects, people and files, reason through hard problems, and prepare changes for you to confirm.</p>
+      {starters && starters.length > 0 && (
+        <div className="ai-now" aria-label="Right now">
+          {starters.map((s) => <button key={s.label} type="button" onClick={() => onAsk(s.prompt)}><b>{s.label}</b>{s.hint && <span>{s.hint}</span>}</button>)}
+        </div>
+      )}
       <div className="ai-suggest">
         {SUGGESTIONS.filter((s) => !s.attach || canAttach).map((s) => (
           <button key={s.title} type="button" className="ai-suggest-card" onClick={() => onPick(s)}>

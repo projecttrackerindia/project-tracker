@@ -78,6 +78,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
+    public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
     public DbSet<ReminderPolicy> ReminderPolicies => Set<ReminderPolicy>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
@@ -483,7 +484,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Model).HasMaxLength(64);
             e.Property(x => x.RouteReason).HasMaxLength(120);
             e.Property(x => x.Status).HasMaxLength(12);
+            e.Property(x => x.Feedback).HasMaxLength(8);
+            e.Property(x => x.FeedbackReason).HasMaxLength(24);
             e.HasOne<AiConversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<AiUserProfile>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();       // one profile per person per workspace
+            e.Property(x => x.Notes).HasMaxLength(500);
         });
         b.Entity<AiAttachment>(e =>
         {
