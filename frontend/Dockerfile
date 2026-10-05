@@ -11,7 +11,7 @@ ARG INDEXNOW_KEY=
 ENV SITE_URL=$SITE_URL GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION BING_SITE_VERIFICATION=$BING_SITE_VERIFICATION INDEXNOW_KEY=$INDEXNOW_KEY
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 # A template, not the final config: nginx's own entrypoint fills in ${API_HOST} at container start (see nginx.conf).
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 ENV API_HOST=api
