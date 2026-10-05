@@ -24,7 +24,10 @@ interface AuthState {
   loginMfa: (challenge: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   reloadContext: () => Promise<AppContext>;
+  /** Moves to another organization and its address (/acme/…), for when the person chooses one, creates one or joins one. */
   switchWorkspace: (id: string) => Promise<void>;
+  /** Makes an organization the active one without touching the address: the address already names it (a link, the Back button). */
+  activateWorkspace: (id: string) => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -82,6 +85,16 @@ export const useAuth = create<AuthState>((set, get) => ({
     const res = await workspaceApi.switch(id);
     setAccessToken(res.accessToken);
     queryClient.clear(); // every cached query belongs to the previous tenant
+    const ctx = await meApi.context();
+    // The address changes first, in the same step as the new organization, so the app never sees one without the other.
+    if (ctx.current) window.history.replaceState(null, '', `/${ctx.current.slug}/`);
+    set({ ctx, status: 'authenticated' });
+  },
+
+  activateWorkspace: async (id) => {
+    const res = await workspaceApi.switch(id);
+    setAccessToken(res.accessToken);
+    queryClient.clear();
     await get().reloadContext();
   },
 }));

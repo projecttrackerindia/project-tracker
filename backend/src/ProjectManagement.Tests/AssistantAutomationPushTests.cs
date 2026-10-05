@@ -441,7 +441,9 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         var payload = JsonNode.Parse(Encoding.UTF8.GetString(plain[..^1]))!;
         Assert.Contains("Prepare the demo", S(payload["body"]));
         Assert.Equal("TaskAssigned", S(payload["type"]));
-        Assert.StartsWith($"/projects/{o.Project}", S(payload["link"]));
+        // The link opens inside the organization it is about: /{organization address}/projects/…
+        var slug = factory.WithDb(db => db.Tenants.IgnoreQueryFilters().Where(t => t.Id == o.Owner.WorkspaceId).Select(t => t.Slug).Single());
+        Assert.StartsWith($"/{slug}/projects/{o.Project}", S(payload["link"]));
 
         // A device the push service no longer knows is forgotten.
         factory.Push.Status = HttpStatusCode.Gone;

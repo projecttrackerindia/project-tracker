@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
 import { getAccessToken, refreshSession } from '../../api/client';
 import type { ChatMessage, ChatThread, Conversation } from '../../api/types';
+import { appPath } from '../../lib/orgPath';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
@@ -112,7 +113,7 @@ export function ChatRealtime() {
           const n = new Notification(title, { body: text, tag: `chat-${conversationId}` });
           n.onclick = () => { n.close(); open(); };
         }
-      } else if (!window.location.pathname.startsWith('/chat')) {
+      } else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/chat')) {
         toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
       }
     };

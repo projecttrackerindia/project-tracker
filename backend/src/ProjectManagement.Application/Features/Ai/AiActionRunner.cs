@@ -11,6 +11,7 @@ using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Features.Tasks;
+using ProjectManagement.Application.Features.Workspaces;
 using ProjectManagement.Application.Features.Work;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain.Entities;
@@ -26,7 +27,7 @@ public sealed record AiActionResult(string? Link);
 /// made the change by hand.
 /// </summary>
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
-    ReminderService reminders, IEmailSender email, ILogger<AiActionRunner> log)
+    ReminderService reminders, ProjectService projects, WorkspaceService workspaces, IEmailSender email, ILogger<AiActionRunner> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -36,6 +37,18 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         var a = doc.RootElement;
         switch (p.Kind)
         {
+            case "create_project":
+            {
+                var type = Enum.Parse<ProjectType>(Str(a, "projectType") ?? "NewProject", true);
+                var created = await projects.CreateAsync(new CreateProjectRequest(Str(a, "name")!, null, Str(a, "description"), Prio(a), null, Guid(a, "ownerId"), null, Date(a, "startDate"), Date(a, "dueDate"), null,
+                    null, Guid(a, "projectGroupId"), type), ct);
+                return new AiActionResult($"/projects/{created.Project.Id}");
+            }
+            case "invite_member":
+            {
+                await workspaces.InviteAsync(new InviteRequest(Str(a, "email")!, Enum.Parse<TenantRole>(Str(a, "role") ?? "Member", true)), ct);
+                return new AiActionResult("/people/invitations");
+            }
             case "create_task":
             {
                 var projectId = Guid(a, "projectId")!.Value;
@@ -72,7 +85,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         var tid = ctx.RequireTenantId(); var me = ctx.RequireUserId();
         var ids = a.TryGetProperty("recipientIds", out var arr) && arr.ValueKind == JsonValueKind.Array ? arr.EnumerateArray().Select(x => System.Guid.Parse(x.GetString()!)).ToList() : [me];
         // The people are checked again now: only active, non-guest members of this workspace, whatever was proposed earlier.
-        var people = await db.TenantMembers.AsNoTracking().Where(m => ids.Contains(m.UserId) && m.Role != TenantRole.Guest && m.User!.IsActive).Select(m => new { m.User!.Email, m.User.DisplayName }).ToListAsync(ct);
+        var people = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && ids.Contains(m.UserId) && m.Role != TenantRole.Guest && m.User!.IsActive).Select(m => new { m.User!.Email, m.User.DisplayName }).ToListAsync(ct);
         if (people.Count == 0) throw new ConflictException("None of the recipients can receive the report any more.", "AI_NO_RECIPIENTS");
         var sender = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstAsync(ct);
         var workspace = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => t.Name).FirstAsync(ct);

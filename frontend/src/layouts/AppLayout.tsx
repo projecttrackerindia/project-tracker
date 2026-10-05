@@ -7,6 +7,7 @@ import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { Field, Modal, PageLoader, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
+import { orgHref } from '../lib/orgPath';
 import { queryClient, useAuth, useIsPersonal } from '../stores/auth';
 import { toast, useUi } from '../stores/ui';
 import { RunningTimer } from '../features/time/RunningTimer';
@@ -110,7 +111,7 @@ function DesktopNotifier() {
         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
         for (const n of page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type)).reverse()) {
           const note = new Notification(n.title, { body: n.body ?? undefined, tag: n.id });
-          note.onclick = () => { window.focus(); if (n.link) window.location.assign(n.link); note.close(); };
+          note.onclick = () => { window.focus(); if (n.link) window.location.assign(orgHref(n.link)); note.close(); };
         }
         write(newest);
       } catch { /* offline or signed out: try again next time */ }
@@ -184,13 +185,12 @@ function GlobalSearch() {
 
 function CreateOrganizationModal({ onClose }: { onClose: () => void }) {
   const switchWorkspace = useAuth((s) => s.switchWorkspace);
-  const nav = useNavigate();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const m = useMutation({
     mutationFn: () => workspaceApi.create({ name, description: description || undefined }),
-    onSuccess: async (ws) => { await switchWorkspace(ws.id); toast(`Organization “${ws.name}” created.`); onClose(); nav('/'); },
+    onSuccess: async (ws) => { await switchWorkspace(ws.id); toast(`Organization “${ws.name}” created.`); onClose(); },
     onError: (e) => setError(e instanceof ApiError ? (e.fieldError('name') ?? e.message) : 'Could not create the organization.'),
   });
   return (
@@ -212,14 +212,13 @@ function WorkspaceSwitcher() {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const nav = useNavigate();
   useClickOutside(ref, () => setOpen(false));
   const cur = ctx.current;
 
   const pick = async (id: string) => {
     setOpen(false);
     if (id === cur?.id) return;
-    try { await switchWorkspace(id); nav('/'); toast('Workspace switched.', 'info'); }
+    try { await switchWorkspace(id); toast('Workspace switched.', 'info'); }
     catch { toast('Could not switch workspace.', 'error'); }
   };
 

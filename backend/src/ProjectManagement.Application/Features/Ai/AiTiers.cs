@@ -74,7 +74,8 @@ public record AiPlanLevels(bool Enabled, AiTier MaxTier, long MonthlyCredits, bo
     public bool UnlimitedCredits => MonthlyCredits < 0;
 }
 
-public record AiRouteRequest(string Text, int Images, int Documents, AiMode Mode, AiTier PlanMax);
+/// <param name="Floor">The lowest level worth using: the conversation is in the middle of looking things up or making changes, and a very small model handles that badly.</param>
+public record AiRouteRequest(string Text, int Images, int Documents, AiMode Mode, AiTier PlanMax, AiTier Floor = AiTier.Quick);
 
 /// <summary>The router's decision. <see cref="Wanted"/> is what the question deserved; <see cref="Tier"/> is what the plan lets it have.</summary>
 public record AiRoute(AiTier Tier, AiTier Wanted, string Reason, bool Classified = false)
@@ -104,6 +105,10 @@ public static class AiModelRouter
     private static readonly Regex Small = new(
         @"^\s*(hi|hello|hey|thanks|thank you|ok(ay)?|cool|great|good (morning|afternoon|evening)|yes|no|sure|help)\b[\s\p{P}]*$", Opts);
 
+    // Asking for a change (create, assign, invite...) means the model has to look things up, choose a tool and fill it in correctly: a job for Standard at least.
+    private static readonly Regex Act = new(
+        @"\b(create|add|assign|reassign|schedule|remind|send|e-?mail|invite|set up|setup|make|raise|log|book|move|update|change|rename|delete|close|reopen)\b", Opts);
+
     private static readonly Regex Lookup = new(
         @"^\s*(what('?s| is| are)? (my|the|our)|who('?s| is| are)|when (is|are|was)|where (is|are)|show( me)?|list|find|how many|count|open|which)\b", Opts);
 
@@ -124,6 +129,7 @@ public static class AiModelRouter
         // The wording rules know English. Written in another script they cannot tell how hard it is, so a score of 0 means "unknown", not "easy".
         if (score == 0 && text.Any(c => char.IsLetter(c) && c > '\u024F')) return (null, "");
         if (score == 0 && Small.IsMatch(text)) return (AiTier.Quick, "A short message");
+        if (score == 0 && Act.IsMatch(text)) return (AiTier.Standard, "A request to make a change");
         if (score == 0 && text.Length <= 220 && (Lookup.IsMatch(text) || text.Length <= 80)) return (AiTier.Quick, "A quick lookup");
         if (score == 0) return (AiTier.Standard, "A regular question");
         return (null, "");   // some analytical wording but not conclusive
@@ -149,6 +155,7 @@ public static class AiModelRouter
         }
         // Images and documents need a model that reads them well; Quick is bumped to Standard unless the plan stops at Quick.
         if (wanted == AiTier.Quick && (r.Images > 0 || r.Documents > 0) && r.Mode == AiMode.Auto) (wanted, reason) = (AiTier.Standard, "Reading an attachment");
+        if (r.Mode == AiMode.Auto && wanted < r.Floor) { wanted = r.Floor; reason = "Continuing what we were doing"; }
         var tier = wanted > r.PlanMax ? r.PlanMax : wanted;
         return new AiRoute(tier, wanted, reason, fromClassifier);
     }

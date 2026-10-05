@@ -1,5 +1,6 @@
-import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useReducer, useRef, useState, type ComponentType } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { orgFromPath, firstSegment } from './lib/orgPath';
 import { ApiError } from './api/client';
 import { consentApi, meApi } from './api/endpoints';
 import type { ConsentDocument } from './api/types';
@@ -214,7 +215,39 @@ function NotFound() {
   );
 }
 
-function AppRoutes() {
+/**
+ * An address with no organization in front of it ("/projects/1", from before addresses carried one, or from an old e-mail) goes to the same page
+ * inside the person's current organization. An address that already names one of their organizations (right after signing in to a link) just
+ * needs the app to pick that up. No page reload either way.
+ */
+function OrgRedirect() {
+  const refresh = useContext(OrgGateContext);
+  const loc = useLocation();
+  const ctx = useAuth((s) => s.ctx);
+  useEffect(() => {
+    const slug = ctx?.current?.slug;
+    if (!slug) return;
+    if (!orgFromPath(loc.pathname, ctx.workspaces)) {
+      const path = loc.pathname === '/' ? '/' : loc.pathname;
+      window.history.replaceState(null, '', `/${slug}${path}${loc.search}${loc.hash}`);
+    }
+    refresh();
+  }, [loc.pathname, loc.search, loc.hash, ctx, refresh]);
+  return <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
+}
+
+const OrgGateContext = createContext<() => void>(() => undefined);
+
+const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'auth', 'security', 'r', 'dev']);
+
+function AppRoutes({ scoped }: { scoped: boolean }) {
+  const loc = useLocation();
+  const user = useAuth((s) => s.ctx);
+  const signedIn = useAuth((s) => s.status === 'authenticated' && !!s.ctx?.current);
+  // Signed in with no organization in the address: send the page to where it lives now. The screens that stop a person first (terms, a
+  // temporary password) are not pages of an organization and keep their own address; so do the pages that need no organization.
+  const gated = !!user && ((user.pendingConsent?.length ?? 0) > 0 || user.user.mustChangePassword);
+  const redirecting = signedIn && !scoped && !gated && !PUBLIC_PAGES.has(firstSegment(loc.pathname));
   const personal = useIsPersonal();
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
   const mReports = useModule('reports') > 0, mTasks = useModule('tasks') > 0, mProjects = useModule('projects') > 0, mWork = useModule('work') > 0;
@@ -237,7 +270,7 @@ function AppRoutes() {
       <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
-      <Route element={<RequireAuth />}>
+      {redirecting ? <Route path="*" element={<OrgRedirect />} /> : <Route element={<RequireAuth />}>
         {/* Home */}
         <Route index element={<DashboardPage />} />
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
@@ -286,8 +319,48 @@ function AppRoutes() {
         <Route path="billing" element={<Moved to="/settings/billing" />} />
         <Route path="audit" element={<Moved to="/settings/audit" />} />
         <Route path="*" element={<NotFound />} />
-      </Route>
+      </Route>}
     </Routes>
+  );
+}
+
+/**
+ * Chooses the router's base path from the address: /acme-bank/projects/1 is the page "projects/1" of the organization "acme-bank", so every
+ * link and navigation inside keeps working unchanged and the organization is always in the address. A link into another of the person's
+ * organizations switches to it first; the Back button between organizations does the same.
+ */
+function OrgRouter() {
+  const status = useAuth((s) => s.status);
+  const ctx = useAuth((s) => s.ctx);
+  const [, refresh] = useReducer((n: number) => n + 1, 0);
+  const activating = useRef<string | null>(null);
+  useEffect(() => { window.addEventListener('popstate', refresh); return () => window.removeEventListener('popstate', refresh); }, []);
+
+  const ready = status === 'authenticated' && !!ctx?.current;
+  // The organization is in the tab's title too, so several tabs of different organizations are told apart.
+  const orgName = ready ? ctx!.current!.name : null;
+  useEffect(() => { document.title = orgName ? `${orgName} · Project Tracker` : 'Project Tracker'; }, [orgName]);
+  const mine = ready ? orgFromPath(window.location.pathname, ctx!.workspaces) : undefined;
+  const other = !!mine && mine.id !== ctx!.current!.id;
+  useEffect(() => {
+    if (!mine || !other || activating.current === mine.id) return;
+    activating.current = mine.id;
+    useAuth.getState().activateWorkspace(mine.id)
+      .catch(() => { window.location.replace(`/${ctx!.current!.slug}/`); })   // no longer a member, or the organization is blocked for them
+      .finally(() => { activating.current = null; });
+  }, [mine, other, ctx]);
+  if (other) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
+
+  return (
+    <OrgGateContext.Provider value={refresh}>
+      <BrowserRouter key={mine?.slug ?? 'root'} basename={mine ? `/${mine.slug}` : undefined}>
+        <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>}>
+          <AppRoutes scoped={!!mine} />
+        </Suspense>
+        {/* Outside the routes on purpose: it has to stay up while the route changes underneath it. */}
+        <SuccessCurtain />
+      </BrowserRouter>
+    </OrgGateContext.Provider>
   );
 }
 
@@ -295,13 +368,7 @@ export default function App() {
   useEffect(() => { void useAuth.getState().bootstrap(); }, []);
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>}>
-          <AppRoutes />
-        </Suspense>
-        {/* Outside the routes on purpose: it has to stay up while the route changes underneath it. */}
-        <SuccessCurtain />
-      </BrowserRouter>
+      <OrgRouter />
     </ErrorBoundary>
   );
 }

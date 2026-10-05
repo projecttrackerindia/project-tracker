@@ -183,6 +183,17 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
 {
     public const int MaxAttempts = 5;
 
+    /// <summary>
+    /// Where a notification's path lives for the person reading it: inside the workspace it is about (<c>/acme/projects/…</c>), so the link opens the
+    /// right organization even when they last used another. The one-time reminder link (<c>/r/…</c>) works without signing in and stays as it is.
+    /// </summary>
+    public static string OrgLink(string? slug, string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return string.IsNullOrEmpty(slug) ? "/" : $"/{slug}/";
+        if (string.IsNullOrEmpty(slug) || path.StartsWith("/r/", StringComparison.Ordinal) || !path.StartsWith('/')) return path;
+        return $"/{slug}{path}";
+    }
+
     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
     {
         var rows = await db.Notifications.IgnoreQueryFilters().Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts)
@@ -192,15 +203,15 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
         var userIds = rows.Select(n => n.UserId).Distinct().ToList();
         var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);
         var tenantIds = rows.Select(n => n.TenantId).Distinct().ToList();
-        var tenants = await db.Tenants.IgnoreQueryFilters().Where(t => tenantIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+        var tenants = await db.Tenants.IgnoreQueryFilters().Where(t => tenantIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => new { t.Name, t.Slug }, ct);
         var baseUrl = options.Value.WebBaseUrl.TrimEnd('/');
         var sent = 0;
 
         foreach (var n in rows)
         {
             if (!users.TryGetValue(n.UserId, out var user) || !user.IsActive || !user.EmailVerified) { n.EmailPending = false; continue; }
-            var workspace = tenants.GetValueOrDefault(n.TenantId);
-            var link = baseUrl + (n.Link ?? "/");
+            var workspace = tenants.GetValueOrDefault(n.TenantId)?.Name;
+            var link = baseUrl + OrgLink(tenants.GetValueOrDefault(n.TenantId)?.Slug, n.Link);
             var body = string.IsNullOrWhiteSpace(n.Body) ? n.Title : n.Body!;
             try
             {

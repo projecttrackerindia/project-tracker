@@ -37,7 +37,7 @@ public class WorkspaceProvisioner(IAppDbContext db, AppClock clock)
     public async Task<Tenant> CreateAsync(string name, WorkspaceType type, Guid ownerId, string? description = null,
         string? slugHint = null, CancellationToken ct = default)
     {
-        var baseSlug = Text.Slugify(slugHint ?? name);
+        var baseSlug = WorkspaceSlugs.For(slugHint ?? name);
         var slug = baseSlug;
         while (await db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.Slug == slug, ct))
             slug = $"{baseSlug}-{Guid.NewGuid().ToString("N")[..4]}";

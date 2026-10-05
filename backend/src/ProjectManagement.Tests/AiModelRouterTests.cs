@@ -15,6 +15,21 @@ public class AiModelRouterTests
         Assert.Null(AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
 
     [Theory]
+    [InlineData("Create a task for Max")]
+    [InlineData("Invite shiva@example.com to the workspace")]
+    [InlineData("assign it to prasanna krishna")]
+    public void Asking_for_a_change_is_at_least_Standard(string q) =>
+        Assert.Equal(AiTier.Standard, AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
+
+    [Fact]
+    public void A_floor_lifts_a_short_follow_up_but_never_beyond_the_plan_or_over_a_chosen_level()
+    {
+        Assert.Equal(AiTier.Standard, AiModelRouter.Decide(new AiRouteRequest("yes please", 0, 0, AiMode.Auto, AiTier.Deep, AiTier.Standard)).Tier);
+        Assert.Equal(AiTier.Quick, AiModelRouter.Decide(new AiRouteRequest("yes please", 0, 0, AiMode.Auto, AiTier.Quick, AiTier.Standard)).Tier);   // the plan is the ceiling
+        Assert.Equal(AiTier.Quick, AiModelRouter.Decide(new AiRouteRequest("yes please", 0, 0, AiMode.Quick, AiTier.Deep, AiTier.Standard)).Tier);    // the person's own choice wins
+    }
+
+    [Theory]
     [InlineData("hi")]
     [InlineData("Thanks!")]
     [InlineData("Which tasks are overdue?")]

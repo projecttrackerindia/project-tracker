@@ -419,13 +419,12 @@ export function AcceptInvitePage() {
   const status = useAuth((s) => s.status);
   const user = useAuth((s) => s.ctx?.user);
   const switchWorkspace = useAuth((s) => s.switchWorkspace);
-  const nav = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   const info = useQuery({ queryKey: ['invite', token], queryFn: () => workspaceApi.lookupInvitation(token), enabled: !!token, retry: false });
   const accept = useMutation({
     mutationFn: () => workspaceApi.acceptInvitation(token),
-    onSuccess: async (ws) => { await switchWorkspace(ws.id); toast(`You joined ${ws.name}.`); nav('/', { replace: true }); },
+    onSuccess: async (ws) => { await switchWorkspace(ws.id); toast(`You joined ${ws.name}.`); },
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not accept the invitation.'),
   });
 

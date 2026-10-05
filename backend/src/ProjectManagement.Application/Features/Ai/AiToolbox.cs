@@ -3,12 +3,14 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
+using ProjectManagement.Domain.Entities;
 using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Ai;
@@ -33,7 +35,7 @@ public sealed class AiToolException(string message) : Exception(message);
 /// assistant change anything on its own.
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
-    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ILogger<AiToolbox> log)
+    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, ILogger<AiToolbox> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -41,9 +43,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     public const string FindWork = "find_work", ListProjects = "list_projects", ProjectReport = "project_report", TeamWorkload = "team_workload",
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
-        CreateReminder = "propose_reminder", SendReport = "propose_send_report";
+        CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member";
 
-    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport];
+    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember];
 
     // ------------------------------------------------------------------ what the model is told it can use
 
@@ -74,6 +76,16 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
+            new(CreateProject, "Propose a new project (use it when the project the person means does not exist yet; add tasks to it after they confirm). The person confirms first.",
+                """
+                {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},
+                 "project_type":{"type":"string","enum":["NewProject","ChangeRequest","Enhancement","Migration","Integration","Upgrade","Maintenance","Compliance","Other"],"description":"Default NewProject."},
+                 "group":{"type":"string","description":"Optional: the name of a project group. Default: the first active group."},
+                 "owner":{"type":"string","description":"A person's name or \"me\". Default: me."},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]},
+                 "start_date":{"type":"string","description":"yyyy-mm-dd"},"due_date":{"type":"string","description":"yyyy-mm-dd"}},"required":["name"]}
+                """),
+            new(InviteMember, "Propose inviting a person who is not in the workspace yet, by e-mail (you cannot create accounts yourself). The person confirms first.",
+                """{"type":"object","properties":{"email":{"type":"string"},"role":{"type":"string","enum":["Guest","Member","Manager"],"description":"Default Member."}},"required":["email"]}""" ),
             new(CreateTask, "Propose a new task on a project. The person sees a card and confirms before anything is created.",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},
@@ -120,6 +132,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 TeamWorkload => await TeamWorkloadAsync(a, ct),
                 ListPeople => await ListPeopleAsync(ct),
                 MyWorkSummary => await MyWorkSummaryAsync(ct),
+                CreateProject => await ProposeProjectAsync(a, ct),
+                InviteMember => await ProposeInviteAsync(a, ct),
                 CreateTask => await ProposeTaskAsync(a, ct),
                 CreateWork => await ProposeWorkAsync(a, ct),
                 CreateActionItem => await ProposeActionItemAsync(a, ct),
@@ -206,6 +220,46 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     // ------------------------------------------------------------------ proposing (nothing is changed here)
 
+    private async Task<AiToolOutcome> ProposeProjectAsync(JsonElement a, CancellationToken ct)
+    {
+        if (!await permissions.HasAsync(Permissions.ProjectsCreate, ct)) throw new AiToolException("The person's role does not allow them to create projects.");
+        var name = (Str(a, "name") ?? throw new AiToolException("Give the project a name.")).Trim();
+        if (name.Length is < 2 or > 120) throw new AiToolException("A project name is 2 to 120 characters.");
+        if (await db.Projects.AsNoTracking().AnyAsync(p => p.Name.ToLower() == name.ToLower(), ct))
+            throw new AiToolException($"A project called “{name}” already exists. Use it instead of creating another.");
+        var typeText = Str(a, "project_type") ?? "NewProject";
+        if (!Enum.TryParse<ProjectType>(typeText, true, out var type)) throw new AiToolException($"project_type must be one of {string.Join(", ", Enum.GetNames<ProjectType>())}.");
+        await groups.EnsureDefaultAsync(ct);
+        var active = await db.ProjectGroups.AsNoTracking().Where(g => g.IsActive).OrderBy(g => g.Order).Select(g => new { g.Id, g.Name }).ToListAsync(ct);
+        if (active.Count == 0) throw new AiToolException("There is no active project group to put the project in.");
+        var wanted = Str(a, "group");
+        var group = (wanted is null ? null : active.FirstOrDefault(g => g.Name.Equals(wanted, StringComparison.OrdinalIgnoreCase)) ?? active.FirstOrDefault(g => g.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase)))
+            ?? (wanted is null ? active[0] : throw new AiToolException($"Choose one of these project groups: {string.Join(", ", active.Select(g => g.Name))}."));
+        var owner = Str(a, "owner") is { } w ? await PersonAsync(w, ct) : null;
+        var priority = PriorityOf(a);
+        var start = Date(a, "start_date"); var due = Date(a, "due_date");
+        if (start is { } s0 && due is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
+        var payload = new { name, description = Str(a, "description"), projectType = type.ToString(), projectGroupId = group.Id, groupName = group.Name, ownerId = owner?.Id, ownerName = owner?.Name, priority, startDate = start, dueDate = due };
+        var summary = $"{type}{Join($"in group {group.Name}", owner is null ? null : $"owned by {owner.Name}", $"{priority} priority", start is null ? null : $"starts {Day(start)}", due is null ? null : $"due {Day(due)}")}";
+        return Propose("create_project", $"Create project “{name}”", summary, payload, Str(a, "description"));
+    }
+
+    private async Task<AiToolOutcome> ProposeInviteAsync(JsonElement a, CancellationToken ct)
+    {
+        if (!await permissions.HasAsync(Permissions.MembersInvite, ct)) throw new AiToolException("The person's role does not allow them to invite people.");
+        var emailText = (Str(a, "email") ?? throw new AiToolException("An e-mail address is needed to invite someone. Ask the person for it.")).Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(emailText, @"^[^@\s]+@[^@\s]+\.[^@\s]+$") || emailText.Length > 200) throw new AiToolException("That does not look like an e-mail address.");
+        var role = Str(a, "role") ?? "Member";
+        if (!Enum.TryParse<TenantRole>(role, true, out var parsed) || parsed is not (TenantRole.Guest or TenantRole.Member or TenantRole.Manager))
+            throw new AiToolException("An invitation can be for a Guest, Member or Manager. Owners and admins are set up by hand.");
+        var normalized = Text.NormalizeEmail(emailText);
+        var tid = ctx.RequireTenantId();
+        if (await (from m in db.TenantMembers join u in db.Users on m.UserId equals u.Id where m.TenantId == tid && u.NormalizedEmail == normalized select m.Id).AnyAsync(ct))
+            throw new AiToolException("That person is already a member of this workspace.");
+        var payload = new { email = emailText, role = parsed.ToString() };
+        return Propose("invite_member", $"Invite {emailText}", $"As {parsed}; they get an e-mail to join this workspace", payload);
+    }
+
     private async Task<AiToolOutcome> ProposeTaskAsync(JsonElement a, CancellationToken ct)
     {
         await RequireLevelAsync(Modules.Tasks, "create tasks", ct);
@@ -283,13 +337,24 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     // ------------------------------------------------------------------ finding people and projects by what the person said
 
+    /// <summary>A couple of plain facts about this workspace, so the assistant knows what it is working with (an empty one, a one-person one).</summary>
+    public async Task<string> OrgFactsAsync(CancellationToken ct)
+    {
+        var projects = await access.VisibleProjects().AsNoTracking().CountAsync(p => p.Status != ProjectStatus.Archived, ct);
+        if (ctx.Role == TenantRole.Guest) return $"Projects they can see: {projects}.";
+        var tid = ctx.RequireTenantId();
+        var members = await db.TenantMembers.AsNoTracking().CountAsync(m => m.TenantId == tid, ct);
+        return $"This workspace has {members} member{(members == 1 ? "" : "s")} and the person can see {projects} active project{(projects == 1 ? "" : "s")}.";
+    }
+
     private sealed record Person(Guid Id, string Name, string Email, string Role, string? JobRole);
     private List<Person>? _people;
 
     private async Task<List<Person>> PeopleAsync(CancellationToken ct)
     {
         if (ctx.Role == TenantRole.Guest) throw new AiToolException("Guests cannot look up other people.");
-        return _people ??= (await db.TenantMembers.AsNoTracking().Where(m => m.Role != TenantRole.Guest && m.User!.IsActive)
+        var tid = ctx.RequireTenantId();   // TenantMember is not filtered by workspace on its own: without this, people from every organization come back
+        return _people ??= (await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
             .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, m.Role, JobRole = db.OrgRoles.Where(r => r.Id == m.OrgRoleId).Select(r => r.Name).FirstOrDefault() })
             .Take(500).ToListAsync(ct)).Select(m => new Person(m.UserId, m.DisplayName, m.Email, m.Role.ToString(), m.JobRole)).ToList();
     }

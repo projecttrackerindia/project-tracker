@@ -1,3 +1,4 @@
+import { orgHref } from '../../lib/orgPath';
 import { pushApi } from '../../api/endpoints';
 
 /**
@@ -61,13 +62,13 @@ export const pushCoversThisDevice = () => subscribed === true;
 /** A notification from the operating system, shown by the page itself (the tab is open but someone is in another app). */
 export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders') {
   if (!canNotify() || Notification.permission !== 'granted') return;
-  const options: NotificationOptions = { body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: true, data: { link } };
+  const options: NotificationOptions = { body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: true, data: { link: orgHref(link) } };
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
     if (reg) { await reg.showNotification(title, options); return; }
   } catch { /* fall back to a page notification */ }
   const n = new Notification(title, options);
-  n.onclick = () => { window.focus(); window.location.assign(link); n.close(); };
+  n.onclick = () => { window.focus(); window.location.assign(orgHref(link)); n.close(); };
 }
 
 // ------------------------------------------------------------------ sound

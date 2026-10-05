@@ -781,4 +781,75 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.DoesNotContain(guest, p => p.Contains("too much on their plate"));
         Assert.Equal(before, Chat.Requests.Count); Assert.Equal(classified, Chat.Classified.Count);
     }
+
+    [Fact]
+    public async Task The_assistant_only_ever_sees_the_people_of_the_organization_it_is_asked_in()
+    {
+        var a = await Setup();   // Olivia, a manager (the guest is not assignable): 2 people who can be given work
+        var b = await Setup();   // another organization with the same shape: it must not show up in the first one
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("list_people", new { }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Here they are."));
+        await Ask(a.Owner, "Who is in my workspace?");
+        var result = Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content;
+        Assert.StartsWith("2 people", result);                                              // not 4: nobody from the other organization
+        Assert.Contains("3 members", Chat.Requests.First().Context);                       // the model is told what this workspace is
+        var slug = factory.WithDb(db => db.Tenants.IgnoreQueryFilters().Where(t => t.Id == a.Owner.WorkspaceId).Select(t => t.Slug).Single());
+        Assert.Contains($"/{slug}", Chat.Requests.First().Context);
+        Assert.Contains("other workspaces and their people do not exist", Chat.Requests.First().Context);
+
+        // A person who belongs to both organizations is only ever seen as a member of the one being asked about.
+        Assert.NotEqual(a.Owner.WorkspaceId, b.Owner.WorkspaceId);
+    }
+
+    [Fact]
+    public async Task A_missing_project_can_be_proposed_then_created_on_confirmation_and_a_person_can_be_invited()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "Insurance Tenure", description = "Extend the tenure from 7 to 10 years.", project_type = "Integration", start_date = Iso(-6), due_date = Iso(0), owner = "me" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("I have prepared the project."));
+        var res = await Ask(o.Owner, "Create a project called Insurance Tenure");
+        var card = res.Last("action")["action"]!;
+        Assert.Equal("proposed", S(card["status"]));
+        Assert.Contains("Insurance Tenure", S(card["title"]));
+        Assert.DoesNotContain(factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == o.Owner.WorkspaceId).Select(p => p.Name).ToList()), n => n == "Insurance Tenure");
+        var confirm = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.True(confirm.Ok, confirm.ToString());
+        var project = Assert.Single(factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == o.Owner.WorkspaceId && p.Name == "Insurance Tenure").ToList()));
+        Assert.Equal(ProjectType.Integration, project.ProjectType);
+        Assert.Equal($"/projects/{project.Id}", S(confirm.Data!["link"]));
+
+        // The same name again is refused with a reason the model can act on.
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "insurance tenure" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("It exists already."));
+        await Ask(o.Owner, "Create the Insurance Tenure project again");
+        Assert.Contains("already exists", Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content);
+
+        // Inviting by e-mail: a card first; owners and admins cannot be invited this way.
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_invite_member", new { email = "shiva@example.com", role = "Member" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var inv = await Ask(o.Owner, "Invite shiva@example.com to the workspace");
+        var icard = inv.Last("action")["action"]!;
+        var ok = await o.Owner.Post($"/api/v1/ai/messages/{S(inv.Done["id"])}/actions/{S(icard["id"])}/confirm");
+        Assert.True(ok.Ok, ok.ToString());
+        Assert.Contains(factory.WithDb(db => db.TenantInvitations.IgnoreQueryFilters().Where(i => i.TenantId == o.Owner.WorkspaceId).Select(i => i.Email).ToList()), e => e == "shiva@example.com");
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_invite_member", new { email = "boss@example.com", role = "Owner" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Cannot."));
+        await Ask(o.Owner, "Invite boss@example.com as owner");
+        Assert.Contains("Guest, Member or Manager", Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content);
+    }
+
+    [Fact]
+    public async Task A_request_to_change_something_and_its_short_follow_up_are_not_left_to_the_smallest_model()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("list_people", new { }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Shall I create it for Max?"));
+        var first = await Ask(o.Owner, "Create a task for Max");
+        Assert.Equal("standard", S(first.Last("route")["tier"]));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Done."));
+        var second = await Ask(o.Owner, "yes please", conversation: first.Conversation);          // "yes please" alone would be Quick
+        Assert.Equal("standard", S(second.Last("route")["tier"]));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Hello!"));
+        Assert.Equal("quick", S((await Ask(o.Owner, "hi")).Last("route")["tier"]));                // a fresh greeting is still cheap
+    }
 }

@@ -35,6 +35,37 @@ public record PageQuery(int Page = 1, int PageSize = 25)
     public int SafeSize(int max = 100) => Math.Clamp(PageSize, 1, max);
 }
 
+/// <summary>
+/// The workspace's address segment: every page of the app lives under <c>/{slug}/</c> (for example <c>/acme-bank/projects/…</c>), so a link says which
+/// organization it belongs to. A slug must never equal a name the app uses at the top level (a page, the API, a file), so those are kept back.
+/// </summary>
+public static class WorkspaceSlugs
+{
+    /// <summary>Keep in step with the top-level routes in frontend/src/App.tsx and the paths nginx serves itself.</summary>
+    public static readonly IReadOnlySet<string> Reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // pages that need no workspace
+        "login", "register", "verify-email", "forgot-password", "reset-password", "invite", "auth", "security", "r", "dev", "logout", "sso",
+        // pages inside a workspace (older links to these have no workspace in front, and are sent on to the right one)
+        "my-work", "ai", "reminders", "timesheet", "calendar", "chat", "projects", "portfolio", "operations", "workload", "reports", "activity", "people",
+        "settings", "account", "notifications", "admin", "work", "my-team", "project-status", "project-groups", "members", "teams", "organization", "billing", "audit",
+        "dashboard", "home", "tasks", "issues",
+        // served by the web server or the API
+        "api", "hubs", "scim", "health", "assets", "icons", "static", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt", "index.html",
+        // too easy to confuse
+        "app", "www", "new", "null", "undefined", "help", "support", "status", "docs", "w", "o", "org", "orgs", "workspace", "workspaces",
+    };
+
+    public static bool IsReserved(string slug) => Reserved.Contains(slug);
+
+    /// <summary>The address for a workspace called <paramref name="name"/>, before any uniqueness suffix.</summary>
+    public static string For(string name)
+    {
+        var slug = Text.Slugify(name);
+        return IsReserved(slug) ? $"{slug}-org" : slug;
+    }
+}
+
 public static partial class Text
 {
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

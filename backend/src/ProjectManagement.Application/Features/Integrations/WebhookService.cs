@@ -359,8 +359,10 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
         var body = d.Payload;
         if (hook.Format != WebhookFormat.Json)
         {
-            var workspace = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == hook.TenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Workspace";
-            body = ChatMessages.Render(hook.Format, d.Payload, ProjectManagement.Application.Features.Sso.PublicUrls.Web(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Common.AppOptions>>().Value), workspace);
+            var tenant = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == hook.TenantId).Select(t => new { t.Name, t.Slug }).FirstOrDefaultAsync(ct);
+            var web = ProjectManagement.Application.Features.Sso.PublicUrls.Web(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Common.AppOptions>>().Value);
+            // Links in the message open inside this workspace: https://app/acme-bank/projects/…
+            body = ChatMessages.Render(hook.Format, d.Payload, tenant is null ? web : $"{web}/{tenant.Slug}", tenant?.Name ?? "Workspace");
         }
         var secret = sp.GetRequiredService<ISecretProtector>().Unprotect(hook.SecretProtected);
         var stamp = new DateTimeOffset(now).ToUnixTimeSeconds();

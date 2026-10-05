@@ -144,10 +144,12 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
                 PushService.SubjectOf(sp.GetRequiredService<IOptions<PushOptions>>().Value, sp.GetRequiredService<IOptions<AppOptions>>().Value), ct);
             var sender = sp.GetRequiredService<IWebPushSender>();
             var now = DateTime.UtcNow;
+            var tenantIds = pending.Select(n => n.TenantId).Distinct().ToList();
+            var slugs = await db.Tenants.IgnoreQueryFilters().Where(t => tenantIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Slug, ct);
             foreach (var n in pending)
             {
                 var token = n.Link is { } l && l.StartsWith("/r/", StringComparison.Ordinal) ? l[3..] : null;
-                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = n.Link, tag = n.Id, type = n.Type.ToString(), token }, Json);
+                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = n.Id, type = n.Type.ToString(), token }, Json);
                 foreach (var s in subs.Where(s => s.UserId == n.UserId && s.Failures < 20))
                 {
                     int? status;
