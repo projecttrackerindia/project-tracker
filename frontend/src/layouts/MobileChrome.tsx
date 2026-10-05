@@ -198,6 +198,13 @@ export function TabBar() {
   const left = tabs.slice(0, 2), right = tabs.slice(2);
   const isOn = (t: Tab) => (t.match ? t.match(pathname) : t.end ? pathname === t.to : pathname === t.to || pathname.startsWith(`${t.to}/`));
 
+  // A page that lives in the menu (Account, Settings, People ...) has no tab of its own: the last one takes its name, so the capsule is never
+  // a row of bare icons with a gap beside them.
+  const inTabs = tabs.some(isOn);
+  const here = all.find((i) => (i.match ? i.match(pathname) : i.end ? pathname === i.to : pathname === i.to || pathname.startsWith(`${i.to}/`)));
+  const hereLabel = pathname.includes('/account') ? 'Account' : pathname.includes('/settings') ? 'Settings' : here?.label ?? 'More';
+  const lastOn = more || !inTabs;
+
   const tab = (t: Tab) => (
     <NavLink key={t.to} to={t.to} end={t.end} className={`m-tab ${isOn(t) ? 'on' : ''}`} onClick={() => haptic(6)} aria-label={t.label}>
       <span className="m-tab-ico"><Icon name={t.icon} size={22} />{!!t.badge && <em className="m-badge">{t.badge > 99 ? '99+' : t.badge}</em>}</span>
@@ -211,9 +218,9 @@ export function TabBar() {
       <nav className="m-tabs" aria-label="Main">
         <div className="m-pill">
           {[...left, ...right].map(tab)}
-          <button type="button" className={`m-tab ${more ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
+          <button type="button" className={`m-tab ${lastOn ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
             <span className="m-tab-ico"><span className="m-me">{initials(ctx.user.displayName)}</span>{hidden && <i className="m-dot top" />}</span>
-            <span className="m-tab-label">More</span>
+            <span className="m-tab-label">{more || inTabs ? 'More' : hereLabel}</span>
           </button>
         </div>
         {!admin && <button type="button" className={`m-fab ${create ? 'open' : ''}`} onClick={() => { haptic(12); setCreate(true); }} aria-label="Create"><Icon name="plus" size={26} /></button>}
