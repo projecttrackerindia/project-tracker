@@ -208,7 +208,7 @@ public class PlatformAdminTests(ApiFactory factory)
         // Shared test database: emails that other tests left unsent can make the verdict "degraded", but never "down".
         Assert.Contains(h["status"]!.GetValue<string>(), new[] { "ok", "degraded" });
         Assert.True(h["database"]!["reachable"]!.GetValue<bool>());
-        Assert.Contains("Sqlite", h["database"]!["provider"]!.GetValue<string>());
+        Assert.Contains(Environment.GetEnvironmentVariable("PM_TEST_POSTGRES") is null ? "Sqlite" : "PostgreSQL", h["database"]!["provider"]!.GetValue<string>());
         Assert.True(h["database"]!["pendingMigrations"]!.GetValue<int>() >= 0); // the test database is created from the model, not from migrations
         Assert.True(h["traffic"]!["requests"]!.GetValue<long>() > 0);
         Assert.True(h["queues"]!["reportsWaiting"]!.GetValue<int>() >= 1);

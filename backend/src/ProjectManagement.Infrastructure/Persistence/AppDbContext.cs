@@ -100,7 +100,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     /// <summary>How far this request's person reaches into projects (see <see cref="ProjectScope"/>). Read by the project filter below.</summary>
     internal ProjectScope CurrentProjectScope => current.ProjectScope;
     internal Guid? CurrentUserId => current.UserId;
-    internal Guid? CurrentTeamLens => current.TeamLens;
+    internal bool ProjectsRestricted => current.RestrictsProjects;
+    internal Guid[] ReachableProjects => current.ProjectIds;
 
     public async Task<int> PendingMigrationCountAsync(CancellationToken ct = default) => (await Database.GetPendingMigrationsAsync(ct)).Count();
 
@@ -810,12 +811,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
 
         // The project itself: whole workspace, or - when this person's reach is narrowed - the projects they own, were added to, or
         // that belong to a team they are in. Written once here so no query, report or assistant tool has to remember it.
-        b.Entity<Project>().HasQueryFilter(p => p.TenantId == CurrentTenantId && !p.IsDeleted
-            && (CurrentTeamLens == null || p.TeamId == CurrentTeamLens)
-            && (CurrentProjectScope == ProjectScope.None
-                || p.OwnerId == CurrentUserId
-                || ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == CurrentUserId)
-                || (CurrentProjectScope == ProjectScope.Teams && p.TeamId != null && TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == CurrentUserId))));
+        b.Entity<Project>().HasQueryFilter(p => p.TenantId == CurrentTenantId && !p.IsDeleted && (!ProjectsRestricted || ReachableProjects.Contains(p.Id)));
     }
 
     /// <summary>Entities that must not outlive their project's visibility, with the property that points at the project or task.</summary>
@@ -833,14 +829,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         {
             var key = Expression.Property(e, prop ?? "TaskId");
             var nullable = key.Type == typeof(Guid?);
-            var target = viaTask ? typeof(TaskItem) : typeof(Project);
-            var t = Expression.Parameter(target, "t");
-            Expression id = Expression.Property(t, "Id");
-            if (nullable) id = Expression.Convert(id, typeof(Guid?));
-            var any = Expression.Call(typeof(Queryable), nameof(Queryable.Any), [target],
-                Expression.Property(Expression.Constant(this), viaTask ? nameof(Tasks) : nameof(Projects)), Expression.Lambda(Expression.Equal(id, key), t));
-            Expression guard = Expression.OrElse(
-                Expression.Equal(Expression.Property(Expression.Constant(this), nameof(CurrentProjectScope)), Expression.Constant(ProjectScope.None)), any);
+            var unrestricted = Expression.Not(Expression.Property(Expression.Constant(this), nameof(ProjectsRestricted)));
+            Expression allowed;
+            if (viaTask)
+            {
+                var t = Expression.Parameter(typeof(TaskItem), "t");
+                Expression id = Expression.Property(t, "Id");
+                if (nullable) id = Expression.Convert(id, typeof(Guid?));
+                allowed = Expression.Call(typeof(Queryable), nameof(Queryable.Any), [typeof(TaskItem)],
+                    Expression.Property(Expression.Constant(this), nameof(Tasks)), Expression.Lambda(Expression.Equal(id, key), t));
+            }
+            else
+            {
+                // "The project is one of the projects this request reaches": a plain list the database answers from an index.
+                Expression guid = nullable ? Expression.Property(key, "Value") : key;
+                allowed = Expression.Call(typeof(Enumerable), nameof(Enumerable.Contains), [typeof(Guid)], Expression.Property(Expression.Constant(this), nameof(ReachableProjects)), guid);
+            }
+            Expression guard = Expression.OrElse(unrestricted, allowed);
             return nullable ? Expression.OrElse(Expression.Equal(key, Expression.Constant(null, typeof(Guid?))), guard) : guard;
         };
     }

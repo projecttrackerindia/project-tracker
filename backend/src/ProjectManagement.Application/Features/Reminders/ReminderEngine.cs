@@ -99,7 +99,7 @@ public static class TargetStates
 /// automatic reminders; three or more for one person at once become one notification.
 /// </summary>
 public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter router, IChatNotifier live, ReminderPlanner planner, ReminderMetrics metrics,
-    ILogger<ReminderEngine> log)
+    PortfolioDigestService digest, ILogger<ReminderEngine> log)
 {
     private const int Batch = 200;
     private static long _lastPlan, _lastBriefing;
@@ -121,6 +121,8 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
         {
             Interlocked.Exchange(ref _lastBriefing, now.Ticks);
             await BriefAsync(now, ct);
+            try { await digest.SendAsync(now, force: true, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "The weekly portfolio brief failed; the reminders carry on"); }
         }
         metrics.Ran(now);
         return fired;

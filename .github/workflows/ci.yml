@@ -45,6 +45,39 @@ jobs:
           dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
           if grep -q "has the following vulnerable packages" vulnerable.txt; then echo "::warning::Vulnerable NuGet packages found (see the log)"; fi
 
+  api-postgres:
+    name: API tests on PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      - name: Integration tests against PostgreSQL (the production engine)
+        env:
+          PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
+        run: dotnet test --no-build -c Release
+
   web:
     name: Web (type-check + build)
     runs-on: ubuntu-latest

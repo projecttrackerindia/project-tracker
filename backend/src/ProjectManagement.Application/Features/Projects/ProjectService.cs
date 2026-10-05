@@ -224,6 +224,7 @@ public class ProjectService(
             DeliveryMethod = req.DeliveryMethod ?? DeliveryMethod.Hybrid, Position = await NextPositionAsync(ct), CreatedAt = now, CreatedBy = userId,
         };
         db.Projects.Add(project);
+        ctx.GrantProject(project.Id);   // a project made in this request is in view, whatever team it is for
 
         var memberIds = new HashSet<Guid>(req.MemberIds ?? []) { ownerId };
         foreach (var uid in memberIds)

@@ -19,14 +19,29 @@ namespace ProjectManagement.Tests.Infrastructure;
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"pm-test-{Guid.NewGuid():N}.db");
+    /// <summary>
+    /// Set PM_TEST_POSTGRES to a PostgreSQL connection string without a database (for example "Host=127.0.0.1;Port=5433;Username=postgres") and the
+    /// whole suite runs against a fresh PostgreSQL database instead of SQLite: the same tests, the real production engine.
+    /// </summary>
+    private static readonly string? PostgresAdmin = Environment.GetEnvironmentVariable("PM_TEST_POSTGRES");
+    private readonly string _pgName = $"pm_test_{Guid.NewGuid():N}";
     public string BackupsPath { get; } = Path.Combine(Path.GetTempPath(), $"pm-backups-{Guid.NewGuid():N}");
     public string FilesPath { get; } = Path.Combine(Path.GetTempPath(), $"pm-files-{Guid.NewGuid():N}");
 
     public ApiFactory()
     {
         // Environment variables are the one configuration source Program.cs reads reliably before the host is built.
-        Environment.SetEnvironmentVariable("Database__Provider", "Sqlite");
-        Environment.SetEnvironmentVariable("ConnectionStrings__Default", $"Data Source={_dbPath}");
+        if (PostgresAdmin is not null)
+        {
+            using (var admin = new Npgsql.NpgsqlConnection($"{PostgresAdmin};Database=postgres")) { admin.Open(); using var cmd = admin.CreateCommand(); cmd.CommandText = $"create database \"{_pgName}\""; cmd.ExecuteNonQuery(); }
+            Environment.SetEnvironmentVariable("Database__Provider", "Postgres");
+            Environment.SetEnvironmentVariable("ConnectionStrings__Default", $"{PostgresAdmin};Database={_pgName};Maximum Pool Size=60");
+        }
+        else
+        {
+            Environment.SetEnvironmentVariable("Database__Provider", "Sqlite");
+            Environment.SetEnvironmentVariable("ConnectionStrings__Default", $"Data Source={_dbPath}");
+        }
         Environment.SetEnvironmentVariable("Jwt__SigningKey", "test-signing-key-0123456789-0123456789-abcdef");
         Environment.SetEnvironmentVariable("RateLimiting__Enabled", "false");
         Environment.SetEnvironmentVariable("Storage__LocalPath", FilesPath);
@@ -99,6 +114,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         base.Dispose(disposing);
         foreach (var f in new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" })
             try { File.Delete(f); } catch { /* best effort */ }
+        if (PostgresAdmin is not null)
+            try { Npgsql.NpgsqlConnection.ClearAllPools(); using var admin = new Npgsql.NpgsqlConnection($"{PostgresAdmin};Database=postgres"); admin.Open(); using var cmd = admin.CreateCommand(); cmd.CommandText = $"drop database if exists \"{_pgName}\" with (force)"; cmd.ExecuteNonQuery(); } catch { /* best effort */ }
         try { if (Directory.Exists(FilesPath)) Directory.Delete(FilesPath, recursive: true); } catch { /* best effort */ }
         try { if (Directory.Exists(BackupsPath)) Directory.Delete(BackupsPath, recursive: true); } catch { /* best effort */ }
     }

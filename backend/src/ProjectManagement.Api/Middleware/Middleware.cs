@@ -283,6 +283,29 @@ public class CurrentContextMiddleware(RequestDelegate next)
         ctx.WorkspaceType = membership.Type;
         ctx.ProjectScope = await ResolveProjectScopeAsync(http, ctx, membership.ProjectVisibility);
         ctx.TeamLens = await ResolveTeamLensAsync(http);
+        await ResolveReachableProjectsAsync(http, ctx);
+    }
+
+    /// <summary>
+    /// Once per request: which projects this person reaches through their scope and the team in view. The data layer then filters every project,
+    /// task and project-owned row with a plain "project in this list", which the database answers from an index, instead of working out
+    /// team membership for every row it reads.
+    /// </summary>
+    private static async Task ResolveReachableProjectsAsync(HttpContext http, CurrentContext ctx)
+    {
+        ctx.RestrictsProjects = ctx.ProjectScope != ProjectScope.None || ctx.TeamLens is not null;
+        if (!ctx.RestrictsProjects || ctx.TenantId is not { } tenant || ctx.UserId is not { } me) { ctx.ProjectIds = []; return; }
+        var db = http.RequestServices.GetRequiredService<IAppDbContext>();
+        var lens = ctx.TeamLens;
+        var scope = ctx.ProjectScope;
+        var query = db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.TenantId == tenant && !p.IsDeleted);
+        if (lens is { } team) query = query.Where(p => p.TeamId == team);
+        if (scope != ProjectScope.None)
+            query = scope == ProjectScope.Members
+                ? query.Where(p => db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me))
+                : query.Where(p => p.OwnerId == me || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me)
+                    || (p.TeamId != null && db.TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == me)));
+        ctx.ProjectIds = await query.Select(p => p.Id).ToArrayAsync(http.RequestAborted);
     }
 
     /// <summary>

@@ -120,6 +120,12 @@ public interface ICurrentContext
     ProjectScope ProjectScope { get; }
     /// <summary>The one team this request looks at (the person picked it in the app and may pick it), or null for every team they can see. Reads only; narrows every project and task query.</summary>
     Guid? TeamLens { get; }
+    /// <summary>True when this request reaches only some of the workspace's projects (a narrowed scope, or one team in view).</summary>
+    bool RestrictsProjects { get; }
+    /// <summary>The projects this request reaches when <see cref="RestrictsProjects"/> is true (worked out once per request; empty otherwise).</summary>
+    Guid[] ProjectIds { get; }
+    /// <summary>A project this request has just created is part of what it can see, whatever team it is in.</summary>
+    void GrantProject(Guid projectId);
     Guid RequireUserId();
     Guid RequireTenantId();
 }
@@ -138,6 +144,9 @@ public class CurrentContext : ICurrentContext
     public bool MustChangePassword { get; set; }
     public ProjectScope ProjectScope { get; set; }
     public Guid? TeamLens { get; set; }
+    public bool RestrictsProjects { get; set; }
+    public Guid[] ProjectIds { get; set; } = [];
+    public void GrantProject(Guid projectId) { if (RestrictsProjects && !ProjectIds.Contains(projectId)) ProjectIds = [.. ProjectIds, projectId]; }
 
     public Guid RequireUserId() => UserId ?? throw new Exceptions.UnauthorizedException();
     public Guid RequireTenantId() => TenantId ?? throw new Exceptions.ForbiddenException(
