@@ -367,9 +367,10 @@ function OrgRouter() {
         <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>}>
           <AppRoutes scoped={!!mine} />
         </Suspense>
-        {/* Outside the routes on purpose: it has to stay up while the route changes underneath it. */}
-        <SuccessCurtain />
       </BrowserRouter>
+      {/* Outside the router on purpose: the router is rebuilt when the organization appears in the address, and the welcome moment must
+          carry on through that, not start again. */}
+      <SuccessCurtain />
     </OrgGateContext.Provider>
   );
 }

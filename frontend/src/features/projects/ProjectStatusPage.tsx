@@ -47,6 +47,7 @@ export function ProjectStatusPage() {
 
   // Opening a group closes the one that was open; clicking the open group closes it.
   const toggle = (id: string) => setOpenId((cur) => (cur === id ? null : id));
+  const goHome = () => { const n = new URLSearchParams(params); n.delete('project'); n.delete('actions'); setParams(n, { replace: true }); setListOpen(true); };
   const pick = (id: string) => { const n = new URLSearchParams(params); n.set('project', id); setParams(n, { replace: true }); setListOpen(false); };
 
   if (groups.isLoading) return <PageLoader />;
@@ -61,6 +62,7 @@ export function ProjectStatusPage() {
           {selected && <button type="button" className="ps-side-toggle btn btn-ghost btn-sm" aria-expanded={listOpen} onClick={() => setListOpen((v) => !v)}>
             {listOpen ? 'Hide list' : `${current?.name ?? 'Projects'}`} <Icon name="chevronD" size={14} /></button>}
         </div>
+        <button type="button" className={`ps-home ${selected ? '' : 'active'}`} aria-current={selected ? undefined : 'page'} onClick={goHome}><Icon name="monitor" size={15} /> Portfolio today</button>
         <div className={`ps-groups ${selected && !listOpen ? 'tucked' : ''}`}>
           {groups.data.length === 0 && <p className="ps-empty-list">No projects yet. Create one from the Projects page.</p>}
           {groups.data.map((g) => <GroupSection key={g.id} group={g} open={openId === g.id} selected={selected} onToggle={() => toggle(g.id)} onPick={pick} />)}

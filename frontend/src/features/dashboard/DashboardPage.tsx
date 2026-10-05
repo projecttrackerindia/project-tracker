@@ -148,30 +148,28 @@ export function DashboardPage() {
           </div>
         </div>}
 
-        {statusDist.length > 0 && <div className="card">
-          <div className="card-head"><h3>Task status</h3></div>
-          <div className="card-body">
-            <div className="row" style={{ gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ width: 104, height: 104, flexShrink: 0 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={32} outerRadius={48} paddingAngle={2} animationDuration={650} animationEasing="ease-out"
-                      fill="#8b5cf6" stroke="var(--surface-1)" strokeWidth={2}>
-                      {statusDist.map((s) => <Cell key={s.category} fill={CATEGORY_COLOR[s.category]} />)}
-                    </Pie>
-                    <Tooltip content={<ChartTip format={(v) => `${v} (${statusTotal ? Math.round((v / statusTotal) * 100) : 0}%)`} />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="ring-legend">
-                {statusDist.map((s) => (
-                  <div key={s.category}>
-                    <i style={{ width: 9, height: 9, borderRadius: 3, background: CATEGORY_COLOR[s.category], display: 'inline-block' }} />
-                    <span>{CATEGORY_LABEL[s.category]}</span>
-                    <b>{s.count}</b>
-                  </div>
-                ))}
-              </div>
+        {statusDist.length > 0 && <div className="card ts-card">
+          <div className="card-head"><h3>Task status</h3><span>{statusTotal} task{statusTotal === 1 ? '' : 's'}</span></div>
+          <div className="ts-body">
+            <div className="ts-ring">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={31} outerRadius={46} paddingAngle={2} animationDuration={650} animationEasing="ease-out" fill="#8b5cf6" stroke="var(--surface-1)" strokeWidth={2}>
+                    {statusDist.map((s) => <Cell key={s.category} fill={CATEGORY_COLOR[s.category]} />)}
+                  </Pie>
+                  <Tooltip content={<ChartTip format={(v) => `${v} (${statusTotal ? Math.round((v / statusTotal) * 100) : 0}%)`} />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="ts-total"><b>{statusTotal}</b><small>tasks</small></div>
+            </div>
+            <div className="ring-legend">
+              {statusDist.map((s) => (
+                <div key={s.category}>
+                  <i style={{ width: 9, height: 9, borderRadius: 3, background: CATEGORY_COLOR[s.category], display: 'inline-block' }} />
+                  <span>{CATEGORY_LABEL[s.category]}</span>
+                  <b>{s.count}</b>
+                </div>
+              ))}
             </div>
           </div>
         </div>}

@@ -205,7 +205,7 @@ function ItemRow({ item, people, projectId, highlight, onChanged }: { item: Acti
 }
 
 // ------------------------------------------------------------------ the add / edit form
-function ItemForm({ item, people, projectId, onDone, onCancel, onDelete }: {
+export function ItemForm({ item, people, projectId, onDone, onCancel, onDelete }: {
   item?: ActionItem; people: { id: string; name: string }[]; projectId: string; onDone: () => void; onCancel: () => void; onDelete?: () => void;
 }) {
   const [d, setD] = useState<Draft>(() => (item ? draftOf(item) : EMPTY));

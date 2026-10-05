@@ -85,17 +85,21 @@ function Particles({ kind, seed }: { kind: CelebrationKind; seed: number }) {
   );
 }
 
+/** Celebrations whose hand-off has already happened: a curtain that is rebuilt for any reason must never navigate or play a second time. */
+const handedOffIds = new Set<number>();
+
 function Curtain({ c }: { c: Celebration }) {
   const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
   const timing = reduced ? REDUCED_TIMING : TIMING[c.kind];
-  const [leaving, setLeaving] = useState(false);
-  const handedOff = useRef(false);
+  const [leaving, setLeaving] = useState(() => handedOffIds.has(c.id));
+  const handedOff = useRef(handedOffIds.has(c.id));
   const mountedAt = useRef(0);
   const { eyebrow, greet, sub, steps } = content(c);
 
   const handoff = useCallback(() => {
     if (handedOff.current) return;
     handedOff.current = true;
+    handedOffIds.add(c.id);
     c.onHandoff();
     setLeaving(true);
   }, [c]);
