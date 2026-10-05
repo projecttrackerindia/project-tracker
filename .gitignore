@@ -13,3 +13,4 @@ frontend/.vite/
 
 # uploaded files (local storage provider)
 data/files/
+**/data/files/
