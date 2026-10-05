@@ -19,6 +19,7 @@ export interface AiMessage {
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
   followUps?: string[]; unverifiedKeys?: string[]; feedback?: 'up' | 'down' | null;
 }
+export interface AiInsight { id: string; severity: 'high' | 'medium' | 'low'; title: string; detail: string; prompt: string }
 export interface AiStarter { label: string; prompt: string; hint: string | null }
 export interface AiStarters { greeting: string; starters: AiStarter[] }
 export interface AiProfile { detailLevel: number; detailLabel: string; notes: string | null; learned: string[]; learnedAt: string | null }
@@ -64,6 +65,8 @@ export const aiWorkspaceApi = {
   removeFile: (id: string) => del(`/ai/files/${id}`),
   report: (month: string) => get<AiWorkspaceReport>('/ai/usage/report', { month }),
   starters: () => get<AiStarters>('/ai/starters'),
+  insights: () => get<AiInsight[]>('/ai/insights'),
+  confirmAll: (messageId: string) => post<AiAction[]>(`/ai/messages/${messageId}/actions/confirm-all`),
   feedback: (messageId: string, rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => post<void>(`/ai/messages/${messageId}/feedback`, { rating, reason }),
   profile: () => get<AiProfile>('/ai/profile'),
   setProfileNotes: (notes: string) => put<AiProfile>('/ai/profile', { notes }),

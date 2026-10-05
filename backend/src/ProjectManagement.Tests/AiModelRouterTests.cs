@@ -38,6 +38,12 @@ public class AiModelRouterTests
     public void Greetings_and_lookups_are_answered_by_the_quick_level(string text) => Assert.Equal(AiTier.Quick, Route(text).Tier);
 
     [Theory]
+    [InlineData("Rebalance the team's workload and assign the unassigned tasks to the best person for each")]
+    [InlineData("Who should take the migration work, and why? Compare the options.")]
+    public void Advice_about_people_and_assignment_gets_deep_thinking(string q) =>
+        Assert.Equal(AiTier.Deep, AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
+
+    [Theory]
     [InlineData("Analyze why the Atlas project is late and recommend how to fix it")]
     [InlineData("What is the root cause of the delays across our projects? Compare the options and prioritize the fixes.")]
     [InlineData("Think carefully and plan a step-by-step recovery for the migration, with the trade-offs")]

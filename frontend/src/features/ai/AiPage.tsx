@@ -39,6 +39,7 @@ export function AiPage() {
   const usageQ = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !!status?.enabled, staleTime: 20_000 });
   const listQ = useWsQuery(['ai', 'conversations'], aiWorkspaceApi.conversations, { enabled: !!status?.enabled });
   const startersQ = useWsQuery(['ai', 'starters'], aiWorkspaceApi.starters, { enabled: !!status?.enabled, staleTime: 60_000 });
+  const insightsQ = useWsQuery(['ai', 'insights'], aiWorkspaceApi.insights, { enabled: !!status?.enabled, staleTime: 120_000 });
   const usage = usageQ.data;
 
   const [convId, setConvId] = useState<string | null>(id ?? null);
@@ -235,6 +236,18 @@ export function AiPage() {
     finally { setBusyAction(null); }
   };
 
+  const confirmAll = async (m: AiMessage) => {
+    setBusyAction('all');
+    try {
+      const res = await aiWorkspaceApi.confirmAll(m.id);
+      setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y) => res.find((r) => r.id === y.id) ?? y) } : x)));
+      const failed = res.find((r) => r.status !== 'done');
+      if (failed) toast(failed.error ?? 'One step could not be done, so the rest were not tried.', 'error'); else toast(`Done: ${res.length} changes made.`, 'success');
+      void invalidateWorkspace(wid);
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error'); }
+    finally { setBusyAction(null); }
+  };
+
   const copy = (m: AiMessage) => { void navigator.clipboard?.writeText(m.content).then(() => toast('Copied.'), () => toast('Could not copy.', 'error')); };
   const download = (m: AiMessage) => {
     const title = (listQ.data?.find((c) => c.id === convId)?.title ?? 'assistant-answer').replace(/[^\w -]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'assistant-answer';
@@ -299,14 +312,14 @@ export function AiPage() {
 
         <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
           {messages.length === 0 && !live ? (
-            <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} />
+            <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} insights={insightsQ.data} />
           ) : (
             <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
               {messages.map((m, i) => (
                 <MessageView key={m.id} m={m} busyAction={busyAction} canEmail={canAct && !streaming} canRegenerate={!streaming && i === lastAssistantIndex}
                   onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
                   onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')}
-                  onFollowUp={(t) => void send(t)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
+                  onFollowUp={(t) => void send(t)} onConfirmAll={() => void confirmAll(m)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
               ))}
               {live && <LiveAnswer live={live} />}
             </div>

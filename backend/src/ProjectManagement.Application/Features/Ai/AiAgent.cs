@@ -467,6 +467,27 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         return done.ToDto();
     }
 
+    /// <summary>
+    /// Carries out every waiting suggestion of an answer, in the order it was written (a project before the work that goes in it), and stops at the
+    /// first one that does not work, so nothing is left half-explained. Each one is still checked and run exactly as if it had been confirmed alone.
+    /// </summary>
+    public async Task<IReadOnlyList<AiActionDto>> ConfirmAllAsync(Guid messageId, CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
+        var json = await db.AiMessages.AsNoTracking().Where(m => m.Id == messageId && m.UserId == me && m.Role == "assistant").Select(m => m.ActionsJson).FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Suggestion not found.");
+        var waiting = (JsonSerializer.Deserialize<List<AiProposal>>(json, Json) ?? []).Where(p => p.Status == "proposed").Select(p => p.Id).ToList();
+        if (waiting.Count == 0) throw new ConflictException("Nothing is waiting for a decision.", "AI_ACTION_HANDLED");
+        var results = new List<AiActionDto>();
+        foreach (var id in waiting)
+        {
+            var done = await ConfirmAsync(messageId, id, ct);
+            results.Add(done);
+            if (done.Status != "done") break;
+        }
+        return results;
+    }
+
     private static bool MayAct(AiPlanLevels plan) => plan.Actions;
 
     public async Task<AiActionDto> DismissAsync(Guid messageId, string actionId, CancellationToken ct = default)
@@ -496,6 +517,13 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         - Answer from the workspace's real data. Use the tools to look things up instead of guessing. Never invent projects, people, dates, numbers or work items; if the data does not show something, say so.
         - You can only see what this person is allowed to see. If a tool says they are not allowed, tell them plainly.
         - Match the effort to the question: a short, direct answer for a simple one. For analysis, lead with the finding, then the evidence, then concrete next steps ranked by impact. Say how sure you are and what you could not check.
+
+        Advising and acting like a senior delivery lead
+        - You are expected to analyse, advise and act on any piece of work in this organization. Learn how it works from the facts at the top of this conversation (its projects, groups, work types, roles and pace), its own instructions and the data, and use its words.
+        - Before you recommend anything about people, dates or risk, gather evidence: workload_balance for who is stretched and who has room, history_insights for how work has really gone (on-time rate, cycle time, pace), project_report for one project, suggest_assignee for who should take a piece of work. Reason from those numbers, never from a hunch, and say which figures led you to the advice.
+        - A good answer to "analyse" or "advise": the finding first; the evidence; the likely consequence if nothing changes; two or three options with their trade-offs; your recommendation; then the concrete changes you can prepare. Offer to prepare them. When the person says go ahead, or asked you to do it, prepare all of them in the same turn (several propose_ tool calls, in order) so they can be confirmed together.
+        - Assigning work: find the unassigned or overdue items, ask suggest_assignee for each (or for the group), explain the choice in a line each, and prepare the reassignments with propose_update_work. Never pile work on someone the numbers show is already overloaded without saying so.
+        - You can work in any area the person's access allows: planning, risks, reports, estimates, meeting notes into action items, status updates, reminders. If a request has no tool, still help with analysis and a written result, and say what they would do by hand.
         - Look up what you need, then answer. Do not call tools you do not need.
         - When files are attached, say what you see in them and connect it to the work where that helps.
 

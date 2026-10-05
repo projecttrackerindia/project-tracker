@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { fetchBlobUrl } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
 import { formatDateTime } from '../../lib/format';
-import type { AiAction, AiAttachment, AiFeedbackReason, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
+import type { AiAction, AiAttachment, AiFeedbackReason, AiInsight, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
 import { Markdown } from './Markdown';
 
 // ------------------------------------------------------------------ small marks
@@ -180,9 +180,9 @@ function Feedback({ m, onFeedback }: { m: AiMessage; onFeedback: (rating: 'up' |
   );
 }
 
-export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, busyAction, canEmail, canRegenerate }: {
+export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, onConfirmAll, busyAction, canEmail, canRegenerate }: {
   m: AiMessage; onConfirm: (a: AiAction) => void; onDismiss: (a: AiAction) => void; onCopy: () => void; onDownload: () => void;
-  onRegenerate?: () => void; onEmail?: () => void; onFollowUp?: (text: string) => void; onFeedback?: (rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => void;
+  onRegenerate?: () => void; onEmail?: () => void; onFollowUp?: (text: string) => void; onConfirmAll?: () => void; onFeedback?: (rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => void;
   busyAction: string | null; canEmail: boolean; canRegenerate: boolean;
 }) {
   if (m.role === 'user') {
@@ -211,6 +211,10 @@ export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onReg
         {failed ? <div className="ai-error" role="alert"><Icon name="alert" size={15} /><span>{m.content}</span></div> : <Markdown text={withoutTrailer(m.content)} />}
         {!failed && (m.unverifiedKeys?.length ?? 0) > 0 && (
           <div className="ai-check" role="note"><Icon name="alert" size={14} /><span>Please check <b>{m.unverifiedKeys!.join(', ')}</b>: I mentioned {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} but did not find {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} in your data.</span></div>
+        )}
+        {onConfirmAll && m.actions.filter((a) => a.status === 'proposed').length >= 2 && (
+          <div className="ai-plan"><span>{m.actions.filter((a) => a.status === 'proposed').length} changes are ready</span>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busyAction !== null} onClick={onConfirmAll}>{busyAction === 'all' ? 'Working…' : 'Confirm all in order'}</button></div>
         )}
         {m.actions.map((a) => <ActionCard key={a.id} action={a} busy={busyAction === a.id} onConfirm={() => onConfirm(a)} onDismiss={() => onDismiss(a)} />)}
         {!failed && m.content && (
@@ -244,7 +248,7 @@ export const SUGGESTIONS: Suggestion[] = [
   { icon: 'image', title: 'Read a file for me', text: 'A screenshot, spreadsheet, PDF or document.', prompt: '', attach: true },
 ];
 
-export function Hero({ name, onPick, onAsk, canAttach, starters }: { name: string; onPick: (s: Suggestion) => void; onAsk: (prompt: string) => void; canAttach: boolean; starters?: AiStarter[] }) {
+export function Hero({ name, onPick, onAsk, canAttach, starters, insights }: { name: string; onPick: (s: Suggestion) => void; onAsk: (prompt: string) => void; canAttach: boolean; starters?: AiStarter[]; insights?: AiInsight[] }) {
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   return (
@@ -252,6 +256,16 @@ export function Hero({ name, onPick, onAsk, canAttach, starters }: { name: strin
       <Orb size={92} />
       <h1>{greeting}{name ? `, ${name}` : ''}.</h1>
       <p>Ask anything about your work. I read your projects, people and files, reason through hard problems, and prepare changes for you to confirm.</p>
+      {insights && insights.length > 0 && (
+        <div className="ai-insights" aria-label="Worth a look">
+          <h3>Worth a look</h3>
+          {insights.map((i) => (
+            <button key={i.id} type="button" className={`ai-insight ${i.severity}`} onClick={() => onAsk(i.prompt)}>
+              <b>{i.title}</b><span>{i.detail}</span><em>Analyse with AI</em>
+            </button>
+          ))}
+        </div>
+      )}
       {starters && starters.length > 0 && (
         <div className="ai-now" aria-label="Right now">
           {starters.map((s) => <button key={s.label} type="button" onClick={() => onAsk(s.prompt)}><b>{s.label}</b>{s.hint && <span>{s.hint}</span>}</button>)}

@@ -95,7 +95,7 @@ public static class AiModelRouter
     // Work that needs real thinking: finding causes, weighing options, planning, forecasting.
     private static readonly Regex Strong = new(
         @"\b(analy[sz]e|analysis|root[- ]?cause|diagnos\w*|post-?mortem|retro(spective)?|trade-?offs?|forecast\w*|predict\w*|strateg\w*|roadmap|business case|" +
-        @"prioriti[sz]\w*|optimi[sz]\w*|bottlenecks?|risk assess\w*|audit|investigate|evaluate|think (hard|deeply|carefully|through)|step[- ]by[- ]step|" +
+        @"prioriti[sz]\w*|optimi[sz]\w*|re-?balanc\w*|bottlenecks?|who (should|could) (do|take|own|handle|work on)|best (person|fit) for|assign (all|these|the (unassigned|overdue))|risk assess\w*|audit|investigate|evaluate|think (hard|deeply|carefully|through)|step[- ]by[- ]step|" +
         @"what should we|how (can|could|should) we (improve|reduce|speed|fix|avoid|prevent|restructure)|why (is|are|was|were|did|does|do|has|have)\b.{0,80}\b(late|delayed|slow|behind|failing|failed|over|blocked|stuck|dropping))", Opts);
 
     // Mild signals: on their own they leave the question in the middle.

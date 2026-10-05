@@ -13,7 +13,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 /// signed-in person; the assistant reads only what they may read (see <see cref="AiAgent"/>).
 /// </summary>
 [Route("api/v1/ai"), RequireWorkspace]
-public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiFileService files, AiUsageService usage) : ApiControllerBase
+public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiFileService files, AiUsageService usage) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -113,6 +113,14 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiFileSer
         await files.RemovePendingAsync(id, ct);
         return NoContent();
     }
+
+    /// <summary>Everything still waiting in one answer, confirmed in order.</summary>
+    [HttpPost("messages/{id:guid}/actions/confirm-all")]
+    public async Task<IActionResult> ConfirmAll(Guid id, CancellationToken ct) => Ok(await agent.ConfirmAllAsync(id, ct));
+
+    /// <summary>What deserves attention today, found by rules over the person's own data (no model, no credits).</summary>
+    [HttpGet("insights")]
+    public async Task<IActionResult> Insights(CancellationToken ct) => Ok(await analysis.InsightsAsync(ct));
 
     // ---- getting to know the person (no model involved)
 

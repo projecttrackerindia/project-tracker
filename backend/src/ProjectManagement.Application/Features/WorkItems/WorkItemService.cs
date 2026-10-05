@@ -18,7 +18,7 @@ public record WorkItemDto(WorkItemKind Kind, Guid Id, string Key, string Title, 
 
 /// <summary>Filters for a list of work items. With no kinds given, every kind the caller can see is included.</summary>
 public record WorkItemQuery(IReadOnlyList<WorkItemKind>? Kinds = null, Guid? AssigneeId = null, bool Mine = false, bool OpenOnly = true,
-    Guid? ProjectId = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool Overdue = false, string? Q = null, int Limit = 200);
+    Guid? ProjectId = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool Overdue = false, string? Q = null, int Limit = 200, bool Unassigned = false);
 
 public record WorkKindCounts(int Tasks, int Issues, int ActionItems, int Operational)
 {
@@ -122,6 +122,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             var tq = Tasks(scope).AsNoTracking();
             if (assignee is { } a) tq = tq.Where(t => t.AssigneeId == a);
+            if (query.Unassigned) tq = tq.Where(t => t.AssigneeId == null);
             if (query.OpenOnly) tq = tq.Where(t => t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
             if (query.ProjectId is { } pid) tq = tq.Where(t => t.ProjectId == pid);
             if (query.DueFrom is { } f) tq = tq.Where(t => t.DueDate != null && t.DueDate >= f);
@@ -140,6 +141,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             var iq = Issues(scope).AsNoTracking();
             if (assignee is { } a) iq = iq.Where(i => i.AssigneeId == a);
+            if (query.Unassigned) iq = iq.Where(i => i.AssigneeId == null);
             if (query.OpenOnly) iq = iq.Where(i => i.Status != IssueStatus.Resolved);
             if (query.ProjectId is { } pid) iq = iq.Where(i => i.ProjectId == pid);
             if (q is not null) iq = iq.Where(i => EF.Functions.Like(i.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (i.Details != null && EF.Functions.Like(i.Details.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || i.Number == number);
@@ -157,6 +159,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (!wanted.Contains(itemKind)) continue;
             var wq = WorkTasks(scope, kind).AsNoTracking();
             if (assignee is { } a) wq = wq.Where(w => w.AssigneeId == a);
+            if (query.Unassigned) wq = wq.Where(w => w.AssigneeId == null);
             if (query.OpenOnly) wq = wq.Where(w => w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold);
             if (query.ProjectId is { } pid) wq = wq.Where(w => w.RelatedProjectId == pid);
             if (query.DueFrom is { } f) wq = wq.Where(w => w.DueDate != null && w.DueDate >= f);

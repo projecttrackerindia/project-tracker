@@ -852,4 +852,164 @@ public class AiWorkspaceTests(ApiFactory factory)
         Chat.Script.Enqueue(_ => FakeAiChat.Say("Hello!"));
         Assert.Equal("quick", S((await Ask(o.Owner, "hi")).Last("route")["tier"]));                // a fresh greeting is still cheap
     }
+
+    // ------------------------------------------------------------------ advising and acting on the organization's own data
+
+    private string ToolResult() => Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content;
+    private async Task<string> RunTool(TestClient who, string tool, object input, string question = "Analyze the team workload and recommend how to rebalance it")
+    {
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool(tool, input));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Here is the analysis."));
+        await Ask(who, question);
+        return ToolResult();
+    }
+
+    /// <summary>Olivia (owner) is buried in overdue work; Max (manager) has none. One task has no owner.</summary>
+    private async Task<Org> StretchedTeam()
+    {
+        var o = await Setup();
+        for (var i = 0; i < 6; i++)
+            await o.Owner.CreateTaskAsync(o.Project, $"Prepare release {i}", new { title = $"Prepare release {i}", priority = "Medium", assigneeId = o.Owner.UserId, dueDate = Iso(-3 - i) });
+        await o.Owner.CreateTaskAsync(o.Project, "Update the API documentation", new { title = "Update the API documentation", priority = "High" });
+        return o;
+    }
+
+    [Fact]
+    public async Task Workload_analysis_names_who_is_stretched_and_who_has_room_and_assignee_advice_prefers_the_person_with_room()
+    {
+        var o = await StretchedTeam();
+        var load = await RunTool(o.Owner, "workload_balance", new { });
+        Assert.Contains("Olivia Owner", load); Assert.Contains("OVERLOADED", load);
+        Assert.Contains("Max Manager", load); Assert.Contains("HAS ROOM", load);
+        Assert.Contains("Rebalancing idea", load);
+
+        var who = await RunTool(o.Owner, "suggest_assignee", new { title = "Update the API documentation", project = "Atlas" }, "Who should take the API documentation task?");
+        var ranked = who.Split('\n').Where(l => l.StartsWith("1. ")).Single();
+        Assert.Contains("Max Manager", ranked);                          // best first: the one with room
+        Assert.Contains("0 open, 0 overdue", ranked);
+        Assert.Contains("Olivia Owner", who);                            // and the stretched one is still shown, lower down, with why
+    }
+
+    [Fact]
+    public async Task History_insights_report_on_time_delivery_cycle_time_and_open_overdue_work()
+    {
+        var o = await StretchedTeam();
+        factory.WithDb(db =>
+        {
+            var done = db.WorkflowStatuses.IgnoreQueryFilters().First(s => s.ProjectId == o.Project && s.Category == StatusCategory.Done).Id;
+            var finished = db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == o.Project && t.Title.StartsWith("Prepare release")).OrderBy(t => t.Number).Take(4).ToList();
+            for (var i = 0; i < finished.Count; i++)
+            {
+                finished[i].StatusId = done;
+                finished[i].CompletedAt = DateTime.UtcNow.AddDays(-5);
+                finished[i].DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(i < 2 ? -2 : -8));   // two on time, two late
+            }
+            db.SaveChanges();
+            return 0;
+        });
+        var text = await RunTool(o.Owner, "history_insights", new { days = 90 }, "Analyze how delivery has gone and forecast the next release");
+        Assert.Contains("Finished: 4", text);
+        Assert.Contains("50%", text);                                    // two of four dated tasks were on time
+        Assert.Contains("Cycle time", text);
+        Assert.Contains("past due", text);
+        Assert.Contains("have no assignee", text);
+    }
+
+    [Fact]
+    public async Task Existing_work_can_be_changed_through_a_proposal_that_waits_for_the_person()
+    {
+        var o = await Setup();
+        var created = await o.Owner.CreateTaskAsync(o.Project, "Renew the SSL certificate", new { title = "Renew the SSL certificate", priority = "Low", dueDate = Iso(5) });
+        var (key, id) = factory.WithDb(db => { var t = db.Tasks.IgnoreQueryFilters().Include(x => x.Project).First(x => x.ProjectId == o.Project && x.Title == "Renew the SSL certificate"); return (t.Project!.Key + "-" + t.Number, t.Id); });
+
+        // A later due date needs a reason, which the model is told so it can ask.
+        Assert.Contains("needs a reason", await RunTool(o.Owner, "propose_update_work", new { key, due_date = Iso(12) }, "Move the SSL task out a week"));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_work", new { key, assignee = "Max Manager", priority = "High", status = "In Progress", due_date = Iso(12), reason = "Waiting for the vendor", comment = "Reassigned to Max while we wait for the vendor." }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Reassign the SSL task to Max, make it high priority and push it a week");
+        var card = res.Last("action")["action"]!;
+        Assert.Equal("proposed", S(card["status"]));
+        Assert.Contains("priority Low → High", S(card["summary"]));
+        Assert.Contains("assignee none → Max Manager", S(card["summary"]));
+        var before = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().First(x => x.Id == id));
+        Assert.Equal(Priority.Low, before.Priority); Assert.Null(before.AssigneeId);                // nothing happened yet
+
+        var ok = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.True(ok.Ok, ok.ToString());
+        Assert.Equal("done", S(ok.Data!["status"]));
+        var after = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().First(x => x.Id == id));
+        Assert.Equal(Priority.High, after.Priority); Assert.Equal(o.Manager.UserId, after.AssigneeId);
+        Assert.Equal(DateOnly.Parse(Iso(12)), after.DueDate);
+        Assert.Contains(factory.WithDb(db => db.TaskComments.IgnoreQueryFilters().Where(c => c.TaskId == id).Select(c => c.Body).ToList()), b => b.StartsWith("Reassigned to Max"));
+
+        // A person who cannot see the project cannot change its work through the assistant either.
+        Assert.Contains("does not allow", await RunTool(o.Guest, "propose_update_work", new { key, priority = "Low" }, "Make the SSL task low priority"));
+    }
+
+    [Fact]
+    public async Task A_new_project_and_its_first_task_are_one_plan_confirmed_together_and_stop_at_the_first_failure()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "Insurance Tenure", project_type = "Integration" }, id: "t1"));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_task", new { project = "Insurance Tenure", title = "Update the GO DIGIT API", assignee = "me", due_date = Iso(6) }, id: "t2"));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("The project and its first task are ready."));
+        var res = await Ask(o.Owner, "Create the Insurance Tenure project and add a task to update the GO DIGIT API for me");
+        var cards = res.Events.Where(e => e.Name == "action").Select(e => e.Data["action"]!).ToList();
+        Assert.Equal(2, cards.Count);
+        Assert.Contains("the new project “Insurance Tenure”", S(cards[1]["summary"]));
+        Assert.DoesNotContain(factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == o.Owner.WorkspaceId).Select(p => p.Name).ToList()), n => n == "Insurance Tenure");
+
+        var all = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/confirm-all");
+        Assert.True(all.Ok, all.ToString());
+        Assert.Equal(["done", "done"], all.Data!.AsArray().Select(x => S(x!["status"])).ToArray());
+        var project = factory.WithDb(db => db.Projects.IgnoreQueryFilters().Single(p => p.TenantId == o.Owner.WorkspaceId && p.Name == "Insurance Tenure"));
+        var task = Assert.Single(factory.WithDb(db => db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == project.Id).ToList()));
+        Assert.Equal("Update the GO DIGIT API", task.Title); Assert.Equal(o.Owner.UserId, task.AssigneeId);
+        Assert.Equal("AI_ACTION_HANDLED", (await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/confirm-all")).ErrorCode);   // nothing left to do
+
+        // If the first step cannot run, the later ones are not attempted.
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "Second Plan" }, id: "t1"));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_task", new { project = "Second Plan", title = "First step" }, id: "t2"));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Ready."));
+        var plan = await Ask(o.Owner, "Create the Second Plan project with a first step");
+        factory.WithDb(db => { var g = db.ProjectGroups.IgnoreQueryFilters().Where(x => x.TenantId == o.Owner.WorkspaceId).ToList(); g.ForEach(x => x.IsActive = false); db.SaveChanges(); return 0; });   // makes the project impossible
+        var failed = await o.Owner.Post($"/api/v1/ai/messages/{S(plan.Done["id"])}/actions/confirm-all");
+        var statuses = failed.Data!.AsArray().Select(x => S(x!["status"])).ToArray();
+        Assert.Equal(["failed"], statuses);                              // it stopped; the task was never tried
+    }
+
+    [Fact]
+    public async Task The_attention_feed_is_found_from_the_persons_own_data_without_the_model()
+    {
+        var o = await StretchedTeam();
+        var before = Chat.Requests.Count;
+        var feed = (await o.Owner.Get("/api/v1/ai/insights")).Data!.AsArray().Select(x => (Id: S(x!["id"]), Title: S(x["title"]), Prompt: S(x["prompt"]))).ToList();
+        Assert.Contains(feed, f => f.Id == "my-overdue" && f.Title.StartsWith("6 of your items"));
+        Assert.Contains(feed, f => f.Id == "overloaded" && f.Title.Contains("Olivia Owner"));
+        Assert.Contains(feed, f => f.Id == "unassigned" && f.Prompt.Contains("Suggest the best person"));
+        Assert.Equal(before, Chat.Requests.Count);                       // no model, no credits
+        // A guest sees none of the team-wide findings.
+        var guest = (await o.Guest.Get("/api/v1/ai/insights")).Data!.AsArray().Select(x => S(x!["id"])).ToList();
+        Assert.DoesNotContain("overloaded", guest); Assert.DoesNotContain("unassigned", guest);
+    }
+
+    [Fact]
+    public async Task Every_reading_tool_stays_inside_the_organization_it_is_asked_in()
+    {
+        var a = await StretchedTeam();
+        var b = await Setup();
+        await b.Owner.CreateProjectAsync("Zebra Secret Programme");
+        await b.Owner.CreateTaskAsync(b.Project, "Zebra confidential task", new { title = "Zebra confidential task", priority = "High", assigneeId = b.Owner.UserId, dueDate = Iso(-9) });
+        foreach (var (tool, input) in new (string, object)[]
+                 { ("list_projects", new { }), ("find_work", new { overdue = true }), ("find_work", new { unassigned = true }), ("list_people", new { }), ("team_workload", new { }), ("my_work_summary", new { }),
+                   ("workload_balance", new { }), ("suggest_assignee", new { title = "Prepare the confidential release notes" }), ("history_insights", new { }), ("project_report", new { project = "Atlas" }) })
+        {
+            var text = await RunTool(a.Owner, tool, input);
+            Assert.DoesNotContain("Zebra", text);
+        }
+        Assert.DoesNotContain("Zebra", Chat.Requests.Last().Context);     // nor does the overview sent with every question
+        Assert.Contains("Atlas", Chat.Requests.Last().Context);
+        var feed = (await a.Owner.Get("/api/v1/ai/insights")).Data!.ToJsonString();
+        Assert.DoesNotContain("Zebra", feed);
+    }
 }

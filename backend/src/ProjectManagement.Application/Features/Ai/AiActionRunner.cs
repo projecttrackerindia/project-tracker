@@ -49,20 +49,22 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 await workspaces.InviteAsync(new InviteRequest(Str(a, "email")!, Enum.Parse<TenantRole>(Str(a, "role") ?? "Member", true)), ct);
                 return new AiActionResult("/people/invitations");
             }
+            case "update_work":
+                return await UpdateWorkAsync(a, ct);
             case "create_task":
             {
-                var projectId = Guid(a, "projectId")!.Value;
+                var projectId = await ProjectIdAsync(a, ct);
                 var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), null, Date(a, "dueDate"), null, null, null), ct);
                 return new AiActionResult($"/projects/{projectId}");
             }
             case "create_work":
             {
-                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId"), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate")), ct);
+                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId") ?? (Str(a, "projectName") is null ? null : await ProjectIdAsync(a, ct)), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate")), ct);
                 return new AiActionResult("/operations");
             }
             case "create_action_item":
             {
-                var projectId = Guid(a, "projectId")!.Value;
+                var projectId = await ProjectIdAsync(a, ct);
                 await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
                 return new AiActionResult($"/projects/{projectId}");
             }
@@ -78,6 +80,41 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             default:
                 throw new ValidationException("action", "This kind of suggestion is not supported.");
         }
+    }
+
+    /// <summary>The project a proposal is for: the one it named, or (when it was proposed together with that project) the one with that name, which exists by now.</summary>
+    private async Task<Guid> ProjectIdAsync(JsonElement a, CancellationToken ct)
+    {
+        if (Guid(a, "projectId") is { } id) return id;
+        var name = Str(a, "projectName") ?? throw new ValidationException("project", "Which project?");
+        var found = await db.Projects.AsNoTracking().Where(p => p.Name.ToLower() == name.ToLower()).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
+        return found ?? throw new ValidationException("project", $"The project “{name}” does not exist yet. Confirm its creation first.");
+    }
+
+    private async Task<AiActionResult> UpdateWorkAsync(JsonElement a, CancellationToken ct)
+    {
+        var id = Guid(a, "id")!.Value;
+        var assigneeId = Guid(a, "assigneeId"); var unassign = a.TryGetProperty("unassign", out var u) && u.ValueKind == JsonValueKind.True;
+        var due = Date(a, "dueDate"); var statusName = Str(a, "statusName"); var comment = Str(a, "comment");
+        Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
+        if (Str(a, "target") == "work")
+        {
+            var w = await workTasks.GetAsync(id, ct);
+            var status = statusName is null ? w.Status : Enum.Parse<WorkTaskStatus>(statusName, true);
+            await workTasks.UpdateAsync(id, new UpdateWorkTaskRequest(w.Title, w.Description, w.WorkTypeId, w.RelatedProject?.Id, unassign ? null : assigneeId ?? w.Assignee?.Id, priority ?? w.Priority,
+                status, w.StartDate, due ?? w.DueDate, w.Version), ct);
+            if (comment is not null) await workTasks.AddCommentAsync(id, new WorkCommentRequest(comment), ct);
+            return new AiActionResult($"/operations?task={id}");
+        }
+        var t = (await tasks.GetAsync(id, ct)).Task;
+        var statusId = t.StatusId;
+        if (statusName is not null)
+            statusId = await db.WorkflowStatuses.AsNoTracking().Where(x => x.ProjectId == t.ProjectId && x.Name == statusName).Select(x => x.Id).FirstOrDefaultAsync(ct) is var sid && sid != System.Guid.Empty
+                ? sid : throw new ValidationException("status", $"The status “{statusName}” no longer exists on this project.");
+        await tasks.UpdateAsync(id, new UpdateTaskRequest(t.Title, t.Description, statusId, priority ?? t.Priority, unassign ? null : assigneeId ?? t.Assignee?.Id, t.StartDate, due ?? t.DueDate,
+            t.EstimatedHours, t.ActualHours, t.Labels.Select(l => l.Id).ToList(), t.Version, t.MilestoneId, t.StageId, Str(a, "reason")), ct);
+        if (comment is not null) await tasks.AddCommentAsync(id, new CreateCommentRequest(comment, null, null), ct);
+        return new AiActionResult($"/projects/{t.ProjectId}?task={id}");
     }
 
     private async Task SendReportAsync(JsonElement a, CancellationToken ct)
