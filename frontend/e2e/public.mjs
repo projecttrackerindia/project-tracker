@@ -34,7 +34,12 @@ for (const f of ['/sitemap.xml', '/robots.txt', '/favicon.ico', '/favicon.svg', 
   const r = await page.request.get(`${BASE}${f}`);
   check(`${f} is served`, r.ok(), String(r.status()));
 }
-check('sitemap lists the public pages', (await (await page.request.get(`${BASE}/sitemap.xml`)).text()).includes('/pricing/'));
+for (const d of ['portfolio', 'ai-assistant', 'teams-and-access', 'timesheets-and-workload']) {
+  await page.goto(`${BASE}/features/${d}/`);
+  const crumbs = (await page.locator('script[type="application/ld+json"]').allTextContents()).join('');
+  check(`/features/${d}/ is its own page`, (await page.locator('h1').count()) === 1 && (await page.title()).includes('| Project Tracker') && crumbs.includes('BreadcrumbList') && crumbs.includes('"Features"'));
+}
+check('sitemap lists the public pages', (await (await page.request.get(`${BASE}/sitemap.xml`)).text()).includes('/features/portfolio/'));
 
 // The sign-in page and the legal pages are part of the app but have their own titles.
 await page.goto(`${BASE}/login`);
@@ -43,6 +48,12 @@ check('sign-in has its own title', (await page.title()).startsWith('Sign in'), a
 await page.goto(`${BASE}/terms`);
 await page.waitForTimeout(1200);
 check('terms page is public', (await page.locator('.sec-hero h1').innerText()).length > 0 && (await page.title()).startsWith('Terms of Service'));
+
+// Only public screens are indexable; any other address says so, and the sign-in page names itself as canonical.
+await page.goto(`${BASE}/login`);
+check('sign-in is its own canonical page', (await page.locator('link[rel=canonical]').getAttribute('href')).endsWith('/login') && (await page.locator('meta[name=robots]').getAttribute('content')).startsWith('index'));
+await page.goto(`${BASE}/some-org/projects`);
+check('app addresses are noindex', (await page.locator('meta[name=robots]').getAttribute('content')).startsWith('noindex'));
 
 // Signing in: the home address is now the app.
 await page.goto(`${BASE}/login`);

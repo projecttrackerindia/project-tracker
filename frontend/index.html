@@ -20,6 +20,14 @@
         var known = localStorage.getItem('pm_hint') === '1';
         document.documentElement.className = home && !known ? 'landing' : 'app';
       } catch (e) { document.documentElement.className = 'app'; }
+      // Only the public screens are for search engines. Every other address (an organization's pages, a reset link, a mistyped path) is
+      // answered with this same file, so it says "do not index" instead of looking like a duplicate of the home page.
+      try {
+        var path = location.pathname.replace(/\/$/, '') || '/';
+        if ({ '/': 1, '/login': 1, '/register': 1, '/terms': 1, '/privacy': 1 }[path] === 1) {
+          if (path !== '/') document.querySelector('link[rel="canonical"]').href = document.querySelector('link[rel="canonical"]').href.replace(/\/$/, '') + path;
+        } else document.querySelector('meta[name="robots"]').setAttribute('content', 'noindex, nofollow');
+      } catch (e) {}
     </script>
     <style>html.app #site{display:none}html.landing #root{display:none}html.landing,html.landing body{background:#faf9ff}</style>
     <style><!--site:css--></style>

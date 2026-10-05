@@ -5,9 +5,13 @@
  */
 import type { Plugin } from 'vite';
 import { PATHS } from '../src/components/Icon';
-import { FEATURES, HOME, NAV, PAGES, PLANS, SECURITY, SITE, type StaticPage } from './content';
+import { DETAILS, FEATURES, HOME, NAV, PAGES, PLANS, SECURITY, SITE, type DetailPage, type StaticPage } from './content';
 
-const ORIGIN = (process.env.SITE_URL ?? 'https://projecttracker.in').replace(/\/$/, '');
+const ORIGIN = (process.env.SITE_URL || 'https://projecttracker.in').replace(/\/$/, '');
+/** Proof of ownership for the search engines' webmaster tools, and the IndexNow key: set at build time, empty means not used. */
+const GOOGLE_VERIFY = process.env.GOOGLE_SITE_VERIFICATION || '';
+const BING_VERIFY = process.env.BING_SITE_VERIFICATION || '';
+const INDEXNOW_KEY = /^[A-Za-z0-9-]{8,128}$/.test(process.env.INDEXNOW_KEY || '') ? process.env.INDEXNOW_KEY! : '';
 const abs = (path: string) => `${ORIGIN}${path}`;
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const ld = (o: unknown) => `<script type="application/ld+json">${JSON.stringify(o).replace(/</g, '\\u003c')}</script>`;
@@ -21,6 +25,7 @@ const FONT = 'Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",A
 
 /** The components. Every class carries the pt- prefix (see `scoped`) so none of it can collide with the app's own styles. */
 const COMPONENTS = `
+a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 .top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .top .wrap{display:flex;align-items:center;gap:28px;height:64px}
@@ -51,6 +56,7 @@ section.block{padding:64px 0}
 h2{font-size:clamp(26px,3.4vw,38px);line-height:1.15;letter-spacing:-.6px;margin:0 0 12px;font-weight:800}
 .sub{color:var(--muted);font-size:18px;margin:0 0 36px;max-width:40em}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.two{grid-template-columns:repeat(2,1fr)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px}
 .card .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand-soft);color:var(--brand);margin-bottom:14px}
 .card h3{margin:0 0 6px;font-size:17px;letter-spacing:-.2px}.card p{margin:0;color:var(--muted);font-size:15px}
@@ -106,7 +112,7 @@ const header = (active = '') => `<header class="top"><div class="wrap">
 
 const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><a class="brand" href="/"><img src="/favicon-48x48.png" width="32" height="32" alt="" />${SITE.name}</a><p style="margin:12px 0 0;max-width:22em">${esc(SITE.tagline)}.</p></div>
-<div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}</ul></div>
+<div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a></li></ul></div>
 </div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Made for teams that deliver.</span></div></div></footer>`;
@@ -150,8 +156,10 @@ function landing(): string {
 
 const pageBody: Record<string, () => string> = {
   '/features/': () => `<div class="wrap"><div class="grid">${FEATURES.map(featureCard).join('')}</div>
+<h2 style="margin-top:56px">Go deeper</h2><div class="grid">${DETAILS.map((d) => `<article class="card"><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.description)}</p></article>`).join('')}</div>
 <div class="band" style="margin-top:56px"><h2>See it with your own projects</h2><p>The free plan has no time limit.</p><a class="btn btn-primary btn-lg" href="/register">Start free</a></div></div>`,
   '/pricing/': () => `<div class="wrap"><div class="plans">${PLANS.map(planCard).join('')}</div>${pricingNote}</div>`,
+  ...Object.fromEntries(DETAILS.map((d) => [d.path, () => detailBody(d)])),
   '/security/': () => `<div class="wrap"><div class="grid">${SECURITY.map((p) => `<article class="card"><div class="ic">${icon(p.icon)}</div><h3>${esc(p.title)}</h3><ul>${p.points.map((x) => `<li>${tick}<span>${esc(x)}</span></li>`).join('')}</ul></article>`).join('')}</div>
 <section class="report" id="report"><div><h2>Report a vulnerability</h2><p>If you believe you have found a security problem, e-mail <a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a> with the steps to reproduce it. We reply within two working days, keep you informed while we fix it, and credit you if you wish. Please do not access other customers' data, degrade the service or run automated scans against it while investigating.</p></div>
 <a class="btn btn-primary" href="mailto:${SITE.securityEmail}?subject=Security%20report">Report a problem</a></section>
@@ -176,6 +184,8 @@ function meta(page: { path: string; title: string; description: string }, extra:
     `<link rel="canonical" href="${url}" />`,
     '<meta name="robots" content="index, follow, max-image-preview:large" />',
     `<meta name="theme-color" content="${SITE.themeColor}" />`,
+    ...(GOOGLE_VERIFY ? [`<meta name="google-site-verification" content="${esc(GOOGLE_VERIFY)}" />`] : []),
+    ...(BING_VERIFY ? [`<meta name="msvalidate.01" content="${esc(BING_VERIFY)}" />`] : []),
     '<link rel="icon" href="/favicon.ico" sizes="48x48" />',
     '<link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
     '<link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />',
@@ -191,15 +201,22 @@ function meta(page: { path: string; title: string; description: string }, extra:
   ].join('\n    ');
 }
 
+const detailBody = (d: DetailPage) => `<div class="wrap"><div class="grid two">${d.sections.map((x) => `<article class="card"><h3>${esc(x.title)}</h3><p>${esc(x.text)}</p><ul>${x.points.map((t) => `<li>${tick}<span>${esc(t)}</span></li>`).join('')}</ul></article>`).join('')}</div>
+<div class="band" style="margin-top:48px"><h2>Try it on your own projects</h2><p>Start on the free plan and move up when your team grows.</p><a class="btn btn-primary btn-lg" href="/register">Start free</a></div>
+<h2 style="margin-top:8px">Keep reading</h2><div class="grid">${d.related.map((r) => { const t = [...PAGES, ...DETAILS].find((x) => x.path === r)!; return `<article class="card"><h3><a href="${t.path}">${esc(t.h1)}</a></h3><p>${esc(t.description)}</p></article>`; }).join('')}</div></div>`;
+
 function staticPage(p: StaticPage): string {
-  const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
-    { '@type': 'ListItem', position: 1, name: SITE.name, item: abs('/') }, { '@type': 'ListItem', position: 2, name: p.title.split(' | ')[0], item: abs(p.path) }] };
+  const trail: { name: string; path: string }[] = [{ name: SITE.name, path: '/' }];
+  if (p.path.startsWith('/features/') && p.path !== '/features/') trail.push({ name: 'Features', path: '/features/' });
+  trail.push({ name: p.title.split(' | ')[0], path: p.path });
+  const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: trail.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, item: abs(t.path) })) };
+  const page = { '@context': 'https://schema.org', '@type': 'WebPage', '@id': abs(p.path), url: abs(p.path), name: p.title, description: p.description, isPartOf: { '@id': abs('/#website') }, inLanguage: 'en' };
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    ${meta(p, [crumbs, orgLd])}
+    ${meta(p, [crumbs, page, orgLd])}
     <style>${PAGE_CSS}</style>
   </head>
   <body>
@@ -215,7 +232,7 @@ ${p.path === '/pricing/' ? PRICE_SCRIPT : ''}
 
 const sitemap = () => {
   const day = new Date().toISOString().slice(0, 10);
-  const urls = ['/', ...PAGES.map((p) => p.path), '/login', '/register', '/terms', '/privacy'];
+  const urls = ['/', ...PAGES.map((p) => p.path), ...DETAILS.map((d) => d.path), '/login', '/register', '/terms', '/privacy'];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${abs(u)}</loc><lastmod>${day}</lastmod></url>`).join('\n')}\n</urlset>\n`;
 };
 
@@ -240,7 +257,8 @@ function files(): Record<string, { type: string; body: string; emit: string }> {
     '/sitemap.xml': { type: 'application/xml', body: sitemap(), emit: 'sitemap.xml' },
     '/robots.txt': { type: 'text/plain', body: robots(), emit: 'robots.txt' },
   };
-  for (const p of PAGES) out[p.path] = { type: 'text/html', body: staticPage(p), emit: `${p.path.slice(1)}index.html` };
+  for (const p of [...PAGES, ...DETAILS]) out[p.path] = { type: 'text/html', body: staticPage(p), emit: `${p.path.slice(1)}index.html` };
+  if (INDEXNOW_KEY) out[`/${INDEXNOW_KEY}.txt`] = { type: 'text/plain', body: INDEXNOW_KEY, emit: `${INDEXNOW_KEY}.txt` };
   return out;
 }
 

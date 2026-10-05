@@ -90,3 +90,68 @@ export const PAGES: StaticPage[] = [
 ];
 
 export const HOME = { path: '/', title: `${SITE.name} | Project Management Software for Teams`, description: SITE.description, h1: 'Plan the work. Track it across every team.', lead: 'Projects, tasks, timesheets and portfolio reporting in one secure workspace, with an assistant that works from your real data.' };
+
+/** One page per thing people search for, written to stand on its own. Every statement here describes what the product does today. */
+export interface DetailPage extends StaticPage { sections: { title: string; text: string; points: string[] }[]; related: string[] }
+export const DETAILS: DetailPage[] = [
+  {
+    path: '/features/portfolio/', title: 'Project Portfolio Management and Risk Forecasting | Project Tracker', h1: 'See which projects will miss their dates, and why',
+    lead: 'A portfolio view that works out risk, forecasts the real finish date and remembers every date that moved, so leaders can act before a deadline is missed.',
+    description: 'Rank every project by risk with the reasons, forecast the real finish date from the pace of the last four weeks, track date changes and try what-if scenarios.',
+    sections: [
+      { title: 'Risk ranked, with reasons', text: 'Every active project gets a risk level made from facts you can check, never a hidden score.',
+        points: ['Overdue and blocked tasks, and tasks waiting on unfinished work', 'Overdue action items and delivery dates that already moved', 'Time used against work done, and projects past their due date'] },
+      { title: 'A forecast from the real pace', text: 'The plan says when work should finish. The forecast says when it will, at the pace the team has actually been finishing tasks.',
+        points: ['Remaining tasks divided by tasks finished in the last 28 days', 'A confidence level, so a thin history is not presented as certainty', 'Shown as days early or late against the due date'] },
+      { title: 'What if, before you decide', text: 'Try a later start, more people or fewer tasks and see the new finish date next to today\'s plan.',
+        points: ['See what it would take to still meet the due date', 'Added people count for less than a full person, because new people take time to get up to speed', 'Nothing in the project changes while you explore'] },
+      { title: 'A history of every moved date', text: 'Each change to a delivery date keeps its reason and what it was waiting on, so a slip is explained, not just noticed.',
+        points: ['Original and current dates side by side', 'Reasons and dependencies recorded at the time', 'A weekly portfolio brief for owners and admins, and one on demand for anyone'] },
+    ],
+    related: ['/features/ai-assistant/', '/features/teams-and-access/'],
+  },
+  {
+    path: '/features/ai-assistant/', title: 'AI Assistant for Project Management | Project Tracker', h1: 'An assistant that answers from your own projects',
+    lead: 'Ask in plain words. It reads only what you are allowed to see, and prepares changes for you to review before anything happens.',
+    description: 'Ask about your projects, workload and risks in plain language. The assistant answers from your own data and proposes changes that you confirm first. Business plan and above.',
+    sections: [
+      { title: 'Grounded in your work', text: 'Answers come from your projects, tasks and people, with the figures worked out by the product rather than guessed by the model.',
+        points: ['Portfolio risk, forecasts and what-if questions', 'Workload, who has room and who is stretched', 'Find work by person, project, date or status'] },
+      { title: 'You stay in control', text: 'The assistant proposes; you decide.',
+        points: ['Changes to tasks, assignees, dates and reminders are shown first and only happen when you confirm', 'Text hidden inside a task or file can never make it change anything on its own', 'It follows your access: it cannot see what you cannot'] },
+      { title: 'Built for teams', text: 'Part of the same workspace, with the same permissions.',
+        points: ['Understands attached pictures and documents', 'Follows the team you are viewing', 'Usage shown to the workspace, with limits set by plan'] },
+    ],
+    related: ['/features/portfolio/', '/pricing/'],
+  },
+  {
+    path: '/features/teams-and-access/', title: 'Teams, Roles and Access Control | Project Tracker', h1: 'Everyone sees what they should, and nothing more',
+    lead: 'Five access levels, job-role profiles and teams, with the choice between an open organization and team-only visibility.',
+    description: 'Owner, admin, manager, member and guest roles, job-role profiles, teams and team-only project visibility, enforced in the data layer so each person sees only their own work.',
+    sections: [
+      { title: 'Roles and job-role profiles', text: 'Start from five access levels and fine-tune what each job role can do, module by module.',
+        points: ['Owner, Admin, Manager, Member and Guest', 'Per-module access levels set by job role', 'An access preview shows what a person can actually reach'] },
+      { title: 'Open or team-only', text: 'Choose whether everyone sees every project or each team sees only its own.',
+        points: ['People see projects of their teams, plus ones they own or were added to', 'Owners and admins see everything; other roles can be granted that', 'Guests only ever see the projects they are added to'] },
+      { title: 'One team at a time', text: 'Switch the whole app to a single team, and the dashboard, reports and assistant follow.',
+        points: ['Team picker in the top bar', 'Reports and portfolio narrow to that team', 'Separate organizations never share data'] },
+      { title: 'Enforced where the data lives', text: 'Visibility is applied in the data layer, so screens, reports, search and the assistant narrow the same way.',
+        points: ['Automated tests crawl every screen as a member of one team while another team\'s data exists', 'Removing someone takes effect on their very next request'] },
+    ],
+    related: ['/security/', '/features/portfolio/'],
+  },
+  {
+    path: '/features/timesheets-and-workload/', title: 'Timesheets, Workload and Capacity Planning | Project Tracker', h1: 'Share the work out before people are overloaded',
+    lead: 'Timesheets with approvals, workload by person and weekly capacity, in the same workspace as the tasks.',
+    description: 'Track time on tasks, approve timesheets, see workload by person and plan weekly capacity so work is shared out before anyone is overloaded.',
+    sections: [
+      { title: 'Timesheets people will fill in', text: 'Log time against tasks and see the week at a glance.',
+        points: ['Timesheets with an approval step for managers', 'Time stays with the person who logged it', 'Reports by person, project and period'] },
+      { title: 'Workload and capacity', text: 'See open, overdue and due-this-week work for each person against the hours they have.',
+        points: ['Estimated hours left against weekly capacity', 'Who is overloaded and who has room', 'Resource management on Business and above'] },
+      { title: 'Reminders that respect working hours', text: 'Due-date reminders, a daily briefing and push or e-mail delivery in each person\'s own time zone.',
+        points: ['Done and Snooze from the notification itself', 'A briefing at the time each person chooses', 'Escalation on Business and above'] },
+    ],
+    related: ['/features/portfolio/', '/pricing/'],
+  },
+];

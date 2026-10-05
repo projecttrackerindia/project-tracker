@@ -21,6 +21,13 @@ services:
   web:
     restart: unless-stopped
     ports: !reset []
+    build:
+      context: ./frontend
+      args:
+        SITE_URL: https://${DOMAIN}
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
+        BING_SITE_VERIFICATION: ${BING_SITE_VERIFICATION:-}
+        INDEXNOW_KEY: ${INDEXNOW_KEY:-}
 
   api:
     restart: unless-stopped

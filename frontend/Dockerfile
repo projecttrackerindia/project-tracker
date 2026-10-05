@@ -3,6 +3,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# The public address and the search-engine tokens are part of the pages the build writes (canonical links, sitemap, verification tags).
+ARG SITE_URL=
+ARG GOOGLE_SITE_VERIFICATION=
+ARG BING_SITE_VERIFICATION=
+ARG INDEXNOW_KEY=
+ENV SITE_URL=$SITE_URL GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION BING_SITE_VERIFICATION=$BING_SITE_VERIFICATION INDEXNOW_KEY=$INDEXNOW_KEY
 RUN npm run build
 
 FROM nginx:1.27-alpine
