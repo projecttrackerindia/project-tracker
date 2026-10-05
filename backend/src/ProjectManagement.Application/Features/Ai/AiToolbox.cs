@@ -37,7 +37,7 @@ public sealed class AiToolException(string message) : Exception(message);
 /// assistant change anything on its own.
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
-    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, TaskService tasks, WorkTaskService workTasks, ProjectService projects, ILogger<AiToolbox> log)
+    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, ILogger<AiToolbox> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -46,7 +46,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
-        UpdateProject = "propose_update_project", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
+        UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
 
     public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject];
 
@@ -76,6 +76,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """{"type":"object","properties":{"scope":{"type":"string","enum":["reports","everyone","me"],"description":"Whose workload. Default: the widest the person may see."}},"required":[]}"""),
             new(ListPeople, "The people in the workspace with their access level and job role (to find who to assign work to).", """{"type":"object","properties":{},"required":[]}"""),
             new(MyWorkSummary, "How much open, overdue and recently finished work the person has.", """{"type":"object","properties":{},"required":[]}"""),
+            new(PortfolioBrief, "The whole portfolio of projects the person can open, analysed: which are on track, at risk or delayed and why, a risk ranking with reasons, when each is likely to really finish (from the pace of the last 4 weeks, with a confidence), overdue and blocked tasks, overdue action items, delivery dates that moved and for what reason, and people carrying several troubled projects. Use for any question about the portfolio, what to escalate, forecasts, or an executive summary.",
+                """{"type":"object","properties":{},"required":[]}"""),
             new(WorkloadBalance, "Analyse workload: per person open, overdue, due this week, estimated hours left against weekly capacity and recent pace, with who is overloaded, who has room and a rebalancing idea. Use before recommending who should take work.",
                 """{"type":"object","properties":{"scope":{"type":"string","enum":["reports","everyone","me"],"description":"Whose workload. Default: the widest the person may see."}},"required":[]}"""),
             new(SuggestAssignee, "Rank the best people for a piece of work from their current load, lateness, experience on the project and similar work finished before. Use for 'who should do this' and when assigning unassigned work.",
@@ -132,8 +134,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"details":{"type":"string"},"assignee":{"type":"string"},
                  "due_date":{"type":"string","description":"yyyy-mm-dd"},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]}},"required":["project","title"]}
                 """),
-            new(CreateReminder, "Propose a reminder. The person confirms first.",
-                """{"type":"object","properties":{"text":{"type":"string"},"at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"for_person":{"type":"string","description":"Optional: a colleague to remind instead of the person."}},"required":["text","at"]}"""),
+            new(CreateReminder, "Propose a reminder, optionally about a task, action item or work item (so it opens it and ends when it is finished). The person confirms first.",
+                """{"type":"object","properties":{"text":{"type":"string"},"at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"about":{"type":"string","description":"Optional key of the work item: ATL-12 task, AI-4 action item, WT-3 operational work."},"for_person":{"type":"string","description":"Optional: a colleague to remind instead of the person."}},"required":["text","at"]}"""),
             new(SendReport, "Propose emailing a written report to people in the workspace (default: the person themselves). The person confirms first. Write the full report in 'body'.",
                 """
                 {"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string","description":"The report in Markdown."},
@@ -161,6 +163,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 TeamWorkload => await TeamWorkloadAsync(a, ct),
                 ListPeople => await ListPeopleAsync(ct),
                 MyWorkSummary => await MyWorkSummaryAsync(ct),
+                PortfolioBrief => await PortfolioBriefAsync(ct),
                 WorkloadBalance => await WorkloadBalanceAsync(a, ct),
                 SuggestAssignee => await SuggestAssigneeAsync(a, ct),
                 HistoryInsights => await HistoryInsightsAsync(a, ct),
@@ -215,8 +218,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
         var report = await status.ReportAsync(project.Id, ct);
         var p = report.Project;
+        var insight = (await portfolio.BriefAsync(ct)).Ranked.FirstOrDefault(x => x.ProjectId == project.Id);   // risk, forecast, action items: worked out, not guessed
         var data = new
         {
+            insight,
             today = clock.Today,
             project = new { p.Key, p.Name, status = p.Status, health = p.Health, p.Progress, p.StartDate, p.DueDate, p.OriginalDueDate, p.DelayedDays, owner = p.Owner?.Name, p.Stats },
             report.DelayedTasks, report.BlockedTasks,
@@ -234,6 +239,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var rows = w.Members.Select(m => $"{Clean(m.Name)} | {Clean(m.JobRole ?? "-")} | open {m.Open} | overdue {m.Overdue} | due this week {m.DueThisWeek} | done in last 30 days {m.DoneLast30Days}").ToList();
         var head = $"Workload ({w.Scope}): {w.Totals.People} people, {w.Totals.Open} open, {w.Totals.Overdue} overdue.";
         return new AiToolOutcome(head + "\n" + string.Join("\n", rows.Take(60)), $"Checked workload ({w.Members.Count} {(w.Members.Count == 1 ? "person" : "people")})", w.Members.Count);
+    }
+
+    private async Task<AiToolOutcome> PortfolioBriefAsync(CancellationToken ct)
+    {
+        var brief = await portfolio.BriefAsync(ct);
+        return new AiToolOutcome(AiPortfolio.ToText(brief), $"Analysed the portfolio ({brief.Projects} project{(brief.Projects == 1 ? "" : "s")})", brief.Projects);
     }
 
     private async Task<AiToolOutcome> WorkloadBalanceAsync(JsonElement a, CancellationToken ct)
@@ -300,11 +311,29 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
         var changes = new List<string>();
         string target, title, link; Guid id;
-        string? statusName = null;
-        if (prefix is "WT" or "AI")
+        string? statusName = null; Guid? itemProject = null;
+        if (prefix == "AI")
+        {
+            // An action item is a follow-up on a project: it has a status of Open, In progress or Completed, an owner, a date and details (no comments).
+            var ai = await FindActionItemAsync(number, ct);
+            if (!ai.Can.Edit) throw new AiToolException($"The person cannot edit {key}.");
+            if (comment is not null) throw new AiToolException("An action item has no comments: put the note in its description.");
+            id = ai.Id; target = "actionitem"; title = ai.Title; itemProject = ai.ProjectId; link = ActionItemService.LinkOf(ai.ProjectId, ai.Id);
+            if (statusText is not null)
+            {
+                var wanted = statusText.Replace(" ", "").Replace("-", "");
+                if (wanted.Equals("Done", StringComparison.OrdinalIgnoreCase) || wanted.Equals("Complete", StringComparison.OrdinalIgnoreCase)) wanted = "Completed";
+                if (!Enum.TryParse<ActionItemStatus>(wanted, true, out var st)) throw new AiToolException("An action item's status is one of: Open, In progress, Completed.");
+                statusName = st.ToString(); changes.Add($"status {ai.Status} → {st}");
+            }
+            if (assignee is not null || unassign) changes.Add($"assignee {ai.Assignee?.Name ?? "none"} → {(unassign ? "none" : assignee!.Name)}");
+            if (due is not null) changes.Add($"due {Day(ai.DueDate)} → {Day(due)}");
+            if (priority is not null) changes.Add($"priority {ai.Priority} → {priority}");
+        }
+        else if (prefix == "WT")
         {
             await RequireLevelAsync(Modules.Work, "change work items", ct);
-            var kind = prefix == "AI" ? WorkTaskKind.ActionItem : WorkTaskKind.Operational;
+            var kind = WorkTaskKind.Operational;
             id = await db.WorkTasks.AsNoTracking().Where(w => w.Number == number && w.Kind == kind).Select(w => w.Id).FirstOrDefaultAsync(ct);
             if (id == Guid.Empty) throw new AiToolException($"There is no work item {key}.");
             var w = await workTasks.GetAsync(id, ct);   // the person's own access decides whether they can open it
@@ -350,7 +379,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (start is not null) changes.Add($"start → {Day(start)}");
         if (hours is not null) changes.Add($"estimate → {hours}h");
         if (comment is not null) changes.Add($"comment “{(comment.Length > 80 ? comment[..80] + "…" : comment)}”");
-        var payload = new { target, id, key, title, statusName, assigneeId = assignee?.Id, assigneeName = assignee?.Name, unassign, dueDate = due, startDate = start, priority = priority?.ToString(), comment, reason, newTitle, newDescription, estimateHours = hours };
+        var payload = new { target, id, projectId = itemProject, key, title, statusName, assigneeId = assignee?.Id, assigneeName = assignee?.Name, unassign, dueDate = due, startDate = start, priority = priority?.ToString(), comment, reason, newTitle, newDescription, estimateHours = hours };
         return Propose("update_work", $"Update {key}: {title}", string.Join("; ", changes), payload, newDescription ?? comment);
     }
 
@@ -482,8 +511,48 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var zone = ZoneTime.IsKnown(timeZone) ? timeZone!.Trim() : "UTC";
         if (ZoneTime.ToUtc(local, ZoneTime.Find(zone)) <= clock.Now) throw new AiToolException("That time has already passed; choose a later one.");
         var other = Str(a, "for_person") is { } w && !w.Equals("me", StringComparison.OrdinalIgnoreCase) ? await PersonAsync(w, ct) : null;
-        var payload = new { title = text, at = ZoneTime.Write(local), timeZone = zone, forUserId = other?.Id, forName = other?.Name };
-        return Propose("reminder", $"Remind {(other is null ? "you" : other.Name)}: “{text}”", $"{local:ddd d MMM yyyy, HH:mm}", payload);
+        // Attached to a task, action item or operational work item by its key, so the reminder opens it and finishes when it is finished.
+        string? aboutKey = null; string? targetType = null; Guid? targetId = null;
+        if (Str(a, "about") is { } about)
+        {
+            var (kind, id, key, title) = await ResolveWorkItemAsync(about, ct);
+            aboutKey = $"{key} {title}"; targetType = kind; targetId = id;
+        }
+        var payload = new { title = text, at = ZoneTime.Write(local), timeZone = zone, forUserId = other?.Id, forName = other?.Name, targetType, targetId };
+        return Propose("reminder", $"Remind {(other is null ? "you" : other.Name)}: “{text}”", $"{local:ddd d MMM yyyy, HH:mm}{(aboutKey is null ? "" : $" — about {aboutKey}")}", payload);
+    }
+
+    /// <summary>An action item by its number (AI-4), as the person may open it: it belongs to a project and is visible with it.</summary>
+    private async Task<ActionItemDto> FindActionItemAsync(int number, CancellationToken ct)
+    {
+        var row = await db.WorkTasks.AsNoTracking().Where(w => w.Number == number && w.Kind == WorkTaskKind.ActionItem).Select(w => new { w.Id, w.RelatedProjectId }).FirstOrDefaultAsync(ct);
+        if (row?.RelatedProjectId is not { } projectId) throw new AiToolException($"There is no work item AI-{number}.");
+        try
+        {
+            var item = (await actionItems.ListAsync(projectId, ct)).FirstOrDefault(i => i.Id == row.Id);   // the project and its action items are only listed to people who may open them
+            return item ?? throw new AiToolException($"There is no work item AI-{number}.");
+        }
+        catch (NotFoundException) { throw new AiToolException($"There is no work item AI-{number}."); }   // the same answer as for one that does not exist
+    }
+
+    /// <summary>A task (ATL-12), operational work (WT-3) or action item (AI-4) by its key, as the signed-in person may open it: the reminder target kind, its id, key and title.</summary>
+    private async Task<(string Kind, Guid Id, string Key, string Title)> ResolveWorkItemAsync(string text, CancellationToken ct)
+    {
+        var key = text.Trim().ToUpperInvariant();
+        var m = ItemKey.Match(key);
+        if (!m.Success) throw new AiToolException("A work item is named by its key, like ATL-12 (task), WT-3 (operational work) or AI-4 (action item).");
+        var prefix = m.Groups[1].Value; var number = int.Parse(m.Groups[2].Value);
+        if (prefix == "AI") { var ai = await FindActionItemAsync(number, ct); return ("ActionItem", ai.Id, key, ai.Title); }
+        if (prefix == "WT")
+        {
+            var id = await db.WorkTasks.AsNoTracking().Where(w => w.Number == number && w.Kind == WorkTaskKind.Operational).Select(w => w.Id).FirstOrDefaultAsync(ct);
+            if (id == Guid.Empty) throw new AiToolException($"There is no work item {key}.");
+            var w = await workTasks.GetAsync(id, ct);   // the person's own access decides whether they can open it
+            return ("Operational", id, key, w.Title);
+        }
+        var taskId = await access.VisibleTasks().AsNoTracking().Where(t => t.Number == number && t.Project!.Key == prefix).Select(t => t.Id).FirstOrDefaultAsync(ct);
+        if (taskId == Guid.Empty) throw new AiToolException($"There is no task {key} that the person can see.");
+        return ("Task", taskId, key, (await tasks.GetAsync(taskId, ct)).Task.Title);
     }
 
     private async Task<AiToolOutcome> ProposeReportAsync(JsonElement a, CancellationToken ct)

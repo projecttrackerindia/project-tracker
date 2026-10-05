@@ -74,7 +74,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             }
             case "reminder":
             {
-                await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, ReminderTarget.None, null, Guid(a, "forUserId"),
+                var target = Enum.TryParse<ReminderTarget>(Str(a, "targetType"), true, out var tt) ? tt : ReminderTarget.None;
+                await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, target, target == ReminderTarget.None ? null : Guid(a, "targetId"), Guid(a, "forUserId"),
                     new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, null), null, null), ct);
                 return new AiActionResult("/reminders");
             }
@@ -113,6 +114,15 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         var assigneeId = Guid(a, "assigneeId"); var unassign = a.TryGetProperty("unassign", out var u) && u.ValueKind == JsonValueKind.True;
         var due = Date(a, "dueDate"); var statusName = Str(a, "statusName"); var comment = Str(a, "comment");
         Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
+        if (Str(a, "target") == "actionitem")
+        {
+            var projectId = Guid(a, "projectId")!.Value;
+            var cur = (await actionItems.ListAsync(projectId, ct)).First(i => i.Id == id);
+            var status = statusName is null ? cur.Status : Enum.Parse<ActionItemStatus>(statusName, true);
+            await actionItems.UpdateAsync(projectId, id, new UpdateActionItemRequest(Str(a, "newTitle") ?? cur.Title, Str(a, "newDescription") ?? cur.Details,
+                unassign ? null : assigneeId ?? cur.Assignee?.Id, due ?? cur.DueDate, priority ?? cur.Priority, status), ct);
+            return new AiActionResult(ActionItemService.LinkOf(projectId, id));
+        }
         if (Str(a, "target") == "work")
         {
             var w = await workTasks.GetAsync(id, ct);

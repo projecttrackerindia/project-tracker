@@ -51,6 +51,24 @@ public class AiModelRouterTests
     public void Greetings_and_lookups_are_answered_by_the_quick_level(string text) => Assert.Equal(AiTier.Quick, Route(text).Tier);
 
     [Theory]
+    [InlineData("Give me an executive summary of the portfolio and what I should escalate")]
+    [InlineData("Portfolio risk review: which projects will miss their dates and why? Compare the worst two.")]
+    public void Portfolio_reviews_get_deep_thinking(string q) =>
+        Assert.Equal(AiTier.Deep, AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
+
+    [Fact]
+    public void The_forecast_is_the_remaining_work_at_the_pace_of_the_last_four_weeks_and_says_how_sure_it_is()
+    {
+        var today = new DateOnly(2026, 10, 5);
+        var (finish, slip, conf) = ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(7, 7, today, today.AddDays(14));   // 7 finished in 28 days = 0.25 a day: 7 left take 28 days
+        Assert.Equal(today.AddDays(28), finish); Assert.Equal(14, slip); Assert.Equal("medium", conf);
+        Assert.Equal("high", ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(4, 28, today, null).Confidence);
+        Assert.Equal("low", ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(4, 2, today, null).Confidence);
+        Assert.Null(ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(4, 0, today, today).Finish);                 // nothing finished lately: no forecast, not a made-up one
+        Assert.Equal(today, ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(0, 0, today, today.AddDays(3)).Finish);   // nothing left: done
+    }
+
+    [Theory]
     [InlineData("Rebalance the team's workload and assign the unassigned tasks to the best person for each")]
     [InlineData("Who should take the migration work, and why? Compare the options.")]
     public void Advice_about_people_and_assignment_gets_deep_thinking(string q) =>

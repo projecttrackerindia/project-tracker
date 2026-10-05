@@ -226,6 +226,41 @@ public class ReminderTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Action_items_are_reminded_like_every_other_kind_of_work_automatically_and_on_request()
+    {
+        var o = await Setup();
+        var due = LocalToday.AddDays(6);
+        var made = await o.Owner.Post($"/api/v1/projects/{o.Project}/action-items", new { title = "Get the client's sign-off", assigneeId = o.Dev.UserId, dueDate = due.ToString("yyyy-MM-dd"), priority = "High" });
+        Assert.True(made.Ok, made.ToString());
+        var id = Guid.Parse(S(made.Data!["id"]));
+
+        // Automatically: the assignee is reminded the working day before and on the day, as for a task, and the reminder opens the action item.
+        await Run(DateTime.UtcNow);
+        List<Reminder> Mine() => factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Where(r => r.TargetId == id).ToList());
+        var auto = Mine().Where(r => r.Source == ReminderSource.DueDate).ToList();
+        Assert.Equal(2, auto.Count);
+        Assert.All(auto, r => { Assert.Equal(ReminderTarget.ActionItem, r.TargetType); Assert.Equal(o.Dev.UserId, r.UserId); Assert.Contains($"/projects/{o.Project}", r.Link); Assert.Contains("action", r.Link); });
+
+        // On request: "Remind me" on the action item, by the assignee, and also by the project owner about someone else's.
+        var fire = DateTime.UtcNow.AddHours(3);
+        var own = await Remind(o.Dev, new { title = "Chase the client", targetType = "ActionItem", targetId = id, when = new { at = Local(fire), timeZone = "Asia/Kolkata" } });
+        Assert.True(own.Ok, own.ToString());
+        Assert.Equal("ActionItem", S(own.Data!["targetType"]));
+        Assert.Contains("-AI", S(own.Data["targetKey"]).Replace("AI-", "-AI"), StringComparison.Ordinal);
+        Assert.True((await Remind(o.Owner, new { title = "Is the sign-off in?", forUserId = o.Dev.UserId, targetType = "ActionItem", targetId = id, when = new { at = Local(fire), timeZone = "Asia/Kolkata" } })).Ok);
+
+        // Finishing the action item finishes its reminders.
+        factory.WithDb(db => { var w = db.WorkTasks.IgnoreQueryFilters().First(x => x.Id == id); w.Status = WorkTaskStatus.Completed; w.CompletedAt = DateTime.UtcNow; db.SaveChanges(); return 0; });
+        await Run(DateTime.UtcNow.AddMinutes(1));
+        Assert.DoesNotContain(Mine(), r => r.State == ReminderState.Scheduled);
+
+        // Somebody who cannot open the project cannot set one either.
+        var outsider = await TestClient.RegisterAsync(factory, "Outsider");
+        await outsider.CreateOrgAsync();
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await Remind(outsider, new { title = "Spy", targetType = "ActionItem", targetId = id, when = new { at = Local(fire), timeZone = "Asia/Kolkata" } })).Status);
+    }
+
+    [Fact]
     public async Task Reminders_from_others_wait_for_working_hours_while_your_own_go_off_on_the_dot()
     {
         var o = await Setup();

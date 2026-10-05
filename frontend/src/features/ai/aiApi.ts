@@ -19,6 +19,17 @@ export interface AiMessage {
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
   followUps?: string[]; unverifiedKeys?: string[]; feedback?: 'up' | 'down' | null;
 }
+export interface PortfolioRisk {
+  projectId: string; key: string; name: string; group: string | null; health: string; progress: number; owner: string | null; startDate: string | null; dueDate: string | null; delayedDays: number;
+  openTasks: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number; finishedLast28Days: number;
+  projectedFinish: string | null; projectedSlipDays: number | null; confidence: 'high' | 'medium' | 'low' | 'none'; score: number; level: 'Critical' | 'High' | 'Medium' | 'Low'; reasons: string[];
+}
+export interface PortfolioSlip { projectId: string; projectKey: string; project: string; previous: string | null; revised: string | null; daysShifted: number | null; reason: string | null; dependency: string | null; by: string | null; at: string }
+export interface PortfolioPerson { name: string; projects: number; openTasks: number; overdueTasks: number }
+export interface PortfolioBrief {
+  asOf: string; projects: number; onTrack: number; atRisk: number; delayed: number; onHold: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number;
+  dateChangesLast30Days: number; headlines: string[]; ranked: PortfolioRisk[]; recentSlips: PortfolioSlip[]; stretched: PortfolioPerson[];
+}
 export interface AiInsight { id: string; severity: 'high' | 'medium' | 'low'; title: string; detail: string; prompt: string }
 export interface AiStarter { label: string; prompt: string; hint: string | null }
 export interface AiStarters { greeting: string; starters: AiStarter[] }
@@ -66,6 +77,7 @@ export const aiWorkspaceApi = {
   report: (month: string) => get<AiWorkspaceReport>('/ai/usage/report', { month }),
   starters: () => get<AiStarters>('/ai/starters'),
   insights: () => get<AiInsight[]>('/ai/insights'),
+  portfolioBrief: () => get<PortfolioBrief>('/ai/portfolio/brief'),
   confirmAll: (messageId: string) => post<AiAction[]>(`/ai/messages/${messageId}/actions/confirm-all`),
   feedback: (messageId: string, rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => post<void>(`/ai/messages/${messageId}/feedback`, { rating, reason }),
   profile: () => get<AiProfile>('/ai/profile'),

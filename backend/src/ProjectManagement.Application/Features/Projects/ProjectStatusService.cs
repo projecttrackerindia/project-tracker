@@ -77,16 +77,21 @@ public class ProjectStatusService(IAppDbContext db, ICurrentContext ctx, AppCloc
         DateOnly? Baseline(Guid? taskId) => history.Where(c => c.TaskId == taskId).Select(c => c.Previous ?? c.Revised).FirstOrDefault();
         static int Late(DateOnly? original, DateOnly? current) => original is { } o && current is { } c && c > o ? c.DayNumber - o.DayNumber : 0;
 
-        // What each task is waiting on: its predecessors that are not finished.
+        // What each task is waiting on: its predecessors that are not finished. A predecessor the caller cannot open (another project they are not
+        // in) is shown as "a task you cannot see": the task is still marked as waiting, but nothing about the other task or its project leaks.
         var blockers = taskIds.Count == 0 ? [] : await (from d in db.TaskDependencies.AsNoTracking()
                                                        where taskIds.Contains(d.TaskId)
                                                        join p in db.Tasks.AsNoTracking() on d.DependsOnTaskId equals p.Id
                                                        where p.Status!.Category != StatusCategory.Done && p.Status.Category != StatusCategory.Cancelled
-                                                       select new { d.TaskId, p.Number, p.Title, Status = p.Status.Name, p.ProjectId }).ToListAsync(ct);
-        var blockerProjects = blockers.Select(b => b.ProjectId).Distinct().ToList();
+                                                       select new { d.TaskId, PredecessorId = p.Id, p.Number, p.Title, Status = p.Status.Name, p.ProjectId }).ToListAsync(ct);
+        var blockerIds = blockers.Select(b => b.PredecessorId).Distinct().ToList();
+        var openable = blockerIds.Count == 0 ? [] : (await access.VisibleTasks().AsNoTracking().Where(t => blockerIds.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct)).ToHashSet();
+        var blockerProjects = blockers.Where(b => openable.Contains(b.PredecessorId)).Select(b => b.ProjectId).Distinct().ToList();
         var keys = await db.Projects.AsNoTracking().Where(p => blockerProjects.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Key, ct);
         var blockedBy = blockers.GroupBy(b => b.TaskId).ToDictionary(g => g.Key,
-            g => (IReadOnlyList<StatusBlockerDto>)g.Select(b => new StatusBlockerDto($"{keys.GetValueOrDefault(b.ProjectId, project.Key)}-{b.Number}", b.Title, b.Status)).ToList());
+            g => (IReadOnlyList<StatusBlockerDto>)g.Select(b => openable.Contains(b.PredecessorId)
+                ? new StatusBlockerDto($"{keys.GetValueOrDefault(b.ProjectId, project.Key)}-{b.Number}", b.Title, b.Status)
+                : new StatusBlockerDto("—", "A task you cannot see", "In progress")).ToList());
 
         StatusTaskDto ToTask(Row r)
         {

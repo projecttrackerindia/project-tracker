@@ -1086,4 +1086,126 @@ public class AiWorkspaceTests(ApiFactory factory)
         await Ask(o.Owner, "And now?", conversation: first.Conversation);
         Assert.Contains("[done] Create project “Insurance Revamp”", Chat.Requests.Single().Context);
     }
+
+    // ------------------------------------------------------------------ the portfolio
+
+    private JsonNode Brief(TestClient who) => who.Get("/api/v1/ai/portfolio/brief").Result.Data!;
+
+    [Fact]
+    public async Task The_portfolio_brief_ranks_projects_by_risk_with_reasons_and_forecasts_from_real_progress()
+    {
+        var o = await StretchedTeam();                       // Atlas: 6 overdue tasks and 1 undated, all open
+        var atlasKey = factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.Id == o.Project).Select(p => p.Key).Single());
+        await o.Owner.CreateProjectAsync("Orion");           // a quiet, healthy one
+        // Seven tasks finished in the last four weeks, and a due date two weeks away: at 0.25 tasks a day the seven left take 28 days, so about 14 days late.
+        for (var i = 0; i < 7; i++) await o.Owner.CreateTaskAsync(o.Project, $"Delivered {i}", new { title = $"Delivered {i}", priority = "Medium" });
+        factory.WithDb(db =>
+        {
+            var done = db.WorkflowStatuses.IgnoreQueryFilters().First(s => s.ProjectId == o.Project && s.Category == StatusCategory.Done).Id;
+            foreach (var t in db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == o.Project && t.Title.StartsWith("Delivered")).ToList()) { t.StatusId = done; t.CompletedAt = DateTime.UtcNow.AddDays(-5); }
+            var p = db.Projects.IgnoreQueryFilters().First(x => x.Id == o.Project); p.StartDate = DateOnly.Parse(Iso(-60)); p.DueDate = DateOnly.Parse(Iso(14));
+            db.SaveChanges(); return 0;
+        });
+        Assert.True((await o.Owner.Post($"/api/v1/projects/{o.Project}/action-items", new { title = "Get the vendor's answer", dueDate = Iso(-3), priority = "High" })).Ok);
+
+        var brief = Brief(o.Owner);
+        var ranked = brief["ranked"]!.AsArray();
+        var atlas = ranked[0]!;
+        Assert.Equal(atlasKey, S(atlas["key"]));                                      // worst first
+        Assert.Equal(6, atlas["overdueTasks"]!.GetValue<int>());
+        Assert.Equal(7, atlas["openTasks"]!.GetValue<int>());
+        Assert.Equal(7, atlas["finishedLast28Days"]!.GetValue<int>());
+        Assert.Equal(14, atlas["projectedSlipDays"]!.GetValue<int>());                // the forecast, worked out
+        Assert.Equal("medium", S(atlas["confidence"]));
+        Assert.Equal(1, atlas["overdueActionItems"]!.GetValue<int>());
+        var reasons = atlas["reasons"]!.AsArray().Select(r => S(r)).ToList();
+        Assert.Contains(reasons, r => r.StartsWith("6 overdue tasks of 7 open"));
+        Assert.Contains(reasons, r => r.Contains("14 days after its due date"));
+        Assert.Contains(reasons, r => r.StartsWith("1 overdue action item"));
+        Assert.Equal("Orion", S(ranked[1]!["name"]));                                 // the quiet one ranks below
+        Assert.Equal("Low", S(ranked[1]!["level"]));
+        Assert.Equal(2, brief["projects"]!.GetValue<int>());
+        Assert.Equal(6, brief["overdueTasks"]!.GetValue<int>());
+
+        // The same numbers reach the model through its tool, as text.
+        var text = await RunTool(o.Owner, "portfolio_brief", new { }, "Give me an executive summary of the portfolio and what I should escalate");
+        Assert.Contains($"{atlasKey} | Atlas | ", text);
+        Assert.Contains("+14d", text); Assert.Contains("medium confidence", text);
+        Assert.Contains("6 overdue tasks", text);
+        // A single project's report carries its own insight.
+        var report = await RunTool(o.Owner, "project_report", new { project = "Atlas" }, "How is Atlas doing?");
+        Assert.Contains("\"projectedSlipDays\":14", report); Assert.Contains("overdueActionItems", report);
+    }
+
+    [Fact]
+    public async Task The_portfolio_brief_shows_only_what_the_person_may_open_and_nothing_of_other_organizations()
+    {
+        var a = await StretchedTeam();
+        var b = await Setup();
+        await b.Owner.CreateProjectAsync("Zebra Secret Programme");
+        foreach (var i in Enumerable.Range(0, 5)) await b.Owner.CreateTaskAsync(b.Project, $"Zebra overdue {i}", new { title = $"Zebra overdue {i}", priority = "High", assigneeId = b.Owner.UserId, dueDate = Iso(-4) });
+
+        Assert.DoesNotContain("Zebra", Brief(a.Owner).ToJsonString());                // another organization's projects, tasks and people are not in it
+        Assert.DoesNotContain("Zebra", await RunTool(a.Owner, "portfolio_brief", new { }, "Portfolio risk review"));
+
+        // A guest who is in none of the projects sees an empty portfolio; once added to one, only that one.
+        Assert.Equal(0, Brief(a.Guest)["projects"]!.GetValue<int>());
+        await a.Owner.CreateProjectAsync("Private Board Project");
+        Assert.True((await a.Owner.Post($"/api/v1/projects/{a.Project}/members", new { userId = a.Guest.UserId })).Ok);
+        var guestView = Brief(a.Guest);
+        Assert.Equal(1, guestView["projects"]!.GetValue<int>());
+        Assert.DoesNotContain("Private Board Project", guestView.ToJsonString());
+        Assert.DoesNotContain("Zebra", guestView.ToJsonString());
+    }
+
+    [Fact]
+    public async Task The_assistant_can_set_a_reminder_on_an_action_item_which_then_follows_the_item()
+    {
+        var o = await Setup();
+        Assert.True((await o.Owner.Post($"/api/v1/projects/{o.Project}/action-items", new { title = "Get the client's sign-off", dueDate = Iso(9) })).Ok);
+        var probe = await RunTool(o.Owner, "propose_reminder", new { text = "Probe", at = $"{Iso(3)}T09:00", about = "AI-1" }, "Remind me about AI-1");
+        Assert.DoesNotContain("no work item", probe); Assert.DoesNotContain("not allowed", probe, StringComparison.OrdinalIgnoreCase); Assert.Contains("Proposed", probe);
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_reminder", new { text = "Chase the client", at = $"{Iso(3)}T09:00", about = "AI-1" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Remind me on Friday to chase the sign-off action item", timeZone: "Asia/Kolkata");
+        var card = res.Last("action")["action"]!;
+        Assert.Contains("about AI-1", S(card["summary"]));
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm")).Ok);
+        var r = Assert.Single(factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Where(x => x.TenantId == o.Owner.WorkspaceId && x.Title == "Chase the client").ToList()));
+        Assert.Equal(ReminderTarget.ActionItem, r.TargetType); Assert.NotNull(r.TargetId); Assert.Contains("action", r.Link);
+        // An item that does not exist is refused with a reason the model can act on.
+        Assert.Contains("no work item", await RunTool(o.Owner, "propose_reminder", new { text = "Nope", at = $"{Iso(3)}T09:00", about = "AI-99" }, "Remind me about AI-99"));
+    }
+
+    [Fact]
+    public async Task An_action_item_can_be_completed_reassigned_and_rescheduled_through_a_proposal()
+    {
+        var o = await Setup();
+        var made = await o.Owner.Post($"/api/v1/projects/{o.Project}/action-items", new { title = "Confirm the vendor date", dueDate = Iso(4), priority = "Low" });
+        Assert.True(made.Ok, made.ToString());
+        var id = Guid.Parse(S(made.Data!["id"]));
+        // A note cannot go on an action item (it has no comments), and the model is told where it can.
+        Assert.Contains("no comments", await RunTool(o.Owner, "propose_update_work", new { key = "AI-1", comment = "FYI" }, "Add a note to the vendor action item"));
+
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_work", new { key = "AI-1", status = "In progress", assignee = "Max Manager", due_date = Iso(2), priority = "High" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Give the vendor action item to Max, make it high priority and bring it forward");
+        var card = res.Last("action")["action"]!;
+        Assert.Contains("status Open → InProgress", S(card["summary"]));
+        Assert.Contains("assignee none → Max Manager", S(card["summary"]));
+        Assert.Equal("Open", factory.WithDb(db => db.WorkTasks.IgnoreQueryFilters().First(w => w.Id == id).Status == WorkTaskStatus.ToDo ? "Open" : "changed"));   // nothing yet
+        var ok = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.True(ok.Ok, ok.ToString());
+        var after = factory.WithDb(db => db.WorkTasks.IgnoreQueryFilters().First(w => w.Id == id));
+        Assert.Equal(WorkTaskStatus.InProgress, after.Status); Assert.Equal(o.Manager.UserId, after.AssigneeId); Assert.Equal(DateOnly.Parse(Iso(2)), after.DueDate); Assert.Equal(Priority.High, after.Priority);
+
+        // Finishing it: "Done" means Completed.
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_work", new { key = "AI-1", status = "Done" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var fin = await Ask(o.Owner, "The vendor action item is done");
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(fin.Done["id"])}/actions/{S(fin.Last("action")["action"]!["id"])}/confirm")).Ok);
+        Assert.Equal(WorkTaskStatus.Completed, factory.WithDb(db => db.WorkTasks.IgnoreQueryFilters().First(w => w.Id == id).Status));
+        // An action item the person cannot open is not found, not leaked.
+        Assert.Contains("no work item", await RunTool(o.Guest, "propose_update_work", new { key = "AI-1", priority = "Low" }, "Make the vendor action item low priority"));
+    }
 }

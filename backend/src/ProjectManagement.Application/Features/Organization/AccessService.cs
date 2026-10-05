@@ -69,7 +69,8 @@ public class AccessService(IAppDbContext db, ICurrentContext ctx, PermissionServ
         await permissions.RequireAsync(Permissions.AccessManage, ct);
 
         var roles = await db.OrgRoles.AsNoTracking().OrderBy(r => r.SortOrder).ThenBy(r => r.CreatedAt).ToListAsync(ct);
-        var people = await db.TenantMembers.Where(m => m.OrgRoleId != null).GroupBy(m => m.OrgRoleId!.Value)
+        var tenantId = ctx.RequireTenantId();
+        var people = await db.TenantMembers.Where(m => m.TenantId == tenantId && m.OrgRoleId != null).GroupBy(m => m.OrgRoleId!.Value)
             .Select(g => new { Id = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.Count, ct);
         var baseline = await BaselineAsync(ct);
         var planAllows = await entitlements.GetValueAsync(FeatureKeys.AdvancedPermissions, ct) != 0;

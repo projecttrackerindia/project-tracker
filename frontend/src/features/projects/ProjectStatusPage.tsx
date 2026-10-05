@@ -9,7 +9,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { useModule } from '../../stores/auth';
 import { TaskModal } from '../tasks/TaskModal';
 import { ActionItemsPanel } from './ActionItemsPanel';
-import { PortfolioSummaryButton } from '../ai/Assistant';
+import { PortfolioBriefPanel, ProjectInsight } from './PortfolioInsights';
 
 const HEALTH_LABEL: Record<ProjectHealth, string> = { OnTrack: 'On track', AtRisk: 'At risk', Delayed: 'Delayed', Completed: 'Completed', Cancelled: 'Cancelled', Archived: 'Archived' };
 const days = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'}`;
@@ -64,14 +64,7 @@ export function ProjectStatusPage() {
       </aside>
 
       <section className="ps-main" aria-live="polite">
-        {selected ? <StatusPanel key={selected} projectId={selected} onOpenTask={setTaskId} onActionItems={() => setActionsOpen(true)} /> : (
-          <div className="ps-placeholder">
-            <Icon name="monitor" size={40} />
-            <h2>Portfolio</h2>
-            <p>Open a group on the left and choose a project to see where it stands: its dates, its tasks, and any delay or change to the delivery date.</p>
-            <PortfolioSummaryButton />
-          </div>
-        )}
+        {selected ? <StatusPanel key={selected} projectId={selected} onOpenTask={setTaskId} onActionItems={() => setActionsOpen(true)} /> : <PortfolioBriefPanel onPick={pick} />}
       </section>
 
       {selected && <ActionItemsPanel open={actionsOpen} projectId={selected} projectName={current?.name ?? 'Project'} onClose={() => setActionsOpen(false)} />}
@@ -140,6 +133,8 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
           </div>
         </div>
       </header>
+
+      <ProjectInsight projectId={p.id} onActionItems={onActionItems} />
 
       <div className="ps-kpis">
         <div className="ps-kpi"><label>Start date</label><b>{formatDate(p.startDate)}</b></div>
