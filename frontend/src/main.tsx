@@ -23,6 +23,7 @@ import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
 import './lib/pwa';
+import { startResponsiveTables } from './lib/responsiveTables';
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 
@@ -38,3 +39,5 @@ createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+startResponsiveTables();

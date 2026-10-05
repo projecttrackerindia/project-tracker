@@ -35,7 +35,7 @@ export interface Plan { name: string; price: string; blurb: string; points: stri
 /** Starting prices in INR per month. Keep in step with Admin > Plans; the app shows the live price at checkout. */
 export const PLANS: Plan[] = [
   { name: 'Free', price: '₹0', blurb: 'For one person getting started.', cta: 'Start free', points: ['1 member and 1 team', '5 projects and 500 tasks', '500 MB of files', 'Reminders, calendar and timesheets', 'Portfolio view'] },
-  { name: 'Pro', price: '₹999', blurb: 'For freelancers and small teams.', cta: 'Start with Pro', featured: true, points: ['Up to 10 members and 5 teams', 'Unlimited projects and tasks', '10 GB of files', 'Custom workflows, fields and automation', 'Advanced reports and workload'] },
+  { name: 'Pro', price: '₹999', blurb: 'For freelancers and small teams.', cta: 'Start with Pro', featured: true, points: ['Up to 10 members and 5 teams', 'Unlimited projects and tasks', '10 GB of files', 'Custom workflows, fields and automation', 'Advanced reports and workload', 'Mobile app with phone sign-in'] },
   { name: 'Business', price: '₹2,499', blurb: 'For growing teams and departments.', cta: 'Start with Business', points: ['Up to 100 members, unlimited teams', 'AI assistant and file understanding', 'Audit log, API access and advanced permissions', 'Single sign-on, two-step verification rules, IP allowlist', 'Resource management and service levels'] },
   { name: 'Enterprise', price: 'Custom', blurb: 'Unlimited scale and governance.', cta: 'Get started', points: ['Unlimited members, storage and AI use', 'Everything in Business', 'Longest history and audit retention', 'Priority onboarding and support'] },
 ];
@@ -174,6 +174,7 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'Custom workflows, fields and automation', v: ['–', '✓', '✓', '✓'] },
     { label: 'Resource management and service levels', v: ['–', '–', '✓', '✓'] },
     { label: 'Reminder escalation', v: ['–', '–', '✓', '✓'] },
+    { label: 'Mobile app and phone sign-in', v: ['–', '✓', '✓', '✓'] },
   ] },
   { group: 'Intelligence', rows: [
     { label: 'AI assistant with confirmed actions', v: ['–', '–', '✓', '✓'] },
@@ -205,6 +206,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'Does the assistant change my projects by itself?', a: 'No. It answers from the projects you can open and proposes changes. Nothing happens until you confirm it.' },
   { q: 'Can teams keep their projects private from each other?', a: 'Yes. Choose team-only visibility and each person sees the projects of their teams, plus the ones they own or were added to. Owners and admins see everything; guests only the projects they are added to.' },
   { q: 'How is each organization\'s data kept separate?', a: 'In the data layer itself, not only in the screens, and automated tests check every screen for leaks between organizations, teams and roles.' },
+  { q: 'Is there a mobile app?', a: 'Yes, from the Pro plan: install Project Tracker on your phone from Account, Mobile app, get alerts when it is closed, and sign in on a computer by tapping a number on your phone. No password to type.' },
   { q: 'Can I take my data with me?', a: 'Yes. Owners can export everything as files in one zip at any time, and set how long history is kept.' },
   { q: 'Does it support single sign-on?', a: 'Yes, on Business and Enterprise: OpenID Connect and SAML 2.0, with SCIM provisioning to add and remove people automatically.' },
 ];

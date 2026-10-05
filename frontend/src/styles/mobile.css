@@ -6,7 +6,7 @@
 .modal-grab { display: none; }
 .ptr { display: none; }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
   :root { --m-top: 54px; --m-tab: 62px; --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px); }
   html { -webkit-text-size-adjust: 100%; }
   body { overscroll-behavior-y: none; -webkit-touch-callout: none; touch-action: manipulation; background-attachment: scroll; }
@@ -190,7 +190,7 @@
 }
 
 /* ---------------- screens ---------------- */
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
   /* figures: a two-up grid of compact tiles instead of one tall card each */
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
   .stat-card { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 11px; align-items: center; padding: 13px 13px; border-radius: 20px; }
@@ -285,7 +285,7 @@
 }
 
 /* ---------------- home, in the phone app's own design ---------------- */
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
   .m-dot-lg { width: 13px; height: 13px; flex: none; border-radius: 50%; background: currentColor; color: var(--primary); }
   .m-dot-lg.purple { color: #8b5cf6; } .m-dot-lg.amber { color: #d97706; } .m-dot-lg.green { color: #16a34a; } .m-dot-lg.red { color: #e11d48; } .m-dot-lg.cyan { color: #0284c7; } .m-dot-lg.orange { color: #ea580c; }
 

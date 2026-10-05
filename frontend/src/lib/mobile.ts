@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 /** Phones get the app's own mobile shell (tab bar, sheets); everything wider keeps the desktop layout. */
-const PHONE = '(max-width: 768px)';
+const PHONE = '(max-width: 768px), (pointer: coarse) and (max-height: 500px)';
 
 export const isMobileNow = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE).matches;
 
