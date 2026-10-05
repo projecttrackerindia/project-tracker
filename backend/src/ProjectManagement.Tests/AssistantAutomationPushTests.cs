@@ -22,7 +22,7 @@ namespace ProjectManagement.Tests;
 public class AssistantAutomationPushTests(ApiFactory factory)
 {
     private static string S(JsonNode? n) => n!.GetValue<string>();
-    private static string Iso(int days) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(days).ToString("yyyy-MM-dd");
+    private static string Iso(int days) => AppDay.Today.AddDays(days).ToString("yyyy-MM-dd");
 
     private sealed record Org(TestClient Owner, TestClient Dev, TestClient Member, Guid Project);
 
@@ -377,7 +377,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
 
         // A new due date is a new period.
         var id = Guid.Parse(S(task["id"]));
-        factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().Single(t => t.Id == id).DueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(2); return db.SaveChanges(); });
+        factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().Single(t => t.Id == id).DueDate = AppDay.Today.AddDays(2); return db.SaveChanges(); });
         await Run();
         Assert.Equal(2, Nudges());
     }

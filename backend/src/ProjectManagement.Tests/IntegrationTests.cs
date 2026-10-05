@@ -23,7 +23,7 @@ namespace ProjectManagement.Tests;
 public class IntegrationTests(ApiFactory factory)
 {
     private static string S(JsonNode? n) => n!.GetValue<string>();
-    private static string Iso(int days) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(days).ToString("yyyy-MM-dd");
+    private static string Iso(int days) => AppDay.Today.AddDays(days).ToString("yyyy-MM-dd");
 
     private sealed record Org(TestClient Owner, TestClient Dev, Guid Project, string Key);
 

@@ -70,7 +70,7 @@ public class ScenarioTests(ApiFactory factory)
         {
             var done = db.WorkflowStatuses.IgnoreQueryFilters().First(s => s.ProjectId == project && s.Category == StatusCategory.Done).Id;
             foreach (var t in db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == project && t.Title.StartsWith("Delivered")).ToList()) { t.StatusId = done; t.CompletedAt = DateTime.UtcNow.AddDays(-5); }
-            db.Projects.IgnoreQueryFilters().First(p => p.Id == project).DueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(14);
+            db.Projects.IgnoreQueryFilters().First(p => p.Id == project).DueDate = AppDay.Today.AddDays(14);
             db.SaveChanges(); return 0;
         });
         return (owner, project);

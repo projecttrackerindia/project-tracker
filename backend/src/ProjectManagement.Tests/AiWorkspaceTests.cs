@@ -19,7 +19,7 @@ namespace ProjectManagement.Tests;
 public class AiWorkspaceTests(ApiFactory factory)
 {
     private static string S(JsonNode? n) => n!.GetValue<string>();
-    private static string Iso(int days) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(days).ToString("yyyy-MM-dd");
+    private static string Iso(int days) => AppDay.Today.AddDays(days).ToString("yyyy-MM-dd");
     private FakeAiChat Chat => factory.Chat;
 
     private sealed record Org(TestClient Owner, TestClient Manager, TestClient Guest, Guid Project);

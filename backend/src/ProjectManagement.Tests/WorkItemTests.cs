@@ -15,7 +15,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class WorkItemTests(ApiFactory factory)
 {
-    private static string Iso(int daysFromToday) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(daysFromToday).ToString("yyyy-MM-dd");
+    private static string Iso(int daysFromToday) => AppDay.Today.AddDays(daysFromToday).ToString("yyyy-MM-dd");
     private static Guid Id(ApiResult r) => Guid.Parse(r.Data!["id"]!.GetValue<string>());
     private static string S(JsonNode? n) => n!.GetValue<string>();
 

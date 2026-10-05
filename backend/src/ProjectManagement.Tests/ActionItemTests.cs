@@ -8,7 +8,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class ActionItemTests(ApiFactory factory)
 {
-    private static string Iso(int daysFromToday) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(daysFromToday).ToString("yyyy-MM-dd");
+    private static string Iso(int daysFromToday) => AppDay.Today.AddDays(daysFromToday).ToString("yyyy-MM-dd");
 
     private sealed record World(TestClient Owner, TestClient Manager, TestClient Dev, TestClient Other, TestClient Guest, Guid Project);
 

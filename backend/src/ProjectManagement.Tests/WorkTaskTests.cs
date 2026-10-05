@@ -10,7 +10,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class WorkTaskTests(ApiFactory factory)
 {
-    private static string Iso(int daysFromToday) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(daysFromToday).ToString("yyyy-MM-dd");
+    private static string Iso(int daysFromToday) => AppDay.Today.AddDays(daysFromToday).ToString("yyyy-MM-dd");
     private static byte[] Pdf() => "%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"u8.ToArray();
     private static Guid Id(ApiResult r) => Guid.Parse(r.Data!["id"]!.GetValue<string>());
     private static string S(JsonNode? n) => n!.GetValue<string>();

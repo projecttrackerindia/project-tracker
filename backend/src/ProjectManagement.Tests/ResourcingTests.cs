@@ -16,7 +16,7 @@ public class ResourcingTests(ApiFactory factory)
     private static string S(JsonNode? n) => n!.GetValue<string>();
     private static int I(JsonNode? n) => n!.GetValue<int>();
     private static decimal D(JsonNode? n) => n!.GetValue<decimal>();
-    private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+    private static DateOnly Today => AppDay.Today;
     private static DateOnly LastMonday => Today.AddDays(-(((int)Today.DayOfWeek + 6) % 7) - 7);
     private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd");
 

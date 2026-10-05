@@ -11,7 +11,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class ProjectStatusTests(ApiFactory factory)
 {
-    private static string Iso(int daysFromToday) => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(daysFromToday).ToString("yyyy-MM-dd");
+    private static string Iso(int daysFromToday) => AppDay.Today.AddDays(daysFromToday).ToString("yyyy-MM-dd");
 
     private async Task<(TestClient Owner, Guid Project, Guid Todo)> Setup(string name = "Atlas")
     {
