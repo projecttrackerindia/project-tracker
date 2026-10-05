@@ -6,6 +6,7 @@ import { ApiError } from './api/client';
 import { consentApi, meApi } from './api/endpoints';
 import type { ConsentDocument } from './api/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Icon } from './components/Icon';
 import { SuccessCurtain } from './components/SuccessCurtain';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
@@ -133,11 +134,25 @@ function PendingConsent({ pending }: { pending: ConsentDocument[] }) {
  * An administrator created this account and chose its first password, so it is only good for choosing a new one: the server refuses
  * everything else until that is done. Shown before anything else, in place of the app.
  */
+/** A password box with its own eye button; the three fields of this screen share one shown/hidden state. */
+function RevealInput({ revealed, onToggle, ...rest }: { revealed: boolean; onToggle: () => void } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className="password-box">
+      <input className="input" type={revealed ? 'text' : 'password'} {...rest} />
+      <button type="button" className="password-toggle" tabIndex={-1} aria-pressed={revealed} aria-label={revealed ? 'Hide passwords' : 'Show passwords'} onClick={onToggle}>
+        <Icon name={revealed ? 'eyeOff' : 'eye'} size={16} />
+      </button>
+    </div>
+  );
+}
+
 function MustChangePassword() {
   const policy = usePasswordPolicy();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
+  const [show, setShow] = useState(false);   // one switch shows or hides all three fields, so a typing slip is easy to see
+  const matches = again.length > 0 && again === next;
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const submit = async (e: React.FormEvent) => {
@@ -162,10 +177,19 @@ function MustChangePassword() {
       <h1 className="auth-title">Choose your password</h1>
       <p className="auth-sub">Your administrator gave you a temporary password. Choose one of your own to continue.</p>
       <div className="form-grid" style={{ gridTemplateColumns: '1fr', marginBottom: 14 }}>
-        <Field label="Temporary password" error={errors.currentPassword}><input className="input" type="password" autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} /></Field>
-        <Field label="New password" error={errors.newPassword}><input className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
+        <Field label="Temporary password" error={errors.currentPassword}>
+          <RevealInput revealed={show} onToggle={() => setShow((v) => !v)} autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
+        </Field>
+        <Field label="New password" error={errors.newPassword}>
+          <RevealInput revealed={show} onToggle={() => setShow((v) => !v)} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+        </Field>
         <PasswordChecklist policy={policy} password={next} showHistory />
-        <Field label="Confirm new password" error={errors.again}><input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></Field>
+        <Field label="Confirm new password" error={errors.again}>
+          <RevealInput revealed={show} onToggle={() => setShow((v) => !v)} autoComplete="new-password" value={again} onChange={(e) => { setAgain(e.target.value); setErrors((x) => ({ ...x, again: '' })); }} />
+        </Field>
+        {again.length > 0 && !errors.again && (
+          <p className={`pw-match ${matches ? 'ok' : ''}`} role="status">{matches ? '✓ The two passwords match' : 'The two passwords do not match yet'}</p>
+        )}
       </div>
       <SubmitButton busy={busy}>Save and continue</SubmitButton>
       <button type="button" className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={() => useAuth.getState().logout()}>Sign out</button>
