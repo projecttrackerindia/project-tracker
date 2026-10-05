@@ -31,13 +31,14 @@ for (const [name, path] of [['dashboard', ''], ['projects', '/projects'], ['port
 }
 
 // 2. Dashboard layout: the trend and the status card sit side by side, the range buttons show which one is chosen.
-await page.goto(`${BASE}/${slug}`); await page.waitForTimeout(2500);
+await page.goto(`${BASE}/${slug}`); await page.waitForSelector('.dash-charts', { timeout: 20000 }).catch(() => undefined); await page.waitForTimeout(500);
 const cols = await page.locator('.dash-charts').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length).catch(() => 0);
 check('dashboard charts side by side', cols === 2, `${cols} column(s)`);
 const bg = await page.locator('.seg button.on').first().evaluate((el) => { const c = getComputedStyle(el); return c.backgroundImage !== 'none' ? 'gradient' : c.backgroundColor; }).catch(() => 'none');
 check('selected range is highlighted', bg !== 'rgba(0, 0, 0, 0)' && bg !== 'none', bg);
 
 // 3. Team picker in the top bar.
+await page.waitForSelector('.lens-btn', { timeout: 10000 }).catch(() => undefined);
 check('team picker present', (await page.locator('.lens-btn').count()) === 1);
 
 // 4. Forms start short.
@@ -48,7 +49,7 @@ check('new project form has More options', (await page.locator('.more-toggle').c
 await page.keyboard.press('Escape');
 
 // 5. Portfolio: overview, a project, and the way back.
-await page.goto(`${BASE}/${slug}/portfolio`); await page.waitForTimeout(2000);
+await page.goto(`${BASE}/${slug}/portfolio`); await page.waitForSelector('.pi', { timeout: 20000 }).catch(() => undefined);
 check('portfolio overview shows', (await page.locator('.pi').count()) === 1);
 await page.locator('.ps-group-head').first().click(); await page.locator('.ps-proj').first().click(); await page.waitForTimeout(1500);
 check('project panel shows tabs', (await page.locator('.ps-seg button').count()) === 3);
