@@ -12,6 +12,8 @@ var els=[].slice.call(d.querySelectorAll('[data-r]'));
 if(rm||!('IntersectionObserver' in window)){els.forEach(function(e){e.classList.add('pt-in')})}
 else{var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('pt-in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -10% 0px',threshold:.08});els.forEach(function(e){io.observe(e)})}
 if(!rm&&matchMedia('(hover: hover)').matches){d.addEventListener('pointermove',function(ev){var t=ev.target&&ev.target.closest&&ev.target.closest('.pt-tile,.pt-card');if(!t)return;var r=t.getBoundingClientRect();t.style.setProperty('--mx',(ev.clientX-r.left)+'px');t.style.setProperty('--my',(ev.clientY-r.top)+'px')},{passive:true})}
+var st=d.querySelector('.pt-sticky'),hero=d.querySelector('.pt-hero');
+if(st&&hero&&'IntersectionObserver' in window){new IntersectionObserver(function(es){st.classList.toggle('pt-show',!es[0].isIntersecting)},{threshold:0}).observe(hero)}
 var w=d.querySelector('.pt-whatif');
 if(w){
   var DUE=40,OPEN=14,PACE=7/28,PEOPLE=2,k=0,out=w.querySelector('output'),b=w.querySelector('[data-res]'),sub=w.querySelector('[data-sub]'),chip=d.querySelector('[data-chip]'),meta=d.querySelector('[data-meta]');

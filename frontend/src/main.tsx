@@ -17,6 +17,7 @@ import './styles/ai.css';
 import './styles/theme.css';
 import './styles/org.css';
 import './styles/reminders.css';
+import './styles/mobile.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';

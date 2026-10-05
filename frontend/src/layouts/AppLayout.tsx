@@ -1,11 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { chatApi, insightApi, notificationApi, workspaceApi } from '../api/endpoints';
-import { ApiError } from '../api/client';
+import { chatApi, insightApi, notificationApi } from '../api/endpoints';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
-import { Field, Modal, PageLoader, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
+import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
 import { orgHref } from '../lib/orgPath';
 import { setTitleParts } from '../lib/title';
@@ -21,6 +20,10 @@ import { ThemeSwitch } from '../components/ThemeSwitch';
 import { TeamLensPicker } from '../components/TeamLensPicker';
 import { LensSync } from '../lib/teamLens';
 import { AccountDock, TopbarMe } from './AccountDock';
+import { CreateOrganizationModal, NOTIF_ICON } from './parts';
+import { MobileTopBar, TabBar } from './MobileChrome';
+import { PullToRefresh } from '../components/PullToRefresh';
+import { useIsMobile } from '../lib/mobile';
 import { useMainNav } from './navigation';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
 import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
@@ -39,11 +42,6 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: ()
 }
 
 const REMINDER_TYPES = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue']);
-const NOTIF_ICON: Record<string, string> = {
-  TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞', Approval: '✅', ServiceLevel: '⏱️',
-  Reminder: '⏰', Nudge: '👋', Briefing: '☀️',
-};
-
 // ------------------------------------------------------------------ sidebar
 function Sidebar() {
   const { sidebarCollapsed, sidebarOpen, closeSidebar } = useUi();
@@ -189,29 +187,6 @@ function GlobalSearch() {
   );
 }
 
-function CreateOrganizationModal({ onClose }: { onClose: () => void }) {
-  const switchWorkspace = useAuth((s) => s.switchWorkspace);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const m = useMutation({
-    mutationFn: () => workspaceApi.create({ name, description: description || undefined }),
-    onSuccess: async (ws) => { await switchWorkspace(ws.id); toast(`Organization “${ws.name}” created.`); onClose(); },
-    onError: (e) => setError(e instanceof ApiError ? (e.fieldError('name') ?? e.message) : 'Could not create the organization.'),
-  });
-  return (
-    <Modal title="Create organization" subtitle="A separate workspace for your team, with its own members, projects and plan." onClose={onClose}
-      onSubmit={(e) => { e.preventDefault(); if (name.trim().length < 2) { setError('Enter a name (at least 2 characters).'); return; } setError(null); m.mutate(); }}
-      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={m.isPending}>Create organization</SubmitButton></>}>
-      {error && <div className="form-error">{error}</div>}
-      <div className="form-grid">
-        <Field label="Organization name" required full><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Qruize Technologies" maxLength={80} /></Field>
-        <Field label="Description" full><textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What does this team work on?" maxLength={500} /></Field>
-      </div>
-    </Modal>
-  );
-}
-
 function WorkspaceSwitcher() {
   const ctx = useAuth((s) => s.ctx)!;
   const switchWorkspace = useAuth((s) => s.switchWorkspace);
@@ -334,18 +309,32 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const collapsed = useUi((s) => s.sidebarCollapsed);
   const loc = useLocation();
   const main = useRef<HTMLElement>(null);
+  const phone = useIsMobile();
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
+  const page = <Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense>;
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${phone ? 'm-shell' : ''}`}>
       <LensSync />
-      <Sidebar />
-      <div className={`main ${collapsed ? 'expanded' : ''}`}>
-        <PlatformBanner />
-        <Topbar />
-        <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></main>
-      </div>
+      {phone ? (
+        <div className="main m-main">
+          <PlatformBanner />
+          <MobileTopBar />
+          <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
+          <TabBar />
+          <PullToRefresh />
+        </div>
+      ) : (
+        <>
+          <Sidebar />
+          <div className={`main ${collapsed ? 'expanded' : ''}`}>
+            <PlatformBanner />
+            <Topbar />
+            <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
+          </div>
+        </>
+      )}
       <ToastRoot />
       <ConfirmRoot />
       <DesktopNotifier />

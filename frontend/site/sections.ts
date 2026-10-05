@@ -102,7 +102,7 @@ export function landing(): string {
 <div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}<p style="margin-top:10px"><a href="/pricing/"><strong>Compare every plan →</strong></a></p></div></section>
 <section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Questions</p><h2>Answers before you ask</h2></div><div style="height:30px"></div>${faq()}</div></section>
 ${band('Bring your projects into one clear view', 'Create your workspace in a minute. Invite your team when you are ready.')}
-</main>${footer()}`;
+</main>${footer()}<div class="sticky" aria-hidden="true"><a class="btn btn-glass" href="/login" tabindex="-1">Sign in</a><a class="btn btn-primary" href="/register" tabindex="-1">Start free</a></div>`;
 }
 
 // ---- the static pages

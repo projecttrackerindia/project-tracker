@@ -222,6 +222,9 @@ footer .legal{margin-top:34px;padding-top:20px;border-top:1px solid var(--glass-
 @media (max-width:620px){.plans,.grid,.two{grid-template-columns:1fr}.bento{grid-template-columns:1fr}.tile,.tile.w{grid-column:auto}.actions .btn-glass{display:none}.top .wrap{gap:12px}
   .hero{padding:110px 0 44px}section.block{padding:64px 0}.vs .hd,.vs .rw{grid-template-columns:1fr}.vs .hd>div:nth-child(2),.vs .hd>div:nth-child(3){display:none}.vs .rw>div:first-child{padding-bottom:4px;color:var(--brand)}
   .whatif .res{margin-left:0;text-align:left}.band{padding:48px 20px}}
+.sticky{display:none}
+@media (max-width:620px){.sticky{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:25;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:rgba(10,7,22,.9);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-top:1px solid var(--glass-line);transform:translateY(110%);transition:transform .35s cubic-bezier(.2,.9,.25,1)}
+  .sticky.show{transform:none}.sticky .btn{flex:1;min-height:50px}footer{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
   __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note{opacity:1!important}}
 `;

@@ -47,6 +47,7 @@ jobs:
           npx playwright-core install chromium
           node e2e/smoke.mjs
           node e2e/public.mjs
+          node e2e/mobile.mjs
       - name: Logs
         if: failure()
         run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true

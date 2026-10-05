@@ -1,4 +1,5 @@
 import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useSheetDrag } from './Sheet';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
@@ -279,6 +280,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
   size?: 'sm' | 'lg' | 'xl'; onSubmit?: (e: FormEvent<HTMLFormElement>) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const drag = useSheetDrag(() => ref.current, onClose);   // on a phone a dialog is a sheet: drag its handle down to dismiss it
 
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -316,6 +318,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
   return createPortal(
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} className={`modal ${size ?? ''}`} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal-grab" {...drag}><i aria-hidden="true" /></div>
         {onSubmit ? <form onSubmit={onSubmit} noValidate style={{ display: 'contents' }}>{inner}</form> : inner}
       </div>
     </div>,
