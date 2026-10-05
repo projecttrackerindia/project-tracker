@@ -78,6 +78,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
+    public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
+    public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();
     public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
     public DbSet<ReminderPolicy> ReminderPolicies => Set<ReminderPolicy>();
@@ -487,6 +489,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Feedback).HasMaxLength(8);
             e.Property(x => x.FeedbackReason).HasMaxLength(24);
             e.HasOne<AiConversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ChatAttachment>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.MessageId });
+            e.HasIndex(x => x.MessageId);
+            e.Property(x => x.FileName).HasMaxLength(200);
+            e.Property(x => x.ContentType).HasMaxLength(120);
+            e.Property(x => x.StorageKey).HasMaxLength(200);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+        });
+        b.Entity<ChatReaction>(e =>
+        {
+            e.HasIndex(x => new { x.MessageId, x.UserId, x.Emoji }).IsUnique();
+            e.Property(x => x.Emoji).HasMaxLength(16);
         });
         b.Entity<AiUserProfile>(e =>
         {

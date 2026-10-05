@@ -8,6 +8,7 @@ import { BrandMark } from '../components/BrandMark';
 import { Field, Modal, PageLoader, SubmitButton, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
 import { orgHref } from '../lib/orgPath';
+import { setTitleParts } from '../lib/title';
 import { queryClient, useAuth, useIsPersonal } from '../stores/auth';
 import { toast, useUi } from '../stores/ui';
 import { RunningTimer } from '../features/time/RunningTimer';
@@ -51,6 +52,9 @@ function Sidebar() {
   const wid = ctx?.current?.id;
   // Unread messages: kept current by live events; the slow refresh is only a safety net.
   const unread = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
+  // The unread count is also in the tab title, so it shows when the app is in the background.
+  const unreadCount = unread.data?.count ?? 0;
+  useEffect(() => { setTitleParts({ unread: canChat ? unreadCount : 0 }); }, [unreadCount, canChat]);
   const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
   const reminders = useReminderCounts(!!wid && !isPlatformAdmin);
   // The same menu as the command palette; the sidebar adds the unread count to Chat and what needs attention to Reminders.

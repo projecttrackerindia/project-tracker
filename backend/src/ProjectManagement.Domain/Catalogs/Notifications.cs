@@ -12,6 +12,7 @@ public static class NotificationCatalog
     [
         new(NotificationType.TaskAssigned, "Task assigned to me", "Someone assigns a task to you.", true, true, false, false),
         new(NotificationType.Mention, "Mentions", "Someone @mentions you in a comment or in a project chat.", true, true, false, false),
+        new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date).", true, false, true, false),
         new(NotificationType.Comment, "Comments on my tasks", "New comments on tasks you are assigned to or reported.", true, false, false, false),
         new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, false, true, false),
         new(NotificationType.Nudge, "Reminders from others", "Someone reminds you about work.", true, true, true, false),

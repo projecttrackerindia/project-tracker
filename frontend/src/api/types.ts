@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -464,9 +464,12 @@ export interface Conversation {
 /** A project whose team chat has news for the signed-in person. */
 export interface ProjectChatUnread { projectId: string; conversationId: string; unread: number; mentions: number }
 export interface ChatReplyPreview { id: string; senderName: string | null; snippet: string; isDeleted: boolean }
+export interface ChatAttachment { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean }
+export interface ChatReaction { emoji: string; count: number; mine: boolean; names: string[] }
 export interface ChatMessage {
   id: string; conversationId: string; senderId: string | null; senderName: string | null; kind: 'User' | 'System'; body: string;
   replyTo: ChatReplyPreview | null; createdAt: string; editedAt: string | null; isDeleted: boolean;
+  attachments?: ChatAttachment[] | null; reactions?: ChatReaction[] | null;
 }
 export interface ChatThread { items: ChatMessage[]; hasMore: boolean }
 export interface ChatSearchHit { messageId: string; conversationId: string; conversationName: string; senderName: string | null; snippet: string; at: string }

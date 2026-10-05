@@ -102,7 +102,10 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
     /// <summary>Bytes used by files of projects that still exist (files of deleted projects no longer count).</summary>
     public async Task<long> StorageUsedBytesAsync(CancellationToken ct = default) =>
         (await db.Attachments.Where(a => db.Projects.Any(p => p.Id == a.ProjectId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
-        + (await db.WorkTaskAttachments.Where(a => db.WorkTasks.Any(t => t.Id == a.WorkTaskId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0);
+        + (await db.WorkTaskAttachments.Where(a => db.WorkTasks.Any(t => t.Id == a.WorkTaskId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
+        // Files sent in chat and shown to the AI assistant live in the same storage and count against the same plan limit.
+        + (await db.ChatAttachments.SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
+        + (await db.AiAttachments.SumAsync(a => (long?)a.SizeBytes, ct) ?? 0);
 
     public record UsageItem(string Key, string Label, long Used, long Limit);
 

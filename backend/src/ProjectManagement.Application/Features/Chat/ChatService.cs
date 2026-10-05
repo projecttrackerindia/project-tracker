@@ -4,6 +4,7 @@ using ProjectManagement.Application.Common;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Files;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
@@ -42,8 +43,11 @@ public record ConversationDto(Guid Id, ConversationType Type, string Name, IRead
 /// <summary>How much of a project's team chat the caller has not read, and how many of those messages @mention them.</summary>
 public record ProjectChatUnreadDto(Guid ProjectId, Guid ConversationId, int Unread, int Mentions);
 public record ReplyPreviewDto(Guid Id, string? SenderName, string Snippet, bool IsDeleted);
+public record ChatAttachmentDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage);
+public record ChatReactionDto(string Emoji, int Count, bool Mine, IReadOnlyList<string> Names);
 public record ChatMessageDto(Guid Id, Guid ConversationId, Guid? SenderId, string? SenderName, ChatMessageKind Kind, string Body,
-    ReplyPreviewDto? ReplyTo, DateTime CreatedAt, DateTime? EditedAt, bool IsDeleted);
+    ReplyPreviewDto? ReplyTo, DateTime CreatedAt, DateTime? EditedAt, bool IsDeleted,
+    IReadOnlyList<ChatAttachmentDto>? Attachments = null, IReadOnlyList<ChatReactionDto>? Reactions = null);
 public record MessagePageDto(IReadOnlyList<ChatMessageDto> Items, bool HasMore);
 public record ChatSearchHitDto(Guid MessageId, Guid ConversationId, string ConversationName, string? SenderName, string Snippet, DateTime At);
 public record UnreadDto(int Count);
@@ -52,7 +56,8 @@ public record OpenDirectRequest(Guid UserId);
 public record CreateGroupRequest(string Name, IReadOnlyList<Guid>? MemberIds);
 public record RenameGroupRequest(string Name);
 public record AddMembersRequest(IReadOnlyList<Guid>? UserIds);
-public record SendMessageRequest(string? Body, Guid? ReplyToId);
+public record SendMessageRequest(string? Body, Guid? ReplyToId, IReadOnlyList<Guid>? AttachmentIds = null);
+public record ReactRequest(string? Emoji);
 public record EditMessageRequest(string? Body);
 public record MuteRequest(bool Muted);
 
@@ -61,10 +66,13 @@ public record MuteRequest(bool Muted);
 /// here (so the rules are checked in one place); the live hub only carries the news to open browser tabs.
 /// </summary>
 public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IChatNotifier notifier, IChatPresence presence, PermissionService permissions,
-    NotificationService notifications, ILogger<ChatService> log)
+    NotificationService notifications, AttachmentService files, IFileStorage storage, EntitlementService entitlements, ILogger<ChatService> log)
 {
     public const int MaxBody = 4000;
     public const int MaxGroupMembers = 50;
+    public const int MaxFilesPerMessage = 5;
+    /// <summary>The reactions on offer: a small, workplace-friendly set (a free-form emoji field is a spam and layout risk).</summary>
+    public static readonly string[] Reactions = ["👍", "❤️", "😂", "🎉", "🙏", "👀", "✅", "🚀"];
     private const int PageSize = 40;
 
     // ------------------------------------------------------------------ who may chat
@@ -522,8 +530,18 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var userIds = messages.Where(m => m.SenderId != null).Select(m => m.SenderId!.Value).Concat(replies.Where(r => r.SenderId != null).Select(r => r.SenderId!.Value)).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
 
+        var ids = messages.Select(m => m.Id).ToList();
+        var me = ctx.UserId;
+        var fileRows = await db.ChatAttachments.AsNoTracking().Where(a => a.MessageId != null && ids.Contains(a.MessageId.Value)).OrderBy(a => a.CreatedAt)
+            .Select(a => new { a.Id, MessageId = a.MessageId!.Value, a.FileName, a.ContentType, a.SizeBytes }).ToListAsync(ct);
+        var reactionRows = await db.ChatReactions.AsNoTracking().Where(r => ids.Contains(r.MessageId)).OrderBy(r => r.CreatedAt).Select(r => new { r.MessageId, r.UserId, r.Emoji }).ToListAsync(ct);
+        var reactorNames = reactionRows.Count == 0 ? [] : await db.Users.AsNoTracking().Where(u => reactionRows.Select(r => r.UserId).Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+
         return messages.Select(m =>
         {
+            var attachments = m.DeletedAt != null ? null : fileRows.Where(f => f.MessageId == m.Id).Select(f => new ChatAttachmentDto(f.Id, f.FileName, f.ContentType, f.SizeBytes, FileRules.IsImage(f.ContentType))).ToList();
+            var reactions = m.DeletedAt != null ? null : reactionRows.Where(r => r.MessageId == m.Id).GroupBy(r => r.Emoji)
+                .Select(g => new ChatReactionDto(g.Key, g.Count(), g.Any(r => r.UserId == me), g.Take(10).Select(r => reactorNames.GetValueOrDefault(r.UserId) ?? "Someone").ToList())).ToList();
             ReplyPreviewDto? reply = null;
             if (m.ReplyToId is { } rid)
             {
@@ -532,7 +550,8 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
                     : new ReplyPreviewDto(r.Id, r.SenderId is { } s ? names.GetValueOrDefault(s) : null, r.DeletedAt is null ? Snippet(r.Body) : "", r.DeletedAt != null);
             }
             return new ChatMessageDto(m.Id, m.ConversationId, m.SenderId, m.SenderId is { } sid ? names.GetValueOrDefault(sid) : null, m.Kind,
-                m.DeletedAt is null ? m.Body : "", reply, m.CreatedAt, m.EditedAt, m.DeletedAt != null);
+                m.DeletedAt is null ? m.Body : "", reply, m.CreatedAt, m.EditedAt, m.DeletedAt != null,
+                attachments is { Count: > 0 } ? attachments : null, reactions is { Count: > 0 } ? reactions : null);
         }).ToList();
     }
 
@@ -599,7 +618,13 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             audience = await SyncProjectMembersAsync(tenant, conv, ct);
         }
         var (normalized, mentioned) = await ResolveMentionsAsync(req.Body, audience, ct);
-        var text = CleanBody(normalized);
+        // Files that were uploaded for this message: they must be the sender's own, in this conversation and not yet sent.
+        var attachIds = (req.AttachmentIds ?? []).Distinct().ToList();
+        if (attachIds.Count > MaxFilesPerMessage) throw new ValidationException("attachmentIds", $"A message can carry up to {MaxFilesPerMessage} files.");
+        var attachRows = attachIds.Count == 0 ? [] : await db.ChatAttachments.Where(a => attachIds.Contains(a.Id) && a.ConversationId == conversationId && a.UploaderId == me && a.MessageId == null).ToListAsync(ct);
+        if (attachRows.Count != attachIds.Count) throw new ValidationException("attachmentIds", "One of the files is no longer available. Add it again.");
+        if (attachRows.Count > 0) await entitlements.EnsureFeatureAsync(FeatureKeys.ChatAttachments, ct);
+        var text = attachRows.Count > 0 && string.IsNullOrWhiteSpace(normalized) ? "" : CleanBody(normalized);
 
         Guid? replyTo = null;
         if (req.ReplyToId is { } r)
@@ -619,18 +644,58 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var now = clock.Now;
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = me, Kind = ChatMessageKind.User, Body = text, ReplyToId = replyTo };
         db.ChatMessages.Add(msg);
-        conv.LastMessageAt = now; conv.LastMessageId = msg.Id; conv.LastMessageSenderId = me; conv.LastMessageSnippet = Snippet(text);
+        var preview = text.Length > 0 ? text : attachRows.Count == 1 ? $"Sent a file: {attachRows[0].FileName}" : $"Sent {attachRows.Count} files";
+        conv.LastMessageAt = now; conv.LastMessageId = msg.Id; conv.LastMessageSenderId = me; conv.LastMessageSnippet = Snippet(preview);
         mine.LastReadAt = now;   // writing means the sender has caught up
+        foreach (var a in attachRows) a.MessageId = msg.Id;
         foreach (var u in mentioned) db.ChatMentions.Add(new ChatMention { MessageId = msg.Id, ConversationId = conversationId, UserId = u });
         if (mentioned.Count > 0) await NotifyMentionsAsync(tenant, conv, projectName, text, mentioned, ct);
+        var to = audience?.ToList() ?? await RecipientsAsync(tenant, conversationId, ct);
+        // Direct and group messages leave a notice for the people who are away from the conversation (project chats only do so for @mentions, above).
+        var noticed = conv.Type == ConversationType.Project ? [] : await NotifyMessageAsync(conv, preview, to, ct);
         await db.SaveChangesAsync(ct);
 
         var dto = (await ToDtosAsync([msg], ct))[0];
-        var to = audience?.ToList() ?? await RecipientsAsync(tenant, conversationId, ct);
         await PushAsync(tenant, to, ChatEvents.Message,
             new { conversationId, message = dto, projectId = conv.ProjectId, conversationName = conv.Type == ConversationType.Project ? projectName : null, mentioned }, ct);
-        if (mentioned.Count > 0) await PushAsync(tenant, mentioned.Where(u => u != me), ChatEvents.Notification, new { }, ct);
+        var nudge = mentioned.Concat(noticed).Where(u => u != me).Distinct().ToList();
+        if (nudge.Count > 0) await PushAsync(tenant, nudge, ChatEvents.Notification, new { }, ct);
         return dto;
+    }
+
+    /// <summary>
+    /// Leaves a notice in the bell of each person who has not read the conversation: one per conversation, kept up to date ("3 new messages") instead of one per
+    /// message, and gone as soon as they read it. Muted conversations and people who chose to switch these off get nothing. Returns who has a (new or updated) notice.
+    /// </summary>
+    private async Task<List<Guid>> NotifyMessageAsync(Conversation conv, string preview, IEnumerable<Guid> recipients, CancellationToken ct)
+    {
+        var me = ctx.RequireUserId();
+        var sender = await NameOfAsync(me, ct);
+        var link = $"/chat/{conv.Id}";
+        var title = conv.Type == ConversationType.Group ? $"{sender} in {conv.Name}" : sender;
+        var members = await db.ConversationMembers.AsNoTracking().Where(m => m.ConversationId == conv.Id).Select(m => new { m.UserId, m.IsMuted, m.LastReadAt }).ToListAsync(ct);
+        var now = clock.Now;
+        var told = new List<Guid>();
+        foreach (var u in recipients.Where(u => u != me))
+        {
+            var mem = members.FirstOrDefault(m => m.UserId == u);
+            if (mem is null || mem.IsMuted) continue;
+            var unread = await db.ChatMessages.CountAsync(m => m.ConversationId == conv.Id && m.CreatedAt > mem.LastReadAt && m.SenderId != u && m.Kind == ChatMessageKind.User && m.DeletedAt == null, ct) + 1;
+            var body = unread <= 1 ? Snippet(preview) : $"{unread} new messages. Latest: {Snippet(preview)}";
+            var existing = await db.Notifications.FirstOrDefaultAsync(n => n.UserId == u && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null, ct);
+            if (existing is not null)
+            {
+                if (!await notifications.WantsInAppAsync(u, NotificationType.Message, ct)) continue;   // they have since switched these off: leave it as it was
+                existing.Title = Text.Truncate(title, 200)!; existing.Body = Text.Truncate(body, 500); existing.CreatedAt = now;
+                told.Add(u);
+            }
+            else
+            {
+                await notifications.AddAsync(u, NotificationType.Message, title, body, link, ct: ct);
+                told.Add(u);
+            }
+        }
+        return told;
     }
 
     public async Task<ChatMessageDto> EditAsync(Guid messageId, EditMessageRequest req, CancellationToken ct = default)
@@ -682,10 +747,83 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
         msg.DeletedAt = clock.Now; msg.Body = "";   // the text is erased, not just hidden
         if (conv.LastMessageId == msg.Id) conv.LastMessageSnippet = "Message deleted";
+        // So are its files and reactions: the bytes are removed from storage, not just hidden.
+        var gone = await db.ChatAttachments.Where(a => a.MessageId == msg.Id).ToListAsync(ct);
+        db.ChatAttachments.RemoveRange(gone);
+        db.ChatReactions.RemoveRange(await db.ChatReactions.Where(r => r.MessageId == msg.Id).ToListAsync(ct));
         await db.SaveChangesAsync(ct);
+        foreach (var a in gone) { try { await storage.DeleteAsync(a.StorageKey, CancellationToken.None); } catch (Exception ex) { log.LogWarning(ex, "Could not remove chat file {Key}", a.StorageKey); } }
 
         var dto = (await ToDtosAsync([msg], ct))[0];
         await PushAsync(tenant, await RecipientsAsync(tenant, msg.ConversationId, ct), ChatEvents.MessageUpdated, new { conversationId = msg.ConversationId, message = dto }, ct);
+    }
+
+    // ------------------------------------------------------------------ files and reactions
+
+    /// <summary>
+    /// Stores a file for a message that is about to be sent. The plan decides whether chat files are allowed at all, how big one may be and how much storage
+    /// the organization has; the type is decided by the server and checked against the content. Until the message is sent only its uploader can see the file.
+    /// </summary>
+    public async Task<ChatAttachmentDto> UploadAsync(Guid conversationId, string? fileName, Stream content, long length, CancellationToken ct = default)
+    {
+        var (tenant, me) = Require();
+        await MembershipAsync(conversationId, me, ct);
+        await entitlements.EnsureFeatureAsync(FeatureKeys.ChatAttachments, ct);
+        var conv = await db.Conversations.AsNoTracking().Where(c => c.Id == conversationId).Select(c => new { c.Type, c.ProjectId }).FirstAsync(ct);
+        if (conv.Type == ConversationType.Project && await db.Projects.AsNoTracking().AnyAsync(p => p.Id == conv.ProjectId && p.Status == ProjectStatus.Archived, ct))
+            throw new ConflictException("This project is archived, so its chat is read-only.", "PROJECT_ARCHIVED");
+        if (await db.ChatAttachments.CountAsync(a => a.ConversationId == conversationId && a.UploaderId == me && a.MessageId == null, ct) >= MaxFilesPerMessage * 2)
+            throw new ValidationException("file", "Send or remove the files you already added first.");
+        var stored = await files.StoreAsync(fileName, content, length, ct);
+        var row = new ChatAttachment { TenantId = tenant, ConversationId = conversationId, UploaderId = me, FileName = stored.Name, ContentType = stored.ContentType, SizeBytes = length, StorageKey = stored.Key, Sha256 = stored.Sha256, CreatedAt = clock.Now, CreatedBy = me };
+        db.ChatAttachments.Add(row);
+        try { await db.SaveChangesAsync(ct); }
+        catch { await storage.DeleteAsync(stored.Key, CancellationToken.None); throw; }
+        return new ChatAttachmentDto(row.Id, row.FileName, row.ContentType, row.SizeBytes, FileRules.IsImage(row.ContentType));
+    }
+
+    /// <summary>Takes back a file that was uploaded but not sent.</summary>
+    public async Task RemovePendingFileAsync(Guid id, CancellationToken ct = default)
+    {
+        var (_, me) = Require();
+        var a = await db.ChatAttachments.FirstOrDefaultAsync(x => x.Id == id && x.UploaderId == me && x.MessageId == null, ct) ?? throw new NotFoundException("File not found.");
+        db.ChatAttachments.Remove(a);
+        await db.SaveChangesAsync(ct);
+        await storage.DeleteAsync(a.StorageKey, CancellationToken.None);
+    }
+
+    /// <summary>A file for download: only for people in the conversation (the uploader sees it before it is sent). The caller disposes the stream.</summary>
+    public async Task<(ChatAttachment File, Stream Content)> OpenFileAsync(Guid id, CancellationToken ct = default)
+    {
+        var (_, me) = Require();
+        var a = await db.ChatAttachments.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("File not found.");
+        if (a.MessageId is null) { if (a.UploaderId != me) throw new NotFoundException("File not found."); }
+        else
+        {
+            try { await MembershipAsync(a.ConversationId, me, ct); } catch (NotFoundException) { throw new NotFoundException("File not found."); }
+            if (await db.ChatMessages.AsNoTracking().AnyAsync(m => m.Id == a.MessageId && m.DeletedAt != null, ct)) throw new NotFoundException("File not found.");
+        }
+        var stream = await storage.OpenReadAsync(a.StorageKey, ct);
+        if (stream is null) { log.LogError("Chat file {Id} is missing from storage ({Key})", id, a.StorageKey); throw new NotFoundException("This file is no longer available."); }
+        return (a, stream);
+    }
+
+    /// <summary>Adds (or, with <paramref name="on"/> false, takes back) the caller's reaction to a message.</summary>
+    public async Task<ChatMessageDto> ReactAsync(Guid messageId, string? emoji, bool on, CancellationToken ct = default)
+    {
+        var (tenant, me) = Require();
+        if (emoji is null || !Reactions.Contains(emoji)) throw new ValidationException("emoji", "Choose one of the reactions on offer.");
+        var msg = await db.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId, ct) ?? throw new NotFoundException("This message was not found.", "MESSAGE_NOT_FOUND");
+        await MembershipAsync(msg.ConversationId, me, ct);
+        if (msg.DeletedAt != null || msg.Kind != ChatMessageKind.User) throw new ConflictException("You cannot react to this message.", "MESSAGE_DELETED");
+        var existing = await db.ChatReactions.FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me && r.Emoji == emoji, ct);
+        if (on && existing is null) db.ChatReactions.Add(new ChatReaction { TenantId = tenant, MessageId = messageId, ConversationId = msg.ConversationId, UserId = me, Emoji = emoji, CreatedAt = clock.Now, CreatedBy = me });
+        else if (!on && existing is not null) db.ChatReactions.Remove(existing);
+        else return (await ToDtosAsync([msg], ct))[0];
+        await db.SaveChangesAsync(ct);
+        var dto = (await ToDtosAsync([msg], ct))[0];
+        await PushAsync(tenant, await RecipientsAsync(tenant, msg.ConversationId, ct), ChatEvents.MessageUpdated, new { conversationId = msg.ConversationId, message = dto }, ct);
+        return dto;
     }
 
     // ------------------------------------------------------------------ read state, mute, search
@@ -695,9 +833,14 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var (tenant, me) = Require();
         var mine = await MembershipAsync(conversationId, me, ct);
         var now = clock.Now;
-        if (mine.LastReadAt >= now) return;
+        // Reading the conversation clears its notice in the bell (on this person's other tabs too).
+        var link = $"/chat/{conversationId}";
+        var notices = await db.Notifications.Where(n => n.UserId == me && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null).ToListAsync(ct);
+        foreach (var n in notices) n.ReadAt = now;
+        if (mine.LastReadAt >= now && notices.Count == 0) return;
         mine.LastReadAt = now;
         await db.SaveChangesAsync(ct);
+        if (notices.Count > 0) await PushAsync(tenant, [me], ChatEvents.Notification, new { }, ct);
         await PushAsync(tenant, await RecipientsAsync(tenant, conversationId, ct), ChatEvents.Read, new { conversationId, userId = me, at = now }, ct);
     }
 

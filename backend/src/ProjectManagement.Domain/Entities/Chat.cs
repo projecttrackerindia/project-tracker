@@ -62,4 +62,29 @@ namespace ProjectManagement.Domain.Entities
         public Guid ConversationId { get; set; }
         public Guid UserId { get; set; }
     }
+
+    /// <summary>
+    /// A file sent in a conversation. It is uploaded first (MessageId empty) and attached when the message is sent; whoever is in the conversation may open it.
+    /// The bytes live in file storage (S3 or local); the type was decided by the server from the extension and checked against the content.
+    /// </summary>
+    public class ChatAttachment : TenantEntity, ITenantScoped
+    {
+        public Guid ConversationId { get; set; }
+        public Guid? MessageId { get; set; }
+        public Guid UploaderId { get; set; }
+        public string FileName { get; set; } = "";
+        public string ContentType { get; set; } = "";
+        public long SizeBytes { get; set; }
+        public string StorageKey { get; set; } = "";
+        public string Sha256 { get; set; } = "";
+    }
+
+    /// <summary>One person's emoji reaction to a message. A person can give each emoji once.</summary>
+    public class ChatReaction : TenantEntity, ITenantScoped
+    {
+        public Guid MessageId { get; set; }
+        public Guid ConversationId { get; set; }
+        public Guid UserId { get; set; }
+        public string Emoji { get; set; } = "";
+    }
 }

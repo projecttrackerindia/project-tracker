@@ -3,10 +3,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
-import type { ChatMessage, ChatThread, Conversation } from '../../api/types';
+import type { ChatAttachment, ChatMessage, ChatThread, Conversation } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Avatar, PageLoader, Spinner } from '../../components/ui';
-import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
+import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
@@ -14,6 +14,8 @@ import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
 
 const MAX_LENGTH = 4000;
+const MAX_FILES = 5;
+const REACTIONS = ['👍', '❤️', '😂', '🎉', '🙏', '👀', '✅', '🚀'];
 const GROUP_WITHIN_MS = 5 * 60_000;
 const drafts = new Map<string, string>();   // what was typed and not sent, per conversation, until the tab is closed
 
@@ -235,12 +237,75 @@ function Ticks({ read }: { read: boolean }) {
 }
 
 // ------------------------------------------------------------------ one message
+function fileSize(bytes: number) { return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`; }
+
+/** A picture sent in chat, fetched with the signed-in person's access (a file is never a public link). Click to view it larger. */
+function ChatImage({ file }: { file: ChatAttachment }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let live = true; let made: string | null = null;
+    chatApi.fileUrl(file.id, true).then((u) => { made = u; if (live) setUrl(u); else URL.revokeObjectURL(u); }).catch(() => undefined);
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+  }, [file.id]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [open]);
+  return (
+    <>
+      <button type="button" className="chat-img" onClick={() => url && setOpen(true)} aria-label={`View ${file.fileName}`}>
+        {url ? <img src={url} alt={file.fileName} loading="lazy" /> : <span className="chat-img-wait"><Spinner /></span>}
+      </button>
+      {open && url && (
+        <div className="chat-lightbox" role="dialog" aria-label={file.fileName} onClick={() => setOpen(false)}>
+          <img src={url} alt={file.fileName} onClick={(e) => e.stopPropagation()} />
+          <button type="button" className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}><Icon name="close" size={18} /></button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ChatFile({ file }: { file: ChatAttachment }) {
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const url = await chatApi.fileUrl(file.id);
+      const a = document.createElement('a'); a.href = url; a.download = file.fileName; document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch { toast('Could not download the file.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <button type="button" className="chat-file" onClick={() => void save()} disabled={busy} title={`Download ${file.fileName}`}>
+      <span className="chat-file-icon"><Icon name="paperclip" size={16} /></span>
+      <span className="chat-file-meta"><b>{file.fileName}</b><em>{fileSize(file.sizeBytes)}</em></span>
+      {busy ? <Spinner /> : <Icon name="download" size={14} />}
+    </button>
+  );
+}
+
 function MessageRow({ m, mine, grouped, showName, canModerate, ticks, aboutMe, read, showStatus, onReply, onEdit, onDelete, onJump }: {
   m: ChatMessage; mine: boolean; grouped: boolean; showName: boolean; canModerate: boolean; ticks: boolean; aboutMe: boolean; read: boolean; showStatus: boolean;
   onReply: () => void; onEdit: () => void; onDelete: () => void; onJump: (id: string) => void;
 }) {
+  const wid = useWorkspaceId();
+  const [picking, setPicking] = useState(false);
+  const pickRef = useRef<HTMLDivElement>(null);
+  useClickOutside(pickRef, () => setPicking(false));
+  /** Adds or takes back the person's own reaction; the answer is the message as it now stands, written into the open conversation at once. */
+  const onReact = (emoji: string, on: boolean) => {
+    if (!wid) return;
+    (on ? chatApi.react(m.id, emoji) : chatApi.unreact(m.id, emoji))
+      .then((updated) => queryClient.setQueryData<ChatThread>(chatKeys.thread(wid, m.conversationId), (old) => old && { ...old, items: old.items.map((x) => (x.id === updated.id ? updated : x)) }))
+      .catch((e) => toast(e instanceof ApiError ? e.message : 'Could not save your reaction.', 'error'));
+  };
   return (
-    <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${aboutMe ? 'mentions-me' : ''}`} data-msg={m.id}>
+    <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${aboutMe ? 'mentions-me' : ''}`} data-msg={m.id} ref={pickRef}>
       {!mine && (grouped ? <span className="avatar-gap" /> : <Avatar name={m.senderName} size="sm" />)}
       <div className="msg-col">
         {!grouped && (
@@ -260,12 +325,36 @@ function MessageRow({ m, mine, grouped, showName, canModerate, ticks, aboutMe, r
           )}
           {m.isDeleted
             ? <em className="deleted">This message was deleted</em>
-            : <div className="msg-text">{renderBody(m.body)}{m.editedAt && <span className="edited"> (edited)</span>}</div>}
+            : <>
+                {m.body && <div className="msg-text">{renderBody(m.body)}{m.editedAt && <span className="edited"> (edited)</span>}</div>}
+                {(m.attachments?.length ?? 0) > 0 && (
+                  <div className="chat-files">{m.attachments!.map((f) => (f.isImage ? <ChatImage key={f.id} file={f} /> : <ChatFile key={f.id} file={f} />))}</div>
+                )}
+              </>}
         </div>
+        {!m.isDeleted && (m.reactions?.length ?? 0) > 0 && (
+          <div className="chat-reactions">
+            {m.reactions!.map((r) => (
+              <button key={r.emoji} type="button" className={`react-chip ${r.mine ? 'on' : ''}`} onClick={() => onReact(r.emoji, !r.mine)}
+                title={r.names.join(', ')} aria-pressed={r.mine} aria-label={`${r.emoji} ${r.count}${r.mine ? ', you reacted' : ''}`}>{r.emoji}<span>{r.count}</span></button>
+            ))}
+          </div>
+        )}
         {/* When messages are grouped the meta row (and its ticks) is hidden; still show the status under the very last one you sent. */}
         {ticks && grouped && mine && showStatus && !m.isDeleted && <div className="msg-status"><Ticks read={read} /></div>}
         {!m.isDeleted && (
           <div className="msg-actions" role="group" aria-label="Message actions">
+            <div className="react-wrap">
+              <button className="btn-icon" onClick={() => setPicking((v) => !v)} aria-label="Add reaction" aria-expanded={picking} title="React"><Icon name="smile" size={14} /></button>
+              {picking && (
+                <div className="react-pop" role="menu" aria-label="Reactions">
+                  {REACTIONS.map((emoji) => (
+                    <button key={emoji} type="button" role="menuitem" className="emoji-item" aria-label={emoji}
+                      onClick={() => { setPicking(false); onReact(emoji, !(m.reactions?.find((r) => r.emoji === emoji)?.mine)); }}>{emoji}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className="btn-icon" onClick={onReply} aria-label="Reply" title="Reply"><Icon name="undo" size={14} /></button>
             <button className="btn-icon" aria-label="Remind me about this" title="Remind me about this"
               onClick={() => openReminderComposer({ subject: { type: 'ChatMessage', id: m.id, title: m.body.replace(/\s+/g, ' ').slice(0, 117) + (m.body.length > 117 ? '…' : ''), key: 'Message' } })}><Icon name="alarm" size={14} /></button>
@@ -293,6 +382,33 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const lastTyping = useRef(0);
   const composing = useRef(false);
   useClickOutside(emojiRef, () => setEmojiOpen(false));
+
+  // ---- files and pictures: uploaded as soon as they are chosen (so a big one is ready by the time the message is), sent with the message
+  type Pending = { localId: string; name: string; size: number; status: 'uploading' | 'ready' | 'error'; attachment?: ChatAttachment; error?: string };
+  const canAttach = useEntitlement('CHAT_ATTACHMENTS') > 0 && !editing;
+  const [pending, setPending] = useState<Pending[]>([]);
+  const picker = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const addFiles = (list: FileList | File[]) => {
+    if (!canAttach) return;
+    const incoming = Array.from(list);
+    const room = MAX_FILES - pending.length;
+    if (incoming.length > room) toast(`A message can carry up to ${MAX_FILES} files.`, 'info');
+    for (const file of incoming.slice(0, Math.max(0, room))) {
+      const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setPending((p) => [...p, { localId, name: file.name, size: file.size, status: 'uploading' }]);
+      chatApi.uploadFile(id, file)
+        .then((attachment) => setPending((p) => p.map((x) => (x.localId === localId ? { ...x, status: 'ready', attachment } : x))))
+        .catch((e) => setPending((p) => p.map((x) => (x.localId === localId ? { ...x, status: 'error', error: e instanceof ApiError ? e.message : 'Could not upload it.' } : x))));
+    }
+  };
+  const dropFile = (localId: string) => {
+    const f = pending.find((x) => x.localId === localId);
+    setPending((p) => p.filter((x) => x.localId !== localId));
+    if (f?.attachment) void chatApi.removeFile(f.attachment.id).catch(() => undefined);
+  };
+  const readyIds = pending.filter((f) => f.status === 'ready').map((f) => f.attachment!.id);
+  const uploading = pending.some((f) => f.status === 'uploading');
 
   // ---- @mentions (project chats): typing @ and a few letters suggests the people in the chat; picking one puts a chip in the text.
   const [mention, setMention] = useState<{ query: string; index: number } | null>(null);
@@ -353,22 +469,22 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   }, []);
 
   const send = useMutation({
-    mutationFn: (body: string) => (editing ? chatApi.edit(editing.id, body) : chatApi.send(id, body, replyTo?.id)),
-    onSuccess: (m) => { drafts.delete(id); onSent(m); },
-    onError: (e, body) => {
-      setText(body);
-      if (box.current) { box.current.innerHTML = markdownToHtml(body); setIsEmpty(!body); }
+    mutationFn: (v: { body: string; ids: string[] }) => (editing ? chatApi.edit(editing.id, v.body) : chatApi.send(id, v.body, replyTo?.id, v.ids)),
+    onSuccess: (m) => { drafts.delete(id); setPending([]); onSent(m); },
+    onError: (e, v) => {
+      setText(v.body);
+      if (box.current) { box.current.innerHTML = markdownToHtml(v.body); setIsEmpty(!v.body); }
       toast(e instanceof ApiError ? e.message : 'The message could not be sent.', 'error');
     },
   });
 
   const submit = () => {
     const body = text.trim();
-    if (!body || send.isPending || body.length > MAX_LENGTH) return;
+    if ((!body && readyIds.length === 0) || send.isPending || uploading || body.length > MAX_LENGTH) return;
     setText('');
     setIsEmpty(true);
     if (box.current) box.current.innerHTML = '';
-    send.mutate(body);
+    send.mutate({ body, ids: readyIds });
   };
 
   /** Whether the toolbar buttons should show as "on" right now — reflects the mark(s) around the cursor or selection,
@@ -432,6 +548,8 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
 
   /** Pasted content keeps only its text — no foreign fonts, colors or styles carried in from elsewhere. */
   const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
+    const pictures = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
+    if (pictures.length > 0 && canAttach) { e.preventDefault(); addFiles(pictures); return; }
     e.preventDefault();
     document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
     sync();
@@ -439,7 +557,10 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
 
   const over = text.length > MAX_LENGTH - 500;
   return (
-    <div className="composer">
+    <div className={`composer ${dragging ? 'dragging' : ''}`}
+      onDragOver={(e) => { if (canAttach && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { if (!canAttach) return; e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}>
       {mention && suggestions.length > 0 && (
         <ul className="mention-list" role="listbox" aria-label="Mention someone">
           {suggestions.map((p, i) => (
@@ -464,6 +585,14 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           aria-label="Italic" aria-pressed={marks.italic} title="Italic (Ctrl+I)"><Icon name="italic" size={15} /></button>
         <button type="button" className={`btn-icon sm ${marks.underline ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => applyMark('underline')}
           aria-label="Underline" aria-pressed={marks.underline} title="Underline (Ctrl+U)"><Icon name="underline" size={15} /></button>
+        {!editing && (
+          <>
+            <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+            <button type="button" className="btn-icon sm" onMouseDown={keepFocus} disabled={pending.length >= MAX_FILES}
+              onClick={() => (canAttach ? picker.current?.click() : toast('Sending files in chat is not part of your plan. You can upgrade it under Settings → Billing.', 'info'))}
+              aria-label="Attach a file" title={canAttach ? 'Attach files or pictures' : 'Files in chat are not part of your plan'}><Icon name="paperclip" size={15} /></button>
+          </>
+        )}
         <div className="emoji-wrap" ref={emojiRef}>
           <button type="button" className={`btn-icon sm ${emojiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setEmojiOpen((v) => !v)}
             aria-label="Add emoji" aria-expanded={emojiOpen} aria-haspopup="true" title="Emoji"><Icon name="smile" size={15} /></button>
@@ -477,6 +606,16 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           )}
         </div>
       </div>
+      {pending.length > 0 && (
+        <ul className="composer-files" aria-label="Files to send">
+          {pending.map((f) => (
+            <li key={f.localId} className={f.status}>
+              <Icon name="paperclip" size={13} /><span title={f.error ?? f.name}>{f.name}</span><em>{f.status === 'uploading' ? 'uploading…' : f.status === 'error' ? (f.error ?? 'failed') : fileSize(f.size)}</em>
+              <button type="button" className="btn-icon sm" onClick={() => dropFile(f.localId)} aria-label={`Remove ${f.name}`}><Icon name="close" size={12} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="composer-row">
         <div ref={box} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Write a message"
           className={`composer-editable ${isEmpty ? 'is-empty' : ''}`}
@@ -485,7 +624,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           onKeyUp={(e) => { updateMarks(); if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') detectMention(); }}
           onMouseUp={() => { updateMarks(); detectMention(); }}
           onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} />
-        <button className="btn btn-primary send-btn" onClick={submit} disabled={!text.trim() || send.isPending || text.length > MAX_LENGTH} aria-label={editing ? 'Save' : 'Send'}>
+        <button className="btn btn-primary send-btn" onClick={submit} disabled={(!text.trim() && readyIds.length === 0) || send.isPending || uploading || text.length > MAX_LENGTH} aria-label={editing ? 'Save' : 'Send'}>
           {send.isPending ? <Spinner /> : <Icon name={editing ? 'tick' : 'send'} size={16} />}
         </button>
       </div>

@@ -342,3 +342,33 @@
   .mention-list { left: 12.8px; width: min(256px, calc(100% - 25.6px)); max-height: 211px; padding: 4.8px; border-radius: 11px; }
   .mention-list li { gap: 8px; padding: 5.6px 7.2px; border-radius: 7.2px; font-size: 10.4px; }
 }
+
+/* ---- files, pictures and reactions in chat */
+.chat-files { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.chat-files:first-child { margin-top: 0; }
+.chat-img { display: block; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: var(--surface-3); cursor: zoom-in; max-width: 280px; min-height: 60px; }
+.chat-img img { display: block; max-width: 280px; max-height: 240px; object-fit: cover; }
+.chat-img-wait { display: grid; place-items: center; width: 120px; height: 80px; }
+.chat-lightbox { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; background: rgba(8, 6, 20, .82); cursor: zoom-out; }
+.chat-lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); cursor: default; }
+.chat-lightbox .btn-icon { position: absolute; top: 16px; right: 16px; color: #fff; background: rgba(255, 255, 255, .14); }
+.chat-file { display: flex; align-items: center; gap: 10px; min-width: 200px; max-width: 320px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: left; }
+.chat-file:hover { border-color: var(--primary); }
+.chat-file-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary-soft); color: var(--primary); flex: none; }
+.chat-file-meta { display: grid; min-width: 0; flex: 1; }
+.chat-file-meta b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-file-meta em { font-style: normal; font-size: 11.5px; color: var(--text-3); }
+.chat-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.react-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; line-height: 1.5; }
+.react-chip span { font-size: 11.5px; font-weight: 700; color: var(--text-2); }
+.react-chip.on { border-color: var(--primary); background: var(--primary-soft); }
+.react-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.react-wrap { position: relative; display: inline-flex; }
+.react-pop { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 30; display: flex; gap: 2px; padding: 4px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 10px 30px rgba(15, 10, 40, .18); }
+.msg.mine .react-pop { left: auto; right: 0; }
+.composer.dragging { outline: 2px dashed var(--primary); outline-offset: -4px; background: var(--primary-soft); }
+.composer-files { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.composer-files li { display: inline-flex; align-items: center; gap: 6px; max-width: 260px; padding: 3px 4px 3px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; }
+.composer-files li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-files li em { font-style: normal; color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+.composer-files li.error { border-color: var(--danger); } .composer-files li.error em { color: var(--danger-text, var(--danger)); }

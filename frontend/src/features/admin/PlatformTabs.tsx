@@ -125,7 +125,7 @@ const FEATURES: { key: string; label: string; flag: boolean }[] = [
   { key: 'REMINDER_LIMIT', label: 'Open reminders per person', flag: false }, { key: 'RECURRING_REMINDER_LIMIT', label: 'Repeating reminders per person', flag: false },
   { key: 'REMINDER_ESCALATION', label: 'Reminder escalation', flag: true },
   { key: 'AI_ASSISTANT', label: 'AI assistant', flag: true }, { key: 'AI_MODEL_TIER', label: 'AI model level (1 Quick, 2 Standard, 3 Deep)', flag: false },
-  { key: 'AI_MONTHLY_CREDITS', label: 'AI credits per month', flag: false }, { key: 'AI_ATTACHMENTS', label: 'AI: read images & documents', flag: true },
+  { key: 'AI_MONTHLY_CREDITS', label: 'AI credits per month', flag: false }, { key: 'AI_ATTACHMENTS', label: 'AI: read images & documents', flag: true }, { key: 'CHAT_ATTACHMENTS', label: 'Chat: send files & pictures', flag: true },
   { key: 'AI_ACTIONS', label: 'AI: take actions & send reports', flag: true },
 ];
 

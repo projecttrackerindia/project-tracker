@@ -1,6 +1,7 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useReducer, useRef, useState, type ComponentType } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { orgFromPath, firstSegment } from './lib/orgPath';
+import { setTitleParts } from './lib/title';
 import { ApiError } from './api/client';
 import { consentApi, meApi } from './api/endpoints';
 import type { ConsentDocument } from './api/types';
@@ -334,12 +335,21 @@ function OrgRouter() {
   const ctx = useAuth((s) => s.ctx);
   const [, refresh] = useReducer((n: number) => n + 1, 0);
   const activating = useRef<string | null>(null);
-  useEffect(() => { window.addEventListener('popstate', refresh); return () => window.removeEventListener('popstate', refresh); }, []);
+  useEffect(() => {
+    // The address can change from outside the router that is showing (the Back button, or a navigation started by a page that has just been
+    // replaced, like the sign-in page when its welcome animation ends): look again whenever it does, so the organization is always in it.
+    window.addEventListener('popstate', refresh);
+    const { pushState, replaceState } = window.history;
+    const notify = () => queueMicrotask(refresh);
+    window.history.pushState = function (...args) { const r = pushState.apply(this, args); notify(); return r; };
+    window.history.replaceState = function (...args) { const r = replaceState.apply(this, args); notify(); return r; };
+    return () => { window.removeEventListener('popstate', refresh); window.history.pushState = pushState; window.history.replaceState = replaceState; };
+  }, []);
 
   const ready = status === 'authenticated' && !!ctx?.current;
   // The organization is in the tab's title too, so several tabs of different organizations are told apart.
   const orgName = ready ? ctx!.current!.name : null;
-  useEffect(() => { document.title = orgName ? `${orgName} · Project Tracker` : 'Project Tracker'; }, [orgName]);
+  useEffect(() => { setTitleParts({ org: orgName, unread: orgName ? undefined : 0 }); }, [orgName]);
   const mine = ready ? orgFromPath(window.location.pathname, ctx!.workspaces) : undefined;
   const other = !!mine && mine.id !== ctx!.current!.id;
   useEffect(() => {

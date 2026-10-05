@@ -71,6 +71,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0, [FeatureKeys.AiAssistant] = 0,
             [FeatureKeys.ReminderLimit] = 50, [FeatureKeys.RecurringReminderLimit] = 5, [FeatureKeys.ReminderEscalation] = 0,
             [FeatureKeys.AiModelTier] = 0, [FeatureKeys.AiMonthlyCredits] = 0, [FeatureKeys.AiAttachments] = 0, [FeatureKeys.AiActions] = 0,
+            [FeatureKeys.ChatAttachments] = 0,
         }),
         ("PRO", "Pro", "For freelancers and small teams.", 999m, 1, new()
         {
@@ -82,6 +83,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ReminderLimit] = 500, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 0,
             // The assistant itself is still off on Pro (AI_ASSISTANT = 0); these are the levels that apply once it is switched on in Admin -> Plans.
             [FeatureKeys.AiModelTier] = 2, [FeatureKeys.AiMonthlyCredits] = 300, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 0,
+            [FeatureKeys.ChatAttachments] = 1,
         }),
         ("BUSINESS", "Business", "For growing teams and departments.", 2499m, 2, new()
         {
@@ -92,6 +94,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1, [FeatureKeys.AiAssistant] = 1,
             [FeatureKeys.ReminderLimit] = -1, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 1,
             [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 2000, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,
+            [FeatureKeys.ChatAttachments] = 1,
         }),
         ("ENTERPRISE", "Enterprise", "Custom pricing, unlimited scale and advanced governance.", null, 3, new()
         {
@@ -102,6 +105,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1, [FeatureKeys.AiAssistant] = 1,
             [FeatureKeys.ReminderLimit] = -1, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 1,
             [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = -1, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,
+            [FeatureKeys.ChatAttachments] = 1,
         }),
     ];
 

@@ -85,7 +85,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   CUSTOM_WORKFLOWS: 'Custom task workflows', ADVANCED_PERMISSIONS: 'Advanced role permissions', AUDIT_LOG: 'Audit log',
   ADVANCED_SECURITY: 'Single sign-on, SCIM & security rules', RESOURCE_MANAGEMENT: 'Timesheet approval, capacity & budgets', SERVICE_LEVELS: 'Service levels (SLA)', REMINDER_ESCALATION: 'Reminder escalation for overdue work',
   AI_ASSISTANT: 'AI assistant', AI_MODEL_TIER: 'AI model level (1 Quick, 2 Standard, 3 Deep)', AI_MONTHLY_CREDITS: 'AI credits per month',
-  AI_ATTACHMENTS: 'AI: read images & documents', AI_ACTIONS: 'AI: take actions & send reports',
+  AI_ATTACHMENTS: 'AI: read images & documents', CHAT_ATTACHMENTS: 'Chat: send files & pictures', AI_ACTIONS: 'AI: take actions & send reports',
   REMINDER_LIMIT: 'Open reminders per person', RECURRING_REMINDER_LIMIT: 'Repeating reminders per person',
 };
 export const PERMISSION_LABELS: Record<string, string> = {

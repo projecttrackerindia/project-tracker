@@ -82,4 +82,43 @@ public class ChatController(ChatService chat) : ApiControllerBase
         await chat.DeleteMessageAsync(id, ct);
         return NoContent();
     }
+
+    // ---- files (stored in the configured file storage, S3 or local; allowed by the plan's CHAT_ATTACHMENTS, file size and storage limits)
+
+    private const long FileCeiling = 520L * 1024 * 1024;   // the largest file the plans allow plus form overhead; the real limits are in AttachmentService
+
+    [HttpPost("conversations/{id:guid}/files")]
+    [RequestSizeLimit(FileCeiling), RequestFormLimits(MultipartBodyLengthLimit = FileCeiling)]
+    public async Task<IActionResult> UploadFile(Guid id, IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        return Created(await chat.UploadAsync(id, file.FileName, stream, file.Length, ct));
+    }
+
+    /// <summary>A file of a conversation the caller is in. Pictures can be shown inline; everything else downloads.</summary>
+    [HttpGet("files/{id:guid}")]
+    public async Task<IActionResult> DownloadFile(Guid id, [FromQuery] bool inline, CancellationToken ct)
+    {
+        var (file, content) = await chat.OpenFileAsync(id, ct);
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers.ContentSecurityPolicy = "default-src 'none'; sandbox";
+        return inline && ProjectManagement.Application.Features.Files.FileRules.IsImage(file.ContentType) ? File(content, file.ContentType) : File(content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>Takes back a file that was added but not sent.</summary>
+    [HttpDelete("files/{id:guid}")]
+    public async Task<IActionResult> RemoveFile(Guid id, CancellationToken ct)
+    {
+        await chat.RemovePendingFileAsync(id, ct);
+        return NoContent();
+    }
+
+    // ---- reactions
+
+    [HttpPut("messages/{id:guid}/reaction")]
+    public async Task<IActionResult> React(Guid id, [FromBody] ReactRequest req, CancellationToken ct) => Ok(await chat.ReactAsync(id, req.Emoji, true, ct));
+
+    [HttpDelete("messages/{id:guid}/reaction")]
+    public async Task<IActionResult> Unreact(Guid id, [FromQuery] string emoji, CancellationToken ct) => Ok(await chat.ReactAsync(id, emoji, false, ct));
 }

@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile } from './client';
-import type { BillingSettings, TimelineTemplate,
+import type { ChatAttachment, BillingSettings, TimelineTemplate,
   Activity, AdminPlan, AdminStats, AdminTenant, AdminTenantDetail, AdminUser, AdminUserDetail, AppContext, AppNotification, AuditLog, AuthResponse, ApiKey, GoLive, AdminTestEmailResult, PlatformBilling, AdminUsage, FeatureOverride, PlatformSettings, PlatformStatus, SystemHealth, Workload, WorkloadPersonDetail, WorkloadScope, WorkItem, WorkItemKind, EffectiveAccessList, Webhook, WebhookDelivery, Checklist, CustomField, CustomFieldValue, ImportPreview, ImportResult, PriorityInfo, ReportExport, ReportFormat, ReportKind, Sprint, SprintDetail, AutomationInput, AutomationRule, ProjectTime, TaskTime, TimeEntry, Timesheet, MfaChallenge, MfaSetup, MfaStatus, PasswordPolicy, BillingOverview, CalendarEvent,
   AccessMatrix, DependencyType, Milestone, MilestoneInput, TaskDependencies, ActionItem, ActionItemInput, ActionItemStatus, Attachment, AttachmentLimits, ProjectChatUnread, ProjectGroup, ProjectStatusReport, StatusGroup, Issue, IssueDetail, IssueInput, NotificationPreference, TestEmailResult, Comment, Dashboard, DevEmail, OrgRole, OrgStructure, Invitation, InvitationLookup, Label, Member, Paged, PermissionMatrix, Project, ProjectDetail, ProjectMember,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
@@ -447,7 +447,15 @@ export const chatApi = {
   addMembers: (id: string, userIds: string[]) => post<Conversation>(`/chat/conversations/${id}/members`, { userIds }),
   removeMember: (id: string, userId: string) => del(`/chat/conversations/${id}/members/${userId}`),
   messages: (id: string, before?: string) => get<ChatThread>(`/chat/conversations/${id}/messages`, { before, limit: 40 }),
-  send: (id: string, body: string, replyToId?: string | null) => post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null }),
+  send: (id: string, body: string, replyToId?: string | null, attachmentIds?: string[]) =>
+    post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null, attachmentIds: attachmentIds ?? [] }),
+  /** Stores a file for a message about to be sent (the plan decides whether, how big and how much). */
+  uploadFile: (id: string, file: File) => uploadFile<ChatAttachment>(`/chat/conversations/${id}/files`, file),
+  removeFile: (fileId: string) => del(`/chat/files/${fileId}`),
+  /** A file as an object URL, fetched with the signed-in person's access (pictures inline). */
+  fileUrl: (fileId: string, inline = false) => fetchBlobUrl(`/chat/files/${fileId}${inline ? '?inline=true' : ''}`),
+  react: (messageId: string, emoji: string) => put<ChatMessage>(`/chat/messages/${messageId}/reaction`, { emoji }),
+  unreact: (messageId: string, emoji: string) => del<ChatMessage>(`/chat/messages/${messageId}/reaction?emoji=${encodeURIComponent(emoji)}`),
   edit: (messageId: string, body: string) => put<ChatMessage>(`/chat/messages/${messageId}`, { body }),
   deleteMessage: (messageId: string) => del(`/chat/messages/${messageId}`),
   markRead: (id: string) => post(`/chat/conversations/${id}/read`),

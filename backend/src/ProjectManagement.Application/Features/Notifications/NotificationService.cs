@@ -86,6 +86,9 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
     }
 
+    /// <summary>Whether this person wants this kind of notice in the bell (their own choice, or the default).</summary>
+    public async Task<bool> WantsInAppAsync(Guid userId, NotificationType type, CancellationToken ct = default) => (await router.ChannelsAsync(userId, type, ct)).InApp;
+
     public async Task<PagedResult<NotificationDto>> ListAsync(bool unreadOnly, int page, int pageSize, CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
