@@ -1292,3 +1292,23 @@ tr.row-deleted .td-title { font-style: italic; }
 @media (max-width: 640px) { .gs-step { flex-wrap: wrap; } .gs-text { flex-basis: calc(100% - 100px); } }
 
 .reach { display: grid; gap: 1px; font-size: 12.5px; } .reach b { font-weight: 750; } .reach small { font-size: 11px; color: var(--text-3); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* What if: the scenario window opened from a project's risk line */
+.pi-whatif-btn + .pi-why { margin-left: 14px; }
+.pi-whatif-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 14px 0 18px; }
+.pi-whatif-inputs label { display: grid; gap: 6px; font-size: 13px; font-weight: 650; color: var(--text-2); }
+.pi-whatif-inputs label span { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; color: var(--text-3); }
+.pi-whatif-inputs .input { width: 84px; }
+.pi-whatif-out { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pi-whatif-card { padding: 16px 18px; border-radius: 14px; border: 1px solid var(--border); background: var(--glass-strong); display: grid; gap: 4px; align-content: start; }
+.pi-whatif-card label { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.pi-whatif-card b { font-size: 21px; letter-spacing: -.01em; }
+.pi-whatif-card small { color: var(--text-2); font-size: 13px; }
+.pi-whatif-card.on { border-color: rgba(var(--accent-rgb), .45); background: rgba(var(--accent-rgb), .07); }
+.pi-whatif-card.late b { color: var(--danger); }
+.pi-whatif-card em { font-style: normal; font-weight: 700; font-size: 12.5px; }
+.pi-whatif-card em.late { color: var(--danger); } .pi-whatif-card em.ok { color: var(--success); }
+.pi-whatif-need { display: flex; gap: 8px; align-items: flex-start; margin: 16px 0 6px; padding: 12px 14px; border-radius: 12px; background: rgba(var(--accent-rgb), .08); font-weight: 600; font-size: 14px; }
+.pi-whatif-need svg { flex: none; margin-top: 2px; color: var(--primary); }
+.pi-whatif-notes { margin: 10px 0 12px; padding-left: 18px; color: var(--text-2); font-size: 13px; display: grid; gap: 4px; }
+@media (max-width: 640px) { .pi-whatif-inputs, .pi-whatif-out { grid-template-columns: 1fr; } }

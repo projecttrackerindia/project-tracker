@@ -13,7 +13,8 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 /// signed-in person; the assistant reads only what they may read (see <see cref="AiAgent"/>).
 /// </summary>
 [Route("api/v1/ai"), RequireWorkspace]
-public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiPortfolio portfolio, AiFileService files, AiUsageService usage) : ApiControllerBase
+public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiPortfolio portfolio, AiFileService files, AiUsageService usage,
+    ProjectManagement.Application.Features.Reminders.PortfolioDigestService digest, ProjectManagement.Application.Abstractions.ICurrentContext current, ProjectManagement.Application.Services.AppClock clock) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -121,6 +122,20 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     /// <summary>The portfolio analysed: risk ranking with reasons, forecasts, slips, action items. Found by rules over the person's own projects (no model, no credits, every plan).</summary>
     [HttpGet("portfolio/brief")]
     public async Task<IActionResult> PortfolioBrief([FromQuery] Guid? teamId, CancellationToken ct) => Ok(await portfolio.BriefAsync(teamId, ct));
+
+    /// <summary>Sends the portfolio brief to the person who asks, as the same notice the owners and admins get on Mondays (in the app and by e-mail, by their own settings).</summary>
+    [HttpPost("portfolio/brief/send")]
+    public async Task<IActionResult> SendPortfolioBrief([FromQuery] Guid? teamId, CancellationToken ct)
+    {
+        var brief = await portfolio.BriefAsync(teamId, ct);
+        if (brief.Projects == 0) return Ok(new { sent = false, reason = "There are no active projects to report on." });
+        var sent = await digest.SendToMeAsync(brief, current.RequireTenantId(), current.RequireUserId(), clock.Now, ct);
+        return Ok(new { sent, reason = sent ? null : "You have switched this notice off in your notification settings." });
+    }
+
+    /// <summary>A what-if for one project: later start, more people, fewer tasks. Arithmetic over the person's own data (no model, no credits, every plan).</summary>
+    [HttpPost("portfolio/scenario")]
+    public async Task<IActionResult> PortfolioScenario([FromBody] ScenarioRequest req, CancellationToken ct) => Ok(await portfolio.ScenarioAsync(req, ct));
 
     /// <summary>What deserves attention today, found by rules over the person's own data (no model, no credits).</summary>
     [HttpGet("insights")]

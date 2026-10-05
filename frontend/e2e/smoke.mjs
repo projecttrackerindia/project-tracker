@@ -52,6 +52,14 @@ await page.goto(`${BASE}/${slug}/portfolio`); await page.waitForTimeout(2000);
 check('portfolio overview shows', (await page.locator('.pi').count()) === 1);
 await page.locator('.ps-group-head').first().click(); await page.locator('.ps-proj').first().click(); await page.waitForTimeout(1500);
 check('project panel shows tabs', (await page.locator('.ps-seg button').count()) === 3);
+if (await page.locator('.pi-whatif-btn').count()) {
+  await page.locator('.pi-whatif-btn').click(); await page.waitForTimeout(1000);
+  await page.locator('.pi-whatif-inputs input').first().fill('10'); await page.waitForTimeout(1200);
+  const cards = await page.locator('.pi-whatif-card b').allInnerTexts();
+  check('what-if shows today and the changed plan', cards.length === 2 && cards[0] !== cards[1], cards.join(' vs '));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+  if (await page.locator('.pi-whatif-inputs').count()) await page.locator('.modal button:has-text("Close")').click();
+}
 await page.locator('.ps-home').click(); await page.waitForTimeout(1000);
 check('back to Portfolio today', (await page.locator('.pi').count()) === 1);
 

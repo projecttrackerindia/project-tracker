@@ -46,7 +46,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
-        UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
+        UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
 
     public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject];
 
@@ -78,6 +78,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             new(MyWorkSummary, "How much open, overdue and recently finished work the person has.", """{"type":"object","properties":{},"required":[]}"""),
             new(PortfolioBrief, "The whole portfolio of projects the person can open, analysed: which are on track, at risk or delayed and why, a risk ranking with reasons, when each is likely to really finish (from the pace of the last 4 weeks, with a confidence), overdue and blocked tasks, overdue action items, delivery dates that moved and for what reason, and people carrying several troubled projects. Use for any question about the portfolio, what to escalate, forecasts, or an executive summary.",
                 """{"type":"object","properties":{},"required":[]}"""),
+            new(PortfolioScenario, "A what-if for one project: when it would finish if the work started some days later, if more people joined, or if some open tasks were taken out of the plan, against the due date, and what it would take to still meet the due date. Worked out from the pace of the last 4 weeks. Use for 'what if it slips', 'what if we add two people', 'what if we drop scope'.",
+                """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."},"slip_days":{"type":"integer","description":"Days the work starts later than today. Default 0."},"add_people":{"type":"integer","description":"People added to the work. Default 0."},"cut_tasks":{"type":"integer","description":"Open tasks taken out of the plan. Default 0."}},"required":["project"]}"""),
             new(WorkloadBalance, "Analyse workload: per person open, overdue, due this week, estimated hours left against weekly capacity and recent pace, with who is overloaded, who has room and a rebalancing idea. Use before recommending who should take work.",
                 """{"type":"object","properties":{"scope":{"type":"string","enum":["reports","everyone","me"],"description":"Whose workload. Default: the widest the person may see."}},"required":[]}"""),
             new(SuggestAssignee, "Rank the best people for a piece of work from their current load, lateness, experience on the project and similar work finished before. Use for 'who should do this' and when assigning unassigned work.",
@@ -164,6 +166,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 ListPeople => await ListPeopleAsync(ct),
                 MyWorkSummary => await MyWorkSummaryAsync(ct),
                 PortfolioBrief => await PortfolioBriefAsync(ct),
+                PortfolioScenario => await PortfolioScenarioAsync(a, ct),
                 WorkloadBalance => await WorkloadBalanceAsync(a, ct),
                 SuggestAssignee => await SuggestAssigneeAsync(a, ct),
                 HistoryInsights => await HistoryInsightsAsync(a, ct),
@@ -239,6 +242,14 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var rows = w.Members.Select(m => $"{Clean(m.Name)} | {Clean(m.JobRole ?? "-")} | open {m.Open} | overdue {m.Overdue} | due this week {m.DueThisWeek} | done in last 30 days {m.DoneLast30Days}").ToList();
         var head = $"Workload ({w.Scope}): {w.Totals.People} people, {w.Totals.Open} open, {w.Totals.Overdue} overdue.";
         return new AiToolOutcome(head + "\n" + string.Join("\n", rows.Take(60)), $"Checked workload ({w.Members.Count} {(w.Members.Count == 1 ? "person" : "people")})", w.Members.Count);
+    }
+
+    private async Task<AiToolOutcome> PortfolioScenarioAsync(JsonElement a, CancellationToken ct)
+    {
+        var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        int Int(string k) => a.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+        var s = await portfolio.ScenarioAsync(new ScenarioRequest(project.Id, Int("slip_days"), Int("add_people"), Int("cut_tasks")), ct);
+        return new AiToolOutcome(AiPortfolio.ScenarioToText(s), $"Worked out a what-if for {s.Key}", 1);
     }
 
     private async Task<AiToolOutcome> PortfolioBriefAsync(CancellationToken ct)

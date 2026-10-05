@@ -59,4 +59,29 @@ public class PortfolioDigestTests(ApiFactory factory)
         Assert.True(await Send(monday) >= 1);
         Assert.Contains("Portfolio this week", await Titles(owner));
     }
+
+    [Fact]
+    public async Task A_person_can_ask_for_the_brief_now_and_gets_only_what_they_may_open()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Ola Owner");
+        await owner.CreateOrgAsync();
+        Assert.True((await owner.Post("/api/v1/projects", new { name = "Behind Programme", priority = "High", status = "Active", startDate = "2026-01-01", dueDate = "2026-02-01" })).Ok);
+        var empty = await TestClient.RegisterAsync(factory, "Eve Empty");
+        await empty.CreateOrgAsync();
+        var none = await empty.Post("/api/v1/ai/portfolio/brief/send", new { });
+        Assert.True(none.Ok); Assert.False(none.Data!["sent"]!.GetValue<bool>());          // nothing to report: nothing sent
+
+        var res = await owner.Post("/api/v1/ai/portfolio/brief/send", new { });
+        Assert.True(res.Ok, res.ToString());
+        Assert.True(res.Data!["sent"]!.GetValue<bool>());
+        var text = await Titles(owner);
+        Assert.Contains("Portfolio this week", text); Assert.Contains("Behind Programme", text);
+        Assert.DoesNotContain("Behind Programme", await Titles(empty));                      // another organization never sees it
+
+        // Someone who switched the notice off is told so instead of being sent it.
+        Assert.True((await owner.Put("/api/v1/me/notification-preferences", new { items = new[] { new { type = "PortfolioDigest", inApp = false, email = false, browser = false } } })).Ok);
+        var off = await owner.Post("/api/v1/ai/portfolio/brief/send", new { });
+        Assert.False(off.Data!["sent"]!.GetValue<bool>());
+        Assert.Contains("switched this notice off", off.Data!["reason"]!.GetValue<string>());
+    }
 }

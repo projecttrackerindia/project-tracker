@@ -30,6 +30,12 @@ export interface PortfolioBrief {
   asOf: string; projects: number; onTrack: number; atRisk: number; delayed: number; onHold: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number;
   dateChangesLast30Days: number; headlines: string[]; ranked: PortfolioRisk[]; recentSlips: PortfolioSlip[]; stretched: PortfolioPerson[];
 }
+export interface ScenarioOutcome { finish: string | null; slipDays: number | null; confidence: string; openTasks: number }
+export interface ScenarioNeed { cutTasks: number | null; addPeople: number | null; note: string }
+export interface Scenario {
+  projectId: string; key: string; name: string; dueDate: string | null; openTasks: number; finishedLast28Days: number; contributors: number; slipDays: number; addPeople: number; cutTasks: number;
+  baseline: ScenarioOutcome; scenario: ScenarioOutcome; changeDays: number | null; toMeetDue: ScenarioNeed | null; notes: string[];
+}
 export interface AiInsight { id: string; severity: 'high' | 'medium' | 'low'; title: string; detail: string; prompt: string }
 export interface AiStarter { label: string; prompt: string; hint: string | null }
 export interface AiStarters { greeting: string; starters: AiStarter[] }
@@ -78,6 +84,8 @@ export const aiWorkspaceApi = {
   starters: () => get<AiStarters>('/ai/starters'),
   insights: () => get<AiInsight[]>('/ai/insights'),
   portfolioBrief: (teamId?: string | null) => get<PortfolioBrief>('/ai/portfolio/brief', { teamId: teamId ?? undefined }),
+  sendBrief: (teamId?: string | null) => post<{ sent: boolean; reason: string | null }>(`/ai/portfolio/brief/send${teamId ? `?teamId=${teamId}` : ''}`),
+  scenario: (body: { projectId: string; slipDays: number; addPeople: number; cutTasks: number; teamId?: string | null }) => post<Scenario>('/ai/portfolio/scenario', body),
   confirmAll: (messageId: string) => post<AiAction[]>(`/ai/messages/${messageId}/actions/confirm-all`),
   feedback: (messageId: string, rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => post<void>(`/ai/messages/${messageId}/feedback`, { rating, reason }),
   profile: () => get<AiProfile>('/ai/profile'),

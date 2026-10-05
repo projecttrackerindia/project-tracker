@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
-import { PageLoader } from '../../components/ui';
+import { toast } from '../../stores/ui';
+import { Modal, PageLoader } from '../../components/ui';
+import { useQuery } from '@tanstack/react-query';
 import { formatDate } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
-import { aiWorkspaceApi, type PortfolioRisk } from '../ai/aiApi';
+import { aiWorkspaceApi, type PortfolioRisk, type ScenarioOutcome } from '../ai/aiApi';
 import { PortfolioActionItems } from './PortfolioActionItems';
 import { Sparkle, useAi } from '../ai/Assistant';
 
@@ -50,6 +52,14 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
   const ai = useAi();
   const ask = useAsk();
   const [itemsOpen, setItemsOpen] = useState(false);
+  const { teamId } = useTeamLens();
+  const [sending, setSending] = useState(false);
+  const sendBrief = async () => {
+    setSending(true);
+    try { const r = await aiWorkspaceApi.sendBrief(teamId); toast(r.sent ? 'The brief is on its way to you, in the app and by e-mail.' : r.reason ?? 'Nothing was sent.', r.sent ? 'success' : 'info'); }
+    catch { toast('Could not send the brief.', 'error'); }
+    finally { setSending(false); }
+  };
   if (q.isLoading) return <PageLoader />;
   const b = q.data;
   if (!b || b.projects === 0) {
@@ -64,6 +74,7 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
         <div><h2>Portfolio today</h2><span>As of {formatDate(b.asOf)} · {b.projects} active project{b.projects === 1 ? '' : 's'} you can open</span></div>
         <div className="pi-ask">
           <button type="button" className="btn btn-soft btn-sm" onClick={() => setItemsOpen(true)}><Icon name="checkCircle" size={14} /> Action items{b.openActionItems > 0 && <span className="ps-count">{b.openActionItems}</span>}</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={sending} onClick={() => void sendBrief()} title="Send this brief to you as a notice, in the app and by e-mail"><Icon name="mail" size={14} /> Send me this</button>
           {ai && <>
             <button type="button" className="btn btn-soft btn-sm" onClick={() => ask('Give me an executive summary of the portfolio: what is going well, what is at risk and why, how late the worst projects are likely to land, and what I should escalate this week.')}><Sparkle size={14} /> Executive summary</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.')}>Risk review</button>
@@ -120,6 +131,7 @@ export function ProjectInsight({ projectId, onActionItems }: { projectId: string
   const ai = useAi();
   const ask = useAsk();
   const [open, setOpen] = useState(false);
+  const [whatIf, setWhatIf] = useState(false);
   const r = q.data?.ranked.find((x) => x.projectId === projectId);
   if (!r) return null;
   const more = r.reasons.length > 0 || ai;
@@ -129,6 +141,7 @@ export function ProjectInsight({ projectId, onActionItems }: { projectId: string
         <span className={`pi-level ${r.level.toLowerCase()}`}>{r.level} risk</span>
         <Forecast r={r} />
         {r.overdueActionItems > 0 && <button type="button" className="pi-chip" onClick={onActionItems}>{r.overdueActionItems} overdue action item{r.overdueActionItems === 1 ? '' : 's'}</button>}
+        <button type="button" className="pi-why pi-whatif-btn" onClick={() => setWhatIf(true)} title="See when it would finish if the work slipped, people joined or scope was cut">What if…</button>
         {more && <button type="button" className="pi-why" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Why?'} <span style={{ display: 'inline-flex', transform: open ? 'rotate(180deg)' : undefined }}><Icon name="chevronD" size={13} /></span></button>}
       </div>
       {open && r.reasons.length > 0 && <ul>{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
@@ -138,6 +151,50 @@ export function ProjectInsight({ projectId, onActionItems }: { projectId: string
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Prepare the changes to get ${r.name} (${r.key}) back on track: reassign overloaded work, set reminders on its overdue action items, and propose realistic dates. Show me what you would change.`)}>Plan the recovery</button>
         </div>
       )}
+      {whatIf && <WhatIf projectId={r.projectId} name={r.name} onClose={() => setWhatIf(false)} />}
     </section>
+  );
+}
+
+const outcome = (o: ScenarioOutcome) => o.finish ? formatDate(o.finish) : 'Cannot be forecast';
+const lateness = (o: ScenarioOutcome) => o.slipDays == null ? null : o.slipDays > 0 ? `${o.slipDays} day${o.slipDays === 1 ? '' : 's'} after the due date` : o.slipDays < 0 ? `${-o.slipDays} day${o.slipDays === -1 ? '' : 's'} before the due date` : 'on the due date';
+
+/** "What if": when the project would finish if the work started later, more people joined or some tasks were cut. Arithmetic over its own pace; nothing is changed. */
+function WhatIf({ projectId, name, onClose }: { projectId: string; name: string; onClose: () => void }) {
+  const { teamId } = useTeamLens();
+  const [slip, setSlip] = useState(0); const [add, setAdd] = useState(0); const [cut, setCut] = useState(0);
+  const q = useQuery({
+    queryKey: ['scenario', projectId, slip, add, cut, teamId],
+    queryFn: () => aiWorkspaceApi.scenario({ projectId, slipDays: slip, addPeople: add, cutTasks: cut, teamId }),
+    placeholderData: (prev) => prev,
+  });
+  const d = q.data;
+  const num = (v: string, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
+  const changed = slip > 0 || add > 0 || cut > 0;
+  return (
+    <Modal size="lg" title={`What if… ${name}`} onClose={onClose} footer={<button type="button" className="btn btn-primary" onClick={onClose}>Close</button>}>
+      <p className="muted" style={{ marginTop: 0 }}>Change one or more of these to see when the project would finish. Nothing is changed in the project.</p>
+      <div className="pi-whatif-inputs">
+        <label>The work starts later by<span><input className="input" type="number" min={0} max={365} value={slip} onChange={(e) => setSlip(num(e.target.value, 365))} /> days</span></label>
+        <label>People added<span><input className="input" type="number" min={0} max={50} value={add} onChange={(e) => setAdd(num(e.target.value, 50))} /> people</span></label>
+        <label>Tasks taken out of the plan<span><input className="input" type="number" min={0} max={d?.openTasks ?? 500} value={cut} onChange={(e) => setCut(num(e.target.value, d?.openTasks ?? 500))} /> of {d?.openTasks ?? '…'}</span></label>
+      </div>
+      {!d ? <PageLoader /> : (
+        <div className="pi-whatif-out">
+          <div className="pi-whatif-card">
+            <label>Today's plan</label><b>{outcome(d.baseline)}</b>
+            <small>{lateness(d.baseline) ?? `Due ${d.dueDate ? formatDate(d.dueDate) : 'not set'}`}{d.baseline.finish ? ` · ${d.baseline.confidence} confidence` : ''}</small>
+          </div>
+          <div className={`pi-whatif-card ${changed ? 'on' : ''} ${d.scenario.slipDays != null && d.scenario.slipDays > 0 ? 'late' : ''}`}>
+            <label>With your change</label><b>{outcome(d.scenario)}</b>
+            <small>{lateness(d.scenario) ?? (d.dueDate ? '' : 'No due date set')}{d.scenario.finish ? ` · ${d.scenario.confidence} confidence` : ''}</small>
+            {changed && d.changeDays != null && <em className={d.changeDays > 0 ? 'late' : 'ok'}>{d.changeDays === 0 ? 'No change' : d.changeDays > 0 ? `${d.changeDays} day${d.changeDays === 1 ? '' : 's'} later` : `${-d.changeDays} day${d.changeDays === -1 ? '' : 's'} sooner`}</em>}
+          </div>
+        </div>
+      )}
+      {d?.toMeetDue && <p className="pi-whatif-need"><Icon name="target" size={15} /> {d.toMeetDue.note}</p>}
+      {d && d.notes.length > 0 && <ul className="pi-whatif-notes">{d.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+      <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>An estimate from the pace of the last 4 weeks ({d?.finishedLast28Days ?? '…'} tasks finished), not a commitment.</p>
+    </Modal>
   );
 }

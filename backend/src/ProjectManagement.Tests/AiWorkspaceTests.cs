@@ -1203,6 +1203,25 @@ public class AiWorkspaceTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task The_assistant_can_work_out_a_what_if_with_the_same_numbers_as_the_scenario_screen()
+    {
+        var o = await StretchedTeam();
+        for (var i = 0; i < 7; i++) await o.Owner.CreateTaskAsync(o.Project, $"Delivered {i}", new { title = $"Delivered {i}", priority = "Medium" });
+        factory.WithDb(db =>
+        {
+            var done = db.WorkflowStatuses.IgnoreQueryFilters().First(s => s.ProjectId == o.Project && s.Category == StatusCategory.Done).Id;
+            foreach (var t in db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == o.Project && t.Title.StartsWith("Delivered")).ToList()) { t.StatusId = done; t.CompletedAt = DateTime.UtcNow.AddDays(-5); }
+            db.Projects.IgnoreQueryFilters().First(x => x.Id == o.Project).DueDate = DateOnly.Parse(Iso(14));
+            db.SaveChanges(); return 0;
+        });
+        var text = await RunTool(o.Owner, "portfolio_scenario", new { project = "Atlas", slip_days = 5 }, "What if Atlas slips by a week?");
+        Assert.Contains("delay 5 days", text);
+        Assert.Contains("19 days after the due date", text);          // 14 late already, 5 more
+        Assert.Contains("take out 5 tasks", text);
+        Assert.Contains("estimate", text);
+    }
+
+    [Fact]
     public async Task The_portfolio_brief_shows_only_what_the_person_may_open_and_nothing_of_other_organizations()
     {
         var a = await StretchedTeam();

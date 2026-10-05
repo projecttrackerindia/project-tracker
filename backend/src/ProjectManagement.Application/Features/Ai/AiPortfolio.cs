@@ -18,6 +18,12 @@ public sealed record PortfolioPersonDto(string Name, int Projects, int OpenTasks
 public sealed record PortfolioBriefDto(DateOnly AsOf, int Projects, int OnTrack, int AtRisk, int Delayed, int OnHold, int OverdueTasks, int BlockedTasks, int OpenActionItems, int OverdueActionItems,
     int DateChangesLast30Days, IReadOnlyList<string> Headlines, IReadOnlyList<PortfolioRiskDto> Ranked, IReadOnlyList<PortfolioSlipDto> RecentSlips, IReadOnlyList<PortfolioPersonDto> Stretched);
 
+public sealed record ScenarioRequest(Guid ProjectId, int SlipDays = 0, int AddPeople = 0, int CutTasks = 0, Guid? TeamId = null);
+public sealed record ScenarioOutcomeDto(DateOnly? Finish, int? SlipDays, string Confidence, int OpenTasks);
+public sealed record ScenarioNeedDto(int? CutTasks, int? AddPeople, string Note);
+public sealed record ScenarioDto(Guid ProjectId, string Key, string Name, DateOnly? DueDate, int OpenTasks, int FinishedLast28Days, int Contributors, int SlipDays, int AddPeople, int CutTasks,
+    ScenarioOutcomeDto Baseline, ScenarioOutcomeDto Scenario, int? ChangeDays, ScenarioNeedDto? ToMeetDue, IReadOnlyList<string> Notes);
+
 /// <summary>
 /// The portfolio, read the way a delivery director would: which projects are in trouble and why, when each is really likely to finish (from what the
 /// team has actually been finishing, not from the plan), what is blocked, which dates moved and for what reason, which action items are overdue and who is
@@ -41,6 +47,93 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var finish = today.AddDays((int)Math.Ceiling(remaining / perDay));
         var confidence = finishedLast28 >= 8 ? "high" : finishedLast28 >= 3 ? "medium" : "low";
         return (finish, due is { } d ? finish.DayNumber - d.DayNumber : null, confidence);
+    }
+
+    /// <summary>What one more person is worth against the people already finishing the work: someone new is not yet as quick, so they count for less than one.</summary>
+    public const double NewPersonShare = 0.7;
+
+    /// <summary>
+    /// "What if": the same pace-based forecast as the brief, re-run with the work starting later, more people on it, or fewer tasks to do. Pure arithmetic over
+    /// the figures it is given, so the same question always has the same answer and the assistant never does the sums itself.
+    /// </summary>
+    public static (ScenarioOutcomeDto Baseline, ScenarioOutcomeDto Scenario, ScenarioNeedDto? Need, List<string> Notes) Simulate(
+        int open, int finishedLast28, int contributors, DateOnly today, DateOnly? due, int slipDays, int addPeople, int cutTasks)
+    {
+        contributors = Math.Max(1, contributors);
+        var (bFinish, bSlip, bConf) = Forecast(open, finishedLast28, today, due);
+        var baseline = new ScenarioOutcomeDto(bFinish, bSlip, bConf, open);
+        var remaining = Math.Max(0, open - cutTasks);
+        var notes = new List<string>();
+        var perDay = finishedLast28 / (double)WindowDays;
+        var factor = (contributors + NewPersonShare * addPeople) / contributors;
+
+        DateOnly? finish; string conf;
+        if (remaining == 0) { finish = today.AddDays(slipDays); conf = "high"; }
+        else if (perDay <= 0) { finish = null; conf = "none"; notes.Add("Nothing was finished in the last 4 weeks, so there is no pace to forecast from."); }
+        else
+        {
+            finish = today.AddDays((int)Math.Ceiling(remaining / (perDay * factor)) + slipDays);
+            conf = bConf;
+            if (addPeople > 0 && conf == "high") conf = "medium";   // a bigger team is a guess about the future, not a measured pace
+        }
+        var scenario = new ScenarioOutcomeDto(finish, finish is { } f && due is { } d ? f.DayNumber - d.DayNumber : null, conf, remaining);
+
+        if (addPeople > 0) notes.Add($"Each added person is counted at {(int)(NewPersonShare * 100)}% of someone already finishing work here, because new people take time to get up to speed. {contributors} {(contributors == 1 ? "person has" : "people have")} been finishing work in the last 4 weeks.");
+        if (cutTasks > 0) notes.Add($"{Math.Min(cutTasks, open)} of the {open} open tasks are taken out of the plan.");
+        if (slipDays > 0) notes.Add($"The work is treated as starting {slipDays} day{(slipDays == 1 ? "" : "s")} later than today.");
+
+        // What it would take to still land on the due date after the delay.
+        ScenarioNeedDto? need = null;
+        if (due is { } due0 && open > 0 && perDay > 0)
+        {
+            var available = due0.DayNumber - today.DayNumber - slipDays;
+            if (due0 <= today) need = new(null, null, "The due date has already passed.");
+            else if (available <= 0) need = new(open, null, "There is no time left before the due date once the delay is counted; only cutting all of the remaining work would meet it.");
+            else
+            {
+                var capacity = (int)Math.Floor(perDay * available);
+                if (capacity >= open) need = new(0, 0, "At the current pace the due date is still met.");
+                else
+                {
+                    var required = open / (double)available;
+                    var people = (int)Math.Ceiling((required / perDay - 1) * contributors / NewPersonShare);
+                    need = new(open - capacity, people, $"To finish by {Day(due0)}: take out {open - capacity} task{(open - capacity == 1 ? "" : "s")}, or add {people} {(people == 1 ? "person" : "people")}.");
+                }
+            }
+        }
+        return (baseline, scenario, need, notes);
+    }
+
+    public async Task<ScenarioDto> ScenarioAsync(ScenarioRequest req, CancellationToken ct = default)
+    {
+        var lens = await access.RequireLensAsync(req.TeamId, ct);
+        ctx.RequireTenantId();
+        await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
+        var p = await access.LensProjects(lens).AsNoTracking().Where(x => x.Id == req.ProjectId).Select(x => new { x.Id, x.Key, x.Name, x.DueDate }).FirstOrDefaultAsync(ct)
+            ?? throw new ProjectManagement.Application.Exceptions.NotFoundException("Project not found.");
+        var today = clock.Today;
+        var since28 = clock.Now.AddDays(-WindowDays);
+        var tasks = await access.VisibleTasks().AsNoTracking().Where(t => t.ProjectId == p.Id).Select(t => new { t.CompletedAt, Cat = t.Status!.Category, t.AssigneeId }).Take(40_000).ToListAsync(ct);
+        var open = tasks.Count(t => Open(t.Cat));
+        var finished = tasks.Where(t => t.Cat == StatusCategory.Done && t.CompletedAt is { } c && c >= since28).ToList();
+        var contributors = Math.Max(1, finished.Where(t => t.AssigneeId != null).Select(t => t.AssigneeId).Distinct().Count());
+        var slip = Math.Clamp(req.SlipDays, 0, 365); var add = Math.Clamp(req.AddPeople, 0, 50); var cut = Math.Clamp(req.CutTasks, 0, open);
+        var (baseline, scenario, need, notes) = Simulate(open, finished.Count, contributors, today, p.DueDate, slip, add, cut);
+        int? change = baseline.Finish is { } b && scenario.Finish is { } s ? s.DayNumber - b.DayNumber : null;
+        return new ScenarioDto(p.Id, p.Key, p.Name, p.DueDate, open, finished.Count, contributors, slip, add, cut, baseline, scenario, change, need, notes);
+    }
+
+    public static string ScenarioToText(ScenarioDto s)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"What-if for {s.Key} {s.Name} (due {Day(s.DueDate)}): delay {s.SlipDays} days, add {s.AddPeople} people, take out {s.CutTasks} tasks. {s.OpenTasks} open tasks, {s.FinishedLast28Days} finished in the last 28 days by {s.Contributors} people.");
+        static string One(ScenarioOutcomeDto o) => o.Finish is { } f ? $"{Day(f)}{(o.SlipDays is { } d ? $" ({(d > 0 ? $"{d} days after the due date" : d < 0 ? $"{-d} days before the due date" : "on the due date")})" : "")}, {o.Confidence} confidence" : "cannot be forecast";
+        sb.AppendLine($"Without the change: finishes {One(s.Baseline)}.");
+        sb.AppendLine($"With the change: finishes {One(s.Scenario)}.{(s.ChangeDays is { } c ? $" That is {(c == 0 ? "no change" : c > 0 ? $"{c} days later" : $"{-c} days sooner")}." : "")}");
+        if (s.ToMeetDue is { } n) sb.AppendLine(n.Note);
+        foreach (var note in s.Notes) sb.AppendLine("- " + note);
+        sb.AppendLine("This is an estimate from the pace of the last 4 weeks, not a commitment; say how confident it is.");
+        return sb.ToString();
     }
 
     public async Task<PortfolioBriefDto> BriefAsync(Guid? teamId = null, CancellationToken ct = default)

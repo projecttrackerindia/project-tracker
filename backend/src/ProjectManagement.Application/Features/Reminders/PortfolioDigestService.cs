@@ -18,6 +18,31 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
 {
     private static long _last;
 
+    /// <summary>The notice for a brief: a headline that says how many projects are in trouble, and the first things that need a look.</summary>
+    public static (string Title, string Body) Describe(PortfolioBriefDto brief)
+    {
+        var concerns = brief.Ranked.Where(r => r.Score >= 2).Take(3).Select(r => $"{r.Name} ({r.Level}): {r.Reasons.FirstOrDefault() ?? "needs a look"}").ToList();
+        var title = brief.AtRisk + brief.Delayed == 0
+            ? $"Portfolio this week: all {brief.Projects} project{(brief.Projects == 1 ? "" : "s")} on track"
+            : $"Portfolio this week: {brief.Delayed} delayed, {brief.AtRisk} at risk";
+        var body = string.Join("\n", brief.Headlines.Take(2).Concat(concerns));
+        return (title, body.Length > 600 ? body[..600] : body);
+    }
+
+    /// <summary>
+    /// A person asking for the brief now: the same notice, to them only, built from the brief they were just shown (so it holds what they may open and nothing more),
+    /// by their own notification settings. False when they have switched this notice off.
+    /// </summary>
+    public async Task<bool> SendToMeAsync(PortfolioBriefDto brief, Guid tenantId, Guid userId, DateTime now, CancellationToken ct = default)
+    {
+        var (title, body) = Describe(brief);
+        var n = new Notification { TenantId = tenantId, UserId = userId, Type = NotificationType.PortfolioDigest, CreatedAt = now, Link = "/portfolio", Title = title, Body = body };
+        if (!await router.ApplyAsync(n, ct)) return false;
+        db.Notifications.Add(n);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<int> SendAsync(DateTime now, bool force = false, CancellationToken ct = default)
     {
         if (!force && now.Ticks - Interlocked.Read(ref _last) < TimeSpan.FromMinutes(5).Ticks) return 0;
@@ -54,15 +79,11 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
             }
             if (brief.Projects == 0) continue;
 
-            var concerns = brief.Ranked.Where(r => r.Score >= 2).Take(3).Select(r => $"{r.Name} ({r.Level}): {r.Reasons.FirstOrDefault() ?? "needs a look"}").ToList();
-            var title = brief.AtRisk + brief.Delayed == 0
-                ? $"Portfolio this week: all {brief.Projects} project{(brief.Projects == 1 ? "" : "s")} on track"
-                : $"Portfolio this week: {brief.Delayed} delayed, {brief.AtRisk} at risk";
-            var body = string.Join("\n", brief.Headlines.Take(2).Concat(concerns));
+            var (title, body) = Describe(brief);
             var n = new Notification
             {
                 TenantId = p.TenantId, UserId = p.UserId, Type = NotificationType.PortfolioDigest, CreatedAt = now, Link = "/portfolio",
-                Title = title, Body = body.Length > 600 ? body[..600] : body, DedupeKey = key,
+                Title = title, Body = body, DedupeKey = key,
             };
             if (await router.ApplyAsync(n, ct)) { db.Notifications.Add(n); sent++; }
         }
