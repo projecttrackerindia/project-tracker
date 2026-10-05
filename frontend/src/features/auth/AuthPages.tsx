@@ -11,6 +11,7 @@ import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerError
 import { Icon } from '../../components/Icon';
 import { AuthLayout } from '../../layouts/AuthLayout';
 import { useAuth } from '../../stores/auth';
+import { usePageTitle } from '../../lib/title';
 import { celebrate, firstName, originOf, useCelebration, type CelebrationKind } from '../../stores/celebrate';
 import { toast } from '../../stores/ui';
 import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
@@ -143,6 +144,7 @@ function DevHint() {
 const loginSchema = z.object({ email: z.string().min(1, 'Enter your email.').email('Enter a valid email.'), password: z.string().min(1, 'Enter your password.') });
 
 export function LoginPage() {
+  usePageTitle('Sign in');
   const status = useAuth((s) => s.status);
   const login = useAuth((s) => s.login);
   const loginMfa = useAuth((s) => s.loginMfa);
@@ -236,7 +238,7 @@ export function LoginPage() {
   return (
     <AuthLayout title="Welcome back" sub="Sign in to continue to your workspace." shake={shaking}
       footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link>
-        <span className="auth-foot-sep">·</span><Link className="link" to="/security">Security</Link></>}>
+        <span className="auth-foot-sep">·</span><a className="link" href="/security/">Security</a></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); setSigningIn(true); m.mutate(v); }, () => shake())} noValidate>
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
         <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
@@ -272,6 +274,7 @@ function LegalDocsModal({ onClose }: { onClose: () => void }) {
 }
 
 export function RegisterPage() {
+  usePageTitle('Create your account');
   const status = useAuth((s) => s.status);
   const [params] = useSearchParams();
   const [done, setDone] = useState<string | null>(null);
@@ -364,6 +367,7 @@ export function VerifyEmailPage() {
 const emailSchema = z.object({ email: z.string().min(1, 'Enter your email.').email('Enter a valid email.') });
 
 export function ForgotPasswordPage() {
+  usePageTitle('Reset your password');
   const [sent, setSent] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof emailSchema>>({ resolver: zodResolver(emailSchema) });
   const m = useMutation({ mutationFn: (v: z.infer<typeof emailSchema>) => authApi.forgotPassword(v.email), onSuccess: () => setSent(true) });

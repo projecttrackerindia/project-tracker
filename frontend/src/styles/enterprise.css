@@ -267,7 +267,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .retention-row span { font-size: 12.5px; color: var(--text-3); }
 .retention-row input { width: 120px; }
 
-/* Public security page */
+/* Public legal pages (Terms, Privacy). The Security page is a static page: see site/plugin.ts. */
 .sec-page { min-height: 100vh; background: var(--bg); background-image: var(--bg-image); color: var(--text); padding: 0 16px 48px; }
 .sec-top { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
 .sec-top nav a { font-weight: 600; color: var(--primary); text-decoration: none; }
@@ -277,19 +277,6 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sec-kicker { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; color: var(--primary); background: rgba(var(--accent-rgb), .1); }
 .sec-hero h1 { font-size: clamp(30px, 5vw, 46px); margin: 16px 0 10px; letter-spacing: -.02em; }
 .sec-hero p { font-size: 16px; color: var(--text-2); line-height: 1.6; margin: 0; }
-.sec-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
-.sec-card { padding: 22px; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-.sec-card-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: var(--primary); background: rgba(var(--accent-rgb), .12); }
-.sec-card h2 { font-size: 17px; margin: 14px 0 10px; }
-.sec-card ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
-.sec-card li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
-.sec-card li svg { margin-top: 3px; color: var(--success); }
-.sec-report { max-width: 1100px; margin: 22px auto 0; display: flex; align-items: center; gap: 24px; padding: 24px; border-radius: 18px;
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), .12), rgba(192, 132, 252, .08)); border: 1px solid rgba(var(--accent-rgb), .25); }
-.sec-report h2 { margin: 0 0 8px; font-size: 19px; }
-.sec-report p { margin: 0; color: var(--text-2); line-height: 1.6; font-size: 14px; }
-.sec-report .btn { flex-shrink: 0; }
-@media (max-width: 720px) { .sec-report { flex-direction: column; align-items: flex-start; } }
 .sec-foot { max-width: 1100px; margin: 18px auto 0; font-size: 12.5px; color: var(--text-3); text-align: center; }
 .sec-foot a { color: var(--primary); }
 

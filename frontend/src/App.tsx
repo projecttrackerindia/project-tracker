@@ -33,7 +33,7 @@ const ProjectDetailPage = page(() => import('./features/projects/ProjectDetailPa
 const ProjectsPage = page(() => import('./features/projects/ProjectsPage'), 'ProjectsPage');
 const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPage'), 'ProjectStatusPage');
 const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
-const SecurityPage = page(() => import('./features/legal/SecurityPage'), 'SecurityPage');
+const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
@@ -203,7 +203,11 @@ function RequireAuth() {
   const loc = useLocation();
   if (status === 'loading') return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
   if (status === 'offline') return <OfflineWork />;
-  if (status === 'anonymous') return <Navigate to={`/login?redirect=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  if (status === 'anonymous') {
+    // Someone signed out who opened the home address sees the public page (index.html), not the sign-in form.
+    if (document.documentElement.classList.contains('landing')) return null;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  }
   // Terms first: accepting them works while the password is still temporary, but the password change is a write that the terms gate
   // refuses until they have been accepted.
   if (ctx?.pendingConsent && ctx.pendingConsent.length > 0) return <PendingConsent pending={ctx.pendingConsent} />;
@@ -290,7 +294,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/auth/complete" element={<AuthCompletePage />} />
-      <Route path="/security" element={<SecurityPage />} />
+      <Route path="/terms" element={<LegalPage type="tos" />} />
+      <Route path="/privacy" element={<LegalPage type="privacy" />} />
       {/* Done / snooze from a reminder e-mail or push notification: the link's one-time key stands in for signing in. */}
       <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}

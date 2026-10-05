@@ -104,7 +104,7 @@ export function CommandPalette() {
     if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:reminder', group: 'Create', label: 'New reminder', icon: 'alarm', keywords: 'create add remind me alarm later', run: () => { close(); openReminderComposer(); } });
     list.push({ id: 'ui:theme', group: 'Preferences', label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode', icon: theme === 'dark' ? 'sun' : 'moon', keywords: 'theme dark light', run: () => { close(); toggleTheme(); } });
     list.push({ id: 'ui:sidebar', group: 'Preferences', label: 'Collapse or expand the sidebar', icon: 'menu', keywords: 'sidebar menu', run: () => { close(); toggleSidebar(); } });
-    list.push({ id: 'help:security', group: 'Help', label: 'How we keep your data safe', icon: 'shield', keywords: 'security privacy', run: go('/security') });
+    list.push({ id: 'help:security', group: 'Help', label: 'How we keep your data safe', icon: 'shield', keywords: 'security privacy', run: () => { close(); window.location.assign('/security/'); } });
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, settings, ctx, canProject, canWork, theme]);

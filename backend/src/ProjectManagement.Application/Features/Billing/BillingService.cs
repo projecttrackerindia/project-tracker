@@ -16,6 +16,8 @@ namespace ProjectManagement.Application.Features.Billing;
 
 public record PlanDto(Guid Id, string Code, string Name, string? Description, decimal? PriceMonthly, string Currency,
     IReadOnlyDictionary<string, long> Features, bool IsCurrent, int SortOrder);
+/// <summary>What the public pricing page shows: the plan, what it costs, nothing about any organization.</summary>
+public record PublicPlanDto(string Code, string Name, decimal? PriceMonthly, string Currency);
 public record UsageDto(string Key, string Label, long Used, long Limit);
 public record InvoiceDto(Guid Id, string Number, string PlanCode, decimal Amount, string Currency, InvoiceStatus Status, string Description, DateTime IssuedAt);
 public record BillingOverviewDto(PlanSummaryDto Plan, IReadOnlyList<UsageDto> Usage, IReadOnlyList<InvoiceDto> Invoices, bool TrialAvailable,
@@ -53,6 +55,11 @@ public class BillingService(
             FeatureKeys.All.ToDictionary(k => k, k => p.Features.FirstOrDefault(f => f.FeatureKey == k)?.Value ?? 0),
             p.Code == currentCode, p.SortOrder)).ToList();
     }
+
+    /// <summary>The active plans and their monthly price, for the public pricing page (no sign-in, no organization).</summary>
+    public async Task<IReadOnlyList<PublicPlanDto>> GetPublicPlansAsync(CancellationToken ct = default)
+        => await db.Plans.AsNoTracking().Where(p => p.IsActive).OrderBy(p => p.SortOrder)
+            .Select(p => new PublicPlanDto(p.Code, p.Name, p.PriceMonthly, p.Currency)).ToListAsync(ct);
 
     public async Task<BillingOverviewDto> CheckoutAsync(CheckoutRequest req, CancellationToken ct = default)
     {

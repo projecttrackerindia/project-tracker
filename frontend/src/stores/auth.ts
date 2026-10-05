@@ -104,6 +104,18 @@ setAuthLostHandler(() => {
   useAuth.setState({ status: 'anonymous', ctx: null });
 });
 
+/**
+ * The home address shows the public page to someone signed out and the app to someone signed in. This remembers, on this device only,
+ * that someone has signed in (no data, just a flag) so the next visit opens the app at once, and switches the page over the moment a
+ * session is confirmed (index.html decides the first paint from the same flag).
+ */
+useAuth.subscribe((s, prev) => {
+  if (s.status === prev.status) return;
+  const known = s.status === 'authenticated' || s.status === 'offline';
+  if (s.status !== 'loading') { try { if (known) localStorage.setItem('pm_hint', '1'); else localStorage.removeItem('pm_hint'); } catch { /* storage unavailable */ } }
+  if (known) { const c = document.documentElement.classList; c.remove('landing'); c.add('app'); }
+});
+
 // ---- selectors / helpers
 export const useWorkspaceId = () => useAuth((s) => s.ctx?.current?.id ?? null);
 export const useCan = (permission: string) => useAuth((s) => s.ctx?.current?.permissions.includes(permission) ?? false);
