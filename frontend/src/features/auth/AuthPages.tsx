@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, apiUrl } from '../../api/client';
 import type { ExternalProvider } from '../../api/types';
-import { authApi, consentApi, workspaceApi } from '../../api/endpoints';
+import { authApi, consentApi, passkeyApi, workspaceApi } from '../../api/endpoints';
+import { passkeysSupported, usePasskey, wasCancelled } from '../../lib/passkeys';
 import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerErrors } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { AuthLayout } from '../../layouts/AuthLayout';
@@ -157,6 +158,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(() => params.get('sso_error') ? params.get('message') ?? 'Sign-in could not be completed.' : null);
   const [sso, setSso] = useState(false);
   const [phoneEmail, setPhoneEmail] = useState<string | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [unverified, setUnverified] = useState(false);
   const [remember, setRemember] = useState(() => !!rememberedEmail());
   const [shaking, shake] = useShake();
@@ -190,6 +192,22 @@ export function LoginPage() {
       origin: originOf('.auth-submit'),
       onHandoff: () => nav(redirect, { replace: true }),
     });
+  };
+
+  /** The device's own prompt (fingerprint, face or screen lock) instead of a password; with an email typed, that account's passkeys are offered first. */
+  const signInWithPasskey = async () => {
+    setError(null); setPasskeyBusy(true);
+    try {
+      const { challengeId, options } = await passkeyApi.signInOptions(getValues('email').trim());
+      const response = await usePasskey(options);
+      setSigningIn(true);
+      const auth = await passkeyApi.signIn(challengeId, response);
+      await useAuth.getState().completeSession(auth);
+      enterApp('signin');
+    } catch (e) {
+      setSigningIn(false);
+      if (!wasCancelled(e)) { setError(e instanceof ApiError ? e.message : 'Could not sign in with a passkey. Try your password.'); shake(); }
+    } finally { setPasskeyBusy(false); }
   };
 
   const m = useMutation({
@@ -252,11 +270,14 @@ export function LoginPage() {
           <Link className="link" to="/forgot-password" style={{ fontSize: 13.5 }}>Forgot password?</Link>
         </div>
         <AuthSubmitButton busy={m.isPending}>Sign in<Icon name="arrowRight" /></AuthSubmitButton>
-        <button type="button" className="auth-phone" onClick={() => {
-          const e = getValues('email').trim();
-          if (!z.string().email().safeParse(e).success) { setError('Enter your email above, then choose your phone.'); shake(); return; }
-          setError(null); setPhoneEmail(e);
-        }}><Icon name="bell" size={18} />Approve on my phone instead</button>
+        <div className={`auth-alts ${passkeysSupported() ? 'two' : ''}`}>
+          {passkeysSupported() && <button type="button" className="auth-alt auth-passkey" disabled={passkeyBusy} onClick={() => void signInWithPasskey()}><Icon name="key" size={18} />Passkey</button>}
+          <button type="button" className="auth-alt auth-phone" onClick={() => {
+            const e = getValues('email').trim();
+            if (!z.string().email().safeParse(e).success) { setError('Enter your email above, then choose your phone.'); shake(); return; }
+            setError(null); setPhoneEmail(e);
+          }}><Icon name="bell" size={18} />Phone</button>
+        </div>
         <SocialButtons redirect={redirect} email={getValues('email')} onSso={() => { setError(null); setSso(true); }} />
       </form>
       <DevHint />

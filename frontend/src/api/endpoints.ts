@@ -5,7 +5,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
-  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending,
+  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
@@ -560,4 +560,15 @@ export const workApi = {
   upload: (id: string, file: File) => uploadFile<WorkAttachment>(`/work-tasks/${id}/attachments`, file),
   download: (fileId: string, fileName: string) => download(`/work-attachments/${fileId}/download`, fileName),
   removeFile: (fileId: string) => del<void>(`/work-attachments/${fileId}`),
+};
+
+// ---- passkeys: sign in with the device's own fingerprint, face or screen lock
+export const passkeyApi = {
+  list: () => get<Passkey[]>('/me/passkeys'),
+  registerOptions: () => post<PasskeyChallenge>('/me/passkeys/options', {}),
+  add: (challengeId: string, response: Record<string, unknown>, name: string) => post<Passkey>('/me/passkeys', { challengeId, response, name }),
+  rename: (id: string, name: string) => put<void>(`/me/passkeys/${id}`, { name }),
+  remove: (id: string) => del(`/me/passkeys/${id}`),
+  signInOptions: (email: string) => post<PasskeyChallenge>('/auth/passkey/options', { email }, { auth: false }),
+  signIn: (challengeId: string, response: Record<string, unknown>) => post<AuthResponse>('/auth/passkey/verify', { challengeId, response }, { auth: false }),
 };

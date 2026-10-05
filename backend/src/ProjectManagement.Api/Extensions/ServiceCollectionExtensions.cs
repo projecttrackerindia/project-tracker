@@ -29,6 +29,15 @@ public static class ServiceCollectionExtensions
             .AddJsonOptions(o => Json.Configure(o.JsonSerializerOptions));
         services.ConfigureHttpJsonOptions(o => Json.Configure(o.SerializerOptions));
 
+        // Smaller answers (brotli, then gzip) for the phone: JSON compresses to a fifth. Live streams (event-stream) are not in the list.
+        services.AddResponseCompression(o =>
+        {
+            o.EnableForHttps = true;
+            o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+            o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+        });
+        services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+
         // Live events (chat, presence, changes): the hub carries events out; changes go through the normal API.
         var signalR = services.AddSignalR(o => { o.MaximumReceiveMessageSize = 16 * 1024; o.KeepAliveInterval = TimeSpan.FromSeconds(15); })
             .AddJsonProtocol(o => Json.Configure(o.PayloadSerializerOptions));
@@ -163,7 +172,14 @@ public static class ServiceCollectionExtensions
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo { Title = "Project Management API", Version = "v1" });
+            c.SwaggerDoc("v1", new OpenApiInfo
+            {
+                Title = "Project Tracker API", Version = "v1",
+                Description = "Everything the app does is available here. Authenticate with an access token or an API key (Settings, API keys). Every answer is "
+                    + "`{ success, data, message, errors, traceId }`. Send an `Idempotency-Key` header with a write to make retries safe: the same key and "
+                    + "request return the same answer without doing the work twice. Lists are paged; rate limits are per key or per person and answered with 429.",
+            });
+            c.OperationFilter<CommonResponsesFilter>();
             c.CustomSchemaIds(t => t.FullName!.Replace("ProjectManagement.Application.Features.", "").Replace('+', '.'));
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
@@ -189,6 +205,29 @@ public static class ServiceCollectionExtensions
             o.KnownProxies.Clear();
         });
         return services;
+    }
+}
+
+/// <summary>Documents what every call can answer and the Idempotency-Key header on writes, so the description is complete without an annotation on each action.</summary>
+public class CommonResponsesFilter : Swashbuckle.AspNetCore.SwaggerGen.IOperationFilter
+{
+    public void Apply(OpenApiOperation op, Swashbuckle.AspNetCore.SwaggerGen.OperationFilterContext context)
+    {
+        void Add(string code, string text) { if (!op.Responses.ContainsKey(code)) op.Responses[code] = new OpenApiResponse { Description = text }; }
+        Add("401", "Not signed in, or the token or key is not valid."); Add("403", "Signed in, but not allowed (role, plan or key scope).");
+        Add("429", "Too many requests: wait for the Retry-After seconds.");
+        var method = context.ApiDescription.HttpMethod ?? "";
+        if (method is "POST" or "PUT" or "PATCH" or "DELETE")
+        {
+            Add("400", "The request is malformed."); Add("422", "A value is not valid; `errors` says which field and why."); Add("409", "A conflict: someone changed it first (VERSION_CONFLICT), or the Idempotency-Key request is still running.");
+            op.Parameters ??= [];
+            op.Parameters.Add(new OpenApiParameter
+            {
+                Name = "Idempotency-Key", In = ParameterLocation.Header, Required = false, Schema = new OpenApiSchema { Type = "string", MinLength = 8, MaxLength = 100 },
+                Description = "Optional. A unique value for this write. Sending the same request again with the same key returns the first answer (header `Idempotent-Replayed: true`) instead of repeating the work. Kept for 24 hours.",
+            });
+        }
+        else Add("404", "Not found, or not visible to you.");
     }
 }
 

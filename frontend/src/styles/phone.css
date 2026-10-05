@@ -1,12 +1,15 @@
 /* Phone sign-in, the approval prompt, the island alert and Account → Mobile app. */
 
 /* ---------- "Use my phone" on the sign-in form ---------- */
-.auth-phone {
-  display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; margin-top: 10px; border-radius: 14px;
-  border: 1.5px dashed var(--border-strong); background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 14px; cursor: pointer;
-  transition: transform .15s, background .15s;
+/* Other ways in, quietly under the main button: a pair of small tiles, not a second call to action. */
+.auth-alts { display: grid; gap: 10px; margin-top: 12px; }
+.auth-alts.two { grid-template-columns: 1fr 1fr; }
+.auth-alt {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; border-radius: 14px; border: 1px solid var(--border-strong);
+  background: var(--surface-solid); color: var(--text); font-weight: 650; font-size: 14px; cursor: pointer; transition: transform .15s, border-color .15s, background .15s;
 }
-.auth-phone:hover { background: rgba(139, 92, 246, .22); } .auth-phone:active { transform: scale(.98); }
+.auth-alt svg { color: var(--primary); }
+.auth-alt:hover { border-color: var(--primary); } .auth-alt:active { transform: scale(.98); } .auth-alt:disabled { opacity: .6; }
 
 /* ---------- waiting for the phone ---------- */
 .ps-stage { position: relative; width: 190px; height: 190px; margin: 6px auto 4px; display: grid; place-items: center; }
@@ -153,3 +156,11 @@
   .sheet { max-width: 520px; margin-inline: auto; }
   .auth-card { margin-block: 8px; }
 }
+
+/* ---------- Passkeys list in Settings → Security ---------- */
+.pk-list { display: grid; gap: 10px; margin-top: 14px; justify-items: start; width: 100%; }
+.pk-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); min-width: 0; }
+.pk-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--primary-soft); color: var(--primary); }
+.pk-main { flex: 1; min-width: 0; display: grid; } .pk-main b { font-size: 14px; } .pk-main small { color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
+.pk-edit { flex: 1; display: flex; gap: 8px; min-width: 0; } .pk-edit .input { min-width: 0; flex: 1; }
+@media (max-width: 768px) { .pk-item { flex-wrap: wrap; } .pk-main { flex-basis: calc(100% - 50px); } }

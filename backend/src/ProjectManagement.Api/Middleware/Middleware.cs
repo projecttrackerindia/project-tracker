@@ -150,7 +150,7 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
     public const string ClaimKey = "api_key", ClaimScope = "api_scope";
 
     /// <summary>Areas a key can never use, whatever its owner may do: the things that manage access itself.</summary>
-    private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/admin", "/api/v1/billing", "/api/v1/workspaces", "/api/v1/dev"];
+    private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/me/passkeys", "/api/v1/me/device-login", "/api/v1/admin", "/api/v1/billing", "/api/v1/workspaces", "/api/v1/dev"];
 
     private static string? TokenOf(HttpRequest r)
     {
@@ -241,7 +241,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var session = await (from s in db.UserSessions
                                  join u in db.Users on s.UserId equals u.Id
                                  where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, s.SsoTenantId }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, s.SsoTenantId, s.AuthMethod }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
@@ -253,7 +253,10 @@ public class CurrentContextMiddleware(RequestDelegate next)
             ctx.IsPlatformAdmin = session.IsPlatformAdmin;
             ctx.MustChangePassword = session.MustChangePassword;
 
-            await ApplyMembershipAsync(http, ctx, db, orgSecurity, userId, session.MfaEnabled, session.SsoTenantId);
+            // A passkey is two factors in one (the device and the person's unlock), and a sign-in approved on the person's own phone is something they have:
+            // either satisfies a workspace's two-step rule.
+            var secondFactor = session.MfaEnabled || session.AuthMethod is "passkey" or "device";
+            await ApplyMembershipAsync(http, ctx, db, orgSecurity, userId, secondFactor, session.SsoTenantId);
         }
         await next(http);
     }
@@ -346,9 +349,9 @@ public class SecurityHeadersMiddleware(RequestDelegate next)
         h["X-Frame-Options"] = "DENY";
         h["Referrer-Policy"] = "no-referrer";
         h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
-        if (!http.Request.Path.StartsWithSegments("/swagger"))
+        if (!http.Request.Path.StartsWithSegments("/swagger") && !http.Request.Path.StartsWithSegments("/api/docs"))
             h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
-        if (http.Request.Path.StartsWithSegments("/api")) h["Cache-Control"] = "no-store";
+        if (http.Request.Path.StartsWithSegments("/api") && !http.Request.Path.StartsWithSegments("/api/docs") && !http.Request.Path.StartsWithSegments("/api/openapi")) h["Cache-Control"] = "no-store";
         return next(http);
     }
 }

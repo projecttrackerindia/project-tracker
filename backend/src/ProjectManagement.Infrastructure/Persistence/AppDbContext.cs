@@ -75,6 +75,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<DeviceLoginRequest> DeviceLoginRequests => Set<DeviceLoginRequest>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
+    public DbSet<PasskeyChallenge> PasskeyChallenges => Set<PasskeyChallenge>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
@@ -179,6 +182,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => x.EmailVerificationTokenHash);
             e.HasIndex(x => x.PasswordResetTokenHash);
         });
+        b.Entity<PasskeyCredential>(e => { e.HasIndex(x => x.CredentialId).IsUnique(); e.HasIndex(x => x.UserId); e.Property(x => x.CredentialId).HasMaxLength(512); e.Property(x => x.Name).HasMaxLength(80); });
+        b.Entity<PasskeyChallenge>(e => { e.HasIndex(x => x.CreatedAt); e.Property(x => x.Purpose).HasMaxLength(20); });
+        b.Entity<IdempotencyRecord>(e => { e.HasIndex(x => new { x.UserId, x.Key }).IsUnique(); e.HasIndex(x => x.CreatedAt); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.RequestHash).HasMaxLength(64); e.Property(x => x.ContentType).HasMaxLength(120); });
         b.Entity<DeviceLoginRequest>(e => { e.HasIndex(x => new { x.UserId, x.CreatedAt }); e.Property(x => x.SecretHash).HasMaxLength(128); e.Property(x => x.RequesterIp).HasMaxLength(64); e.Property(x => x.RequesterAgent).HasMaxLength(300); });
         b.Entity<UserSession>(e => { e.HasIndex(x => x.UserId); e.Property(x => x.AuthMethod).HasMaxLength(32); });
         b.Entity<RefreshToken>(e =>

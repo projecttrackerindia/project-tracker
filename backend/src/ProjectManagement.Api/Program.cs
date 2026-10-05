@@ -26,10 +26,13 @@ builder.Services
     .AddTelemetry(builder.Configuration, builder.Environment)
     .AddForwardedHeadersIfTrusted(builder.Configuration);
 
-if (builder.Environment.IsDevelopment()) builder.Services.AddApiSwagger();
+// The API description is public (set Api:PublishDocs=false to hide it): customers who use API keys need it.
+var publishDocs = builder.Configuration.GetValue("Api:PublishDocs", true);
+if (publishDocs) builder.Services.AddApiSwagger();
 
 var app = builder.Build();
 
+app.UseResponseCompression();
 app.UseMiddleware<MetricsMiddleware>();
 // Outside the exception handler, so each request is logged with the status the caller really got: an expected refusal (401, 403,
 // 404, 422...) is an ordinary line, not a "500" error with a stack trace. Unexpected failures are logged by ApiExceptionMiddleware.
@@ -51,11 +54,18 @@ app.UseMiddleware<MaintenanceMiddleware>();
 app.UseMiddleware<PasswordChangeMiddleware>();
 app.UseMiddleware<ConsentMiddleware>();
 app.UseAuthorization();
+app.UseMiddleware<IdempotencyMiddleware>();
 
-if (app.Environment.IsDevelopment())
+if (publishDocs)
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Project Management API v1"));
+    app.UseSwagger(c => c.RouteTemplate = "api/openapi/{documentName}.json");
+    app.UseSwaggerUI(c =>
+    {
+        c.RoutePrefix = "api/docs";
+        c.DocumentTitle = "Project Tracker API";
+        c.SwaggerEndpoint("/api/openapi/v1.json", "Project Tracker API v1");
+        c.DisplayRequestDuration();
+    });
 }
 
 app.MapControllers();

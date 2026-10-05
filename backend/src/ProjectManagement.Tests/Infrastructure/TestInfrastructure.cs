@@ -124,8 +124,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 [CollectionDefinition("api")]
 public class ApiCollection : ICollectionFixture<ApiFactory>;
 
-public record ApiResult(HttpStatusCode Status, JsonNode? Json)
+public record ApiResult(HttpStatusCode Status, JsonNode? Json, IReadOnlyDictionary<string, string>? Headers = null)
 {
+    public string? Header(string name) => Headers is not null && Headers.TryGetValue(name, out var v) ? v : null;
     public JsonNode? Data => Json?["data"];
     public string? ErrorCode => Json?["errors"]?[0]?["code"]?.GetValue<string>();
     public bool Ok => (int)Status < 400;
@@ -145,6 +146,9 @@ public sealed class TestClient(ApiFactory factory)
 
     /// <summary>When set, sent as X-Forwarded-For (the app trusts it in tests: Proxy__Trust=true) to simulate this client's network address.</summary>
     public string? Ip { get; set; }
+
+    /// <summary>Extra headers sent with every request (an Idempotency-Key, say).</summary>
+    public Dictionary<string, string> Extra { get; } = new();
 
     /// <summary>
     /// Creating a project needs a project group. Most tests are about something else, so when a test creates a project without naming a group this client
@@ -176,6 +180,7 @@ public sealed class TestClient(ApiFactory factory)
         using var req = new HttpRequestMessage(method, url);
         req.Headers.Add("X-Token-Delivery", "body");
         if (Ip is not null) req.Headers.Add("X-Forwarded-For", Ip);
+        foreach (var (k, v) in Extra) req.Headers.TryAddWithoutValidation(k, v);
         if (TeamLens is not null) req.Headers.Add("X-Team-Lens", TeamLens.ToString());
         if (Token is not null && !anonymous) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
         if (body is not null) req.Content = JsonContent.Create(body);
@@ -183,7 +188,7 @@ public sealed class TestClient(ApiFactory factory)
         var text = await res.Content.ReadAsStringAsync();
         JsonNode? json = null;
         try { json = string.IsNullOrWhiteSpace(text) ? null : JsonNode.Parse(text); } catch (JsonException) { /* non-JSON */ }
-        return new ApiResult(res.StatusCode, json);
+        return new ApiResult(res.StatusCode, json, res.Headers.ToDictionary(h => h.Key, h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>Uploads one file as multipart/form-data, like the browser does.</summary>

@@ -21,6 +21,7 @@ import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
 import { NotificationSettings } from './NotificationSettings';
 import { TwoStepRow } from './TwoStep';
+import { PasskeysRow } from './Passkeys';
 import { PrivacyRow } from './Privacy';
 import { PrioritySettings } from './PrioritySettings';
 import { CustomFieldSettings } from './CustomFieldSettings';
@@ -41,6 +42,12 @@ import { MobileAppSection } from './MobileAppSection';
 import { AiUsageCard } from '../ai/AiUsageCard';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
+
+/** How the session was opened, in the person's words ("with a passkey · "). Empty when it is the ordinary password. */
+function signedInWith(method?: string | null) {
+  const m: Record<string, string> = { passkey: 'with a passkey', device: 'approved on a phone', sso: 'through single sign-on', google: 'with Google', microsoft: 'with Microsoft', github: 'with GitHub', apple: 'with Apple' };
+  return method && m[method] ? `${m[method]} · ` : '';
+}
 
 function browserOf(ua: string | null) {
   if (!ua) return 'Unknown device';
@@ -121,6 +128,7 @@ function SecuritySection() {
             <div className="setting-info"><h4>Password</h4><p>Changing your password signs you out of your other devices.</p></div>
             <button className="btn btn-ghost" onClick={() => setPwOpen(true)}><Icon name="lock" /> Change password</button>
           </div>
+          <PasskeysRow />
           <TwoStepRow />
           <ConnectedAccounts />
           <PrivacyRow />
@@ -132,7 +140,7 @@ function SecuritySection() {
                   {sessions.data?.map((s) => (
                     <div className="member-item" key={s.id}>
                       <Icon name="monitor" />
-                      <div className="member-main"><div className="member-name">{browserOf(s.userAgent)} {s.isCurrent && <Badge tone="success">This device</Badge>}</div><div className="member-role">{s.ipAddress ?? 'Unknown IP'} · active {timeAgo(s.lastSeenAt)}</div></div>
+                      <div className="member-main"><div className="member-name">{browserOf(s.userAgent)} {s.isCurrent && <Badge tone="success">This device</Badge>}</div><div className="member-role">{s.ipAddress ?? 'Unknown IP'} · {signedInWith(s.authMethod)}active {timeAgo(s.lastSeenAt)}</div></div>
                       {!s.isCurrent && <button className="btn btn-ghost btn-sm" onClick={async () => { await meApi.revokeSession(s.id); toast('Session signed out.', 'warning'); invalidateWorkspace(wid); }}>Sign out</button>}
                     </div>
                   ))}

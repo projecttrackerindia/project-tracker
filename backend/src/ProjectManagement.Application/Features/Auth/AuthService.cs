@@ -23,7 +23,7 @@ public record UpdateProfileRequest(string DisplayName, string? TimeZone);
 public record RefreshRequest(string? RefreshToken);
 
 public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerified, bool IsPlatformAdmin, string TimeZone, bool MfaEnabled = false, bool MustChangePassword = false);
-public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent);
+public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null);
 
 /// <summary>Result of login / refresh. The refresh token is delivered by the API layer (cookie or body).</summary>
 public record AuthResult(string AccessToken, DateTime ExpiresAt, UserDto User, string RefreshToken, DateTime RefreshExpiresAt);
@@ -356,7 +356,7 @@ public class AuthService(
         var rows = await db.UserSessions.AsNoTracking()
             .Where(s => s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now)
             .OrderByDescending(s => s.LastSeenAt).ToListAsync(ct);
-        return rows.Select(s => new SessionDto(s.Id, s.CreatedAt, s.LastSeenAt, s.IpAddress, s.UserAgent, s.Id == ctx.SessionId)).ToList();
+        return rows.Select(s => new SessionDto(s.Id, s.CreatedAt, s.LastSeenAt, s.IpAddress, s.UserAgent, s.Id == ctx.SessionId, s.AuthMethod)).ToList();
     }
 
     public async Task RevokeSessionAsync(Guid sessionId, CancellationToken ct = default)

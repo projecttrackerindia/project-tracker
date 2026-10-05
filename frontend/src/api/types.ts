@@ -20,7 +20,16 @@ export interface AuthResponse { accessToken: string; expiresAt: string; user: Us
 export interface MfaChallenge { mfaRequired: true; challenge: string }
 export interface MfaStatus { enabled: boolean; enabledAt: string | null; recoveryCodesLeft: number }
 export interface MfaSetup { secret: string; otpAuthUri: string }
-export interface Session { id: string; createdAt: string; lastSeenAt: string; ipAddress: string | null; userAgent: string | null; isCurrent: boolean }
+export interface Session { id: string; createdAt: string; lastSeenAt: string; ipAddress: string | null; userAgent: string | null; isCurrent: boolean; authMethod?: string | null }
+export interface Passkey { id: string; name: string; createdAt: string; lastUsedAt: string | null; backedUp: boolean }
+/** WebAuthn options as the server sends them: bytes are base64url text. */
+export interface PasskeyOptions {
+  challenge: string; timeout?: number; rpId?: string; rp?: { id?: string; name: string }; user?: { id: string; name: string; displayName: string };
+  excludeCredentials?: { id: string; type: PublicKeyCredentialType; transports?: AuthenticatorTransport[] }[];
+  allowCredentials?: { id: string; type: PublicKeyCredentialType; transports?: AuthenticatorTransport[] }[];
+  [k: string]: unknown;
+}
+export interface PasskeyChallenge { challengeId: string; options: PasskeyOptions }
 
 export interface Workspace { id: string; name: string; slug: string; type: WorkspaceType; role: Role; description: string | null; planCode: string; memberCount: number }
 export interface PlanSummary { code: string; name: string; status: SubscriptionStatus; trialEnd: string | null; periodEnd: string | null; cancelAtPeriodEnd: boolean; downgraded: boolean }

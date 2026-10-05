@@ -70,6 +70,9 @@ public interface IAppDbContext
     DbSet<AutomationRun> AutomationRuns { get; }
     DbSet<PushSubscription> PushSubscriptions { get; }
     DbSet<DeviceLoginRequest> DeviceLoginRequests { get; }
+    DbSet<IdempotencyRecord> IdempotencyRecords { get; }
+    DbSet<PasskeyCredential> PasskeyCredentials { get; }
+    DbSet<PasskeyChallenge> PasskeyChallenges { get; }
     DbSet<Reminder> Reminders { get; }
     DbSet<AiConversation> AiConversations { get; }
     DbSet<AiMessage> AiMessages { get; }

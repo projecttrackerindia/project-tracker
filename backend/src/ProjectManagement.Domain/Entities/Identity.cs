@@ -207,3 +207,44 @@ public class DeviceLoginRequest : Entity
     public string? RequesterIp { get; set; }
     public string? RequesterAgent { get; set; }
 }
+
+/// <summary>
+/// A write that was sent with an <c>Idempotency-Key</c>: what was asked and what was answered, kept for a day so that a retry (a phone that
+/// lost its connection mid-request) gets the same answer instead of doing the work twice.
+/// </summary>
+public class IdempotencyRecord : Entity
+{
+    public Guid UserId { get; set; }
+    public string Key { get; set; } = "";
+    public string RequestHash { get; set; } = "";
+    public bool Completed { get; set; }
+    public int ResponseStatus { get; set; }
+    public string? ContentType { get; set; }
+    public string? ResponseBody { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>A passkey: a key pair kept by the person's phone, laptop or security key. Only the public half is stored here.</summary>
+public class PasskeyCredential : Entity
+{
+    public Guid UserId { get; set; }
+    /// <summary>The credential id the device presents, base64url.</summary>
+    public string CredentialId { get; set; } = "";
+    public byte[] PublicKey { get; set; } = [];
+    public byte[] UserHandle { get; set; } = [];
+    public long SignCount { get; set; }
+    public string Name { get; set; } = "";
+    public Guid AaGuid { get; set; }
+    public bool BackedUp { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastUsedAt { get; set; }
+}
+
+/// <summary>The challenge handed to the browser between "here are the options" and "here is the signed answer"; lives five minutes, used once.</summary>
+public class PasskeyChallenge : Entity
+{
+    public Guid? UserId { get; set; }
+    public string Purpose { get; set; } = "";
+    public string OptionsJson { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
