@@ -28,6 +28,7 @@ export const FEATURES: Feature[] = [
   { icon: 'clock', title: 'Time, workload and capacity', text: 'Timesheets with approvals, workload by person and weekly capacity, so work is shared out before people are overloaded.' },
   { icon: 'bolt', title: 'Operational work with service levels', text: 'Bugs, support and requests with response and resolution targets that warn before they are missed. Business plan and above.' },
   { icon: 'message', title: 'Team chat and files', text: 'Direct, group and project conversations with attachments, live delivery and unread counts that stay accurate.' },
+  { icon: 'key', title: 'A mobile app and passwordless sign-in', text: 'Install it on Android or iPhone, sign in with a passkey, or approve a sign-in by tapping a number on your phone. Mobile app and phone sign-in from the Pro plan.' },
   { icon: 'git', title: 'Connects to what you already use', text: 'GitHub and Azure DevOps links, Slack and Teams webhooks, an API, single sign-on (OIDC and SAML) and SCIM provisioning.' },
 ];
 
@@ -51,7 +52,9 @@ export const SECURITY: Pillar[] = [
   { icon: 'key', title: 'Identity and sign-in', points: [
     'Single sign-on with OpenID Connect or SAML 2.0 (signed assertions only), on domains you prove you own.',
     'Automatic provisioning and de-provisioning with SCIM 2.0.',
+    'Passkeys: sign in with a fingerprint, face or screen lock. They only work on this site, so a look-alike page gets nothing, and they count as two-step verification.',
     'Two-step verification with authenticator apps and recovery codes, which an organization can require.',
+    'Sign in on a computer by approving on your phone: pick the matching number, so a prompt you did not expect is not approved by reflex.',
     'Sign-in from Google, Microsoft, GitHub or Apple joins an account only through a verified e-mail address.',
     'Sessions can be reviewed and revoked; organizations can restrict access to their own IP ranges.',
   ] },
@@ -72,6 +75,7 @@ export const SECURITY: Pillar[] = [
   ] },
   { icon: 'bug', title: 'Building it safely', points: [
     'Rate limiting on every endpoint, with stricter limits on sign-in.',
+    'Writes can carry an idempotency key, so a retry from a weak mobile connection is answered again instead of done twice.',
     'Webhooks are signed, and cannot point at private or internal networks.',
     'Defences against cross-site request forgery and clickjacking, and strict security headers.',
     'Continuous integration builds and tests every change and checks dependencies for known vulnerabilities.',
@@ -154,6 +158,22 @@ export const DETAILS: DetailPage[] = [
     ],
     related: ['/features/portfolio/', '/pricing/'],
   },
+  {
+    path: '/features/mobile-and-sign-in/', title: 'Mobile App, Passkeys and Phone Sign-in | Project Tracker', h1: 'Sign in with your phone. Work from anywhere.',
+    lead: 'An installable mobile app built for one hand, passkeys instead of passwords, and sign-in on a computer by tapping a number on your phone.',
+    description: 'Install Project Tracker on Android or iPhone, sign in with passkeys or by approving on your phone, and get alerts when the app is closed. Mobile app and phone sign-in from the Pro plan.',
+    sections: [
+      { title: 'An app, not a shrunken website', text: 'On a phone the product becomes an app: a floating tab bar, bottom sheets, a Home built around your day and pull to refresh.',
+        points: ['Install it from your browser on Android or iPhone, with its own icon and full screen', 'Works in portrait and landscape, with tables turned into cards and no sideways scrolling', 'Alerts reach you at the top of the screen, even when the app is closed'] },
+      { title: 'Approve a sign-in on your phone', text: 'Type your email on a computer. Your phone shows three numbers; tap the one on the computer and you are in.',
+        points: ['The matching number means a prompt you did not expect is not approved by reflex', 'Each request lasts two minutes and works once, only for the screen that asked', 'Counts as the second factor a workspace may require'] },
+      { title: 'Passkeys, on every plan', text: 'Sign in with the fingerprint, face or screen lock you already use to unlock your device.',
+        points: ['Nothing to type or remember, and nothing to steal in a data breach', 'Bound to this site, so a look-alike page gets nothing', 'See every device you are signed in on, and how each one signed in'] },
+      { title: 'Reliable on a weak connection', text: 'Writes can carry an idempotency key, and answers are compressed.',
+        points: ['A retried request is answered again, never done twice', 'Smaller responses over mobile data', 'The API description is public, with every call and its errors'] },
+    ],
+    related: ['/security/', '/pricing/'],
+  },
 ];
 
 /** The plan comparison. From the plan catalog (DatabaseInitializer): keep it in step with that. A tick is true, a dash is not included. */
@@ -184,6 +204,7 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'Advanced permissions', v: ['–', '–', '✓', '✓'] },
     { label: 'Audit log', v: ['–', '–', '✓', '✓'] },
     { label: 'API access', v: ['–', '–', '✓', '✓'] },
+    { label: 'Passkeys and two-step verification', v: ['✓', '✓', '✓', '✓'] },
     { label: 'Single sign-on, IP allowlist, two-step rules', v: ['–', '–', '✓', '✓'] },
   ] },
 ];
@@ -206,6 +227,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'Does the assistant change my projects by itself?', a: 'No. It answers from the projects you can open and proposes changes. Nothing happens until you confirm it.' },
   { q: 'Can teams keep their projects private from each other?', a: 'Yes. Choose team-only visibility and each person sees the projects of their teams, plus the ones they own or were added to. Owners and admins see everything; guests only the projects they are added to.' },
   { q: 'How is each organization\'s data kept separate?', a: 'In the data layer itself, not only in the screens, and automated tests check every screen for leaks between organizations, teams and roles.' },
+  { q: 'What is a passkey, and do I need a paid plan?', a: 'A passkey lets you sign in with your fingerprint, face or screen lock instead of a password. It works only on this site and cannot be phished. Passkeys are on every plan, including Free.' },
   { q: 'Is there a mobile app?', a: 'Yes, from the Pro plan: install Project Tracker on your phone from Account, Mobile app, get alerts when it is closed, and sign in on a computer by tapping a number on your phone. No password to type.' },
   { q: 'Can I take my data with me?', a: 'Yes. Owners can export everything as files in one zip at any time, and set how long history is kept.' },
   { q: 'Does it support single sign-on?', a: 'Yes, on Business and Enterprise: OpenID Connect and SAML 2.0, with SCIM provisioning to add and remove people automatically.' },

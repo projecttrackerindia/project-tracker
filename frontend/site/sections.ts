@@ -66,7 +66,7 @@ const bento = `<div class="bento">
 <article class="tile" ${reveal(4)}><span class="tag">Reminders</span><h3>Reminders on time</h3><p>In each person's own working hours, with Done and Snooze right there.</p>
 <div class="vis notes"><div class="note" style="--md:.2s"><i>!</i>Review the design is due today</div><div class="note" style="--md:.8s"><i>✓</i>Daily briefing at 9:00</div></div></article>
 <article class="tile" ${reveal(5)}><span class="tag">Security</span><h3>Built in, not bolted on</h3><p>Each organization's data is separate in the data layer itself.</p>
-<div class="vis pills"><span>Two-step</span><span>SSO</span><span>Audit log</span><span>IP allowlist</span></div></article>
+<div class="vis pills"><span>Passkeys</span><span>Two-step</span><span>SSO</span><span>Audit log</span></div></article>
 <article class="tile" ${reveal(6)}><span class="tag">Connect</span><h3>Works with your tools</h3><p>GitHub, Azure DevOps, Slack, Teams, an API and signed webhooks.</p>
 <div class="vis pills"><span>GitHub</span><span>Slack</span><span>Teams</span><span>API</span></div></article>
 </div>`;
@@ -79,13 +79,39 @@ const steps = `<div class="steps">
 const versus = `<div class="vs" ${reveal()}><div class="hd"><div>The same question</div><div>Spreadsheets and chat</div><div class="us">${SITE.name}</div></div>${VERSUS.map((v) =>
   `<div class="rw"><div>${esc(v.what)}</div><div class="no">${esc(v.without)}</div><div class="yes">${esc(v.with)}</div></div>`).join('')}</div>`;
 
+
+// ---- sign in the way you unlock your phone: a looping scene, not a screenshot
+
+const signin = `<div class="sg" ${reveal()}>
+<div class="sg-copy"><p class="eyebrow">New</p><h2>Sign in the way you unlock your phone</h2>
+<p class="sub" style="margin-bottom:22px">No password to type. Use a passkey, or approve the sign-in on the phone in your pocket.</p>
+<ul class="sg-points"><li>${tick}<span><b>Passkeys</b> on every plan: fingerprint, face or screen lock, bound to this site.</span></li>
+<li>${tick}<span><b>Approve on your phone</b>: pick the matching number, so an unexpected prompt is never approved by reflex.</span></li>
+<li>${tick}<span><b>A real mobile app</b> from the Pro plan: install it on Android or iPhone, with alerts that reach you when it is closed.</span></li></ul>
+<a class="btn btn-ghost" href="/features/mobile-and-sign-in/">How it works</a></div>
+<div class="sg-stage" role="img" aria-label="A computer shows the number 47. A phone shows three numbers; tapping 47 signs the computer in.">
+<div class="sg-pc"><div class="sg-bar"><i></i><i></i><i></i></div><div class="sg-body"><small>Check your phone</small>
+<div class="sg-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52"/><circle class="go" cx="60" cy="60" r="52"/></svg><b>47</b></div>
+<div class="sg-state"><span class="w">Waiting for approval…</span><span class="d">${tick} Signed in</span></div></div></div>
+<div class="sg-phone"><div class="sg-island"><div class="sg-ih"><i></i><span><b>Sign-in request</b><small>Chrome on Windows</small></span></div>
+<div class="sg-nums"><span>12</span><span class="hit">47</span><span>83</span></div></div></div></div></div>`;
+
+const trio = `<div class="trio">
+<article class="tile" ${reveal(0)}><span class="tag">Passkeys</span><h3>Nothing to type, nothing to steal</h3><p>Your device holds the key. A look-alike site gets nothing.</p>
+<div class="vis"><div class="fp" aria-hidden="true"><i></i><i></i><i></i><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 11v3a5 5 0 0 1-1.2 3.2M8 12a4 4 0 1 1 8 0v1.5c0 2-.4 3.8-1.4 5.5M5 12a7 7 0 0 1 14 0v1c0 1.7-.2 3.2-.6 4.6M12 15.5c0 1.6-.3 3-.9 4.2"/></svg></div></div></article>
+<article class="tile" ${reveal(1)}><span class="tag">Mobile app</span><h3>Made for one hand</h3><p>Install it from the browser. Landscape, cards and alerts included.</p>
+<div class="vis pills"><span>Android</span><span>iPhone</span><span>Desktop</span><span class="pro">Pro and above</span></div></article>
+<article class="tile" ${reveal(2)}><span class="tag">Reliable API</span><h3>A retry never doubles the work</h3><p>Send an idempotency key and the second try gets the first answer.</p>
+<div class="vis"><div class="rq" aria-hidden="true"><div class="l a"><code>POST /projects</code><span>201 created</span></div><div class="l b"><code>retry · same key</code><span>same answer, nothing added</span></div></div></div></article>
+</div>`;
+
 const [h1a, ...h1rest] = HOME.h1.split('. ');
 
 export function landing(): string {
   return `${header()}
 <main>
 <section class="dark hero">${aurora}<div class="wrap"><div>
-<span class="kicker"><b>New</b> Portfolio forecasts and what-if scenarios</span>
+<span class="kicker"><b>New</b> Passkeys, phone sign-in and a mobile app</span>
 <h1>${esc(h1a)}. <span class="grad">${esc(h1rest.join('. '))}</span></h1>
 <p class="lead">${esc(HOME.lead)}</p>
 <div class="cta"><a class="btn btn-primary btn-lg" href="/register">Start free</a><a class="btn btn-glass btn-lg" href="/features/">See what it does</a></div>
@@ -94,6 +120,7 @@ export function landing(): string {
 <section class="block"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Everything in one place</p><h2>From the first task to the portfolio review</h2>
 <p class="sub">One workspace for planning, doing and reporting, so leaders see the truth without chasing updates.</p></div>${bento}
 <p style="margin-top:26px;text-align:center"><a href="/features/"><strong>Explore every feature →</strong></a></p></div></section>
+<section class="block" style="padding-top:0"><div class="wrap">${signin}<div style="height:18px"></div>${trio}</div></section>
 <section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Why teams switch</p><h2>Stop reconstructing the truth by hand</h2>
 <p class="sub">What changes when projects stop living in spreadsheets and chat.</p></div>${versus}</div></section>
 <section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Getting started</p><h2>Up and running in minutes</h2></div><div style="height:30px"></div>${steps}</div></section>
