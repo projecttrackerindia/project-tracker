@@ -8,7 +8,6 @@ import { activeShare, Avatar, ErrorState, HealthBadge, PageLoader, Progress, Pro
 import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
-import { TeamLensPicker } from '../../components/TeamLensPicker';
 import { useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { TaskModal } from '../tasks/TaskModal';
@@ -62,7 +61,6 @@ export function ProjectStatusPage() {
           {selected && <button type="button" className="ps-side-toggle btn btn-ghost btn-sm" aria-expanded={listOpen} onClick={() => setListOpen((v) => !v)}>
             {listOpen ? 'Hide list' : `${current?.name ?? 'Projects'}`} <Icon name="chevronD" size={14} /></button>}
         </div>
-        <div className="ps-lens"><TeamLensPicker compact /></div>
         <div className={`ps-groups ${selected && !listOpen ? 'tucked' : ''}`}>
           {groups.data.length === 0 && <p className="ps-empty-list">No projects yet. Create one from the Projects page.</p>}
           {groups.data.map((g) => <GroupSection key={g.id} group={g} open={openId === g.id} selected={selected} onToggle={() => toggle(g.id)} onPick={pick} />)}

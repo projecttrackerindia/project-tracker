@@ -18,6 +18,8 @@ import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { chatKeys } from '../features/chat/chatStore';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { ThemeSwitch } from '../components/ThemeSwitch';
+import { TeamLensPicker } from '../components/TeamLensPicker';
+import { LensSync } from '../lib/teamLens';
 import { AccountDock, TopbarMe } from './AccountDock';
 import { useMainNav } from './navigation';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
@@ -312,6 +314,7 @@ function Topbar() {
       <div className="topbar-actions">
         {!isPlatformAdmin && <AssistantButton />}
         {!isPlatformAdmin && <RunningTimer />}
+        {!isPlatformAdmin && <TeamLensPicker />}
         {!isPlatformAdmin && <WorkspaceSwitcher />}
         <ThemeSwitch className="theme-toggle" />
         {!isPlatformAdmin && <NotificationsMenu />}
@@ -336,6 +339,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
   return (
     <div className="app-shell">
+      <LensSync />
       <Sidebar />
       <div className={`main ${collapsed ? 'expanded' : ''}`}>
         <PlatformBanner />

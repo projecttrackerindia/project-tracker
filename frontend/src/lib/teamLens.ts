@@ -1,27 +1,44 @@
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import { insightApi } from '../api/endpoints';
-import { useWorkspaceId } from '../stores/auth';
+import { queryClient, useWorkspaceId } from '../stores/auth';
 import { useWsQuery } from './hooks';
-
-/** Which team the person is looking at on the dashboard, reports and Portfolio: null = all teams. Remembered per workspace on this device. */
-const KEY = (wid: string) => `pm_team_lens_${wid}`;
-const read = (wid: string): string | null => { try { return localStorage.getItem(KEY(wid)); } catch { return null; } };
-const write = (wid: string, id: string | null) => { try { if (id) localStorage.setItem(KEY(wid), id); else localStorage.removeItem(KEY(wid)); } catch { /* storage unavailable */ } };
+import { readStoredLens, setActiveLens, writeStoredLens } from './lensState';
 
 const useLensStore = create<{ byWs: Record<string, string | null>; set: (wid: string, id: string | null) => void }>((set) => ({
   byWs: {},
-  set: (wid, id) => { write(wid, id); set((s) => ({ byWs: { ...s.byWs, [wid]: id } })); },
+  set: (wid, id) => set((s) => ({ byWs: { ...s.byWs, [wid]: id } })),
 }));
 
-/** The teams this person may pick (the server decides by role and team membership), the current pick, and how to change it. */
+/**
+ * The team the person is looking at across the whole app (null = all teams they can see), the teams they may pick (the server decides, by
+ * role and team membership), and how to change it. Changing it re-reads everything for the workspace through the new lens.
+ */
 export function useTeamLens() {
   const wid = useWorkspaceId() ?? '';
   const stored = useLensStore((s) => s.byWs[wid]);
-  const setLens = useLensStore((s) => s.set);
   const q = useWsQuery(['lens', 'teams'], insightApi.lensTeams, { staleTime: 60_000 });
   const teams = q.data ?? [];
-  const wanted = stored === undefined ? read(wid) : stored;
+  const wanted = stored === undefined ? readStoredLens(wid) : stored;
   // A saved team that is gone, or that this person may no longer pick, quietly means "all teams".
-  const teamId = wanted && teams.some((t) => t.id === wanted) ? wanted : null;
-  return { teams, teamId, team: teams.find((t) => t.id === teamId) ?? null, ready: q.isSuccess, setTeam: (id: string | null) => setLens(wid, id) };
+  const teamId = !q.isSuccess ? wanted : wanted && teams.some((t) => t.id === wanted) ? wanted : null;
+  if (wid) setActiveLens(wid, teamId);   // synchronously, so the very first request of the page already carries it
+
+  const setTeam = (id: string | null) => {
+    if (!wid) return;
+    writeStoredLens(wid, id);
+    setActiveLens(wid, id);
+    useLensStore.getState().set(wid, id);
+    void queryClient.resetQueries({ queryKey: [wid], predicate: (query) => query.queryKey[1] !== 'lens' });
+  };
+  return { teams, teamId, team: teams.find((t) => t.id === teamId) ?? null, ready: q.isSuccess, setTeam };
+}
+
+/** Mounted once in the app shell so the lens is active before any page asks for data. */
+export function LensSync() {
+  const { teamId, teams, ready } = useTeamLens();
+  const wid = useWorkspaceId();
+  // A remembered team this person can no longer pick is dropped for good.
+  useEffect(() => { if (wid && ready && !teamId && readStoredLens(wid) && !teams.some((t) => t.id === readStoredLens(wid))) writeStoredLens(wid, null); }, [wid, ready, teamId, teams]);
+  return null;
 }

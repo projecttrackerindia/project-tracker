@@ -63,6 +63,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         var url = conversation is { } id ? $"/api/v1/ai/conversations/{id}/ask" : "/api/v1/ai/ask";
         using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(new { text, mode, attachmentIds = files?.ToArray(), timeZone }) };
         req.Headers.Add("X-Token-Delivery", "body");
+        if (c.TeamLens is { } lens) req.Headers.Add("X-Team-Lens", lens.ToString());
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Token);
         using var res = await c.Http.SendAsync(req);
         var body = await res.Content.ReadAsStringAsync();
@@ -1054,6 +1055,27 @@ public class AiWorkspaceTests(ApiFactory factory)
         var changed = await RunTool(alice, "propose_update_work", new { key, status = "Done" }, "Mark the Bravo task done");
         Assert.DoesNotContain("proposed", changed, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("There is no task", changed);
+    }
+
+    [Fact]
+    public async Task The_assistant_follows_the_team_being_looked_at_and_says_so()
+    {
+        var o = await Setup();
+        var teamA = Guid.Parse(S((await o.Owner.Post("/api/v1/teams", new { name = "Alpha team" })).Data!["team"]!["id"]));
+        var teamB = Guid.Parse(S((await o.Owner.Post("/api/v1/teams", new { name = "Bravo team" })).Data!["team"]!["id"]));
+        async Task Proj(string name, Guid team) => Assert.True((await o.Owner.Post("/api/v1/projects", new { name, priority = "High", teamId = team, status = "Active" })).Ok);
+        await Proj("Alpha Delivery", teamA); await Proj("Bravo Confidential Merger", teamB);
+
+        o.Owner.TeamLens = teamA;
+        var text = await RunTool(o.Owner, "list_projects", new { }, "Which projects are running?");
+        Assert.Contains("Alpha Delivery", text);
+        Assert.DoesNotContain("Bravo", text);
+        Assert.Contains("currently looking at the team \"Alpha team\"", Chat.Requests.Last().Context);
+        Assert.DoesNotContain("Bravo Confidential", Chat.Requests.Last().Context);
+
+        o.Owner.TeamLens = null;
+        Assert.Contains("Bravo Confidential Merger", await RunTool(o.Owner, "list_projects", new { }, "Which projects are running?"));
+        Assert.DoesNotContain("currently looking at the team", Chat.Requests.Last().Context);
     }
 
     // ------------------------------------------------------------------ no "I can't": the gaps found in a real conversation

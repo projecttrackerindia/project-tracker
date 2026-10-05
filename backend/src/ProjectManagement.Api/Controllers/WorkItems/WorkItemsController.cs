@@ -22,6 +22,11 @@ public class WorkItemsController(WorkItemService items, WorkloadService workload
         [FromQuery] DateOnly? dueTo = null, [FromQuery] bool overdue = false, [FromQuery] string? q = null, [FromQuery] int limit = 200, CancellationToken ct = default) =>
         Ok(await items.ListAsync(new WorkItemQuery(ParseKinds(kinds), Mine: true, OpenOnly: open, ProjectId: projectId, DueFrom: dueFrom, DueTo: dueTo, Overdue: overdue, Q: q, Limit: limit), ct: ct));
 
+    /// <summary>Every open (or, with open=false, every) action item of the projects the caller can see, for the Portfolio. Follows the team being looked at.</summary>
+    [HttpGet("action-items")]
+    public async Task<IActionResult> ActionItems([FromQuery] bool open = true, [FromQuery] int limit = 300, CancellationToken ct = default) =>
+        Ok(await items.ListAsync(new WorkItemQuery([WorkItemKind.ActionItem], OpenOnly: open, Limit: limit), ct: ct));
+
     [HttpGet("workload")]
     public async Task<IActionResult> Workload([FromQuery] WorkloadScope? scope, CancellationToken ct) => Ok(await workload.GetAsync(scope, ct));
 

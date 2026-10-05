@@ -42,7 +42,7 @@ public class ProjectAccess(IAppDbContext db, ICurrentContext ctx, PermissionServ
     /// <summary>Null means "all teams" (everything this person may see). A team must be one they may pick, otherwise it simply does not exist for them.</summary>
     public async Task<Guid?> RequireLensAsync(Guid? teamId, CancellationToken ct = default)
     {
-        if (teamId is not { } id) return null;
+        if (teamId is not { } id) return ctx.TeamLens;
         if (!(await LensTeamsAsync(ct)).Any(t => t.Id == id)) throw new NotFoundException("Team not found.");
         return id;
     }

@@ -1,4 +1,5 @@
 import type { ApiErrorItem, AuthResponse } from './types';
+import { lensHeaders } from '../lib/lensState';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
@@ -76,6 +77,7 @@ export async function api<T = void>(method: string, path: string, body?: unknown
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  Object.assign(headers, lensHeaders(method, path));
 
   const res = await fetch(`${BASE}/api/v1${path}`, {
     method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -120,7 +122,7 @@ export async function uploadFile<T>(path: string, file: File, fields?: Record<st
 export async function streamPost(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
   const send = () => fetch(`${BASE}/api/v1${path}`, {
     method: 'POST', credentials: 'include', signal, body: JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...lensHeaders('POST', path), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
   });
   let res = await send();
   if (res.status === 401 && (await refreshSession())) res = await send();

@@ -9,7 +9,6 @@ import { EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Progress, St
 import { formatDate, formatDateShort, timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
-import { TeamLensPicker } from '../../components/TeamLensPicker';
 import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { formatMinutes } from '../time/time';
 import { TaskModal } from '../tasks/TaskModal';
@@ -71,7 +70,6 @@ export function DashboardPage() {
   return (
     <>
       <PageHead title={`Welcome back, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
-        <TeamLensPicker />
         {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New project</button>}
         {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add task</button>}
       </PageHead>
@@ -154,10 +152,10 @@ export function DashboardPage() {
           <div className="card-head"><h3>Task status</h3></div>
           <div className="card-body">
             <div className="row" style={{ gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ width: 112, height: 112, flexShrink: 0 }}>
+              <div style={{ width: 104, height: 104, flexShrink: 0 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={34} outerRadius={52} paddingAngle={2} animationDuration={650} animationEasing="ease-out"
+                    <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={32} outerRadius={48} paddingAngle={2} animationDuration={650} animationEasing="ease-out"
                       fill="#8b5cf6" stroke="var(--surface-1)" strokeWidth={2}>
                       {statusDist.map((s) => <Cell key={s.category} fill={CATEGORY_COLOR[s.category]} />)}
                     </Pie>
@@ -165,10 +163,11 @@ export function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div style={{ flex: 1, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="ring-legend">
                 {statusDist.map((s) => (
-                  <div key={s.category} className="row" style={{ justifyContent: 'space-between', fontSize: 12.5 }}>
-                    <span className="row" style={{ gap: 7 }}><i style={{ width: 9, height: 9, borderRadius: 3, background: CATEGORY_COLOR[s.category], display: 'inline-block' }} />{CATEGORY_LABEL[s.category]}</span>
+                  <div key={s.category}>
+                    <i style={{ width: 9, height: 9, borderRadius: 3, background: CATEGORY_COLOR[s.category], display: 'inline-block' }} />
+                    <span>{CATEGORY_LABEL[s.category]}</span>
                     <b>{s.count}</b>
                   </div>
                 ))}

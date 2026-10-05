@@ -199,4 +199,32 @@ public class TeamScopeTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NotFound, (await s.Dave.Get($"/api/v1/dashboard?teamId={s.TeamA}")).Status);
         Assert.True((await s.Alice.Get($"/api/v1/dashboard?teamId={s.TeamA}")).Ok);
     }
+
+    [Fact]
+    public async Task The_team_being_looked_at_narrows_every_list_for_reads_never_widens_and_never_disturbs_writes()
+    {
+        var s = await Seed(teamsMode: false);                       // an organization where everyone sees everything
+        async Task<string[]> Names(TestClient c) => (await c.Get("/api/v1/projects?pageSize=50")).Data!["items"]!.AsArray().Select(p => S(p!["name"])).OrderBy(n => n).ToArray();
+        Assert.Equal(2, (await Names(s.Owner)).Length);
+
+        s.Owner.TeamLens = s.TeamB;
+        Assert.Equal([$"{Secret} Programme"], await Names(s.Owner));                                   // lists follow the lens ...
+        Assert.Equal(1, (await s.Owner.Get("/api/v1/dashboard")).Data!["counts"]!["totalProjects"]!.GetValue<int>());
+        Assert.Contains(Secret, (await s.Owner.Get("/api/v1/action-items")).Data!.ToJsonString());
+        s.Owner.TeamLens = s.TeamA;
+        Assert.DoesNotContain(Secret, (await s.Owner.Get("/api/v1/action-items")).Data!.ToJsonString());
+        Assert.DoesNotContain(Secret, (await s.Owner.Get("/api/v1/search?q=Programme")).Data?.ToJsonString() ?? "");
+
+        // ... a project opened by its address still opens, and writes are untouched by it.
+        var created = await s.Owner.Post("/api/v1/projects", new { name = "Made while looking at Alpha", priority = "Low", teamId = s.TeamB });
+        Assert.True(created.Ok, created.ToString());
+        s.Owner.TeamLens = null;
+        Assert.Equal(3, (await Names(s.Owner)).Length);
+
+        // A team the person may not pick is ignored: it can never show more than they could see anyway.
+        var alice = s.Alice; alice.TeamLens = s.TeamB;
+        Assert.Equal(2, (await Names(alice)).Length);                                                  // organization-wide visibility unchanged, lens ignored
+        Assert.True((await s.Owner.Put("/api/v1/workspace/project-visibility", new { mode = "teams" })).Ok);
+        Assert.Equal(["Alpha Programme"], await Names(alice));                                         // limited to teams: still only her own, the forged lens changed nothing
+    }
 }

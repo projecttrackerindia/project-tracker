@@ -282,6 +282,21 @@ public class CurrentContextMiddleware(RequestDelegate next)
         ctx.Role = membership.Role;
         ctx.WorkspaceType = membership.Type;
         ctx.ProjectScope = await ResolveProjectScopeAsync(http, ctx, membership.ProjectVisibility);
+        ctx.TeamLens = await ResolveTeamLensAsync(http);
+    }
+
+    /// <summary>
+    /// The team the person is looking at (header X-Team-Lens, sent by the app on reads of lists and figures, and on questions to the assistant).
+    /// Only teams they may pick count; anything else is ignored, so a stale or forged value can never widen what they see - the lens only narrows.
+    /// </summary>
+    private static async Task<Guid?> ResolveTeamLensAsync(HttpContext http)
+    {
+        if (!http.Request.Headers.TryGetValue("X-Team-Lens", out var raw) || !Guid.TryParse(raw.ToString(), out var team)) return null;
+        var reading = HttpMethods.IsGet(http.Request.Method);
+        var asking = HttpMethods.IsPost(http.Request.Method) && System.Text.RegularExpressions.Regex.IsMatch(http.Request.Path.Value ?? "", @"^/api/v1/ai/(conversations/[0-9a-fA-F-]{36}/)?ask$");
+        if (!reading && !asking) return null;
+        var access = http.RequestServices.GetRequiredService<ProjectManagement.Application.Services.ProjectAccess>();
+        return (await access.LensTeamsAsync(http.RequestAborted)).Any(t => t.Id == team) ? team : null;
     }
 
     /// <summary>

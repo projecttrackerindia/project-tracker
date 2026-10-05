@@ -122,6 +122,8 @@ public sealed class TestClient(ApiFactory factory)
     public string? RefreshToken { get; set; }
     public Guid UserId { get; set; }
     public string Email { get; set; } = "";
+    /// <summary>When set, every request carries the team being looked at (X-Team-Lens), as the app does.</summary>
+    public Guid? TeamLens { get; set; }
     public Guid WorkspaceId { get; set; }
 
     /// <summary>When set, sent as X-Forwarded-For (the app trusts it in tests: Proxy__Trust=true) to simulate this client's network address.</summary>
@@ -157,6 +159,7 @@ public sealed class TestClient(ApiFactory factory)
         using var req = new HttpRequestMessage(method, url);
         req.Headers.Add("X-Token-Delivery", "body");
         if (Ip is not null) req.Headers.Add("X-Forwarded-For", Ip);
+        if (TeamLens is not null) req.Headers.Add("X-Team-Lens", TeamLens.ToString());
         if (Token is not null && !anonymous) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
         if (body is not null) req.Content = JsonContent.Create(body);
         using var res = await Http.SendAsync(req);

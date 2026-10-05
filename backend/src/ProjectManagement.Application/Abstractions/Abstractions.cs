@@ -118,6 +118,8 @@ public interface ICurrentContext
     bool MustChangePassword { get; }
     /// <summary>How far this request's person may reach into projects (decided once per request, from the workspace setting and their role). Every project and task query is narrowed by it.</summary>
     ProjectScope ProjectScope { get; }
+    /// <summary>The one team this request looks at (the person picked it in the app and may pick it), or null for every team they can see. Reads only; narrows every project and task query.</summary>
+    Guid? TeamLens { get; }
     Guid RequireUserId();
     Guid RequireTenantId();
 }
@@ -135,6 +137,7 @@ public class CurrentContext : ICurrentContext
     public (Guid WorkspaceId, string Code, string Message)? BlockedWorkspace { get; set; }
     public bool MustChangePassword { get; set; }
     public ProjectScope ProjectScope { get; set; }
+    public Guid? TeamLens { get; set; }
 
     public Guid RequireUserId() => UserId ?? throw new Exceptions.UnauthorizedException();
     public Guid RequireTenantId() => TenantId ?? throw new Exceptions.ForbiddenException(

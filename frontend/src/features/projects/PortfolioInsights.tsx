@@ -6,6 +6,7 @@ import { formatDate } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
 import { aiWorkspaceApi, type PortfolioRisk } from '../ai/aiApi';
+import { PortfolioActionItems } from './PortfolioActionItems';
 import { Sparkle, useAi } from '../ai/Assistant';
 
 /** The portfolio worked out by rules over the projects the person may open: no model, no credits, every plan. Shared by the page and each project. */
@@ -48,6 +49,7 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
   const q = usePortfolioBrief();
   const ai = useAi();
   const ask = useAsk();
+  const [itemsOpen, setItemsOpen] = useState(false);
   if (q.isLoading) return <PageLoader />;
   const b = q.data;
   if (!b || b.projects === 0) {
@@ -60,12 +62,13 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
     <div className="pi">
       <header className="pi-head">
         <div><h2>Portfolio today</h2><span>As of {formatDate(b.asOf)} · {b.projects} active project{b.projects === 1 ? '' : 's'} you can open</span></div>
-        {ai && (
-          <div className="pi-ask">
+        <div className="pi-ask">
+          <button type="button" className="btn btn-soft btn-sm" onClick={() => setItemsOpen(true)}><Icon name="checkCircle" size={14} /> Action items{b.openActionItems > 0 && <span className="ps-count">{b.openActionItems}</span>}</button>
+          {ai && <>
             <button type="button" className="btn btn-soft btn-sm" onClick={() => ask('Give me an executive summary of the portfolio: what is going well, what is at risk and why, how late the worst projects are likely to land, and what I should escalate this week.')}><Sparkle size={14} /> Executive summary</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.')}>Risk review</button>
-          </div>
-        )}
+          </>}
+        </div>
       </header>
 
       <div className="pi-kpis">
@@ -106,6 +109,7 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
           <p className="pi-people">{b.stretched.map((p) => `${p.name}: ${p.projects} projects, ${p.openTasks} open tasks, ${p.overdueTasks} overdue`).join('  ·  ')}</p>
         </section>
       )}
+      {itemsOpen && <PortfolioActionItems onClose={() => setItemsOpen(false)} />}
     </div>
   );
 }

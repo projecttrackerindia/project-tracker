@@ -100,6 +100,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     /// <summary>How far this request's person reaches into projects (see <see cref="ProjectScope"/>). Read by the project filter below.</summary>
     internal ProjectScope CurrentProjectScope => current.ProjectScope;
     internal Guid? CurrentUserId => current.UserId;
+    internal Guid? CurrentTeamLens => current.TeamLens;
 
     public async Task<int> PendingMigrationCountAsync(CancellationToken ct = default) => (await Database.GetPendingMigrationsAsync(ct)).Count();
 
@@ -810,6 +811,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         // The project itself: whole workspace, or - when this person's reach is narrowed - the projects they own, were added to, or
         // that belong to a team they are in. Written once here so no query, report or assistant tool has to remember it.
         b.Entity<Project>().HasQueryFilter(p => p.TenantId == CurrentTenantId && !p.IsDeleted
+            && (CurrentTeamLens == null || p.TeamId == CurrentTeamLens)
             && (CurrentProjectScope == ProjectScope.None
                 || p.OwnerId == CurrentUserId
                 || ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == CurrentUserId)

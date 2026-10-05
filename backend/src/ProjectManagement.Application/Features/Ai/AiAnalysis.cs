@@ -39,6 +39,8 @@ public class AiAnalysis(IAppDbContext db, ICurrentContext ctx, AppClock clock, P
             .Select(p => new { p.Key, p.Name, p.Status, p.ProjectType, Group = p.ProjectGroupId }).Take(300).ToListAsync(ct);
         var members = ctx.Role == TenantRole.Guest ? 0 : await db.TenantMembers.AsNoTracking().CountAsync(m => m.TenantId == tid, ct);
         sb.Append(ctx.Role == TenantRole.Guest ? "" : $"This workspace has {members} member{(members == 1 ? "" : "s")}. ");
+        if (ctx.TeamLens is { } lens && await db.Teams.AsNoTracking().Where(t => t.Id == lens).Select(t => t.Name).FirstOrDefaultAsync(ct) is { } teamName)
+            sb.AppendLine($"The person is currently looking at the team \"{Clean(teamName)}\": every project, task and figure you can read is limited to that team's projects. Say so when it matters, and offer to look at all teams if they ask about something outside it.");
         sb.AppendLine($"The person can see {projects.Count} active project{(projects.Count == 1 ? "" : "s")}.");
         if (projects.Count == 0) return sb.ToString();
 

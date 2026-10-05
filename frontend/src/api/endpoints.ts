@@ -411,6 +411,8 @@ export const workItemApi = {
   /** Everything assigned to me: project tasks, test issues, action items and operational work. */
   mine: (f: WorkItemFilters = {}) => get<WorkItem[]>('/my-work', { ...f, kinds: f.kinds?.length ? f.kinds.join(',') : undefined }),
   /** Open work per person: my reporting line, the whole workspace (with broad reports access) or just me. */
+  /** Every open action item of the projects I can see (the Portfolio's view); follows the team being looked at. */
+  actionItems: (open = true) => get<WorkItem[]>('/action-items', { open }),
   workload: (scope?: WorkloadScope) => get<Workload>('/workload', { scope }),
   person: (userId: string, scope?: WorkloadScope) => get<WorkloadPersonDetail>(`/workload/${userId}`, { scope }),
 };
