@@ -200,7 +200,7 @@ public class TaskService(
         var status = req.StatusId is { } stid
             ? statuses.FirstOrDefault(x => x.Id == stid) ?? throw new ValidationException("statusId", "Status does not belong to this project.")
             : statuses.FirstOrDefault(x => x.Category == StatusCategory.Todo) ?? statuses.First();
-        if (req.AssigneeId is { } assignee) await access.EnsureTenantMemberAsync(assignee, "assigneeId", ct);
+        if (req.AssigneeId is { } assignee) { await access.EnsureTenantMemberAsync(assignee, "assigneeId", ct); await access.ShareWithAssigneeAsync(projectId, assignee, ct); }
         await ValidateLabelsAsync(req.LabelIds, ct);
         var milestoneId = await ResolveMilestoneAsync(projectId, req.MilestoneId, ct);
         // A subtask always sits in its parent's stage; only top-level tasks choose one.
@@ -244,7 +244,7 @@ public class TaskService(
         var project = await db.Projects.FirstAsync(p => p.Id == task.ProjectId, ct);
         var status = await db.WorkflowStatuses.FirstOrDefaultAsync(x => x.Id == req.StatusId && x.ProjectId == task.ProjectId, ct)
             ?? throw new ValidationException("statusId", "Status does not belong to this project.");
-        if (req.AssigneeId is { } assignee) await access.EnsureTenantMemberAsync(assignee, "assigneeId", ct);
+        if (req.AssigneeId is { } assignee) { await access.EnsureTenantMemberAsync(assignee, "assigneeId", ct); await access.ShareWithAssigneeAsync(task.ProjectId, assignee, ct); }
         await ValidateLabelsAsync(req.LabelIds, ct);
         task.MilestoneId = await ResolveMilestoneAsync(task.ProjectId, req.MilestoneId, ct);
         if (task.StatusId != status.Id) await EnsureNotBlockedAsync(task, status, ct);

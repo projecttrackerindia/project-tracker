@@ -3,6 +3,12 @@ namespace ProjectManagement.Domain.Enums;
 public enum WorkspaceType { Personal, Organization }
 public enum TenantStatus { Active, Suspended }
 
+/// <summary>Who may see a workspace's projects. Organization: everyone who is not a guest. Teams: a person sees the projects of the teams they belong to, the ones they own or were added to, and everything when their role says so.</summary>
+public enum ProjectVisibility { Organization = 0, Teams = 1 }
+
+/// <summary>How far the signed-in person's reach into projects is narrowed on this request. None: every project of the workspace. Teams: own, member and team projects. Members: only projects they were added to (guests).</summary>
+public enum ProjectScope { None = 0, Teams = 1, Members = 2 }
+
 /// <summary>Numeric value = privilege level (higher is more privileged).</summary>
 public enum TenantRole { Guest = 1, Member = 2, Manager = 3, Admin = 4, Owner = 5 }
 

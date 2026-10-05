@@ -31,7 +31,7 @@ function RiskCard({ r, onPick }: { r: PortfolioRisk; onPick: (id: string) => voi
   return (
     <button type="button" className={`pi-card ${r.level.toLowerCase()}`} onClick={() => onPick(r.projectId)}>
       <span className="pi-card-head"><b>{r.name}</b><em className={`pi-level ${r.level.toLowerCase()}`}>{r.level}</em></span>
-      <span className="pi-card-meta">{r.key} · {r.progress}% done · due {formatDate(r.dueDate)}{r.owner ? ` · ${r.owner}` : ''}</span>
+      <span className="pi-card-meta">{r.key} · {r.progress}% done{r.inProgressTasks > 0 ? ` · ${r.inProgressTasks} in progress` : ''} · due {formatDate(r.dueDate)}{r.owner ? ` · ${r.owner}` : ''}</span>
       <Forecast r={r} />
       <ul>{r.reasons.slice(0, 3).map((x) => <li key={x}>{x}</li>)}</ul>
     </button>

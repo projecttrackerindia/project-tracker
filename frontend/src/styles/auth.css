@@ -430,8 +430,13 @@
 .av-scene {
   --mx: 0; --my: 0; position: absolute; left: 50%; top: 50%; width: 760px;
   height: var(--scene-h, 340px); margin: calc(var(--scene-h, 340px) / -2) 0 0 -380px;
-  perspective: 1400px; transform: scale(var(--fit, .8));
+  perspective: 1400px;
+  /* `zoom` resizes the scene at layout time, so text and edges are drawn at the real size of the screen (sharp on 4K and retina).
+     A transform scale would instead stretch a bitmap of it, which is what made the whole panel look soft. */
+  zoom: var(--fit, .8);
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
 }
+@supports not (zoom: 1) { .av-scene { transform: scale(var(--fit, .8)); } }
 .av-halo {
   position: absolute; left: 4%; top: 2%; width: 74%; height: 96%; border-radius: 50%; opacity: .5; filter: blur(64px);
   background: conic-gradient(from 0deg, rgba(167, 139, 250, .7), rgba(240, 171, 252, .55), rgba(96, 165, 250, .55), rgba(167, 139, 250, .7));

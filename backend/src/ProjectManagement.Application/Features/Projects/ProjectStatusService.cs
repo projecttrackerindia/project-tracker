@@ -9,7 +9,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Projects;
 
 // ---- the sidebar: projects under their groups
-public record StatusProjectRefDto(Guid Id, string Key, string Name, ProjectStatus Status, ProjectHealth Health, int Progress);
+public record StatusProjectRefDto(Guid Id, string Key, string Name, ProjectStatus Status, ProjectHealth Health, int Progress, int Active = 0);
 public record StatusGroupDto(Guid Id, string Name, bool IsActive, int Count, IReadOnlyList<StatusProjectRefDto> Projects);
 
 // ---- one project's status
@@ -43,7 +43,7 @@ public class ProjectStatusService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var rows = await access.VisibleProjects().AsNoTracking().Where(p => p.Status != ProjectStatus.Archived).OrderBy(p => p.Name).ToListAsync(ct);
         var stats = await projects.GetStatsAsync(rows.Select(r => r.Id).ToList(), ct);
 
-        StatusProjectRefDto Ref(Project p) => new(p.Id, p.Key, p.Name, p.Status, ProjectMetrics.Health(p, stats[p.Id], clock.Today), ProjectMetrics.Progress(stats[p.Id]));
+        StatusProjectRefDto Ref(Project p) => new(p.Id, p.Key, p.Name, p.Status, ProjectMetrics.Health(p, stats[p.Id], clock.Today), ProjectMetrics.Progress(stats[p.Id]), ProjectMetrics.ActiveShare(stats[p.Id]));
         var result = new List<StatusGroupDto>();
         foreach (var g in groups)
         {
@@ -79,11 +79,16 @@ public class ProjectStatusService(IAppDbContext db, ICurrentContext ctx, AppCloc
 
         // What each task is waiting on: its predecessors that are not finished. A predecessor the caller cannot open (another project they are not
         // in) is shown as "a task you cannot see": the task is still marked as waiting, but nothing about the other task or its project leaks.
+        // Read without the "projects this person may see" narrowing on purpose: the fact that something unfinished is in the way must count even
+        // when the person cannot open it. Only its existence is used for such a task (see `openable` below), never its title, status or project.
+        var tenant = ctx.RequireTenantId();
         var blockers = taskIds.Count == 0 ? [] : await (from d in db.TaskDependencies.AsNoTracking()
                                                        where taskIds.Contains(d.TaskId)
-                                                       join p in db.Tasks.AsNoTracking() on d.DependsOnTaskId equals p.Id
-                                                       where p.Status!.Category != StatusCategory.Done && p.Status.Category != StatusCategory.Cancelled
-                                                       select new { d.TaskId, PredecessorId = p.Id, p.Number, p.Title, Status = p.Status.Name, p.ProjectId }).ToListAsync(ct);
+                                                       join p in db.Tasks.IgnoreQueryFilters().AsNoTracking() on d.DependsOnTaskId equals p.Id
+                                                       join st in db.WorkflowStatuses.IgnoreQueryFilters().AsNoTracking() on p.StatusId equals st.Id
+                                                       where p.TenantId == tenant && !p.IsDeleted && st.TenantId == tenant
+                                                             && st.Category != StatusCategory.Done && st.Category != StatusCategory.Cancelled
+                                                       select new { d.TaskId, PredecessorId = p.Id, p.Number, p.Title, Status = st.Name, p.ProjectId }).ToListAsync(ct);
         var blockerIds = blockers.Select(b => b.PredecessorId).Distinct().ToList();
         var openable = blockerIds.Count == 0 ? [] : (await access.VisibleTasks().AsNoTracking().Where(t => blockerIds.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct)).ToHashSet();
         var blockerProjects = blockers.Where(b => openable.Contains(b.PredecessorId)).Select(b => b.ProjectId).Distinct().ToList();

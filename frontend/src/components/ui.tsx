@@ -72,11 +72,21 @@ export const Badge = ({ tone = 'neutral', children }: { tone?: 'neutral' | 'succ
 );
 
 // ------------------------------------------------------------------ small pieces
-export function Progress({ value, tone = 'auto', large }: { value: number; tone?: 'auto' | '' | 'green' | 'amber' | 'red'; large?: boolean }) {
+/** The share of a project's tasks being worked on right now (In progress), so work under way shows even before anything is finished. */
+export const activeShare = (s: { total: number; done: number; inProgress: number; cancelled: number }) => {
+  const denominator = s.total - s.cancelled;
+  return denominator <= 0 ? 0 : Math.min(100 - Math.round((s.done * 100) / denominator), Math.round((s.inProgress * 100) / denominator));
+};
+
+/** `value` is what is done; `active` (optional) is the extra share being worked on, drawn lighter after it. */
+export function Progress({ value, tone = 'auto', large, active = 0 }: { value: number; tone?: 'auto' | '' | 'green' | 'amber' | 'red'; large?: boolean; active?: number }) {
   const p = clamp(Math.round(value), 0, 100);
+  const a = clamp(Math.round(active), 0, 100 - p);
   const cls = tone === 'auto' ? (p >= 75 ? 'green' : p >= 40 ? '' : 'red') : tone;
   return (
-    <div className={`progress ${large ? 'progress-lg' : ''}`} role="progressbar" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100}>
+    <div className={`progress ${large ? 'progress-lg' : ''}`} role="progressbar" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100}
+      aria-valuetext={a > 0 ? `${p}% done, ${a}% in progress` : `${p}% done`} title={a > 0 ? `${p}% done · ${a}% in progress` : undefined}>
+      {a > 0 && <div className="progress-active" style={{ left: `${p}%`, width: `${a}%` }} />}
       <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />
     </div>
   );

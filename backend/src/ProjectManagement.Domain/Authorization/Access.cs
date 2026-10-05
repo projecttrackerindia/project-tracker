@@ -62,6 +62,7 @@ public static class Modules
     [
         new(Permissions.TasksComment, "Comment on tasks", "Lets a view-only role still join the conversation.", false),
         new(Permissions.TasksDelete, "Delete tasks", "Remove tasks and moderate comments.", false),
+        new(Permissions.ProjectsViewAll, "See every team's projects", "When the workspace limits people to their own teams' projects, this role still sees all of them.", false),
         new(Permissions.ProjectsDelete, "Delete projects", "Remove a project and all of its tasks.", false),
         new(Permissions.LabelsManage, "Manage labels", "Create, rename and delete labels.", false),
         new(Permissions.WorkflowManage, "Manage workflows", "Change a project's task statuses.", false),

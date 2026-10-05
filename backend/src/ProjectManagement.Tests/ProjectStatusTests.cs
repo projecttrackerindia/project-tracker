@@ -184,4 +184,33 @@ public class ProjectStatusTests(ApiFactory factory)
         Assert.Equal("Payroll", seen.Single()!["projects"]![0]!["name"]!.GetValue<string>());
         Assert.Equal(404, (int)(await guest.Get($"/api/v1/project-status/projects/{await Create("Hidden", sf)}")).Status);
     }
+
+    [Fact]
+    public async Task Work_under_way_shows_next_to_what_is_done_so_a_project_with_a_task_in_progress_is_not_shown_as_untouched()
+    {
+        var (owner, project, todo) = await Setup();
+        var a = await NewTask(owner, project, "Build the API");
+        await NewTask(owner, project, "Write the docs");
+        var statuses = (await owner.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray();
+        var active = Guid.Parse(statuses.First(x => x!["category"]!.GetValue<string>() == "Active")!["id"]!.GetValue<string>());
+        var done = Guid.Parse(statuses.First(x => x!["category"]!.GetValue<string>() == "Done")!["id"]!.GetValue<string>());
+        async Task Move(Guid task, Guid status) { var res = await Reschedule(owner, task, status, null); Assert.True(res.Ok, res.ToString()); }
+        await Move(a, active);
+
+        // "Done" stays strict (nothing is finished), and the page also says how much is being worked on.
+        var list = (await owner.Get("/api/v1/project-status/groups")).Data!.ToJsonString();
+        var detailRes = await owner.Get($"/api/v1/project-status/projects/{project}"); Assert.True(detailRes.Ok, detailRes.ToString());
+        var detail = detailRes.Data!["project"]!;
+        Assert.Equal(0, detail["progress"]!.GetValue<int>());
+        Assert.Equal(1, detail["stats"]!["inProgress"]!.GetValue<int>());
+        Assert.Contains("\"active\":50", list);
+        var brief = (await owner.Get("/api/v1/ai/portfolio/brief")).Data!["ranked"]![0]!;
+        Assert.Equal(1, brief["inProgressTasks"]!.GetValue<int>());
+
+        await Move(a, done);
+        Assert.Contains("\"active\":0", (await owner.Get("/api/v1/project-status/groups")).Data!.ToJsonString());
+        Assert.Equal(50, (await owner.Get($"/api/v1/project-status/projects/{project}")).Data!["project"]!["progress"]!.GetValue<int>());
+        Assert.Equal(0, ProjectManagement.Application.Features.Projects.ProjectMetrics.ActiveShare(new(0, 0, 0, 0, 0, 0)));
+        Assert.Equal(25, ProjectManagement.Application.Features.Projects.ProjectMetrics.ActiveShare(new(4, 1, 1, 2, 0, 0)));
+    }
 }

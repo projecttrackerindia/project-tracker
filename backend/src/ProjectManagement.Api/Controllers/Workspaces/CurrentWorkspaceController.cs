@@ -23,6 +23,13 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
     public async Task<IActionResult> SetSecurity([FromBody] ProjectManagement.Application.Features.Organization.SetOrgSecurityRequest req, CancellationToken ct) =>
         Ok(await orgSecurity.SetAsync(req, ct));
 
+    [HttpGet("project-visibility")]
+    public async Task<IActionResult> ProjectVisibility(CancellationToken ct) => Ok(await orgSecurity.GetVisibilityAsync(ct));
+
+    [HttpPut("project-visibility")]
+    public async Task<IActionResult> SetProjectVisibility([FromBody] ProjectManagement.Application.Features.Organization.SetProjectVisibilityRequest req, CancellationToken ct) =>
+        Ok(await orgSecurity.SetVisibilityAsync(req, ct));
+
     // Deliberately not gated by the Members module: this is the shared "who's in the workspace" roster used everywhere
     // people are assigned to things (tasks, projects, teams, timesheets), not just the Members admin page.
     [HttpGet("members")]

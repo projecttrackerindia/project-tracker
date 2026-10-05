@@ -272,7 +272,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
         var membership = await (from m in db.TenantMembers
                                 join t in db.Tenants on m.TenantId equals t.Id
                                 where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
-                                select new { m.Role, t.Type }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                select new { m.Role, t.Type, t.ProjectVisibility }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
         if (membership is null) return;
 
         var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted);
@@ -281,6 +281,21 @@ public class CurrentContextMiddleware(RequestDelegate next)
         ctx.TenantId = workspaceId;
         ctx.Role = membership.Role;
         ctx.WorkspaceType = membership.Type;
+        ctx.ProjectScope = await ResolveProjectScopeAsync(http, ctx, membership.ProjectVisibility);
+    }
+
+    /// <summary>
+    /// Decided here, once, so that every query of the request (the screens, the reports, the assistant) is narrowed the same way by the
+    /// data layer. Guests only reach projects they were added to. When the workspace limits people to their teams, everyone whose role
+    /// does not carry "see every team's projects" reaches their own teams' projects and the ones they own or were added to.
+    /// </summary>
+    private static async Task<ProjectScope> ResolveProjectScopeAsync(HttpContext http, CurrentContext ctx, ProjectVisibility visibility)
+    {
+        if (ctx.WorkspaceType == WorkspaceType.Personal) return ProjectScope.None;
+        if (ctx.Role == TenantRole.Guest) return ProjectScope.Members;
+        if (visibility != ProjectVisibility.Teams) return ProjectScope.None;
+        var permissions = http.RequestServices.GetRequiredService<ProjectManagement.Application.Services.PermissionService>();
+        return await permissions.HasAsync(ProjectManagement.Domain.Permissions.ProjectsViewAll, http.RequestAborted) ? ProjectScope.None : ProjectScope.Teams;
     }
 }
 

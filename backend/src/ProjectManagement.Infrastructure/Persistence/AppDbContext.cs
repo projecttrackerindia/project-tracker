@@ -97,6 +97,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
 
     /// <summary>Read by the global query filters. Null (no workspace) matches nothing: default deny.</summary>
     internal Guid? CurrentTenantId => current.TenantId;
+    /// <summary>How far this request's person reaches into projects (see <see cref="ProjectScope"/>). Read by the project filter below.</summary>
+    internal ProjectScope CurrentProjectScope => current.ProjectScope;
+    internal Guid? CurrentUserId => current.UserId;
 
     public async Task<int> PendingMigrationCountAsync(CancellationToken ct = default) => (await Database.GetPendingMigrationsAsync(ct)).Count();
 
@@ -799,8 +802,45 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
                 var notDeleted = Expression.Not(Expression.Property(e, nameof(ISoftDelete.IsDeleted)));
                 body = body is null ? notDeleted : Expression.AndAlso(body, notDeleted);
             }
+            // Everything that belongs to a project or a task follows who may see that project (see ProjectScope).
+            if (tenantScoped && ProjectScoped(clr) is { } guard) body = Expression.AndAlso(body!, guard(e));
             entityType.SetQueryFilter(Expression.Lambda(body!, e));
         }
+
+        // The project itself: whole workspace, or - when this person's reach is narrowed - the projects they own, were added to, or
+        // that belong to a team they are in. Written once here so no query, report or assistant tool has to remember it.
+        b.Entity<Project>().HasQueryFilter(p => p.TenantId == CurrentTenantId && !p.IsDeleted
+            && (CurrentProjectScope == ProjectScope.None
+                || p.OwnerId == CurrentUserId
+                || ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == CurrentUserId)
+                || (CurrentProjectScope == ProjectScope.Teams && p.TeamId != null && TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == CurrentUserId))));
+    }
+
+    /// <summary>Entities that must not outlive their project's visibility, with the property that points at the project or task.</summary>
+    private static readonly HashSet<Type> NotProjectScoped = [typeof(Project), typeof(ProjectMember), typeof(TeamMember), typeof(Team), typeof(TimeEntry)];
+
+    private Func<ParameterExpression, Expression>? ProjectScoped(Type clr)
+    {
+        if (NotProjectScoped.Contains(clr)) return null;
+        string? prop = null;
+        foreach (var name in new[] { "ProjectId", "RelatedProjectId" })
+            if (clr.GetProperty(name) is { } pi && (pi.PropertyType == typeof(Guid) || pi.PropertyType == typeof(Guid?))) { prop = name; break; }
+        var viaTask = prop is null && clr.GetProperty("TaskId") is { } ti && (ti.PropertyType == typeof(Guid) || ti.PropertyType == typeof(Guid?));
+        if (prop is null && !viaTask) return null;
+        return e =>
+        {
+            var key = Expression.Property(e, prop ?? "TaskId");
+            var nullable = key.Type == typeof(Guid?);
+            var target = viaTask ? typeof(TaskItem) : typeof(Project);
+            var t = Expression.Parameter(target, "t");
+            Expression id = Expression.Property(t, "Id");
+            if (nullable) id = Expression.Convert(id, typeof(Guid?));
+            var any = Expression.Call(typeof(Queryable), nameof(Queryable.Any), [target],
+                Expression.Property(Expression.Constant(this), viaTask ? nameof(Tasks) : nameof(Projects)), Expression.Lambda(Expression.Equal(id, key), t));
+            Expression guard = Expression.OrElse(
+                Expression.Equal(Expression.Property(Expression.Constant(this), nameof(CurrentProjectScope)), Expression.Constant(ProjectScope.None)), any);
+            return nullable ? Expression.OrElse(Expression.Equal(key, Expression.Constant(null, typeof(Guid?))), guard) : guard;
+        };
     }
 
     // ------------------------------------------------------------------ audit stamping & write guard

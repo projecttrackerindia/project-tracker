@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
-import { Badge, ErrorState, HealthBadge, PageLoader, PriorityBadge, Progress, ProjectStatusBadge, ProjectTypeBadge, Tabs } from '../../components/ui';
+import { Badge, activeShare, ErrorState, HealthBadge, PageLoader, PriorityBadge, Progress, ProjectStatusBadge, ProjectTypeBadge, Tabs } from '../../components/ui';
 import { daysUntil, formatDate } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
@@ -165,8 +165,8 @@ export function ProjectDetailPage() {
           </div>
         </div>
         <div className="big-progress">
-          <div className="big-progress-top"><b>{p.progress}%</b><span>{p.stats.done} of {p.stats.total - p.stats.cancelled} tasks completed</span></div>
-          <Progress value={p.progress} large />
+          <div className="big-progress-top"><b>{p.progress}%</b><span>{p.stats.done} of {p.stats.total - p.stats.cancelled} tasks completed{p.stats.inProgress > 0 ? ` · ${p.stats.inProgress} in progress` : ''}</span></div>
+          <Progress value={p.progress} active={activeShare(p.stats)} large />
         </div>
         <div className="dh-grid">
           <div className="dh-cell"><label>Owner</label><b>{p.owner?.name ?? 'Unassigned'}</b></div>

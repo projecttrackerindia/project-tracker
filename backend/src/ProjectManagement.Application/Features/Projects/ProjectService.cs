@@ -55,6 +55,13 @@ public static partial class ProjectMetrics
         return denominator <= 0 ? 0 : (int)Math.Round(s.Done * 100.0 / denominator);
     }
 
+    /// <summary>The share of the project's tasks being worked on right now (the In progress category), so a project with work under way does not look untouched at 0% done.</summary>
+    public static int ActiveShare(ProjectStatsDto s)
+    {
+        var denominator = s.Total - s.Cancelled;
+        return denominator <= 0 ? 0 : Math.Min(100 - Progress(s), (int)Math.Round(s.InProgress * 100.0 / denominator));
+    }
+
     /// <summary>Automatically calculated health (progress vs. elapsed time, deadline).</summary>
     public static ProjectHealth Health(Project p, ProjectStatsDto s, DateOnly today)
     {

@@ -90,10 +90,11 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         await Items(projectId).FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
 
     /// <summary>The assignee must be someone in the workspace who can be given work (not a guest).</summary>
-    private async Task CheckAssigneeAsync(Guid? assigneeId, CancellationToken ct)
+    private async Task CheckAssigneeAsync(Guid projectId, Guid? assigneeId, CancellationToken ct)
     {
         if (assigneeId is not { } a) return;
         await access.EnsureTenantMemberAsync(a, "assigneeId", ct);
+        await access.ShareWithAssigneeAsync(projectId, a, ct);
         var tid = ctx.RequireTenantId();
         if (await db.TenantMembers.AnyAsync(m => m.TenantId == tid && m.UserId == a && m.Role == TenantRole.Guest, ct))
             throw new ValidationException("assigneeId", "Guests cannot be given action items.");
@@ -155,7 +156,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         RequireOpen(project);
         var title = CleanTitle(req.Title);
         var details = CleanDetails(req.Details);
-        await CheckAssigneeAsync(req.AssigneeId, ct);
+        await CheckAssigneeAsync(projectId, req.AssigneeId, ct);
 
         var item = new WorkTask
         {
@@ -181,7 +182,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
         var title = CleanTitle(req.Title);
         var details = CleanDetails(req.Details);
-        await CheckAssigneeAsync(req.AssigneeId, ct);
+        await CheckAssigneeAsync(projectId, req.AssigneeId, ct);
 
         var was = ToApi(item.Status);
         var reassigned = req.AssigneeId != item.AssigneeId;

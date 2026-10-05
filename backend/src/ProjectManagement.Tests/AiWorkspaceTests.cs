@@ -1013,6 +1013,49 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.DoesNotContain("Zebra", feed);
     }
 
+    [Fact]
+    public async Task In_a_workspace_limited_to_teams_the_assistant_of_one_team_never_reads_or_changes_another_teams_work()
+    {
+        var o = await Setup();
+        var alice = await o.Owner.AddMemberAsync(factory, TenantRole.Member, "Alice Alpha");
+        var bob = await o.Owner.AddMemberAsync(factory, TenantRole.Member, "Bob Bravo");
+        var teamA = Guid.Parse(S((await o.Owner.Post("/api/v1/teams", new { name = "Alpha team" })).Data!["team"]!["id"]));
+        var teamB = Guid.Parse(S((await o.Owner.Post("/api/v1/teams", new { name = "Bravo team" })).Data!["team"]!["id"]));
+        Assert.True((await o.Owner.Post($"/api/v1/teams/{teamA}/members", new { userId = alice.UserId, isLead = true })).Ok);
+        Assert.True((await o.Owner.Post($"/api/v1/teams/{teamB}/members", new { userId = bob.UserId, isLead = true })).Ok);
+        async Task<Guid> Proj(string name, Guid team) => Guid.Parse(S((await o.Owner.Post("/api/v1/projects", new { name, priority = "High", teamId = team, status = "Active", startDate = Iso(-30), dueDate = Iso(-2) })).Data!["project"]!["id"]));
+        var pa = await Proj("Alpha Delivery", teamA);
+        var pb = await Proj("Bravo Confidential Merger", teamB);
+        await o.Owner.CreateTaskAsync(pa, "Alpha migration", new { title = "Alpha migration", priority = "High", assigneeId = alice.UserId, dueDate = Iso(-4) });
+        var secret = await o.Owner.CreateTaskAsync(pb, "Bravo due diligence", new { title = "Bravo due diligence", priority = "High", assigneeId = bob.UserId, dueDate = Iso(-6) });
+        await o.Owner.Post($"/api/v1/projects/{pb}/action-items", new { title = "Bravo board paper", assigneeId = bob.UserId, dueDate = Iso(-3), priority = "High" });
+        Assert.True((await o.Owner.Put("/api/v1/workspace/project-visibility", new { mode = "teams" })).Ok);
+        var key = S(secret["key"]);
+
+        foreach (var (tool, input) in new (string, object)[]
+                 { ("list_projects", new { }), ("find_work", new { overdue = true }), ("find_work", new { unassigned = true }), ("team_workload", new { }), ("my_work_summary", new { }), ("workload_balance", new { }),
+                   ("suggest_assignee", new { title = "Prepare the board paper" }), ("history_insights", new { }), ("project_report", new { project = "Alpha Delivery" }),
+                   ("portfolio_brief", new { }) })
+        {
+            var text = await RunTool(alice, tool, input, tool == "portfolio_brief" ? "Give me an executive summary of the portfolio and the risks" : "Analyze the team workload and recommend how to rebalance it");
+            Assert.DoesNotContain("Bravo", text.Replace("Bob Bravo", ""));
+            Assert.DoesNotContain("merger", text, StringComparison.OrdinalIgnoreCase);
+        }
+        // Asking for it by name finds nothing: no hint that it exists.
+        Assert.StartsWith("No project matches", await RunTool(alice, "project_report", new { project = "Bravo Confidential Merger" }));
+        Assert.DoesNotContain(key, (await RunTool(alice, "find_work", new { text = "due diligence" })));
+        Assert.DoesNotContain("Bravo Confidential", Chat.Requests.Last().Context);
+        Assert.Contains("Alpha Delivery", Chat.Requests.Last().Context);
+        Assert.DoesNotContain("Bravo", (await alice.Get("/api/v1/ai/insights")).Data!.ToJsonString());
+        Assert.DoesNotContain("Bravo", (await alice.Get("/api/v1/ai/portfolio/brief")).Data!.ToJsonString());
+        Assert.Contains("Bravo", (await o.Owner.Get("/api/v1/ai/portfolio/brief")).Data!.ToJsonString());     // the owner still sees both
+
+        // Changing what she cannot see is refused even when the model asks for it.
+        var changed = await RunTool(alice, "propose_update_work", new { key, status = "Done" }, "Mark the Bravo task done");
+        Assert.DoesNotContain("proposed", changed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("There is no task", changed);
+    }
+
     // ------------------------------------------------------------------ no "I can't": the gaps found in a real conversation
 
     [Fact]

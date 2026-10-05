@@ -103,7 +103,7 @@ export interface ActionItemInput { title: string; details?: string | null; assig
 export interface ProjectGroup { id: string; name: string; description: string | null; order: number; isActive: boolean; projectCount: number; activeProjectCount: number }
 
 // ---- the Project Status page
-export interface StatusProjectRef { id: string; key: string; name: string; status: ProjectStatus; health: ProjectHealth; progress: number }
+export interface StatusProjectRef { id: string; key: string; name: string; status: ProjectStatus; health: ProjectHealth; progress: number; active: number }
 export interface StatusGroup { id: string; name: string; isActive: boolean; count: number; projects: StatusProjectRef[] }
 export interface StatusBlocker { key: string; title: string; statusName: string }
 export interface StatusTask {
@@ -507,3 +507,6 @@ export interface WorkSummary {
   byType: WorkCount[]; byStatus: { status: WorkTaskStatus; count: number }[]; byPerson: WorkPersonCount[]; byProject: WorkCount[]; perDay: { date: string; completed: number; created: number }[];
   sla: WorkSlaSummary | null;
 }
+
+/** Whether everyone sees every project of the workspace, or people see their own teams' projects and the ones they were added to. */
+export interface ProjectVisibility { mode: 'organization' | 'teams'; teams: number; peopleWithoutTeam: number }

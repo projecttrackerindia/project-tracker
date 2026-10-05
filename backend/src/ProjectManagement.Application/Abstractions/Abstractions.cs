@@ -116,6 +116,8 @@ public interface ICurrentContext
     (Guid WorkspaceId, string Code, string Message)? BlockedWorkspace { get; }
     /// <summary>The signed-in person still has the temporary password an administrator gave them and must replace it.</summary>
     bool MustChangePassword { get; }
+    /// <summary>How far this request's person may reach into projects (decided once per request, from the workspace setting and their role). Every project and task query is narrowed by it.</summary>
+    ProjectScope ProjectScope { get; }
     Guid RequireUserId();
     Guid RequireTenantId();
 }
@@ -132,6 +134,7 @@ public class CurrentContext : ICurrentContext
     public string? UserAgent { get; set; }
     public (Guid WorkspaceId, string Code, string Message)? BlockedWorkspace { get; set; }
     public bool MustChangePassword { get; set; }
+    public ProjectScope ProjectScope { get; set; }
 
     public Guid RequireUserId() => UserId ?? throw new Exceptions.UnauthorizedException();
     public Guid RequireTenantId() => TenantId ?? throw new Exceptions.ForbiddenException(

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { actionItemApi, statusApi } from '../../api/endpoints';
 import type { ProjectHealth, ProjectStatusReport, StatusGroup, StatusTask, TimelineChange } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, ErrorState, HealthBadge, PageLoader, Progress, ProjectStatusBadge, ProjectTypeBadge } from '../../components/ui';
+import { activeShare, Avatar, ErrorState, HealthBadge, PageLoader, Progress, ProjectStatusBadge, ProjectTypeBadge } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useModule } from '../../stores/auth';
@@ -89,7 +89,7 @@ function GroupSection({ group, open, selected, onToggle, onPick }: { group: Stat
               aria-current={p.id === selected ? 'true' : undefined} title={`${p.name} · ${HEALTH_LABEL[p.health]}`}>
               <i className={`ps-dot ${p.health}`} aria-hidden="true" />
               <span className="ps-proj-name">{p.name}</span>
-              <span className="ps-proj-pct">{p.progress}%</span>
+              <span className="ps-proj-pct" title={p.active > 0 ? `${p.progress}% done · ${p.active}% in progress` : undefined}>{p.progress}%{p.active > 0 && <small className="ps-proj-act"> +{p.active}</small>}</span>
             </button>
           ))}
         </div>
@@ -149,7 +149,7 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
             </span>
           )}
         </div>
-        <div className="ps-kpi"><label>Progress</label><b>{p.progress}%</b><Progress value={p.progress} /></div>
+        <div className="ps-kpi"><label>Progress</label><b>{p.progress}%</b><Progress value={p.progress} active={activeShare(p.stats)} />{p.stats.inProgress > 0 && <small className="ps-kpi-note">{p.stats.inProgress} in progress</small>}</div>
         <div className="ps-kpi">
           <label>Tasks</label><b>{done} <small>of {tasksTotal} done</small></b>
           <span className="ps-kpi-note">

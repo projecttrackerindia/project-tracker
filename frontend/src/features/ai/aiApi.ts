@@ -21,7 +21,7 @@ export interface AiMessage {
 }
 export interface PortfolioRisk {
   projectId: string; key: string; name: string; group: string | null; health: string; progress: number; owner: string | null; startDate: string | null; dueDate: string | null; delayedDays: number;
-  openTasks: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number; finishedLast28Days: number;
+  openTasks: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number; finishedLast28Days: number; inProgressTasks: number;
   projectedFinish: string | null; projectedSlipDays: number | null; confidence: 'high' | 'medium' | 'low' | 'none'; score: number; level: 'Critical' | 'High' | 'Medium' | 'Low'; reasons: string[];
 }
 export interface PortfolioSlip { projectId: string; projectKey: string; project: string; previous: string | null; revised: string | null; daysShifted: number | null; reason: string | null; dependency: string | null; by: string | null; at: string }

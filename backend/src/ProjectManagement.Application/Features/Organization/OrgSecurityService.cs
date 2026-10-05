@@ -10,6 +10,8 @@ namespace ProjectManagement.Application.Features.Organization;
 
 public record OrgSecurityDto(bool RequireMfa, bool IpAllowlistEnabled, IReadOnlyList<string> IpRanges, string? MyIp, bool Entitled);
 public record SetOrgSecurityRequest(bool RequireMfa, bool IpAllowlistEnabled, IReadOnlyList<string>? IpRanges);
+public record ProjectVisibilityDto(string Mode, int Teams, int PeopleWithoutTeam);
+public record SetProjectVisibilityRequest(string Mode);
 public record AccessBlockedDto(Guid WorkspaceId, string Code, string Message);
 
 /// <summary>
@@ -67,6 +69,38 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, AppClock 
         recorder.Audit("org.security_changed", "Tenant", tenantId, oldValue: before, newValue: new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges }, tenantId: tenantId);
         await db.SaveChangesAsync(ct);
         return await GetAsync(ct);
+    }
+
+    public async Task<ProjectVisibilityDto> GetVisibilityAsync(CancellationToken ct = default)
+    {
+        var tenantId = ctx.RequireTenantId();
+        var mode = await db.Tenants.AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.ProjectVisibility).FirstAsync(ct);
+        var teams = await db.Teams.CountAsync(ct);
+        var inTeam = db.TeamMembers.Select(m => m.UserId);
+        var withoutTeam = await db.TenantMembers.CountAsync(m => m.TenantId == tenantId && m.Role != Domain.Enums.TenantRole.Guest && !inTeam.Contains(m.UserId), ct);
+        return new ProjectVisibilityDto(mode == Domain.Enums.ProjectVisibility.Teams ? "teams" : "organization", teams, withoutTeam);
+    }
+
+    /// <summary>Organization: everyone who is not a guest sees every project. Teams: people see their own teams' projects, the ones they own or were added to, and everything when their role says so.</summary>
+    public async Task<ProjectVisibilityDto> SetVisibilityAsync(SetProjectVisibilityRequest req, CancellationToken ct = default)
+    {
+        var tenantId = ctx.RequireTenantId();
+        if (ctx.Role is not (Domain.Enums.TenantRole.Owner or Domain.Enums.TenantRole.Admin))
+            throw new ForbiddenException("Only owners and admins can change who sees which projects.", "PERMISSION_DENIED");
+        var mode = req.Mode?.Trim().ToLowerInvariant() switch
+        {
+            "teams" => Domain.Enums.ProjectVisibility.Teams,
+            "organization" => Domain.Enums.ProjectVisibility.Organization,
+            _ => throw new ValidationException("mode", "Choose 'organization' or 'teams'."),
+        };
+        var tenant = await db.Tenants.FirstAsync(t => t.Id == tenantId, ct);
+        if (tenant.ProjectVisibility != mode)
+        {
+            recorder.Audit("org.project_visibility_changed", "Tenant", tenantId, oldValue: new { tenant.ProjectVisibility }, newValue: new { ProjectVisibility = mode }, tenantId: tenantId);
+            tenant.ProjectVisibility = mode;
+            await db.SaveChangesAsync(ct);
+        }
+        return await GetVisibilityAsync(ct);
     }
 
     /// <summary>

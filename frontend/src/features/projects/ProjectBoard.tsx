@@ -3,7 +3,7 @@ import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
 import type { Paged, Project, ProjectStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, HealthBadge, PriorityBadge, Progress } from '../../components/ui';
+import { activeShare, Avatar, HealthBadge, PriorityBadge, Progress } from '../../components/ui';
 import { dueLabel } from '../../lib/format';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
@@ -96,7 +96,7 @@ export function ProjectBoard({ projects, cacheKey, includeArchived, canEditAll, 
                   <div className="kb-card-title">{p.name}</div><ProjectChatButton projectId={p.id} name={p.name} />
                 </div>
                 <div className="row" style={{ marginBottom: 9 }}>
-                  <div style={{ flex: 1 }}><Progress value={p.progress} /></div><b style={{ fontSize: 11.5 }}>{p.progress}%</b>
+                  <div style={{ flex: 1 }}><Progress value={p.progress} active={activeShare(p.stats)} /></div><b style={{ fontSize: 11.5 }}>{p.progress}%</b>
                 </div>
                 <div className="kb-card-meta"><PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /></div>
                 <div className="kb-card-meta" style={{ marginTop: 9 }}>

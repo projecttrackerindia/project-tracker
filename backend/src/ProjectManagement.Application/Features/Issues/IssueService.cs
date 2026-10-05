@@ -202,7 +202,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
         var title = CleanTitle(req.Title);
         var details = CleanDetails(req.Details);
         var stage = await ResolveStageAsync(projectId, req.StageId, ct);
-        if (req.AssigneeId is { } a) await access.EnsureTenantMemberAsync(a, "assigneeId", ct);
+        if (req.AssigneeId is { } a) { await access.EnsureTenantMemberAsync(a, "assigneeId", ct); await access.ShareWithAssigneeAsync(projectId, a, ct); }
 
         var me = ctx.RequireUserId();
         var number = (await db.StageIssues.IgnoreQueryFilters().Where(i => i.ProjectId == projectId).MaxAsync(i => (int?)i.Number, ct) ?? 0) + 1;
@@ -262,7 +262,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
         var issue = await FindAsync(projectId, issueId, ct);
         if (!(issue.ReporterId == ctx.UserId || await IsManagerAsync(project, ct)))
             throw new ForbiddenException("Only the person who reported an issue, or a manager, can assign it.", "PERMISSION_DENIED");
-        if (req.AssigneeId is { } a) await access.EnsureTenantMemberAsync(a, "assigneeId", ct);
+        if (req.AssigneeId is { } a) { await access.EnsureTenantMemberAsync(a, "assigneeId", ct); await access.ShareWithAssigneeAsync(projectId, a, ct); }
         if (req.AssigneeId == issue.AssigneeId) return await DetailAsync(project, issue, ct);
 
         issue.AssigneeId = req.AssigneeId;

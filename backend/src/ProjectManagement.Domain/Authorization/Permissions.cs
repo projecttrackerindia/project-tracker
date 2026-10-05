@@ -13,6 +13,8 @@ public static class Permissions
     public const string ProjectsCreate = "projects.create";
     public const string ProjectsEdit = "projects.edit";
     public const string ProjectsDelete = "projects.delete";
+    /// <summary>See every team's projects even when the workspace limits people to their own teams' work. Owners and Admins by default.</summary>
+    public const string ProjectsViewAll = "projects.viewall";
     public const string WorkflowManage = "workflow.manage";
     /// <summary>Add, rename, reorder, deactivate and delete the project groups projects are organized into.</summary>
     public const string ProjectGroupsManage = "projectgroups.manage";
@@ -37,7 +39,7 @@ public static class Permissions
     public static readonly string[] All =
     [
         OrgManage, OrgStructure, AccessManage, BillingManage, MembersInvite, MembersManage, TeamsManage,
-        ProjectsCreate, ProjectsEdit, ProjectsDelete, WorkflowManage, ProjectGroupsManage, LabelsManage,
+        ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll, WorkflowManage, ProjectGroupsManage, LabelsManage,
         WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView, PermissionsManage,
     ];
 
@@ -49,7 +51,7 @@ public static class Permissions
         [TenantRole.Owner] = [.. All],
         [TenantRole.Admin] =
         [
-            OrgManage, OrgStructure, AccessManage, MembersInvite, MembersManage, TeamsManage, ProjectsCreate, ProjectsEdit, ProjectsDelete,
+            OrgManage, OrgStructure, AccessManage, MembersInvite, MembersManage, TeamsManage, ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll,
             WorkflowManage, ProjectGroupsManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView,
         ],
         [TenantRole.Manager] =

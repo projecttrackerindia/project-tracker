@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client';
 import { projectApi, projectGroupApi, workspaceApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Pager, PriorityBadge, Progress, ProjectStatusBadge, ProjectTypeBadge, PriorityOptions } from '../../components/ui';
+import { activeShare, Avatar, EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Pager, PriorityBadge, Progress, ProjectStatusBadge, ProjectTypeBadge, PriorityOptions } from '../../components/ui';
 import { PROJECT_STATUSES, formatDate, labelize } from '../../lib/format';
 import { PROJECT_TYPES } from '../../lib/workLabels';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
@@ -32,7 +32,7 @@ export function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: 
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 7 }}>
           <span className="muted" style={{ fontSize: 11.5, fontWeight: 600 }}>Progress</span><span style={{ fontSize: 12.5, fontWeight: 700 }}>{p.progress}%</span>
         </div>
-        <Progress value={p.progress} />
+        <Progress value={p.progress} active={activeShare(p.stats)} />
       </div>
       <div className="task-meta"><PriorityBadge priority={p.priority} /><ProjectStatusBadge status={p.status} /><ProjectTypeBadge type={p.projectType} /></div>
       <div className="pc-foot">
@@ -178,7 +178,7 @@ export function ProjectsPage() {
                       <td><PriorityBadge priority={p.priority} /></td>
                       <td><ProjectStatusBadge status={p.status} /></td>
                       <td><HealthBadge health={p.health} /></td>
-                      <td style={{ minWidth: 150 }}><div className="row"><div style={{ flex: 1 }}><Progress value={p.progress} /></div><b style={{ fontSize: 12 }}>{p.progress}%</b></div></td>
+                      <td style={{ minWidth: 150 }}><div className="row"><div style={{ flex: 1 }}><Progress value={p.progress} active={activeShare(p.stats)} /></div><b style={{ fontSize: 12 }}>{p.progress}%</b></div></td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="td-actions">
                           <ProjectChatButton projectId={p.id} name={p.name} />

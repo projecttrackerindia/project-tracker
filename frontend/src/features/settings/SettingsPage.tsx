@@ -16,6 +16,7 @@ import { AuditPage } from '../activity/ActivityPages';
 import { BillingPage } from '../billing/BillingPage';
 import { RolesAccessPage } from '../organization/RolesAccess';
 import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
+import { ProjectVisibilityPanel } from '../organization/ProjectVisibilityPanel';
 import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
 import { NotificationSettings } from './NotificationSettings';
@@ -249,7 +250,7 @@ export function WorkspaceSettingsPage() {
     <SectionLayout title="Workspace settings" sub="How this workspace is set up: access, security, master lists, integrations and billing." groups={groups}>
       {current.id === 'general' && <GeneralSection />}
       {current.id === 'access' && <RolesAccessPage />}
-      {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /></>}
+      {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /><ProjectVisibilityPanel /></>}
       {current.id === 'sso' && <SsoSettings />}
       {current.id === 'billing' && <BillingPage />}
       {current.id === 'audit' && <AuditPage />}

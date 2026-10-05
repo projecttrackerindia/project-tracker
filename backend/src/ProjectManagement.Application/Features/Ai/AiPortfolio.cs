@@ -11,7 +11,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Ai;
 
 public sealed record PortfolioRiskDto(Guid ProjectId, string Key, string Name, string? Group, string Health, int Progress, string? Owner, DateOnly? StartDate, DateOnly? DueDate, int DelayedDays,
-    int OpenTasks, int OverdueTasks, int BlockedTasks, int OpenActionItems, int OverdueActionItems, int FinishedLast28Days,
+    int OpenTasks, int OverdueTasks, int BlockedTasks, int OpenActionItems, int OverdueActionItems, int FinishedLast28Days, int InProgressTasks,
     DateOnly? ProjectedFinish, int? ProjectedSlipDays, string Confidence, int Score, string Level, IReadOnlyList<string> Reasons);
 public sealed record PortfolioSlipDto(Guid ProjectId, string ProjectKey, string Project, DateOnly? Previous, DateOnly? Revised, int? DaysShifted, string? Reason, string? Dependency, string? By, DateTime At);
 public sealed record PortfolioPersonDto(string Name, int Projects, int OpenTasks, int OverdueTasks);
@@ -69,11 +69,14 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             Finished = g.Count(t => t.Cat == StatusCategory.Done && t.CompletedAt is { } c && c >= since28),
         });
         // Waiting on something that is not finished.
+        var tenant = ctx.RequireTenantId();
         var blocked = ids.Count == 0 ? [] : await (from d in db.TaskDependencies.AsNoTracking()
                                                    join t in access.VisibleTasks().AsNoTracking() on d.TaskId equals t.Id
                                                    where ids.Contains(t.ProjectId) && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled
-                                                   join p in db.Tasks.AsNoTracking() on d.DependsOnTaskId equals p.Id
-                                                   where p.Status!.Category != StatusCategory.Done && p.Status.Category != StatusCategory.Cancelled
+                                                   // Only that something unfinished is in the way is counted - even when the person cannot open it - never what it is.
+                                                   join p in db.Tasks.IgnoreQueryFilters().AsNoTracking() on d.DependsOnTaskId equals p.Id
+                                                   join st in db.WorkflowStatuses.IgnoreQueryFilters().AsNoTracking() on p.StatusId equals st.Id
+                                                   where p.TenantId == tenant && !p.IsDeleted && st.TenantId == tenant && st.Category != StatusCategory.Done && st.Category != StatusCategory.Cancelled
                                                    select new { d.TaskId, t.ProjectId }).Distinct().ToListAsync(ct);
         var blockedBy = blocked.GroupBy(b => b.ProjectId).ToDictionary(g => g.Key, g => g.Count());
 
@@ -111,7 +114,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (blockedN > 0) { score += Math.Min(blockedN * 2, 4); reasons.Add($"{blockedN} task{(blockedN == 1 ? " is" : "s are")} waiting on unfinished work"); }
             if (delayed > 0) { score += Math.Min(delayed / 3.0, 4); reasons.Add($"Delivery date already moved by {delayed} day{(delayed == 1 ? "" : "s")}"); }
             if (slip is > 0 && r.DueDate is not null) { score += Math.Min(slip.Value / 7.0, 4) * (conf == "low" ? 0.5 : 1); reasons.Add($"At the pace of the last 4 weeks it finishes about {Day(finish)}, {slip} day{(slip == 1 ? "" : "s")} after its due date ({conf} confidence)"); }
-            else if (conf == "none" && open > 0) { score += 2; reasons.Add($"{open} open task{(open == 1 ? "" : "s")} and nothing finished in the last 4 weeks"); }
+            else if (conf == "none" && open > 0) { score += 2; reasons.Add($"{open} open task{(open == 1 ? "" : "s")}{(st.InProgress > 0 ? $" ({st.InProgress} in progress)" : "")} and nothing finished in the last 4 weeks"); }
             if (r.StartDate is { } s0 && r.DueDate is { } d0 && d0 > s0 && health != ProjectHealth.Delayed)
             {
                 var span = d0.DayNumber - s0.DayNumber; var elapsed = Math.Clamp((today.DayNumber - s0.DayNumber) / (double)span, 0, 1);
@@ -121,7 +124,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (r.Status == ProjectStatus.OnHold) { score += 1; reasons.Add("On hold"); }
             var rounded = (int)Math.Round(score);
             risks.Add(new PortfolioRiskDto(r.Id, r.Key, r.Name, r.ProjectGroupId is { } g ? groupNames.GetValueOrDefault(g) : null, health.ToString(), progress, owners.GetValueOrDefault(r.OwnerId),
-                r.StartDate, r.DueDate, delayed, open, overdue, blockedN, ai.Open, ai.Overdue, finished, finish, slip, conf, rounded,
+                r.StartDate, r.DueDate, delayed, open, overdue, blockedN, ai.Open, ai.Overdue, finished, st.InProgress, finish, slip, conf, rounded,
                 rounded >= 9 ? "Critical" : rounded >= 5 ? "High" : rounded >= 2 ? "Medium" : "Low", reasons.Take(5).ToList()));
         }
         var ranked = risks.OrderByDescending(x => x.Score).ThenByDescending(x => x.OverdueTasks).ThenBy(x => x.Name).ToList();
@@ -166,9 +169,9 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         foreach (var h in b.Headlines) sb.AppendLine("- " + h);
         if (b.Ranked.Count == 0) return sb.ToString();
         sb.AppendLine($"Totals: {b.OverdueTasks} overdue tasks, {b.BlockedTasks} blocked tasks, {b.OpenActionItems} open action items ({b.OverdueActionItems} overdue), {b.DateChangesLast30Days} project date changes in 30 days.");
-        sb.AppendLine("Projects, highest risk first (key | name | risk | health | progress | owner | due | projected finish | open/overdue/blocked tasks | action items open/overdue | reasons):");
+        sb.AppendLine("Projects, highest risk first (key | name | risk | health | completed share (tasks done; in-progress tasks not counted) | owner | due | projected finish | open/overdue/blocked tasks | action items open/overdue | reasons):");
         foreach (var p in b.Ranked.Take(top))
-            sb.AppendLine($"{p.Key} | {p.Name} | {p.Level} ({p.Score}) | {p.Health} | {p.Progress}% | {p.Owner ?? "no owner"} | due {Day(p.DueDate)} | " +
+            sb.AppendLine($"{p.Key} | {p.Name} | {p.Level} ({p.Score}) | {p.Health} | {p.Progress}% ({p.InProgressTasks} in progress) | {p.Owner ?? "no owner"} | due {Day(p.DueDate)} | " +
                 $"{(p.ProjectedFinish is { } f ? $"{Day(f)} ({(p.ProjectedSlipDays is { } s ? (s > 0 ? $"+{s}d" : $"{s}d") : "n/a")}, {p.Confidence} confidence)" : "cannot be forecast: no recent progress")} | " +
                 $"{p.OpenTasks}/{p.OverdueTasks}/{p.BlockedTasks} | {p.OpenActionItems}/{p.OverdueActionItems} | {(p.Reasons.Count == 0 ? "no concerns" : string.Join("; ", p.Reasons))}");
         if (b.Ranked.Count > top) sb.AppendLine($"…and {b.Ranked.Count - top} lower-risk projects.");

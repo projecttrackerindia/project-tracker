@@ -92,6 +92,8 @@ public class Tenant : AuditableEntity, ISoftDelete
     public bool AiDisabled { get; set; }
     /// <summary>What the organization tells the assistant about itself and how it works (written by an Owner or Admin, shared with every answer).</summary>
     public string? AiInstructions { get; set; }
+    /// <summary>Whether every member sees every project (the default) or only the projects of their own teams and the ones they were added to.</summary>
+    public ProjectVisibility ProjectVisibility { get; set; } = ProjectVisibility.Organization;
 
     /// <summary>Soft delete: members lose access, all data is retained and the tenant can be restored by a platform admin.</summary>
     public bool IsDeleted { get; set; }
