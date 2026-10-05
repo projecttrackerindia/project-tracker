@@ -88,7 +88,7 @@ function EffectiveAccessTable() {
   return (
     <div className="card">
       <div className="card-head">
-        <div><h3>Who can do what</h3><p>{d.byJobRole} decided by their job role · {d.byAccessLevel} by their access level · the rest are Owners and Admins</p></div>
+        <div><h3>What each person can see and do</h3><p>{d.byJobRole} decided by their job role · {d.byAccessLevel} by their access level · the rest are Owners and Admins. "Can open projects" shows how far each person's view reaches today.</p></div>
       </div>
       <div className="toolbar">
         <div className="search-field"><Icon name="search" /><input className="input" placeholder="Find a person or job role…" value={term} onChange={(e) => setTerm(e.target.value)} aria-label="Find a person" /></div>
@@ -100,7 +100,7 @@ function EffectiveAccessTable() {
         <div className="table-wrap">
           <table className="matrix" style={{ minWidth: 760 }}>
             <thead>
-              <tr><th>Person</th><th>Access level</th><th>Job role</th><th>Decided by</th>{modules.map((m) => <th key={m}>{MODULE_LABEL[m] ?? labelize(m)}</th>)}</tr>
+              <tr><th>Person</th><th>Access level</th><th>Job role</th><th>Decided by</th><th>Can open projects</th>{modules.map((m) => <th key={m}>{MODULE_LABEL[m] ?? labelize(m)}</th>)}</tr>
             </thead>
             <tbody>
               {rows.map((p) => (
@@ -111,9 +111,10 @@ function EffectiveAccessTable() {
                     <td><RoleBadge role={p.accessLevel} /></td>
                     <td className="cell-muted">{p.jobRole ?? '—'}</td>
                     <td><span title={SOURCE[p.source].hint}><Badge tone={SOURCE[p.source].tone}>{SOURCE[p.source].label}</Badge></span></td>
+                    <td><span className="reach" title={p.teams.length ? `Teams: ${p.teams.join(', ')}` : 'In no team'}><b>{p.projectReach === 'everything' ? 'All' : p.projects}</b> project{p.projectReach !== 'everything' && p.projects === 1 ? '' : 's'}<small>{p.projectReach === 'everything' ? 'every team' : p.projectReach === 'teams' ? (p.teams.length ? p.teams.join(', ') : 'own and added only') : 'only those added'}</small></span></td>
                     {modules.map((m) => { const l = p.modules[m] ?? 0; return <td key={m}><span className={`access-cell l${l}`}>{LEVEL[l] ?? l}</span></td>; })}
                   </tr>
-                  {open === p.userId && <tr><td colSpan={4 + modules.length}><PermissionList person={p} /></td></tr>}
+                  {open === p.userId && <tr><td colSpan={5 + modules.length}><PermissionList person={p} /></td></tr>}
                 </Fragment>
               ))}
             </tbody>

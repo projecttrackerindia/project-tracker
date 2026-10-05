@@ -157,7 +157,7 @@ function GlobalSearch() {
     setOpen(false); setQ('');
     nav(searchHitLink(h));
   };
-  const groups: Record<string, string> = { task: 'Tasks', issue: 'Test issues', action: 'Action items', work: 'Operational work', project: 'Projects', team: 'Teams', member: 'People', comment: 'Comments', file: 'Files', label: 'Labels' };
+  const groups: Record<string, string> = { task: 'Tasks', issue: 'Issues', action: 'Action items', work: 'Operational work', project: 'Projects', team: 'Teams', member: 'People', comment: 'Comments', file: 'Files', label: 'Labels' };
   const icons: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag' };
   const hits = data?.hits ?? [];
 

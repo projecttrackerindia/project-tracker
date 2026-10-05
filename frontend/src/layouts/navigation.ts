@@ -22,7 +22,6 @@ export function useMainNav(): NavGroup[] {
   const kinds = useVisibleKinds();
   const people = usePeopleSections();
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
-  const peopleHas = (id: string) => people.some((s) => s.id === id);
   const ai = useAi();
 
   if (ctx?.user.isPlatformAdmin) return [
@@ -62,9 +61,8 @@ export function useMainNav(): NavGroup[] {
       { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0 },
     ] },
     { title: 'Organization', items: [
-      { to: '/people', label: 'People', icon: 'user', show: peopleHas('directory'), match: (p) => p === '/people' || p === '/people/invitations' },
-      { to: '/people/org-chart', label: 'Org chart', icon: 'org', show: peopleHas('org-chart') },
-      { to: '/people/teams', label: 'Teams', icon: 'layers', show: peopleHas('teams') },
+      // One entry: the directory, the org chart and the teams are tabs inside it.
+      { to: people[0]?.to ?? '/people', label: 'People', icon: 'user', show: people.length > 0, match: (p) => p === '/people' || p.startsWith('/people/') },
     ] },
   ];
 }

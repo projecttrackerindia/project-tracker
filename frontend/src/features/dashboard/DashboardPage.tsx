@@ -9,6 +9,8 @@ import { EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Progress, St
 import { formatDate, formatDateShort, timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
+import { useAi } from '../ai/Assistant';
+import { GettingStarted } from './GettingStarted';
 import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { formatMinutes } from '../time/time';
 import { TaskModal } from '../tasks/TaskModal';
@@ -43,7 +45,8 @@ export function DashboardPage() {
   const kinds = useVisibleKinds();
   const [projectModal, setProjectModal] = useState(false);
   const [showTasks, showProjects, showActivity, showMembers] = [useModule('tasks') > 0, useModule('projects') > 0, useModule('activity') > 0, useModule('members') > 0];
-  const permReports = useCan('reports.view'), modReports = useModule('reports');
+  const permReports = useCan('reports.view'), modReports = useModule('reports'), broadReports = useCan('reports.broad');
+  const ai = useAi();
   const canReports = permReports && modReports > 0;
   const { teamId, team } = useTeamLens();
   const [range, setRange] = useState<14 | 30 | 90>(30);
@@ -56,6 +59,8 @@ export function DashboardPage() {
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const { counts: c, projects, activity } = q.data;
   const myWork = q.data.myWork ?? [];
+  const firstRun = showProjects && c.totalProjects === 0 && myWork.length === 0;   // nothing exists yet: show where to begin instead of a wall of zeros
+  const leader = canReports || broadReports;
   const openItem = (i: WorkRowItem) => {
     if (i.kind === 'Task') setTaskModal({ id: i.id });
     else if (i.kind === 'Operational') setWorkModal(i.id);
@@ -67,9 +72,19 @@ export function DashboardPage() {
   const statusTotal = statusDist.reduce((s, x) => s + x.count, 0);
   const trendTotal = trend.reduce((s, x) => s + x.count, 0);
 
+  if (firstRun) {
+    return (
+      <>
+        <PageHead title={`Welcome, ${user.displayName.split(' ')[0]}`} sub="Three quick steps and you are up and running." />
+        <GettingStarted personal={personal} ai={ai} canCreateProject={canCreateProject} onCreateProject={() => setProjectModal(true)} />
+        {projectModal && <ProjectFormModal onClose={() => setProjectModal(false)} onSaved={(id) => nav(`/projects/${id}`)} />}
+      </>
+    );
+  }
+
   return (
     <>
-      <PageHead title={`Welcome back, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
+      <PageHead title={`${firstRun ? 'Welcome' : 'Welcome back'}, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
         {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New project</button>}
         {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add task</button>}
       </PageHead>
@@ -96,12 +111,12 @@ export function DashboardPage() {
             <div className="stat-value">{workQ.data.open}</div><div className="stat-label">Open work tasks</div><div className="stat-foot">{workQ.data.overdue} overdue · {workQ.data.unassigned} unassigned</div>
           </Link>
         </>}
-        {showProjects && <>
+        {showProjects && leader && <>
           <StatCard icon="folder" tone="purple" value={c.activeProjects} label="Active projects" foot={`${c.totalProjects} total`} />
           <StatCard icon="target" tone="cyan" value={c.completedProjects} label="Completed projects" foot="Delivered" />
         </>}
-        {!personal && showMembers && <StatCard icon="users" tone="blue" value={c.members} label="Members" foot={`${c.overdueTasks} overdue tasks overall`} />}
-        {(showTasks || showProjects) && <div className="stat-card">
+        {!personal && showMembers && leader && <StatCard icon="users" tone="blue" value={c.members} label="Members" foot={`${c.overdueTasks} overdue tasks overall`} />}
+        {(showTasks || showProjects) && leader && <div className="stat-card">
           <div className="stat-top"><div className="stat-icon cyan"><Icon name="chart" /></div></div>
           <div className="stat-value">{c.overallProgress}%</div><div className="stat-label">Overall progress</div>
           <div style={{ marginTop: 12 }}><Progress value={c.overallProgress} /></div>
@@ -111,7 +126,7 @@ export function DashboardPage() {
       {kinds.length > 0 && (
         <div className="card mb-22">
           <div className="card-head">
-            <div><h3>My work</h3><p>Next up across project tasks, test issues, action items and operational work</p></div>
+            <div><h3>My work</h3><p>Next up across project tasks, issues, action items and operational work</p></div>
             <Link className="btn btn-ghost btn-sm" to="/my-work">Open My work</Link>
           </div>
           {myWork.length === 0

@@ -57,7 +57,7 @@ function CapacityTab() {
 }
 
 /**
- * Open work per person across every kind (project tasks, test issues, action items, operational work). A manager sees their reporting
+ * Open work per person across every kind (project tasks, issues, action items, operational work). A manager sees their reporting
  * line, someone with broad reports access can see everyone, and anyone can see their own. A planning aid, not a performance score.
  */
 function OpenWork() {

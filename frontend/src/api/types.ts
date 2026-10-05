@@ -72,7 +72,7 @@ export interface PermissionMatrix {
 }
 /** Where a person's access comes from: Owner and Admin have everything; JobRole means their job role's access settings decide; AccessLevel means the defaults of their access level do. */
 export type AccessSource = 'Owner' | 'Admin' | 'JobRole' | 'AccessLevel';
-export interface EffectiveAccess { userId: string; name: string; email: string; accessLevel: Role; jobRole: string | null; source: AccessSource; modules: Record<string, number>; permissions: string[] }
+export interface EffectiveAccess { userId: string; name: string; email: string; accessLevel: Role; jobRole: string | null; source: AccessSource; modules: Record<string, number>; permissions: string[]; projectReach: 'everything' | 'teams' | 'added'; projects: number; teams: string[] }
 export interface EffectiveAccessList { people: EffectiveAccess[]; byJobRole: number; byAccessLevel: number }
 
 export interface UserRef { id: string; name: string }
@@ -128,7 +128,7 @@ export interface Stage {
   taskTotal: number; taskDone: number;
   /** The stage before this one is not completed yet, so this one cannot be started or completed. `lockedBy` names that stage. */
   locked: boolean; lockedBy: string | null;
-  /** Test issues found in this stage: the open (unresolved) ones keep it from completing. */
+  /** Issues found in this stage: the open (unresolved) ones keep it from completing. */
   openIssues: number; totalIssues: number;
 }
 /** What the timeline shows for a stage: its status, or Locked while it waits for the stage before it. */
@@ -171,7 +171,7 @@ export interface Dashboard {
     totalProjects: number; openTasks: number; overdueTasks: number; members: number; overallProgress: number; myLoggedMinutesThisWeek: number;
   };
   myTasks: Task[]; projects: Project[]; activity: Activity[];
-  /** My next open work of every kind (project tasks, test issues, action items, operational work). */
+  /** My next open work of every kind (project tasks, issues, action items, operational work). */
   myWork: WorkItem[];
 }
 export interface CalendarEvent {
@@ -232,7 +232,7 @@ export interface AccessMatrix {
 export interface Attachment {
   id: string; projectId: string; taskId: string | null; taskKey: string | null; taskTitle: string | null;
   fileName: string; contentType: string; sizeBytes: number; uploadedBy: UserRef | null; createdAt: string; canDelete: boolean; isImage: boolean;
-  /** Set for a supporting document of a test issue. */
+  /** Set for a supporting document of an issue. */
   issueId: string | null;
 }
 /** Observed / Failed (found by a tester) → In progress (being fixed) → Fixed (awaiting retest) → Resolved (confirmed by the tester). */
@@ -392,7 +392,7 @@ export interface WebhookDelivery {
 }
 
 // ---- work of every kind: My work, workload
-/** Task: a project task. Issue: a test issue. ActionItem: a project follow-up. Operational: work outside projects. */
+/** Task: a project task. Issue: an issue. ActionItem: a project follow-up. Operational: work outside projects. */
 export type WorkItemKind = 'Task' | 'Issue' | 'ActionItem' | 'Operational';
 /** One piece of assigned work of any kind; `category` puts every kind's own statuses on one scale. */
 export interface WorkItem {

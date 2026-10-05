@@ -142,7 +142,7 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
           {p.description && <p title={p.description}>{p.description}</p>}
         </div>
         <div className="ps-head-right">
-          <div className="ps-badges"><ProjectTypeBadge type={p.projectType} /><ProjectStatusBadge status={p.status} /><HealthBadge health={p.health} /></div>
+          <div className="ps-badges"><ProjectTypeBadge type={p.projectType} />{!['Active', 'Planning'].includes(p.status) && <ProjectStatusBadge status={p.status} />}<HealthBadge health={p.health} /></div>
           <div className="ps-buttons">
             <Link className="btn btn-ghost btn-sm ps-go" to={`/projects/${p.id}`} title="Open the project's details page"><Icon name="arrowRight" size={14} /> Go To Project</Link>
             <button type="button" className="btn btn-soft btn-sm" onClick={onActionItems} title="Follow-ups for this project">

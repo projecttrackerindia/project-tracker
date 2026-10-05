@@ -1,0 +1,51 @@
+name: Browser smoke test
+
+# Opens the real app in a browser after every push to main and checks the pages people use most. It reports problems but never blocks:
+# the CI workflow stays the gate. Run it by hand from the Actions tab too.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Start the API (Development, seeded demo data)
+        working-directory: backend/src/ProjectManagement.Api
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://localhost:5080
+        run: |
+          dotnet build -c Release -v q
+          nohup dotnet bin/Release/net9.0/ProjectManagement.Api.dll > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://localhost:5080/health && break; sleep 2; done
+      - name: Start the web app
+        working-directory: frontend
+        run: |
+          npm ci
+          nohup npx vite --host 127.0.0.1 > "$RUNNER_TEMP/vite.log" 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:5173/ && break; sleep 2; done
+      - name: Smoke test
+        working-directory: frontend
+        run: |
+          npm i --no-save playwright-core
+          npx playwright-core install chromium
+          node e2e/smoke.mjs
+      - name: Logs
+        if: failure()
+        run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true

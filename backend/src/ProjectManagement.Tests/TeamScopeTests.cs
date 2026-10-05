@@ -227,4 +227,31 @@ public class TeamScopeTests(ApiFactory factory)
         Assert.True((await s.Owner.Put("/api/v1/workspace/project-visibility", new { mode = "teams" })).Ok);
         Assert.Equal(["Alpha Programme"], await Names(alice));                                         // limited to teams: still only her own, the forged lens changed nothing
     }
+
+    [Fact]
+    public async Task The_access_list_shows_how_far_each_persons_view_reaches()
+    {
+        var s = await Seed();                                       // teams mode: Alice and Carol in Alpha, Bob in Bravo, Dave in none
+        var people = (await s.Owner.Get("/api/v1/org/access/effective")).Data!["people"]!.AsArray();
+        JsonNodeExt reach(TestClient c) => new(people.First(p => S(p!["userId"]) == c.UserId.ToString())!);
+        Assert.Equal("everything", reach(s.Owner).Reach);
+        Assert.Equal("teams", reach(s.Alice).Reach); Assert.Equal(1, reach(s.Alice).Projects);
+        Assert.Equal("teams", reach(s.Dave).Reach); Assert.Equal(0, reach(s.Dave).Projects);
+        Assert.Contains("Alpha team", reach(s.Alice).Teams);
+
+        // Added to a project: it counts. And with the limit off everyone reaches everything again.
+        Assert.True((await s.Owner.Post($"/api/v1/projects/{s.ProjectB}/members", new { userId = s.Dave.UserId })).Ok);
+        people = (await s.Owner.Get("/api/v1/org/access/effective")).Data!["people"]!.AsArray();
+        Assert.Equal(1, reach(s.Dave).Projects);
+        Assert.True((await s.Owner.Put("/api/v1/workspace/project-visibility", new { mode = "organization" })).Ok);
+        people = (await s.Owner.Get("/api/v1/org/access/effective")).Data!["people"]!.AsArray();
+        Assert.Equal("everything", reach(s.Alice).Reach);
+    }
+
+    private readonly record struct JsonNodeExt(System.Text.Json.Nodes.JsonNode Node)
+    {
+        public string Reach => S(Node["projectReach"]);
+        public int Projects => Node["projects"]!.GetValue<int>();
+        public string[] Teams => Node["teams"]!.AsArray().Select(t => S(t)).ToArray();
+    }
 }

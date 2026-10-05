@@ -245,7 +245,7 @@ export function WorkspaceSettingsPage() {
   if (!sections.length) return <Navigate to="/account" replace />;
   const current = sections.find((s) => s.id === section);
   if (!current) return <Navigate to={sections[0].to} replace />;
-  const groups = (['Workspace', 'Configuration', 'Integrations'] as const).map((g) => ({ title: g, items: sections.filter((s) => s.group === g) }));
+  const groups = (['Workspace', 'Configuration', 'Integrations'] as const).map((g) => ({ title: g, items: sections.filter((s) => s.group === g), collapsed: g !== 'Workspace' }));
   return (
     <SectionLayout title="Workspace settings" sub="How this workspace is set up: access, security, master lists, integrations and billing." groups={groups}>
       {current.id === 'general' && <GeneralSection />}

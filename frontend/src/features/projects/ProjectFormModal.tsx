@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { projectApi, projectGroupApi, teamApi, workspaceApi } from '../../api/endpoints';
@@ -12,6 +12,7 @@ import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../..
 import { toast } from '../../stores/ui';
 import { StageChain, TimelineManagerModal, useTimelineManagement, useTimelineTemplates } from './TimelineTemplates';
 import { Select } from '../../components/Select';
+import { Icon } from '../../components/Icon';
 import { Link } from 'react-router-dom';
 import { DueChangeFields, dueChange } from './DueChangeFields';
 
@@ -47,8 +48,17 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
   const [timeline, setTimeline] = useState('');
   const templates = useTimelineTemplates(!isEdit);
   const chosen = templates.data?.find((t) => t.key === timeline);
+  // New project: the usual choices are already made (the default group, type and timeline), so only the name has to be typed.
+  useEffect(() => {
+    if (isEdit) return;
+    if (!groupId && pickable.length > 0) setGroupId((pickable.find((g) => /^other/i.test(g.name)) ?? pickable[0]).id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups.data]);
+  useEffect(() => { if (!isEdit && !timeline && templates.data?.length) setTimeline((templates.data.find((t) => t.isDefault) ?? templates.data[0]).key); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [templates.data]);
+  useEffect(() => { if (!isEdit && !projectType) setProjectType('Other'); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   const [managing, setManaging] = useState(false);
   const { permitted: canManageTimelines } = useTimelineManagement();
+  const [more, setMore] = useState(isEdit);   // a new project asks for a name, an owner and a date; the rest has sensible defaults and is one click away
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -94,6 +104,26 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
       {formError && <div className="form-error" role="alert">{formError}</div>}
       <div className="form-grid">
         <Field label="Project name" required error={errors.name}><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="e.g. API Migration" /></Field>
+        <Field label="Project owner" error={errors.ownerId}>
+          <Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+            {members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+          </Select>
+        </Field>
+        <Field label="Due date" required error={errors.dueDate}><input className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+        {isEdit && (
+          <div className="field full" style={{ display: dueChange(project!.dueDate, dueDate) ? undefined : 'none' }}>
+            <DueChangeFields previous={project!.dueDate} revised={dueDate} reason={dueReason} dependency={dueDependency} onReason={(v) => { setDueReason(v); setErrors((x) => ({ ...x, dueDateReason: '' })); }} onDependency={setDueDependency} error={errors.dueDateReason} />
+          </div>
+        )}
+        {!more && (
+          <div className="field full">
+            <button type="button" className="more-toggle" onClick={() => setMore(true)}>
+              <Icon name="plus" size={13} /> More options <span>group, type, timeline, team, description, members</span>
+            </button>
+            <p className="muted" style={{ fontSize: 12, margin: '6px 2px 0' }}>Will use: {pickable.find((g) => g.id === groupId)?.name ?? 'the default group'} · {PROJECT_TYPES.find((t) => t.id === projectType)?.label ?? 'Other'} · {chosen?.name ?? 'the default timeline'}</p>
+          </div>
+        )}
+        {more && <>
         <Field label="Project key" error={errors.key} hint={isEdit ? 'Keys cannot be changed after creation.' : 'Optional — used in task IDs, e.g. API-12.'}>
           <input className="input" value={key} onChange={(e) => setKey(e.target.value.toUpperCase())} maxLength={10} placeholder="e.g. API" disabled={isEdit} />
         </Field>
@@ -121,11 +151,6 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
             ))}
           </div>
         </Field>
-        <Field label="Project owner" error={errors.ownerId}>
-          <Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            {members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-          </Select>
-        </Field>
         {!personal && (
           <Field label="Team">
             <Select className="select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
@@ -134,12 +159,6 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
           </Field>
         )}
         <Field label="Start date" required error={errors.startDate}><input className="input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
-        <Field label="Due date" required error={errors.dueDate}><input className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
-        {isEdit && (
-          <div className="field full" style={{ display: dueChange(project!.dueDate, dueDate) ? undefined : 'none' }}>
-            <DueChangeFields previous={project!.dueDate} revised={dueDate} reason={dueReason} dependency={dueDependency} onReason={(v) => { setDueReason(v); setErrors((x) => ({ ...x, dueDateReason: '' })); }} onDependency={setDueDependency} error={errors.dueDateReason} />
-          </div>
-        )}
         <Field label="Priority"><Select className="select" value={priority} onChange={(e) => setPriority(e.target.value as Priority)}><PriorityOptions /></Select></Field>
         <Field label="Status"><Select className="select" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>{statusOptions.map((s) => <option key={s} value={s}>{labelize(s)}</option>)}</Select></Field>
         {!isEdit && (
@@ -176,6 +195,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
             </div>
           </Field>
         )}
+        </>}
       </div>
       {managing && <TimelineManagerModal onClose={() => { setManaging(false); if (timeline && !templates.data?.some((t) => t.key === timeline)) setTimeline(''); }} />}
     </Modal>

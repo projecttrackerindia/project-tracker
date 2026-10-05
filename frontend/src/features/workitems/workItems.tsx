@@ -8,7 +8,7 @@ import { useAuth } from '../../stores/auth';
 /** How each kind of work is named and drawn everywhere work of several kinds is listed together. */
 export const KIND_META: Record<WorkItemKind, { label: string; plural: string; icon: IconName; hint: string }> = {
   Task: { label: 'Project task', plural: 'Project tasks', icon: 'check', hint: 'Tasks on a project’s board, in its workflow.' },
-  Issue: { label: 'Test issue', plural: 'Test issues', icon: 'bug', hint: 'Problems found while testing a project stage.' },
+  Issue: { label: 'Issue', plural: 'Issues', icon: 'bug', hint: 'Problems found while testing a project stage.' },
   ActionItem: { label: 'Action item', plural: 'Action items', icon: 'flag', hint: 'Follow-ups agreed for a project.' },
   Operational: { label: 'Operational work', plural: 'Operational work', icon: 'bolt', hint: 'Bug fixes, support, analysis and other work outside projects.' },
 };

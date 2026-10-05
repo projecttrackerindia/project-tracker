@@ -154,7 +154,7 @@ export function ProjectDetailPage() {
       <div className="detail-hero">
         <div className="dh-top">
           <div style={{ minWidth: 0 }}>
-            <div className="dh-sub"><ProjectStatusBadge status={p.status} /><PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /><ProjectTypeBadge type={p.projectType} /><span title="Delivery method: decides which planning views the project shows"><Badge tone="neutral">{deliveryLabel(method)} delivery</Badge></span></div>
+            <div className="dh-sub">{!(['Active', 'Planning'] as string[]).includes(p.status) && <ProjectStatusBadge status={p.status} />}<PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /><ProjectTypeBadge type={p.projectType} /><span title="Delivery method: decides which planning views the project shows"><Badge tone="neutral">{deliveryLabel(method)} delivery</Badge></span></div>
             {p.description && <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 12, maxWidth: 640, lineHeight: 1.6 }}>{p.description}</p>}
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -184,7 +184,7 @@ export function ProjectDetailPage() {
           { id: 'board' as Tab, label: 'Board', icon: 'kanban' as const }, { id: 'list' as Tab, label: 'List', icon: 'list' as const },
           { id: 'plan' as Tab, label: method === 'Agile' ? 'Sprints' : method === 'Phased' ? 'Milestones' : 'Plan', icon: 'target' as const },
           { id: 'issues' as Tab, label: 'Issues', icon: 'bug' as const, badge: openIssues },
-          { id: 'actions' as Tab, label: 'Actions', icon: 'flag' as const },
+          { id: 'actions' as Tab, label: 'Action items', icon: 'flag' as const },
           { id: 'files' as Tab, label: 'Files', icon: 'paperclip' as const },
           { id: 'time' as Tab, label: 'Time', icon: 'clock' as const },
           { id: 'activity' as Tab, label: 'Activity', icon: 'activity' as const },

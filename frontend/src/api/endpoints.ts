@@ -266,7 +266,7 @@ export const statusApi = {
   report: (projectId: string) => get<ProjectStatusReport>(`/project-status/projects/${projectId}`),
 };
 
-/** Test issues found in a project's stages (Observed / Failed → In progress → Fixed → Resolved). */
+/** Issues found in a project's stages (Observed / Failed → In progress → Fixed → Resolved). */
 export const issueApi = {
   list: (projectId: string, f: { stageId?: string; openOnly?: boolean } = {}) => get<Issue[]>(`/projects/${projectId}/issues`, f),
   get: (projectId: string, id: string) => get<IssueDetail>(`/projects/${projectId}/issues/${id}`),
@@ -408,7 +408,7 @@ export const webhookApi = {
 export interface WorkItemFilters { kinds?: WorkItemKind[]; open?: boolean; projectId?: string; dueFrom?: string; dueTo?: string; overdue?: boolean; q?: string; limit?: number }
 /** Work of every kind in one shape: My work and the workload views. */
 export const workItemApi = {
-  /** Everything assigned to me: project tasks, test issues, action items and operational work. */
+  /** Everything assigned to me: project tasks, issues, action items and operational work. */
   mine: (f: WorkItemFilters = {}) => get<WorkItem[]>('/my-work', { ...f, kinds: f.kinds?.length ? f.kinds.join(',') : undefined }),
   /** Open work per person: my reporting line, the whole workspace (with broad reports access) or just me. */
   /** Every open action item of the projects I can see (the Portfolio's view); follows the team being looked at. */

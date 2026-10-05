@@ -30,7 +30,7 @@ function Dot({ status }: { status: StageDisplayStatus }) {
 /** Horizontal, data-driven project lifecycle (spec 13.3). */
 export function Timeline({ projectId, projectName, stages, canEdit, canReportIssue, onShowIssues, onReportIssue }: {
   projectId: string; projectName: string; stages: Stage[]; canEdit: boolean;
-  /** Test issues: whether the person may report one, and the ways into them from a stage. */
+  /** Issues: whether the person may report one, and the ways into them from a stage. */
   canReportIssue: boolean; onShowIssues: (stageId: string) => void; onReportIssue: (stageId: string) => void;
 }) {
   const wid = useWorkspaceId();

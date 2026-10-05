@@ -13,7 +13,7 @@ const VIEWS: { id: View; label: string }[] = [{ id: 'open', label: 'Open' }, { i
 const ORDER: IssueStatus[] = ['Observed', 'InProgress', 'Fixed', 'Resolved'];
 
 /**
- * The project's test issues: what testers marked as Observed / Failed, who is fixing it and how far along it is. A stage is only completed
+ * The project's issues: what testers marked as Observed / Failed, who is fixing it and how far along it is. A stage is only completed
  * once every issue found in it is resolved.
  */
 export function IssuesPanel({ projectId, stages, canReport, stageFilter, onStageFilter, onOpen, onReport }: {

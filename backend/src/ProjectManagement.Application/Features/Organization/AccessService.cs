@@ -27,7 +27,7 @@ public enum AccessSource { Owner, Admin, JobRole, AccessLevel }
 
 /// <summary>What one person can actually open and do right now, and which single rule decided it.</summary>
 public record EffectiveAccessDto(Guid UserId, string Name, string Email, TenantRole AccessLevel, string? JobRole, AccessSource Source,
-    IReadOnlyDictionary<string, int> Modules, IReadOnlyList<string> Permissions);
+    IReadOnlyDictionary<string, int> Modules, IReadOnlyList<string> Permissions, string ProjectReach = "everything", int Projects = 0, IReadOnlyList<string>? Teams = null);
 public record EffectiveAccessListDto(IReadOnlyList<EffectiveAccessDto> People, int ByJobRole, int ByAccessLevel);
 
 /// <summary>
@@ -180,6 +180,23 @@ public class AccessService(IAppDbContext db, ICurrentContext ctx, PermissionServ
             return byLevel[level] = (mods, perms);
         }
 
+        // Which projects each person can open: everything, their own teams' (plus ones they own or were added to), or only the ones they were added to.
+        var visibility = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => t.ProjectVisibility).FirstAsync(ct);
+        var projectRows = await db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.TenantId == tid && !p.IsDeleted && p.Status != ProjectStatus.Archived).Select(p => new { p.Id, p.OwnerId, p.TeamId }).ToListAsync(ct);
+        var addedTo = (await db.ProjectMembers.AsNoTracking().Select(pm => new { pm.UserId, pm.ProjectId }).ToListAsync(ct)).GroupBy(x => x.UserId).ToDictionary(g => g.Key, g => g.Select(x => x.ProjectId).ToHashSet());
+        var teamRows = await db.Teams.AsNoTracking().Select(t => new { t.Id, t.Name }).ToListAsync(ct);
+        var teamOf = (await db.TeamMembers.AsNoTracking().Select(tm => new { tm.UserId, tm.TeamId }).ToListAsync(ct)).GroupBy(x => x.UserId).ToDictionary(g => g.Key, g => g.Select(x => x.TeamId).ToHashSet());
+        (string Reach, int Count, IReadOnlyList<string> Teams) Reach(Guid user, TenantRole level, IEnumerable<string> perms)
+        {
+            var myTeams = teamOf.GetValueOrDefault(user) ?? [];
+            var names = teamRows.Where(t => myTeams.Contains(t.Id)).Select(t => t.Name).OrderBy(n => n).ToList();
+            var added = addedTo.GetValueOrDefault(user) ?? [];
+            if (level == TenantRole.Guest) return ("added", projectRows.Count(p => added.Contains(p.Id)), names);
+            if (visibility == ProjectVisibility.Teams && !perms.Contains(Permissions.ProjectsViewAll))
+                return ("teams", projectRows.Count(p => p.OwnerId == user || added.Contains(p.Id) || (p.TeamId is { } t && myTeams.Contains(t))), names);
+            return ("everything", projectRows.Count, names);
+        }
+
         var people = new List<EffectiveAccessDto>();
         foreach (var m in members)
         {
@@ -187,13 +204,16 @@ public class AccessService(IAppDbContext db, ICurrentContext ctx, PermissionServ
             var profile = m.Role is TenantRole.Manager or TenantRole.Member or TenantRole.Guest ? AccessProfile.Parse(role?.AccessJson) : null;
             if (profile is not null)
             {
+                var jobPerms = profile.Permissions().OrderBy(p => p).ToList();
+                var jr = Reach(m.UserId, m.Role, jobPerms);
                 people.Add(new EffectiveAccessDto(m.UserId, m.DisplayName, m.Email, m.Role, role?.Name, AccessSource.JobRole,
-                    Modules.All.ToDictionary(x => x.Id, x => profile.Level(x.Id)), profile.Permissions().OrderBy(p => p).ToList()));
+                    Modules.All.ToDictionary(x => x.Id, x => profile.Level(x.Id)), jobPerms, jr.Reach, jr.Count, jr.Teams));
                 continue;
             }
             var (mods, perms) = await DefaultsAsync(m.Role);
             var source = m.Role switch { TenantRole.Owner => AccessSource.Owner, TenantRole.Admin => AccessSource.Admin, _ => AccessSource.AccessLevel };
-            people.Add(new EffectiveAccessDto(m.UserId, m.DisplayName, m.Email, m.Role, role?.Name, source, mods, perms));
+            var lr = Reach(m.UserId, m.Role, perms);
+            people.Add(new EffectiveAccessDto(m.UserId, m.DisplayName, m.Email, m.Role, role?.Name, source, mods, perms, lr.Reach, lr.Count, lr.Teams));
         }
         return new EffectiveAccessListDto(people, people.Count(p => p.Source == AccessSource.JobRole), people.Count(p => p.Source == AccessSource.AccessLevel));
     }

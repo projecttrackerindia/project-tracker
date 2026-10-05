@@ -44,6 +44,8 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
   const [dueReason, setDueReason] = useState('');
   const [dueDependency, setDueDependency] = useState('');
   const isEdit = !!currentId;
+  const [more, setMore] = useState(false);   // a new task asks for the few things that matter; the rest is one click away
+  const show = isEdit || more;
 
   const detail = useWsQuery(['task', currentId], () => taskApi.get(currentId!), { enabled: isEdit });
   const task = detail.data?.task;
@@ -159,9 +161,9 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
           <Field label="Task title" required full error={errors.title}>
             <input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Complete API development" maxLength={200} />
           </Field>
-          <Field label="Description" full error={errors.description}>
+          {show && <Field label="Description" full error={errors.description}>
             <textarea className="textarea" value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="What needs to be done?" />
-          </Field>
+          </Field>}
 
           {!isEdit && !projectId && (
             <Field label="Project" required error={errors.project}>
@@ -184,21 +186,21 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
               </Select>
             </Field>
           )}
-          <Field label="Status" error={errors.statusId}>
+          {show && <Field label="Status" error={errors.statusId}>
             <Select className="select" value={f.statusId} onChange={(e) => set('statusId', e.target.value)} disabled={!pid}>
               {sortedStatuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
-          </Field>
-          <Field label="Priority">
+          </Field>}
+          {show && <Field label="Priority">
             <Select className="select" value={f.priority} onChange={(e) => set('priority', e.target.value as Priority)}><PriorityOptions /></Select>
-          </Field>
+          </Field>}
           <Field label="Assignee" error={errors.assigneeId}>
             <Select className="select" value={f.assigneeId} onChange={(e) => set('assigneeId', e.target.value)}>
               <option value="">Unassigned</option>
               {members.data?.filter((m) => m.role !== 'Guest' || m.userId === f.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
             </Select>
           </Field>
-          <Field label="Start date"><input className="input" type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>
+          {show && <Field label="Start date"><input className="input" type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>}
           <Field label="Due date" error={errors.dueDate}><input className="input" type="date" value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>
           {isEdit && dueChange(task?.dueDate, f.dueDate) && (
             <div className="field full">
@@ -206,7 +208,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
                 onReason={(v) => { setDueReason(v); setErrors((x) => ({ ...x, dueDateReason: '' })); }} onDependency={setDueDependency} />
             </div>
           )}
-          {(milestones.data?.length ?? 0) > 0 && (
+          {show && (milestones.data?.length ?? 0) > 0 && (
             <Field label="Milestone"><Select className="select" value={f.milestoneId} onChange={(e) => set('milestoneId', e.target.value)}>
               <option value="">— None —</option>{milestones.data!.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </Select></Field>
@@ -220,10 +222,10 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
               {sprints.data?.filter((x) => x.status !== 'Completed' || x.id === task.sprintId).map((x) => <option key={x.id} value={x.id}>{x.name}{x.status === 'Active' ? ' (running)' : x.status === 'Completed' ? ' (completed)' : ''}</option>)}
             </Select></Field>
           )}
-          <Field label="Estimated hours"><input className="input" type="number" min="0" step="0.5" value={f.estimatedHours} onChange={(e) => set('estimatedHours', e.target.value)} /></Field>
+          {show && <Field label="Estimated hours"><input className="input" type="number" min="0" step="0.5" value={f.estimatedHours} onChange={(e) => set('estimatedHours', e.target.value)} /></Field>}
           {isEdit && <Field label="Actual hours" hint="Follows the time you log below once there is any."><input className="input" type="number" min="0" step="0.5" value={f.actualHours} onChange={(e) => set('actualHours', e.target.value)} /></Field>}
 
-          {labels.data && labels.data.length > 0 && (
+          {show && labels.data && labels.data.length > 0 && (
             <Field label="Labels" full>
               <div className="task-meta">
                 {labels.data.map((l) => {
@@ -239,7 +241,12 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
             </Field>
           )}
         </div>
-        {!isEdit && <CustomFieldsSection canEdit pending={pendingFields} onPending={setPendingFields} />}
+        {!isEdit && !more && (
+          <button type="button" className="more-toggle" onClick={() => setMore(true)}>
+            <Icon name="plus" size={13} /> More options <span>description, priority, start date, estimate, labels</span>
+          </button>
+        )}
+        {!isEdit && more && <CustomFieldsSection canEdit pending={pendingFields} onPending={setPendingFields} />}
       </fieldset>
 
       {isEdit && task && detail.data && (

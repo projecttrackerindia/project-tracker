@@ -26,7 +26,7 @@ function bucketOf(w: WorkItem, today: string, weekEnd: string): string {
 const BUCKETS = ['Overdue', 'Due today', 'Next 7 days', 'Later', 'No due date'];
 
 /**
- * My work: everything assigned to me in one list, whatever kind it is (project tasks, test issues, action items, operational work),
+ * My work: everything assigned to me in one list, whatever kind it is (project tasks, issues, action items, operational work),
  * grouped by when it is due. Project tasks and operational work open in place; issues and action items open on their project.
  */
 export function MyWorkPage() {
@@ -124,7 +124,7 @@ export function MyWorkPage() {
         {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : items.length === 0 ? (
           <div className="card-body">
             <EmptyState icon="checkCircle" title={filtered ? 'Nothing matches these filters' : 'Nothing is assigned to you'}
-              text={filtered ? undefined : 'When someone assigns you a task, a test issue, an action item or operational work, it shows up here.'}
+              text={filtered ? undefined : 'When someone assigns you a task, an issue, an action item or operational work, it shows up here.'}
               action={filtered ? <button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button> : undefined} />
           </div>
         ) : (

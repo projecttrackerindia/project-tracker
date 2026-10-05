@@ -16,7 +16,7 @@ const ICONS: [RegExp, IconName][] = [
 ];
 const iconFor = (type: string) => ICONS.find(([re]) => re.test(type))?.[1] ?? 'note';
 
-/** Files on a task (taskId given), on a test issue (issueId given) or on the project itself. Upload by picking a file or dropping one here. */
+/** Files on a task (taskId given), on an issue (issueId given) or on the project itself. Upload by picking a file or dropping one here. */
 export function Attachments({ projectId, taskId, issueId, canEdit, compact }: { projectId: string; taskId?: string; issueId?: string; canEdit: boolean; compact?: boolean }) {
   const wid = useWorkspaceId();
   const qc = useQueryClient();
