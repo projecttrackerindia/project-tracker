@@ -16,6 +16,8 @@ import { formatMinutes } from '../time/time';
 import { TaskModal } from '../tasks/TaskModal';
 import { ProjectFormModal } from '../projects/ProjectFormModal';
 import { WorkTaskModal } from '../work/WorkTaskModal';
+import { MobileHome } from './MobileHome';
+import { useIsMobile } from '../../lib/mobile';
 import { WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from '../workitems/workItems';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = { Todo: '#38bdf8', Active: '#8b5cf6', Done: '#34d399', Cancelled: '#9aa0b5' };
@@ -36,6 +38,7 @@ export function activityIcon(action: string): { icon: IconName; tone: string } {
 
 export function DashboardPage() {
   const nav = useNavigate();
+  const phone = useIsMobile();
   const user = useAuth((s) => s.ctx!.user);
   const personal = useIsPersonal();
   const canCreateTask = useCan('tasks.create');
@@ -84,10 +87,12 @@ export function DashboardPage() {
 
   return (
     <>
+      {phone && kinds.length > 0 ? <MobileHome name={user.displayName.split(' ')[0]} data={q.data} showProjects={showProjects} onOpen={openItem} /> : (
       <PageHead title={`${firstRun ? 'Welcome' : 'Welcome back'}, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
         {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New project</button>}
         {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add task</button>}
       </PageHead>
+      )}
 
       {team && <div className="lens-note"><Icon name="users" size={14} /> <span>Showing <b>{team.name}</b>: projects, tasks, progress, charts and activity below are this team's. "My" figures stay yours.</span></div>}
 
@@ -124,7 +129,7 @@ export function DashboardPage() {
       </div>
 
       {kinds.length > 0 && (
-        <div className="card mb-22">
+        <div className="card mb-22 dash-mywork">
           <div className="card-head">
             <div><h3>My work</h3><p>Next up across project tasks, issues, action items and operational work</p></div>
             <Link className="btn btn-ghost btn-sm" to="/my-work">Open My work</Link>
@@ -191,7 +196,7 @@ export function DashboardPage() {
       </div>}
 
       {(showProjects || showActivity) && <div className="grid-2 mb-22">
-        {showProjects && <div className="card">
+        {showProjects && <div className="card dash-projects">
           <div className="card-head"><div><h3>Project overview</h3><p>Projects by deadline</p></div><button className="btn btn-ghost btn-sm" onClick={() => nav('/projects')}>All projects</button></div>
           <div className="card-body">
             {projects.length ? projects.map((p, i) => (

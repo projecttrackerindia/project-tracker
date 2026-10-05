@@ -23,14 +23,18 @@ const slug = new URL(page.url()).pathname.split('/')[1];
 
 // The shell
 check('tab bar replaces the sidebar', (await page.locator('.m-tabs').isVisible()) && (await page.locator('aside.sidebar').count()) === 0);
-check('five places in the tab bar', (await page.locator('.m-tabs > *').count()) === 5, String(await page.locator('.m-tabs > *').count()));
+check('four places in the capsule and a Create button beside it', (await page.locator('.m-pill > *').count()) === 4 && (await page.locator('.m-fab').count()) === 1, String(await page.locator('.m-pill > *').count()));
 check('Home is the active tab', await page.locator('.m-tab.on', { hasText: 'Home' }).count() === 1);
 check('top bar names the workspace', (await page.locator('.m-org').innerText()).length > 2);
-check('no page scrolls sideways', !(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)));
+check('no page scrolls sideways', !(await page.evaluate(() => document.documentElement.scrollWidth > 391 || innerWidth > 391)), `inner ${await page.evaluate(() => innerWidth)}`);
 const inputs = await page.evaluate(() => [...document.querySelectorAll('input:not([type=checkbox]):not([type=radio]),select,textarea')].filter((e) => e.offsetParent).map((e) => parseFloat(getComputedStyle(e).fontSize)));
 check('fields are 16px or larger (no zoom on focus)', inputs.every((n) => n >= 16), inputs.join(','));
 check('the stat tiles are compact', await page.evaluate(() => { const c = document.querySelector('.stat-card'); return !!c && c.getBoundingClientRect().height < 110; }));
+check('the capsule floats clear of the screen edges', await page.evaluate(() => { const r = document.querySelector('.m-pill').getBoundingClientRect(); return r.left >= 8 && r.bottom <= innerHeight - 6; }));
 
+check('Home leads with the day: greeting, focus card, week strip', (await page.locator('.mh-greet').count()) === 1 && (await page.locator('.mh-focus').count()) === 1 && (await page.locator('.mh-day').count()) === 7);
+await page.tap('.mh-day:not(.on)'); await page.waitForTimeout(400);
+check('picking another day changes the list heading', !(await page.locator('.mh-h').first().innerText()).startsWith('Today'));
 await page.tap('.m-tab:has-text("Projects")'); await page.waitForTimeout(1200);
 check('a tab moves to its page', new URL(page.url()).pathname.endsWith('/projects') && await page.locator('.m-tab.on', { hasText: 'Projects' }).count() === 1);
 await page.tap('.m-tab:has-text("Home")'); await page.waitForTimeout(800);
@@ -41,7 +45,7 @@ check('More opens a sheet with the whole menu', (await page.locator('.sheet .m-t
 await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 check('Escape closes the sheet', (await page.locator('.sheet').count()) === 0);
 
-await page.tap('.m-create'); await page.waitForSelector('.sheet');
+await page.tap('.m-fab'); await page.waitForSelector('.sheet');
 check('the plus opens Create', (await page.locator('.sheet .m-make').count()) >= 2);
 await page.tap('.m-make:has-text("Task")'); await page.waitForSelector('.modal');
 check('a form is a bottom sheet', await page.evaluate(() => { const m = document.querySelector('.modal'); const r = m.getBoundingClientRect(); return r.bottom >= innerHeight - 1 && r.width >= innerWidth - 1; }));
@@ -71,7 +75,7 @@ check('pulling down from the top refreshes the data', calls.length > 0, `${calls
 // Other screens keep their shape
 for (const [path, name] of [['/projects', 'projects'], ['/my-work', 'my work'], ['/calendar', 'calendar'], ['/portfolio', 'portfolio'], ['/people', 'people']]) {
   await page.goto(`${BASE}/${slug}${path}`); await page.waitForTimeout(2200);
-  check(`${name} fits the screen`, !(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)));
+  check(`${name} fits the screen`, !(await page.evaluate(() => document.documentElement.scrollWidth > 391 || innerWidth > 391)), `inner ${await page.evaluate(() => innerWidth)}`);
 }
 check('no script errors (phone)', errors.length === 0, errors.join(' | '));
 

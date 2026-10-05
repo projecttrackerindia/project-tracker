@@ -200,21 +200,23 @@ export function TabBar() {
 
   const tab = (t: Tab) => (
     <NavLink key={t.to} to={t.to} end={t.end} className={`m-tab ${isOn(t) ? 'on' : ''}`} onClick={() => haptic(6)} aria-label={t.label}>
-      <span className="m-tab-ico"><Icon name={t.icon} size={23} />{!!t.badge && <em className="m-badge">{t.badge > 99 ? '99+' : t.badge}</em>}</span>
+      <span className="m-tab-ico"><Icon name={t.icon} size={22} />{!!t.badge && <em className="m-badge">{t.badge > 99 ? '99+' : t.badge}</em>}</span>
       <span className="m-tab-label">{t.label}</span>
     </NavLink>
   );
 
   return (
     <>
+      {/* A floating capsule: the open place shows its name, the others are just their icons; Create floats beside it. */}
       <nav className="m-tabs" aria-label="Main">
-        {left.map(tab)}
-        {!admin && <button type="button" className={`m-tab m-create ${create ? 'open' : ''}`} onClick={() => { haptic(12); setCreate(true); }} aria-label="Create"><span><Icon name="plus" size={26} /></span></button>}
-        {right.map(tab)}
-        <button type="button" className={`m-tab ${more ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
-          <span className="m-tab-ico"><span className="m-me">{initials(ctx.user.displayName)}</span>{hidden && <i className="m-dot top" />}</span>
-          <span className="m-tab-label">More</span>
-        </button>
+        <div className="m-pill">
+          {[...left, ...right].map(tab)}
+          <button type="button" className={`m-tab ${more ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
+            <span className="m-tab-ico"><span className="m-me">{initials(ctx.user.displayName)}</span>{hidden && <i className="m-dot top" />}</span>
+            <span className="m-tab-label">More</span>
+          </button>
+        </div>
+        {!admin && <button type="button" className={`m-fab ${create ? 'open' : ''}`} onClick={() => { haptic(12); setCreate(true); }} aria-label="Create"><Icon name="plus" size={26} /></button>}
       </nav>
       {more && <MoreSheet onClose={() => setMore(false)} badgeOf={badgeOf} />}
       {create && <CreateSheet onClose={() => setCreate(false)} />}

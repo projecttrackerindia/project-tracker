@@ -7,6 +7,8 @@ import { EmptyState } from '../../components/ui';
 import { DOW, MONTHS_FULL, formatDate, toISODate, todayISO } from '../../lib/format';
 import { type SelectMode, activeDates as datesOf, dayClasses, monthCells, nextSelection, previewDates } from '../../lib/calendar';
 import { useWsQuery } from '../../lib/hooks';
+import { Sheet } from '../../components/Sheet';
+import { haptic, useIsMobile } from '../../lib/mobile';
 
 const cls = (e: CalendarEvent) =>
   e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
@@ -17,6 +19,8 @@ const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ '
  *  as a range (click a start then an end), or as a scattered multi-select — whichever the "Dates" mode is set to. */
 export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }: { projectId?: string; mine?: boolean; userId?: string; onOpenTask: (taskId: string, projectId: string | null) => void; onOpenWork?: (workTaskId: string) => void }) {
   const nav = useNavigate();
+  const phone = useIsMobile();
+  const [daySheet, setDaySheet] = useState<string | null>(null);   // on a phone a tapped day opens its list in a sheet
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
@@ -99,7 +103,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
               const isSelected = activeDates.has(iso);
               const state = dayClasses(iso, { active: activeDates, preview, hover, anchor: rangeAnchor });
               return (
-                <button key={iso} type="button" className={`cal-day ${other ? 'other' : ''} ${iso === today ? 'today' : ''} ${state}`} onClick={() => pickDate(iso)} onMouseEnter={() => setHover(iso)} onFocus={() => setHover(iso)} onBlur={() => setHover(null)} aria-pressed={isSelected} aria-label={`${formatDate(iso)}, ${events.length} events`}>
+                <button key={iso} type="button" className={`cal-day ${other ? 'other' : ''} ${iso === today ? 'today' : ''} ${state}`} onClick={() => { pickDate(iso); if (phone) { haptic(6); setDaySheet(iso); } }} onMouseEnter={() => setHover(iso)} onFocus={() => setHover(iso)} onBlur={() => setHover(null)} aria-pressed={isSelected} aria-label={`${formatDate(iso)}, ${events.length} events`}>
                   <div className="cal-num">{date.getDate()}</div>
                   <div className="cal-events">
                     {events.slice(0, 3).map((e) => <div key={e.type + e.id} className={`cal-ev ${cls(e)}`} title={`${TYPE_LABEL[e.type]}: ${e.title}`}>{PREFIX[e.type] ?? ''}{e.title}</div>)}
@@ -136,6 +140,21 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
         </div>
       )}
       {q.data && q.data.length === 0 && activeDates.size === 0 && <EmptyState icon="calendar" title="Nothing scheduled" text="Tasks, action items and operational work with due dates appear here." />}
+      {daySheet && (
+        <Sheet title={formatDate(daySheet)} onClose={() => setDaySheet(null)}>
+          {(byDate.get(daySheet) ?? []).length === 0 ? <div className="m-empty"><Icon name="calendar" size={26} /><b>Nothing scheduled</b><span>No deadlines on this day.</span></div> : (
+            <ul className="m-list">
+              {(byDate.get(daySheet) ?? []).map((e) => (
+                <li key={`${e.type}:${e.id}`}><button type="button" className="m-row" onClick={() => { setDaySheet(null); open(e); }}>
+                  <span className={`m-dot-lg ${cls(e)}`} />
+                  <span className="m-row-main"><b>{e.title}</b><small>{TYPE_LABEL[e.type]}{e.projectName ? ` · ${e.projectName}` : ''}</small></span>
+                  <Icon name="chevronR" size={16} />
+                </button></li>
+              ))}
+            </ul>
+          )}
+        </Sheet>
+      )}
     </>
   );
 }

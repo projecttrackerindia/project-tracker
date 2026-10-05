@@ -69,7 +69,8 @@ check('signed-in home is the app', await page.locator('#root').isVisible() && !(
 // A device with no memory of a sign-in but a live session still ends in the app (the session settles it).
 await page.evaluate(() => localStorage.removeItem('pm_hint'));
 await page.goto(`${BASE}/`);
-await page.waitForTimeout(2500);
+await page.waitForFunction(() => document.documentElement.classList.contains('app'), null, { timeout: 12000 }).catch(() => undefined);
+await page.waitForTimeout(500);
 check('live session without the hint still opens the app', await page.locator('#root').isVisible() && !(await page.locator('#site').isVisible()));
 
 check('no script errors', errors.length === 0, errors.join(' | '));
