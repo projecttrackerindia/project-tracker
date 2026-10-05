@@ -155,3 +155,56 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/portfolio/', '/pricing/'],
   },
 ];
+
+/** The plan comparison. From the plan catalog (DatabaseInitializer): keep it in step with that. A tick is true, a dash is not included. */
+export const COMPARE: { group: string; rows: { label: string; v: [string, string, string, string] }[] }[] = [
+  { group: 'Scale', rows: [
+    { label: 'Members', v: ['1', 'Up to 10', 'Up to 100', 'Unlimited'] },
+    { label: 'Teams', v: ['1', 'Up to 5', 'Unlimited', 'Unlimited'] },
+    { label: 'Projects', v: ['5', 'Unlimited', 'Unlimited', 'Unlimited'] },
+    { label: 'Tasks', v: ['500', 'Unlimited', 'Unlimited', 'Unlimited'] },
+    { label: 'File storage', v: ['500 MB', '10 GB', '50 GB', 'Unlimited'] },
+    { label: 'Largest file', v: ['10 MB', '100 MB', '250 MB', '512 MB'] },
+    { label: 'Activity history', v: ['30 days', '1 year', '2 years', 'Unlimited'] },
+  ] },
+  { group: 'Work', rows: [
+    { label: 'Reminders, calendar and timesheets', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Portfolio view and what-if', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Advanced reports and workload', v: ['–', '✓', '✓', '✓'] },
+    { label: 'Custom workflows, fields and automation', v: ['–', '✓', '✓', '✓'] },
+    { label: 'Resource management and service levels', v: ['–', '–', '✓', '✓'] },
+    { label: 'Reminder escalation', v: ['–', '–', '✓', '✓'] },
+  ] },
+  { group: 'Intelligence', rows: [
+    { label: 'AI assistant with confirmed actions', v: ['–', '–', '✓', '✓'] },
+    { label: 'AI use each month', v: ['–', '–', '2,000 credits', 'Unlimited'] },
+  ] },
+  { group: 'Control and security', rows: [
+    { label: 'Advanced permissions', v: ['–', '–', '✓', '✓'] },
+    { label: 'Audit log', v: ['–', '–', '✓', '✓'] },
+    { label: 'API access', v: ['–', '–', '✓', '✓'] },
+    { label: 'Single sign-on, IP allowlist, two-step rules', v: ['–', '–', '✓', '✓'] },
+  ] },
+];
+
+/** The same work with and without a tracker, for someone who runs projects from spreadsheets and chat today. */
+export const VERSUS: { what: string; without: string; with: string }[] = [
+  { what: 'When will it really finish?', without: 'A guess in someone\'s head', with: 'Worked out from the pace of the last four weeks' },
+  { what: 'Which project is in trouble?', without: 'Whoever notices first', with: 'Every project ranked, with the reasons' },
+  { what: 'Why did the date move?', without: 'The cell was overwritten', with: 'Every change kept with its reason' },
+  { what: 'Who sees which project?', without: 'Everyone with the file', with: 'Roles, teams and guests, enforced in the data' },
+  { what: 'What if we add two people?', without: 'Build another spreadsheet', with: 'A scenario in seconds' },
+  { what: 'Chasing people', without: 'Messages and meetings', with: 'Reminders in each person\'s own working hours' },
+];
+
+export const INTEGRATIONS = ['GitHub', 'Azure DevOps', 'Slack', 'Microsoft Teams', 'Single sign-on (OIDC, SAML)', 'SCIM provisioning', 'REST API', 'Signed webhooks', 'Google, Microsoft, GitHub and Apple sign-in'];
+
+export const FAQ: { q: string; a: string }[] = [
+  { q: 'Is there a free plan?', a: 'Yes. Free is for one person: 1 member and 1 team, 5 projects, 500 tasks and 500 MB of files, with reminders, calendar, timesheets and the portfolio view.' },
+  { q: 'Can I change plans later?', a: 'Yes. An owner changes the plan under Settings, Billing, and the price shown at checkout is the one that applies.' },
+  { q: 'Does the assistant change my projects by itself?', a: 'No. It answers from the projects you can open and proposes changes. Nothing happens until you confirm it.' },
+  { q: 'Can teams keep their projects private from each other?', a: 'Yes. Choose team-only visibility and each person sees the projects of their teams, plus the ones they own or were added to. Owners and admins see everything; guests only the projects they are added to.' },
+  { q: 'How is each organization\'s data kept separate?', a: 'In the data layer itself, not only in the screens, and automated tests check every screen for leaks between organizations, teams and roles.' },
+  { q: 'Can I take my data with me?', a: 'Yes. Owners can export everything as files in one zip at any time, and set how long history is kept.' },
+  { q: 'Does it support single sign-on?', a: 'Yes, on Business and Enterprise: OpenID Connect and SAML 2.0, with SCIM provisioning to add and remove people automatically.' },
+];
