@@ -18,9 +18,11 @@ import './styles/theme.css';
 import './styles/org.css';
 import './styles/reminders.css';
 import './styles/mobile.css';
+import './styles/phone.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
+import './lib/pwa';
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 

@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Organization.OrgSecurityService>();
         services.AddScoped<ProjectManagement.Application.Features.Consent.ConsentService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<DeviceLoginService>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoPolicy>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoSettingsService>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoLoginService>();

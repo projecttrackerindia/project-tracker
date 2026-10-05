@@ -69,6 +69,7 @@ public interface IAppDbContext
     DbSet<TenantDataPolicy> TenantDataPolicies { get; }
     DbSet<AutomationRun> AutomationRuns { get; }
     DbSet<PushSubscription> PushSubscriptions { get; }
+    DbSet<DeviceLoginRequest> DeviceLoginRequests { get; }
     DbSet<Reminder> Reminders { get; }
     DbSet<AiConversation> AiConversations { get; }
     DbSet<AiMessage> AiMessages { get; }

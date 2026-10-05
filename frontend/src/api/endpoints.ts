@@ -5,7 +5,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
-  ConsentDocument, MyConsent,
+  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
@@ -478,6 +478,18 @@ export const pushApi = {
   status: () => get<{ publicKey: string; devices: number }>('/push'),
   subscribe: (b: { endpoint: string; keys: { p256dh: string; auth: string } }) => post<{ publicKey: string; devices: number }>('/push/subscriptions', b),
   unsubscribe: (endpoint: string) => post<{ publicKey: string; devices: number }>('/push/unsubscribe', { endpoint }),
+  signInStatus: (endpoint?: string | null) => get<SignInDevice>('/push/sign-in', { endpoint: endpoint ?? undefined }),
+  setSignIn: (endpoint: string, enabled: boolean) => put<SignInDevice>('/push/sign-in', { endpoint, enabled }),
+};
+
+// ---- signing in on a computer by approving on a phone
+export const deviceLoginApi = {
+  start: (email: string) => post<DeviceLoginStart>('/auth/device-login', { email }, { auth: false }),
+  poll: (id: string, secret: string) => post<{ status: 'pending' | 'approved' | 'denied' | 'expired'; auth?: AuthResponse }>(`/auth/device-login/${id}/poll`, { secret }, { auth: false }),
+  pending: () => get<DeviceLoginPending[]>('/me/device-login/pending'),
+  get: (id: string) => get<DeviceLoginPending | null>(`/me/device-login/${id}`),
+  approve: (id: string, number: number) => post<void>(`/me/device-login/${id}/approve`, { number }),
+  deny: (id: string) => post<void>(`/me/device-login/${id}/deny`),
 };
 
 // ---- integrations and compliance

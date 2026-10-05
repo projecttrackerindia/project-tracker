@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { setAccessToken, setAuthLostHandler, refreshSession } from '../api/client';
 import { authApi, meApi, workspaceApi } from '../api/endpoints';
-import type { AppContext } from '../api/types';
+import type { AppContext, AuthResponse } from '../api/types';
 import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
 
 export const queryClient = new QueryClient({
@@ -21,6 +21,7 @@ interface AuthState {
   bootstrap: () => Promise<void>;
   /** Resolves with a challenge when two-step verification is on; finish with `loginMfa`. */
   login: (email: string, password: string) => Promise<{ mfaChallenge?: string }>;
+  completeSession: (auth: AuthResponse) => Promise<void>;
   loginMfa: (challenge: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   reloadContext: () => Promise<AppContext>;
@@ -49,6 +50,13 @@ export const useAuth = create<AuthState>((set, get) => ({
     queryClient.clear();
     await get().reloadContext();
     return {};
+  },
+
+  /** A session that was opened some other way than a password (approved on a phone): the same steps as a sign-in. */
+  completeSession: async (auth) => {
+    setAccessToken(auth.accessToken);
+    queryClient.clear();
+    await get().reloadContext();
   },
 
   loginMfa: async (challenge, code) => {

@@ -38,6 +38,7 @@ const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'Times
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
 const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
+const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
@@ -303,6 +304,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       {redirecting ? <Route path="*" element={<OrgRedirect />} /> : <Route element={<RequireAuth />}>
         {/* Home */}
         <Route index element={<DashboardPage />} />
+        <Route path="approve/:id" element={<ApprovePage />} />
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
         <Route path="ai" element={<AiPage />} />
         <Route path="ai/:id" element={<AiPage />} />
@@ -334,6 +336,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="account" element={<AccountPage section="profile" />} />
         <Route path="account/notifications" element={<AccountPage section="notifications" />} />
         <Route path="account/security" element={<AccountPage section="security" />} />
+        <Route path="account/mobile" element={<AccountPage section="mobile" />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
         {/* Where pages used to be */}

@@ -14,6 +14,7 @@ import { useAuth } from '../../stores/auth';
 import { usePageTitle } from '../../lib/title';
 import { celebrate, firstName, originOf, useCelebration, type CelebrationKind } from '../../stores/celebrate';
 import { toast } from '../../stores/ui';
+import { PhoneStep } from './PhoneSignIn';
 import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
 
@@ -155,6 +156,7 @@ export function LoginPage() {
   const nav = useNavigate();
   const [error, setError] = useState<string | null>(() => params.get('sso_error') ? params.get('message') ?? 'Sign-in could not be completed.' : null);
   const [sso, setSso] = useState(false);
+  const [phoneEmail, setPhoneEmail] = useState<string | null>(null);
   const [unverified, setUnverified] = useState(false);
   const [remember, setRemember] = useState(() => !!rememberedEmail());
   const [shaking, shake] = useShake();
@@ -223,6 +225,8 @@ export function LoginPage() {
   const resend = useMutation({ mutationFn: () => authApi.resendVerification(getValues('email')), onSuccess: () => toast('Verification email sent (if the account exists).', 'info') });
 
   if (status === 'authenticated' && !signingIn && !celebrating) return <Navigate to={redirect} replace />;
+  if (phoneEmail) return <PhoneStep email={phoneEmail} onBack={() => setPhoneEmail(null)}
+    onApproved={(auth) => { setSigningIn(true); void useAuth.getState().completeSession(auth).then(() => enterApp('signin')); }} />;
   if (sso) return <SsoStep email={getValues('email')} redirect={redirect} onBack={() => setSso(false)} />;
   if (challenge) return (
     <AuthLayout title="Two-step verification" sub="Enter the 6-digit code from your authenticator app, or one of your recovery codes." shake={shaking}
@@ -248,6 +252,11 @@ export function LoginPage() {
           <Link className="link" to="/forgot-password" style={{ fontSize: 13.5 }}>Forgot password?</Link>
         </div>
         <AuthSubmitButton busy={m.isPending}>Sign in<Icon name="arrowRight" /></AuthSubmitButton>
+        <button type="button" className="auth-phone" onClick={() => {
+          const e = getValues('email').trim();
+          if (!z.string().email().safeParse(e).success) { setError('Enter your email above, then choose your phone.'); shake(); return; }
+          setError(null); setPhoneEmail(e);
+        }}><Icon name="bell" size={18} />Approve on my phone instead</button>
         <SocialButtons redirect={redirect} email={getValues('email')} onSso={() => { setError(null); setSso(true); }} />
       </form>
       <DevHint />

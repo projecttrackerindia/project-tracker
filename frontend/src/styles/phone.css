@@ -1,0 +1,91 @@
+/* Phone sign-in, the approval prompt, the island alert and Account → Mobile app. */
+
+/* ---------- "Use my phone" on the sign-in form ---------- */
+.auth-phone {
+  display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; margin-top: 10px; border-radius: 14px;
+  border: 1.5px dashed var(--border-strong); background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: transform .15s, background .15s;
+}
+.auth-phone:hover { background: rgba(139, 92, 246, .22); } .auth-phone:active { transform: scale(.98); }
+
+/* ---------- waiting for the phone ---------- */
+.ps-stage { position: relative; width: 190px; height: 190px; margin: 6px auto 4px; display: grid; place-items: center; }
+.ps-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--primary); opacity: 0; animation: psPulse 2.8s ease-out infinite; }
+.ps-ring.r2 { animation-delay: .9s; } .ps-ring.r3 { animation-delay: 1.8s; }
+@keyframes psPulse { 0% { transform: scale(.55); opacity: .5; } 100% { transform: scale(1.12); opacity: 0; } }
+.ps-timer { position: absolute; width: 150px; height: 150px; transform: rotate(-90deg); }
+.ps-timer circle { fill: none; stroke: var(--primary-soft); stroke-width: 5; }
+.ps-timer circle.go { stroke: var(--primary); stroke-linecap: round; stroke-dasharray: 339.3; transition: stroke-dashoffset 1s linear; }
+.ps-number { position: relative; font-size: 58px; font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; background: linear-gradient(135deg, #7c3aed, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ps-note { text-align: center; font-size: 15px; margin: 6px 0 4px; } .ps-note span { color: var(--text-3); font-size: 13px; }
+.ps-result { display: grid; place-items: center; margin: 4px 0 18px; }
+.ps-icon { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 22px; background: var(--primary-soft); color: var(--primary); margin-bottom: 10px; }
+.ps-icon.ok { background: var(--success-soft); color: var(--success); }
+.ps-icon.denied { background: var(--danger-soft); color: var(--danger); }
+.ps-icon.expired, .ps-icon.failed { background: var(--warning-soft); color: var(--warning); }
+@media (prefers-reduced-motion: reduce) { .ps-ring { animation: none; } .ps-timer circle.go { transition: none; } }
+
+/* ---------- the question the phone is asked ---------- */
+.ap { display: grid; gap: 12px; text-align: center; }
+.ap-who { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin: 0; font-size: 14px; flex-wrap: wrap; }
+.ap-ask { margin: 0; font-size: 13.5px; opacity: .78; }
+.ap-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ap-nums button {
+  min-height: 64px; border-radius: 18px; border: 1.5px solid var(--border-strong); background: var(--surface-solid); color: inherit; font-size: 28px; font-weight: 800;
+  font-variant-numeric: tabular-nums; cursor: pointer; transition: transform .12s, background .15s, border-color .15s;
+}
+.ap-nums button:active { transform: scale(.94); background: var(--primary); color: #fff; border-color: var(--primary); }
+.ap-nums button:disabled { opacity: .5; }
+.ap-deny { background: none; border: 0; color: var(--danger); font-weight: 700; font-size: 14px; padding: 10px; cursor: pointer; }
+.ap-err { color: var(--danger); font-size: 13px; margin: 0; }
+.ap-page { min-height: 60vh; display: grid; place-items: center; padding: 24px 16px; }
+.ap-card { width: min(100%, 400px); display: grid; justify-items: center; gap: 4px; padding: 26px 22px; border-radius: 28px; background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow-lg); text-align: center; }
+.ap-card h2 { margin: 0 0 6px; font-size: 21px; } .ap-card > .ap { width: 100%; }
+.ap-done p { opacity: .78; margin: 0; font-size: 14px; }
+
+/* ---------- the island: a dark capsule that drops in and opens to the question ---------- */
+.island {
+  position: fixed; z-index: 320; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 50%; transform: translateX(-50%); width: min(calc(100vw - 20px), 392px);
+  background: #0b0a12; color: #f4f2ff; border-radius: 28px; box-shadow: 0 18px 50px rgba(8, 6, 20, .5), 0 0 0 1px rgba(255, 255, 255, .08) inset;
+  animation: islandIn .55s cubic-bezier(.2, 1.1, .3, 1); overflow: hidden;
+}
+@keyframes islandIn { from { transform: translate(-50%, -80px) scale(.6); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+.island-head { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 16px 11px 12px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; min-height: 52px; }
+.island-ico { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #ec4899); }
+.island-title { flex: 1; min-width: 0; display: grid; line-height: 1.2; } .island-title b { font-size: 14px; } .island-title small { font-size: 12px; opacity: .65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.island-time { font-size: 12px; font-variant-numeric: tabular-nums; opacity: .7; }
+.island-body { padding: 4px 16px 16px; animation: islandOpen .3s ease; }
+@keyframes islandOpen { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.island .ap-nums button { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .16); color: #fff; }
+.island .ap-nums button:active { background: #7c3aed; }
+.island .ap-ask { opacity: .7; } .island .ap-deny { color: #fb7185; }
+@media (prefers-reduced-motion: reduce) { .island, .island-body { animation: none; } }
+
+/* On a phone, toasts are small islands at the top instead of cards at the bottom. */
+@media (max-width: 768px) {
+  .toast-root { top: calc(env(safe-area-inset-top, 0px) + 10px); bottom: auto !important; left: 12px; right: 12px; align-items: center; }
+  .toast {
+    min-width: 0; max-width: min(100%, 360px); border: 0; border-radius: 999px; padding: 11px 18px; background: #0b0a12; color: #f4f2ff;
+    box-shadow: 0 14px 40px rgba(8, 6, 20, .45); animation: toastDrop .45s cubic-bezier(.2, 1.1, .3, 1);
+  }
+  .toast.success .toast-ico { color: #34d399; } .toast.error .toast-ico { color: #fb7185; } .toast.warning .toast-ico { color: #fbbf24; } .toast.info .toast-ico { color: #a78bfa; }
+  .toast .toast-action { color: #c4b5fd; }
+}
+@keyframes toastDrop { from { transform: translateY(-40px) scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- Account → Mobile app ---------- */
+.ma-hero { padding: 20px; display: grid; gap: 14px; background-image: linear-gradient(135deg, rgba(124, 58, 237, .14), rgba(236, 72, 153, .1)); }
+.ma-hero-main { display: flex; gap: 16px; align-items: flex-start; } .ma-hero-main h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; } .ma-hero-main p { margin: 0; opacity: .8; }
+.ma-app-icon img { border-radius: 16px; display: block; box-shadow: 0 8px 22px rgba(124, 58, 237, .35); }
+.ma-lock { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 14px; background: var(--warning-soft); color: var(--text); } .ma-lock span { flex: 1; min-width: 200px; }
+.ma-steps { display: grid; gap: 14px; margin-bottom: 22px; } .ma-steps.locked { opacity: .55; }
+.ma-step { display: flex; gap: 14px; padding: 18px; align-items: flex-start; } .ma-body { flex: 1; min-width: 0; } .ma-body h4 { margin: 2px 0 4px; } .ma-body p { margin: 0 0 12px; opacity: .85; } .ma-body .ok { display: flex; align-items: center; gap: 7px; color: var(--success); font-weight: 600; margin: 0; }
+.ma-n { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 800; font-size: 14px; }
+.ma-qr-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; } .ma-qr { border-radius: 12px; background: #fff; padding: 6px; } .ma-qr-row code { font-size: 12px; word-break: break-all; opacity: .75; }
+.ma-switch { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 600; min-height: 44px; } .ma-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ma-track { width: 50px; height: 30px; border-radius: 999px; background: rgba(120, 113, 150, .4); position: relative; transition: background .2s; flex: none; }
+.ma-track i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); transition: transform .22s cubic-bezier(.3, 1.4, .5, 1); }
+.ma-switch input:checked + .ma-track { background: var(--primary); } .ma-switch input:checked + .ma-track i { transform: translateX(20px); }
+.ma-switch input:focus-visible + .ma-track { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ma-count { margin: 8px 0 0 !important; font-size: 13px; }
+@media (max-width: 768px) { .ma-hero-main { flex-direction: column; } .ma-step { padding: 16px; } }

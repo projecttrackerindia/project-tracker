@@ -513,3 +513,7 @@ export interface ProjectVisibility { mode: 'organization' | 'teams'; teams: numb
 
 /** A team the signed-in person may look at as a whole (dashboard, reports, Portfolio). */
 export interface LensTeam { id: string; name: string; projects: number; members: number }
+
+export interface SignInDevice { enabled: boolean; devices: number; signInDevices: number; planAllows: boolean }
+export interface DeviceLoginStart { requestId: string; secret: string; number: number; expiresAt: string }
+export interface DeviceLoginPending { id: string; choices: number[]; device: string; ip: string | null; createdAt: string; expiresAt: string }

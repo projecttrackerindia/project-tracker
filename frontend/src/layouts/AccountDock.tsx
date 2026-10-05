@@ -113,6 +113,7 @@ export function AccountDock() {
           <div className="ad-items">
             <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account')}><Icon name="user" /> My account</button>
             {!isAdmin && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/notifications')}><Icon name="bell" /> Notification preferences</button>}
+            {!isAdmin && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/mobile')}><Icon name="bell" /> Mobile app</button>}
             <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/security')}><Icon name="lock" /> Sign-in &amp; security</button>
             {sections.length > 0 && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/settings')}><Icon name="settings" /> Workspace settings</button>}
           </div>

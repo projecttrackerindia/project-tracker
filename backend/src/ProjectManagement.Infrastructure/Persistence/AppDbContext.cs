@@ -74,6 +74,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<DeviceLoginRequest> DeviceLoginRequests => Set<DeviceLoginRequest>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
@@ -178,6 +179,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => x.EmailVerificationTokenHash);
             e.HasIndex(x => x.PasswordResetTokenHash);
         });
+        b.Entity<DeviceLoginRequest>(e => { e.HasIndex(x => new { x.UserId, x.CreatedAt }); e.Property(x => x.SecretHash).HasMaxLength(128); e.Property(x => x.RequesterIp).HasMaxLength(64); e.Property(x => x.RequesterAgent).HasMaxLength(300); });
         b.Entity<UserSession>(e => { e.HasIndex(x => x.UserId); e.Property(x => x.AuthMethod).HasMaxLength(32); });
         b.Entity<RefreshToken>(e =>
         {

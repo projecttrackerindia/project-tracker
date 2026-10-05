@@ -110,5 +110,7 @@ namespace ProjectManagement.Domain.Entities
         public DateTime CreatedAt { get; set; }
         public DateTime? LastSuccessAt { get; set; }
         public int Failures { get; set; }
+        /// <summary>The person chose this device to approve their sign-ins on other screens (a plan feature).</summary>
+        public bool AllowsSignIn { get; set; }
     }
 }

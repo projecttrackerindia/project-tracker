@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v4';
+const SHELL = 'pm-shell-v5';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
@@ -50,12 +50,14 @@ self.addEventListener('push', (event) => {
   // A reminder carries its one-time key: Done and Snooze work right from the notification, even with the app closed
   // (where the browser shows buttons - Chrome, Edge, Android; elsewhere a tap opens it).
   const reminder = !!data.token;
+  // A request to sign in somewhere else is urgent and short-lived: it stays on screen until answered, buzzes, and opens the approval screen.
+  const signIn = data.type === 'SignInRequest';
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
     const watching = wins.some((w) => w.focused && new URL(w.url).origin === self.location.origin);
     return self.registration.showNotification(data.title || 'Project Tracker', {
       body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
       data: { link: data.link || '/', token: data.token || null },
-      requireInteraction: reminder, silent: watching,
+      requireInteraction: reminder || signIn, silent: watching && !signIn, renotify: signIn && !!data.tag, vibrate: signIn ? [200, 80, 200, 80, 400] : undefined,
       actions: reminder ? [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: 'Snooze 1 hour' }] : [],
     });
   }));

@@ -184,3 +184,26 @@ public class TeamMember : TenantEntity, ITenantScoped
     public bool IsLead { get; set; }
     public User? User { get; set; }
 }
+
+
+public enum DeviceLoginStatus { Pending = 0, Approved = 1, Denied = 2, Redeemed = 3, Ignored = 4 }
+
+/// <summary>
+/// A sign-in on one screen (usually a computer) waiting to be approved on another the person already holds (their phone): the computer shows a
+/// number, the phone offers three and the person taps the one they see. The computer redeems it with a secret only it was given. Not tied to an
+/// organization: it happens before one is chosen. "Ignored" rows are requests that were never sent to anyone (unknown address, too many requests),
+/// kept so the answer looks the same to whoever asked.
+/// </summary>
+public class DeviceLoginRequest : Entity
+{
+    public Guid UserId { get; set; }
+    public string SecretHash { get; set; } = "";
+    public int Number { get; set; }
+    public DeviceLoginStatus Status { get; set; }
+    public int WrongAttempts { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public string? RequesterIp { get; set; }
+    public string? RequesterAgent { get; set; }
+}

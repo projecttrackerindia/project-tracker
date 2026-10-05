@@ -25,6 +25,7 @@ import { MobileTopBar, TabBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
 import { useMainNav } from './navigation';
+import { SignInIsland } from '../components/SignInIsland';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
 import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
@@ -335,6 +336,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           </div>
         </>
       )}
+      <SignInIsland />
       <ToastRoot />
       <ConfirmRoot />
       <DesktopNotifier />

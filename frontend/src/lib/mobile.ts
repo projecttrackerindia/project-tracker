@@ -14,6 +14,6 @@ export function useIsMobile(): boolean {
 }
 
 /** A short tick under the finger where the device supports it (Android browsers); nowhere else does anything. */
-export function haptic(ms = 8) {
+export function haptic(ms: number | number[] = 8) {
   try { navigator.vibrate?.(ms); } catch { /* not supported */ }
 }

@@ -115,10 +115,12 @@ public static class FeatureKeys
     public const string RecurringReminderLimit = "RECURRING_REMINDER_LIMIT";
     /// <summary>An escalation ladder for overdue work: the manager, then the project owner, hear about it.</summary>
     public const string ReminderEscalation = "REMINDER_ESCALATION";
+    /// <summary>The mobile app (installable on a phone, with push alerts) and signing in on a computer by approving on the phone.</summary>
+    public const string MobileApp = "MOBILE_APP";
 
     public const long Unlimited = -1;
 
     public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, AiModelTier, AiMonthlyCredits];
-    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation, ChatAttachments];
+    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation, ChatAttachments, MobileApp];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

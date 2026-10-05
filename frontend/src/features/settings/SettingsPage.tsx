@@ -37,6 +37,7 @@ import { PROVIDER_ICON } from '../auth/AuthPages';
 import { Select } from '../../components/Select';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
+import { MobileAppSection } from './MobileAppSection';
 import { AiUsageCard } from '../ai/AiUsageCard';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
@@ -50,7 +51,7 @@ function browserOf(ua: string | null) {
 
 // ================================================================== My account (personal, from the avatar menu)
 
-export type AccountSection = 'profile' | 'notifications' | 'security';
+export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile';
 
 /** My account: everything about me, whatever workspace I am in. Workspace administration lives in Workspace settings. */
 export function AccountPage({ section }: { section: AccountSection }) {
@@ -59,12 +60,14 @@ export function AccountPage({ section }: { section: AccountSection }) {
     { to: '/account', label: 'Profile', icon: 'user' },
     ...(!isPlatformAdmin ? [{ to: '/account/notifications', label: 'Notifications', icon: 'bell' as const }] : []),
     { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
+    ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'bell' as const }] : []),
   ] }];
   return (
     <SectionLayout title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
       {section === 'notifications' && <NotificationSettings />}
       {section === 'security' && <SecuritySection />}
+      {section === 'mobile' && <MobileAppSection />}
     </SectionLayout>
   );
 }
