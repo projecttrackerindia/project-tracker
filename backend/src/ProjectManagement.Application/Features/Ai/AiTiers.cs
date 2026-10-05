@@ -156,6 +156,8 @@ public static class AiModelRouter
         // Images and documents need a model that reads them well; Quick is bumped to Standard unless the plan stops at Quick.
         if (wanted == AiTier.Quick && (r.Images > 0 || r.Documents > 0) && r.Mode == AiMode.Auto) (wanted, reason) = (AiTier.Standard, "Reading an attachment");
         if (r.Mode == AiMode.Auto && wanted < r.Floor) { wanted = r.Floor; reason = "Continuing what we were doing"; }
+        // Asking for a change means choosing tools and filling them in correctly; whatever else the wording says, that is not a job for the smallest model.
+        if (r.Mode == AiMode.Auto && wanted < AiTier.Standard && Act.IsMatch(r.Text)) { wanted = AiTier.Standard; reason = "A request to make a change"; }
         var tier = wanted > r.PlanMax ? r.PlanMax : wanted;
         return new AiRoute(tier, wanted, reason, fromClassifier);
     }

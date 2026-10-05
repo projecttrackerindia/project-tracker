@@ -14,6 +14,19 @@ public class AiModelRouterTests
     public void Questions_in_other_scripts_are_left_to_the_classifier_instead_of_being_called_easy(string q) =>
         Assert.Null(AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
 
+    [Fact]
+    public void A_long_mixed_request_that_asks_for_changes_is_never_left_to_the_smallest_model_even_when_the_classifier_says_quick()
+    {
+        // Some wording in it ("review", "plan") makes the free rules unsure, so the small classifier model is asked, and it can answer "quick".
+        const string text = "enhance project description and make it as critical and change end date to 07-10-2026 and create task for make GO DIGIT related changes to update Policy ID, Policy Mode, Policy Type, these changes need to implement in salesforce, received requirement details today, review the plan, we are adding it today by 3PM and will give it to the testing team for UAT signoff";
+        var req = new AiRouteRequest(text, 0, 0, AiMode.Auto, AiTier.Deep);
+        Assert.Null(AiModelRouter.Heuristic(req).Tier);                                           // undecided by the rules
+        var route = AiModelRouter.Decide(req, AiTier.Quick);                                      // ...and the classifier said quick
+        Assert.True(route.Tier >= AiTier.Standard, route.Reason);
+        Assert.Equal(AiTier.Quick, AiModelRouter.Decide(req with { Mode = AiMode.Quick }, AiTier.Quick).Tier);   // the person's own choice still wins
+        Assert.Equal(AiTier.Quick, AiModelRouter.Decide(req with { PlanMax = AiTier.Quick }, AiTier.Quick).Tier); // and the plan is still the ceiling
+    }
+
     [Theory]
     [InlineData("Create a task for Max")]
     [InlineData("Invite shiva@example.com to the workspace")]

@@ -37,7 +37,7 @@ public sealed class AiToolException(string message) : Exception(message);
 /// assistant change anything on its own.
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
-    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, TaskService tasks, WorkTaskService workTasks, ILogger<AiToolbox> log)
+    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, TaskService tasks, WorkTaskService workTasks, ProjectService projects, ILogger<AiToolbox> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -46,9 +46,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
-        WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
+        UpdateProject = "propose_update_project", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
 
-    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork];
+    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject];
 
     // ------------------------------------------------------------------ what the model is told it can use
 
@@ -92,8 +92,17 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             new(UpdateWork, "Propose changing existing work by its key (ATL-12 for a project task, WT-3 operational work, AI-4 an action item): status, assignee (or \"none\"), due date, priority, and/or add a comment. A later due date needs a reason. The person confirms first.",
                 """
                 {"type":"object","properties":{"key":{"type":"string"},"status":{"type":"string","description":"A status name, e.g. In Progress, Done, On Hold."},
-                 "assignee":{"type":"string","description":"A person's name, \"me\" or \"none\"."},"due_date":{"type":"string","description":"yyyy-mm-dd"},
+                 "assignee":{"type":"string","description":"A person's name, \"me\" or \"none\"."},"due_date":{"type":"string","description":"yyyy-mm-dd"},"start_date":{"type":"string","description":"yyyy-mm-dd"},
+                 "title":{"type":"string"},"description":{"type":"string","description":"The full new description (replaces the old one)."},"estimate_hours":{"type":"number"},
                  "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"comment":{"type":"string"},"reason":{"type":"string","description":"Why the due date moves later."}},"required":["key"]}
+                """),
+            new(UpdateProject, "Propose changing an existing project: name, description, priority, status (Planning, Active, OnHold, Completed, Cancelled), owner, start date, due date. A later due date needs a reason. The person confirms first.",
+                """
+                {"type":"object","properties":{"project":{"type":"string","description":"A project key or name."},"name":{"type":"string"},
+                 "description":{"type":"string","description":"The full new description (replaces the old one)."},
+                 "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"status":{"type":"string"},"owner":{"type":"string","description":"A person's name or \"me\"."},
+                 "start_date":{"type":"string","description":"yyyy-mm-dd"},"due_date":{"type":"string","description":"yyyy-mm-dd"},
+                 "reason":{"type":"string","description":"Why the due date moves later."}},"required":["project"]}
                 """),
             new(CreateProject, "Propose a new project (use it when the project the person means does not exist yet; add tasks to it after they confirm). The person confirms first.",
                 """
@@ -109,7 +118,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},
                  "assignee":{"type":"string","description":"A person's name or \"me\"."},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]},
-                 "due_date":{"type":"string","description":"yyyy-mm-dd"}},"required":["project","title"]}
+                 "start_date":{"type":"string","description":"yyyy-mm-dd"},"due_date":{"type":"string","description":"yyyy-mm-dd"},"estimate_hours":{"type":"number"},
+                 "comment":{"type":"string","description":"A first comment to post on the task once it exists, e.g. the plan, context or acceptance criteria."}},"required":["project","title"]}
                 """),
             new(CreateWork, "Propose a new operational work item (a bug fix, support request, analysis...) not tied to a project timeline. The person confirms first.",
                 """
@@ -155,6 +165,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 SuggestAssignee => await SuggestAssigneeAsync(a, ct),
                 HistoryInsights => await HistoryInsightsAsync(a, ct),
                 UpdateWork => await ProposeUpdateAsync(a, ct),
+                UpdateProject => await ProposeUpdateProjectAsync(a, ct),
                 CreateProject => await ProposeProjectAsync(a, ct),
                 InviteMember => await ProposeInviteAsync(a, ct),
                 CreateTask => await ProposeTaskAsync(a, ct),
@@ -280,7 +291,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var due = Date(a, "due_date");
         Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
         var statusText = Str(a, "status"); var comment = Str(a, "comment"); var reason = Str(a, "reason");
-        if (statusText is null && assigneeText is null && due is null && priority is null && comment is null) throw new AiToolException("Say what to change: status, assignee, due date, priority or a comment.");
+        var newTitle = Str(a, "title"); var newDescription = Str(a, "description"); var start = Date(a, "start_date");
+        var hours = a.TryGetProperty("estimate_hours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : (decimal?)null;
+        if (statusText is null && assigneeText is null && due is null && priority is null && comment is null && newTitle is null && newDescription is null && start is null && hours is null)
+            throw new AiToolException("Say what to change: status, assignee, dates, priority, title, description, estimate or a comment.");
+        if (newTitle is { Length: > 200 }) throw new AiToolException("A title is at most 200 characters.");
         if (comment is { Length: > 2000 }) throw new AiToolException("Keep the comment under 2,000 characters.");
 
         var changes = new List<string>();
@@ -330,9 +345,46 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             }
             if (priority is not null) changes.Add($"priority {t.Priority} → {priority}");
         }
+        if (newTitle is not null) changes.Add($"title → “{newTitle}”");
+        if (newDescription is not null) changes.Add("description rewritten");
+        if (start is not null) changes.Add($"start → {Day(start)}");
+        if (hours is not null) changes.Add($"estimate → {hours}h");
         if (comment is not null) changes.Add($"comment “{(comment.Length > 80 ? comment[..80] + "…" : comment)}”");
-        var payload = new { target, id, key, title, statusName, assigneeId = assignee?.Id, assigneeName = assignee?.Name, unassign, dueDate = due, priority = priority?.ToString(), comment, reason };
-        return Propose("update_work", $"Update {key}: {title}", string.Join("; ", changes), payload, comment);
+        var payload = new { target, id, key, title, statusName, assigneeId = assignee?.Id, assigneeName = assignee?.Name, unassign, dueDate = due, startDate = start, priority = priority?.ToString(), comment, reason, newTitle, newDescription, estimateHours = hours };
+        return Propose("update_work", $"Update {key}: {title}", string.Join("; ", changes), payload, newDescription ?? comment);
+    }
+
+    private async Task<AiToolOutcome> ProposeUpdateProjectAsync(JsonElement a, CancellationToken ct)
+    {
+        if (!await permissions.HasAsync(Permissions.ProjectsEdit, ct)) throw new AiToolException("The person's role does not allow them to edit projects.");
+        var pr = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        if (pr.IsPending) throw new AiToolException($"“{pr.Name}” has not been created yet. Ask the person to confirm its creation first, then change it.");
+        var cur = (await projects.GetAsync(pr.Id, ct)).Project;
+        var name = Str(a, "name"); var description = Str(a, "description"); var due = Date(a, "due_date"); var start = Date(a, "start_date"); var reason = Str(a, "reason");
+        Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pp) ? pp : null;
+        ProjectStatus? statusValue = null;
+        if (Str(a, "status") is { } st)
+        {
+            if (!Enum.TryParse<ProjectStatus>(st.Replace(" ", ""), true, out var ps) || ps == ProjectStatus.Archived) throw new AiToolException("A project status is one of: Planning, Active, OnHold, Completed, Cancelled.");
+            statusValue = ps;
+        }
+        var owner = Str(a, "owner") is { } w ? await PersonAsync(w, ct) : null;
+        if (name is null && description is null && due is null && start is null && priority is null && statusValue is null && owner is null) throw new AiToolException("Say what to change: name, description, priority, status, owner or dates.");
+        if (name is { Length: > 120 or < 2 }) throw new AiToolException("A project name is 2 to 120 characters.");
+        var newStart = start ?? cur.StartDate; var newDue = due ?? cur.DueDate;
+        if (newStart is { } s0 && newDue is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
+        if (due is { } nd && cur.DueDate is { } od && nd > od && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Moving a project's due date later needs a reason. Ask the person why, then pass it as 'reason'.");
+
+        var changes = new List<string>();
+        if (name is not null) changes.Add($"name → “{name}”");
+        if (description is not null) changes.Add("description rewritten");
+        if (priority is not null) changes.Add($"priority {cur.Priority} → {priority}");
+        if (statusValue is not null) changes.Add($"status {cur.Status} → {statusValue}");
+        if (owner is not null) changes.Add($"owner {cur.Owner?.Name ?? "none"} → {owner.Name}");
+        if (start is not null) changes.Add($"start {Day(cur.StartDate)} → {Day(start)}");
+        if (due is not null) changes.Add($"due {Day(cur.DueDate)} → {Day(due)}");
+        var payload = new { id = pr.Id, key = pr.Key, projectName = cur.Name, name, description, priority = priority?.ToString(), status = statusValue?.ToString(), ownerId = owner?.Id, ownerName = owner?.Name, startDate = start, dueDate = due, reason };
+        return Propose("update_project", $"Update project {pr.Key}: {cur.Name}", string.Join("; ", changes), payload, description);
     }
 
     private async Task<AiToolOutcome> ProposeProjectAsync(JsonElement a, CancellationToken ct)
@@ -384,9 +436,13 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var assignee = Str(a, "assignee") is { } w ? await PersonAsync(w, ct) : null;
         var priority = PriorityOf(a);
         var due = Date(a, "due_date");
-        var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, description = Str(a, "description"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due };
-        var summary = $"In {project.Label}{Join(assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", due is null ? null : $"due {Day(due)}")}";
-        return Propose("create_task", $"Create task “{title}”", summary, payload, Str(a, "description"));
+        var start = Date(a, "start_date");
+        if (start is { } s0 && due is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
+        var hours = a.TryGetProperty("estimate_hours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : (decimal?)null;
+        var comment = Str(a, "comment");
+        var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, description = Str(a, "description"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, startDate = start, dueDate = due, estimateHours = hours, comment };
+        var summary = $"In {project.Label}{Join(assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", start is null ? null : $"starts {Day(start)}", due is null ? null : $"due {Day(due)}", hours is null ? null : $"{hours}h estimate", comment is null ? null : "with a first comment")}";
+        return Propose("create_task", $"Create task “{title}”", summary, payload, Str(a, "description") ?? comment);
     }
 
     private async Task<AiToolOutcome> ProposeWorkAsync(JsonElement a, CancellationToken ct)

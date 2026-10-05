@@ -1012,4 +1012,78 @@ public class AiWorkspaceTests(ApiFactory factory)
         var feed = (await a.Owner.Get("/api/v1/ai/insights")).Data!.ToJsonString();
         Assert.DoesNotContain("Zebra", feed);
     }
+
+    // ------------------------------------------------------------------ no "I can't": the gaps found in a real conversation
+
+    [Fact]
+    public async Task An_existing_project_can_be_edited_through_a_proposal_description_priority_and_dates()
+    {
+        var o = await Setup();
+        factory.WithDb(db => { var p = db.Projects.IgnoreQueryFilters().First(x => x.Id == o.Project); p.DueDate = DateOnly.Parse(Iso(3)); p.StartDate = DateOnly.Parse(Iso(-7)); db.SaveChanges(); return 0; });
+        // Moving the end date later needs a reason, which the model is told so it can ask.
+        Assert.Contains("needs a reason", await RunTool(o.Owner, "propose_update_project", new { project = "Atlas", due_date = Iso(9) }, "Move the Atlas end date out by a week"));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_project", new { project = "Atlas", due_date = Iso(9), reason = "Requirements arrived late", priority = "Critical", description = "Objective: ship the tenure change.\nScope: policy fields.\nRisks: partner readiness." }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Make Atlas critical, move the end date a week and write a professional description");
+        var card = res.Last("action")["action"]!;
+        Assert.Equal("proposed", S(card["status"]));
+        Assert.Contains("priority", S(card["summary"])); Assert.Contains("description rewritten", S(card["summary"]));
+        Assert.Contains("Objective: ship", S(card["preview"]));
+        var before = factory.WithDb(db => db.Projects.IgnoreQueryFilters().First(x => x.Id == o.Project));
+        Assert.Equal(DateOnly.Parse(Iso(3)), before.DueDate);                                       // nothing happened yet
+
+        var ok = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.True(ok.Ok, ok.ToString());
+        Assert.Equal("done", S(ok.Data!["status"]));
+        var after = factory.WithDb(db => db.Projects.IgnoreQueryFilters().First(x => x.Id == o.Project));
+        Assert.Equal(Priority.Critical, after.Priority); Assert.Equal(DateOnly.Parse(Iso(9)), after.DueDate);
+        Assert.StartsWith("Objective: ship", after.Description);
+        // Somebody who may not edit projects is told so.
+        Assert.Contains("does not allow", await RunTool(o.Guest, "propose_update_project", new { project = "Atlas", priority = "Low" }, "Make Atlas low priority"));
+    }
+
+    [Fact]
+    public async Task A_task_can_be_created_with_dates_an_estimate_and_a_first_comment_and_work_can_be_rewritten()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_task", new { project = "Atlas", title = "Implement the Policy ID changes", description = "Scope and acceptance criteria.", assignee = "me", priority = "Critical",
+            start_date = Iso(0), due_date = Iso(2), estimate_hours = 6, comment = "Requirements received today; development by 3 PM, then UAT." }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Create the task with a professional description and a comment");
+        var card = res.Last("action")["action"]!;
+        Assert.Contains("6h estimate", S(card["summary"])); Assert.Contains("with a first comment", S(card["summary"]));
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm")).Ok);
+        var task = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().Single(t => t.ProjectId == o.Project && t.Title == "Implement the Policy ID changes"));
+        Assert.Equal(DateOnly.Parse(Iso(0)), task.StartDate); Assert.Equal(6m, task.EstimatedHours); Assert.Equal("Scope and acceptance criteria.", task.Description);
+        Assert.Contains(factory.WithDb(db => db.TaskComments.IgnoreQueryFilters().Where(c => c.TaskId == task.Id).Select(c => c.Body).ToList()), b => b.StartsWith("Requirements received today"));
+
+        // Rewriting an existing task: title, description, dates and estimate.
+        var key = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().Include(t => t.Project).Where(t => t.Id == task.Id).Select(t => t.Project!.Key + "-" + t.Number).Single());
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_work", new { key, title = "Implement GO DIGIT Policy ID, Mode and Type changes", description = "Rewritten scope.", start_date = Iso(1), estimate_hours = 8 }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var edit = await Ask(o.Owner, "Make that task title and description more professional and give it 8 hours");
+        var ecard = edit.Last("action")["action"]!;
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(edit.Done["id"])}/actions/{S(ecard["id"])}/confirm")).Ok);
+        var changed = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().Single(t => t.Id == task.Id));
+        Assert.Equal("Implement GO DIGIT Policy ID, Mode and Type changes", changed.Title); Assert.Equal("Rewritten scope.", changed.Description);
+        Assert.Equal(8m, changed.EstimatedHours); Assert.Equal(DateOnly.Parse(Iso(1)), changed.StartDate);
+    }
+
+    [Fact]
+    public async Task The_assistant_is_told_what_it_proposed_earlier_in_the_conversation_and_what_became_of_it()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "Insurance Revamp" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared the project."));
+        var first = await Ask(o.Owner, "Create a project called Insurance Revamp");
+        Chat.Requests.Clear(); Chat.Script.Enqueue(_ => FakeAiChat.Say("Waiting for you."));
+        await Ask(o.Owner, "Anything else I should do?", conversation: first.Conversation);
+        Assert.Contains("[proposed] Create project “Insurance Revamp”", Chat.Requests.Single().Context);
+
+        var card = first.Last("action")["action"]!;
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(first.Done["id"])}/actions/{S(card["id"])}/confirm")).Ok);
+        Chat.Requests.Clear(); Chat.Script.Enqueue(_ => FakeAiChat.Say("Great."));
+        await Ask(o.Owner, "And now?", conversation: first.Conversation);
+        Assert.Contains("[done] Create project “Insurance Revamp”", Chat.Requests.Single().Context);
+    }
 }

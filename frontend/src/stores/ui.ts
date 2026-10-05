@@ -20,38 +20,12 @@ const THEME_COLOR: Record<Theme, string> = { light: '#7c3aed', dark: '#131c2a' }
 /** Where a theme switch starts from: the new theme spreads out from this point (the switch that was pressed). */
 export interface ThemeOrigin { x: number; y: number }
 
-const REVEAL_MS = 900;
-const REVEAL_EASE = 'cubic-bezier(.68, 0, .25, 1)';
+const REVEAL_MS = 450;
+const REVEAL_EASE = 'cubic-bezier(.4, 0, .2, 1)';
 
 /**
- * A ring of light on the edge of the new theme as it spreads: cool neon going into dark, warm gold coming back to light. It is started
- * at the same moment and with the same timing as the reveal, so it rides exactly on its edge, then fades. Decorative, removed when done.
- */
-function wavefront(theme: Theme, x: number, y: number, radius: number) {
-  const size = radius * 2;
-  const wave = document.createElement('div');
-  wave.className = `theme-wave to-${theme}`;
-  wave.setAttribute('aria-hidden', 'true');
-  Object.assign(wave.style, { left: `${x}px`, top: `${y}px`, width: `${size}px`, height: `${size}px` });
-  const core = document.createElement('div');
-  core.className = `theme-core to-${theme}`;
-  core.setAttribute('aria-hidden', 'true');
-  Object.assign(core.style, { left: `${x}px`, top: `${y}px` });
-  document.body.append(wave, core);
-  const grow = wave.animate(
-    [{ transform: 'translate(-50%, -50%) scale(0)' }, { transform: 'translate(-50%, -50%) scale(1)' }],
-    { duration: REVEAL_MS, easing: REVEAL_EASE, fill: 'forwards' });
-  const fade = wave.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, delay: REVEAL_MS - 120, easing: 'ease-out', fill: 'forwards' });
-  core.animate(
-    [{ transform: 'translate(-50%, -50%) scale(.2)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.25 }, { transform: 'translate(-50%, -50%) scale(2.6)', opacity: 0 }],
-    { duration: 700, easing: 'cubic-bezier(.2, .7, .3, 1)', fill: 'forwards' });
-  Promise.all([grow.finished, fade.finished]).catch(() => undefined).finally(() => { wave.remove(); core.remove(); });
-}
-
-/**
- * Switches the page between light and dark. The new theme spreads out in a circle from the switch that was pressed, with a ring of
- * light on its edge (view transitions); browsers without those get a colour cross-fade and the same ring. Nothing animates for
- * people who have asked for reduced motion.
+ * Switches the page between light and dark. The new theme spreads out in a circle from the switch that was pressed (view transitions);
+ * browsers without those get a colour cross-fade. Nothing animates for people who have asked for reduced motion.
  */
 function applyTheme(theme: Theme, origin?: ThemeOrigin) {
   const root = document.documentElement;
@@ -71,14 +45,12 @@ function applyTheme(theme: Theme, origin?: ThemeOrigin) {
       // Both start in the same frame with the same timing: the ring stays on the edge of the circle.
       root.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
         { duration: REVEAL_MS, easing: REVEAL_EASE, pseudoElement: '::view-transition-new(root)' });
-      wavefront(theme, x, y, radius);
     }).catch(() => undefined);
     vt.finished.catch(() => undefined).finally(() => root.classList.remove('theme-vt'));
     return;
   }
   root.classList.add('theme-fade');
   apply();
-  wavefront(theme, x, y, radius);
   window.setTimeout(() => root.classList.remove('theme-fade'), 500);
 }
 

@@ -51,11 +51,15 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             }
             case "update_work":
                 return await UpdateWorkAsync(a, ct);
+            case "update_project":
+                return await UpdateProjectAsync(a, ct);
             case "create_task":
             {
                 var projectId = await ProjectIdAsync(a, ct);
-                var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), null, Date(a, "dueDate"), null, null, null), ct);
-                return new AiActionResult($"/projects/{projectId}");
+                decimal? hours = a.TryGetProperty("estimateHours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : null;
+                var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), Date(a, "startDate"), Date(a, "dueDate"), hours, null, null), ct);
+                if (Str(a, "comment") is { } first) await tasks.AddCommentAsync(t.Id, new CreateCommentRequest(first, null, null), ct);
+                return new AiActionResult($"/projects/{projectId}?task={t.Id}");
             }
             case "create_work":
             {
@@ -91,6 +95,18 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         return found ?? throw new ValidationException("project", $"The project “{name}” does not exist yet. Confirm its creation first.");
     }
 
+    private async Task<AiActionResult> UpdateProjectAsync(JsonElement a, CancellationToken ct)
+    {
+        var id = Guid(a, "id")!.Value;
+        var cur = (await projects.GetAsync(id, ct)).Project;
+        Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
+        ProjectStatus? status = Enum.TryParse<ProjectStatus>(Str(a, "status"), true, out var ps) ? ps : null;
+        await projects.UpdateAsync(id, new UpdateProjectRequest(Str(a, "name") ?? cur.Name, Str(a, "description") ?? cur.Description, priority ?? cur.Priority, status ?? cur.Status,
+            Guid(a, "ownerId") ?? cur.Owner?.Id, cur.TeamId, Date(a, "startDate") ?? cur.StartDate, Date(a, "dueDate") ?? cur.DueDate, cur.Version, cur.EnforceDependencies, cur.ProjectGroupId,
+            Str(a, "reason")), ct);
+        return new AiActionResult($"/projects/{id}");
+    }
+
     private async Task<AiActionResult> UpdateWorkAsync(JsonElement a, CancellationToken ct)
     {
         var id = Guid(a, "id")!.Value;
@@ -101,8 +117,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         {
             var w = await workTasks.GetAsync(id, ct);
             var status = statusName is null ? w.Status : Enum.Parse<WorkTaskStatus>(statusName, true);
-            await workTasks.UpdateAsync(id, new UpdateWorkTaskRequest(w.Title, w.Description, w.WorkTypeId, w.RelatedProject?.Id, unassign ? null : assigneeId ?? w.Assignee?.Id, priority ?? w.Priority,
-                status, w.StartDate, due ?? w.DueDate, w.Version), ct);
+            await workTasks.UpdateAsync(id, new UpdateWorkTaskRequest(Str(a, "newTitle") ?? w.Title, Str(a, "newDescription") ?? w.Description, w.WorkTypeId, w.RelatedProject?.Id, unassign ? null : assigneeId ?? w.Assignee?.Id, priority ?? w.Priority,
+                status, Date(a, "startDate") ?? w.StartDate, due ?? w.DueDate, w.Version), ct);
             if (comment is not null) await workTasks.AddCommentAsync(id, new WorkCommentRequest(comment), ct);
             return new AiActionResult($"/operations?task={id}");
         }
@@ -111,8 +127,9 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         if (statusName is not null)
             statusId = await db.WorkflowStatuses.AsNoTracking().Where(x => x.ProjectId == t.ProjectId && x.Name == statusName).Select(x => x.Id).FirstOrDefaultAsync(ct) is var sid && sid != System.Guid.Empty
                 ? sid : throw new ValidationException("status", $"The status “{statusName}” no longer exists on this project.");
-        await tasks.UpdateAsync(id, new UpdateTaskRequest(t.Title, t.Description, statusId, priority ?? t.Priority, unassign ? null : assigneeId ?? t.Assignee?.Id, t.StartDate, due ?? t.DueDate,
-            t.EstimatedHours, t.ActualHours, t.Labels.Select(l => l.Id).ToList(), t.Version, t.MilestoneId, t.StageId, Str(a, "reason")), ct);
+        decimal? newHours = a.TryGetProperty("estimateHours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : null;
+        await tasks.UpdateAsync(id, new UpdateTaskRequest(Str(a, "newTitle") ?? t.Title, Str(a, "newDescription") ?? t.Description, statusId, priority ?? t.Priority, unassign ? null : assigneeId ?? t.Assignee?.Id, Date(a, "startDate") ?? t.StartDate, due ?? t.DueDate,
+            newHours ?? t.EstimatedHours, t.ActualHours, t.Labels.Select(l => l.Id).ToList(), t.Version, t.MilestoneId, t.StageId, Str(a, "reason")), ct);
         if (comment is not null) await tasks.AddCommentAsync(id, new CreateCommentRequest(comment, null, null), ct);
         return new AiActionResult($"/projects/{t.ProjectId}?task={id}");
     }
