@@ -213,4 +213,27 @@ public class ProjectStatusTests(ApiFactory factory)
         Assert.Equal(0, ProjectManagement.Application.Features.Projects.ProjectMetrics.ActiveShare(new(0, 0, 0, 0, 0, 0)));
         Assert.Equal(25, ProjectManagement.Application.Features.Projects.ProjectMetrics.ActiveShare(new(4, 1, 1, 2, 0, 0)));
     }
+
+    [Fact]
+    public async Task A_project_in_planning_becomes_active_when_work_on_it_starts_and_never_completes_by_itself()
+    {
+        var (owner, project, _) = await Setup();
+        async Task<string> StatusOf() => (await owner.Get($"/api/v1/projects/{project}")).Data!["project"]!["status"]!.GetValue<string>();
+        Assert.Equal("Planning", await StatusOf());
+        var t = await NewTask(owner, project, "Build it");
+        Assert.Equal("Planning", await StatusOf());                              // a task that has not been started changes nothing
+
+        var statuses = (await owner.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray();
+        Guid Of(string category) => Guid.Parse(statuses.First(x => x!["category"]!.GetValue<string>() == category)!["id"]!.GetValue<string>());
+        Assert.True((await Reschedule(owner, t, Of("Active"), null)).Ok);
+        Assert.Equal("Active", await StatusOf());                                // work started
+
+        Assert.True((await Reschedule(owner, t, Of("Done"), null)).Ok);
+        Assert.Equal("Active", await StatusOf());                                // everything is done, yet closing the project stays a decision
+
+        // On hold is respected: later movement does not restart a project somebody paused.
+        Assert.True((await owner.Patch($"/api/v1/projects/{project}/move", new { status = "OnHold" })).Ok);
+        Assert.True((await Reschedule(owner, t, Of("Active"), null)).Ok);
+        Assert.Equal("OnHold", await StatusOf());
+    }
 }

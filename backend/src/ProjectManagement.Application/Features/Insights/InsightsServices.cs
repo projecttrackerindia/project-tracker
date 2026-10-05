@@ -41,7 +41,7 @@ public record ReportSummaryDto(int Days, ReportTotals Totals, IReadOnlyList<DayC
 
 public class ActivityService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, PermissionService permissions, EntitlementService entitlements)
 {
-    public async Task<PagedResult<ActivityDto>> ListAsync(Guid? projectId, int page, int pageSize, CancellationToken ct = default)
+    public async Task<PagedResult<ActivityDto>> ListAsync(Guid? projectId, int page, int pageSize, CancellationToken ct = default, Guid? teamId = null)
     {
         ctx.RequireTenantId();
         var q = db.Activities.AsNoTracking().AsQueryable();
@@ -55,6 +55,12 @@ public class ActivityService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             var visible = access.VisibleProjects().Select(p => p.Id);
             q = q.Where(a => a.ProjectId != null && visible.Contains(a.ProjectId.Value));
+        }
+
+        if (teamId is { } team)
+        {
+            var inTeam = db.Projects.Where(p => p.TeamId == team).Select(p => p.Id);
+            q = q.Where(a => a.ProjectId != null && inTeam.Contains(a.ProjectId.Value));
         }
 
         // Retention is a plan entitlement (Free = 30 days).
@@ -92,13 +98,15 @@ public class ActivityService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
     TaskService tasks, ActivityService activity, PermissionService permissions, WorkItemService workItems)
 {
-    public async Task<DashboardDto> GetAsync(CancellationToken ct = default)
+    /// <summary>"My" figures are always about me; everything about delivery (projects, tasks, progress, charts, activity) follows <paramref name="teamId"/> when one team is picked.</summary>
+    public async Task<DashboardDto> GetAsync(Guid? teamId = null, CancellationToken ct = default)
     {
         var tid = ctx.RequireTenantId();
         var me = ctx.RequireUserId();
         var today = clock.Today;
+        var lens = await access.RequireLensAsync(teamId, ct);
 
-        var visible = access.VisibleTasks().Where(t => t.ParentTaskId == null);
+        var visible = access.LensTasks(lens).Where(t => t.ParentTaskId == null);
         var open = visible.Where(t => t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
 
         // Everything assigned to me, of every kind I can see.
@@ -108,7 +116,7 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var doneToday = (kinds.Contains(WorkItemKind.Task) ? await access.VisibleTasks().CountAsync(t => t.AssigneeId == me && t.CompletedAt != null && t.CompletedAt >= dayStart, ct) : 0)
             + await db.WorkTasks.CountAsync(w => w.AssigneeId == me && w.Status == WorkTaskStatus.Completed && w.CompletedAt != null && w.CompletedAt >= dayStart
                 && ((w.Kind == WorkTaskKind.Operational && kinds.Contains(WorkItemKind.Operational)) || (w.Kind == WorkTaskKind.ActionItem && kinds.Contains(WorkItemKind.ActionItem))), ct);
-        var projectRows = await access.VisibleProjects().AsNoTracking().Select(p => new { p.Id, p.Status }).ToListAsync(ct);
+        var projectRows = await access.LensProjects(lens).AsNoTracking().Select(p => new { p.Id, p.Status }).ToListAsync(ct);
         var stats = await projects.GetStatsAsync(projectRows.Select(p => p.Id).ToList(), ct);
         var allTotal = stats.Values.Sum(s => s.Total - s.Cancelled);
         var allDone = stats.Values.Sum(s => s.Done);
@@ -126,13 +134,13 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
             TotalProjects: projectRows.Count(p => p.Status != ProjectStatus.Archived),
             OpenTasks: await open.CountAsync(ct),
             OverdueTasks: await open.CountAsync(t => t.DueDate != null && t.DueDate < today, ct),
-            Members: await db.TenantMembers.CountAsync(m => m.TenantId == tid, ct),
+            Members: lens is { } lt ? await db.TeamMembers.CountAsync(m => m.TeamId == lt, ct) : await db.TenantMembers.CountAsync(m => m.TenantId == tid, ct),
             OverallProgress: allTotal <= 0 ? 0 : (int)Math.Round(allDone * 100.0 / allTotal),
             MyLoggedMinutesThisWeek: loggedThisWeek);
 
         var myTasks = await tasks.ListAsync(new TaskQuery(null, Mine: true, OpenOnly: true, Sort: "due", PageSize: 8), ct);
-        var projectList = await projects.ListAsync(new ProjectQuery(null, null, null, null, null, Sort: "due", PageSize: 5), ct);
-        var recent = await activity.ListAsync(null, 1, 8, ct);
+        var projectList = await projects.ListAsync(new ProjectQuery(null, null, null, null, lens, Sort: "due", PageSize: 5), ct);
+        var recent = await activity.ListAsync(null, 1, 8, ct, lens);
 
         // Sections the person's job role cannot open are emptied rather than leaked through the dashboard. (My work is already limited to
         // the kinds they can open.)
@@ -328,14 +336,15 @@ public class ReportService(IAppDbContext db, ICurrentContext ctx, AppClock clock
             .OrderByDescending(w => w.Open).ThenBy(w => w.Name).ToList();
     }
 
-    public async Task<ReportSummaryDto> GetSummaryAsync(int days, CancellationToken ct = default)
+    public async Task<ReportSummaryDto> GetSummaryAsync(int days, Guid? teamId = null, CancellationToken ct = default)
     {
         await permissions.RequireAsync(Permissions.ReportsView, ct);
         ctx.RequireTenantId();
-        days = Math.Clamp(days, 1, 90);
+        var lens = await access.RequireLensAsync(teamId, ct);
+        days = Math.Clamp(days, 1, 180);
         var today = clock.Today;
 
-        var byCategory = await access.VisibleTasks()
+        var byCategory = await access.LensTasks(lens)
             .GroupBy(t => new { t.Status!.Category, Overdue = t.DueDate != null && t.DueDate < today })
             .Select(g => new { g.Key.Category, g.Key.Overdue, Count = g.Count() }).ToListAsync(ct);
         int Sum(Func<StatusCategory, bool> f) => byCategory.Where(r => f(r.Category)).Sum(r => r.Count);
@@ -348,17 +357,18 @@ public class ReportService(IAppDbContext db, ICurrentContext ctx, AppClock clock
             overdue, cancelled, denominator <= 0 ? 0 : (int)Math.Round(completed * 100.0 / denominator));
 
         var since = clock.Now.AddDays(-Math.Max(days, 30) - 1);
-        var completions = await access.VisibleTasks().Where(t => t.CompletedAt != null && t.CompletedAt >= since)
+        var completions = await access.LensTasks(lens).Where(t => t.CompletedAt != null && t.CompletedAt >= since)
             .Select(t => t.CompletedAt!.Value).ToListAsync(ct);
         var localDates = completions.Select(d => DateOnly.FromDateTime(d.AddMinutes(clock.OffsetMinutes))).ToList();
         var perDay = Enumerable.Range(0, days).Select(i => today.AddDays(-(days - 1 - i)))
             .Select(d => new DayCount(d, localDates.Count(x => x == d))).ToList();
 
-        var list = await projects.ListAsync(new ProjectQuery(null, null, null, null, null, Sort: "name", PageSize: 100), ct);
+        var list = await projects.ListAsync(new ProjectQuery(null, null, null, null, lens, Sort: "name", PageSize: 100), ct);
         var progress = list.Items.Select(p => new ProjectProgressItem(p.Id, p.Key, p.Name, p.Progress, p.Health, p.DueDate, p.Stats.Total, p.Stats.Done)).ToList();
 
         var advanced = await entitlements.GetValueAsync(FeatureKeys.AdvancedReports, ct) != 0;
-        var workload = advanced && ctx.WorkspaceType == WorkspaceType.Organization ? await BuildWorkloadAsync(null, ct) : null;
+        var workload = advanced && ctx.WorkspaceType == WorkspaceType.Organization
+            ? await BuildWorkloadAsync(lens is { } wt ? (await db.TeamMembers.Where(m => m.TeamId == wt).Select(m => m.UserId).ToListAsync(ct)).ToHashSet() : null, ct) : null;
 
         return new ReportSummaryDto(days, totals, perDay,
             Enum.GetValues<StatusCategory>().Select(c => new StatusCount(c, Sum(x => x == c))).Where(s => s.Count > 0).ToList(), progress,

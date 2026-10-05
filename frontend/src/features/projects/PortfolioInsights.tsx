@@ -1,13 +1,18 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
 import { formatDate } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
+import { useTeamLens } from '../../lib/teamLens';
 import { aiWorkspaceApi, type PortfolioRisk } from '../ai/aiApi';
 import { Sparkle, useAi } from '../ai/Assistant';
 
 /** The portfolio worked out by rules over the projects the person may open: no model, no credits, every plan. Shared by the page and each project. */
-export const usePortfolioBrief = () => useWsQuery(['project-status', 'brief'], aiWorkspaceApi.portfolioBrief, { refetchInterval: 120_000, staleTime: 60_000 });
+export function usePortfolioBrief() {
+  const { teamId } = useTeamLens();
+  return useWsQuery(['project-status', 'brief', teamId], () => aiWorkspaceApi.portfolioBrief(teamId), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
+}
 
 /** Opens the AI workspace with a question ready (the assistant then reads the same figures through its own tool and reasons from them). */
 function useAsk() {
@@ -40,7 +45,7 @@ function RiskCard({ r, onPick }: { r: PortfolioRisk; onPick: (id: string) => voi
 
 /** The Portfolio page's front: where the projects stand, which need attention and why, what moved, and who is stretched. */
 export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }) {
-  const q = useWsQuery(['project-status', 'brief'], aiWorkspaceApi.portfolioBrief, { refetchInterval: 120_000, staleTime: 60_000 });
+  const q = usePortfolioBrief();
   const ai = useAi();
   const ask = useAsk();
   if (q.isLoading) return <PageLoader />;
@@ -105,22 +110,25 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
   );
 }
 
-/** One project's place in the portfolio: its risk, why, the forecast and its action items, with shortcuts to ask the assistant. */
+/** One project's place in the portfolio, kept to one line: its risk and forecast. "Why" opens the reasons and the shortcuts to ask the assistant. */
 export function ProjectInsight({ projectId, onActionItems }: { projectId: string; onActionItems: () => void }) {
   const q = usePortfolioBrief();
   const ai = useAi();
   const ask = useAsk();
+  const [open, setOpen] = useState(false);
   const r = q.data?.ranked.find((x) => x.projectId === projectId);
   if (!r) return null;
+  const more = r.reasons.length > 0 || ai;
   return (
-    <section className={`pi-project ${r.level.toLowerCase()}`} aria-label="Risk and forecast">
+    <section className={`pi-project ${r.level.toLowerCase()} ${open ? 'open' : ''}`} aria-label="Risk and forecast">
       <div className="pi-project-head">
         <span className={`pi-level ${r.level.toLowerCase()}`}>{r.level} risk</span>
         <Forecast r={r} />
         {r.overdueActionItems > 0 && <button type="button" className="pi-chip" onClick={onActionItems}>{r.overdueActionItems} overdue action item{r.overdueActionItems === 1 ? '' : 's'}</button>}
+        {more && <button type="button" className="pi-why" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Why?'} <span style={{ display: 'inline-flex', transform: open ? 'rotate(180deg)' : undefined }}><Icon name="chevronD" size={13} /></span></button>}
       </div>
-      {r.reasons.length > 0 && <ul>{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
-      {ai && (
+      {open && r.reasons.length > 0 && <ul>{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
+      {open && ai && (
         <div className="pi-ask">
           <button type="button" className="btn btn-soft btn-sm" onClick={() => ask(`Analyse ${r.name} (${r.key}): why is it ${r.health === 'OnTrack' ? 'where it is' : r.health === 'Delayed' ? 'delayed' : 'at risk'}, when will it really finish, and what should I do about it? Include its action items.`)}><Sparkle size={14} /> Analyse with AI</button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Prepare the changes to get ${r.name} (${r.key}) back on track: reassign overloaded work, set reminders on its overdue action items, and propose realistic dates. Show me what you would change.`)}>Plan the recovery</button>

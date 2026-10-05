@@ -120,7 +120,7 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
 
     /// <summary>The portfolio analysed: risk ranking with reasons, forecasts, slips, action items. Found by rules over the person's own projects (no model, no credits, every plan).</summary>
     [HttpGet("portfolio/brief")]
-    public async Task<IActionResult> PortfolioBrief(CancellationToken ct) => Ok(await portfolio.BriefAsync(ct));
+    public async Task<IActionResult> PortfolioBrief([FromQuery] Guid? teamId, CancellationToken ct) => Ok(await portfolio.BriefAsync(teamId, ct));
 
     /// <summary>What deserves attention today, found by rules over the person's own data (no model, no credits).</summary>
     [HttpGet("insights")]

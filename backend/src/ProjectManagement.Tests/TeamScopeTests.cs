@@ -168,4 +168,35 @@ public class TeamScopeTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NotFound, (await s.Dave.Get($"/api/v1/projects/{s.ProjectA}")).Status);   // nobody else is affected
         Assert.Equal(HttpStatusCode.NotFound, (await s.Alice.Get($"/api/v1/projects/{s.ProjectB}")).Status);
     }
+
+    [Fact]
+    public async Task The_team_lens_offers_each_person_only_the_teams_they_may_look_at_and_narrows_the_dashboard_reports_and_portfolio()
+    {
+        var s = await Seed();
+        async Task<string[]> Lens(TestClient c) => (await c.Get("/api/v1/lens/teams")).Data!.AsArray().Select(t => S(t!["name"])).OrderBy(n => n).ToArray();
+        Assert.Equal(["Alpha team", "Bravo team"], await Lens(s.Owner));       // leaders may pick any team
+        Assert.Equal(["Alpha team"], await Lens(s.Alice));                      // a team member only their own
+        Assert.Empty(await Lens(s.Dave));                                       // in no team: nothing to pick
+
+        var all = (await s.Owner.Get("/api/v1/dashboard")).Data!["counts"]!;
+        var bravo = await s.Owner.Get($"/api/v1/dashboard?teamId={s.TeamB}");
+        Assert.True(bravo.Ok, bravo.ToString());
+        Assert.Equal(2, all["totalProjects"]!.GetValue<int>());
+        Assert.Equal(1, bravo.Data!["counts"]!["totalProjects"]!.GetValue<int>());
+        Assert.Equal(1, bravo.Data["counts"]!["members"]!.GetValue<int>());
+        Assert.Contains(Secret, bravo.Data["projects"]!.ToJsonString());
+        var alpha = await s.Owner.Get($"/api/v1/dashboard?teamId={s.TeamA}");
+        Assert.DoesNotContain(Secret, alpha.Data!.ToJsonString());
+        Assert.DoesNotContain(Secret, (await s.Owner.Get($"/api/v1/reports/summary?days=30&teamId={s.TeamA}")).Data!.ToJsonString());
+        Assert.Contains(Secret, (await s.Owner.Get($"/api/v1/reports/summary?days=30&teamId={s.TeamB}")).Data!.ToJsonString());
+        Assert.DoesNotContain(Secret, (await s.Owner.Get($"/api/v1/project-status/groups?teamId={s.TeamA}")).Data!.ToJsonString());
+        Assert.Contains(Secret, (await s.Owner.Get($"/api/v1/project-status/groups?teamId={s.TeamB}")).Data!.ToJsonString());
+
+        // Picking a team that is not theirs is refused, however it is asked for.
+        Assert.Equal(HttpStatusCode.NotFound, (await s.Alice.Get($"/api/v1/dashboard?teamId={s.TeamB}")).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await s.Carol.Get($"/api/v1/reports/summary?days=30&teamId={s.TeamB}")).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await s.Alice.Get($"/api/v1/project-status/groups?teamId={s.TeamB}")).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await s.Dave.Get($"/api/v1/dashboard?teamId={s.TeamA}")).Status);
+        Assert.True((await s.Alice.Get($"/api/v1/dashboard?teamId={s.TeamA}")).Ok);
+    }
 }

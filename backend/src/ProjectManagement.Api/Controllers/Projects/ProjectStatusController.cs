@@ -11,7 +11,7 @@ public class ProjectStatusController(ProjectStatusService status) : ApiControlle
 {
     /// <summary>The projects organized by group, for the page's sidebar.</summary>
     [HttpGet("groups")]
-    public async Task<IActionResult> Groups(CancellationToken ct) => Ok(await status.GroupsAsync(ct));
+    public async Task<IActionResult> Groups([FromQuery] Guid? teamId, CancellationToken ct) => Ok(await status.GroupsAsync(teamId, ct));
 
     /// <summary>One project's status: its tasks, the history of its delivery dates and what is blocking work.</summary>
     [HttpGet("projects/{id:guid}")]

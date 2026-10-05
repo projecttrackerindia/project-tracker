@@ -58,8 +58,8 @@
 .progress-bar.amber { background: linear-gradient(90deg, #d97706, #fbbf24); box-shadow: 0 0 10px rgba(251, 191, 36, .5); }
 .progress-bar.red { background: linear-gradient(90deg, #e11d48, #fb7185); box-shadow: 0 0 10px rgba(251, 113, 133, .5); }
 .progress-lg { height: 12px; }
-/* work under way: a calmer, striped stretch after what is done */
-.progress-active { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(14, 165, 233, .55) 0 6px, rgba(14, 165, 233, .32) 6px 12px); border-radius: 0 99px 99px 0; transition: width .5s cubic-bezier(.4, 0, .2, 1), left .5s cubic-bezier(.4, 0, .2, 1); }
+/* work under way: a soft solid stretch after what is done (no stripes) */
+.progress-active { position: absolute; top: 0; bottom: 0; background: rgba(14, 165, 233, .38); transition: width .5s cubic-bezier(.4, 0, .2, 1), left .5s cubic-bezier(.4, 0, .2, 1); }
 
 /* ---------- stat cards ---------- */
 .stat-grid { display: grid; gap: 14px; margin-bottom: 22px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
@@ -713,7 +713,7 @@ tr.row-deleted .td-title { font-style: italic; }
 .ps-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .ps-none { padding: 22px; text-align: center; font-size: 13px; color: var(--text-3); }
 .ps-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
-.ps-table th:nth-child(1) { width: 42%; } .ps-table th:nth-child(2) { width: 12%; } .ps-table th:nth-child(3) { width: 22%; } .ps-table th:nth-child(4) { width: 24%; }
+.ps-table th:nth-child(1) { width: 36%; } .ps-table th:nth-child(2) { width: 17%; } .ps-table th:nth-child(3) { width: 12%; } .ps-table th:nth-child(4) { width: 19%; } .ps-table th:nth-child(5) { width: 16%; }
 .ps-table td { overflow-wrap: anywhere; }
 .ps-table .ps-status { white-space: normal; text-align: center; }
 .ps-table th { position: sticky; top: 0; z-index: 1; background: var(--panel-solid); text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); padding: 9px 14px; border-bottom: 1px solid var(--border); }
@@ -1182,3 +1182,40 @@ tr.row-deleted .td-title { font-style: italic; }
 .vis-option span { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
 .vis-option.on { border-color: var(--primary); background: var(--primary-soft); }
 .vis-option:disabled { opacity: .7; cursor: default; }
+
+/* Team lens picker */
+.lens-picker { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 10px 0 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); }
+.lens-picker select { border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 650; font-size: 13px; max-width: 220px; cursor: pointer; outline: none; }
+.lens-picker:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.lens-picker.compact { height: 32px; }
+
+/* Dashboard charts: the trend takes the room, the status ring stays small */
+.dash-charts { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(250px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .dash-charts { grid-template-columns: 1fr; } }
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--surface-3); gap: 2px; }
+.seg button { border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: 12px; font-weight: 650; padding: 4px 10px; border-radius: 7px; cursor: pointer; }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.lens-note { display: flex; align-items: center; gap: 8px; margin: -4px 0 16px; padding: 9px 14px; border-radius: 10px; background: var(--primary-soft); color: var(--text-2); font-size: 12.5px; }
+
+/* Portfolio: focus, tabs, filters, compact risk strip */
+.ps-lens { padding: 0 14px 10px; } .ps-lens .lens-picker { width: 100%; } .ps-lens .lens-picker select { flex: 1; max-width: none; }
+.ps-viewbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ps-seg button em { font-style: normal; font-size: 11px; margin-left: 5px; color: var(--text-3); }
+.ps-alert { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warning, #d97706); margin-left: 6px; vertical-align: middle; }
+.ps-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.ps-chips button { border: 1px solid var(--border); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 99px; cursor: pointer; }
+.ps-chips button em { font-style: normal; color: var(--text-3); margin-left: 4px; }
+.ps-chips button.on { background: var(--primary-soft); border-color: var(--primary); color: var(--text); }
+.ps-focus { margin-left: auto; }
+.ps-body.tasks, .ps-body.changes { grid-template-columns: minmax(0, 1fr); }
+.ps-body.tasks h3, .ps-body.changes h3 { display: none; }
+.ps-changes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; padding: 12px; align-items: start; }
+.ps-assignee { white-space: nowrap; font-size: 12.5px; } .ps-assignee span { margin-left: 4px; }
+.ps-focusline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 14px; border-radius: 10px; background: var(--primary-soft); font-size: 13px; }
+.ps-ready { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--success-soft, rgba(16, 185, 129, .12)); color: var(--text); font-size: 13px; }
+.ps-ready span { flex: 1; } .ps-ready svg { color: var(--success); }
+.pi-project { padding: 8px 14px; gap: 4px; } .pi-project .pi-project-head { gap: 10px; }
+.pi-why { margin-left: auto; border: 0; background: transparent; color: var(--primary); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
+
+.ps-assignee { display: flex; align-items: center; gap: 7px; } .ps-assignee span { margin: 0; overflow: hidden; text-overflow: ellipsis; }
+.ps-table td.ps-assignee { display: table-cell; } .ps-table .ps-assignee .avatar { display: inline-grid; vertical-align: middle; margin-right: 6px; }

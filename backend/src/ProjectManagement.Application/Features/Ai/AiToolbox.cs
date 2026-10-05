@@ -207,7 +207,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     private async Task<AiToolOutcome> ListProjectsAsync(CancellationToken ct)
     {
-        var groups = await status.GroupsAsync(ct);
+        var groups = await status.GroupsAsync(ct: ct);
         var rows = groups.SelectMany(g => g.Projects.Select(p => $"{p.Key} | {Clean(p.Name)} | {p.Status} | health {p.Health} | {p.Progress}% | {Clean(g.Name)}")).ToList();
         return rows.Count == 0 ? new AiToolOutcome("There are no active projects.", "Read the portfolio", 0)
             : new AiToolOutcome($"{rows.Count} projects (key | name | status | health | progress | group):\n" + string.Join("\n", rows.Take(80)), $"Read the portfolio ({rows.Count} project{(rows.Count == 1 ? "" : "s")})", rows.Count);
@@ -218,7 +218,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
         var report = await status.ReportAsync(project.Id, ct);
         var p = report.Project;
-        var insight = (await portfolio.BriefAsync(ct)).Ranked.FirstOrDefault(x => x.ProjectId == project.Id);   // risk, forecast, action items: worked out, not guessed
+        var insight = (await portfolio.BriefAsync(ct: ct)).Ranked.FirstOrDefault(x => x.ProjectId == project.Id);   // risk, forecast, action items: worked out, not guessed
         var data = new
         {
             insight,
@@ -243,7 +243,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     private async Task<AiToolOutcome> PortfolioBriefAsync(CancellationToken ct)
     {
-        var brief = await portfolio.BriefAsync(ct);
+        var brief = await portfolio.BriefAsync(ct: ct);
         return new AiToolOutcome(AiPortfolio.ToText(brief), $"Analysed the portfolio ({brief.Projects} project{(brief.Projects == 1 ? "" : "s")})", brief.Projects);
     }
 

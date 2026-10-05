@@ -510,3 +510,6 @@ export interface WorkSummary {
 
 /** Whether everyone sees every project of the workspace, or people see their own teams' projects and the ones they were added to. */
 export interface ProjectVisibility { mode: 'organization' | 'teams'; teams: number; peopleWithoutTeam: number }
+
+/** A team the signed-in person may look at as a whole (dashboard, reports, Portfolio). */
+export interface LensTeam { id: string; name: string; projects: number; members: number }

@@ -218,6 +218,7 @@ public class TaskService(
             CompletedAt = status.Category == StatusCategory.Done ? now : null,
         };
         db.Tasks.Add(task);
+        await WorkStartedAsync(projectId, status.Category, ct);
         foreach (var lid in (req.LabelIds ?? []).Distinct())
             db.TaskLabels.Add(new TaskLabel { TenantId = tid, TaskId = task.Id, LabelId = lid, CreatedAt = now });
 
@@ -271,6 +272,7 @@ public class TaskService(
         if (task.StatusId != status.Id) task.Position = await NextPositionAsync(task.ProjectId, status.Id, ct);
         ApplyStatus(task, status);
         task.Version++;
+        await WorkStartedAsync(task.ProjectId, status.Category, ct);
 
         // Replace label set.
         var current = await db.TaskLabels.Where(l => l.TaskId == id).ToListAsync(ct);
@@ -345,6 +347,21 @@ public class TaskService(
             throw new ConflictException($"This task cannot move to “{status.Name}” yet: {reason}", "DEPENDENCY_BLOCKED");
     }
 
+    /// <summary>
+    /// A project in Planning becomes Active the moment work on it really starts (a task is moved to an in-progress or done status), the way
+    /// delivery tools work. It never completes by itself: when everything is done the project page suggests marking it completed, because
+    /// closing a project is a decision (scope may still grow). On hold, cancelled, completed and archived projects are left as they are.
+    /// </summary>
+    private async Task WorkStartedAsync(Guid projectId, StatusCategory category, CancellationToken ct)
+    {
+        if (category is not (StatusCategory.Active or StatusCategory.Done)) return;
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId, ct);
+        if (project is null || project.Status != ProjectStatus.Planning) return;
+        project.Status = ProjectStatus.Active;
+        project.Version++;
+        recorder.Activity("project.started", "Project", project.Id, $"{project.Name} is now Active: work has started", project.Id, nameof(ProjectStatus.Planning), nameof(ProjectStatus.Active));
+    }
+
     private void ApplyStatus(TaskItem task, WorkflowStatus status)
     {
         var wasDone = task.CompletedAt is not null;
@@ -369,6 +386,7 @@ public class TaskService(
         task.Position = req.Position ?? await NextPositionAsync(task.ProjectId, status.Id, ct);
         ApplyStatus(task, status);
         task.Version++;
+        if (changed) await WorkStartedAsync(task.ProjectId, status.Category, ct);
         if (changed)
         {
             var key = $"{await db.Projects.Where(p => p.Id == task.ProjectId).Select(p => p.Key).FirstAsync(ct)}-{task.Number}";

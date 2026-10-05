@@ -259,7 +259,7 @@ public class AiAnalysis(IAppDbContext db, ICurrentContext ctx, AppClock clock, P
         if (unassigned > 0 && ctx.Role != TenantRole.Guest)
             list.Add(new("unassigned", "medium", $"{unassigned} open task{(unassigned == 1 ? " has" : "s have")} no owner", "Work without an owner is the work that slips.", "Suggest the best person for each unassigned task based on workload and who has done similar work, then prepare the assignments."));
 
-        var groups = await status.GroupsAsync(ct);
+        var groups = await status.GroupsAsync(ct: ct);
         var risky = groups.SelectMany(g => g.Projects).Where(p => p.Health is ProjectHealth.AtRisk or ProjectHealth.Delayed).OrderByDescending(p => p.Health).Take(3).ToList();
         foreach (var p in risky)
             list.Add(new($"risk-{p.Key}", p.Health == ProjectHealth.Delayed ? "high" : "medium", $"{p.Name} is {(p.Health == ProjectHealth.Delayed ? "delayed" : "at risk")}", $"{p.Key}, {p.Progress}% done.", $"Analyse why {p.Name} ({p.Key}) is {(p.Health == ProjectHealth.Delayed ? "delayed" : "at risk")}, what the history says about how late it will land, and recommend what to do."));

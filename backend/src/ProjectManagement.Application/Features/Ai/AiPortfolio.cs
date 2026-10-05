@@ -43,15 +43,16 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         return (finish, due is { } d ? finish.DayNumber - d.DayNumber : null, confidence);
     }
 
-    public async Task<PortfolioBriefDto> BriefAsync(CancellationToken ct = default)
+    public async Task<PortfolioBriefDto> BriefAsync(Guid? teamId = null, CancellationToken ct = default)
     {
+        var lens = await access.RequireLensAsync(teamId, ct);
         ctx.RequireTenantId();
         await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
         var today = clock.Today;
         var since28 = clock.Now.AddDays(-WindowDays);
         var since30 = clock.Now.AddDays(-30);
 
-        var rows = await access.VisibleProjects().AsNoTracking().Where(p => p.Status != ProjectStatus.Archived && p.Status != ProjectStatus.Completed && p.Status != ProjectStatus.Cancelled)
+        var rows = await access.LensProjects(lens).AsNoTracking().Where(p => p.Status != ProjectStatus.Archived && p.Status != ProjectStatus.Completed && p.Status != ProjectStatus.Cancelled)
             .Select(p => new { p.Id, p.Key, p.Name, p.Status, p.StartDate, p.DueDate, p.OwnerId, p.ProjectGroupId, Project = p }).Take(500).ToListAsync(ct);
         var ids = rows.Select(r => r.Id).ToList();
         var stats = ids.Count == 0 ? [] : await projects.GetStatsAsync(ids, ct);

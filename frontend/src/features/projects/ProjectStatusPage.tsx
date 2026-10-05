@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { actionItemApi, statusApi } from '../../api/endpoints';
+import { ApiError } from '../../api/client';
+import { actionItemApi, projectApi, statusApi } from '../../api/endpoints';
 import type { ProjectHealth, ProjectStatusReport, StatusGroup, StatusTask, TimelineChange } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { activeShare, Avatar, ErrorState, HealthBadge, PageLoader, Progress, ProjectStatusBadge, ProjectTypeBadge } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
-import { useWsQuery } from '../../lib/hooks';
-import { useModule } from '../../stores/auth';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useTeamLens } from '../../lib/teamLens';
+import { TeamLensPicker } from '../../components/TeamLensPicker';
+import { useModule, useWorkspaceId } from '../../stores/auth';
+import { toast } from '../../stores/ui';
 import { TaskModal } from '../tasks/TaskModal';
 import { ActionItemsPanel } from './ActionItemsPanel';
 import { PortfolioBriefPanel, ProjectInsight } from './PortfolioInsights';
@@ -21,7 +25,8 @@ const days = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'}`;
 export function ProjectStatusPage() {
   const [params, setParams] = useSearchParams();
   const selected = params.get('project');
-  const groups = useWsQuery(['project-status', 'groups'], statusApi.groups, { refetchInterval: 60_000 });
+  const { teamId, team } = useTeamLens();
+  const groups = useWsQuery(['project-status', 'groups', teamId], () => statusApi.groups(teamId), { refetchInterval: 60_000, placeholderData: (prev) => prev });
   const [openId, setOpenId] = useState<string | null>(null);            // one group open at a time; they all start collapsed
   const [listOpen, setListOpen] = useState(true);                       // small screens: the list, or just the chosen project
   const openedFor = useRef<string | null>(null);
@@ -53,10 +58,11 @@ export function ProjectStatusPage() {
     <div className={`ps ${selected && !listOpen ? 'has-panel' : ''}`}>
       <aside className="ps-side" aria-label="Projects">
         <div className="ps-side-head">
-          <div><h2>Projects</h2><span>{total} in {groups.data.length} group{groups.data.length === 1 ? '' : 's'}</span></div>
+          <div><h2>Projects</h2><span>{total} in {groups.data.length} group{groups.data.length === 1 ? '' : 's'}{team ? ` · ${team.name}` : ''}</span></div>
           {selected && <button type="button" className="ps-side-toggle btn btn-ghost btn-sm" aria-expanded={listOpen} onClick={() => setListOpen((v) => !v)}>
             {listOpen ? 'Hide list' : `${current?.name ?? 'Projects'}`} <Icon name="chevronD" size={14} /></button>}
         </div>
+        <div className="ps-lens"><TeamLensPicker compact /></div>
         <div className={`ps-groups ${selected && !listOpen ? 'tucked' : ''}`}>
           {groups.data.length === 0 && <p className="ps-empty-list">No projects yet. Create one from the Projects page.</p>}
           {groups.data.map((g) => <GroupSection key={g.id} group={g} open={openId === g.id} selected={selected} onToggle={() => toggle(g.id)} onPick={pick} />)}
@@ -114,6 +120,18 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
   const revised = p.originalDueDate && p.dueDate && p.dueDate !== p.originalDueDate;
   const blocked = r.blockedTasks, overdue = r.tasks.filter((t) => t.overdueDays > 0).length;
   const done = p.stats.done, tasksTotal = p.stats.total - p.stats.cancelled;
+  const [view, setView] = useState<PsView>(() => { try { const v = localStorage.getItem('pm_ps_view'); return v === 'changes' || v === 'both' ? v : 'tasks'; } catch { return 'tasks'; } });
+  const chooseView = (v: PsView) => { setView(v); try { localStorage.setItem('pm_ps_view', v); } catch { /* storage unavailable */ } };
+  const [focus, setFocus] = useState(false);
+  const [filter, setFilter] = useState<TaskFilter>('all');
+  const shownTasks = r.tasks.filter(FILTERS.find((f) => f.id === filter)!.test);
+  // Everything is done: closing the project is a decision, so it is offered, never done by itself.
+  const readyToClose = tasksTotal > 0 && done === tasksTotal && (p.status === 'Planning' || p.status === 'Active');
+  const wid = useWorkspaceId();
+  const close = async () => {
+    try { await projectApi.move(p.id, { status: 'Completed' }); toast('Project marked completed.'); void invalidateWorkspace(wid, 'project-status'); void invalidateWorkspace(wid, 'projects'); void invalidateWorkspace(wid, 'dashboard'); }
+    catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not complete the project.', 'error'); }
+  };
 
   return (
     <div className="ps-panel">
@@ -134,6 +152,19 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
         </div>
       </header>
 
+      {readyToClose && (
+        <div className="ps-ready" role="status">
+          <Icon name="checkCircle" size={16} /> <span>All {tasksTotal} task{tasksTotal === 1 ? ' is' : 's are'} done. Mark this project completed?</span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={close}>Mark completed</button>
+        </div>
+      )}
+
+      {focus ? (
+        <div className="ps-focusline">
+          <b>{p.progress}%</b> done{p.stats.inProgress > 0 && <> · {p.stats.inProgress} in progress</>} · due {formatDate(p.dueDate)}{p.delayedDays > 0 && <em className="ps-pill late">+{days(p.delayedDays)}</em>}
+          {overdue > 0 && <em className="ps-pill late">{overdue} overdue</em>}{blocked > 0 && <em className="ps-pill wait">{blocked} blocked</em>}
+        </div>
+      ) : <>
       <ProjectInsight projectId={p.id} onActionItems={onActionItems} />
 
       <div className="ps-kpis">
@@ -159,33 +190,70 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
           </span>
         </div>
       </div>
+      </>}
 
-      <div className="ps-body">
-        <section className="ps-tasks" aria-label="Tasks">
-          <h3>Tasks <em>{r.tasks.length}</em></h3>
-          {r.tasks.length === 0 ? <p className="ps-none">No tasks in this project yet.</p> : (
-            <div className="ps-scroll">
-              <table className="ps-table">
-                <thead><tr><th>Task</th><th>Start</th><th>Due</th><th>Status</th></tr></thead>
-                <tbody>{r.tasks.map((t) => <TaskRow key={t.id} t={t} onOpen={canOpenTasks ? () => onOpenTask(t.id) : undefined} />)}</tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className="ps-changes" aria-label="Delivery changes and dependencies">
-          <h3>Delivery changes &amp; dependencies <em>{r.changes.length}</em></h3>
-          <div className="ps-scroll">
-            {blocked > 0 && <BlockedNow tasks={r.tasks.filter((t) => t.blockedBy.length > 0)} />}
-            {r.changes.length === 0 && blocked === 0
-              ? <div className="ps-onschedule"><Icon name="checkCircle" size={26} /><b>On schedule</b><span>No delivery date has been changed and nothing is waiting on another task.</span></div>
-              : r.changes.map((c) => <ChangeCard key={c.id} c={c} />)}
+      <div className="ps-viewbar">
+        <div className="seg ps-seg" role="tablist" aria-label="What to look at">
+          <button type="button" role="tab" aria-selected={view === 'tasks'} className={view === 'tasks' ? 'on' : ''} onClick={() => chooseView('tasks')}>Tasks <em>{r.tasks.length}</em></button>
+          <button type="button" role="tab" aria-selected={view === 'changes'} className={view === 'changes' ? 'on' : ''} onClick={() => chooseView('changes')}>
+            Delivery changes <em>{r.changes.length}</em>{(blocked > 0 || p.delayedDays > 0) && <i className="ps-alert" title={blocked > 0 ? 'Something is waiting on a dependency' : 'The delivery date has moved'} />}
+          </button>
+          <button type="button" role="tab" aria-selected={view === 'both'} className={view === 'both' ? 'on' : ''} onClick={() => chooseView('both')}>Side by side</button>
+        </div>
+        {view !== 'changes' && (
+          <div className="ps-chips" role="group" aria-label="Filter the tasks">
+            {FILTERS.map((f) => {
+              const n = r.tasks.filter(f.test).length;
+              if (f.id !== 'all' && n === 0) return null;
+              return <button key={f.id} type="button" className={filter === f.id ? 'on' : ''} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label} <em>{n}</em></button>;
+            })}
           </div>
-        </section>
+        )}
+        <button type="button" className="btn btn-ghost btn-sm ps-focus" aria-pressed={focus} onClick={() => setFocus((v) => !v)} title={focus ? 'Show the summary again' : 'Hide the summary to give the list the whole page'}>
+          <span style={{ display: 'inline-flex', transform: focus ? undefined : 'rotate(180deg)' }}><Icon name="chevronD" size={14} /></span> {focus ? 'Show summary' : 'Focus'}
+        </button>
+      </div>
+
+      <div className={`ps-body ${view}`}>
+        {view !== 'changes' && (
+          <section className="ps-tasks" aria-label="Tasks">
+            <h3>Tasks <em>{shownTasks.length}</em></h3>
+            {r.tasks.length === 0 ? <p className="ps-none">No tasks in this project yet.</p> : shownTasks.length === 0 ? <p className="ps-none">No task matches this filter.</p> : (
+              <div className="ps-scroll">
+                <table className="ps-table">
+                  <thead><tr><th>Task</th><th>Assignee</th><th>Start</th><th>Due</th><th>Status</th></tr></thead>
+                  <tbody>{shownTasks.map((t) => <TaskRow key={t.id} t={t} onOpen={canOpenTasks ? () => onOpenTask(t.id) : undefined} />)}</tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {view !== 'tasks' && (
+          <section className="ps-changes" aria-label="Delivery changes and dependencies">
+            <h3>Delivery changes &amp; dependencies <em>{r.changes.length}</em></h3>
+            <div className="ps-scroll">
+              {blocked > 0 && <BlockedNow tasks={r.tasks.filter((t) => t.blockedBy.length > 0)} />}
+              {r.changes.length === 0 && blocked === 0
+                ? <div className="ps-onschedule"><Icon name="checkCircle" size={26} /><b>On schedule</b><span>No delivery date has been changed and nothing is waiting on another task.</span></div>
+                : <div className={view === 'changes' ? 'ps-changes-grid' : undefined}>{r.changes.map((c) => <ChangeCard key={c.id} c={c} />)}</div>}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
 }
+
+type PsView = 'tasks' | 'changes' | 'both';
+type TaskFilter = 'all' | 'open' | 'overdue' | 'blocked' | 'done';
+const FILTERS: { id: TaskFilter; label: string; test: (t: StatusTask) => boolean }[] = [
+  { id: 'all', label: 'All', test: () => true },
+  { id: 'open', label: 'Open', test: (t) => t.statusCategory !== 'Done' && t.statusCategory !== 'Cancelled' },
+  { id: 'overdue', label: 'Overdue', test: (t) => t.overdueDays > 0 },
+  { id: 'blocked', label: 'Blocked', test: (t) => t.blockedBy.length > 0 },
+  { id: 'done', label: 'Done', test: (t) => t.statusCategory === 'Done' },
+];
 
 function TaskRow({ t, onOpen }: { t: StatusTask; onOpen?: () => void }) {
   const shifted = t.originalDueDate && t.dueDate && t.originalDueDate !== t.dueDate;
@@ -196,6 +264,7 @@ function TaskRow({ t, onOpen }: { t: StatusTask; onOpen?: () => void }) {
         <div className="ps-task-title"><span className="task-key">{t.key}</span> {t.title}</div>
         {t.blockedBy.length > 0 && <div className="ps-task-note wait"><Icon name="lock" size={12} /> Waiting on {t.blockedBy.map((b) => `${b.key} ${b.title}`).join(', ')}</div>}
       </td>
+      <td className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" /> <span>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</td>
       <td className="ps-date">{formatDate(t.startDate)}</td>
       <td className="ps-date">
         <span className={t.overdueDays > 0 ? 'overdue' : ''}>{formatDate(t.dueDate)}</span>

@@ -8,6 +8,8 @@ import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Progress, StatCard } from '../../components/ui';
 import { formatDate, formatDateShort, timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
+import { useTeamLens } from '../../lib/teamLens';
+import { TeamLensPicker } from '../../components/TeamLensPicker';
 import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { formatMinutes } from '../time/time';
 import { TaskModal } from '../tasks/TaskModal';
@@ -44,8 +46,10 @@ export function DashboardPage() {
   const [showTasks, showProjects, showActivity, showMembers] = [useModule('tasks') > 0, useModule('projects') > 0, useModule('activity') > 0, useModule('members') > 0];
   const permReports = useCan('reports.view'), modReports = useModule('reports');
   const canReports = permReports && modReports > 0;
-  const q = useWsQuery(['dashboard'], insightApi.dashboard);
-  const reportQ = useWsQuery(['dashboard-report'], () => insightApi.report(14), { enabled: canReports });
+  const { teamId, team } = useTeamLens();
+  const [range, setRange] = useState<14 | 30 | 90>(30);
+  const q = useWsQuery(['dashboard', teamId], () => insightApi.dashboard(teamId), { placeholderData: (prev) => prev });
+  const reportQ = useWsQuery(['dashboard-report', range, teamId], () => insightApi.report(range, teamId), { enabled: canReports, placeholderData: (prev) => prev });
   const showWork = useModule('work') > 0;
   const workQ = useWsQuery(['work', 'summary', 'dashboard'], () => workApi.summary(), { enabled: showWork });
 
@@ -62,13 +66,17 @@ export function DashboardPage() {
   const trend = reportQ.data?.completedPerDay.map((d) => ({ label: formatDateShort(d.date), count: d.count })) ?? [];
   const statusDist = (reportQ.data?.statusDistribution ?? []).filter((s) => s.count > 0);
   const statusTotal = statusDist.reduce((s, x) => s + x.count, 0);
+  const trendTotal = trend.reduce((s, x) => s + x.count, 0);
 
   return (
     <>
       <PageHead title={`Welcome back, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
+        <TeamLensPicker />
         {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New project</button>}
         {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add task</button>}
       </PageHead>
+
+      {team && <div className="lens-note"><Icon name="users" size={14} /> <span>Showing <b>{team.name}</b>: projects, tasks, progress, charts and activity below are this team's. "My" figures stay yours.</span></div>}
 
       <div className="stat-grid">
         {kinds.length > 0 && <>
@@ -114,11 +122,16 @@ export function DashboardPage() {
         </div>
       )}
 
-      {canReports && (trend.length > 0 || statusDist.length > 0) && <div className="grid-2 mb-22">
+      {canReports && (trend.length > 0 || statusDist.length > 0) && <div className="dash-charts mb-22">
         {trend.length > 0 && <div className="card">
-          <div className="card-head"><div><h3>Tasks completed</h3><p>Last 14 days</p></div></div>
+          <div className="card-head">
+            <div><h3>Tasks completed</h3><p>Last {range} days{trendTotal > 0 ? ` · ${trendTotal} finished` : ''}</p></div>
+            <div className="seg" role="group" aria-label="Date range">
+              {([14, 30, 90] as const).map((d) => <button key={d} type="button" className={range === d ? 'on' : ''} aria-pressed={range === d} onClick={() => setRange(d)}>{d}d</button>)}
+            </div>
+          </div>
           <div className="card-body">
-            <div style={{ height: 190 }}>
+            <div style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <defs>
@@ -127,7 +140,7 @@ export function DashboardPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval="preserveStartEnd" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval={range <= 14 ? 0 : range <= 30 ? 2 : 6} minTickGap={12} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} width={24} />
                   <Tooltip content={<ChartTip format={(v) => `${v} completed`} />} cursor={{ stroke: 'var(--border-strong)' }} />
                   <Area type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2.5} fill="url(#dashTrendFill)" animationDuration={700} animationEasing="ease-out" />
@@ -140,11 +153,11 @@ export function DashboardPage() {
         {statusDist.length > 0 && <div className="card">
           <div className="card-head"><h3>Task status</h3></div>
           <div className="card-body">
-            <div className="row" style={{ gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ width: 150, height: 150, flexShrink: 0 }}>
+            <div className="row" style={{ gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ width: 112, height: 112, flexShrink: 0 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={44} outerRadius={70} paddingAngle={2} animationDuration={650} animationEasing="ease-out"
+                    <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={34} outerRadius={52} paddingAngle={2} animationDuration={650} animationEasing="ease-out"
                       fill="#8b5cf6" stroke="var(--surface-1)" strokeWidth={2}>
                       {statusDist.map((s) => <Cell key={s.category} fill={CATEGORY_COLOR[s.category]} />)}
                     </Pie>

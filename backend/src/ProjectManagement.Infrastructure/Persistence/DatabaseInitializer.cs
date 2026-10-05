@@ -39,6 +39,7 @@ public static class DatabaseInitializer
 
         await SeedPlansAsync(db, ct, config, log);
         await BackfillProjectGroupsAsync(db, log, ct);
+        await StartProjectsWithWorkAsync(db, log, ct);
 
         // Platform administrators to bootstrap: the single Seed:AdminEmail / Seed:AdminPassword pair, and/or a list under
         // Seed:Admins (Seed__Admins__0__Email, __Password and optionally __Name, then __1__..., as environment variables).
@@ -123,6 +124,18 @@ public static class DatabaseInitializer
 
     /// <summary>Idempotent. Existing plans keep whatever an administrator configured; only missing rows are added.</summary>
     /// <summary>Every workspace needs a project group, and every project a group: workspaces and projects that predate groups get the default one.</summary>
+    /// <summary>Projects still in Planning whose work has already started (a task in progress or done) are Active, as they now become by themselves.</summary>
+    private static async Task StartProjectsWithWorkAsync(AppDbContext db, ILogger log, CancellationToken ct)
+    {
+        var started = await db.Projects.IgnoreQueryFilters().Where(p => !p.IsDeleted && p.Status == ProjectStatus.Planning
+                && db.Tasks.IgnoreQueryFilters().Any(t => t.ProjectId == p.Id && !t.IsDeleted && (t.Status!.Category == StatusCategory.Active || t.Status.Category == StatusCategory.Done)))
+            .ToListAsync(ct);
+        if (started.Count == 0) return;
+        foreach (var p in started) { p.Status = ProjectStatus.Active; p.Version++; }
+        await db.SaveChangesAsync(ct);
+        log.LogInformation("Projects: {Count} project(s) with work under way moved from Planning to Active", started.Count);
+    }
+
     private static async Task BackfillProjectGroupsAsync(AppDbContext db, ILogger log, CancellationToken ct)
     {
         var now = DateTime.UtcNow;

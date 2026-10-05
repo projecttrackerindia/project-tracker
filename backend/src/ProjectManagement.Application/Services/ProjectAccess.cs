@@ -10,6 +10,8 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Services;
 
+public sealed record LensTeamDto(Guid Id, string Name, int Projects, int Members);
+
 /// <summary>
 /// Project visibility. The narrowing itself lives in the data layer (AppDbContext filters on <see cref="ICurrentContext.ProjectScope"/>), so a
 /// project, a task and everything that belongs to them is hidden the same way on every screen, report and assistant tool - these helpers
@@ -21,6 +23,32 @@ public class ProjectAccess(IAppDbContext db, ICurrentContext ctx, PermissionServ
     public bool IsRestricted => ctx.ProjectScope != ProjectScope.None;
 
     public IQueryable<Project> VisibleProjects() => db.Projects;
+
+    /// <summary>
+    /// The teams this person may look at as a whole on the dashboard, reports and Portfolio. Everyone who is not limited to their own teams
+    /// (Owners, Admins, roles that see every team's projects, or a workspace that is not team-limited) may pick any team; a person limited to
+    /// their teams may pick only the teams they belong to. Guests pick none.
+    /// </summary>
+    public async Task<IReadOnlyList<LensTeamDto>> LensTeamsAsync(CancellationToken ct = default)
+    {
+        if (ctx.Role is null or TenantRole.Guest) return [];
+        var me = ctx.UserId;
+        var teams = db.Teams.AsNoTracking().AsQueryable();
+        if (ctx.ProjectScope == ProjectScope.Teams) teams = teams.Where(t => t.Members.Any(m => m.UserId == me));
+        return await teams.OrderBy(t => t.Name)
+            .Select(t => new LensTeamDto(t.Id, t.Name, db.Projects.Count(p => p.TeamId == t.Id && p.Status != ProjectStatus.Archived), t.Members.Count)).ToListAsync(ct);
+    }
+
+    /// <summary>Null means "all teams" (everything this person may see). A team must be one they may pick, otherwise it simply does not exist for them.</summary>
+    public async Task<Guid?> RequireLensAsync(Guid? teamId, CancellationToken ct = default)
+    {
+        if (teamId is not { } id) return null;
+        if (!(await LensTeamsAsync(ct)).Any(t => t.Id == id)) throw new NotFoundException("Team not found.");
+        return id;
+    }
+
+    public IQueryable<Project> LensProjects(Guid? team) => team is { } t ? db.Projects.Where(p => p.TeamId == t) : db.Projects;
+    public IQueryable<TaskItem> LensTasks(Guid? team) => team is { } t ? db.Tasks.Where(x => x.Project!.TeamId == t) : db.Tasks;
 
     public IQueryable<TaskItem> VisibleTasks() => db.Tasks;
 

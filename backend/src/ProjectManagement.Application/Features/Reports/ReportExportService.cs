@@ -270,7 +270,7 @@ public class ReportBuilder(IAppDbContext db, ICurrentContext ctx, AppClock clock
 
     private async Task<ReportDocument> ProjectReportAsync(ReportExport e, string subtitle, CancellationToken ct)
     {
-        var s = await reports.GetSummaryAsync(e.Days, ct);
+        var s = await reports.GetSummaryAsync(e.Days, ct: ct);
         var t = s.Totals;
         var overview = new ReportSection("Overview", ["Measure", "Value"],
         [

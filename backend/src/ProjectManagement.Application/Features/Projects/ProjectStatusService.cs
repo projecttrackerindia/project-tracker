@@ -34,13 +34,14 @@ public class ProjectStatusService(IAppDbContext db, ICurrentContext ctx, AppCloc
 
     // ------------------------------------------------------------------ the sidebar
 
-    public async Task<IReadOnlyList<StatusGroupDto>> GroupsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<StatusGroupDto>> GroupsAsync(Guid? teamId = null, CancellationToken ct = default)
     {
         ctx.RequireTenantId();
+        var lens = await access.RequireLensAsync(teamId, ct);
         await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
         await groupService.EnsureDefaultAsync(ct);
         var groups = await db.ProjectGroups.AsNoTracking().OrderBy(g => g.Order).ThenBy(g => g.Name).ToListAsync(ct);
-        var rows = await access.VisibleProjects().AsNoTracking().Where(p => p.Status != ProjectStatus.Archived).OrderBy(p => p.Name).ToListAsync(ct);
+        var rows = await access.LensProjects(lens).AsNoTracking().Where(p => p.Status != ProjectStatus.Archived).OrderBy(p => p.Name).ToListAsync(ct);
         var stats = await projects.GetStatsAsync(rows.Select(r => r.Id).ToList(), ct);
 
         StatusProjectRefDto Ref(Project p) => new(p.Id, p.Key, p.Name, p.Status, ProjectMetrics.Health(p, stats[p.Id], clock.Today), ProjectMetrics.Progress(stats[p.Id]), ProjectMetrics.ActiveShare(stats[p.Id]));

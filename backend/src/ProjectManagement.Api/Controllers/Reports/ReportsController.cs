@@ -14,7 +14,7 @@ namespace ProjectManagement.Api.Controllers.Reports;
 public class ReportsController(ReportService reports, ReportExportService exports) : ApiControllerBase
 {
     [HttpGet("summary")]
-    public async Task<IActionResult> Summary([FromQuery] int days = 7, CancellationToken ct = default) => Ok(await reports.GetSummaryAsync(days, ct));
+    public async Task<IActionResult> Summary([FromQuery] int days = 7, [FromQuery] Guid? teamId = null, CancellationToken ct = default) => Ok(await reports.GetSummaryAsync(days, teamId, ct));
 
     [HttpGet("exports")]
     public async Task<IActionResult> Exports(CancellationToken ct) => Ok(await exports.ListAsync(ct));

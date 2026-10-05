@@ -168,7 +168,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
         await GateAsync(ct);
-        var groups = await status.GroupsAsync(ct);
+        var groups = await status.GroupsAsync(ct: ct);
         var projects = groups.SelectMany(g => g.Projects.Select(p => new { group = g.Name, p.Key, p.Name, status = p.Status.ToString(), health = p.Health.ToString(), progress = p.Progress }))
             .Where(p => p.status is not ("Completed" or "Archived" or "Cancelled")).Take(80).ToList();
         if (projects.Count == 0) return new AiSummaryDto("There are no active projects to summarise.", clock.Now);

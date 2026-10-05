@@ -4,7 +4,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   AccessMatrix, DependencyType, Milestone, MilestoneInput, TaskDependencies, ActionItem, ActionItemInput, ActionItemStatus, Attachment, AttachmentLimits, ProjectChatUnread, ProjectGroup, ProjectStatusReport, StatusGroup, Issue, IssueDetail, IssueInput, NotificationPreference, TestEmailResult, Comment, Dashboard, DevEmail, OrgRole, OrgStructure, Invitation, InvitationLookup, Label, Member, Paged, PermissionMatrix, Project, ProjectDetail, ProjectMember,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
-  OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
+  LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
   ConsentDocument, MyConsent,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
@@ -177,12 +177,13 @@ export const taskApi = {
 };
 
 export const insightApi = {
-  dashboard: () => get<Dashboard>('/dashboard'),
+  dashboard: (teamId?: string | null) => get<Dashboard>('/dashboard', { teamId: teamId ?? undefined }),
+  lensTeams: () => get<LensTeam[]>('/lens/teams'),
   calendar: (from: string, to: string, projectId?: string, mine?: boolean, userId?: string) => get<CalendarEvent[]>('/calendar', { from, to, projectId, mine, userId }),
   search: (q: string) => get<{ hits: SearchHit[] }>('/search', { q }),
   activity: (page = 1) => get<Paged<Activity>>('/activity', { page, pageSize: 25 }),
   audit: (action: string | undefined, page = 1) => get<Paged<AuditLog>>('/audit-logs', { action, page, pageSize: 25 }),
-  report: (days: number) => get<ReportSummary>('/reports/summary', { days }),
+  report: (days: number, teamId?: string | null) => get<ReportSummary>('/reports/summary', { days, teamId: teamId ?? undefined }),
 };
 
 export const notificationApi = {
@@ -261,7 +262,7 @@ export const actionItemApi = {
 
 /** The Project Status presentation page. */
 export const statusApi = {
-  groups: () => get<StatusGroup[]>('/project-status/groups'),
+  groups: (teamId?: string | null) => get<StatusGroup[]>('/project-status/groups', { teamId: teamId ?? undefined }),
   report: (projectId: string) => get<ProjectStatusReport>(`/project-status/projects/${projectId}`),
 };
 

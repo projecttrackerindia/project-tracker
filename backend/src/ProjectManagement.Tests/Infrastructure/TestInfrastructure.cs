@@ -197,6 +197,7 @@ public sealed class TestClient(ApiFactory factory)
     public Task<ApiResult> Post(string url, object? body = null) => Send(HttpMethod.Post, url, body ?? new { });
     public Task<ApiResult> Put(string url, object body) => Send(HttpMethod.Put, url, body);
     public Task<ApiResult> Delete(string url) => Send(HttpMethod.Delete, url);
+    public Task<ApiResult> Patch(string url, object body) => Send(HttpMethod.Patch, url, body);
 
     /// <summary>Registers, verifies (via the dev mailbox), signs in. Lands in the user's personal workspace.</summary>
     public static async Task<TestClient> RegisterAsync(ApiFactory factory, string? name = null, string password = "Passw0rd!x")
