@@ -122,7 +122,7 @@
   .cmdk-input input { font-size: 14px; }
   .cmdk-item { font-size: 12.5px; padding: 8px 9px; }
   .cmdk-hint, .cmdk-foot { font-size: 10.5px; }
-  .asst-top-btn { height: 28px; font-size: 11px; padding: 0 10px; }
+  .asst-top-btn { height: 30.4px; font-size: 10.4px; padding: 0 10px; gap: 5px; }
   .asst-prose, .asst-risk-main ul { font-size: 12px; }
   .asst-chip, .asst-understood, .asst-thinking { font-size: 11px; }
   .asst-action b, .asst-proposal b { font-size: 11.5px; }

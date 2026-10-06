@@ -1332,3 +1332,15 @@ tr.row-deleted .td-title { font-style: italic; }
 .plan-total b { color: var(--text); }
 .seat-meter { display: grid; gap: 6px; margin-top: 14px; max-width: 460px; }
 @media (max-width: 560px) { .plan-chooser { gap: 10px 16px; } .pc-block { width: 100%; justify-content: space-between; } }
+
+/* Laptop widths (and the desktop app): the top bar's controls share one height, like the search box and the icons beside them. */
+@media (min-width: 769px) and (max-width: 1600px) {
+  .lens-btn { height: 30.4px; gap: 6.4px; padding: 0 8px 0 8.8px; border-radius: 8.8px; font-size: 10.4px; }
+  .lens-chip { width: 17.6px; height: 17.6px; border-radius: 5.6px; font-size: 8px; }
+  .lens-name { max-width: 120px; }
+  .lens-panel { width: 280px; padding: 6.4px; border-radius: 13px; }
+  .lens-head { padding: 6.4px 8px 8px; } .lens-head strong { font-size: 10.8px; } .lens-head span { font-size: 9.6px; }
+  .lens-search { height: 28px; font-size: 10.4px; } .lens-search input { font-size: 10.4px; }
+  .lens-list li { gap: 9px; padding: 6.4px 8px; border-radius: 9px; }
+  .lens-row b { font-size: 10.8px; } .lens-row small { font-size: 9.6px; } .lens-none { font-size: 10.4px; }
+}

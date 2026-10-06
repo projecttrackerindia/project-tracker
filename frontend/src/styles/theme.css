@@ -108,7 +108,7 @@ html.theme-vt::view-transition-new(root) { z-index: 2; }
 
 /* Laptop widths: one step smaller again. */
 @media (min-width: 769px) and (max-width: 1600px) {
-  .theme-switch { --ts-w: 40px; --ts-h: 21px; margin: 0 4px; }
+  .theme-switch { --ts-w: 36px; --ts-h: 19px; margin: 0 3px; }
   .ts-clouds i:nth-child(1) { width: 10px; right: 4px; top: 5px; }
   .ts-clouds i:nth-child(2) { width: 7px; right: 10px; }
 }
