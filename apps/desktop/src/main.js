@@ -13,7 +13,8 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const WIN = process.platform === 'win32', MAC = process.platform === 'darwin';
 
 /** What the person chose in the tray menu. Kept in a small file next to the window state. */
-const defaults = { keepRunning: true, startHidden: false };
+const DEFAULT_ZOOM = 0.85;   // the app is drawn for a large monitor; a desktop window reads as neat as the website does at this size
+const defaults = { keepRunning: true, startHidden: false, zoom: DEFAULT_ZOOM };
 function settings() { try { return { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { return { ...defaults }; } }
 function saveSettings(patch) { try { fs.writeFileSync(settingsFile(), JSON.stringify({ ...settings(), ...patch })); } catch { /* not worth stopping for */ } }
 const UA_MARK = () => `ProjectTrackerDesktop/${app.getVersion()}`;
@@ -46,6 +47,7 @@ function showOffline() {
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 }
 
+function setZoom(z) { const v = Math.min(1.5, Math.max(0.6, Math.round(z * 100) / 100)); saveSettings({ zoom: v }); win?.webContents.setZoomFactor(v); }
 function createWindow() {
   const st = loadState();
   win = new BrowserWindow({
@@ -62,6 +64,7 @@ function createWindow() {
   if (st.maximized) win.maximize();
   win.once('ready-to-show', () => { if (!(settings().startHidden && process.argv.includes('--hidden') && tray)) win.show(); });
   // It opens at sign-in (or straight into the workspace when already signed in), never at the public website.
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(settings().zoom));
   win.loadURL(`${BASE}/login`).catch(() => undefined);
   win.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && url.startsWith(BASE)) showOffline(); });
 
@@ -161,7 +164,7 @@ function buildMenu() {
       { label: 'Back', accelerator: 'Alt+Left', click: () => win && win.webContents.navigationHistory.canGoBack() && win.webContents.navigationHistory.goBack() },
       { label: 'Forward', accelerator: 'Alt+Right', click: () => win && win.webContents.navigationHistory.canGoForward() && win.webContents.navigationHistory.goForward() },
     ] },
-    { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { label: 'Actual size', accelerator: 'CommandOrControl+0', click: () => setZoom(DEFAULT_ZOOM) }, { label: 'Zoom in', accelerator: 'CommandOrControl+Plus', click: () => setZoom(settings().zoom + 0.05) }, { label: 'Zoom out', accelerator: 'CommandOrControl+-', click: () => setZoom(settings().zoom - 0.05) }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' },
     { label: 'Help', submenu: [...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: installUpdate }, { type: 'separator' }] : []), { label: 'Open in browser', click: () => shell.openExternal(BASE) }, { label: 'Check for updates', click: () => checkUpdates(true) }, { label: 'Downloads page', click: () => shell.openExternal(DOWNLOAD_PAGE) }, { type: 'separator' }, { label: `Version ${app.getVersion()}`, enabled: false }] },
   ]));
