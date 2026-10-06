@@ -3,7 +3,10 @@
   "productName": "Project Tracker",
   "version": "1.0.0",
   "description": "Project Tracker for Windows, macOS and Linux",
-  "author": "Project Tracker <support@projecttracker.in>",
+  "author": {
+    "name": "Project Tracker",
+    "email": "support@projecttracker.in"
+  },
   "license": "UNLICENSED",
   "private": true,
   "main": "src/main.js",
@@ -20,12 +23,60 @@
     "appId": "in.projecttracker.desktop",
     "productName": "Project Tracker",
     "copyright": "Project Tracker",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["src/**/*", "package.json"],
-    "protocols": [{ "name": "Project Tracker", "schemes": ["projecttracker"] }],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "artifactName": "ProjectTracker-Setup.${ext}" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "perMachine": false },
-    "mac": { "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }], "category": "public.app-category.productivity", "artifactName": "ProjectTracker-${arch}.${ext}" },
-    "linux": { "target": ["AppImage", "deb"], "category": "Office", "artifactName": "ProjectTracker.${ext}", "maintainer": "Project Tracker <support@projecttracker.in>" }
-  }
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "Project Tracker",
+        "schemes": [
+          "projecttracker"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "ProjectTracker-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "ProjectTracker-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "artifactName": "ProjectTracker.${ext}",
+      "maintainer": "Project Tracker <support@projecttracker.in>"
+    }
+  },
+  "homepage": "https://projecttracker.in"
 }
