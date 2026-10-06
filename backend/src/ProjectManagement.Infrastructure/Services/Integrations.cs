@@ -128,12 +128,21 @@ public class ResendEmailSender(HttpClient http, IOptions<ResendOptions> options,
     }
 }
 
-/// <summary>Stand-in payment gateway. Replace with Stripe / Razorpay / Paddle behind <see cref="IPaymentProvider"/>.</summary>
+/// <summary>Simulated payments for development and demos: everything succeeds at once and nothing real is charged. Set Billing:Provider=Razorpay for real money.</summary>
 public class MockPaymentProvider(ILogger<MockPaymentProvider> log) : IPaymentProvider
 {
+    public string Name => "mock";
+    public bool RequiresCheckout => false;
+
     public Task<PaymentResult> ChargeAsync(Guid tenantId, string planCode, decimal amount, string currency, CancellationToken ct = default)
     {
         log.LogInformation("[mock-payments] charged {Amount} {Currency} for tenant {Tenant} ({Plan})", amount, currency, tenantId, planCode);
         return Task.FromResult(new PaymentResult(true, $"mock_{Guid.NewGuid():N}"[..20], null));
     }
+
+    public Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default) => Task.CompletedTask;
+    public bool VerifyCheckout(string paymentId, string subscriptionId, string signature) => false;
+    public bool VerifyWebhook(string body, string? signature) => false;
 }

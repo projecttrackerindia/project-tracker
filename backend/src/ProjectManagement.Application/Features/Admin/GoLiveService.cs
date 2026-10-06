@@ -50,6 +50,18 @@ public class GoLiveService(IAppDbContext db, ICurrentContext ctx, IConfiguration
         checks.Add(demo ? Fail("demo", "Demo accounts", "The demo organization and its accounts (well-known password) exist.", "Set SEED_DEMO=false, then disable or delete the demo users and organization from the admin portal.")
             : Ok("demo", "Demo accounts", "No demo accounts."));
 
+        // ---- payments
+        var billing = config["Billing:Provider"] ?? "Mock";
+        if (billing.Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
+        {
+            var missing = new[] { ("KeyId", "Billing:Razorpay:KeyId"), ("KeySecret", "Billing:Razorpay:KeySecret"), ("WebhookSecret", "Billing:Razorpay:WebhookSecret") }.Where(k => string.IsNullOrWhiteSpace(config[k.Item2])).Select(k => k.Item1).ToList();
+            var live = (config["Billing:Razorpay:KeyId"] ?? "").StartsWith("rzp_live_", StringComparison.Ordinal);
+            checks.Add(missing.Count > 0 ? Fail("payments", "Payments", $"Razorpay is selected but {string.Join(", ", missing)} {(missing.Count == 1 ? "is" : "are")} not set.", "Set BILLING_RAZORPAY_KEY_ID, BILLING_RAZORPAY_KEY_SECRET and BILLING_RAZORPAY_WEBHOOK_SECRET, and add the webhook https://<your site>/api/v1/billing/webhooks/razorpay in the Razorpay dashboard (events: subscription.activated, charged, pending, halted, cancelled, completed).")
+                : live ? Ok("payments", "Payments", "Razorpay in live mode: real money is taken.")
+                : Warn("payments", "Payments", "Razorpay is connected with test keys: no real money is taken.", "Switch to the rzp_live_ keys when you are ready to charge customers."));
+        }
+        else checks.Add(Warn("payments", "Payments", "Payments are simulated: choosing a paid plan succeeds without taking any money.", "Set BILLING_PROVIDER=Razorpay and the Razorpay keys before you charge customers."));
+
         // ---- e-mail
         var provider = config["Email:Provider"] ?? "Log";
         if (provider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))

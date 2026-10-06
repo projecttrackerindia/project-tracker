@@ -73,6 +73,7 @@ public interface IAppDbContext
     DbSet<IdempotencyRecord> IdempotencyRecords { get; }
     DbSet<PasskeyCredential> PasskeyCredentials { get; }
     DbSet<EmailLog> EmailLogs { get; }
+    DbSet<BillingEvent> BillingEvents { get; }
     DbSet<EmailSuppression> EmailSuppressions { get; }
     DbSet<PasskeyChallenge> PasskeyChallenges { get; }
     DbSet<Reminder> Reminders { get; }
@@ -230,7 +231,24 @@ public interface IFileStorage
 
 public record PaymentResult(bool Success, string? Reference, string? Error);
 
+/// <summary>What the browser needs to open the provider's payment window for a subscription.</summary>
+public record HostedCheckout(string Provider, string KeyId, string SubscriptionId, string Name, string Description, long AmountMinor, string Currency);
+
+/// <summary>
+/// Takes the money. The simulated provider charges at once; a real one (Razorpay) is hosted: the owner pays in the provider's window, and the provider then
+/// tells us by a signed message (and the browser's confirmation) that the subscription is active, charged again each month, failed or cancelled.
+/// </summary>
 public interface IPaymentProvider
 {
+    /// <summary>"mock" or "razorpay".</summary>
+    string Name { get; }
+    /// <summary>True when the owner has to pay in the provider's window (nothing is charged on the server alone).</summary>
+    bool RequiresCheckout { get; }
     Task<PaymentResult> ChargeAsync(Guid tenantId, string planCode, decimal amount, string currency, CancellationToken ct = default);
+    /// <summary>The provider's id for a plan at this price (created, or re-created after a price change).</summary>
+    Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default);
+    Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default);
+    Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default);
+    bool VerifyCheckout(string paymentId, string subscriptionId, string signature);
+    bool VerifyWebhook(string body, string? signature);
 }

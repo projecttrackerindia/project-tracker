@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { payWithRazorpay, PaymentCancelled } from '../../lib/razorpay';
 import { ApiError } from '../../api/client';
 import { billingApi } from '../../api/endpoints';
 import type { Plan, SubscriptionStatus } from '../../api/types';
@@ -79,6 +80,8 @@ export function BillingPage() {
   const reload = useAuth((s) => s.reloadContext);
   const q = useWsQuery(['billing'], billingApi.overview);
   const [busy, setBusy] = useState(false);
+  const me = useAuth((s) => s.ctx?.user);
+  const hosted = (q.data?.paymentProvider ?? 'mock') !== 'mock';
 
   const refresh = async () => { await invalidateWorkspace(wid); await reload(); };
   const run = async (fn: () => Promise<unknown>, ok: string) => {
@@ -94,9 +97,23 @@ export function BillingPage() {
       title: trial ? `Start ${plan.name} trial?` : price === 0 ? 'Switch to Free?' : `Switch to ${plan.name}?`, danger: price === 0, confirmText: trial ? 'Start trial' : price === 0 ? 'Switch to Free' : 'Confirm',
       message: trial ? `You get 14 days of ${plan.name} for free. No payment is taken now.`
         : price === 0 ? 'Limits of the Free plan apply immediately. Existing data is kept, but you may not be able to add more until you are within the limits.'
+        : hosted ? `Next you pay ${formatMoney(price, plan.currency)} per month in a secure window. You can cancel any time; your plan stays until the end of the paid month.`
         : `You will be charged ${formatMoney(price, plan.currency)} per month. (Demo mode: payments are simulated.)`,
     });
-    if (ok) run(() => billingApi.checkout(plan.code, trial), trial ? 'Trial started.' : 'Plan updated.');
+    if (!ok) return;
+    if (trial || price === 0 || !hosted) { run(() => billingApi.checkout(plan.code, trial), trial ? 'Trial started.' : 'Plan updated.'); return; }
+    // A real payment: the server opens it, the person pays in the provider's window, and the server confirms the signed result.
+    setBusy(true);
+    try {
+      const started = await billingApi.checkout(plan.code, false);
+      if (!started.payment) { toast('Plan updated.'); await refresh(); return; }
+      const result = await payWithRazorpay(started.payment, { name: me?.displayName ?? '', email: me?.email ?? '' });
+      await billingApi.confirm(result.paymentId, result.subscriptionId, result.signature);
+      toast(`You are on ${plan.name}. Thank you!`); await refresh();
+    } catch (e) {
+      if (e instanceof PaymentCancelled) toast('Payment not completed. Nothing was changed.', 'info');
+      else toast(e instanceof ApiError || e instanceof Error ? e.message : 'The payment could not be completed.', 'error');
+    } finally { setBusy(false); }
   };
   const cancel = useMutation({ mutationFn: billingApi.cancel });
 
@@ -113,10 +130,10 @@ export function BillingPage() {
         <div className="card-head">
           <div><h3>Current plan</h3><p>Limits are enforced by the server on every request.</p></div>
           <div className="row">
-            {plan.status === 'Cancelled' && b.canManage && <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(billingApi.resume, 'Subscription resumed.')}>Resume subscription</button>}
+            {plan.status === 'Cancelled' && b.canManage && !hosted && <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(billingApi.resume, 'Subscription resumed.')}>Resume subscription</button>}
             {['Active', 'Trial'].includes(plan.status) && plan.code !== 'FREE' && b.canManage && (
               <button className="btn btn-ghost btn-sm" disabled={busy || cancel.isPending} onClick={async () => {
-                if (await confirmDialog({ title: 'Cancel subscription?', confirmText: 'Cancel subscription', message: 'You keep your plan until the end of the current period, then the workspace moves to the Free plan.' })) run(billingApi.cancel, 'Subscription cancelled.');
+                if (await confirmDialog({ title: 'Cancel subscription?', confirmText: 'Cancel subscription', message: 'You keep your plan until the end of the current period, then the workspace moves to the Free plan. No further payments are taken.' })) run(billingApi.cancel, 'Subscription cancelled.');
               }}>Cancel subscription</button>
             )}
           </div>

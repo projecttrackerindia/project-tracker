@@ -78,6 +78,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
+    public DbSet<BillingEvent> BillingEvents => Set<BillingEvent>();
     public DbSet<EmailSuppression> EmailSuppressions => Set<EmailSuppression>();
     public DbSet<PasskeyChallenge> PasskeyChallenges => Set<PasskeyChallenge>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
@@ -184,6 +185,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => x.EmailVerificationTokenHash);
             e.HasIndex(x => x.PasswordResetTokenHash);
         });
+        b.Entity<BillingEvent>(e => { e.HasIndex(x => new { x.Provider, x.ProviderEventId }).IsUnique(); e.Property(x => x.Provider).HasMaxLength(20); e.Property(x => x.ProviderEventId).HasMaxLength(100); e.Property(x => x.Type).HasMaxLength(60); });
         b.Entity<EmailLog>(e => { e.HasIndex(x => new { x.Status, x.NextAttemptAt }); e.HasIndex(x => x.CreatedAt); e.Property(x => x.ToEmail).HasMaxLength(320); e.Property(x => x.Subject).HasMaxLength(300); e.Property(x => x.Kind).HasMaxLength(30); e.Property(x => x.Error).HasMaxLength(300); });
         b.Entity<EmailSuppression>(e => { e.HasIndex(x => x.Email).IsUnique(); e.Property(x => x.Email).HasMaxLength(320); e.Property(x => x.Reason).HasMaxLength(30); e.Property(x => x.Detail).HasMaxLength(300); });
         b.Entity<PasskeyCredential>(e => { e.HasIndex(x => x.CredentialId).IsUnique(); e.HasIndex(x => x.UserId); e.Property(x => x.CredentialId).HasMaxLength(512); e.Property(x => x.Name).HasMaxLength(80); });
@@ -785,6 +787,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         b.Entity<Subscription>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();
+            e.HasIndex(x => x.ProviderSubscriptionId); e.HasIndex(x => x.PendingProviderSubscriptionId);
+            e.Property(x => x.Provider).HasMaxLength(20); e.Property(x => x.ProviderSubscriptionId).HasMaxLength(60); e.Property(x => x.PendingProviderSubscriptionId).HasMaxLength(60);
             e.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<Invoice>(e => { e.HasIndex(x => new { x.TenantId, x.IssuedAt }); e.Property(x => x.Number).HasMaxLength(40); });

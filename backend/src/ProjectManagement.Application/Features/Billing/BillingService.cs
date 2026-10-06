@@ -20,19 +20,23 @@ public record PlanDto(Guid Id, string Code, string Name, string? Description, de
 public record PublicPlanDto(string Code, string Name, decimal? PriceMonthly, string Currency);
 public record UsageDto(string Key, string Label, long Used, long Limit);
 public record InvoiceDto(Guid Id, string Number, string PlanCode, decimal Amount, string Currency, InvoiceStatus Status, string Description, DateTime IssuedAt);
+/// <param name="PaymentProvider">"mock" (simulated) or "razorpay"; the screen words its buttons accordingly.</param>
+/// <param name="Payment">Set when the owner must now pay in the provider's window to finish choosing a plan.</param>
 public record BillingOverviewDto(PlanSummaryDto Plan, IReadOnlyList<UsageDto> Usage, IReadOnlyList<InvoiceDto> Invoices, bool TrialAvailable,
-    IReadOnlyList<PlanDto> Plans, bool CanManage);
+    IReadOnlyList<PlanDto> Plans, bool CanManage, string PaymentProvider = "mock", HostedCheckout? Payment = null);
 public record CheckoutRequest(string PlanCode, bool StartTrial);
+public record ConfirmPaymentRequest(string PaymentId, string SubscriptionId, string Signature);
 
 public class BillingService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
-    EntitlementService entitlements, IPaymentProvider payments, IOptions<AppOptions> options)
+    EntitlementService entitlements, IPaymentProvider payments, SubscriptionActivator activator, IOptions<AppOptions> options)
 {
     private readonly AppOptions _opt = options.Value;
 
     public async Task<BillingOverviewDto> GetOverviewAsync(CancellationToken ct = default)
     {
         var tid = ctx.RequireTenantId();
+        entitlements.Forget(tid);   // a change made earlier in this same request must show in the answer
         var plan = await entitlements.GetEffectivePlanAsync(tid, ct);
         var tenant = await db.Tenants.AsNoTracking().FirstAsync(t => t.Id == tid, ct);
         var canManage = await permissions.HasAsync(Permissions.BillingManage, ct);
@@ -45,7 +49,7 @@ public class BillingService(
 
         return new BillingOverviewDto(
             new PlanSummaryDto(plan.Plan.Code, plan.Plan.Name, plan.Status, plan.TrialEnd, plan.PeriodEnd, plan.CancelAtPeriodEnd, plan.Downgraded),
-            usage, invoices, !tenant.TrialUsed, await GetPlansAsync(plan.Plan.Code, ct), canManage);
+            usage, invoices, !tenant.TrialUsed, await GetPlansAsync(plan.Plan.Code, ct), canManage, payments.Name);
     }
 
     public async Task<IReadOnlyList<PlanDto>> GetPlansAsync(string? currentCode, CancellationToken ct = default)
@@ -74,6 +78,9 @@ public class BillingService(
 
         if (plan.Code == EntitlementService.FreePlan)
         {
+            // Going back to Free ends any recurring payment at the provider at once.
+            if (sub.ProviderSubscriptionId is { } paying) await activator.CancelAtProviderAsync(paying, atCycleEnd: false, ct);
+            sub.Provider = null; sub.ProviderSubscriptionId = null; sub.PendingPlanId = null; sub.PendingProviderSubscriptionId = null;
             sub.PlanId = plan.Id; sub.Status = SubscriptionStatus.Active; sub.CurrentPeriodStart = now; sub.CurrentPeriodEnd = null;
             sub.TrialEnd = null; sub.CancelAtPeriodEnd = false; sub.CancelledAt = null;
         }
@@ -86,6 +93,25 @@ public class BillingService(
             sub.PlanId = plan.Id; sub.Status = SubscriptionStatus.Trial; sub.CurrentPeriodStart = now;
             sub.TrialEnd = now.AddDays(_opt.TrialDays); sub.CurrentPeriodEnd = sub.TrialEnd; sub.CancelAtPeriodEnd = false; sub.CancelledAt = null;
             tenant.TrialUsed = true;
+        }
+        else if (payments.RequiresCheckout)
+        {
+            // A real provider: nothing changes until the owner has paid in the provider's window and the provider confirms.
+            HostedCheckout checkout;
+            try
+            {
+                plan.ProviderPlanId = await payments.EnsurePlanAsync(plan.Code, plan.Name, price, plan.Currency, plan.ProviderPlanId, plan.ProviderPlanAmount, ct);
+                plan.ProviderPlanAmount = price;
+                checkout = await payments.StartSubscriptionAsync(tid, plan.Code, plan.Name, plan.ProviderPlanId, price, plan.Currency, ct);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                throw new AppException(502, "PAYMENT_PROVIDER_ERROR", "The payment service could not start the payment. Try again in a moment.");
+            }
+            sub.PendingPlanId = plan.Id; sub.PendingProviderSubscriptionId = checkout.SubscriptionId;
+            recorder.Audit("billing.checkout_started", "Subscription", sub.Id, newValue: new { plan.Code, checkout.SubscriptionId });
+            await db.SaveChangesAsync(ct);
+            return (await GetOverviewAsync(ct)) with { Payment = checkout };
         }
         else
         {
@@ -112,6 +138,26 @@ public class BillingService(
         return await GetOverviewAsync(ct);
     }
 
+    /// <summary>The browser reports the payment window's result. The signature proves it came from the provider; the webhook confirms the same thing later and changes nothing twice.</summary>
+    public async Task<BillingOverviewDto> ConfirmPaymentAsync(ConfirmPaymentRequest req, CancellationToken ct = default)
+    {
+        await permissions.RequireAsync(Permissions.BillingManage, ct);
+        var tid = ctx.RequireTenantId();
+        if (!payments.VerifyCheckout(req.PaymentId ?? "", req.SubscriptionId ?? "", req.Signature ?? ""))
+            throw new AppException(400, "PAYMENT_SIGNATURE_INVALID", "The payment could not be verified. If money was taken, it will be matched to your account automatically.");
+        var sub = await db.Subscriptions.FirstAsync(s => s.TenantId == tid, ct);
+        if (sub.PendingProviderSubscriptionId != req.SubscriptionId || sub.PendingPlanId is not { } planId)
+            throw new ConflictException("This payment does not match a plan you were choosing.", "PAYMENT_NOT_PENDING");
+        var plan = await db.Plans.FirstAsync(p => p.Id == planId, ct);
+        var old = await entitlements.GetEffectivePlanAsync(tid, ct);
+        await activator.ActivateAsync(sub, plan, req.SubscriptionId!, clock.Now, null, ct);
+        await activator.RecordPaymentAsync(tid, plan, plan.PriceMonthly ?? 0, plan.Currency, req.PaymentId!, true, null, $"{plan.Name} plan — monthly subscription", ct);
+        recorder.Audit("subscription.changed", "Subscription", sub.Id, old.Plan.Code, plan.Code);
+        recorder.Activity("subscription.changed", "Subscription", sub.Id, $"Plan changed: {old.Plan.Name} → {plan.Name}");
+        await db.SaveChangesAsync(ct);
+        return await GetOverviewAsync(ct);
+    }
+
     public async Task<BillingOverviewDto> CancelAsync(CancellationToken ct = default)
     {
         await permissions.RequireAsync(Permissions.BillingManage, ct);
@@ -120,6 +166,8 @@ public class BillingService(
         if (sub.Plan?.Code == EntitlementService.FreePlan || sub.Status is SubscriptionStatus.Cancelled or SubscriptionStatus.Expired)
             throw new ConflictException("There is no active paid subscription to cancel.", "NOTHING_TO_CANCEL");
 
+        // A recurring payment at the provider stops at the end of the paid period; no further charge is made.
+        if (sub.ProviderSubscriptionId is { } paying) await activator.CancelAtProviderAsync(paying, atCycleEnd: true, ct);
         // Access continues until the paid period ends, then the workspace falls back to the Free plan.
         sub.Status = SubscriptionStatus.Cancelled;
         sub.CancelAtPeriodEnd = true;
@@ -136,6 +184,9 @@ public class BillingService(
         await permissions.RequireAsync(Permissions.BillingManage, ct);
         var tid = ctx.RequireTenantId();
         var sub = await db.Subscriptions.FirstAsync(s => s.TenantId == tid, ct);
+        // A cancelled recurring payment cannot be switched back on at the provider: the owner subscribes again (it keeps the paid period meanwhile).
+        if (sub.ProviderSubscriptionId is not null && sub.Status == SubscriptionStatus.Cancelled)
+            throw new ConflictException("Choose a plan to subscribe again: the payment mandate was cancelled and needs your approval once more.", "CANNOT_RESUME");
         if (sub.Status != SubscriptionStatus.Cancelled || EntitlementService.IsLapsed(sub, clock.Now))
             throw new ConflictException("This subscription cannot be resumed. Choose a plan to subscribe again.", "CANNOT_RESUME");
         sub.Status = sub.TrialEnd is { } te && te > clock.Now ? SubscriptionStatus.Trial : SubscriptionStatus.Active;
@@ -177,6 +228,11 @@ public class MaintenanceService(IAppDbContext db, IPaymentProvider payments, App
             var before = sub.Status;
             if (sub.Status is SubscriptionStatus.Trial or SubscriptionStatus.Cancelled)
                 sub.Status = SubscriptionStatus.Expired;
+            else if (sub.Status == SubscriptionStatus.Active && sub.ProviderSubscriptionId is not null)
+            {
+                // The provider charges each month and tells us by webhook. If the period ended and no news came for three days, treat it as a failed renewal.
+                if (sub.CurrentPeriodEnd!.Value.AddDays(3) <= now) sub.Status = SubscriptionStatus.PastDue;
+            }
             else if (sub.Status == SubscriptionStatus.Active && sub.Plan?.PriceMonthly is { } price && !sub.CancelAtPeriodEnd)
             {
                 var charge = await payments.ChargeAsync(sub.TenantId, sub.Plan.Code, price, sub.Plan.Currency, ct);

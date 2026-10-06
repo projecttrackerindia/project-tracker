@@ -53,6 +53,28 @@ Open `https://<your domain>`. First start applies the database migrations automa
 Open **Admin → System health**. In the **Go-live checklist**, click **Send test email to me** and confirm it arrives. If it does not,
 look at `docker compose logs api` for the SMTP error.
 
+### Payments (before you charge anyone)
+
+Out of the box payments are **simulated**: choosing a paid plan succeeds and nothing real is charged. To take real money with Razorpay:
+
+1. In the Razorpay dashboard create **API keys** (start with the `rzp_test_` pair) and a **webhook** to
+   `https://<your site>/api/v1/billing/webhooks/razorpay` with a secret you choose and the events `subscription.activated`,
+   `subscription.charged`, `subscription.pending`, `subscription.halted`, `subscription.cancelled`, `subscription.completed`.
+2. In `.env` set `BILLING_PROVIDER=Razorpay`, `BILLING_RAZORPAY_KEY_ID`, `BILLING_RAZORPAY_KEY_SECRET` and `BILLING_RAZORPAY_WEBHOOK_SECRET`, then redeploy.
+3. Pay once with a Razorpay test card from a test workspace, and check the invoice appears under **Settings → Billing**. Only then switch to the `rzp_live_` keys.
+
+How it behaves: the owner pays in Razorpay's window; the plan changes when Razorpay confirms (the signed message is the source of truth, so a closed
+browser tab does not lose a payment). Razorpay charges each month and tells the app; a failed charge puts the workspace **Past due** and the owner is
+notified; **Cancel** stops the next charge and keeps the plan until the end of the paid month. Switching plans ends the older subscription at once
+(there is no proration). Prices shown are what Razorpay charges: if you must add GST, set the plan price accordingly or discuss tax invoicing with
+your accountant, because the app does not add tax on top.
+
+### A staging copy (recommended)
+
+Run a second copy next to production before big changes: clone the repository into another folder, give it its own `.env` (a different `PUBLIC_URL`, port,
+database volume and `BILLING_PROVIDER=Mock` or Razorpay **test** keys), start it with `docker compose -p staging ...`, restore last night's backup into it
+with `sh deploy/restore.sh <db-file>` (see Backups), and try the upgrade there first. Migrations run when it starts, so you see a failing one before your customers do.
+
 ## 5. Work through the go-live checklist
 
 The same page lists what still needs attention, worst first. Each line says what is wrong and how to fix it:

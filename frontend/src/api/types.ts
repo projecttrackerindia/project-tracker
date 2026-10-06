@@ -200,7 +200,8 @@ export interface ReportSummary {
 export interface Plan { id: string; code: string; name: string; description: string | null; priceMonthly: number | null; currency: string; features: Record<string, number>; isCurrent: boolean; sortOrder: number }
 export interface Usage { key: string; label: string; used: number; limit: number }
 export interface Invoice { id: string; number: string; planCode: string; amount: number; currency: string; status: string; description: string; issuedAt: string }
-export interface BillingOverview { plan: PlanSummary; usage: Usage[]; invoices: Invoice[]; trialAvailable: boolean; plans: Plan[]; canManage: boolean }
+export interface HostedCheckout { provider: string; keyId: string; subscriptionId: string; name: string; description: string; amountMinor: number; currency: string }
+export interface BillingOverview { plan: PlanSummary; usage: Usage[]; invoices: Invoice[]; trialAvailable: boolean; plans: Plan[]; canManage: boolean; paymentProvider?: string; payment?: HostedCheckout | null }
 
 export interface AdminStats { deletedTenants: number; users: number; activeUsers: number; tenants: number; organizations: number; personalWorkspaces: number; suspendedTenants: number; subscriptions: { planCode: string; count: number }[]; activeSessions: number }
 export interface AdminTenant { id: string; name: string; slug: string; type: WorkspaceType; status: 'Active' | 'Suspended'; ownerEmail: string | null; planCode: string; subscriptionStatus: SubscriptionStatus; periodEnd: string | null; memberCount: number; createdAt: string; isDeleted: boolean; deletedAt: string | null }

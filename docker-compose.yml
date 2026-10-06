@@ -42,6 +42,14 @@ services:
       Email__Smtp__From: ${SMTP_FROM:-no-reply@example.com}
       Email__Resend__ApiKey: ${RESEND_API_KEY:-}
       Email__Resend__From: ${RESEND_FROM:-}
+      Email__Resend__WebhookSecret: ${RESEND_WEBHOOK_SECRET:-}
+      Email__FromName: ${EMAIL_FROM_NAME:-Project Tracker}
+      Email__ReplyTo: ${EMAIL_REPLY_TO:-}
+      # Payments: "Mock" simulates them (nothing real is charged); "Razorpay" takes real subscriptions (see deploy/DEPLOY.md, section Payments).
+      Billing__Provider: ${BILLING_PROVIDER:-Mock}
+      Billing__Razorpay__KeyId: ${BILLING_RAZORPAY_KEY_ID:-}
+      Billing__Razorpay__KeySecret: ${BILLING_RAZORPAY_KEY_SECRET:-}
+      Billing__Razorpay__WebhookSecret: ${BILLING_RAZORPAY_WEBHOOK_SECRET:-}
       # Optional bootstrap for local trials (leave unset in real deployments):
       Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-}
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-}

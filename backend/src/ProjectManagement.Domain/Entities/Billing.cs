@@ -14,6 +14,9 @@ public class Plan : AuditableEntity
     public string Currency { get; set; } = "INR";
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
+    /// <summary>The same plan at the payment provider (Razorpay plan_...), created the first time someone subscribes; recreated when the price changes.</summary>
+    public string? ProviderPlanId { get; set; }
+    public decimal? ProviderPlanAmount { get; set; }
     public ICollection<PlanFeature> Features { get; set; } = new List<PlanFeature>();
 }
 
@@ -35,7 +38,23 @@ public class Subscription : TenantEntity
     public DateTime? TrialEnd { get; set; }
     public bool CancelAtPeriodEnd { get; set; }
     public DateTime? CancelledAt { get; set; }
+    /// <summary>Who takes the payments: null (the platform's own simulated billing) or the provider's name ("razorpay").</summary>
+    public string? Provider { get; set; }
+    /// <summary>The recurring subscription at the provider (sub_...) that pays for this plan.</summary>
+    public string? ProviderSubscriptionId { get; set; }
+    /// <summary>A plan the owner started paying for but has not completed yet (the payment window is open): it takes effect when the provider confirms.</summary>
+    public Guid? PendingPlanId { get; set; }
+    public string? PendingProviderSubscriptionId { get; set; }
     public Plan? Plan { get; set; }
+}
+
+/// <summary>A message from the payment provider that was already handled: the same event arriving twice (providers retry) does nothing the second time.</summary>
+public class BillingEvent : Entity
+{
+    public string Provider { get; set; } = "";
+    public string ProviderEventId { get; set; } = "";
+    public string Type { get; set; } = "";
+    public DateTime ReceivedAt { get; set; }
 }
 
 public class Invoice : TenantEntity, ITenantScoped

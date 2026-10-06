@@ -112,3 +112,35 @@ public sealed class RecordingChangeFeed : IChangeFeed
     public ConcurrentQueue<ChangeEvent> Published { get; } = new();
     public void Publish(IReadOnlyList<ChangeEvent> changes) { foreach (var c in changes) Published.Enqueue(c); }
 }
+
+/// <summary>
+/// A payment provider for tests that can behave like the simulated one (the default: everything succeeds at once) or like a hosted one such as Razorpay
+/// (<see cref="Hosted"/> = true): the owner "pays in a window", and signatures are the real Razorpay HMACs under known secrets.
+/// </summary>
+public sealed class FakePayments : ProjectManagement.Application.Abstractions.IPaymentProvider
+{
+    public const string KeySecret = "test-key-secret", WebhookSecret = "test-webhook-secret";
+    public bool Hosted { get; set; }
+    public List<(string Id, bool AtCycleEnd)> Cancelled { get; } = [];
+    public bool FailToStart { get; set; }
+    public string Name => Hosted ? "razorpay" : "mock";
+    public bool RequiresCheckout => Hosted;
+
+    public Task<ProjectManagement.Application.Abstractions.PaymentResult> ChargeAsync(Guid tenantId, string planCode, decimal amount, string currency, CancellationToken ct = default) =>
+        Task.FromResult(new ProjectManagement.Application.Abstractions.PaymentResult(true, $"mock_{Guid.NewGuid():N}"[..20], null));
+    public Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default) =>
+        Task.FromResult(existingId is not null && existingAmount == price ? existingId : $"plan_{planCode}_{price}");
+    public Task<ProjectManagement.Application.Abstractions.HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default)
+    {
+        if (FailToStart) throw new InvalidOperationException("Razorpay: the plan is not valid");
+        return Task.FromResult(new ProjectManagement.Application.Abstractions.HostedCheckout("razorpay", "rzp_test_key", $"sub_{Guid.NewGuid():N}"[..20], "Project Tracker", $"{planName} plan, monthly", (long)(price * 100), currency));
+    }
+    public Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default) { Cancelled.Add((providerSubscriptionId, atCycleEnd)); return Task.CompletedTask; }
+    public bool VerifyCheckout(string paymentId, string subscriptionId, string signature) =>
+        ProjectManagement.Infrastructure.Services.RazorpaySignature.Matches(ProjectManagement.Infrastructure.Services.RazorpaySignature.Hex(KeySecret, $"{paymentId}|{subscriptionId}"), signature);
+    public bool VerifyWebhook(string body, string? signature) =>
+        ProjectManagement.Infrastructure.Services.RazorpaySignature.Matches(ProjectManagement.Infrastructure.Services.RazorpaySignature.Hex(WebhookSecret, body), signature);
+
+    public static string CheckoutSignature(string paymentId, string subscriptionId) => ProjectManagement.Infrastructure.Services.RazorpaySignature.Hex(KeySecret, $"{paymentId}|{subscriptionId}");
+    public static string WebhookSignature(string body) => ProjectManagement.Infrastructure.Services.RazorpaySignature.Hex(WebhookSecret, body);
+}

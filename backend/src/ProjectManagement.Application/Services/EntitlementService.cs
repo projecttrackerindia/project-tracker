@@ -30,6 +30,9 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
         _seenEpoch[tenantId] = now;
     }
 
+    /// <summary>Drops this request's own copies for a workspace, after the request itself changed its plan, so what is read next is the new plan.</summary>
+    public void Forget(Guid tenantId) { _cache.Remove(tenantId); _entitlements.Remove(tenantId); _overrides.Remove(tenantId); }
+
     /// <summary>Expired / lapsed subscriptions fall back to FREE entitlements so limits cannot be bypassed.</summary>
     public static bool IsLapsed(Subscription sub, DateTime now) =>
         sub.Status == SubscriptionStatus.Expired

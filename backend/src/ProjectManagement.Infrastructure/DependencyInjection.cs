@@ -55,7 +55,12 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasherAdapter>();
         services.AddSingleton<ITokenService, TokenService>();
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
-        services.AddSingleton<IPaymentProvider, MockPaymentProvider>();
+        // Payments: simulated unless Billing:Provider=Razorpay (keys in Billing:Razorpay:*).
+        services.Configure<RazorpayOptions>(config.GetSection(RazorpayOptions.Section));
+        if ((config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
+            services.AddHttpClient<IPaymentProvider, RazorpayPaymentProvider>(c => c.Timeout = TimeSpan.FromSeconds(20));
+        else
+            services.AddSingleton<IPaymentProvider, MockPaymentProvider>();
 
         // Single sign-on and social sign-in: identity providers are reached through the "oidc" HTTP client.
         services.AddHttpClient("oidc", c => c.Timeout = TimeSpan.FromSeconds(15));

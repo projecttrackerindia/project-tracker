@@ -196,6 +196,7 @@ export const notificationApi = {
 export const billingApi = {
   overview: () => get<BillingOverview>('/billing'),
   checkout: (planCode: string, startTrial: boolean) => post<BillingOverview>('/billing/checkout', { planCode, startTrial }),
+  confirm: (paymentId: string, subscriptionId: string, signature: string) => post<BillingOverview>('/billing/confirm', { paymentId, subscriptionId, signature }),
   cancel: () => post<BillingOverview>('/billing/cancel'),
   resume: () => post<BillingOverview>('/billing/resume'),
 };

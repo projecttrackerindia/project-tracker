@@ -82,6 +82,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     /// <summary>Stands in for the internet: records every webhook request and answers with whatever the test asks for.</summary>
     public RecordingWebhookTransport Webhooks { get; } = new();
+    public FakePayments Payments { get; } = new();
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
@@ -97,6 +98,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(Ai);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiChat>();
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(Chat);
+            services.RemoveAll<ProjectManagement.Application.Abstractions.IPaymentProvider>();
+            services.AddSingleton<ProjectManagement.Application.Abstractions.IPaymentProvider>(Payments);
             services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);

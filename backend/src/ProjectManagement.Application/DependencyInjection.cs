@@ -48,6 +48,8 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<DeviceLoginService>();
         services.AddScoped<PasskeyService>();
+        services.AddScoped<ProjectManagement.Application.Features.Billing.SubscriptionActivator>();
+        services.AddScoped<ProjectManagement.Application.Features.Billing.BillingWebhookService>();
         services.AddScoped<EmailRetryService>();
         services.AddScoped<EmailLinks>();
         services.AddScoped<UnsubscribeService>();
