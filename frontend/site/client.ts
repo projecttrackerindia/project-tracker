@@ -6,6 +6,7 @@ export const CLIENT_SCRIPT = `<script>
 (function(){
 var d=document,h=d.documentElement;
 if(h.classList.contains('app'))return;
+if(/ProjectTrackerDesktop\\//.test(navigator.userAgent)){location.replace('/login');return}
 h.classList.add('pt-js');
 var rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
 var els=[].slice.call(d.querySelectorAll('[data-r]'));

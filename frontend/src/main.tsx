@@ -19,14 +19,17 @@ import './styles/org.css';
 import './styles/reminders.css';
 import './styles/mobile.css';
 import './styles/phone.css';
+import './styles/desktop.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
 import './lib/pwa';
 import { startResponsiveTables } from './lib/responsiveTables';
 import { startNativeApp } from './lib/native';
+import { startDesktopApp } from './lib/desktop';
 
 startNativeApp();
+startDesktopApp();
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 

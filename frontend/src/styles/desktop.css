@@ -1,0 +1,12 @@
+/* The desktop app (Windows, Mac, Linux): the top bar is the window's title bar. Only applies inside the app (html.desktop-app). */
+.desktop-app { --topbar-h: 56px; }
+.desktop-app .topbar, .desktop-app .sidebar-brand { -webkit-app-region: drag; user-select: none; }
+.desktop-app .topbar :is(button, a, input, select, textarea, label, [role='button'], [role='menuitem'], .no-drag),
+.desktop-app .sidebar-brand :is(button, a) { -webkit-app-region: no-drag; }
+/* Windows draws its minimize, maximize and close buttons over the right end of the bar. */
+.desktop-win .topbar { padding-right: 154px; }
+/* A desktop window is never shown with the phone layout. */
+.desktop-app .m-tabs, .desktop-app .m-create-fab { display: none !important; }
+.desktop-app ::-webkit-scrollbar { width: 11px; height: 11px; }
+.desktop-app ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-2) 28%, transparent); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+.desktop-app ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text-2) 45%, transparent); }

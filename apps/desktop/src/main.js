@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Menu, Tray, Notification, shell, nativeImage, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, Notification, shell, nativeImage, nativeTheme, session, globalShortcut, ipcMain } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
@@ -8,6 +8,29 @@ const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer } = require('./links
 const BASE = appUrl();
 let win = null, tray = null, quitting = false, pendingLink = null;
 const stateFile = () => path.join(app.getPath('userData'), 'window.json');
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+const WIN = process.platform === 'win32', MAC = process.platform === 'darwin';
+const TITLEBAR_H = 56;   // the height of the app's top bar in the desktop app (see desktop.css)
+
+/** What the person chose in the tray menu. Kept in a small file next to the window state. */
+const defaults = { keepRunning: true, startHidden: false };
+function settings() { try { return { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { return { ...defaults }; } }
+function saveSettings(patch) { try { fs.writeFileSync(settingsFile(), JSON.stringify({ ...settings(), ...patch })); } catch { /* not worth stopping for */ } }
+const UA_MARK = () => `ProjectTrackerDesktop/${app.getVersion()}`;
+
+/** Goes to a page of the app without reloading it (the app's own router handles the address). */
+function go(route) {
+  if (!win) return;
+  win.show(); win.focus();
+  win.webContents.executeJavaScript(`(function(){history.pushState({}, '', ${JSON.stringify(route)});dispatchEvent(new PopStateEvent('popstate'));})()`).catch(() => undefined);
+}
+/** The page's own search ("/" focuses it): one shortcut anywhere on the computer opens the app ready to search. */
+function quickSearch() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+  win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'/',bubbles:true}))`).catch(() => undefined);
+}
 
 function loadState() {
   try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')); } catch { return { width: 1280, height: 820 }; }
@@ -26,13 +49,20 @@ function showOffline() {
 function createWindow() {
   const st = loadState();
   win = new BrowserWindow({
-    width: st.width, height: st.height, x: st.x, y: st.y, minWidth: 420, minHeight: 600, show: false, backgroundColor: '#f4f1fb', title: 'Project Tracker',
+    width: st.width, height: st.height, x: st.x, y: st.y, minWidth: 1000, minHeight: 620, show: false, title: 'Project Tracker',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f0c1d' : '#f4f1fb',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true },
+    // Windows: the app's own top bar is the title bar, with the system's window buttons on top of it. Mac and Linux keep the system's.
+    ...(WIN ? { titleBarStyle: 'hidden', titleBarOverlay: { color: nativeTheme.shouldUseDarkColors ? '#17132b' : '#ffffff', symbolColor: nativeTheme.shouldUseDarkColors ? '#e9e5ff' : '#221a3a', height: TITLEBAR_H } } : {}),
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'preload.js') },
   });
+  win.setMenuBarVisibility(false);
+  win.webContents.setUserAgent(`${win.webContents.getUserAgent().replace(/ Electron\/\S+/, '')} ${UA_MARK()}`);
   if (st.maximized) win.maximize();
-  win.once('ready-to-show', () => win.show());
-  win.loadURL(BASE).catch(() => undefined);
+  win.once('ready-to-show', () => { if (!(settings().startHidden && process.argv.includes('--hidden') && tray)) win.show(); });
+  // It opens at sign-in (or straight into the workspace when already signed in), never at the public website.
+  win.loadURL(`${BASE}/login`).catch(() => undefined);
   win.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && url.startsWith(BASE)) showOffline(); });
 
   // Pages of the app stay in the window; everything else opens in the person's own browser.
@@ -44,12 +74,16 @@ function createWindow() {
     const n = unreadFromTitle(title);
     app.setBadgeCount(n);
     if (tray) tray.setToolTip(n > 0 ? `Project Tracker (${n} unread)` : 'Project Tracker');
-    if (process.platform === 'win32' && win) win.setOverlayIcon(null, '');
+    if (WIN && win) overlayBadge(n);
+  });
+  win.webContents.on('context-menu', (_e, p) => contextMenu(p));
+  win.webContents.session.on('will-download', (_e, item) => {
+    item.once('done', (_ev, state) => { if (state === 'completed') { const n = new Notification({ title: 'Download finished', body: item.getFilename() }); n.on('click', () => shell.showItemInFolder(item.getSavePath())); n.show(); } });
   });
 
   win.on('resize', saveState); win.on('move', saveState); win.on('close', (e) => {
     saveState();
-    if (!quitting && process.platform !== 'darwin' && tray) { e.preventDefault(); win.hide(); }   // closing keeps it running in the tray, like a chat app
+    if (!quitting && !MAC && tray && settings().keepRunning) { e.preventDefault(); win.hide(); }   // closing keeps it running in the tray, like a chat app
   });
   if (pendingLink) { open(pendingLink); pendingLink = null; }
 }
@@ -62,27 +96,70 @@ function open(link) {
   win.show(); win.focus(); win.loadURL(url).catch(() => undefined);
 }
 
+/** Windows has no badge number: a small red dot with the count is drawn by the page and put on the taskbar button. */
+async function overlayBadge(n) {
+  if (!win || win.isDestroyed()) return;
+  if (n <= 0) { win.setOverlayIcon(null, ''); return; }
+  try {
+    const url = await win.webContents.executeJavaScript(`(function(){var c=document.createElement('canvas');c.width=c.height=32;var x=c.getContext('2d');x.fillStyle='#e11d48';x.beginPath();x.arc(16,16,15,0,7);x.fill();x.fillStyle='#fff';x.font='bold '+(${n} > 9 ? 17 : 21)+'px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(${n} > 99 ? '99+' : String(${n}),16,17);return c.toDataURL('image/png');})()`);
+    win.setOverlayIcon(nativeImage.createFromDataURL(url), `${n} unread`);
+  } catch { /* the badge is a nicety */ }
+}
+
+/** Right-click: spelling suggestions, copy and paste, and links and images. */
+function contextMenu(p) {
+  const items = [];
+  if (p.misspelledWord) {
+    for (const w of p.dictionarySuggestions.slice(0, 5)) items.push({ label: w, click: () => win.webContents.replaceMisspelling(w) });
+    items.push({ label: 'Add to dictionary', click: () => win.webContents.session.addWordToSpellCheckerDictionary(p.misspelledWord) }, { type: 'separator' });
+  }
+  if (p.linkURL) items.push({ label: 'Open link in browser', click: () => shell.openExternal(p.linkURL) }, { label: 'Copy link address', click: () => require('electron').clipboard.writeText(p.linkURL) }, { type: 'separator' });
+  if (p.mediaType === 'image') items.push({ label: 'Copy image', click: () => win.webContents.copyImageAt(p.x, p.y) }, { label: 'Save image as…', click: () => win.webContents.downloadURL(p.srcURL) }, { type: 'separator' });
+  if (p.isEditable) items.push({ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' });
+  else if (p.selectionText) items.push({ role: 'copy' });
+  if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
+}
+
 function createTray() {
   const img = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png')).resize({ width: 18, height: 18 });
   tray = new Tray(img);
   tray.setToolTip('Project Tracker');
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const build = () => Menu.buildFromTemplate([
     { label: 'Open Project Tracker', click: () => { win.show(); win.focus(); } },
-    { label: 'My work', click: () => open('projecttracker://my-work') },
+    { label: 'Search…', accelerator: 'CommandOrControl+Shift+Space', click: quickSearch },
+    { label: 'My work', click: () => go('/my-work') },
+    { label: 'Reminders', click: () => go('/reminders') },
+    { type: 'separator' },
+    { label: 'Start when I sign in to my computer', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => { app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }); saveSettings({ startHidden: i.checked }); } },
+    { label: 'Keep running in the tray when the window is closed', type: 'checkbox', checked: settings().keepRunning, click: (i) => saveSettings({ keepRunning: i.checked }) },
     { type: 'separator' },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
-  ]));
+  ]);
+  tray.setContextMenu(build());
   tray.on('click', () => { if (win.isVisible()) win.focus(); else win.show(); });
 }
 
 function buildMenu() {
-  const mac = process.platform === 'darwin';
+  const nav = (label, route, key) => ({ label, accelerator: `CommandOrControl+${key}`, click: () => go(route) });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(mac ? [{ role: 'appMenu' }] : []),
+    ...(MAC ? [{ role: 'appMenu' }] : []),
+    { label: 'File', submenu: [
+      { label: 'Search…', accelerator: 'CommandOrControl+K', click: quickSearch },
+      { label: 'Account settings', accelerator: 'CommandOrControl+,', click: () => go('/account') },
+      { type: 'separator' },
+      MAC ? { role: 'close' } : { label: 'Quit', accelerator: 'CommandOrControl+Q', click: () => { quitting = true; app.quit(); } },
+    ] },
     { role: 'editMenu' },
+    { label: 'Go', submenu: [
+      nav('Dashboard', '/', '1'), nav('My work', '/my-work', '2'), nav('Projects', '/projects', '3'), nav('Chat', '/chat', '4'),
+      nav('Reminders', '/reminders', '5'), nav('Calendar', '/calendar', '6'), nav('Assistant', '/ai', '7'),
+      { type: 'separator' },
+      { label: 'Back', accelerator: 'Alt+Left', click: () => win && win.webContents.navigationHistory.canGoBack() && win.webContents.navigationHistory.goBack() },
+      { label: 'Forward', accelerator: 'Alt+Right', click: () => win && win.webContents.navigationHistory.canGoForward() && win.webContents.navigationHistory.goForward() },
+    ] },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' },
-    { label: 'Help', submenu: [{ label: 'Open in browser', click: () => shell.openExternal(BASE) }, { label: 'Check for updates', click: () => checkUpdates(true) }, { label: 'Downloads page', click: () => shell.openExternal(DOWNLOAD_PAGE) }] },
+    { label: 'Help', submenu: [{ label: 'Open in browser', click: () => shell.openExternal(BASE) }, { label: 'Check for updates', click: () => checkUpdates(true) }, { label: 'Downloads page', click: () => shell.openExternal(DOWNLOAD_PAGE) }, { type: 'separator' }, { label: `Version ${app.getVersion()}`, enabled: false }] },
   ]));
 }
 
@@ -108,10 +185,17 @@ else {
   app.whenReady().then(() => {
     // The page's own permission prompts (notifications, clipboard) are allowed for the app itself and nobody else.
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(isInternal(wc.getURL(), BASE) && ['notifications', 'clipboard-read', 'clipboard-sanitized-write', 'media'].includes(permission)));
-    buildMenu(); createWindow(); if (process.platform !== 'darwin') createTray();
+    if (WIN) app.setAppUserModelId('in.projecttracker.desktop');   // so notifications carry the app's name and icon
+    ipcMain.on('titlebar', (e, { bg, fg }) => {
+      if (!WIN || !win || e.sender !== win.webContents || !/^#[0-9a-f]{6}$/i.test(bg) || !/^#[0-9a-f]{6}$/i.test(fg)) return;
+      win.setTitleBarOverlay({ color: bg, symbolColor: fg, height: TITLEBAR_H });
+    });
+    buildMenu(); if (!MAC) createTray(); createWindow();
+    globalShortcut.register('CommandOrControl+Shift+Space', quickSearch);
     setTimeout(() => checkUpdates(false), 15000);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); else win.show(); });
   });
   app.on('before-quit', () => { quitting = true; });
+  app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !tray) app.quit(); });
 }
