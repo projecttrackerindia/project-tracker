@@ -72,5 +72,7 @@ public sealed class FakeDns : IDomainVerifier
 {
     private readonly ConcurrentDictionary<(string, string), bool> _records = new();
     public void Publish(string domain, string value) => _records[(domain, value)] = true;
+    public Task<IReadOnlyList<string>> GetRecordsAsync(string domain, string type, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<string>>(type == "TXT" ? _records.Keys.Where(k => k.Item1 == domain).Select(k => k.Item2).ToList() : []);
     public Task<bool> HasTxtRecordAsync(string domain, string expected, CancellationToken ct = default) => Task.FromResult(_records.ContainsKey((domain, expected)));
 }

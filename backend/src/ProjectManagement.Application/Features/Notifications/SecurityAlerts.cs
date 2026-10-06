@@ -25,7 +25,7 @@ public class SecurityAlerts(ICurrentContext ctx, NotificationService notificatio
         try
         {
             await email.SendAsync(new EmailMessage(user.Email, title,
-                EmailTemplates.Wrap(title, WebUtility.HtmlEncode($"Hi {user.DisplayName},"), body, "Review your account", link), $"{title}\n{body}\n{link}"), ct);
+                EmailTemplates.Wrap(title, WebUtility.HtmlEncode($"Hi {user.DisplayName},"), body, "Review your account", link, preheader: body), $"{title}\n{body}\n{link}", "security"), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { /* never block the account action */ }
     }

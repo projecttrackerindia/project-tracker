@@ -82,11 +82,14 @@ public static class DependencyInjection
 
         var emailProvider = config["Email:Provider"] ?? "Log";
         if (emailProvider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))
-            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+            services.AddSingleton<IEmailTransport, SmtpEmailSender>();
         else if (emailProvider.Equals("Resend", StringComparison.OrdinalIgnoreCase))
-            services.AddHttpClient<IEmailSender, ResendEmailSender>(c => c.Timeout = TimeSpan.FromSeconds(15));
+            services.AddHttpClient<IEmailTransport, ResendEmailSender>(c => c.Timeout = TimeSpan.FromSeconds(15));
         else
-            services.AddSingleton<IEmailSender, LogEmailSender>();
+            services.AddSingleton<IEmailTransport, LogEmailSender>();
+        services.Configure<EmailCommonOptions>(config.GetSection("Email"));
+        // What the app sends through: the provider above, plus suppression of bad addresses, a delivery log and retries for important messages.
+        services.AddSingleton<IEmailSender, ProjectManagement.Application.Features.Notifications.ReliableEmailSender>();
 
         services.AddHostedService<MaintenanceWorker>();
         services.AddHostedService<NotificationEmailWorker>();

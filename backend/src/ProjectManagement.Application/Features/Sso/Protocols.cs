@@ -52,4 +52,6 @@ public interface ISamlProtocol
 public interface IDomainVerifier
 {
     Task<bool> HasTxtRecordAsync(string domain, string expected, CancellationToken ct = default);
+    /// <summary>The values of a domain's records of one type ("TXT" or "CNAME"); empty when there are none or the lookup fails.</summary>
+    Task<IReadOnlyList<string>> GetRecordsAsync(string domain, string type, CancellationToken ct = default);
 }

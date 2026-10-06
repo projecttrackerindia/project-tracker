@@ -33,7 +33,7 @@ public record SignInDeviceDto(bool Enabled, int Devices, int SignInDevices, bool
 /// </summary>
 public class DeviceLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ITokenService tokens, AuthService auth, Recorder recorder,
     EntitlementService entitlements, ProjectManagement.Application.Features.Sso.SsoPolicy ssoPolicy, IServiceScopeFactory scopes,
-    IOptions<AppOptions> app, ILogger<DeviceLoginService> log)
+    IOptions<AppOptions> app, ILogger<DeviceLoginService> log, ProjectManagement.Application.Features.Notifications.SecurityAlerts alerts)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
     private const int MaxPromptsPer10Minutes = 3, MaxWrongNumbers = 2;
@@ -145,6 +145,8 @@ public class DeviceLoginService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 var user = await db.Users.FirstOrDefaultAsync(u => u.Id == r.UserId && u.IsActive, ct);
                 if (user is null) return new DeviceLoginPollResult("expired", null);
                 var session = await auth.SignInExternalAsync(user, "device", null, null, ct);
+                // A sign-in the person approved on their phone is still worth a line in their inbox: if it was not them, they learn at once.
+                await alerts.SendAsync(user, "A sign-in was approved on your phone", $"{Describe(r.RequesterAgent)}{(string.IsNullOrEmpty(r.RequesterIp) ? "" : " from " + r.RequesterIp)} signed in after you approved it on your phone. If this was not you, sign out of all devices under Account → Sign-in & security and change your password.", ct);
                 return new DeviceLoginPollResult("approved", session);
             default: return new DeviceLoginPollResult("expired", null);
         }

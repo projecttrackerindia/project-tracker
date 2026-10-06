@@ -526,3 +526,10 @@ export interface LensTeam { id: string; name: string; projects: number; members:
 export interface SignInDevice { enabled: boolean; devices: number; signInDevices: number; planAllows: boolean }
 export interface DeviceLoginStart { requestId: string; secret: string; number: number; expiresAt: string }
 export interface DeviceLoginPending { id: string; choices: number[]; device: string; ip: string | null; createdAt: string; expiresAt: string }
+
+// ---- e-mail: the administrator's view, and "stop emails like this"
+export interface EmailLogRow { id: string; to: string; subject: string; kind: string | null; status: 'Queued' | 'Sent' | 'Failed' | 'Suppressed'; attempts: number; createdAt: string; sentAt: string | null; error: string | null }
+export interface EmailOverview { provider: string; sent24h: number; failed24h: number; queued: number; suppressed: number; recent: EmailLogRow[] }
+export interface EmailBlocked { id: string; email: string; reason: string; detail: string | null; createdAt: string }
+export interface EmailDomainCheck { domain: string; checks: { id: string; title: string; status: 'ok' | 'warn' | 'fail'; detail: string; fix: string | null }[] }
+export interface UnsubscribeInfo { label: string; alreadyOff: boolean }

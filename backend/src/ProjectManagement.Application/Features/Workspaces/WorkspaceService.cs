@@ -250,7 +250,7 @@ public class WorkspaceService(
         var what = $"{creator.DisplayName} created an account for you in \"{tenant.Name}\" as {req.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. " +
             "Your administrator will give you your temporary password separately; you'll be asked to choose your own when you first sign in.";
         await email.TrySendAsync(new EmailMessage(user.Email, $"Your account in {tenant.Name}",
-            EmailTemplates.Wrap($"Welcome to {tenant.Name}", $"Hi {System.Net.WebUtility.HtmlEncode(user.DisplayName)},", what, "Sign in", link), $"{what} Sign in: {link}"), log, ct);
+            EmailTemplates.Wrap($"Welcome to {tenant.Name}", $"Hi {System.Net.WebUtility.HtmlEncode(user.DisplayName)},", what, "Sign in", link, preheader: "Your administrator created an account for you."), $"{what} Sign in: {link}", "welcome"), log, ct);
         return new MemberDto(user.Id, user.DisplayName, user.Email, req.Role, member.CreatedAt, jobRoleName);
     }
 
@@ -396,7 +396,7 @@ public class WorkspaceService(
         await email.TrySendAsync(new EmailMessage(invite.Email, $"{inviter.DisplayName} invited you to {tenant.Name}",
             EmailTemplates.Wrap($"Join {tenant.Name}", "Hello,",
                 $"{inviter.DisplayName} invited you to join \"{tenant.Name}\" as {invite.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. This invitation expires in {_opt.InvitationDays} days.",
-                "Accept invitation", link), $"{inviter.DisplayName} invited you to join \"{tenant.Name}\" as {invite.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. Accept your invitation: {link}"), log, ct);
+                "Accept invitation", link, preheader: $"{inviter.DisplayName} invited you to join {tenant.Name}."), $"{inviter.DisplayName} invited you to join \"{tenant.Name}\" as {invite.Role}{(jobRoleName is null ? "" : $" ({jobRoleName})")}. Accept your invitation: {link}", "invite"), log, ct);
         return ToDto(invite, inviter.DisplayName, jobRoleName, reportsToName);
     }
 

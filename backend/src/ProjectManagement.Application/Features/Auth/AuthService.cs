@@ -121,7 +121,7 @@ public class AuthService(
         var link = $"{_opt.WebBaseUrl.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(rawToken)}";
         return email.TrySendAsync(new EmailMessage(user.Email, "Verify your email address",
             EmailTemplates.Wrap("Verify your email", $"Hi {WebUtility.HtmlEncode(user.DisplayName)},", "Confirm your email address to activate your account.",
-                "Verify email", link), $"Verify your email: {link}"), log, ct);
+                "Verify email", link, preheader: "Confirm your address to finish creating your account."), $"Verify your email: {link}", "verify"), log, ct);
     }
 
     public async Task VerifyEmailAsync(VerifyEmailRequest req, CancellationToken ct = default)
@@ -387,7 +387,7 @@ public class AuthService(
         await email.TrySendAsync(new EmailMessage(user.Email, "Reset your password",
             EmailTemplates.Wrap("Reset your password", $"Hi {WebUtility.HtmlEncode(user.DisplayName)},",
                 $"We received a request to reset your password. This link expires in {_opt.ResetTokenHours} hours. If you did not ask for this, you can ignore this email.",
-                "Choose a new password", link), $"Reset your password: {link}"), log, ct);
+                "Choose a new password", link, preheader: "Choose a new password. The link expires soon."), $"Reset your password: {link}", "reset"), log, ct);
     }
 
     public async Task ResetPasswordAsync(ResetPasswordRequest req, CancellationToken ct = default)
@@ -446,18 +446,43 @@ public class AuthService(
 
 public static class EmailTemplates
 {
-    public static string Wrap(string title, string greeting, string body, string cta, string link, string? footer = null)
+    /// <summary>
+    /// The one look every e-mail shares: a quiet card with the product name, a single clear button, the link in words for programs that block buttons, and an
+    /// optional line (and "stop emails like this" link) at the foot. Table layout and inline styles, because mail programs ignore almost everything else; light
+    /// and dark both read well (the colors are chosen to survive automatic inversion).
+    /// </summary>
+    public static string Wrap(string title, string greeting, string body, string cta, string link, string? footer = null, string? preheader = null, string? unsubscribeUrl = null)
     {
-        var note = footer is null ? "" : $"<p style=\"font-size:12px;color:#928aa9\">{WebUtility.HtmlEncode(footer)}</p>";
+        static string enc(string s) => WebUtility.HtmlEncode(s);
+        var foot = footer is null ? "" : $"<p style=\"margin:0 0 6px;font-size:12px;line-height:18px;color:#8a82a6\">{enc(footer)}</p>";
+        var stop = unsubscribeUrl is null ? "" : $"<p style=\"margin:0;font-size:12px;line-height:18px;color:#8a82a6\"><a href=\"{enc(unsubscribeUrl)}\" style=\"color:#8a82a6;text-decoration:underline\">Stop emails like this</a></p>";
+        var hidden = preheader is null ? "" : $"<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent\">{enc(preheader)}</div>";
         return $$"""
-            <div style="font-family:Inter,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#221a3a">
-              <h2 style="margin:0 0 12px">{{WebUtility.HtmlEncode(title)}}</h2>
-              <p>{{greeting}}</p>
-              <p>{{WebUtility.HtmlEncode(body)}}</p>
-              <p><a href="{{WebUtility.HtmlEncode(link)}}" style="display:inline-block;background:#7c3aed;color:#fff;padding:10px 18px;border-radius:9px;text-decoration:none;font-weight:600">{{WebUtility.HtmlEncode(cta)}}</a></p>
-              <p style="font-size:12px;color:#928aa9">If the button does not work, copy this link: {{WebUtility.HtmlEncode(link)}}</p>
-              {{note}}
-            </div>
+            <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>{{enc(title)}}</title></head>
+            <body style="margin:0;padding:0;background:#f4f1fb">{{hidden}}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1fb"><tr><td align="center" style="padding:28px 14px">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+                <tr><td style="padding:0 6px 14px;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:15px;font-weight:700;color:#221a3a"><span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:7px;background:#7c3aed;color:#ffffff;font-size:13px;vertical-align:middle">&#10003;</span>&nbsp; Project Tracker</td></tr>
+                <tr><td style="background:#ffffff;border:1px solid #e7e1f7;border-radius:16px;padding:28px 26px;font-family:Inter,Segoe UI,Arial,sans-serif;color:#221a3a">
+                  <h1 style="margin:0 0 14px;font-size:21px;line-height:28px;letter-spacing:-.2px;color:#221a3a">{{enc(title)}}</h1>
+                  <p style="margin:0 0 10px;font-size:15px;line-height:24px;color:#221a3a">{{greeting}}</p>
+                  <p style="margin:0 0 22px;font-size:15px;line-height:24px;color:#4a4268">{{enc(body)}}</p>
+                  <p style="margin:0 0 22px"><a href="{{enc(link)}}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px">{{enc(cta)}}</a></p>
+                  <p style="margin:0;font-size:12px;line-height:18px;color:#8a82a6">If the button does not work, copy this link: <a href="{{enc(link)}}" style="color:#7c3aed;word-break:break-all">{{enc(link)}}</a></p>
+                </td></tr>
+                <tr><td style="padding:16px 8px 0;font-family:Inter,Segoe UI,Arial,sans-serif">{{foot}}{{stop}}</td></tr>
+              </table>
+            </td></tr></table></body></html>
             """;
+    }
+
+    /// <summary>Several short updates in one message, each with its own link: used instead of many separate e-mails.</summary>
+    public static string Digest(string title, string greeting, IReadOnlyList<(string Title, string? Body, string Link)> items, string cta, string link, string? footer, string? preheader, string? unsubscribeUrl)
+    {
+        static string enc(string s) => WebUtility.HtmlEncode(s);
+        var rows = string.Concat(items.Take(15).Select(i => $"<tr><td style=\"padding:10px 0;border-top:1px solid #efeaf9\"><a href=\"{enc(i.Link)}\" style=\"color:#221a3a;font-weight:600;text-decoration:none;font-size:15px\">{enc(i.Title)}</a>{(string.IsNullOrWhiteSpace(i.Body) || i.Body == i.Title ? "" : $"<div style=\"color:#6a6288;font-size:13px;line-height:20px\">{enc(i.Body.Length > 140 ? i.Body[..140] + "…" : i.Body)}</div>")}</td></tr>"));
+        var more = items.Count > 15 ? $"<p style=\"font-size:13px;color:#6a6288\">and {items.Count - 15} more.</p>" : "";
+        return Wrap(title, greeting, "", cta, link, footer, preheader, unsubscribeUrl)
+            .Replace("<p style=\"margin:0 0 22px;font-size:15px;line-height:24px;color:#4a4268\"></p>", $"<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 22px\">{rows}</table>{more}");
     }
 }

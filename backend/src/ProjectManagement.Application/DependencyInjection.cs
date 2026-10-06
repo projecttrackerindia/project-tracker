@@ -48,6 +48,10 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<DeviceLoginService>();
         services.AddScoped<PasskeyService>();
+        services.AddScoped<EmailRetryService>();
+        services.AddScoped<EmailLinks>();
+        services.AddScoped<UnsubscribeService>();
+        services.AddScoped<EmailAdminService>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoPolicy>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoSettingsService>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoLoginService>();

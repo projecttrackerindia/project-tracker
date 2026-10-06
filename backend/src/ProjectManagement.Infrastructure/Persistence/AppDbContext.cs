@@ -77,6 +77,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<DeviceLoginRequest> DeviceLoginRequests => Set<DeviceLoginRequest>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
+    public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
+    public DbSet<EmailSuppression> EmailSuppressions => Set<EmailSuppression>();
     public DbSet<PasskeyChallenge> PasskeyChallenges => Set<PasskeyChallenge>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
@@ -182,6 +184,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => x.EmailVerificationTokenHash);
             e.HasIndex(x => x.PasswordResetTokenHash);
         });
+        b.Entity<EmailLog>(e => { e.HasIndex(x => new { x.Status, x.NextAttemptAt }); e.HasIndex(x => x.CreatedAt); e.Property(x => x.ToEmail).HasMaxLength(320); e.Property(x => x.Subject).HasMaxLength(300); e.Property(x => x.Kind).HasMaxLength(30); e.Property(x => x.Error).HasMaxLength(300); });
+        b.Entity<EmailSuppression>(e => { e.HasIndex(x => x.Email).IsUnique(); e.Property(x => x.Email).HasMaxLength(320); e.Property(x => x.Reason).HasMaxLength(30); e.Property(x => x.Detail).HasMaxLength(300); });
         b.Entity<PasskeyCredential>(e => { e.HasIndex(x => x.CredentialId).IsUnique(); e.HasIndex(x => x.UserId); e.Property(x => x.CredentialId).HasMaxLength(512); e.Property(x => x.Name).HasMaxLength(80); });
         b.Entity<PasskeyChallenge>(e => { e.HasIndex(x => x.CreatedAt); e.Property(x => x.Purpose).HasMaxLength(20); });
         b.Entity<IdempotencyRecord>(e => { e.HasIndex(x => new { x.UserId, x.Key }).IsUnique(); e.HasIndex(x => x.CreatedAt); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.RequestHash).HasMaxLength(64); e.Property(x => x.ContentType).HasMaxLength(120); });

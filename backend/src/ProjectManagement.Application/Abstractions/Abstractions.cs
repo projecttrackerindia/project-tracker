@@ -72,6 +72,8 @@ public interface IAppDbContext
     DbSet<DeviceLoginRequest> DeviceLoginRequests { get; }
     DbSet<IdempotencyRecord> IdempotencyRecords { get; }
     DbSet<PasskeyCredential> PasskeyCredentials { get; }
+    DbSet<EmailLog> EmailLogs { get; }
+    DbSet<EmailSuppression> EmailSuppressions { get; }
     DbSet<PasskeyChallenge> PasskeyChallenges { get; }
     DbSet<Reminder> Reminders { get; }
     DbSet<AiConversation> AiConversations { get; }
@@ -199,7 +201,12 @@ public interface ISecretProtector
     string Unprotect(string protectedText);
 }
 
-public record EmailMessage(string To, string Subject, string Html, string? Text = null);
+/// <param name="Kind">What the message is for ("verify", "reset", "invite", "security" ...). Messages with a kind are kept and retried if the mail server is down; without one a failure is reported to the caller.</param>
+/// <param name="Headers">Extra headers, such as List-Unsubscribe.</param>
+public record EmailMessage(string To, string Subject, string Html, string? Text = null, string? Kind = null, IReadOnlyDictionary<string, string>? Headers = null);
+
+/// <summary>A provider that really sends (SMTP, Resend, or the development log). The app talks to <see cref="IEmailSender"/>, which adds suppression, logging and retries around one of these.</summary>
+public interface IEmailTransport : IEmailSender { }
 
 public interface IEmailSender
 {

@@ -23,7 +23,7 @@ public record PasskeyFinishRequest(Guid ChallengeId, JsonElement Response, strin
 /// nothing). It is two factors in one (the device and the person's unlock), so it also satisfies a workspace's two-step rule. Available on every plan:
 /// it is safety, not a feature to sell.
 /// </summary>
-public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IOptions<AppOptions> app, IConfiguration config, AuthService auth, Recorder recorder)
+public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IOptions<AppOptions> app, IConfiguration config, AuthService auth, Recorder recorder, ProjectManagement.Application.Features.Notifications.SecurityAlerts alerts)
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
     private const int MaxPasskeys = 10;
@@ -87,6 +87,8 @@ public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         db.PasskeyCredentials.Add(row);
         recorder.Audit("user.passkey_added", "User", uid, newValue: new { row.Name }, userId: uid);
         await db.SaveChangesAsync(ct);
+        var owner = await db.Users.FirstAsync(u => u.Id == uid, ct);
+        await alerts.SendAsync(owner, "A passkey was added to your account", $"“{row.Name}” can now sign in to your account. If this was not you, remove it under Account → Sign-in & security and sign out everywhere.", ct);
         return new PasskeyDto(row.Id, row.Name, row.CreatedAt, null, row.BackedUp);
     }
 
@@ -107,6 +109,8 @@ public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         db.PasskeyCredentials.Remove(row);
         recorder.Audit("user.passkey_removed", "User", uid, oldValue: new { row.Name }, userId: uid);
         await db.SaveChangesAsync(ct);
+        var owner = await db.Users.FirstAsync(u => u.Id == uid, ct);
+        await alerts.SendAsync(owner, "A passkey was removed from your account", $"“{row.Name}” can no longer sign in. If this was not you, change your password and sign out everywhere.", ct);
     }
 
     // ------------------------------------------------------------------ sign in (anonymous)

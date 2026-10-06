@@ -38,6 +38,7 @@ const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'Times
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
 const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
+const UnsubscribePage = page(() => import('./features/auth/UnsubscribePage'), 'UnsubscribePage');
 const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
@@ -268,7 +269,7 @@ function OrgRedirect() {
 
 const OrgGateContext = createContext<() => void>(() => undefined);
 
-const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'auth', 'security', 'r', 'dev']);
+const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'r', 'dev']);
 
 function AppRoutes({ scoped }: { scoped: boolean }) {
   const loc = useLocation();
@@ -294,6 +295,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/invite" element={<AcceptInvitePage />} />
+      <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><UnsubscribePage /></Suspense>} />
       <Route path="/auth/complete" element={<AuthCompletePage />} />
       <Route path="/terms" element={<LegalPage type="tos" />} />
       <Route path="/privacy" element={<LegalPage type="privacy" />} />

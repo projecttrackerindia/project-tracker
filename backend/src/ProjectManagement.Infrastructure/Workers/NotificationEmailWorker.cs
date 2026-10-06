@@ -30,6 +30,9 @@ public class NotificationEmailWorker(IServiceScopeFactory scopes, IOptions<Notif
                     using var scope = scopes.CreateScope();
                     var sent = await scope.ServiceProvider.GetRequiredService<NotificationEmailService>().SendPendingAsync(ct: stoppingToken);
                     if (sent > 0) log.LogInformation("Sent {Count} notification e-mail(s)", sent);
+                    // Messages that could not be delivered the first time (verification and reset links, invitations, security alerts) are tried again.
+                    var retried = await scope.ServiceProvider.GetRequiredService<EmailRetryService>().RetryDueAsync(ct: stoppingToken);
+                    if (retried > 0) log.LogInformation("Delivered {Count} e-mail(s) on a retry", retried);
                     beats.Beat("Notification e-mail", Math.Max(5, options.Value.IntervalSeconds));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

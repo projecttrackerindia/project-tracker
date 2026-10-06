@@ -164,3 +164,14 @@
 .pk-main { flex: 1; min-width: 0; display: grid; } .pk-main b { font-size: 14px; } .pk-main small { color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
 .pk-edit { flex: 1; display: flex; gap: 8px; min-width: 0; } .pk-edit .input { min-width: 0; flex: 1; }
 @media (max-width: 768px) { .pk-item { flex-wrap: wrap; } .pk-main { flex-basis: calc(100% - 50px); } }
+
+/* ---------- Admin → Health → E-mail ---------- */
+.em-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.em-stats > div { display: grid; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); } .em-stats b { font-size: 22px; } .em-stats span { color: var(--text-3); font-size: 12px; } .em-stats .bad b { color: var(--danger); }
+.em-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; } .em-filter button { padding: 6px 14px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-weight: 600; font-size: 13px; cursor: pointer; } .em-filter button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.em-err { display: block; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.em-block { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); } .em-block h4 { margin: 0 0 4px; }
+.em-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); } .em-row span { display: grid; min-width: 0; overflow-wrap: anywhere; } .em-row small { color: var(--text-3); }
+.em-domain { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; } .em-domain .input { flex: 1; min-width: 180px; }
+.em-checks { display: grid; gap: 10px; } .em-check { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); } .em-check > span { min-width: 0; display: grid; gap: 4px; overflow-wrap: anywhere; } .em-check small { color: var(--text-2); font-size: 12.5px; }
+@media (max-width: 768px) { .em-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

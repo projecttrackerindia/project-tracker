@@ -261,4 +261,14 @@ public sealed class DnsDomainVerifier(ILogger<DnsDomainVerifier> log) : IDomainV
         }
         catch (DnsResponseException ex) { log.LogInformation(ex, "TXT lookup for {Domain} failed", domain); return false; }
     }
+
+    public async Task<IReadOnlyList<string>> GetRecordsAsync(string domain, string type, CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await Lookup.QueryAsync(domain, type.Equals("CNAME", StringComparison.OrdinalIgnoreCase) ? QueryType.CNAME : QueryType.TXT, cancellationToken: ct);
+            return type.Equals("CNAME", StringComparison.OrdinalIgnoreCase) ? result.Answers.CnameRecords().Select(r => r.CanonicalName.Value).ToList() : result.Answers.TxtRecords().Select(r => string.Concat(r.Text).Trim()).ToList();
+        }
+        catch (Exception ex) when (ex is DnsResponseException or OperationCanceledException == false) { log.LogInformation(ex, "{Type} lookup for {Domain} failed", type, domain); return []; }
+    }
 }

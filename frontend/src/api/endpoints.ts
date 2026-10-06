@@ -5,7 +5,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
-  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge,
+  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge, EmailOverview, EmailBlocked, EmailDomainCheck, UnsubscribeInfo,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
@@ -571,4 +571,15 @@ export const passkeyApi = {
   remove: (id: string) => del(`/me/passkeys/${id}`),
   signInOptions: (email: string) => post<PasskeyChallenge>('/auth/passkey/options', { email }, { auth: false }),
   signIn: (challengeId: string, response: Record<string, unknown>) => post<AuthResponse>('/auth/passkey/verify', { challengeId, response }, { auth: false }),
+};
+
+export const emailAdminApi = {
+  overview: (status?: string) => get<EmailOverview>('/admin/email', { status }),
+  blocked: () => get<EmailBlocked[]>('/admin/email/suppressions'),
+  unblock: (id: string) => del(`/admin/email/suppressions/${id}`),
+  domain: (domain?: string) => get<EmailDomainCheck>('/admin/email/domain-check', { domain }),
+};
+export const unsubscribeApi = {
+  info: (token: string) => get<UnsubscribeInfo>('/email/unsubscribe', { token }, { auth: false }),
+  confirm: (token: string) => post<UnsubscribeInfo>(`/email/unsubscribe?token=${encodeURIComponent(token)}`, {}, { auth: false }),
 };

@@ -26,7 +26,7 @@ public class DevMailbox
 }
 
 /// <summary>Development sender: writes to the log and the in-memory <see cref="DevMailbox"/>.</summary>
-public class LogEmailSender(ILogger<LogEmailSender> log, DevMailbox mailbox, TimeProvider clock) : IEmailSender
+public class LogEmailSender(ILogger<LogEmailSender> log, DevMailbox mailbox, TimeProvider clock) : IEmailTransport
 {
     public string Name => "log";
 
@@ -36,6 +36,16 @@ public class LogEmailSender(ILogger<LogEmailSender> log, DevMailbox mailbox, Tim
         log.LogInformation("Email to {To}: {Subject}\n{Text}", message.To, message.Subject, message.Text);
         return Task.CompletedTask;
     }
+}
+
+/// <summary>Settings every provider shares (section Email): the name people see as the sender, and where replies go.</summary>
+public class EmailCommonOptions
+{
+    public string FromName { get; set; } = "Project Tracker";
+    public string? ReplyTo { get; set; }
+
+    /// <summary>"Name &lt;address&gt;" unless the configured sender already carries a name.</summary>
+    public string Sender(string from) => from.Contains('<') ? from : $"{FromName} <{from}>";
 }
 
 public class SmtpOptions
@@ -50,9 +60,10 @@ public class SmtpOptions
 }
 
 /// <summary>Plain SMTP sender (SES SMTP, SendGrid SMTP, Microsoft 365, ...). Swap for an API-based provider behind the same interface.</summary>
-public class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSender
+public class SmtpEmailSender(IOptions<SmtpOptions> options, IOptions<EmailCommonOptions>? commonOptions = null) : IEmailTransport
 {
     public string Name => "smtp";
+    private readonly IOptions<EmailCommonOptions> common = commonOptions ?? Options.Create(new EmailCommonOptions());
 
     public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
@@ -61,7 +72,13 @@ public class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSender
         // connection attempt hangs for minutes instead of failing fast.
         using var client = new SmtpClient(o.Host, o.Port) { EnableSsl = o.EnableSsl, Timeout = 15_000 };
         if (!string.IsNullOrEmpty(o.Username)) client.Credentials = new NetworkCredential(o.Username, o.Password);
-        using var mail = new MailMessage(o.From, message.To, message.Subject, message.Html) { IsBodyHtml = true };
+        // Both a plain-text and an HTML version (mail without a text part scores worse with spam filters), a sender name, a reply address and the extra headers.
+        using var mail = new MailMessage { From = new MailAddress(o.From, common.Value.FromName), Subject = message.Subject };
+        mail.To.Add(message.To);
+        if (!string.IsNullOrWhiteSpace(common.Value.ReplyTo)) mail.ReplyToList.Add(common.Value.ReplyTo);
+        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(string.IsNullOrWhiteSpace(message.Text) ? System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(message.Html, "<[^>]+>", " ")) : message.Text, null, "text/plain"));
+        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.Html, null, "text/html"));
+        foreach (var (name, value) in message.Headers ?? new Dictionary<string, string>()) mail.Headers.Add(name, value);
         await client.SendMailAsync(mail, ct);
     }
 }
@@ -76,9 +93,10 @@ public class ResendOptions
 }
 
 /// <summary>Sends through the Resend HTTPS API (api.resend.com), for hosts that block outbound SMTP.</summary>
-public class ResendEmailSender(HttpClient http, IOptions<ResendOptions> options) : IEmailSender
+public class ResendEmailSender(HttpClient http, IOptions<ResendOptions> options, IOptions<EmailCommonOptions>? commonOptions = null) : IEmailTransport
 {
     public string Name => "resend";
+    private readonly IOptions<EmailCommonOptions> common = commonOptions ?? Options.Create(new EmailCommonOptions());
 
     public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
@@ -90,11 +108,13 @@ public class ResendEmailSender(HttpClient http, IOptions<ResendOptions> options)
         {
             Content = JsonContent.Create(new
             {
-                from = o.From,
+                from = common.Value.Sender(o.From),
                 to = new[] { message.To },
                 subject = message.Subject,
                 html = message.Html,
                 text = message.Text,
+                reply_to = string.IsNullOrWhiteSpace(common.Value.ReplyTo) ? null : new[] { common.Value.ReplyTo },
+                headers = message.Headers is { Count: > 0 } ? message.Headers : null,
             }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", o.ApiKey);

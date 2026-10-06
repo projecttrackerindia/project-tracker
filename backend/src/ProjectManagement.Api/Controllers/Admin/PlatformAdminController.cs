@@ -12,7 +12,7 @@ namespace ProjectManagement.Api.Controllers.Admin;
 /// services from the server-resolved user, never from anything the client sends.
 /// </summary>
 [Route("api/v1/admin")]
-public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage) : ApiControllerBase
+public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage, ProjectManagement.Application.Features.Notifications.EmailAdminService emailAdmin) : ApiControllerBase
 {
     // ---------------------------------------------------------------- organizations, users, plans, audit
     [HttpGet("stats")]
@@ -106,6 +106,19 @@ public class PlatformAdminController(AdminService admin, PlatformService platfor
     /// <summary>Is this deployment safe to open to real people? Inspects configuration and data; never returns a secret.</summary>
     [HttpGet("go-live")]
     public async Task<IActionResult> GoLive(CancellationToken ct) => Ok(await goLive.CheckAsync(ct));
+
+    // ---- e-mail: what was sent and what went wrong, who is blocked, whether the sending domain is set up
+    [HttpGet("email")]
+    public async Task<IActionResult> EmailOverview([FromQuery] string? status, CancellationToken ct) => Ok(await emailAdmin.OverviewAsync(status, ct));
+
+    [HttpGet("email/suppressions")]
+    public async Task<IActionResult> EmailSuppressions(CancellationToken ct) => Ok(await emailAdmin.SuppressionsAsync(ct));
+
+    [HttpDelete("email/suppressions/{id:guid}")]
+    public async Task<IActionResult> EmailUnblock(Guid id, CancellationToken ct) { await emailAdmin.RemoveSuppressionAsync(id, ct); return NoContent(); }
+
+    [HttpGet("email/domain-check")]
+    public async Task<IActionResult> EmailDomain([FromQuery] string? domain, CancellationToken ct) => Ok(await emailAdmin.CheckDomainAsync(domain, ct));
 
     /// <summary>Sends a real test message to the signed-in administrator.</summary>
     [HttpPost("test-email")]

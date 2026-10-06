@@ -182,9 +182,13 @@ public class NotificationPreferenceService(IAppDbContext db, ICurrentContext ctx
 /// Background delivery of notification e-mails (spec section 62): the request that creates a notification never waits for the mail server,
 /// and a failing server is retried a few times before the message is given up.
 /// </summary>
-public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOptions<AppOptions> options, AppClock clock, ILogger<NotificationEmailService> log)
+public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOptions<AppOptions> options, AppClock clock, ILogger<NotificationEmailService> log, EmailLinks? links = null)
 {
     public const int MaxAttempts = 5;
+
+    /// <summary>Kinds that can wait a minute and be read together: three or more for the same person and workspace become one e-mail. Time-critical ones (reminders, overdue, service levels) never wait.</summary>
+    private static readonly HashSet<NotificationType> Batchable = [NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Comment, NotificationType.Issue, NotificationType.Approval, NotificationType.ReportReady];
+    private const int DigestFrom = 3;
 
     /// <summary>
     /// Where a notification's path lives for the person reading it: inside the workspace it is about (<c>/acme/projects/…</c>), so the link opens the
@@ -196,6 +200,8 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
         if (string.IsNullOrEmpty(slug) || path.StartsWith("/r/", StringComparison.Ordinal) || !path.StartsWith('/')) return path;
         return $"/{slug}{path}";
     }
+
+    private static string WebNet(string s) => WebUtility.HtmlEncode(s);
 
     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
     {
@@ -210,18 +216,46 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
         var baseUrl = options.Value.WebBaseUrl.TrimEnd('/');
         var sent = 0;
 
-        foreach (var n in rows)
+        // Several updates for one person in one workspace, none of them urgent, go out as a single message.
+        var handled = new HashSet<Guid>();
+        foreach (var group in rows.Where(n => Batchable.Contains(n.Type) && users.TryGetValue(n.UserId, out var u) && u.IsActive && u.EmailVerified).GroupBy(n => (n.UserId, n.TenantId)).Where(g => g.Count() >= DigestFrom))
+        {
+            var user = users[group.Key.UserId];
+            var slug = tenants.GetValueOrDefault(group.Key.TenantId)?.Slug; var workspace = tenants.GetValueOrDefault(group.Key.TenantId)?.Name;
+            var list = group.OrderBy(n => n.CreatedAt).ToList();
+            var items = list.Select(n => (n.Title, n.Body, baseUrl + OrgLink(slug, n.Link))).ToList();
+                        var title = $"{list.Count} updates{(workspace is null ? "" : " in " + workspace)}";
+            try
+            {
+                await email.SendAsync(new EmailMessage(user.Email, title,
+                    EmailTemplates.Digest(title, WebNet($"Hi {user.DisplayName},"), items, "Open in the app", baseUrl + OrgLink(slug, "/"),
+                        "You get this email because of your notification settings. Change them under Settings → Notifications.", string.Join(" · ", list.Select(n => n.Title).Take(3)), links?.PageUrl(links.Token(user.Id, list[0].Type))),
+                    string.Join("\n", list.Select(n => $"- {n.Title}")) + "\n" + baseUrl + OrgLink(slug, "/"), Headers: links?.Headers(user.Id, list[0].Type)), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
+                foreach (var n in list) { n.EmailPending = false; n.EmailedAt = clock.Now; handled.Add(n.Id); }
+                sent++;
+                AppTelemetry.Count(AppTelemetry.Emails, "sent");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                foreach (var n in list) { n.EmailAttempts++; if (n.EmailAttempts >= MaxAttempts) n.EmailPending = false; handled.Add(n.Id); }
+                AppTelemetry.Count(AppTelemetry.Emails, "failed");
+                log.LogWarning(ex, "Could not e-mail a digest of {Count} notifications", list.Count);
+            }
+        }
+
+        foreach (var n in rows.Where(n => !handled.Contains(n.Id)))
         {
             if (!users.TryGetValue(n.UserId, out var user) || !user.IsActive || !user.EmailVerified) { n.EmailPending = false; continue; }
             var workspace = tenants.GetValueOrDefault(n.TenantId)?.Name;
             var link = baseUrl + OrgLink(tenants.GetValueOrDefault(n.TenantId)?.Slug, n.Link);
             var body = string.IsNullOrWhiteSpace(n.Body) ? n.Title : n.Body!;
+            var headers = links?.Headers(n.UserId, n.Type);
             try
             {
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
-                    EmailTemplates.Wrap(n.Title, WebUtility.HtmlEncode($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
-                        "You get this email because of your notification settings. Change them under Settings → Notifications."),
-                    $"{n.Title}\n{body}\n{link}"), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
+                    EmailTemplates.Wrap(n.Title, WebNet($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
+                        "You get this email because of your notification settings. Change them under Settings → Notifications.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type))),
+                    $"{n.Title}\n{body}\n{link}", Headers: headers), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 n.EmailPending = false;
                 n.EmailedAt = clock.Now;
                 sent++;
