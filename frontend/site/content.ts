@@ -16,7 +16,16 @@ export const NAV: NavLink[] = [
   { label: 'Features', href: '/features/' },
   { label: 'Pricing', href: '/pricing/' },
   { label: 'Security', href: '/security/' },
+  { label: 'Download', href: '/download/' },
 ];
+
+/** Where the apps are published (GitHub releases of the repository: free, and "latest/download/<name>" always points at the newest version). A company hosting its own copy can set SITE_DOWNLOAD_BASE. */
+export const DOWNLOAD_BASE = (process.env.SITE_DOWNLOAD_BASE || 'https://github.com/projecttrackerindia/project-tracker/releases/latest/download').replace(/\/$/, '');
+export const DOWNLOAD_FILES = {
+  windows: 'ProjectTracker-Setup.exe', macArm: 'ProjectTracker-arm64.dmg', macIntel: 'ProjectTracker-x64.dmg',
+  linuxAppImage: 'ProjectTracker.AppImage', linuxDeb: 'ProjectTracker.deb', android: 'ProjectTracker.apk', checksums: 'SHA256SUMS.txt',
+} as const;
+
 
 export interface Feature { title: string; text: string; icon: string }
 export const FEATURES: Feature[] = [
@@ -85,6 +94,8 @@ export const SECURITY: Pillar[] = [
 /** Pages that exist as static files (and so are indexed with their own title and description). */
 export interface StaticPage { path: string; title: string; description: string; h1: string; lead: string }
 export const PAGES: StaticPage[] = [
+  { path: '/download/', title: 'Download the apps | Project Tracker', h1: 'Project Tracker on every screen', lead: 'Install the app for Windows, macOS, Linux and Android, or add it to your iPhone. Free to download.',
+    description: 'Download Project Tracker for Windows, macOS, Linux and Android, or install it on iPhone from your browser. Alerts, a tray icon and sign-in with your phone or a passkey.' },
   { path: '/features/', title: 'Features | Project Tracker', h1: 'Everything a delivery team needs, in one workspace', lead: 'From the first task to the portfolio review, without stitching tools together.',
     description: 'Projects and timelines, a portfolio view with risk and forecasts, team-separated access, reminders, timesheets, chat and an AI assistant. See what Project Tracker does.' },
   { path: '/pricing/', title: 'Pricing | Project Tracker', h1: 'Simple plans that grow with your teams', lead: 'Start free. Move up when you need more people, teams, reports or governance.',

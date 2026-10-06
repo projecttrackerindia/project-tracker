@@ -1,0 +1,5 @@
+node_modules/
+android/
+*.keystore
+*.apk
+aligned.apk

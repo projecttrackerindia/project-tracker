@@ -1,0 +1,14 @@
+{
+  "name": "project-tracker-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Project Tracker for Android: the app in a native shell, built into an APK that is downloaded from the website",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  }
+}

@@ -269,7 +269,7 @@ function OrgRedirect() {
 
 const OrgGateContext = createContext<() => void>(() => undefined);
 
-const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'r', 'dev']);
+const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 'dev']);
 
 function AppRoutes({ scoped }: { scoped: boolean }) {
   const loc = useLocation();

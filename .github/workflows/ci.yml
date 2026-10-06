@@ -139,3 +139,19 @@ jobs:
           push: false
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
+
+  desktop:
+    name: Desktop app (tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund   # the tests do not need the Electron download
+      - run: npm test
+

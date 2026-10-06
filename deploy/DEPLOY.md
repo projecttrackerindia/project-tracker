@@ -150,6 +150,17 @@ Take a backup right before with `docker compose exec backup sh /backup.sh now`.
 - **Logs:** `docker compose logs -f api`.
 - **Sign-ups:** Admin → Platform settings → close sign-ups if you only want invited people.
 
+## Desktop and Android apps (free downloads)
+
+The website's `/download/` page links to files on this repository's GitHub Releases. Nothing is hosted on your server.
+
+- **Publish a release:** `git tag v1.0.0 && git push origin v1.0.0`. The *Release apps* workflow builds the Windows installer, macOS disk images (Apple silicon and Intel), Linux AppImage and .deb, the Android APK and `SHA256SUMS.txt`, and attaches them to the release. The page's links point at `releases/latest/download/<fixed file name>`, so they never need editing.
+- **App address:** the apps open `https://projecttracker.in`. Change `DEFAULT_URL` in `apps/desktop/src/config.js` and `server.url` in `apps/android/capacitor.config.json` if your domain differs.
+- **Android signing:** run `apps/android/make-keystore.sh` once and add the three secrets it prints (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`) under the repository's Actions secrets. Keep the keystore safe: updates must be signed with the same one. Never commit it (this repository is public). Without the secrets the APK step is skipped.
+- **Warnings on first open:** the installers are not signed with a paid certificate, so Windows SmartScreen and macOS Gatekeeper ask for confirmation once. The download page explains the steps.
+- **iPhone and iPad:** Apple does not allow installing from a website, so users add the site to the Home Screen from Safari (alerts need iOS 16.4+).
+- **Android alerts:** the APK shows the site but has no native push; users who want alerts while the app is closed install the site from Chrome.
+
 ## Live chat
 
 Chat keeps a WebSocket open to `/hubs/chat`. The bundled nginx and Caddy already pass it through (long timeouts, no buffering), so nothing is

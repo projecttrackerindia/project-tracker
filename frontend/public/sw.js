@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v5';
+const SHELL = 'pm-shell-v6';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
@@ -26,7 +26,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   if (/^\/(api|hubs|scim|health)(\/|$)/.test(url.pathname)) return;   // live data: always the network
   // The public website (Features, Pricing, Security, sitemap ...) is its own set of pages, not the app: never answer them with the app shell.
-  if (/^\/(features|pricing|security)(\/|$)|^\/(sitemap\.xml|robots\.txt|favicon\.ico|og-image\.png|\.well-known\/)/.test(url.pathname)) return;
+  if (/^\/(features|pricing|security|download)(\/|$)|^\/(sitemap\.xml|robots\.txt|favicon\.ico|og-image\.png|\.well-known\/)/.test(url.pathname)) return;
   if (req.mode === 'navigate') {
     // The app itself: fresh when online (and remembered), the remembered one when offline.
     event.respondWith(fetch(req).then((res) => {

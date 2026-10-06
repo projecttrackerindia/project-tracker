@@ -80,6 +80,7 @@ export function MobileAppSection() {
                 <button type="button" className="btn btn-primary" disabled={!allowed || !inst.canPrompt} onClick={() => void inst.install()}><Icon name="download" size={16} />Install on Android</button></>
               : inst.platform === 'ios' ? <p>In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. Alerts need iOS 16.4 or later and the app opened from the home screen.</p>
               : <><p>Scan this code with your Android phone to open Project Tracker, then choose “Install app”.</p><div className="ma-qr-row"><Qr url={open} /><code>{open}</code></div></>}
+            <p className="muted"><a href="/download/" target="_blank" rel="noreferrer">Desktop apps for Windows, macOS and Linux, and the Android app file</a></p>
           </div>
         </section>
 

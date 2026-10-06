@@ -1,0 +1,131 @@
+name: Release apps
+
+# Builds the desktop installers (Windows, macOS, Linux) and the Android app and publishes them as a GitHub release, which is where the website's Downloads page
+# points ("releases/latest/download/<fixed name>"). Nothing here costs anything: GitHub builds and hosts the files.
+#
+# Make a release:   git tag v1.0.0 && git push origin v1.0.0     (or run this workflow by hand and give the version)
+# Android needs three repository secrets once (see apps/android/make-keystore.sh); without them the release still goes out, minus the Android file.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, like 1.0.0 (a v1.0.0 tag is created if it does not exist)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    defaults:
+      run:
+        working-directory: apps/desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: Set the version
+        run: npm version --no-git-tag-version --allow-same-version "${VERSION#v}"
+      - name: Build the installers
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # not code-signed (no paid certificate): the Downloads page explains the first-open warning
+        run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            apps/desktop/dist/ProjectTracker-Setup.exe
+            apps/desktop/dist/ProjectTracker-arm64.dmg
+            apps/desktop/dist/ProjectTracker-x64.dmg
+            apps/desktop/dist/ProjectTracker.AppImage
+            apps/desktop/dist/ProjectTracker.deb
+          if-no-files-found: error
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      built: ${{ steps.sign.outputs.built }}
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+      - name: Build and sign
+        id: sign
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret: the Android app is skipped (see apps/android/make-keystore.sh)."
+            echo "built=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          export ANDROID_KEYSTORE="$RUNNER_TEMP/release.keystore"
+          V="${VERSION#v}"
+          export APP_VERSION="$V"
+          # Android wants a whole number that grows with every release: 1.2.3 -> 10203
+          IFS=. read -r a b c <<< "$V"; export APP_VERSION_CODE=$(( ${a:-0} * 10000 + ${b:-0} * 100 + ${c:-0} ))
+          bash build.sh
+          echo "built=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.sign.outputs.built == 'true'
+        with:
+          name: android
+          path: apps/android/ProjectTracker.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: Checksums
+        working-directory: files
+        run: ls -l && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ env.VERSION }}
+        run: |
+          TAG="v${VERSION#v}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" files/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" files/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Project Tracker ${TAG#v}" \
+              --notes "Desktop apps for Windows, macOS and Linux$( [ -f files/ProjectTracker.apk ] && echo ', and the Android app' ). Download them from https://projecttracker.in/download/ ."
+          fi

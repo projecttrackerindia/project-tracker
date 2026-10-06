@@ -1,6 +1,6 @@
 /** The markup of the public pages, built from ./content.ts. Class names are written plainly; `scoped` (css.ts) adds the prefix. */
 import { PATHS } from '../src/components/Icon';
-import { COMPARE, DETAILS, FAQ, FEATURES, HOME, INTEGRATIONS, NAV, PAGES, PLANS, SECURITY, SITE, VERSUS, type DetailPage, type StaticPage } from './content';
+import { COMPARE, DETAILS, DOWNLOAD_BASE, DOWNLOAD_FILES, FAQ, FEATURES, HOME, INTEGRATIONS, NAV, PAGES, PLANS, SECURITY, SITE, VERSUS, type DetailPage, type StaticPage } from './content';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -140,7 +140,48 @@ const detailBody = (d: DetailPage) => `<div class="wrap"><div class="grid two">$
 <div style="height:50px"></div>${band('Try it on your own projects', 'Start on the free plan and move up when your team grows.')}
 <h2 style="margin-bottom:20px">Keep reading</h2><div class="grid">${d.related.map((r, i) => { const t = [...PAGES, ...DETAILS].find((x) => x.path === r)!; return `<article class="card" ${reveal(i)}><h3><a href="${t.path}">${esc(t.h1)}</a></h3><p>${esc(t.description)}</p></article>`; }).join('')}</div></div>`;
 
+
+// ---- the download page
+
+const dlLink = (file: string) => `${DOWNLOAD_BASE}/${file}`;
+const osIcon = (d: string) => `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const OS_ICONS = {
+  windows: osIcon('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
+  mac: osIcon('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>'),
+  linux: osIcon('<path d="M4 17l4-10 4 6 3-4 5 8z"/>'),
+  android: osIcon('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
+  ios: osIcon('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10 5h4"/>'),
+  web: osIcon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>'),
+};
+
+const dlCard = (os: string, icon: string, title: string, sub: string, actions: string, notes: string, i: number) =>
+  `<article class="dl" data-os="${os}" ${reveal(i % 3)}><div class="ic">${icon}</div><span class="rec">Recommended for your device</span><h3>${title}</h3><p class="dsub">${sub}</p><div class="dact">${actions}</div>${notes}</article>`;
+
+const downloadBody = () => `<div class="wrap">
+<div class="dl-grid">
+${dlCard('windows', OS_ICONS.windows, 'Windows', 'Windows 10 and 11, 64-bit', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.windows)}">Download for Windows</a>`,
+  '<details class="dnote"><summary>First time you open it</summary><p>Windows may say “Windows protected your PC”. This happens with every app that has not paid for a publisher certificate. Choose <b>More info</b>, then <b>Run anyway</b>.</p></details>', 0)}
+${dlCard('mac', OS_ICONS.mac, 'macOS', 'macOS 11 or later', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.macArm)}">Apple silicon (M1 and later)</a><a class="btn btn-ghost" href="${dlLink(DOWNLOAD_FILES.macIntel)}">Intel Macs</a>`,
+  '<details class="dnote"><summary>First time you open it</summary><p>Open the downloaded file and drag Project Tracker to Applications. If macOS says the app cannot be opened, <b>right-click it, choose Open</b>, then Open again. If it says the app is damaged, run <code>xattr -cr "/Applications/Project Tracker.app"</code> in Terminal once.</p></details>', 1)}
+${dlCard('linux', OS_ICONS.linux, 'Linux', 'Most 64-bit distributions', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.linuxAppImage)}">AppImage</a><a class="btn btn-ghost" href="${dlLink(DOWNLOAD_FILES.linuxDeb)}">.deb (Ubuntu, Debian)</a>`,
+  '<details class="dnote"><summary>How to run it</summary><p>AppImage: make it executable (<code>chmod +x ProjectTracker.AppImage</code>) and open it. Debian and Ubuntu: <code>sudo apt install ./ProjectTracker.deb</code>.</p></details>', 2)}
+${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.android)}">Download the app (APK)</a>`,
+  '<details class="dnote"><summary>How to install it</summary><p>Open the downloaded file. Android asks once to allow installs from your browser: allow it for this install only. For alerts that reach you when the app is closed, also open the site in Chrome and choose <b>Install app</b>.</p></details>', 3)}
+${dlCard('ios', OS_ICONS.ios, 'iPhone and iPad', 'iOS 16.4 or later', '<a class="btn btn-primary" href="/login">Open in Safari</a>',
+  '<details class="dnote" open><summary>Add it to your Home Screen</summary><p>In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. Open it from there to get full-screen use and alerts. Apple does not allow apps to be installed from a website, so this is the way to get it on an iPhone.</p></details>', 4)}
+${dlCard('web', OS_ICONS.web, 'In your browser', 'Nothing to install', '<a class="btn btn-ghost" href="/login">Sign in</a>',
+  '<details class="dnote"><summary>Install from Chrome or Edge</summary><p>On a computer, Chrome and Edge show an install icon in the address bar. The result looks and works like the desktop app.</p></details>', 5)}
+</div>
+<div class="dl-facts" ${reveal()}>
+<div><b>Same account everywhere</b><span>Sign in with your password, a passkey, or by approving on your phone.</span></div>
+<div><b>Alerts that find you</b><span>An unread count on the icon, and reminders even when the window is closed.</span></div>
+<div><b>Stays up to date</b><span>The app is the live product, so new features arrive without reinstalling. The desktop app tells you when a new installer is out.</span></div>
+</div>
+<p class="note2" ${reveal()}>Each release lists a checksum for every file: <a href="${dlLink(DOWNLOAD_FILES.checksums)}">SHA256SUMS.txt</a>. These apps are not signed with a paid publisher certificate, which is why Windows and macOS ask you to confirm the first time. Questions? <a href="mailto:${SITE.securityEmail.replace('security@', 'support@')}">${SITE.securityEmail.replace('security@', 'support@')}</a></p>
+<div style="height:30px"></div>${band('Start with a free account', 'Install the app on the devices you use. Your work is waiting on all of them.')}</div>`;
+
 const bodies: Record<string, () => string> = {
+  '/download/': downloadBody,
   '/features/': () => `<div class="wrap"><div class="grid">${FEATURES.map(featureCard).join('')}</div>
 <h2 style="margin:64px 0 20px">Go deeper</h2><div class="grid">${DETAILS.map((d, i) => `<article class="card" ${reveal(i % 3)}><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.description)}</p></article>`).join('')}</div>
 <div style="height:30px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,

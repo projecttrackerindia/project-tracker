@@ -1,0 +1,11 @@
+{
+  "appId": "in.projecttracker.app",
+  "appName": "Project Tracker",
+  "webDir": "www",
+  "server": {
+    "url": "https://projecttracker.in",
+    "cleartext": false,
+    "allowNavigation": ["projecttracker.in", "*.projecttracker.in", "checkout.razorpay.com", "api.razorpay.com", "accounts.google.com", "login.microsoftonline.com", "github.com", "appleid.apple.com"]
+  },
+  "android": { "allowMixedContent": false, "backgroundColor": "#f4f1fb" }
+}
