@@ -3,6 +3,7 @@ const { app, BrowserWindow, Menu, Tray, Notification, shell, nativeImage, native
 const fs = require('node:fs');
 const path = require('node:path');
 const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
+const { autoUpdater } = require('electron-updater');
 const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer } = require('./links');
 
 const BASE = appUrl();
@@ -120,6 +121,7 @@ function contextMenu(p) {
   if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
 }
 
+let rebuildTray = () => {};
 function createTray() {
   const img = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png')).resize({ width: 18, height: 18 });
   tray = new Tray(img);
@@ -133,9 +135,11 @@ function createTray() {
     { label: 'Start when I sign in to my computer', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => { app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }); saveSettings({ startHidden: i.checked }); } },
     { label: 'Keep running in the tray when the window is closed', type: 'checkbox', checked: settings().keepRunning, click: (i) => saveSettings({ keepRunning: i.checked }) },
     { type: 'separator' },
+    ...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: installUpdate }] : []),
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(build());
+  rebuildTray = () => tray && tray.setContextMenu(build());
   tray.on('click', () => { if (win.isVisible()) win.focus(); else win.show(); });
 }
 
@@ -159,13 +163,44 @@ function buildMenu() {
     ] },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' },
-    { label: 'Help', submenu: [{ label: 'Open in browser', click: () => shell.openExternal(BASE) }, { label: 'Check for updates', click: () => checkUpdates(true) }, { label: 'Downloads page', click: () => shell.openExternal(DOWNLOAD_PAGE) }, { type: 'separator' }, { label: `Version ${app.getVersion()}`, enabled: false }] },
+    { label: 'Help', submenu: [...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: installUpdate }, { type: 'separator' }] : []), { label: 'Open in browser', click: () => shell.openExternal(BASE) }, { label: 'Check for updates', click: () => checkUpdates(true) }, { label: 'Downloads page', click: () => shell.openExternal(DOWNLOAD_PAGE) }, { type: 'separator' }, { label: `Version ${app.getVersion()}`, enabled: false }] },
   ]));
 }
 
-/** Looks at the latest published release and says so when it is newer. It only tells; installing is the person's choice (the download page has the installer). */
+// ---- updates
+// Windows (installer) and Linux (AppImage): the new version is downloaded quietly in the background and installed the next time the app is closed,
+// or at once when the person chooses "Restart to update". The Mac app is not signed with a paid Apple certificate, so macOS cannot replace it
+// by itself: there the person is told, and the Downloads page has the new disk image.
+const canSelfUpdate = () => app.isPackaged && (WIN || (process.platform === 'linux' && !!process.env.APPIMAGE));
+let updateReady = null;   // the version that is downloaded and waiting
+
+function updaterSetup() {
+  if (!canSelfUpdate()) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = null;
+  autoUpdater.on('update-downloaded', (info) => {
+    updateReady = info.version;
+    buildMenu(); rebuildTray();
+    const n = new Notification({ title: `Project Tracker ${info.version} is ready`, body: 'It installs when you close the app, or restart now from Help → Restart to update.' });
+    n.on('click', () => installUpdate()); n.show();
+    if (win && !win.isDestroyed()) win.webContents.send('update-ready', info.version);
+  });
+  autoUpdater.on('error', () => { /* offline or no release yet: try again later */ });
+}
+function installUpdate() { quitting = true; autoUpdater.quitAndInstall(false, true); }
+
+/** Looks for a newer version. `manual`: the person asked, so say what was found either way. */
 async function checkUpdates(manual) {
-  try {
+  if (canSelfUpdate()) {
+    try {
+      const r = await autoUpdater.checkForUpdates();
+      if (manual && r && !r.downloadPromise) new Notification({ title: 'Project Tracker is up to date', body: `You have version ${app.getVersion()}.` }).show();
+      else if (manual) new Notification({ title: 'Downloading the update', body: 'It will install when you close the app.' }).show();
+    } catch { if (manual) new Notification({ title: 'Could not check for updates', body: 'Try again when you are online.' }).show(); }
+    return;
+  }
+  try {   // macOS (and running from source): only tell
     const res = await fetch(RELEASES_API, { headers: { accept: 'application/vnd.github+json' } });
     if (!res.ok) throw new Error(String(res.status));
     const latest = (await res.json()).tag_name;
@@ -175,9 +210,6 @@ async function checkUpdates(manual) {
     } else if (manual) new Notification({ title: 'Project Tracker is up to date', body: `You have version ${app.getVersion()}.` }).show();
   } catch { if (manual) new Notification({ title: 'Could not check for updates', body: 'Try again when you are online.' }).show(); }
 }
-
-// Lighter on older laptops: no extra GPU process features the app does not use.
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
@@ -198,7 +230,9 @@ else {
     });
     buildMenu(); if (!MAC) createTray(); createWindow();
     globalShortcut.register('CommandOrControl+Shift+Space', quickSearch);
+    updaterSetup();
     setTimeout(() => checkUpdates(false), 15000);
+    setInterval(() => checkUpdates(false), 4 * 60 * 60 * 1000);   // and every few hours while it stays open
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); else win.show(); });
   });
   app.on('before-quit', () => { quitting = true; });

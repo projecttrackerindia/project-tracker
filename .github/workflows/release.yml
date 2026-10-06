@@ -57,6 +57,10 @@ jobs:
             apps/desktop/dist/ProjectTracker-x64.dmg
             apps/desktop/dist/ProjectTracker.AppImage
             apps/desktop/dist/ProjectTracker.deb
+            apps/desktop/dist/latest.yml
+            apps/desktop/dist/latest-linux.yml
+            apps/desktop/dist/ProjectTracker-Setup.exe.blockmap
+            apps/desktop/dist/ProjectTracker.AppImage.blockmap
           if-no-files-found: error
 
   android:

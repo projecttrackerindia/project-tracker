@@ -82,7 +82,18 @@
       "en-US",
       "en-GB"
     ],
-    "asar": true
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "projecttrackerindia",
+        "repo": "project-tracker",
+        "releaseType": "release"
+      }
+    ]
   },
-  "homepage": "https://projecttracker.in"
+  "homepage": "https://projecttracker.in",
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
 }
