@@ -54,7 +54,7 @@ function createWindow() {
     // Windows: the app's own top bar is the title bar, with the system's window buttons on top of it. Mac and Linux keep the system's.
     ...(WIN ? { frame: false } : {}),   // Windows: no system title bar; the app draws its own top bar and window buttons
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'preload.js') },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, backgroundThrottling: true, preload: path.join(__dirname, 'preload.js') },
   });
   win.setMenuBarVisibility(false);
   win.webContents.setUserAgent(`${win.webContents.getUserAgent().replace(/ Electron\/\S+/, '')} ${UA_MARK()}`);
@@ -175,6 +175,9 @@ async function checkUpdates(manual) {
     } else if (manual) new Notification({ title: 'Project Tracker is up to date', body: `You have version ${app.getVersion()}.` }).show();
   } catch { if (manual) new Notification({ title: 'Could not check for updates', body: 'Try again when you are online.' }).show(); }
 }
+
+// Lighter on older laptops: no extra GPU process features the app does not use.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {

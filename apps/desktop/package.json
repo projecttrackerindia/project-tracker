@@ -76,7 +76,13 @@
       "category": "Office",
       "artifactName": "ProjectTracker.${ext}",
       "maintainer": "Project Tracker <support@projecttracker.in>"
-    }
+    },
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US",
+      "en-GB"
+    ],
+    "asar": true
   },
   "homepage": "https://projecttracker.in"
 }
