@@ -1,7 +1,8 @@
 'use strict';
-// The only thing the page can ask the desktop app for: the colors of the window's title bar (so it matches the theme). Nothing else is exposed.
+// The only things the page can ask of the desktop app: minimize / maximize / close its own window (the app draws its own window buttons).
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ptDesktop', {
   platform: process.platform,
-  setTitleBar: (bg, fg) => { if (typeof bg === 'string' && typeof fg === 'string') ipcRenderer.send('titlebar', { bg, fg }); },
+  windowControl: (action) => { if (action === 'minimize' || action === 'maximize' || action === 'close') ipcRenderer.send('win-control', action); },
+  onMaximizeChange: (cb) => { ipcRenderer.on('win-maximized', (_e, maximized) => cb(!!maximized)); ipcRenderer.send('win-control', 'query'); },
 });

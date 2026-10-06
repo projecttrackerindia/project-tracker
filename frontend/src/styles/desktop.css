@@ -1,12 +1,22 @@
-/* The desktop app (Windows, Mac, Linux): the top bar is the window's title bar. Only applies inside the app (html.desktop-app). */
+/* The desktop app (Windows, Mac, Linux). Only applies inside the app (html.desktop-app). */
 .desktop-app { --topbar-h: 56px; }
 .desktop-app .topbar, .desktop-app .sidebar-brand { -webkit-app-region: drag; user-select: none; }
 .desktop-app .topbar :is(button, a, input, select, textarea, label, [role='button'], [role='menuitem'], .no-drag),
 .desktop-app .sidebar-brand :is(button, a) { -webkit-app-region: no-drag; }
-/* Windows draws its minimize, maximize and close buttons over the right end of the bar. */
-.desktop-win .topbar { padding-right: 154px; }
-/* A desktop window is never shown with the phone layout. */
+/* A phone layout is never shown in a desktop window. */
 .desktop-app .m-tabs, .desktop-app .m-create-fab { display: none !important; }
 .desktop-app ::-webkit-scrollbar { width: 11px; height: 11px; }
 .desktop-app ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-2) 28%, transparent); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
 .desktop-app ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text-2) 45%, transparent); }
+
+/* Windows: the app's own window buttons, transparent over the page. */
+#pt-drag { position: fixed; top: 0; left: 0; right: 0; height: 12px; z-index: 2147483000; -webkit-app-region: drag; }
+#pt-winctl { position: fixed; top: 0; right: 0; z-index: 2147483001; display: flex; height: 40px; -webkit-app-region: no-drag; }
+#pt-winctl button { width: 46px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-2, #5b5470); cursor: default; transition: background .12s, color .12s; }
+#pt-winctl button:hover { background: color-mix(in srgb, var(--text, #221a3a) 9%, transparent); color: var(--text, #221a3a); }
+#pt-winctl button.close:hover { background: #e81123; color: #fff; }
+.desktop-win .topbar { padding-right: 146px; }
+.desktop-win.desktop-maximized #pt-winctl { height: 40px; }
+@media (prefers-reduced-motion: reduce) { #pt-winctl button { transition: none; } }
+/* On the sign-in screen the theme switch sits left of the window buttons. */
+.desktop-win .auth-theme-btn { top: 50px; right: 16px; }

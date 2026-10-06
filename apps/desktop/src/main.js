@@ -10,7 +10,6 @@ let win = null, tray = null, quitting = false, pendingLink = null;
 const stateFile = () => path.join(app.getPath('userData'), 'window.json');
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const WIN = process.platform === 'win32', MAC = process.platform === 'darwin';
-const TITLEBAR_H = 56;   // the height of the app's top bar in the desktop app (see desktop.css)
 
 /** What the person chose in the tray menu. Kept in a small file next to the window state. */
 const defaults = { keepRunning: true, startHidden: false };
@@ -53,7 +52,7 @@ function createWindow() {
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f0c1d' : '#f4f1fb',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     // Windows: the app's own top bar is the title bar, with the system's window buttons on top of it. Mac and Linux keep the system's.
-    ...(WIN ? { titleBarStyle: 'hidden', titleBarOverlay: { color: nativeTheme.shouldUseDarkColors ? '#17132b' : '#ffffff', symbolColor: nativeTheme.shouldUseDarkColors ? '#e9e5ff' : '#221a3a', height: TITLEBAR_H } } : {}),
+    ...(WIN ? { frame: false } : {}),   // Windows: no system title bar; the app draws its own top bar and window buttons
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'preload.js') },
   });
@@ -81,6 +80,7 @@ function createWindow() {
     item.once('done', (_ev, state) => { if (state === 'completed') { const n = new Notification({ title: 'Download finished', body: item.getFilename() }); n.on('click', () => shell.showItemInFolder(item.getSavePath())); n.show(); } });
   });
 
+  win.on('maximize', () => win.webContents.send('win-maximized', true)); win.on('unmaximize', () => win.webContents.send('win-maximized', false));
   win.on('resize', saveState); win.on('move', saveState); win.on('close', (e) => {
     saveState();
     if (!quitting && !MAC && tray && settings().keepRunning) { e.preventDefault(); win.hide(); }   // closing keeps it running in the tray, like a chat app
@@ -186,9 +186,12 @@ else {
     // The page's own permission prompts (notifications, clipboard) are allowed for the app itself and nobody else.
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(isInternal(wc.getURL(), BASE) && ['notifications', 'clipboard-read', 'clipboard-sanitized-write', 'media'].includes(permission)));
     if (WIN) app.setAppUserModelId('in.projecttracker.desktop');   // so notifications carry the app's name and icon
-    ipcMain.on('titlebar', (e, { bg, fg }) => {
-      if (!WIN || !win || e.sender !== win.webContents || !/^#[0-9a-f]{6}$/i.test(bg) || !/^#[0-9a-f]{6}$/i.test(fg)) return;
-      win.setTitleBarOverlay({ color: bg, symbolColor: fg, height: TITLEBAR_H });
+    ipcMain.on('win-control', (e, action) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+      if (action === 'minimize') win.minimize();
+      else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
+      else if (action === 'close') win.close();
+      else if (action === 'query') win.webContents.send('win-maximized', win.isMaximized());
     });
     buildMenu(); if (!MAC) createTray(); createWindow();
     globalShortcut.register('CommandOrControl+Shift+Space', quickSearch);
