@@ -39,6 +39,7 @@ const number = parseInt(await d.locator('.ps-number').innerText(), 10);
 check('the computer shows a two-digit number', number >= 10 && number <= 99, String(number));
 
 await p.waitForSelector('.island', { timeout: 15000 });
+await p.waitForTimeout(900);   // the island drops in with a short animation: look at it once it has landed
 check('the phone drops an island with the request', (await p.locator('.island-head').innerText()).includes('Sign-in request'));
 check('the island opens to three numbers', (await p.locator('.island .ap-nums button').count()) === 3);
 check('the island sits inside the screen', await p.evaluate(() => { const r = document.querySelector('.island').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0; }));
