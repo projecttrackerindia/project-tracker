@@ -534,3 +534,7 @@ export interface EmailOverview { provider: string; sent24h: number; failed24h: n
 export interface EmailBlocked { id: string; email: string; reason: string; detail: string | null; createdAt: string }
 export interface EmailDomainCheck { domain: string; checks: { id: string; title: string; status: 'ok' | 'warn' | 'fail'; detail: string; fix: string | null }[] }
 export interface UnsubscribeInfo { label: string; alreadyOff: boolean }
+
+// ---- invoices people can keep
+export interface InvoiceBuyer { name: string; address: string; taxId: string }
+export interface InvoiceSeller { legalName: string; address: string; taxId: string; email: string; note: string }

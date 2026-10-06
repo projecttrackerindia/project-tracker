@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { payWithRazorpay, PaymentCancelled } from '../../lib/razorpay';
 import { ApiError } from '../../api/client';
 import { billingApi } from '../../api/endpoints';
-import type { Plan, SubscriptionStatus } from '../../api/types';
+import type { InvoiceBuyer, Plan, SubscriptionStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, ErrorState, PageHead, PageLoader, Progress } from '../../components/ui';
 import { FEATURE_LABELS, formatDate, formatMoney, limitLabel } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useAuth, useWorkspaceId } from '../../stores/auth';
+import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 
 const STATUS_TONE: Record<SubscriptionStatus, 'success' | 'info' | 'warning' | 'danger' | 'neutral'> = {
@@ -176,20 +176,55 @@ export function BillingPage() {
         {b.plans.map((p) => <PlanCard key={p.id} plan={p} current={p.code === plan.code && !plan.downgraded} canManage={b.canManage} trialAvailable={b.trialAvailable} busy={busy} onChoose={choose} />)}
       </div>
 
+      {b.canManage && <BillingDetailsCard />}
       {b.canManage && (
         <div className="card">
           <div className="card-head"><h3>Invoices</h3></div>
           {b.invoices.length === 0 ? <div className="card-body"><p className="muted" style={{ fontSize: 13 }}>No invoices yet.</p></div> : (
             <div className="table-wrap"><table>
-              <thead><tr><th>Invoice</th><th>Description</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+              <thead><tr><th>Invoice</th><th>Description</th><th>Date</th><th>Amount</th><th>Status</th><th><span className="sr-only">Download</span></th></tr></thead>
               <tbody>{b.invoices.map((i) => (
                 <tr key={i.id}><td className="td-title">{i.number}</td><td className="cell-muted">{i.description}</td><td className="cell-muted">{formatDate(i.issuedAt)}</td>
-                  <td>{formatMoney(i.amount, i.currency)}</td><td><Badge tone={i.status === 'Paid' ? 'success' : 'danger'}>{i.status}</Badge></td></tr>
+                  <td>{formatMoney(i.amount, i.currency)}</td><td><Badge tone={i.status === 'Paid' ? 'success' : 'danger'}>{i.status}</Badge></td>
+                  <td>{i.status === 'Paid' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void billingApi.downloadInvoice(i.id, i.number).catch((e) => toast(e instanceof ApiError ? e.message : 'Could not download the invoice.', 'error'))}><Icon name="download" size={15} />PDF</button>}</td></tr>
               ))}</tbody>
             </table></div>
           )}
         </div>
       )}
     </>
+  );
+}
+
+/** What appears under "Bill to" on invoices: the company's legal name, address and tax id (GSTIN). Empty means the workspace name. */
+function BillingDetailsCard() {
+  const q = useQuery({ queryKey: ['billing', 'details'], queryFn: billingApi.details });
+  const [draft, setDraft] = useState<InvoiceBuyer | null>(null);
+  const [saving, setSaving] = useState(false);
+  if (!q.data) return null;
+  const v = draft ?? q.data;
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(q.data);
+  const set = (k: keyof InvoiceBuyer, val: string) => setDraft({ ...v, [k]: val });
+  const save = async () => {
+    setSaving(true);
+    try { const saved = await billingApi.setDetails(v); queryClient.setQueryData(['billing', 'details'], saved); setDraft(null); toast('Billing details saved. New downloads use them.'); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="card mb-22">
+      <div className="card-head"><div><h3>Billing details</h3><p>Shown under “Bill to” on your invoices. Leave empty to use the workspace name.</p></div></div>
+      <div className="card-body">
+        <div className="bd-grid">
+          <label className="field"><span>Company name</span><input className="input" value={v.name} maxLength={120} onChange={(e) => set('name', e.target.value)} placeholder="Legal name of your company" /></label>
+          <label className="field"><span>GSTIN / tax ID</span><input className="input" value={v.taxId} maxLength={40} onChange={(e) => set('taxId', e.target.value)} placeholder="Optional" /></label>
+          <label className="field bd-wide"><span>Address</span><textarea className="input" rows={3} value={v.address} maxLength={400} onChange={(e) => set('address', e.target.value)} placeholder="Registered address" /></label>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()}>{saving && <span className="spinner" />}Save details</button>
+          {dirty && <button className="btn btn-ghost" onClick={() => setDraft(null)}>Discard</button>}
+        </div>
+      </div>
+    </div>
   );
 }

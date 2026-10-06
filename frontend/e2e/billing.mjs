@@ -22,6 +22,19 @@ check('the confirmation says payments are simulated in demo mode', /simulated/i.
 await page.locator('.modal button:has-text("Confirm")').click();
 await page.waitForFunction(() => /Business/.test(document.body.innerText) && document.body.innerText.includes('Renews'), null, { timeout: 10000 }).catch(() => undefined);
 check('the plan changes at once and an invoice is listed', (await page.locator('text=Business plan').count()) > 0 || (await page.locator('text=INV-').count()) > 0);
+
+// Billing details and the invoice PDF
+await page.fill('.bd-grid input[placeholder^="Legal name"]', 'Qruize Technologies Private Limited');
+await page.fill('.bd-grid textarea', '12 MG Road\nBengaluru');
+await page.click('button:has-text("Save details")'); await page.waitForTimeout(800);
+check('billing details can be saved', (await page.locator('button:has-text("Save details")').isDisabled()));
+const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('button:has-text("PDF")').first().click()]);
+const path = await dl.path();
+const { readFileSync } = await import('node:fs');
+const bytes = readFileSync(path).toString('latin1');
+check('the invoice downloads as a PDF', bytes.startsWith('%PDF-1.4') && dl.suggestedFilename().startsWith('Invoice-INV-'), dl.suggestedFilename());
+check('it is made out to the details just saved', bytes.includes('Qruize Technologies Private Limited'));
+
 console.log(errors.length ? `page errors:\n${errors.join('\n')}` : 'no page errors');
 await browser.close();
 process.exit(failed || errors.length ? 1 : 0);

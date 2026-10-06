@@ -140,7 +140,7 @@ internal static class PdfWriter
     private const double PageW = 842, PageH = 595, Margin = 36, RowH = 15, FontSize = 8.5, HeadSize = 9;
 
     /// <summary>Approximate Helvetica advance width in points; good enough to truncate and right-align.</summary>
-    private static double Width(string s, double size)
+    internal static double Width(string s, double size)
     {
         double w = 0;
         foreach (var ch in s)
@@ -155,7 +155,7 @@ internal static class PdfWriter
         return w * size;
     }
 
-    private static string Fit(string s, double max, double size)
+    internal static string Fit(string s, double max, double size)
     {
         if (Width(s, size) <= max) return s;
         while (s.Length > 1 && Width(s + "...", size) > max) s = s[..^1];
@@ -163,7 +163,7 @@ internal static class PdfWriter
     }
 
     /// <summary>Latin-1 bytes with the PDF string escapes; characters the standard fonts cannot draw become plain look-alikes or '?'.</summary>
-    private static string Pdf(string s)
+    internal static string Pdf(string s)
     {
         var sb = new StringBuilder(s.Length + 2);
         foreach (var raw in s)

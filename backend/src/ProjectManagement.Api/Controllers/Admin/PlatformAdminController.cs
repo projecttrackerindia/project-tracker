@@ -1,3 +1,4 @@
+using ProjectManagement.Application.Features.Billing;
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Application.Features.Admin;
 using ProjectManagement.Application.Features.Ai;
@@ -12,7 +13,7 @@ namespace ProjectManagement.Api.Controllers.Admin;
 /// services from the server-resolved user, never from anything the client sends.
 /// </summary>
 [Route("api/v1/admin")]
-public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage, ProjectManagement.Application.Features.Notifications.EmailAdminService emailAdmin) : ApiControllerBase
+public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage, ProjectManagement.Application.Features.Notifications.EmailAdminService emailAdmin, InvoiceService invoices) : ApiControllerBase
 {
     // ---------------------------------------------------------------- organizations, users, plans, audit
     [HttpGet("stats")]
@@ -145,6 +146,13 @@ public class PlatformAdminController(AdminService admin, PlatformService platfor
     public async Task<IActionResult> SetPasswordPolicy([FromBody] PasswordPolicyDto req, CancellationToken ct) => Ok(await platform.SetPasswordPolicyAsync(req, ct));
 
     /// <summary>The currency every plan is priced in (INR unless changed) and the currencies it can be switched to.</summary>
+    /// <summary>Who issues invoices (name, address, tax id, a note under the total).</summary>
+    [HttpGet("invoice-seller")]
+    public async Task<IActionResult> InvoiceSeller(CancellationToken ct) => Ok(await invoices.GetSellerAsync(ct));
+
+    [HttpPut("invoice-seller")]
+    public async Task<IActionResult> SetInvoiceSeller([FromBody] InvoiceSellerDto req, CancellationToken ct) => Ok(await invoices.SetSellerAsync(req, ct));
+
     [HttpGet("billing-settings")]
     public async Task<IActionResult> BillingSettings(CancellationToken ct) => Ok(await platform.GetBillingSettingsAsync(ct));
 

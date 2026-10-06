@@ -5,7 +5,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
-  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge, EmailOverview, EmailBlocked, EmailDomainCheck, UnsubscribeInfo,
+  ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge, InvoiceBuyer, InvoiceSeller, EmailOverview, EmailBlocked, EmailDomainCheck, UnsubscribeInfo,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
@@ -197,6 +197,9 @@ export const billingApi = {
   overview: () => get<BillingOverview>('/billing'),
   checkout: (planCode: string, startTrial: boolean) => post<BillingOverview>('/billing/checkout', { planCode, startTrial }),
   confirm: (paymentId: string, subscriptionId: string, signature: string) => post<BillingOverview>('/billing/confirm', { paymentId, subscriptionId, signature }),
+  details: () => get<InvoiceBuyer>('/billing/details'),
+  setDetails: (b: InvoiceBuyer) => put<InvoiceBuyer>('/billing/details', b),
+  downloadInvoice: (id: string, number: string) => download(`/billing/invoices/${id}/pdf`, `Invoice-${number}.pdf`),
   cancel: () => post<BillingOverview>('/billing/cancel'),
   resume: () => post<BillingOverview>('/billing/resume'),
 };
@@ -574,6 +577,10 @@ export const passkeyApi = {
   signIn: (challengeId: string, response: Record<string, unknown>) => post<AuthResponse>('/auth/passkey/verify', { challengeId, response }, { auth: false }),
 };
 
+export const invoiceSellerApi = {
+  get: () => get<InvoiceSeller>('/admin/invoice-seller'),
+  set: (b: InvoiceSeller) => put<InvoiceSeller>('/admin/invoice-seller', b),
+};
 export const emailAdminApi = {
   overview: (status?: string) => get<EmailOverview>('/admin/email', { status }),
   blocked: () => get<EmailBlocked[]>('/admin/email/suppressions'),

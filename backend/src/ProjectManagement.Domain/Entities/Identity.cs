@@ -95,6 +95,11 @@ public class Tenant : AuditableEntity, ISoftDelete
     /// <summary>Whether every member sees every project (the default) or only the projects of their own teams and the ones they were added to.</summary>
     public ProjectVisibility ProjectVisibility { get; set; } = ProjectVisibility.Organization;
 
+    /// <summary>What appears under "Bill to" on invoices: the company's legal name, address and tax id (GSTIN). Empty = the workspace name.</summary>
+    public string? BillingName { get; set; }
+    public string? BillingAddress { get; set; }
+    public string? BillingTaxId { get; set; }
+
     /// <summary>Soft delete: members lose access, all data is retained and the tenant can be restored by a platform admin.</summary>
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }

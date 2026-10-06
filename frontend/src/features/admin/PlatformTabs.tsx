@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { platformApi } from '../../api/endpoints';
+import { invoiceSellerApi, platformApi } from '../../api/endpoints';
 import { EmailPanel } from './EmailPanel';
-import type { AdminUsage, BillingSettings, ConsentDocument, GoLive, PasswordPolicy, PlatformSettings } from '../../api/types';
+import type { AdminUsage, BillingSettings, InvoiceSeller, ConsentDocument, GoLive, PasswordPolicy, PlatformSettings } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, EmptyState, ErrorState, Field, Modal, PageLoader, StatCard } from '../../components/ui';
 import { currencySymbol, formatDate, formatMoney, timeAgo } from '../../lib/format';
@@ -235,6 +235,7 @@ export function SettingsTab() {
       </div>
     </div>
     <BillingCurrencyCard />
+    <InvoiceSellerCard />
     <PasswordPolicyCard />
     <ConsentDocumentsCard />
     </>
@@ -523,6 +524,41 @@ export function GoLiveNotice() {
   return (
     <div className="form-error" role="alert" style={{ marginBottom: 16 }}>
       <b>Not ready for real users:</b> {q.data.failing} setting{q.data.failing === 1 ? '' : 's'} must be fixed first ({q.data.checks.filter((c) => c.status === 'fail').map((c) => c.title).join(', ')}). <a className="link" href="/admin/health">Open the checklist</a>
+    </div>
+  );
+}
+
+/** Who issues the invoices customers download: set once. The note is printed under the total (for example "Amount includes GST at 18%"); the app does not work out tax. */
+function InvoiceSellerCard() {
+  const q = useWsQuery(['admin', 'invoice-seller'], invoiceSellerApi.get);
+  const [draft, setDraft] = useState<InvoiceSeller | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!q.data) return null;
+  const v = draft ?? q.data;
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(q.data);
+  const set = (k: keyof InvoiceSeller, val: string) => setDraft({ ...v, [k]: val });
+  const save = async () => {
+    setBusy(true);
+    try { await invoiceSellerApi.set(v); toast('Invoice details saved.'); setDraft(null); await q.refetch(); }
+    catch (e) { toast(err(e, 'Could not save.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="card" style={{ marginTop: 22 }}>
+      <div className="card-head"><div><h3>Invoice details</h3><p>The company that appears as the seller on every invoice PDF. The app does not add tax: say in the note what the amount includes.</p></div></div>
+      <div className="card-body">
+        <div className="bd-grid">
+          <label className="field"><span>Legal name</span><input className="input" value={v.legalName} maxLength={120} onChange={(e) => set('legalName', e.target.value)} /></label>
+          <label className="field"><span>GSTIN / tax ID</span><input className="input" value={v.taxId} maxLength={40} onChange={(e) => set('taxId', e.target.value)} /></label>
+          <label className="field bd-wide"><span>Address</span><textarea className="input" rows={3} value={v.address} maxLength={400} onChange={(e) => set('address', e.target.value)} /></label>
+          <label className="field"><span>Billing e-mail</span><input className="input" value={v.email} maxLength={120} onChange={(e) => set('email', e.target.value)} /></label>
+          <label className="field"><span>Note under the total</span><input className="input" value={v.note} maxLength={200} onChange={(e) => set('note', e.target.value)} placeholder="e.g. Amount includes GST at 18%." /></label>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <button className="btn btn-primary" disabled={!dirty || busy} onClick={() => void save()}>Save invoice details</button>
+          {dirty && <button className="btn btn-ghost" onClick={() => setDraft(null)}>Discard</button>}
+        </div>
+      </div>
     </div>
   );
 }
