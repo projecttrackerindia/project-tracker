@@ -32,7 +32,7 @@ export const FEATURES: Feature[] = [
   { icon: 'kanban', title: 'Projects and delivery timelines', text: 'Boards, lists, stages, sprints and milestones with task dependencies, so every project shows what is next and what is blocked.' },
   { icon: 'monitor', title: 'A portfolio view for leaders', text: 'Every project ranked by risk with the reasons, a forecast of when it will really finish, and the history of every delivery date that moved.' },
   { icon: 'users', title: 'Teams that stay separate', text: 'Five access levels, job-role profiles and teams. Choose whether everyone sees every project or each team sees only its own, and switch the whole app to one team.' },
-  { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens. Business plan and above.' },
+  { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens. Every plan includes a taste of it; Pro adds 60 credits per person a month, Business 200 with deep reasoning.' },
   { icon: 'alarm', title: 'Reminders that arrive on time', text: 'Automatic due-date reminders, a daily briefing, a weekly portfolio brief and push or e-mail delivery, in each person\'s own working hours.' },
   { icon: 'clock', title: 'Time, workload and capacity', text: 'Timesheets with approvals, workload by person and weekly capacity, so work is shared out before people are overloaded.' },
   { icon: 'bolt', title: 'Operational work with service levels', text: 'Bugs, support and requests with response and resolution targets that warn before they are missed. Business plan and above.' },
@@ -41,14 +41,24 @@ export const FEATURES: Feature[] = [
   { icon: 'git', title: 'Connects to what you already use', text: 'GitHub and Azure DevOps links, Slack and Teams webhooks, an API, single sign-on (OIDC and SAML) and SCIM provisioning.' },
 ];
 
-export interface Plan { name: string; price: string; blurb: string; points: string[]; cta: string; featured?: boolean }
-/** Starting prices in INR per month. Keep in step with Admin > Plans; the app shows the live price at checkout. */
+export interface Plan { name: string; price: string; unit?: number; perUser?: boolean; blurb: string; points: string[]; cta: string; featured?: boolean }
+/**
+ * Starting prices in INR, per person per month for Pro and Business; the live price list (Admin > Plans) replaces them when the page opens.
+ * Keep in step with DatabaseInitializer (the plan catalog) and docs/PRICING.md.
+ */
 export const PLANS: Plan[] = [
-  { name: 'Free', price: '₹0', blurb: 'For one person getting started.', cta: 'Start free', points: ['1 member and 1 team', '5 projects and 500 tasks', '500 MB of files', 'Reminders, calendar and timesheets', 'Portfolio view'] },
-  { name: 'Pro', price: '₹999', blurb: 'For freelancers and small teams.', cta: 'Start with Pro', featured: true, points: ['Up to 10 members and 5 teams', 'Unlimited projects and tasks', '10 GB of files', 'Custom workflows, fields and automation', 'Advanced reports and workload', 'Mobile app with phone sign-in'] },
-  { name: 'Business', price: '₹2,499', blurb: 'For growing teams and departments.', cta: 'Start with Business', points: ['Up to 100 members, unlimited teams', 'AI assistant and file understanding', 'Audit log, API access and advanced permissions', 'Single sign-on, two-step verification rules, IP allowlist', 'Resource management and service levels'] },
-  { name: 'Enterprise', price: 'Custom', blurb: 'Unlimited scale and governance.', cta: 'Get started', points: ['Unlimited members, storage and AI use', 'Everything in Business', 'Longest history and audit retention', 'Priority onboarding and support'] },
+  { name: 'Free', price: '₹0', blurb: 'For one person getting started.', cta: 'Start free', points: ['One person, free for good', '5 projects and 500 tasks', '500 MB of files', 'Reminders, calendar and timesheets', 'Portfolio view', 'Try the AI assistant: 10 quick answers a month'] },
+  { name: 'Pro', price: '₹349', unit: 349, perUser: true, blurb: 'For teams that plan and deliver together.', cta: 'Start with Pro', featured: true, points: ['Add as many people as you need', 'Unlimited projects, tasks and teams', '5 GB of files per person', 'Custom workflows, fields and automation', 'Advanced reports and workload', 'Mobile app with phone sign-in', 'AI assistant: 60 credits per person every month'] },
+  { name: 'Business', price: '₹699', unit: 699, perUser: true, blurb: 'For growing teams and departments.', cta: 'Start with Business', points: ['Everything in Pro', '25 GB of files per person', 'AI with deep reasoning, file understanding and confirmed actions: 200 credits per person', 'Audit log, API access and advanced permissions', 'Single sign-on, two-step rules, IP allowlist', 'Resource management and service levels'] },
+  { name: 'Enterprise', price: 'Custom', blurb: 'Unlimited scale and governance.', cta: 'Talk to us', points: ['Unlimited members and storage', 'A large shared AI pool, sized to your contract', 'Everything in Business', 'Longest history and audit retention', 'Priority onboarding and support'] },
 ];
+
+/** The discounts, as the live price list states them (/api/v1/public/pricing); these are what shows before it loads. */
+export const OFFERS = {
+  annualPercent: 20, maxPercent: 30, trialDays: 14, trialPeople: 5,
+  volume: [{ min: 10, percent: 10 }, { min: 25, percent: 15 }, { min: 100, percent: 20 }],
+  credits: { quick: 1, standard: 4, deep: 20 },
+};
 
 export interface Pillar { icon: string; title: string; points: string[] }
 export const SECURITY: Pillar[] = [
@@ -99,7 +109,7 @@ export const PAGES: StaticPage[] = [
   { path: '/features/', title: 'Features | Project Tracker', h1: 'Everything a delivery team needs, in one workspace', lead: 'From the first task to the portfolio review, without stitching tools together.',
     description: 'Projects and timelines, a portfolio view with risk and forecasts, team-separated access, reminders, timesheets, chat and an AI assistant. See what Project Tracker does.' },
   { path: '/pricing/', title: 'Pricing | Project Tracker', h1: 'Simple plans that grow with your teams', lead: 'Start free. Move up when you need more people, teams, reports or governance.',
-    description: 'Free, Pro, Business and Enterprise plans for Project Tracker. Compare members, teams, storage, the AI assistant, audit log and single sign-on.' },
+    description: 'Free, Pro, Business and Enterprise plans for Project Tracker. Per-person pricing with yearly and team discounts. Compare storage, the AI assistant and its credits, audit log and single sign-on.' },
   { path: '/security/', title: 'Security | Project Tracker', h1: 'Security and privacy built into the foundations', lead: 'How we keep each organization\'s work separate, controlled and recoverable.',
     description: 'How Project Tracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
 ];
@@ -128,7 +138,7 @@ export const DETAILS: DetailPage[] = [
   {
     path: '/features/ai-assistant/', title: 'AI Assistant for Project Management | Project Tracker', h1: 'An assistant that answers from your own projects',
     lead: 'Ask in plain words. It reads only what you are allowed to see, and prepares changes for you to review before anything happens.',
-    description: 'Ask about your projects, workload and risks in plain language. The assistant answers from your own data and proposes changes that you confirm first. Business plan and above.',
+    description: 'Ask about your projects, workload and risks in plain language. The assistant answers from your own data and proposes changes that you confirm first. Every plan includes a taste; Pro and Business bring credits per person each month.',
     sections: [
       { title: 'Grounded in your work', text: 'Answers come from your projects, tasks and people, with the figures worked out by the product rather than guessed by the model.',
         points: ['Portfolio risk, forecasts and what-if questions', 'Workload, who has room and who is stretched', 'Find work by person, project, date or status'] },
@@ -190,11 +200,11 @@ export const DETAILS: DetailPage[] = [
 /** The plan comparison. From the plan catalog (DatabaseInitializer): keep it in step with that. A tick is true, a dash is not included. */
 export const COMPARE: { group: string; rows: { label: string; v: [string, string, string, string] }[] }[] = [
   { group: 'Scale', rows: [
-    { label: 'Members', v: ['1', 'Up to 10', 'Up to 100', 'Unlimited'] },
-    { label: 'Teams', v: ['1', 'Up to 5', 'Unlimited', 'Unlimited'] },
+    { label: 'People', v: ['1', 'Pay per person', 'Pay per person', 'Unlimited'] },
+    { label: 'Teams', v: ['1', 'Unlimited', 'Unlimited', 'Unlimited'] },
     { label: 'Projects', v: ['5', 'Unlimited', 'Unlimited', 'Unlimited'] },
     { label: 'Tasks', v: ['500', 'Unlimited', 'Unlimited', 'Unlimited'] },
-    { label: 'File storage', v: ['500 MB', '10 GB', '50 GB', 'Unlimited'] },
+    { label: 'File storage', v: ['500 MB', '5 GB per person', '25 GB per person', 'Unlimited'] },
     { label: 'Largest file', v: ['10 MB', '100 MB', '250 MB', '512 MB'] },
     { label: 'Activity history', v: ['30 days', '1 year', '2 years', 'Unlimited'] },
   ] },
@@ -208,8 +218,9 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'Mobile app and phone sign-in', v: ['–', '✓', '✓', '✓'] },
   ] },
   { group: 'Intelligence', rows: [
-    { label: 'AI assistant with confirmed actions', v: ['–', '–', '✓', '✓'] },
-    { label: 'AI use each month', v: ['–', '–', '2,000 credits', 'Unlimited'] },
+    { label: 'AI assistant', v: ['Try it', 'Quick and Standard', 'Quick, Standard and Deep', 'All levels'] },
+    { label: 'AI credits each month', v: ['10', '60 per person', '200 per person', 'A shared pool'] },
+    { label: 'AI reads files and takes confirmed actions', v: ['–', 'Reads files', '✓', '✓'] },
   ] },
   { group: 'Control and security', rows: [
     { label: 'Advanced permissions', v: ['–', '–', '✓', '✓'] },
@@ -233,8 +244,12 @@ export const VERSUS: { what: string; without: string; with: string }[] = [
 export const INTEGRATIONS = ['GitHub', 'Azure DevOps', 'Slack', 'Microsoft Teams', 'Single sign-on (OIDC, SAML)', 'SCIM provisioning', 'REST API', 'Signed webhooks', 'Google, Microsoft, GitHub and Apple sign-in'];
 
 export const FAQ: { q: string; a: string }[] = [
-  { q: 'Is there a free plan?', a: 'Yes. Free is for one person: 1 member and 1 team, 5 projects, 500 tasks and 500 MB of files, with reminders, calendar, timesheets and the portfolio view.' },
-  { q: 'Can I change plans later?', a: 'Yes. An owner changes the plan under Settings, Billing, and the price shown at checkout is the one that applies.' },
+  { q: 'Is there a free plan?', a: 'Yes. Free is for one person, for good: 5 projects, 500 tasks and 500 MB of files, with reminders, calendar, timesheets, the portfolio view and ten quick AI answers a month to try the assistant.' },
+  { q: 'How does per-person pricing work?', a: 'Pro and Business are priced per person per month, and you pay for the people in your workspace. Storage and AI credits grow with each person and are shared by the whole team. Add people any time; the owner chooses the number of seats under Settings, Billing.' },
+  { q: 'What discounts are there?', a: 'Paying for a year at once takes 20% off. Teams of 10 or more get 10% off, 25 or more 15%, and 100 or more 20%, automatically. The two add up, to at most 30% off. Prices are in Indian rupees and exclude GST.' },
+  { q: 'What is an AI credit?', a: 'A unit of AI use. A quick answer costs 1 credit, a standard answer 4 and a deep analysis 20. Each person on Pro brings 60 credits a month and each person on Business 200, pooled across the team and renewed on the 1st. When the pool runs out the assistant waits until the next month; nothing else is affected.' },
+  { q: 'Is there a free trial of the paid plans?', a: 'Yes. Start a 14-day trial of Pro or Business from Settings, Billing: up to 5 people and 100 AI credits, no payment taken.' },
+  { q: 'Can I change plans or the number of people later?', a: 'Yes. An owner changes the plan, the number of seats and monthly or yearly billing under Settings, Billing. Adding seats works at once; the new amount starts at your next renewal, so nothing is charged twice.' },
   { q: 'Does the assistant change my projects by itself?', a: 'No. It answers from the projects you can open and proposes changes. Nothing happens until you confirm it.' },
   { q: 'Can teams keep their projects private from each other?', a: 'Yes. Choose team-only visibility and each person sees the projects of their teams, plus the ones they own or were added to. Owners and admins see everything; guests only the projects they are added to.' },
   { q: 'How is each organization\'s data kept separate?', a: 'In the data layer itself, not only in the screens, and automated tests check every screen for leaks between organizations, teams and roles.' },

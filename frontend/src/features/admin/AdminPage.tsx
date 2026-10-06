@@ -445,8 +445,8 @@ function Plans() {
         {q.data.map((p) => (
           <div className="plan-card" key={p.id}>
             <div className="row" style={{ justifyContent: 'space-between' }}><span className="plan-name">{p.name}</span>{!p.isActive && <Badge tone="warning">Inactive</Badge>}</div>
-            <div className="plan-price">{formatMoney(p.priceMonthly, p.currency)}{p.priceMonthly !== null && <small> / month</small>}</div>
-            <ul className="plan-features">{Object.entries(p.features).map(([k, v]) => <li key={k}><Icon name="tick" />{FEATURE_LABELS[k] ?? k}: <b>{v === -1 ? 'Unlimited' : v}</b></li>)}</ul>
+            <div className="plan-price">{formatMoney(p.priceMonthly, p.currency)}{p.priceMonthly !== null && <small>{p.perSeat ? ' / user / month' : ' / month'}</small>}</div>
+            <ul className="plan-features">{Object.entries(p.features).map(([k, v]) => <li key={k}><Icon name="tick" />{FEATURE_LABELS[k] ?? k}{p.perSeat && ['STORAGE_LIMIT_MB', 'AI_MONTHLY_CREDITS'].includes(k) ? ' (per user)' : ''}: <b>{v === -1 ? 'Unlimited' : v}</b></li>)}</ul>
             <button className="btn btn-ghost" style={{ marginTop: 'auto' }} onClick={() => setEdit(p)}><Icon name="edit" /> Edit plan</button>
           </div>
         ))}
@@ -462,6 +462,7 @@ function PlanModal({ plan, onClose }: { plan: AdminPlan; onClose: () => void }) 
   const [description, setDescription] = useState(plan.description ?? '');
   const [price, setPrice] = useState(plan.priceMonthly?.toString() ?? '');
   const [active, setActive] = useState(plan.isActive);
+  const [perSeat, setPerSeat] = useState(!!plan.perSeat);
   const [features, setFeatures] = useState<Record<string, number>>(plan.features);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -470,14 +471,14 @@ function PlanModal({ plan, onClose }: { plan: AdminPlan; onClose: () => void }) 
     <Modal size="lg" title={`Edit ${plan.code} plan`} subtitle="Limits are enforced immediately for every organization on this plan. Use -1 for unlimited." onClose={onClose}
       onSubmit={async (e) => {
         e.preventDefault(); setBusy(true); setError(null);
-        try { await adminApi.updatePlan(plan.id, { name, description: description || null, priceMonthly: price === '' ? null : Number(price), isActive: active, features }); toast('Plan updated.'); await invalidateWorkspace(wid, 'admin'); onClose(); }
+        try { await adminApi.updatePlan(plan.id, { name, description: description || null, priceMonthly: price === '' ? null : Number(price), isActive: active, features, perSeat }); toast('Plan updated.'); await invalidateWorkspace(wid, 'admin'); onClose(); }
         catch (err) { setError(errText(err, 'Could not update the plan.')); } finally { setBusy(false); }
       }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>Save plan</SubmitButton></>}>
       {error && <div className="form-error">{error}</div>}
       <div className="form-grid">
         <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label={`Monthly price (${currencySymbol(plan.currency)} ${plan.currency})`} hint="Leave empty for custom pricing (“Contact sales”). The currency is set under Platform settings.">
+        <Field label={`Monthly price (${currencySymbol(plan.currency)} ${plan.currency}${perSeat ? ' per user' : ''})`} hint="Leave empty for custom pricing (“Contact sales”). The currency is set under Platform settings.">
           <input className="input" type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Custom" />
         </Field>
         <Field label="Description" full><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
@@ -489,6 +490,7 @@ function PlanModal({ plan, onClose }: { plan: AdminPlan; onClose: () => void }) 
             <label key={k} className="row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={features[k] === 1} onChange={(e) => setFeatures((f) => ({ ...f, [k]: e.target.checked ? 1 : 0 }))} />{FEATURE_LABELS[k]}</label>
           ))}</div>
         </Field>
+        <Field label="Pricing" full><label className="row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={perSeat} onChange={(e) => setPerSeat(e.target.checked)} disabled={plan.code === 'FREE'} /> Priced per person: the price, file storage and AI credits above are per user (the workspace pays for, and gets, the sum for its seats)</label></Field>
         <Field label="Availability" full><label className="row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} disabled={plan.code === 'FREE'} /> Plan is available for selection</label></Field>
       </div>
     </Modal>

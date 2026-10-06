@@ -134,6 +134,8 @@ app again. Drop the safety copy when you are sure.
 
 ## 7. Upgrades
 
+**Pricing change (per-person plans):** the first start of this version moves the built-in plans to per-person pricing once (Pro ₹349, Business ₹699 per person per month; storage and AI credits per person, pooled) and gives every paying workspace seats equal to its people, at least 5, so nobody is locked out. A Razorpay subscription made earlier keeps charging its old amount until the owner picks seats in Settings → Billing. Review Admin → Plans, and read `docs/PRICING.md` for the arithmetic (AI cost per credit, margin per person) before changing any number. Discounts and the seat cap are `Billing:Pricing:*`.
+
 ```sh
 git pull
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env up -d --build

@@ -27,7 +27,7 @@ export function DirectoryPanel() {
 
   return (
     <>
-      <PageHead title="Directory" sub={members.data ? `${members.data.length} of ${limitLabel(limit)} member${limit === 1 ? '' : 's'} in ${me.current?.name}` : ' '}>
+      <PageHead title="Directory" sub={members.data ? (limit === -1 ? `${members.data.length} member${members.data.length === 1 ? '' : 's'} in ${me.current?.name}` : `${members.data.length} of ${limitLabel(limit)} seat${limit === 1 ? '' : 's'} used in ${me.current?.name}`) : ' '}>
         {canCreate && <button className="btn btn-ghost" onClick={() => setCreating(true)}><Icon name="userPlus" /> Create user</button>}
         {canInvite && <button className="btn btn-primary" onClick={() => setInviting(true)}><Icon name="plus" /> Invite member</button>}
       </PageHead>

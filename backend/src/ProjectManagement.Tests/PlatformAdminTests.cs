@@ -52,7 +52,7 @@ public class PlatformAdminTests(ApiFactory factory)
         Assert.Equal(b["mrr"]!.GetValue<decimal>() * 12, b["arr"]!.GetValue<decimal>());
         var business = b["byPlan"]!.AsArray().Single(p => p!["planCode"]!.GetValue<string>() == "BUSINESS")!;
         Assert.True(business["organizations"]!.GetValue<int>() >= 1);
-        Assert.Equal(business["organizations"]!.GetValue<int>() * price, business["mrr"]!.GetValue<decimal>());
+        Assert.True(business["mrr"]!.GetValue<decimal>() >= business["organizations"]!.GetValue<int>() * price * 0.7m);   // every organization pays for at least one seat, discounts take off at most 30%
         Assert.Contains(name, b["recentInvoices"]!.ToJsonString());
         Assert.True(b["payingOrganizations"]!.GetValue<int>() >= 1);
         Assert.True(b["revenueLast30Days"]!.GetValue<decimal>() >= price);

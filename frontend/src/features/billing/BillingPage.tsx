@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { payWithRazorpay, PaymentCancelled } from '../../lib/razorpay';
 import { ApiError } from '../../api/client';
 import { billingApi } from '../../api/endpoints';
@@ -8,6 +8,7 @@ import { Icon } from '../../components/Icon';
 import { Badge, ErrorState, PageHead, PageLoader, Progress } from '../../components/ui';
 import { FEATURE_LABELS, formatDate, formatMoney, limitLabel } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { DEFAULT_POLICY, quote, type Period, type PricingPolicy, type Quote } from '../../lib/pricing';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 
@@ -34,43 +35,108 @@ function featureText(key: string, value: number) {
 }
 
 const AI_LEVELS = ['', 'Quick', 'Standard', 'Deep'];
-/** What the plan's AI includes, in a few lines: "AI assistant (Quick, Standard and Deep reasoning)", "2,000 AI credits / month", ... */
-function aiLines(f: Record<string, number>): string[] {
+const gb = (mb: number) => (mb >= 1024 ? `${+(mb / 1024).toFixed(1)} GB` : `${mb} MB`);
+
+/** What the plan's AI includes, in a few lines. On a per-person plan the credits are per person and pooled across the team. */
+function aiLines(f: Record<string, number>, perSeat: boolean, seats: number): string[] {
   if (!f.AI_ASSISTANT) return [];
   const top = f.AI_MODEL_TIER < 0 ? 3 : Math.min(Math.max(f.AI_MODEL_TIER, 1), 3);
   const levels = AI_LEVELS.slice(1, top + 1);
+  const credits = f.AI_MONTHLY_CREDITS;
   return [
     `AI assistant: ${levels.length > 1 ? `${levels.slice(0, -1).join(', ')} and ${levels[levels.length - 1]}` : levels[0]} answers${top === 3 ? ' with deep reasoning' : ''}`,
-    f.AI_MONTHLY_CREDITS < 0 ? 'Unlimited AI credits' : `${limitLabel(f.AI_MONTHLY_CREDITS)} AI credits per month`,
+    credits < 0 ? 'Unlimited AI credits'
+      : perSeat ? `${limitLabel(credits)} AI credits per user each month, shared by the team (${limitLabel(credits * seats)} for ${seats})`
+      : `${limitLabel(credits)} AI credits per month`,
     ...(f.AI_ATTACHMENTS ? ['AI reads images & documents'] : []),
     ...(f.AI_ACTIONS ? ['AI takes actions & sends reports'] : []),
   ];
 }
 
-function PlanCard({ plan, current, canManage, trialAvailable, busy, onChoose }: {
-  plan: Plan; current: boolean; canManage: boolean; trialAvailable: boolean; busy: boolean; onChoose: (plan: Plan, trial: boolean) => void;
+/** "5 projects", "1 member", "30-day activity history", "Unlimited tasks"; on a per-person plan, members and storage are about the people you pay for. */
+function planFeatureText(plan: Plan, key: string, seats: number) {
+  const v = plan.features[key];
+  if (plan.perSeat && key === 'MAX_MEMBERS') return 'Pay only for the people you add';
+  if (plan.perSeat && key === 'STORAGE_LIMIT_MB' && v > 0) return `${gb(v)} files per user (${gb(v * seats)} for ${seats})`;
+  return featureText(key, v);
+}
+
+function PlanCard({ plan, current, canManage, trialAvailable, busy, quote: q, seats, period, policy, purchased, purchasedPeriod, onChoose }: {
+  plan: Plan; current: boolean; canManage: boolean; trialAvailable: boolean; busy: boolean; quote: Quote | null; seats: number; period: Period; policy: PricingPolicy;
+  purchased: number; purchasedPeriod: Period; onChoose: (plan: Plan, trial: boolean) => void;
 }) {
   const price = plan.priceMonthly;
+  const perSeat = !!plan.perSeat;
+  const discounted = !!q && q.totalPercent > 0;
+  const sameAsNow = current && (!perSeat || (seats === purchased && period === purchasedPeriod));
   return (
     <div className={`plan-card ${current ? 'current' : ''}`}>
-      <div className="row" style={{ justifyContent: 'space-between' }}><span className="plan-name">{plan.name}</span>{current && <Badge tone="purple">Current</Badge>}</div>
-      <div className="plan-price">{price === null ? 'Custom' : formatMoney(price, plan.currency)}{price !== null && <small> / month</small>}</div>
-      <p className="muted" style={{ fontSize: 12.5, minHeight: 36 }}>{plan.description}</p>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <span className="plan-name">{plan.name}</span>
+        {current ? <Badge tone="purple">Current</Badge> : discounted ? <Badge tone="success">{q!.totalPercent}% off</Badge> : null}
+      </div>
+      {price === null ? <div className="plan-price">Custom</div> : (
+        <div className="plan-price">
+          {perSeat && discounted && <s className="plan-was">{formatMoney(price, plan.currency)}</s>}
+          {formatMoney(perSeat && q ? Math.round(q.effectivePerSeatMonthly) : price, plan.currency)}
+          <small>{perSeat ? ' / user / month' : price > 0 ? ' / month' : ''}</small>
+        </div>
+      )}
+      {perSeat && q && (
+        <p className="plan-total">
+          {period === 'yearly'
+            ? <><b>{formatMoney(q.chargePerCycle, plan.currency)}</b> a year for {q.seats} {q.seats === 1 ? 'user' : 'users'}{q.savedPerCycle > 0 && <> · you save {formatMoney(q.savedPerCycle, plan.currency)}</>}</>
+            : <><b>{formatMoney(q.chargePerCycle, plan.currency)}</b> a month for {q.seats} {q.seats === 1 ? 'user' : 'users'}{q.savedPerCycle > 0 && <> · you save {formatMoney(q.savedPerCycle, plan.currency)}</>}</>}
+        </p>
+      )}
+      <p className="muted" style={{ fontSize: 12.5 }}>{plan.description}</p>
       <ul className="plan-features">
-        {LIMITS.map((k) => <li key={k}><Icon name="tick" />{featureText(k, plan.features[k])}</li>)}
+        {LIMITS.map((k) => <li key={k}><Icon name="tick" />{planFeatureText(plan, k, seats)}</li>)}
         {FLAGS.map((k) => <li key={k} className={plan.features[k] ? '' : 'off'}><Icon name={plan.features[k] ? 'tick' : 'close'} />{FEATURE_LABELS[k]}</li>)}
         {plan.features.AI_ASSISTANT
-          ? aiLines(plan.features).map((t) => <li key={t}><Icon name="tick" />{t}</li>)
+          ? aiLines(plan.features, perSeat, seats).map((t) => <li key={t}><Icon name="tick" />{t}</li>)
           : <li className="off"><Icon name="close" />AI assistant</li>}
       </ul>
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {current ? <button className="btn btn-ghost" disabled>Your plan</button>
-          : price === null ? <a className="btn btn-ghost" href="mailto:sales@example.com?subject=Enterprise%20plan">Contact sales</a>
+        {sameAsNow ? <button className="btn btn-ghost" disabled>Your plan</button>
+          : price === null ? <a className="btn btn-ghost" href="mailto:sales@projecttracker.in?subject=Enterprise%20plan">Contact sales</a>
           : (<>
-            <button className="btn btn-primary" disabled={!canManage || busy} onClick={() => onChoose(plan, false)}>{price === 0 ? 'Switch to Free' : `Choose ${plan.name}`}</button>
-            {trialAvailable && price > 0 && <button className="btn btn-ghost" disabled={!canManage || busy} onClick={() => onChoose(plan, true)}>Start 14-day free trial</button>}
+            <button className="btn btn-primary" disabled={!canManage || busy} onClick={() => onChoose(plan, false)}>
+              {price === 0 ? 'Switch to Free' : current ? `Update to ${seats} ${seats === 1 ? 'seat' : 'seats'}${period !== purchasedPeriod ? `, billed ${period}` : ''}` : `Choose ${plan.name}`}
+            </button>
+            {trialAvailable && price > 0 && !current && <button className="btn btn-ghost" disabled={!canManage || busy} onClick={() => onChoose(plan, true)}>Start 14-day free trial ({policy.trialSeats} people)</button>}
           </>)}
       </div>
+    </div>
+  );
+}
+
+/** Monthly or yearly, and how many people: set once above the plans, every plan card shows its own price for the choice. */
+function PlanChooser({ seats, setSeats, minSeats, period, setPeriod, policy }: {
+  seats: number; setSeats: (n: number) => void; minSeats: number; period: Period; setPeriod: (p: Period) => void; policy: PricingPolicy;
+}) {
+  const next = policy.volumeTiers.find((t) => seats < t.minSeats);
+  return (
+    <div className="plan-chooser">
+      <div className="pc-block">
+        <span className="pc-label">Billing</span>
+        <div className="seg" role="group" aria-label="Billing period">
+          <button type="button" className={period === 'monthly' ? 'on' : ''} onClick={() => setPeriod('monthly')}>Monthly</button>
+          <button type="button" className={period === 'yearly' ? 'on' : ''} onClick={() => setPeriod('yearly')}>Yearly <span className="seg-save">save {policy.annualDiscountPercent}%</span></button>
+        </div>
+      </div>
+      <div className="pc-block">
+        <span className="pc-label">People</span>
+        <div className="stepper">
+          <button type="button" aria-label="One fewer" disabled={seats <= minSeats} onClick={() => setSeats(Math.max(minSeats, seats - 1))}>−</button>
+          <input aria-label="Number of people" inputMode="numeric" value={seats} onChange={(e) => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); setSeats(Number.isFinite(n) ? Math.min(policy.maxSeats, Math.max(minSeats, n)) : minSeats); }} />
+          <button type="button" aria-label="One more" disabled={seats >= policy.maxSeats} onClick={() => setSeats(seats + 1)}>+</button>
+        </div>
+      </div>
+      <p className="pc-note">
+        {minSeats > 1 ? `${minSeats} people (including invitations) are already in this workspace. ` : ''}
+        {next ? `Teams of ${next.minSeats}+ get ${next.percent}% off automatically.` : 'Your team size already earns the best volume discount.'}
+      </p>
     </div>
   );
 }
@@ -82,6 +148,8 @@ export function BillingPage() {
   const [busy, setBusy] = useState(false);
   const me = useAuth((s) => s.ctx?.user);
   const hosted = (q.data?.paymentProvider ?? 'mock') !== 'mock';
+  const [period, setPeriodState] = useState<Period | null>(null);
+  const [seatsPick, setSeatsPick] = useState<number | null>(null);
 
   const refresh = async () => { await invalidateWorkspace(wid); await reload(); };
   const run = async (fn: () => Promise<unknown>, ok: string) => {
@@ -91,40 +159,54 @@ export function BillingPage() {
     finally { setBusy(false); }
   };
 
-  const choose = async (plan: Plan, trial: boolean) => {
-    const price = plan.priceMonthly ?? 0;
+  if (q.isLoading) return <PageLoader />;
+  if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+  const b = q.data;
+  const plan = b.plan;
+  const policy = b.policy ?? DEFAULT_POLICY;
+  const inUse = b.seats?.inUse ?? 1;
+  const paid = plan.code !== 'FREE' && plan.status !== 'Trial' && !plan.downgraded;
+  const purchased = paid ? b.seats?.purchased ?? 1 : Math.max(inUse, 1);
+  const purchasedPeriod: Period = paid ? b.seats?.period ?? 'monthly' : 'monthly';
+  const minSeats = Math.max(1, inUse);
+  const seats = Math.max(minSeats, seatsPick ?? Math.max(purchased, minSeats));
+  const chosenPeriod: Period = period ?? purchasedPeriod;
+
+  const choose = async (target: Plan, trial: boolean) => {
+    const price = target.priceMonthly ?? 0;
+    const perSeat = !!target.perSeat;
+    const qt = quote(policy, price, perSeat, seats, chosenPeriod);
+    const per = chosenPeriod === 'yearly' ? 'year' : 'month';
+    const what = perSeat ? `${qt.seats} ${qt.seats === 1 ? 'user' : 'users'}, billed ${chosenPeriod}` : 'billed monthly';
     const ok = await confirmDialog({
-      title: trial ? `Start ${plan.name} trial?` : price === 0 ? 'Switch to Free?' : `Switch to ${plan.name}?`, danger: price === 0, confirmText: trial ? 'Start trial' : price === 0 ? 'Switch to Free' : 'Confirm',
-      message: trial ? `You get 14 days of ${plan.name} for free. No payment is taken now.`
-        : price === 0 ? 'Limits of the Free plan apply immediately. Existing data is kept, but you may not be able to add more until you are within the limits.'
-        : hosted ? `Next you pay ${formatMoney(price, plan.currency)} per month in a secure window. You can cancel any time; your plan stays until the end of the paid month.`
-        : `You will be charged ${formatMoney(price, plan.currency)} per month. (Demo mode: payments are simulated.)`,
+      title: trial ? `Start ${target.name} trial?` : price === 0 ? 'Switch to Free?' : target.code === plan.code ? `Update ${target.name}?` : `Switch to ${target.name}?`, danger: price === 0,
+      confirmText: trial ? 'Start trial' : price === 0 ? 'Switch to Free' : 'Confirm',
+      message: trial ? `You get 14 days of ${target.name} for up to ${policy.trialSeats} people, with ${policy.trialAiCredits} AI credits. No payment is taken now.`
+        : price === 0 ? 'Limits of the Free plan apply immediately (one person). Existing data is kept, but you may not be able to add more until you are within the limits.'
+        : hosted ? `${target.name} for ${what}: ${formatMoney(qt.chargePerCycle, target.currency)} per ${per}${qt.savedPerCycle > 0 ? ` (you save ${formatMoney(qt.savedPerCycle, target.currency)})` : ''}. Next you pay in a secure window. ${target.code === plan.code && paid ? 'New seats are available right away and the new amount starts at your next renewal, so nothing is charged twice. ' : ''}You can cancel any time; your plan stays until the end of the paid period.`
+        : `${target.name} for ${what}: you will be charged ${formatMoney(qt.chargePerCycle, target.currency)} per ${per}. (Demo mode: payments are simulated.)`,
     });
     if (!ok) return;
-    if (trial || price === 0 || !hosted) { run(() => billingApi.checkout(plan.code, trial), trial ? 'Trial started.' : 'Plan updated.'); return; }
+    if (trial || price === 0 || !hosted) { await run(() => billingApi.checkout(target.code, trial, perSeat ? seats : undefined, chosenPeriod), trial ? 'Trial started.' : 'Plan updated.'); return; }
     // A real payment: the server opens it, the person pays in the provider's window, and the server confirms the signed result.
     setBusy(true);
     try {
-      const started = await billingApi.checkout(plan.code, false);
+      const started = await billingApi.checkout(target.code, false, perSeat ? seats : undefined, chosenPeriod);
       if (!started.payment) { toast('Plan updated.'); await refresh(); return; }
       const result = await payWithRazorpay(started.payment, { name: me?.displayName ?? '', email: me?.email ?? '' });
       await billingApi.confirm(result.paymentId, result.subscriptionId, result.signature);
-      toast(`You are on ${plan.name}. Thank you!`); await refresh();
+      toast(`You are on ${target.name}. Thank you!`); await refresh();
     } catch (e) {
       if (e instanceof PaymentCancelled) toast('Payment not completed. Nothing was changed.', 'info');
       else toast(e instanceof ApiError || e instanceof Error ? e.message : 'The payment could not be completed.', 'error');
     } finally { setBusy(false); }
   };
-  const cancel = useMutation({ mutationFn: billingApi.cancel });
-
-  if (q.isLoading) return <PageLoader />;
-  if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
-  const b = q.data;
-  const plan = b.plan;
+  const renewal = b.seats?.renewal;
+  const perSeatNow = !!b.seats?.perSeat;
 
   return (
     <>
-      <PageHead title="Billing" sub="Your plan, usage and invoices for this workspace" />
+      <PageHead title="Billing" sub="Your plan, people, usage and invoices for this workspace" />
 
       <div className="card mb-22">
         <div className="card-head">
@@ -132,7 +214,7 @@ export function BillingPage() {
           <div className="row">
             {plan.status === 'Cancelled' && b.canManage && !hosted && <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(billingApi.resume, 'Subscription resumed.')}>Resume subscription</button>}
             {['Active', 'Trial'].includes(plan.status) && plan.code !== 'FREE' && b.canManage && (
-              <button className="btn btn-ghost btn-sm" disabled={busy || cancel.isPending} onClick={async () => {
+              <button className="btn btn-ghost btn-sm" disabled={busy} onClick={async () => {
                 if (await confirmDialog({ title: 'Cancel subscription?', confirmText: 'Cancel subscription', message: 'You keep your plan until the end of the current period, then the workspace moves to the Free plan. No further payments are taken.' })) run(billingApi.cancel, 'Subscription cancelled.');
               }}>Cancel subscription</button>
             )}
@@ -146,8 +228,15 @@ export function BillingPage() {
           <p className="text-2" style={{ fontSize: 13, marginTop: 8 }}>
             {plan.status === 'Trial' && plan.trialEnd ? `Trial ends on ${formatDate(plan.trialEnd)}.`
               : plan.status === 'Cancelled' && plan.periodEnd ? `Cancelled — access continues until ${formatDate(plan.periodEnd)}.`
-              : plan.periodEnd && plan.code !== 'FREE' ? `Renews on ${formatDate(plan.periodEnd)}.` : plan.code === 'FREE' ? 'You are on the Free plan.' : ''}
+              : plan.periodEnd && plan.code !== 'FREE' ? `Renews on ${formatDate(plan.periodEnd)}${renewal ? `: ${formatMoney(renewal.chargePerCycle, b.plans.find((p) => p.code === plan.code)?.currency)} ${renewal.period === 'yearly' ? 'a year' : 'a month'}` : ''}.` : plan.code === 'FREE' ? 'You are on the Free plan: one person.' : ''}
           </p>
+          {perSeatNow && b.seats && (
+            <div className="seat-meter">
+              <div className="usage-top"><span>Seats</span><span>{b.seats.inUse} of {b.seats.purchased} used</span></div>
+              <Progress value={Math.min(100, (b.seats.inUse / Math.max(1, b.seats.purchased)) * 100)} tone={b.seats.inUse >= b.seats.purchased ? 'amber' : ''} />
+              {b.seats.inUse >= b.seats.purchased && <span className="muted" style={{ fontSize: 12.5 }}>Every seat is taken: add seats below to invite more people.</span>}
+            </div>
+          )}
           {!b.canManage && <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>Only people with billing permission can change the plan.</p>}
         </div>
       </div>
@@ -161,9 +250,9 @@ export function BillingPage() {
               const pct = unlimited ? 0 : u.limit === 0 ? 100 : (u.used / u.limit) * 100;
               return (
                 <div className="usage-row" key={u.key}>
-                  <div className="usage-top"><span>{u.label}</span><span>{u.used.toLocaleString()} / {limitLabel(u.limit)}</span></div>
+                  <div className="usage-top"><span>{u.key === 'MAX_MEMBERS' ? 'Seats (people and invitations)' : u.label}</span><span>{u.used.toLocaleString()} / {limitLabel(u.limit)}</span></div>
                   <Progress value={unlimited ? Math.min(100, u.used) : pct} tone={unlimited ? '' : pct >= 100 ? 'red' : pct >= 80 ? 'amber' : ''} />
-                  {!unlimited && pct >= 100 && <span className="field-error">Limit reached — upgrade to add more.</span>}
+                  {!unlimited && pct >= 100 && <span className="field-error">{u.key === 'MAX_MEMBERS' && perSeatNow ? 'All seats are taken — add seats to invite more people.' : 'Limit reached — upgrade to add more.'}</span>}
                 </div>
               );
             })}
@@ -172,9 +261,15 @@ export function BillingPage() {
       </div>
 
       <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Plans</h3>
+      <PlanChooser seats={seats} setSeats={setSeatsPick} minSeats={minSeats} period={chosenPeriod} setPeriod={setPeriodState} policy={policy} />
       <div className="plan-grid mb-22">
-        {b.plans.map((p) => <PlanCard key={p.id} plan={p} current={p.code === plan.code && !plan.downgraded} canManage={b.canManage} trialAvailable={b.trialAvailable} busy={busy} onChoose={choose} />)}
+        {b.plans.map((p) => (
+          <PlanCard key={p.id} plan={p} current={p.code === plan.code && !plan.downgraded} canManage={b.canManage} trialAvailable={b.trialAvailable} busy={busy}
+            quote={p.priceMonthly === null || p.priceMonthly === 0 ? null : quote(policy, p.priceMonthly, !!p.perSeat, seats, chosenPeriod)} seats={seats} period={chosenPeriod} policy={policy}
+            purchased={purchased} purchasedPeriod={purchasedPeriod} onChoose={choose} />
+        ))}
       </div>
+      <p className="muted" style={{ fontSize: 12.5, margin: '-8px 0 22px' }}>Prices are per person and exclude GST. Credits and storage are pooled across the team. Yearly billing takes {policy.annualDiscountPercent}% off; larger teams get an automatic volume discount (together at most {policy.maxTotalDiscountPercent}%).</p>
 
       {b.canManage && <BillingDetailsCard />}
       {b.canManage && (

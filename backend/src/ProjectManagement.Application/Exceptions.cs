@@ -34,8 +34,9 @@ public class TooManyRequestsException(string message, string code = "TOO_MANY_RE
 
 /// <summary>A numeric plan limit (projects, tasks, members...) has been reached.</summary>
 public class PlanLimitException(string featureKey, long limit)
-    : AppException(403, "PLAN_LIMIT_REACHED",
-        $"You have reached the maximum number of {Describe(featureKey)} available on your current plan ({limit}). Upgrade your plan to add more.")
+    : AppException(403, "PLAN_LIMIT_REACHED", featureKey == "MAX_MEMBERS"
+        ? $"All {limit} seat{(limit == 1 ? "" : "s")} of this workspace are taken (people and open invitations). Add seats in Settings → Billing to invite more people."
+        : $"You have reached the maximum number of {Describe(featureKey)} available on your current plan ({limit}). Upgrade your plan to add more.")
 {
     public string FeatureKey { get; } = featureKey;
 

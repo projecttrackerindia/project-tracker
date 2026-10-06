@@ -41,14 +41,14 @@ public class BillingCurrencyTests(ApiFactory factory)
         var plans = await PlansSeenBy(c);
         Assert.All(plans, p => Assert.Equal("INR", p!["currency"]!.GetValue<string>()));
         Assert.Equal(0m, Plan(plans, "FREE")["priceMonthly"]!.GetValue<decimal>());
-        Assert.Equal(999m, Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>());
-        Assert.Equal(2499m, Plan(plans, "BUSINESS")["priceMonthly"]!.GetValue<decimal>());
+        Assert.Equal(349m, Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>());
+        Assert.Equal(699m, Plan(plans, "BUSINESS")["priceMonthly"]!.GetValue<decimal>());
         Assert.Null(Plan(plans, "ENTERPRISE")["priceMonthly"]);       // custom pricing
 
-        await c.UpgradeAsync("PRO");
+        await c.UpgradeAsync("PRO", 1);
         var invoice = (await c.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!;
         Assert.Equal("INR", invoice["currency"]!.GetValue<string>());
-        Assert.Equal(999m, invoice["amount"]!.GetValue<decimal>());
+        Assert.Equal(349m, invoice["amount"]!.GetValue<decimal>());
 
         var admin = await Admin();
         var settings = (await admin.Get("/api/v1/admin/billing-settings")).Data!;
@@ -68,7 +68,7 @@ public class BillingCurrencyTests(ApiFactory factory)
         object Body(decimal? price) => new { name = pro["name"]!.GetValue<string>(), description = pro["description"]?.GetValue<string>(), priceMonthly = price, isActive = true, features = pro["features"] };
         try
         {
-            var before = await TestClient.RegisterAsync(factory); await before.CreateOrgAsync(); await before.UpgradeAsync("PRO");
+            var before = await TestClient.RegisterAsync(factory); await before.CreateOrgAsync(); await before.UpgradeAsync("PRO", 1);
 
             var set = await admin.Put($"/api/v1/admin/plans/{id}", Body(1199.50m));
             Assert.True(set.Ok, set.ToString());
@@ -77,16 +77,16 @@ public class BillingCurrencyTests(ApiFactory factory)
 
             var after = await TestClient.RegisterAsync(factory); await after.CreateOrgAsync();
             Assert.Equal(1199.50m, Plan(await PlansSeenBy(after), "PRO")["priceMonthly"]!.GetValue<decimal>());
-            await after.UpgradeAsync("PRO");
+            await after.UpgradeAsync("PRO", 1);
             Assert.Equal(1199.50m, (await after.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["amount"]!.GetValue<decimal>());
-            Assert.Equal(999m, (await before.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["amount"]!.GetValue<decimal>());   // what was already charged stays
+            Assert.Equal(349m, (await before.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["amount"]!.GetValue<decimal>());   // what was already charged stays
 
             Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.Put($"/api/v1/admin/plans/{id}", Body(-5m))).Status);
             var custom = await admin.Put($"/api/v1/admin/plans/{id}", Body(null));            // no price = "contact sales"
             Assert.True(custom.Ok);
             Assert.Null(custom.Data!["priceMonthly"]);
         }
-        finally { Assert.True((await admin.Put($"/api/v1/admin/plans/{id}", Body(999m))).Ok); }
+        finally { Assert.True((await admin.Put($"/api/v1/admin/plans/{id}", Body(349m))).Ok); }
     }
 
     // ------------------------------------------------------------------ the currency is configurable
@@ -99,7 +99,7 @@ public class BillingCurrencyTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.Forbidden, (await user.Get("/api/v1/admin/billing-settings")).Status);
         Assert.Equal(HttpStatusCode.Forbidden, (await user.Put("/api/v1/admin/billing-settings", new { currency = "USD" })).Status);
 
-        var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync(); await owner.UpgradeAsync("PRO");   // an invoice issued in rupees
+        var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync(); await owner.UpgradeAsync("PRO", 1);   // an invoice issued in rupees
         try
         {
             var res = await admin.Put("/api/v1/admin/billing-settings", new { currency = "usd" });    // any case
@@ -111,9 +111,9 @@ public class BillingCurrencyTests(ApiFactory factory)
             Assert.Equal("USD", (await admin.Get("/api/v1/admin/billing-settings")).Data!["currency"]!.GetValue<string>());
 
             // Prices are not converted, invoices already issued keep their currency and new ones use the new one.
-            Assert.Equal(999m, Plan(await PlansSeenBy(owner), "PRO")["priceMonthly"]!.GetValue<decimal>());
+            Assert.Equal(349m, Plan(await PlansSeenBy(owner), "PRO")["priceMonthly"]!.GetValue<decimal>());
             Assert.Equal("INR", (await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["currency"]!.GetValue<string>());
-            var other = await TestClient.RegisterAsync(factory); await other.CreateOrgAsync(); await other.UpgradeAsync("PRO");
+            var other = await TestClient.RegisterAsync(factory); await other.CreateOrgAsync(); await other.UpgradeAsync("PRO", 1);
             Assert.Equal("USD", (await other.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["currency"]!.GetValue<string>());
 
             Assert.Contains("admin.billing_currency", (await admin.Get("/api/v1/admin/audit-logs?pageSize=50")).Data!.ToJsonString());
@@ -149,13 +149,13 @@ public class BillingCurrencyTests(ApiFactory factory)
                 return 0;
             });
             var plans = (await admin.Get("/api/v1/admin/plans")).Data!.AsArray();
-            Assert.Equal(("INR", 999m), (Plan(plans, "PRO")["currency"]!.GetValue<string>(), Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>()));
+            Assert.Equal(("INR", 349m), (Plan(plans, "PRO")["currency"]!.GetValue<string>(), Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>()));
             Assert.Equal(("INR", 35m), (Plan(plans, "BUSINESS")["currency"]!.GetValue<string>(), Plan(plans, "BUSINESS")["priceMonthly"]!.GetValue<decimal>()));   // labelled, not converted
             Assert.Equal("INR", (await admin.Get("/api/v1/admin/billing-settings")).Data!["currency"]!.GetValue<string>());
         }
         finally
         {
-            factory.WithDb(db => { db.Plans.Where(p => p.Code == "BUSINESS").ExecuteUpdate(s => s.SetProperty(p => p.PriceMonthly, 2499m)); return 0; });
+            factory.WithDb(db => { db.Plans.Where(p => p.Code == "BUSINESS").ExecuteUpdate(s => s.SetProperty(p => p.PriceMonthly, 699m)); return 0; });
         }
     }
 

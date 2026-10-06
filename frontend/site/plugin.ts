@@ -18,14 +18,34 @@ const INDEXNOW_KEY = /^[A-Za-z0-9-]{8,128}$/.test(process.env.INDEXNOW_KEY || ''
 const abs = (path: string) => `${ORIGIN}${path}`;
 const ld = (o: unknown) => `<script type="application/ld+json">${JSON.stringify(o).replace(/</g, '\\u003c')}</script>`;
 
-/** Prices are read from the live price list when the page opens (the printed ones are only what shows before that or without scripts). */
+/**
+ * Prices and discounts are read from the live price list when the page opens (the printed ones are only what shows before that or without scripts).
+ * The same script drives the price calculator: monthly or yearly and the number of people, with the volume and yearly discounts applied.
+ */
 const PRICE_SCRIPT = `<script>
-(function(){try{fetch('/api/v1/public/plans',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null}).then(function(list){
-if(!list)return;var d=list.data||list;(Array.isArray(d)?d:[]).forEach(function(p){
-var el=document.querySelectorAll('[data-price="'+p.code+'"]');if(!el.length)return;
-var t=p.priceMonthly==null?'Custom':new Intl.NumberFormat('en-IN',{style:'currency',currency:p.currency||'INR',maximumFractionDigits:0}).format(p.priceMonthly);
-el.forEach(function(e){e.textContent=t});
-document.querySelectorAll('[data-per="'+p.code+'"]').forEach(function(e){e.style.display=p.priceMonthly==null||p.priceMonthly===0?'none':''})})}).catch(function(){})}catch(e){}})();
+(function(){try{
+var d=document,POL={annual:20,max:30,tiers:[[10,10],[25,15],[100,20]]},cur='INR',units={},per={},period='monthly',seats=5;
+[].slice.call(d.querySelectorAll('[data-code]')).forEach(function(c){var u=parseFloat(c.getAttribute('data-unit'));if(u){units[c.getAttribute('data-code')]=u;per[c.getAttribute('data-code')]=1}});
+function fmt(n){return new Intl.NumberFormat('en-IN',{style:'currency',currency:cur,maximumFractionDigits:0}).format(n)}
+function vol(s){var v=0;POL.tiers.forEach(function(t){if(s>=t[0])v=t[1]});return v}
+function quote(u,s){var a=period==='yearly'?POL.annual:0,v=vol(s),t=Math.min(POL.max,a+v),m=period==='yearly'?12:1,list=u*s*m,ch=t?Math.round(list*(100-t)/100):Math.round(list*100)/100;return{t:t,eff:Math.round(ch/m/s),charge:ch,saved:list-ch}}
+function paint(){
+Object.keys(per).forEach(function(code){var r=quote(units[code],seats);
+d.querySelectorAll('[data-price="'+code+'"]').forEach(function(e){e.textContent=fmt(r.eff)});
+d.querySelectorAll('[data-was="'+code+'"]').forEach(function(e){if(r.t>0){e.hidden=false;e.textContent=fmt(units[code])}else{e.hidden=true}});
+d.querySelectorAll('[data-total="'+code+'"]').forEach(function(e){e.innerHTML='<b>'+fmt(r.charge)+'</b> '+(period==='yearly'?'a year':'a month')+' for '+seats+(seats===1?' person':' people')+(r.saved>0?' &middot; save '+fmt(r.saved):'')})});
+d.querySelectorAll('[data-seats-out]').forEach(function(e){e.textContent=seats});
+d.querySelectorAll('[data-calc-note]').forEach(function(e){var v=vol(seats),n=null;POL.tiers.forEach(function(t){if(!n&&seats<t[0])n=t});
+e.textContent=(v?'Your team size earns '+v+'% off. ':'')+(n?'Teams of '+n[0]+'+ get '+n[1]+'% off.':'')+(period==='yearly'?' Paying yearly takes another '+POL.annual+'% off (together at most '+POL.max+'%).':'')})}
+d.querySelectorAll('[data-period]').forEach(function(b){b.addEventListener('click',function(){period=b.getAttribute('data-period');d.querySelectorAll('[data-period]').forEach(function(x){x.className=x===b?'pt-on':''});paint()})});
+d.querySelectorAll('[data-seats]').forEach(function(r){r.addEventListener('input',function(){seats=parseInt(r.value,10)||1;d.querySelectorAll('[data-seats]').forEach(function(o){o.value=seats});paint()})});
+paint();
+fetch('/api/v1/public/pricing',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null}).then(function(res){
+if(!res)return;var x=res.data||res;if(x.policy){POL.annual=x.policy.annualDiscountPercent;POL.max=x.policy.maxTotalDiscountPercent;POL.tiers=(x.policy.volumeTiers||[]).map(function(t){return [t.minSeats,t.percent]});
+d.querySelectorAll('[data-period="yearly"] em').forEach(function(e){e.textContent='save '+POL.annual+'%'})}
+(x.plans||[]).forEach(function(p){cur=p.currency||cur;if(p.perSeat&&p.priceMonthly){units[p.code]=p.priceMonthly;per[p.code]=1}else{per[p.code]=0;delete per[p.code];
+var t=p.priceMonthly==null?'Custom':fmt(p.priceMonthly);d.querySelectorAll('[data-price="'+p.code+'"]').forEach(function(e){e.textContent=t});
+d.querySelectorAll('[data-per="'+p.code+'"]').forEach(function(e){e.style.display=p.priceMonthly==null||p.priceMonthly===0?'none':''})}});paint()}).catch(function(){})}catch(e){}})();
 </script>`;
 
 const orgLd = {

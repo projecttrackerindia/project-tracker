@@ -101,7 +101,7 @@ public static class FeatureKeys
     public const string AiAssistant = "AI_ASSISTANT";
     /// <summary>The most capable model level the plan may use: 1 = Quick, 2 = Standard, 3 = Deep (extended reasoning). -1 = all levels.</summary>
     public const string AiModelTier = "AI_MODEL_TIER";
-    /// <summary>AI credits per workspace per calendar month (a Quick answer costs 1, Standard 4, Deep 15 by default). -1 = unlimited.</summary>
+    /// <summary>AI credits per calendar month: per person on per-person plans (the workspace has them pooled), per workspace otherwise (a Quick answer costs 1, Standard 4, Deep 20 by default). -1 = unlimited.</summary>
     public const string AiMonthlyCredits = "AI_MONTHLY_CREDITS";
     /// <summary>Images and documents can be attached to a question for the assistant to read.</summary>
     public const string AiAttachments = "AI_ATTACHMENTS";

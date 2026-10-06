@@ -178,9 +178,30 @@ __JS__ .note{opacity:0}
 .plan.hot{border:1px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,linear-gradient(135deg,#7c3aed,#d946ef,#22d3ee) border-box;box-shadow:0 22px 60px rgba(124,58,237,.25)}
 .plan .badge{position:absolute;top:-12px;left:22px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;font-size:12px;font-weight:800;padding:3px 13px;border-radius:99px}
 .plan h3{font-size:19px}.plan .blurb{color:var(--muted);font-size:14.5px;margin:4px 0 14px;min-height:44px}
-.price{font-size:40px;font-weight:800;letter-spacing:-1.5px}.price small{font-size:14px;color:var(--muted);font-weight:600;letter-spacing:0}
+.price{font-size:40px;font-weight:800;letter-spacing:-1.5px;min-height:74px}.price small{display:block;margin-top:2px;font-size:14px;color:var(--muted);font-weight:600;letter-spacing:0}
 .plan ul{list-style:none;padding:0;margin:18px 0 24px;display:grid;gap:10px;flex:1}.plan li{display:flex;gap:9px;font-size:14.5px}.plan li svg{flex:none;color:var(--ok);margin-top:3px}
 .note2{color:var(--muted);font-size:14px;margin-top:24px}
+.price .was{font-size:20px;font-weight:600;color:var(--muted);letter-spacing:0;margin-right:8px;text-decoration:line-through}
+.ptotal{margin:2px 0 0;font-size:13.5px;color:var(--muted);min-height:20px}.ptotal b{color:var(--text)}
+.calc{max-width:760px;margin:0 auto 30px;padding:18px 22px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:0 14px 40px rgba(124,58,237,.08);display:grid;gap:14px}
+.calc-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.calc-l{width:64px;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;font-weight:800;color:var(--muted)}
+.seg2{display:inline-flex;padding:4px;border-radius:13px;background:var(--surface-2);border:1px solid var(--line)}
+.seg2 button{border:0;background:transparent;color:var(--muted);font:inherit;font-weight:700;font-size:14px;padding:8px 16px;border-radius:10px;cursor:pointer;transition:background .2s,color .2s,box-shadow .2s}
+.seg2 button.on{background:var(--surface);color:var(--text);box-shadow:0 6px 18px rgba(124,58,237,.18)}
+.seg2 em{font-style:normal;margin-left:6px;padding:2px 8px;border-radius:99px;background:rgba(16,185,129,.16);color:var(--ok);font-size:12px;font-weight:800}
+.calc input[type=range]{flex:1;min-width:180px;accent-color:#7c3aed;height:6px}
+.calc output{min-width:44px;text-align:right;font-weight:800;font-size:20px;letter-spacing:-.5px}
+.calc-note{margin:0;color:var(--muted);font-size:14px}
+.offer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.offer{padding:26px;border:1px solid var(--line);border-radius:22px;background:var(--surface);transition:transform .3s,box-shadow .3s}
+.offer:hover{transform:translateY(-4px);box-shadow:0 20px 46px rgba(124,58,237,.14)}
+.offer.hot{border-color:transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,linear-gradient(135deg,#7c3aed,#d946ef,#22d3ee) border-box}
+.offer-big{display:block;font-size:30px;font-weight:800;letter-spacing:-1px;background:linear-gradient(135deg,#7c3aed,#d946ef);-webkit-background-clip:text;background-clip:text;color:transparent}
+.offer h3{margin:6px 0 8px;font-size:18px}.offer p{margin:0;color:var(--muted);font-size:15px}
+.credit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:900px;margin:0 auto}
+.cr{display:grid;gap:4px;padding:20px 22px;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+.cr b{font-size:24px;letter-spacing:-.6px}.cr span{font-weight:800;color:var(--brand);font-size:13px;letter-spacing:1.2px;text-transform:uppercase}.cr em{font-style:normal;color:var(--muted);font-size:14.5px}
+@media (max-width:980px){.offer-grid,.credit-grid{grid-template-columns:1fr}}
 
 .matrix{border:1px solid var(--line);border-radius:22px;overflow:auto;background:var(--surface);margin-top:44px}
 .matrix table{width:100%;border-collapse:collapse;min-width:720px;font-size:14.5px}

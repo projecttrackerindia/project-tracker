@@ -37,6 +37,12 @@ public class AiWorkspaceTests(ApiFactory factory)
         return new Org(owner, manager, guest, await owner.CreateProjectAsync("Atlas"));
     }
 
+    private void SetPlanFeature(string plan, string key, long value) => factory.WithDb(db =>
+    {
+        db.PlanFeatures.Where(f => f.FeatureKey == key && db.Plans.Any(p => p.Id == f.PlanId && p.Code == plan)).ExecuteUpdate(s => s.SetProperty(f => f.Value, value));
+        return 0;
+    });
+
     private void Override(TestClient who, string key, long value) => factory.WithDb(db =>
     {
         var row = db.TenantFeatureOverrides.FirstOrDefault(o => o.TenantId == who.WorkspaceId && o.FeatureKey == key);
@@ -89,11 +95,17 @@ public class AiWorkspaceTests(ApiFactory factory)
         Chat.Configured = false;
         Assert.Equal("AI_NOT_CONFIGURED", (await Ask(o.Owner, "hello there")).Error!.ErrorCode);
 
+        // Free includes a taste of the assistant; a plan without it (here Free, switched off for the test) is refused before anything is sent.
         Chat.Configured = true;
-        var free = await Ask(o.Owner, "hello there");
-        Assert.Equal(HttpStatusCode.Forbidden, free.Status);
-        Assert.Equal("FEATURE_NOT_AVAILABLE", free.Error!.ErrorCode);
-        Assert.Empty(Chat.Requests);   // nothing was sent anywhere
+        SetPlanFeature("FREE", "AI_ASSISTANT", 0);
+        try
+        {
+            var free = await Ask(o.Owner, "hello there");
+            Assert.Equal(HttpStatusCode.Forbidden, free.Status);
+            Assert.Equal("FEATURE_NOT_AVAILABLE", free.Error!.ErrorCode);
+            Assert.Empty(Chat.Requests);   // nothing was sent anywhere
+        }
+        finally { SetPlanFeature("FREE", "AI_ASSISTANT", 1); }
 
         var up = await Setup();
         var usage = (await up.Owner.Get("/api/v1/ai/usage")).Data!;
@@ -156,7 +168,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.Equal("high", request.Effort);
         Assert.True(request.ShowReasoning);
         Assert.Equal("Compare the dates first.", S(res.Done["reasoning"]));
-        Assert.Equal(15, res.Done["credits"]!.GetValue<int>());
+        Assert.Equal(20, res.Done["credits"]!.GetValue<int>());
     }
 
     [Fact]
@@ -195,7 +207,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         var o = await Setup();
         Override(o.Owner, "AI_MONTHLY_CREDITS", 6);
 
-        // A deep question costs 15, which is more than is left, so it is answered one level down (Standard, 4) and says so.
+        // A deep question costs 20, which is more than is left, so it is answered one level down (Standard, 4) and says so.
         Chat.Script.Enqueue(_ => FakeAiChat.Say("ok"));
         var first = await Ask(o.Owner, "Analyze why the Atlas project is late and recommend how to fix it");
         Assert.Equal("standard", S(first.Last("route")["tier"]));
@@ -549,7 +561,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.Equal("claude-opus-4-8", S(res.Done["model"]));
         Assert.Contains("backup model", S(res.Done["routeReason"]));
         Assert.EndsWith("Here is the answer.", S(res.Done["content"]));
-        Assert.Equal(15, res.Done["credits"]!.GetValue<int>());                     // one answer, one price
+        Assert.Equal(20, res.Done["credits"]!.GetValue<int>());                     // one answer, one price
     }
 
     [Fact]
@@ -590,7 +602,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.True(report.Ok, report.ToString());
         var d = report.Data!;
         Assert.Equal(DateTime.UtcNow.ToString("yyyy-MM"), S(d["month"]));
-        Assert.Equal(17, d["creditsUsed"]!.GetValue<long>());                       // 1 + 15 + 1; the failed answer was free
+        Assert.Equal(22, d["creditsUsed"]!.GetValue<long>());                       // 1 + 20 + 1; the failed answer was free
         Assert.Equal(2000, d["creditsLimit"]!.GetValue<long>());
         Assert.Equal(4, d["answers"]!.GetValue<int>());
         Assert.Equal(1, d["failed"]!.GetValue<int>());
@@ -598,7 +610,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.Equal((3, 0, 1), (tiers["quick"], tiers["standard"], tiers["deep"]));   // the failed answer still counts under its level, at no credits
         var people = d["people"]!.AsArray();
         Assert.Equal("Olivia Owner", S(people[0]!["name"]));                        // most credits first
-        Assert.Equal(16, people[0]!["credits"]!.GetValue<long>());
+        Assert.Equal(21, people[0]!["credits"]!.GetValue<long>());
         Assert.Equal("Max Manager", S(people[1]!["name"]));
         // Counts only: nothing anyone typed or was answered appears.
         var raw = report.Json!.ToJsonString();
@@ -627,7 +639,7 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.True(res.Ok, res.ToString());
         var row = res.Data!["rows"]!.AsArray().Single(r => Guid.Parse(S(r!["tenantId"])) == o.Owner.WorkspaceId)!;
         Assert.Equal("BUSINESS", S(row["planCode"]));
-        Assert.Equal(15, row["creditsUsed"]!.GetValue<long>());
+        Assert.Equal(20, row["creditsUsed"]!.GetValue<long>());
         Assert.Equal(2000, row["creditsLimit"]!.GetValue<long>());
         Assert.Equal(1, row["deep"]!.GetValue<int>());
         Assert.Equal(200, row["tokensIn"]!.GetValue<long>());

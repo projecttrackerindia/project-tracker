@@ -114,6 +114,8 @@ public class AssistantAutomationPushTests(ApiFactory factory)
     public async Task The_assistant_needs_a_plan_that_includes_it()
     {
         var o = await Setup("PRO");
+        // Pro includes the assistant now; an organization an administrator switched it off for is in the same position as a plan without it.
+        factory.WithDb(db => { db.TenantFeatureOverrides.Add(new ProjectManagement.Domain.Entities.TenantFeatureOverride { TenantId = o.Owner.WorkspaceId, FeatureKey = "AI_ASSISTANT", Value = 0, Reason = "test" }); db.SaveChanges(); return 0; });
         try
         {
             factory.Ai.Configured = true;

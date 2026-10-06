@@ -12,7 +12,7 @@ public enum AiMode { Auto, Quick, Standard, Deep }
 public class AiTierOptions
 {
     public string Model { get; set; } = "";
-    /// <summary>What one answer at this level costs against the workspace's monthly credits.</summary>
+    /// <summary>What one answer at this level costs against the workspace's monthly credits. Set so a credit costs about the same at every level (roughly INR 1.0-1.3 at the providers' prices): Quick 1, Standard 4, Deep 20.</summary>
     public int Credits { get; set; } = 1;
     public int MaxTokens { get; set; } = 2000;
     /// <summary>Thinking depth: "low", "medium", "high" or "max". Empty = the model's own default (Quick, which does not think).</summary>
@@ -33,7 +33,7 @@ public class AiChatOptions
     // Quick answers lookups and small talk without thinking; Standard handles most real questions; Deep is for analysis and planning.
     public AiTierOptions Quick { get; set; } = new() { Model = "claude-haiku-4-5", Credits = 1, MaxTokens = 1500, InputPerMTok = 1m, OutputPerMTok = 5m };
     public AiTierOptions Standard { get; set; } = new() { Model = "claude-sonnet-5-5", Credits = 4, MaxTokens = 6000, Effort = "low", ShowReasoning = true, InputPerMTok = 2m, OutputPerMTok = 10m };
-    public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 15, MaxTokens = 16000, Effort = "high", ShowReasoning = true, InputPerMTok = 4m, OutputPerMTok = 20m, CacheReadFactor = 0.05m };
+    public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 20, MaxTokens = 16000, Effort = "high", ShowReasoning = true, InputPerMTok = 4m, OutputPerMTok = 20m, CacheReadFactor = 0.05m };
 
     /// <summary>For questions the free rules cannot place, ask the smallest model how hard the question is (a few tokens).</summary>
     public bool UseClassifier { get; set; } = true;

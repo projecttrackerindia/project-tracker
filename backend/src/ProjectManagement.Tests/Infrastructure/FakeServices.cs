@@ -128,12 +128,19 @@ public sealed class FakePayments : ProjectManagement.Application.Abstractions.IP
 
     public Task<ProjectManagement.Application.Abstractions.PaymentResult> ChargeAsync(Guid tenantId, string planCode, decimal amount, string currency, CancellationToken ct = default) =>
         Task.FromResult(new ProjectManagement.Application.Abstractions.PaymentResult(true, $"mock_{Guid.NewGuid():N}"[..20], null));
-    public Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default) =>
-        Task.FromResult(existingId is not null && existingAmount == price ? existingId : $"plan_{planCode}_{price}");
-    public Task<ProjectManagement.Application.Abstractions.HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default)
+    public List<(string Period, decimal Price)> Plans { get; } = [];
+    public List<(string SubscriptionId, DateTime? StartAt, decimal Price, string Period)> Started { get; } = [];
+    public Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default, string period = "monthly")
+    {
+        Plans.Add((period, price));
+        return Task.FromResult(existingId is not null && existingAmount == price ? existingId : $"plan_{planCode}_{period}_{price}");
+    }
+    public Task<ProjectManagement.Application.Abstractions.HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default, string period = "monthly", DateTime? startAt = null, string? description = null)
     {
         if (FailToStart) throw new InvalidOperationException("Razorpay: the plan is not valid");
-        return Task.FromResult(new ProjectManagement.Application.Abstractions.HostedCheckout("razorpay", "rzp_test_key", $"sub_{Guid.NewGuid():N}"[..20], "Project Tracker", $"{planName} plan, monthly", (long)(price * 100), currency));
+        var id = $"sub_{Guid.NewGuid():N}"[..20];
+        Started.Add((id, startAt, price, period));
+        return Task.FromResult(new ProjectManagement.Application.Abstractions.HostedCheckout("razorpay", "rzp_test_key", id, "Project Tracker", description ?? $"{planName} plan, {period}", (long)(price * 100), currency));
     }
     public Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default) { Cancelled.Add((providerSubscriptionId, atCycleEnd)); return Task.CompletedTask; }
     public bool VerifyCheckout(string paymentId, string subscriptionId, string signature) =>

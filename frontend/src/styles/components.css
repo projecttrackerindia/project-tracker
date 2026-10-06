@@ -1312,3 +1312,23 @@ tr.row-deleted .td-title { font-style: italic; }
 .pi-whatif-need svg { flex: none; margin-top: 2px; color: var(--primary); }
 .pi-whatif-notes { margin: 10px 0 12px; padding-left: 18px; color: var(--text-2); font-size: 13px; display: grid; gap: 4px; }
 @media (max-width: 640px) { .pi-whatif-inputs, .pi-whatif-out { grid-template-columns: 1fr; } }
+
+/* ---------- per-person pricing: chooser, totals, seats ---------- */
+.plan-chooser { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 26px; margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--hl); }
+.pc-block { display: flex; align-items: center; gap: 10px; }
+.pc-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-weight: 700; }
+.pc-note { margin: 0; flex: 1 1 260px; font-size: 12.5px; color: var(--text-2); }
+.seg { display: inline-flex; padding: 3px; border-radius: 11px; background: var(--hover-bg); border: 1px solid var(--border); }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 8px; font-weight: 650; font-size: 13px; color: var(--text-2); cursor: pointer; transition: background .16s, color .16s, box-shadow .16s; }
+.seg button.on { background: var(--surface-solid, #fff); color: var(--text); box-shadow: var(--shadow-sm); }
+.seg-save { margin-left: 4px; padding: 1px 7px; border-radius: 99px; background: var(--success-soft); color: var(--success); font-size: 11px; font-weight: 700; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; background: var(--surface-solid, #fff); }
+.stepper button { width: 34px; height: 34px; border: 0; background: transparent; font-size: 18px; color: var(--text-2); cursor: pointer; }
+.stepper button:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
+.stepper button:disabled { opacity: .35; cursor: default; }
+.stepper input { width: 52px; height: 34px; border: 0; text-align: center; font-weight: 700; font-size: 14px; background: transparent; color: var(--text); outline: none; }
+.plan-was { font-size: 15px; font-weight: 500; color: var(--text-3); margin-right: 6px; letter-spacing: 0; }
+.plan-total { margin: -6px 0 0; font-size: 12.5px; color: var(--text-2); }
+.plan-total b { color: var(--text); }
+.seat-meter { display: grid; gap: 6px; margin-top: 14px; max-width: 460px; }
+@media (max-width: 560px) { .plan-chooser { gap: 10px 16px; } .pc-block { width: 100%; justify-content: space-between; } }

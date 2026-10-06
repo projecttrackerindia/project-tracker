@@ -16,6 +16,6 @@ public class PublicSiteTests(ApiFactory factory)
         Assert.Equal(["FREE", "PRO", "BUSINESS", "ENTERPRISE"], plans.Select(p => p!["code"]!.GetValue<string>()).ToArray());
         Assert.Equal(0m, plans[0]!["priceMonthly"]!.GetValue<decimal>());
         // Nothing about an organization, a feature switch or a limit leaves through this door.
-        Assert.All(plans, p => Assert.Equal(["code", "name", "priceMonthly", "currency"], p!.AsObject().Select(x => x.Key).ToArray()));
+        Assert.All(plans, p => Assert.Equal(["code", "name", "priceMonthly", "currency", "perSeat", "aiCreditsPerSeat", "storageMbPerSeat", "aiModelTier"], p!.AsObject().Select(x => x.Key).ToArray()));
     }
 }

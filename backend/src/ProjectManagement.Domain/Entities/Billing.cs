@@ -13,6 +13,8 @@ public class Plan : AuditableEntity
     /// <summary>The currency <see cref="PriceMonthly"/> is in. Follows the platform's billing currency (Admin → Platform settings).</summary>
     public string Currency { get; set; } = "INR";
     public bool IsActive { get; set; } = true;
+    /// <summary>The price is per person (seat) per month, and storage and AI credits are per seat: a workspace pays for the people in it. False = one price for the whole workspace (Free, Enterprise).</summary>
+    public bool PerSeat { get; set; }
     public int SortOrder { get; set; }
     /// <summary>The same plan at the payment provider (Razorpay plan_...), created the first time someone subscribes; recreated when the price changes.</summary>
     public string? ProviderPlanId { get; set; }
@@ -32,6 +34,10 @@ public class PlanFeature : Entity
 public class Subscription : TenantEntity
 {
     public Guid PlanId { get; set; }
+    /// <summary>The people the workspace pays for on a per-seat plan (the most members it can have). Trials use a fixed small number.</summary>
+    public int Seats { get; set; } = 1;
+    /// <summary>"monthly" or "yearly" (paid once a year, at a discount).</summary>
+    public string BillingPeriod { get; set; } = "monthly";
     public SubscriptionStatus Status { get; set; } = SubscriptionStatus.Active;
     public DateTime CurrentPeriodStart { get; set; }
     public DateTime? CurrentPeriodEnd { get; set; }
@@ -45,6 +51,8 @@ public class Subscription : TenantEntity
     /// <summary>A plan the owner started paying for but has not completed yet (the payment window is open): it takes effect when the provider confirms.</summary>
     public Guid? PendingPlanId { get; set; }
     public string? PendingProviderSubscriptionId { get; set; }
+    public int? PendingSeats { get; set; }
+    public string? PendingBillingPeriod { get; set; }
     public Plan? Plan { get; set; }
 }
 

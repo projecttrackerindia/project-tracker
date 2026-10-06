@@ -60,52 +60,60 @@ public static class DatabaseInitializer
         }
     }
 
-    // name, description, monthly price (null = custom), sort, features
-    private static readonly (string Code, string Name, string Description, decimal? Price, int Sort, Dictionary<string, long> Features)[] PlanCatalog =
+    /// <summary>Bumped when the built-in plans change (price, who pays for what, limits): existing databases are brought up to it once, see <see cref="SeedPlansAsync"/>.</summary>
+    public const int PlanCatalogVersion = 2;
+    private const string CatalogVersionKey = "plan_catalog_version";
+
+    // code, name, description, price per person per month (null = custom), per seat, sort, features
+    // Paid plans are priced per person; storage and AI credits are per person too and pooled across the workspace. The credit amounts come from what an
+    // answer costs at the model providers (about INR 1.0 for a Quick answer, 1.2 for a Standard one, 1.3 per Deep credit at 20 credits): a person's
+    // credits cost at most 20-35% of the price when fully used, and far less in practice. See docs/PRICING.md for the arithmetic.
+    private static readonly (string Code, string Name, string Description, decimal? Price, bool PerSeat, int Sort, Dictionary<string, long> Features)[] PlanCatalog =
     [
-        ("FREE", "Free", "For individuals getting started.", 0m, 0, new()
+        ("FREE", "Free", "For one person getting started.", 0m, false, 0, new()
         {
             [FeatureKeys.ProjectLimit] = 5, [FeatureKeys.TaskLimit] = 500, [FeatureKeys.MaxMembers] = 1, [FeatureKeys.MaxTeams] = 1,
             [FeatureKeys.ActivityRetentionDays] = 30, [FeatureKeys.AdvancedReports] = 0, [FeatureKeys.CustomWorkflows] = 0,
             [FeatureKeys.ApiAccess] = 0, [FeatureKeys.CustomFields] = 0, [FeatureKeys.Automation] = 0, [FeatureKeys.AdvancedPermissions] = 0, [FeatureKeys.AuditLog] = 0,
             [FeatureKeys.StorageLimitMb] = 500, [FeatureKeys.MaxFileSizeMb] = 10, [FeatureKeys.AdvancedSecurity] = 0,
-            [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0, [FeatureKeys.AiAssistant] = 0,
+            [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0,
             [FeatureKeys.ReminderLimit] = 50, [FeatureKeys.RecurringReminderLimit] = 5, [FeatureKeys.ReminderEscalation] = 0,
-            [FeatureKeys.AiModelTier] = 0, [FeatureKeys.AiMonthlyCredits] = 0, [FeatureKeys.AiAttachments] = 0, [FeatureKeys.AiActions] = 0,
+            // A taste of the assistant: ten quick answers a month.
+            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 1, [FeatureKeys.AiMonthlyCredits] = 10, [FeatureKeys.AiAttachments] = 0, [FeatureKeys.AiActions] = 0,
             [FeatureKeys.ChatAttachments] = 0, [FeatureKeys.MobileApp] = 0,
         }),
-        ("PRO", "Pro", "For freelancers and small teams.", 999m, 1, new()
+        ("PRO", "Pro", "For teams that plan and deliver together.", 349m, true, 1, new()
         {
-            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = 10, [FeatureKeys.MaxTeams] = 5,
+            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = 365, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 0, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 0, [FeatureKeys.AuditLog] = 0,
-            [FeatureKeys.StorageLimitMb] = 10240, [FeatureKeys.MaxFileSizeMb] = 100, [FeatureKeys.AdvancedSecurity] = 0,
-            [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0, [FeatureKeys.AiAssistant] = 0,
+            [FeatureKeys.StorageLimitMb] = 5120, [FeatureKeys.MaxFileSizeMb] = 100, [FeatureKeys.AdvancedSecurity] = 0,    // 5 GB per person
+            [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0,
             [FeatureKeys.ReminderLimit] = 500, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 0,
-            // The assistant itself is still off on Pro (AI_ASSISTANT = 0); these are the levels that apply once it is switched on in Admin -> Plans.
-            [FeatureKeys.AiModelTier] = 2, [FeatureKeys.AiMonthlyCredits] = 300, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 0,
+            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 2, [FeatureKeys.AiMonthlyCredits] = 60, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 0,   // 60 credits per person
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
         }),
-        ("BUSINESS", "Business", "For growing teams and departments.", 2499m, 2, new()
+        ("BUSINESS", "Business", "For growing teams and departments.", 699m, true, 2, new()
         {
-            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = 100, [FeatureKeys.MaxTeams] = -1,
+            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = 730, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 1, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 1, [FeatureKeys.AuditLog] = 1,
-            [FeatureKeys.StorageLimitMb] = 51200, [FeatureKeys.MaxFileSizeMb] = 250, [FeatureKeys.AdvancedSecurity] = 1,
-            [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1, [FeatureKeys.AiAssistant] = 1,
+            [FeatureKeys.StorageLimitMb] = 25600, [FeatureKeys.MaxFileSizeMb] = 250, [FeatureKeys.AdvancedSecurity] = 1,   // 25 GB per person
+            [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1,
             [FeatureKeys.ReminderLimit] = -1, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 1,
-            [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 2000, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,
+            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 200, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,   // 200 credits per person
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
         }),
-        ("ENTERPRISE", "Enterprise", "Custom pricing, unlimited scale and advanced governance.", null, 3, new()
+        ("ENTERPRISE", "Enterprise", "Custom pricing, unlimited scale and advanced governance.", null, false, 3, new()
         {
             [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = -1, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 1, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 1, [FeatureKeys.AuditLog] = 1,
             [FeatureKeys.StorageLimitMb] = -1, [FeatureKeys.MaxFileSizeMb] = 512, [FeatureKeys.AdvancedSecurity] = 1,
-            [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1, [FeatureKeys.AiAssistant] = 1,
+            [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1,
             [FeatureKeys.ReminderLimit] = -1, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 1,
-            [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = -1, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,
+            // A contract sets the real figure (per-organization override in Admin); the default is a generous pool, not unlimited, because every answer costs money.
+            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 25000, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
         }),
     ];
@@ -154,12 +162,16 @@ public static class DatabaseInitializer
     {
         var currency = await EnsureBillingCurrencyAsync(db, config, ct);
         var existing = await db.Plans.Include(p => p.Features).ToListAsync(ct);
+        // A database made before the current catalog gets the new plans once (new prices, limits per person); after that the administrator owns them.
+        var versionRow = await db.PlatformSettings.FirstOrDefaultAsync(x => x.Key == CatalogVersionKey, ct);
+        var current = int.TryParse(versionRow?.Value, out var v) ? v : (existing.Count == 0 ? PlanCatalogVersion : 1);
+        var upgrade = current < PlanCatalogVersion;
         foreach (var def in PlanCatalog)
         {
             var plan = existing.FirstOrDefault(p => p.Code == def.Code);
             if (plan is null)
             {
-                plan = new Plan { Code = def.Code, Name = def.Name, Description = def.Description, PriceMonthly = StartingPrice(def.Code, def.Price, config), Currency = currency, SortOrder = def.Sort };
+                plan = new Plan { Code = def.Code, Name = def.Name, Description = def.Description, PriceMonthly = StartingPrice(def.Code, def.Price, config), Currency = currency, SortOrder = def.Sort, PerSeat = def.PerSeat };
                 db.Plans.Add(plan);
             }
             else if (plan.Currency != currency && IsLegacyDollarSeed(plan))
@@ -168,10 +180,31 @@ public static class DatabaseInitializer
                 log?.LogInformation("Plan {Code}: moving the starter price {Old} USD to {New} {Currency}.", plan.Code, plan.PriceMonthly, StartingPrice(def.Code, def.Price, config), currency);
                 plan.PriceMonthly = StartingPrice(def.Code, def.Price, config); plan.Currency = currency;
             }
+            else if (upgrade)
+            {
+                log?.LogInformation("Plan {Code}: moving to catalog version {Version} (price {Old} -> {New} {Currency}).", plan.Code, PlanCatalogVersion, plan.PriceMonthly, StartingPrice(def.Code, def.Price, config), currency);
+                plan.Description = def.Description; plan.PerSeat = def.PerSeat; plan.SortOrder = def.Sort;
+                plan.PriceMonthly = StartingPrice(def.Code, def.Price, config); plan.ProviderPlanId = null; plan.ProviderPlanAmount = null;
+                foreach (var f in plan.Features.Where(f => def.Features.ContainsKey(f.FeatureKey))) f.Value = def.Features[f.FeatureKey];
+            }
             foreach (var (key, value) in def.Features)
                 if (plan.Features.All(f => f.FeatureKey != key))
                     db.PlanFeatures.Add(new PlanFeature { PlanId = plan.Id, FeatureKey = key, Value = value });
         }
+        if (upgrade)
+        {
+            // Workspaces that paid for the old flat plans keep their people: seats = the people they have now (at least 5), so nobody is locked out the day prices change.
+            var perSeatIds = existing.Where(p => PlanCatalog.Any(c => c.Code == p.Code && c.PerSeat)).Select(p => p.Id).ToList();
+            var subs = await db.Subscriptions.IgnoreQueryFilters().Where(x => perSeatIds.Contains(x.PlanId)).ToListAsync(ct);
+            foreach (var sub in subs)
+            {
+                var people = await db.TenantMembers.IgnoreQueryFilters().CountAsync(m => m.TenantId == sub.TenantId, ct)
+                    + await db.TenantInvitations.IgnoreQueryFilters().CountAsync(i => i.TenantId == sub.TenantId && i.Status == InvitationStatus.Pending, ct);
+                sub.Seats = Math.Max(5, people);
+            }
+        }
+        if (versionRow is null) db.PlatformSettings.Add(new PlatformSetting { Key = CatalogVersionKey, Value = PlanCatalogVersion.ToString(), CreatedAt = DateTime.UtcNow });
+        else if (upgrade) versionRow.Value = PlanCatalogVersion.ToString();
         await db.SaveChangesAsync(ct);
 
         // Any plan still in another currency (an administrator's own price from before the switch) gets the platform currency label;
@@ -271,10 +304,10 @@ internal static class DemoSeeder
         await db.SaveChangesAsync(ct); // persist users / tenants / memberships before adjusting the subscription
         var pro = await db.Plans.FirstAsync(p => p.Code == "PRO", ct);
         var sub = await db.Subscriptions.FirstAsync(s => s.TenantId == org.Id, ct);
-        sub.PlanId = pro.Id; sub.Status = SubscriptionStatus.Active; sub.CurrentPeriodStart = clock.Now.AddDays(-12); sub.CurrentPeriodEnd = clock.Now.AddDays(18);
+        sub.PlanId = pro.Id; sub.Seats = 10; sub.Status = SubscriptionStatus.Active; sub.CurrentPeriodStart = clock.Now.AddDays(-12); sub.CurrentPeriodEnd = clock.Now.AddDays(18);
         db.Invoices.Add(new Invoice
         {
-            TenantId = org.Id, Number = "INV-DEMO-0001", PlanCode = "PRO", Amount = 12m, Description = "Pro plan — monthly subscription",
+            TenantId = org.Id, Number = "INV-DEMO-0001", PlanCode = "PRO", Amount = 3141m, Description = "Pro plan — 10 seats, billed monthly (10% off)",
             IssuedAt = clock.Now.AddDays(-12), ProviderReference = "mock_seed",
         });
         await db.SaveChangesAsync(ct);

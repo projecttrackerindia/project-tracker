@@ -14,6 +14,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Billing.PricingOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.PricingOptions.Section));
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
         services.Configure<ResendOptions>(config.GetSection(ResendOptions.Section));

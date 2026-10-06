@@ -97,7 +97,8 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             var mine = groups.Where(g => g.TenantId == id).ToList();
             subs.TryGetValue(id, out var sub);
             var plan = sub?.Plan is not null && !EntitlementService.IsLapsed(sub, now) ? sub.Plan : free;
-            var limit = overrides.FirstOrDefault(o => o.TenantId == id)?.Value ?? plan.Features.FirstOrDefault(f => f.FeatureKey == FeatureKeys.AiMonthlyCredits)?.Value ?? 0;
+            var limit = overrides.FirstOrDefault(o => o.TenantId == id)?.Value
+                ?? EntitlementService.ScaledValue(plan, sub?.Status ?? SubscriptionStatus.Active, sub?.Seats ?? 1, FeatureKeys.AiMonthlyCredits, plan.Features.FirstOrDefault(f => f.FeatureKey == FeatureKeys.AiMonthlyCredits)?.Value ?? 0);
             int N(string t) => mine.Where(g => g.Tier == t).Sum(g => g.Answers);
             long read = mine.Sum(g => g.CacheRead), uncached = mine.Sum(g => g.In), written = mine.Sum(g => g.CacheWrite);
             var seen = read + uncached + written;

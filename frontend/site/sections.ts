@@ -1,6 +1,6 @@
 /** The markup of the public pages, built from ./content.ts. Class names are written plainly; `scoped` (css.ts) adds the prefix. */
 import { PATHS } from '../src/components/Icon';
-import { COMPARE, DETAILS, DOWNLOAD_BASE, DOWNLOAD_FILES, FAQ, FEATURES, HOME, INTEGRATIONS, NAV, PAGES, PLANS, SECURITY, SITE, VERSUS, type DetailPage, type StaticPage } from './content';
+import { COMPARE, DETAILS, DOWNLOAD_BASE, DOWNLOAD_FILES, FAQ, FEATURES, HOME, INTEGRATIONS, NAV, OFFERS, PAGES, PLANS, SECURITY, SITE, VERSUS, type DetailPage, type StaticPage } from './content';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -22,12 +22,53 @@ export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a></li></ul></div>
 </div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Made for teams that deliver.</span></div></div></footer>`;
 
-const planCard = (p: (typeof PLANS)[number], i: number) => `<article class="plan${p.featured ? ' hot' : ''}" ${reveal(i)}>${p.featured ? '<span class="badge">Most popular</span>' : ''}
+const planCard = (p: (typeof PLANS)[number], i: number) => {
+  const code = p.name.toUpperCase();
+  return `<article class="plan${p.featured ? ' hot' : ''}" data-code="${code}"${p.unit ? ` data-unit="${p.unit}"` : ''} ${reveal(i)}>${p.featured ? '<span class="badge">Most popular</span>' : ''}
 <h3>${p.name}</h3><div class="blurb">${esc(p.blurb)}</div>
-<div class="price"><span data-price="${p.name.toUpperCase()}">${p.price}</span>${p.price === 'Custom' || p.price === '₹0' ? '' : ` <small data-per="${p.name.toUpperCase()}">/ month</small>`}</div>
+<div class="price">${p.perUser ? `<s class="was" data-was="${code}" hidden></s>` : ''}<span data-price="${code}">${p.price}</span>${p.price === 'Custom' || p.price === '₹0' ? '' : ` <small data-per="${code}">${p.perUser ? '/ user / month' : '/ month'}</small>`}</div>
+${p.perUser ? `<p class="ptotal" data-total="${code}">Per person, billed monthly</p>` : p.price === '₹0' ? '<p class="ptotal">Free for good</p>' : '<p class="ptotal">Priced to your contract</p>'}
 <ul>${p.points.map((x) => `<li>${tick}<span>${esc(x)}</span></li>`).join('')}</ul>
-<a class="btn ${p.featured ? 'btn-primary' : 'btn-ghost'}" href="/register">${esc(p.cta)}</a></article>`;
-const plansNote = '<p class="note2">Prices are per organization per month, in Indian rupees, and the price shown at checkout is the one that applies. Every plan starts from a free account, so you can look around first.</p>';
+<a class="btn ${p.featured ? 'btn-primary' : 'btn-ghost'}" href="${p.name === 'Enterprise' ? `mailto:${SITE.securityEmail.replace('security@', 'sales@')}?subject=Enterprise%20plan` : '/register'}">${esc(p.cta)}</a></article>`;
+};
+const plansNote = `<p class="note2">Pro and Business are priced per person per month, in Indian rupees, excluding GST; the price shown at checkout is the one that applies. Storage and AI credits are per person and shared by the whole team. A ${OFFERS.trialDays}-day trial of either plan needs no payment (up to ${OFFERS.trialPeople} people).</p>`;
+
+/** Pick monthly or yearly and the number of people: every paid plan card below shows its own price for that choice. */
+const calculator = () => `<div class="calc" ${reveal()}>
+<div class="calc-row"><span class="calc-l">Billing</span><div class="seg2" role="group" aria-label="Billing period"><button type="button" class="on" data-period="monthly">Monthly</button><button type="button" data-period="yearly">Yearly <em>save ${OFFERS.annualPercent}%</em></button></div></div>
+<div class="calc-row"><label class="calc-l" for="pt-seats">People</label><input id="pt-seats" type="range" min="1" max="200" value="5" data-seats aria-describedby="pt-calc-note"><output data-seats-out>5</output></div>
+<p class="calc-note" id="pt-calc-note" data-calc-note>Slide to see what your team pays. Teams of ${OFFERS.volume[0].min}+ get a discount automatically.</p></div>`;
+
+const offerQuote = (unit: number, seats: number, yearly: boolean) => {
+  const vol = [...OFFERS.volume].reverse().find((t) => seats >= t.min)?.percent ?? 0;
+  const total = Math.min(OFFERS.maxPercent, vol + (yearly ? OFFERS.annualPercent : 0));
+  return { total, perSeat: Math.round(unit * (100 - total) / 100) };
+};
+const rupees = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+
+const offers = () => {
+  const pro = PLANS.find((p) => p.name === 'Pro')!.unit!;
+  const ex = offerQuote(pro, 25, true);
+  return `<div class="offers"><div class="center" ${reveal()}><p class="eyebrow">Offers</p><h2>The more you commit, the less each person costs</h2></div><div style="height:26px"></div>
+<div class="offer-grid">
+<article class="offer" ${reveal(0)}><span class="offer-big">${OFFERS.annualPercent}% off</span><h3>Pay for a year</h3><p>Billed once a year instead of every month. Same plan, same features, about two and a half months free.</p></article>
+<article class="offer" ${reveal(1)}><span class="offer-big">Up to ${OFFERS.volume[OFFERS.volume.length - 1].percent}% off</span><h3>Bigger teams</h3><p>${OFFERS.volume.map((t) => `${t.min}+ people: ${t.percent}%`).join(' · ')}. Applied automatically as your team grows.</p></article>
+<article class="offer hot" ${reveal(2)}><span class="offer-big">Up to ${OFFERS.maxPercent}% off</span><h3>Both together</h3><p>For example 25 people on Pro, billed yearly: ${rupees(ex.perSeat)} per person a month instead of ${rupees(pro)}.</p></article>
+</div></div>`;
+};
+
+/** What an AI credit buys, and what each plan brings per person. */
+const credits = () => {
+  const c = OFFERS.credits;
+  return `<div class="credits" ${reveal()}><div class="center"><p class="eyebrow">AI credits</p><h2>Pay for the thinking you use</h2>
+<p class="sub">Every answer costs credits by how much thinking it needs. Credits are per person, shared across the team and renewed on the 1st.</p></div><div style="height:26px"></div>
+<div class="credit-grid">
+<div class="cr"><b>${c.quick} credit</b><span>Quick</span><em>Look-ups and short answers: what is due, who owns it.</em></div>
+<div class="cr"><b>${c.standard} credits</b><span>Standard</span><em>Summaries, reading a file, a plan for the week.</em></div>
+<div class="cr"><b>${c.deep} credits</b><span>Deep</span><em>Root causes, forecasts and an executive brief. Business and above.</em></div>
+</div>
+<p class="note2 center">Pro brings 60 credits per person every month, about 15 standard answers. Business brings 200, about 50 standard answers or 10 deep analyses. When the pool is used up the assistant waits for the 1st; nothing else changes.</p></div>`;
+};
 
 const matrix = () => `<div class="matrix" ${reveal()}><table><thead><tr><th scope="col">Compare plans</th>${PLANS.map((p) => `<th scope="col"${p.featured ? ' class="hotc"' : ''}>${p.name}</th>`).join('')}</tr></thead><tbody>${COMPARE.map((g) =>
   `<tr class="grp"><td colspan="5">${esc(g.group)}</td></tr>${g.rows.map((r) => `<tr><td>${esc(r.label)}</td>${r.v.map((c) => `<td class="${c === '✓' ? 'yes' : c === '–' ? 'no' : ''}">${c === '–' ? '<span aria-label="Not included">–</span>' : esc(c)}</td>`).join('')}</tr>`).join('')}`).join('')}</tbody></table></div>`;
@@ -125,8 +166,8 @@ export function landing(): string {
 <p class="sub">What changes when projects stop living in spreadsheets and chat.</p></div>${versus}</div></section>
 <section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Getting started</p><h2>Up and running in minutes</h2></div><div style="height:30px"></div>${steps}</div></section>
 <section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Plans</p><h2>Simple plans that grow with you</h2>
-<p class="sub">Free for one person. Pro, Business and Enterprise add people, teams, reports and governance.</p></div>
-<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}<p style="margin-top:10px"><a href="/pricing/"><strong>Compare every plan →</strong></a></p></div></section>
+<p class="sub">Free for one person. Pay per person from Pro, and less the more you commit.</p></div>
+${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}<p style="margin-top:10px"><a href="/pricing/"><strong>Compare every plan →</strong></a></p></div></section>
 <section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Questions</p><h2>Answers before you ask</h2></div><div style="height:30px"></div>${faq()}</div></section>
 ${band('Bring your projects into one clear view', 'Create your workspace in a minute. Invite your team when you are ready.')}
 </main>${footer()}<div class="sticky" aria-hidden="true"><a class="btn btn-glass" href="/login" tabindex="-1">Sign in</a><a class="btn btn-primary" href="/register" tabindex="-1">Start free</a></div>`;
@@ -185,7 +226,7 @@ const bodies: Record<string, () => string> = {
   '/features/': () => `<div class="wrap"><div class="grid">${FEATURES.map(featureCard).join('')}</div>
 <h2 style="margin:64px 0 20px">Go deeper</h2><div class="grid">${DETAILS.map((d, i) => `<article class="card" ${reveal(i % 3)}><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.description)}</p></article>`).join('')}</div>
 <div style="height:30px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,
-  '/pricing/': () => `<div class="wrap"><div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}${matrix()}
+  '/pricing/': () => `<div class="wrap">${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}${offers()}<div style="height:40px"></div>${credits()}${matrix()}
 <h2 class="center" style="margin:84px 0 28px">Questions about plans</h2>${faq()}<div style="height:50px"></div>${band('Start free today', 'Move up only when your team needs more.')}</div>`,
   '/security/': () => `<div class="wrap"><div class="grid">${SECURITY.map((p, i) => `<article class="card" ${reveal(i % 3)}><div class="ic">${icon(p.icon)}</div><h3>${esc(p.title)}</h3><ul>${p.points.map((x) => `<li>${tick}<span>${esc(x)}</span></li>`).join('')}</ul></article>`).join('')}</div>
 <section class="report" id="report" ${reveal()}><div><h2>Report a vulnerability</h2><p>If you believe you have found a security problem, e-mail <a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a> with the steps to reproduce it. We reply within two working days, keep you informed while we fix it, and credit you if you wish. Please do not access other customers' data, degrade the service or run automated scans against it while investigating.</p></div>

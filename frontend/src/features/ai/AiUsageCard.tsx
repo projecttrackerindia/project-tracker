@@ -33,6 +33,7 @@ export function AiUsageCard() {
             <span className="muted">{d.answers.toLocaleString()} answers{d.failed > 0 ? ` · ${d.failed} failed` : ''}</span>
           </div>
           {!d.unlimited && <Progress value={pct} tone={pct >= 90 ? 'red' : pct >= 70 ? 'amber' : 'green'} />}
+          {!d.unlimited && <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Credits are per person and shared by the whole team; they renew on the 1st. More people (seats) means a bigger pool: see Settings → Billing.</p>}
           <div className="row" style={{ gap: 8, margin: '12px 0', flexWrap: 'wrap' }}>
             {LEVELS.map(([id, label]) => {
               const t = d.byTier.find((x) => x.tier === id);

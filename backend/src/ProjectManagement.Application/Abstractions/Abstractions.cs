@@ -246,8 +246,11 @@ public interface IPaymentProvider
     bool RequiresCheckout { get; }
     Task<PaymentResult> ChargeAsync(Guid tenantId, string planCode, decimal amount, string currency, CancellationToken ct = default);
     /// <summary>The provider's id for a plan at this price (created, or re-created after a price change).</summary>
-    Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default);
-    Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default);
+    Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default, string period = "monthly");
+    /// <param name="period">"monthly" or "yearly": how often the price is charged.</param>
+    /// <param name="startAt">The first charge, when it should not be now (a change of people that starts at the next renewal, so nobody pays twice for the current one).</param>
+    /// <param name="description">What the payment window says is being bought.</param>
+    Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default, string period = "monthly", DateTime? startAt = null, string? description = null);
     Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default);
     bool VerifyCheckout(string paymentId, string subscriptionId, string signature);
     bool VerifyWebhook(string body, string? signature);

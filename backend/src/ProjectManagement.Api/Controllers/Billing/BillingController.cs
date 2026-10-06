@@ -15,6 +15,10 @@ public class BillingController(BillingService billing, InvoiceService invoices) 
     [HttpGet]
     public async Task<IActionResult> Overview(CancellationToken ct) => Ok(await billing.GetOverviewAsync(ct));
 
+    /// <summary>What a choice of plan, people and billing period would cost, and the credits and storage it gives.</summary>
+    [HttpGet("quote")]
+    public async Task<IActionResult> Quote([FromQuery] string? planCode, [FromQuery] int? seats, [FromQuery] string? period, CancellationToken ct) => Ok(await billing.QuoteAsync(planCode, seats, period, ct));
+
     [HttpPost("checkout")]
     public async Task<IActionResult> Checkout([FromBody] CheckoutRequest req, CancellationToken ct) => Ok(await billing.CheckoutAsync(req, ct));
 

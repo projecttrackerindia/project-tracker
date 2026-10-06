@@ -29,7 +29,7 @@ for (const [path, title] of [['/features/', 'Features | Project Tracker'], ['/pr
 }
 await page.goto(`${BASE}/pricing/`);
 await page.waitForTimeout(800);
-check('pricing shows the live Pro price', /₹\s?999/.test(await page.locator('[data-price=PRO]').first().innerText()));
+check('pricing shows the live Pro price per person', /₹\s?349/.test(await page.locator('[data-price=PRO]').first().innerText()));
 for (const f of ['/sitemap.xml', '/robots.txt', '/favicon.ico', '/favicon.svg', '/og-image.png']) {
   const r = await page.request.get(`${BASE}${f}`);
   check(`${f} is served`, r.ok(), String(r.status()));

@@ -306,9 +306,10 @@ public sealed class TestClient(ApiFactory factory)
         return res.Data!;
     }
 
-    public async Task<ApiResult> UpgradeAsync(string plan)
+    /// <summary>Pays for a plan (simulated payment). Per-person plans: <paramref name="seats"/> people (10 by default, room for the tests' invitations) billed monthly unless <paramref name="period"/> says otherwise.</summary>
+    public async Task<ApiResult> UpgradeAsync(string plan, int seats = 10, string? period = null)
     {
-        var res = await Post("/api/v1/billing/checkout", new { planCode = plan, startTrial = false });
+        var res = await Post("/api/v1/billing/checkout", new { planCode = plan, startTrial = false, seats, period });
         Assert.True(res.Ok, res.ToString());
         return res;
     }

@@ -45,22 +45,30 @@ public class RazorpayPaymentProvider(HttpClient http, IOptions<RazorpayOptions> 
     public Task<PaymentResult> ChargeAsync(Guid tenantId, string planCode, decimal amount, string currency, CancellationToken ct = default) =>
         throw new NotSupportedException("Razorpay payments are made in the payment window, not charged by the server.");
 
-    public async Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default)
+    public async Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default, string period = "monthly")
     {
+        period = period == "yearly" ? "yearly" : "monthly";
         if (!string.IsNullOrEmpty(existingId) && existingAmount == price) return existingId;
         var res = await PostAsync("/plans", new
         {
-            period = "monthly", interval = 1,
-            item = new { name = $"{name} plan", amount = RazorpaySignature.Minor(price, currency), currency = currency.ToUpperInvariant(), description = $"Project Tracker {name}, per organization per month" },
-            notes = new { planCode },
+            period, interval = 1,
+            item = new { name = $"{name} plan", amount = RazorpaySignature.Minor(price, currency), currency = currency.ToUpperInvariant(), description = $"Project Tracker {name}, charged {period}" },
+            notes = new { planCode, period },
         }, ct);
         return res.GetProperty("id").GetString()!;
     }
 
-    public async Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default)
+    public async Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default,
+        string period = "monthly", DateTime? startAt = null, string? description = null)
     {
-        var res = await PostAsync("/subscriptions", new { plan_id = providerPlanId, total_count = 120, customer_notify = 1, notes = new { tenantId = tenantId.ToString(), planCode } }, ct);
-        return new HostedCheckout("razorpay", O.KeyId, res.GetProperty("id").GetString()!, "Project Tracker", $"{planName} plan, monthly", RazorpaySignature.Minor(price, currency), currency.ToUpperInvariant());
+        period = period == "yearly" ? "yearly" : "monthly";
+        var body = new Dictionary<string, object?>
+        {
+            ["plan_id"] = providerPlanId, ["total_count"] = period == "yearly" ? 10 : 120, ["customer_notify"] = 1, ["notes"] = new { tenantId = tenantId.ToString(), planCode, period },
+        };
+        if (startAt is { } at) body["start_at"] = new DateTimeOffset(DateTime.SpecifyKind(at, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        var res = await PostAsync("/subscriptions", body, ct);
+        return new HostedCheckout("razorpay", O.KeyId, res.GetProperty("id").GetString()!, "Project Tracker", description ?? $"{planName} plan, {period}", RazorpaySignature.Minor(price, currency), currency.ToUpperInvariant());
     }
 
     public async Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default) =>

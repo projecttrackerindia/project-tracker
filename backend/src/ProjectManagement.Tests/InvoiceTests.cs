@@ -19,11 +19,11 @@ public class InvoiceTests(ApiFactory factory)
         return c;
     }
 
-    private async Task<(TestClient Owner, string InvoiceId)> PaidOwner()
+    private async Task<(TestClient Owner, string InvoiceId)> PaidOwner(int seats = 1)
     {
         var owner = await TestClient.RegisterAsync(factory, "Invoice Owner");
         await owner.CreateOrgAsync("Acme Works");
-        await owner.UpgradeAsync("PRO");                       // simulated payment: one paid invoice
+        await owner.UpgradeAsync("PRO", seats);                       // simulated payment: one paid invoice
         var overview = await owner.Get("/api/v1/billing");
         return (owner, overview.Data!["invoices"]![0]!["id"]!.GetValue<string>());
     }
@@ -58,7 +58,7 @@ public class InvoiceTests(ApiFactory factory)
         Assert.Contains("Acme Works Private Limited", text);
         Assert.Contains("19AAACA1234B1Z9", text);
         Assert.Contains("Kolkata 700016", text);
-        Assert.Contains("INR 999.00", text);
+        Assert.Contains("INR 349.00", text);
         Assert.Contains("Amount includes GST at 18%.", text);
         Assert.Contains("Pro plan", text);
     }
@@ -81,7 +81,7 @@ public class InvoiceTests(ApiFactory factory)
     [Fact]
     public async Task Only_paid_invoices_download_and_nobody_can_fetch_another_workspaces_invoice_or_without_billing_permission()
     {
-        var (owner, id) = await PaidOwner();
+        var (owner, id) = await PaidOwner(3);
         var other = await TestClient.RegisterAsync(factory, "Other Owner");
         await other.CreateOrgAsync();
         Assert.Equal(HttpStatusCode.NotFound, (await Pdf(other, id)).Status);

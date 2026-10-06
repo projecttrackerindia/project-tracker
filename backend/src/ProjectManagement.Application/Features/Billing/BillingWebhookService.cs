@@ -38,6 +38,11 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
 
         switch (type)
         {
+            case "subscription.authenticated":
+                // A change of people that starts at the next renewal is approved now: apply it even if the browser never reported back.
+                if (pending && sub.PendingPlanId is { } scheduledPlan && await db.Plans.FirstOrDefaultAsync(p => p.Id == scheduledPlan, ct) is { } sp && activator.IsScheduledChange(sub, sp, now))
+                    await activator.ActivateAsync(sub, sp, providerSubId, now, null, ct);
+                break;
             case "subscription.activated":
             case "subscription.charged":
             {
@@ -47,7 +52,7 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
                 {
                     var minor = pe.TryGetProperty("amount", out var a) ? a.GetInt64() : 0;
                     var currency = pe.TryGetProperty("currency", out var c) ? c.GetString() ?? plan.Currency : plan.Currency;
-                    await activator.RecordPaymentAsync(sub.TenantId, plan, minor / (currency == "JPY" ? 1m : 100m), currency, payId.GetString()!, true, null, $"{plan.Name} plan — {(type == "subscription.charged" ? "monthly charge" : "subscription")}", ct);
+                    await activator.RecordPaymentAsync(sub.TenantId, plan, minor / (currency == "JPY" ? 1m : 100m), currency, payId.GetString()!, true, null, $"{plan.Name} plan — {(plan.PerSeat ? $"{sub.Seats} seat{(sub.Seats == 1 ? "" : "s")}, " : "")}{(type == "subscription.charged" ? sub.BillingPeriod + " charge" : "subscription")}", ct);
                 }
                 break;
             }

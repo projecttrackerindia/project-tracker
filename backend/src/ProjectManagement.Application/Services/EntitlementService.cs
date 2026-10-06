@@ -11,7 +11,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Services;
 
 public record EffectivePlan(
-    Plan Plan, SubscriptionStatus Status, DateTime? TrialEnd, DateTime? PeriodEnd, bool CancelAtPeriodEnd, bool Downgraded);
+    Plan Plan, SubscriptionStatus Status, DateTime? TrialEnd, DateTime? PeriodEnd, bool CancelAtPeriodEnd, bool Downgraded, int Seats = 1, string BillingPeriod = "monthly");
 
 /// <summary>Central subscription entitlement and usage-limit enforcement (spec sections 34, 35, 93).</summary>
 public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementCache shared)
@@ -59,7 +59,7 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
         }
         else
         {
-            result = new EffectivePlan(sub.Plan, sub.Status, sub.TrialEnd, sub.CurrentPeriodEnd, sub.CancelAtPeriodEnd, false);
+            result = new EffectivePlan(sub.Plan, sub.Status, sub.TrialEnd, sub.CurrentPeriodEnd, sub.CancelAtPeriodEnd, false, Math.Max(1, sub.Seats), sub.BillingPeriod);
         }
         await shared.SetPlanAsync(tenantId, result, ct);
         return _cache[tenantId] = result;
@@ -73,6 +73,7 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
 
         var plan = await GetEffectivePlanAsync(tenantId, ct);
         var values = FeatureKeys.All.ToDictionary(k => k, k => plan.Plan.Features.FirstOrDefault(f => f.FeatureKey == k)?.Value ?? 0);
+        ApplySeats(values, plan);
         DateTime? endsAt = null;
         // A platform administrator can give (or take away) one feature for one organization, for a while or for good.
         if (!_overrides.TryGetValue(tenantId, out var special))
@@ -85,6 +86,31 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
         foreach (var (key, value) in special) if (values.ContainsKey(key)) values[key] = value;
         await shared.SetEntitlementsAsync(tenantId, values, endsAt, ct);
         return _entitlements[tenantId] = values;
+    }
+
+    /// <summary>Features that grow with the people a workspace pays for: pooled storage and pooled AI credits.</summary>
+    public static readonly string[] SeatScaled = [FeatureKeys.StorageLimitMb, FeatureKeys.AiMonthlyCredits];
+
+    /// <summary>
+    /// On a per-person plan the number of members is the number of seats, and storage and AI credits are per seat, pooled across the workspace. A trial
+    /// of a paid plan has a few seats and a small credit pool.
+    /// </summary>
+    public static void ApplySeats(Dictionary<string, long> values, EffectivePlan plan)
+    {
+        if (!plan.Plan.PerSeat) return;
+        foreach (var key in values.Keys.ToList()) values[key] = ScaledValue(plan.Plan, plan.Status, plan.Seats, key, values[key]);
+    }
+
+    /// <summary>One plan value as a workspace with these seats gets it (the plan's own value for plans that are not per person).</summary>
+    public static long ScaledValue(Plan plan, SubscriptionStatus status, int seats, string key, long value)
+    {
+        if (!plan.PerSeat) return value;
+        var trial = status == SubscriptionStatus.Trial;
+        seats = trial ? Features.Billing.Pricing.TrialSeats : Math.Max(1, seats);
+        if (key == FeatureKeys.MaxMembers) return seats;
+        if (!SeatScaled.Contains(key) || value <= 0) return value;
+        value = checked(value * seats);
+        return trial && key == FeatureKeys.AiMonthlyCredits ? Math.Min(value, Features.Billing.Pricing.TrialAiCredits) : value;
     }
 
     public async Task<long> GetValueAsync(string key, CancellationToken ct = default) =>

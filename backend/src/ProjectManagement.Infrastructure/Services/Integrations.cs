@@ -140,8 +140,8 @@ public class MockPaymentProvider(ILogger<MockPaymentProvider> log) : IPaymentPro
         return Task.FromResult(new PaymentResult(true, $"mock_{Guid.NewGuid():N}"[..20], null));
     }
 
-    public Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default) => throw new NotSupportedException();
-    public Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<string> EnsurePlanAsync(string planCode, string name, decimal price, string currency, string? existingId, decimal? existingAmount, CancellationToken ct = default, string period = "monthly") => throw new NotSupportedException();
+    public Task<HostedCheckout> StartSubscriptionAsync(Guid tenantId, string planCode, string planName, string providerPlanId, decimal price, string currency, CancellationToken ct = default, string period = "monthly", DateTime? startAt = null, string? description = null) => throw new NotSupportedException();
     public Task CancelSubscriptionAsync(string providerSubscriptionId, bool atCycleEnd, CancellationToken ct = default) => Task.CompletedTask;
     public bool VerifyCheckout(string paymentId, string subscriptionId, string signature) => false;
     public bool VerifyWebhook(string body, string? signature) => false;

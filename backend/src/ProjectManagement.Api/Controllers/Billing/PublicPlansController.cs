@@ -11,3 +11,11 @@ public class PublicPlansController(BillingService billing) : ApiControllerBase
     [HttpGet, AllowAnonymous]
     public async Task<IActionResult> List(CancellationToken ct) => Ok(await billing.GetPublicPlansAsync(ct));
 }
+
+/// <summary>The price list with the discount rules (annual, bigger teams, trial) for the website's price calculator.</summary>
+[Route("api/v1/public/pricing")]
+public class PublicPricingController(BillingService billing) : ApiControllerBase
+{
+    [HttpGet, AllowAnonymous]
+    public async Task<IActionResult> Get(CancellationToken ct) => Ok(await billing.GetPublicPricingAsync(ct));
+}

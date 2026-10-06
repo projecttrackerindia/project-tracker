@@ -31,10 +31,12 @@ public record AdminUserDto(Guid Id, string Email, string DisplayName, bool Email
 public record AdminUserDetailDto(AdminUserDto User, int ActiveSessions);
 
 public record AdminPlanDto(Guid Id, string Code, string Name, string? Description, decimal? PriceMonthly, string Currency, bool IsActive,
-    int SortOrder, IReadOnlyDictionary<string, long> Features);
-public record UpdatePlanRequest(string Name, string? Description, decimal? PriceMonthly, bool IsActive, IReadOnlyDictionary<string, long> Features);
+    int SortOrder, IReadOnlyDictionary<string, long> Features, bool PerSeat = false);
+/// <param name="PerSeat">Price, storage and AI credits are per person (null leaves it as it is).</param>
+public record UpdatePlanRequest(string Name, string? Description, decimal? PriceMonthly, bool IsActive, IReadOnlyDictionary<string, long> Features, bool? PerSeat = null);
 public record SetTenantStatusRequest(TenantStatus Status);
-public record SetTenantSubscriptionRequest(string PlanCode, SubscriptionStatus Status, DateTime? PeriodEnd);
+/// <param name="Seats">The people the organization may have on a per-person plan (default: the people it has now, at least the seats it had).</param>
+public record SetTenantSubscriptionRequest(string PlanCode, SubscriptionStatus Status, DateTime? PeriodEnd, int? Seats = null);
 public record SetUserStatusRequest(bool IsActive);
 public record SetPlatformAdminRequest(bool IsPlatformAdmin);
 
@@ -163,7 +165,7 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
 
         var tenant = await provisioner.CreateAsync(req.Name, WorkspaceType.Organization, owner.Id, req.Description, null, ct);
         // Assigned by an administrator: active, no renewal date and no charge (an "account-managed" subscription).
-        db.Subscriptions.Local.First(s => s.TenantId == tenant.Id).PlanId = plan.Id;
+        { var created = db.Subscriptions.Local.First(s => s.TenantId == tenant.Id); created.PlanId = plan.Id; created.Seats = plan.PerSeat ? 5 : 1; }   // an organization an administrator creates starts with 5 seats; they can change it
         recorder.Audit("admin.tenant_created", "Tenant", tenant.Id, newValue: new { tenant.Name, Owner = owner.Email, Plan = plan.Code }, tenantId: tenant.Id);
         await db.SaveChangesAsync(ct);
         return await GetTenantAsync(tenant.Id, ct);
@@ -251,6 +253,11 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         sub.PlanId = plan.Id; sub.Status = req.Status; sub.CurrentPeriodStart = now;
         sub.CurrentPeriodEnd = req.PeriodEnd; sub.TrialEnd = req.Status == SubscriptionStatus.Trial ? req.PeriodEnd : null;
         sub.CancelAtPeriodEnd = false; sub.CancelledAt = null;
+        if (plan.PerSeat)
+        {
+            var people = await db.TenantMembers.IgnoreQueryFilters().CountAsync(m => m.TenantId == id, ct);
+            sub.Seats = Math.Max(1, req.Seats ?? Math.Max(sub.Seats, people));
+        }
         recorder.Audit("admin.subscription_changed", "Subscription", sub.Id, old, new { plan.Code, req.Status, req.PeriodEnd }, tenantId: id);
         await db.SaveChangesAsync(ct);
     }
@@ -354,7 +361,7 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
     }
 
     private static AdminPlanDto ToDto(Plan p) => new(p.Id, p.Code, p.Name, p.Description, p.PriceMonthly, p.Currency, p.IsActive, p.SortOrder,
-        FeatureKeys.All.ToDictionary(k => k, k => p.Features.FirstOrDefault(f => f.FeatureKey == k)?.Value ?? 0));
+        FeatureKeys.All.ToDictionary(k => k, k => p.Features.FirstOrDefault(f => f.FeatureKey == k)?.Value ?? 0), p.PerSeat);
 
     public async Task<AdminPlanDto> UpdatePlanAsync(Guid id, UpdatePlanRequest req, CancellationToken ct = default)
     {
@@ -369,7 +376,7 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         }
 
         var old = ToDto(plan);
-        plan.Name = req.Name.Trim(); plan.Description = req.Description?.Trim(); plan.PriceMonthly = req.PriceMonthly; plan.IsActive = req.IsActive;
+        plan.Name = req.Name.Trim(); plan.Description = req.Description?.Trim(); plan.PriceMonthly = req.PriceMonthly; plan.IsActive = req.IsActive; if (req.PerSeat is { } perSeat) plan.PerSeat = perSeat;
         foreach (var (key, value) in req.Features)
         {
             var feature = plan.Features.FirstOrDefault(f => f.FeatureKey == key);

@@ -249,7 +249,7 @@ export function AiWorkspaceSwitch() {
     <div className="card" style={{ marginTop: 18 }}><div className="card-body" style={{ paddingTop: 6, paddingBottom: 6 }}>
     <div className="setting-row">
       <div className="setting-info"><h4><Sparkle size={14} /> AI assistant</h4>
-        <p>{s.entitled ? `Plain-language search, portfolio summaries, delay risk, triage suggestions and action items from meeting notes, powered by ${poweredBy(s)}. Only what each person can already see is sent to ${sentTo(s)}.` : 'Comes with the Business plan.'}</p></div>
+        <p>{s.entitled ? `Plain-language search, portfolio summaries, delay risk, triage suggestions and action items from meeting notes, powered by ${poweredBy(s)}. Only what each person can already see is sent to ${sentTo(s)}.` : 'Not included in this plan.'}</p></div>
       <button type="button" className={`switch ${s.allowedHere ? 'on' : ''}`} role="switch" aria-checked={s.allowedHere} aria-label="AI assistant" disabled={busy || !s.entitled} onClick={() => void toggle()} />
     </div>
     </div></div>

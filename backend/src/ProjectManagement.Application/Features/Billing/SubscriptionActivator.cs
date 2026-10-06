@@ -9,19 +9,48 @@ namespace ProjectManagement.Application.Features.Billing;
 /// <summary>The steps shared by "the browser says the payment succeeded" and "the provider's webhook says so": both end in the same state, and doing both changes nothing twice.</summary>
 public class SubscriptionActivator(IAppDbContext db, IPaymentProvider payments, ILogger<SubscriptionActivator> log)
 {
+    /// <summary>
+    /// True for a change of people on the plan and period that are already paid, made while the paid period still runs: its first charge is at the
+    /// next renewal (the provider subscription was created with a later start), so it must not be treated as a new purchase today.
+    /// </summary>
+    public bool IsScheduledChange(Subscription sub, Plan plan, DateTime now) =>
+        sub.PendingProviderSubscriptionId is not null && sub.PlanId == plan.Id && sub.ProviderSubscriptionId is not null && sub.Status == SubscriptionStatus.Active
+        && sub.BillingPeriod == Pricing.NormalizePeriod(sub.PendingBillingPeriod ?? sub.BillingPeriod) && sub.CurrentPeriodEnd is { } end && end > now.AddHours(12);
+
     /// <summary>Makes <paramref name="plan"/> the workspace's plan, paid through the provider subscription <paramref name="providerSubscriptionId"/>.</summary>
     public async Task ActivateAsync(Subscription sub, Plan plan, string providerSubscriptionId, DateTime start, DateTime? end, CancellationToken ct)
     {
+        var pendingMatch = sub.PendingProviderSubscriptionId == providerSubscriptionId;
+        if (pendingMatch && IsScheduledChange(sub, plan, start))
+        {
+            // The new amount starts at the next renewal. The old recurring payment must not renew on top of it.
+            if (sub.ProviderSubscriptionId is { } current && current != providerSubscriptionId) await CancelAtProviderAsync(current, atCycleEnd: true, ct);
+            var seats = Math.Max(1, sub.PendingSeats ?? sub.Seats);
+            if (seats >= sub.Seats)
+            {
+                // More people: they can join now (and the next renewal is for all of them).
+                sub.Seats = seats; sub.ProviderSubscriptionId = providerSubscriptionId;
+                sub.PendingPlanId = null; sub.PendingProviderSubscriptionId = null; sub.PendingSeats = null; sub.PendingBillingPeriod = null;
+            }
+            // Fewer people: the seats already paid for stay until the renewal; the pending change is applied when the new subscription is first charged.
+            return;
+        }
         // Switching plans: the older recurring payment ends now, so nobody pays for two plans.
         if (sub.ProviderSubscriptionId is { } older && older != providerSubscriptionId) await CancelAtProviderAsync(older, atCycleEnd: false, ct);
         var changedPlan = sub.PlanId != plan.Id || sub.ProviderSubscriptionId != providerSubscriptionId;
+        if (pendingMatch)
+        {
+            sub.Seats = Math.Max(1, sub.PendingSeats ?? sub.Seats);
+            sub.BillingPeriod = Pricing.NormalizePeriod(sub.PendingBillingPeriod ?? sub.BillingPeriod);
+        }
         sub.PlanId = plan.Id; sub.Plan = plan; sub.Status = SubscriptionStatus.Active;
         sub.Provider = payments.Name; sub.ProviderSubscriptionId = providerSubscriptionId;
-        sub.PendingPlanId = null; sub.PendingProviderSubscriptionId = null;
+        sub.PendingPlanId = null; sub.PendingProviderSubscriptionId = null; sub.PendingSeats = null; sub.PendingBillingPeriod = null;
         sub.TrialEnd = null; sub.CancelAtPeriodEnd = false; sub.CancelledAt = null;
-        // The browser's confirmation does not know the period yet (the provider's message does): until then, one month.
-        if (changedPlan || end is not null) { sub.CurrentPeriodStart = start; sub.CurrentPeriodEnd = end ?? start.AddMonths(1); }
-        else if (end is null && sub.CurrentPeriodEnd is null) sub.CurrentPeriodEnd = start.AddMonths(1);
+        // The browser's confirmation does not know the period yet (the provider's message does): until then, one period.
+        var span = Pricing.Months(sub.BillingPeriod);
+        if (changedPlan || end is not null) { sub.CurrentPeriodStart = start; sub.CurrentPeriodEnd = end ?? start.AddMonths(span); }
+        else if (end is null && sub.CurrentPeriodEnd is null) sub.CurrentPeriodEnd = start.AddMonths(span);
     }
 
     /// <summary>Stops a recurring payment at the provider. A failure is logged and not thrown when the aim is only to tidy up; ending the payment the owner asked to cancel is checked by the caller.</summary>

@@ -195,7 +195,7 @@ export const notificationApi = {
 
 export const billingApi = {
   overview: () => get<BillingOverview>('/billing'),
-  checkout: (planCode: string, startTrial: boolean) => post<BillingOverview>('/billing/checkout', { planCode, startTrial }),
+  checkout: (planCode: string, startTrial: boolean, seats?: number, period?: 'monthly' | 'yearly') => post<BillingOverview>('/billing/checkout', { planCode, startTrial, seats, period }),
   confirm: (paymentId: string, subscriptionId: string, signature: string) => post<BillingOverview>('/billing/confirm', { paymentId, subscriptionId, signature }),
   details: () => get<InvoiceBuyer>('/billing/details'),
   setDetails: (b: InvoiceBuyer) => put<InvoiceBuyer>('/billing/details', b),
@@ -221,7 +221,7 @@ export const adminApi = {
   setUserStatus: (id: string, isActive: boolean) => put(`/admin/users/${id}/status`, { isActive }),
   setPlatformAdmin: (id: string, isPlatformAdmin: boolean) => put(`/admin/users/${id}/platform-admin`, { isPlatformAdmin }),
   plans: () => get<AdminPlan[]>('/admin/plans'),
-  updatePlan: (id: string, b: { name: string; description?: string | null; priceMonthly: number | null; isActive: boolean; features: Record<string, number> }) => put<AdminPlan>(`/admin/plans/${id}`, b),
+  updatePlan: (id: string, b: { name: string; description?: string | null; priceMonthly: number | null; isActive: boolean; features: Record<string, number>; perSeat?: boolean }) => put<AdminPlan>(`/admin/plans/${id}`, b),
   audit: (action: string | undefined, page = 1) => get<Paged<AuditLog>>('/admin/audit-logs', { action, page, pageSize: 25 }),
 };
 

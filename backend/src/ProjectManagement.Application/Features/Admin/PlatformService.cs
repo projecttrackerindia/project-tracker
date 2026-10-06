@@ -103,7 +103,7 @@ public class PlatformSettingsCache(IServiceScopeFactory scopes, TimeProvider tim
 /// <summary>Platform administration beyond tenants and plans: money, usage, exceptions to plans, platform switches and system health.</summary>
 public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PlatformSettingsCache settingsCache, SystemMetrics metrics,
     WorkerHeartbeats heartbeats, Microsoft.Extensions.Caching.Distributed.IDistributedCache cache, Microsoft.Extensions.Configuration.IConfiguration config,
-    ProjectManagement.Application.Features.Reminders.ReminderMetrics? reminderMetrics = null)
+    ProjectManagement.Application.Features.Reminders.ReminderMetrics? reminderMetrics = null, Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Features.Billing.PricingOptions>? pricing = null)
 {
     public const string KeyBillingCurrency = "billing_currency";
     public const string KeySignups = "signups_enabled", KeyMaintenance = "maintenance_mode", KeyAnnouncement = "announcement", KeyAnnouncementLevel = "announcement_level";
@@ -128,7 +128,14 @@ public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var names = await db.Tenants.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name, ct);
 
         var paying = subs.Where(s => EffectiveCode(s, now) != EntitlementService.FreePlan && s.Status == SubscriptionStatus.Active).ToList();
-        var byPlan = paying.GroupBy(s => s.Plan!.Code).Select(g => new PlanRevenueDto(g.Key, g.First().Plan!.Name, g.Count(), g.Count() * (g.First().Plan!.PriceMonthly ?? 0m)))
+        // Monthly recurring revenue: what each paying workspace is charged per cycle (people x price, less discounts), spread over the months of the cycle.
+        var rules = pricing?.Value ?? new ProjectManagement.Application.Features.Billing.PricingOptions();
+        decimal Monthly(Subscription s)
+        {
+            var q = ProjectManagement.Application.Features.Billing.Pricing.Quote(rules, s.Plan!.Code, s.Plan.PriceMonthly ?? 0m, s.Plan.Currency, s.Plan.PerSeat, s.Seats, s.BillingPeriod);
+            return q.ChargePerCycle / q.CycleMonths;
+        }
+        var byPlan = paying.GroupBy(s => s.Plan!.Code).Select(g => new PlanRevenueDto(g.Key, g.First().Plan!.Name, g.Count(), Math.Round(g.Sum(Monthly), 2)))
             .OrderByDescending(p => p.Mrr).ToList();
         var mrr = byPlan.Sum(p => p.Mrr);
 
@@ -171,7 +178,8 @@ public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             subs.TryGetValue(x.Id, out var sub);
             var plan = sub?.Plan is not null && !EntitlementService.IsLapsed(sub, now) ? sub.Plan : free;
-            long Limit(string key) => overrides.FirstOrDefault(o => o.TenantId == x.Id && o.FeatureKey == key)?.Value ?? plan.Features.FirstOrDefault(f => f.FeatureKey == key)?.Value ?? 0;
+            long Limit(string key) => overrides.FirstOrDefault(o => o.TenantId == x.Id && o.FeatureKey == key)?.Value
+                ?? EntitlementService.ScaledValue(plan, sub?.Status ?? SubscriptionStatus.Active, sub?.Seats ?? 1, key, plan.Features.FirstOrDefault(f => f.FeatureKey == key)?.Value ?? 0);
             var mb = bytes.GetValueOrDefault(x.Id) / 1024d / 1024d;
             var warn = new List<UsageWarningDto>();
             void Check(string metric, double used, long limit) { if (limit > 0 && used * 100 / limit >= 80) warn.Add(new UsageWarningDto(metric, (int)Math.Round(used * 100 / limit))); }
