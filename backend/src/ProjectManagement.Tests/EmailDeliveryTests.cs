@@ -214,4 +214,18 @@ public class EmailDeliveryTests(ApiFactory factory)
         Assert.Contains("a=1&amp;b=2", html);
         Assert.StartsWith("<!doctype html>", html.TrimStart());
     }
+
+    [Fact]
+    public void The_template_has_an_outlook_button_a_dark_scheme_a_kind_label_and_a_details_panel()
+    {
+        var html = ProjectManagement.Application.Features.Auth.EmailTemplates.Wrap("Join Acme", "Hello,", "You were invited.", "Accept invitation", "https://app.test/invite?token=abc",
+            kind: ProjectManagement.Application.Features.Auth.EmailKind.Invitation, details: [("Workspace", "Acme <Works>"), ("Role", "Member")]);
+        Assert.Contains("v:roundrect", html);                        // a real button in Outlook, which drops the padding of a link
+        Assert.Contains("prefers-color-scheme:dark", html);
+        Assert.Contains("INVITATION", html);
+        Assert.Contains("Acme &lt;Works&gt;", html);                // details are encoded
+        Assert.Contains("Notification settings", html);              // footer links come from the link's own site
+        Assert.Contains("https://app.test/account/notifications", html);
+        Assert.DoesNotContain("<Works>", html);
+    }
 }

@@ -254,7 +254,8 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             {
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
                     EmailTemplates.Wrap(n.Title, WebNet($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
-                        "You get this email because of your notification settings. Change them under Settings → Notifications.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type))),
+                        "You get this email because of your notification settings. Change them under Settings → Notifications.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type)),
+                        n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? EmailKind.Reminder : n.Type == NotificationType.Subscription ? EmailKind.Billing : EmailKind.Update),
                     $"{n.Title}\n{body}\n{link}", Headers: headers), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 n.EmailPending = false;
                 n.EmailedAt = clock.Now;
