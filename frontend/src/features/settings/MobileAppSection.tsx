@@ -8,12 +8,14 @@ import { Badge, PageLoader } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { deviceAlerts, enableDeviceAlerts, onDeviceAlerts, type DeviceAlerts } from '../reminders/device';
 import { useInstall } from '../../lib/pwa';
+import { isNativeApp, nativeEndpoint } from '../../lib/native';
 import { queryClient, useAuth, useEntitlement } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { orgHref } from '../../lib/orgPath';
 
 /** This browser's push endpoint, which is how the server knows which device is being talked about. */
 async function myEndpoint(): Promise<string | null> {
+  if (isNativeApp()) return nativeEndpoint();
   try { const reg = await navigator.serviceWorker?.getRegistration(); return (await reg?.pushManager.getSubscription())?.endpoint ?? null; } catch { return null; }
 }
 
@@ -46,7 +48,8 @@ export function MobileAppSection() {
   const enable = async () => {
     const s = await enableDeviceAlerts(); setAlerts(s);
     setEndpoint(await myEndpoint());
-    if (s === 'blocked') toast('Notifications are blocked for this site. Allow them in the browser settings.', 'warning');
+    if (s === 'blocked') toast(isNativeApp() ? 'Notifications are blocked for this app. Allow them in Android Settings → Apps → Project Tracker → Notifications.' : 'Notifications are blocked for this site. Allow them in the browser settings.', 'warning');
+    else if (s === 'off' && isNativeApp()) toast('Push is not set up in this build of the app. Ask your administrator.', 'warning');
   };
   const open = `${location.origin}${orgHref('/')}`;
   const d = status.data;

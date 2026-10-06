@@ -10,6 +10,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
 import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
+import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
 
 /** What the page shows while an answer is being written. */
@@ -251,8 +252,7 @@ export function AiPage() {
   const copy = (m: AiMessage) => { void navigator.clipboard?.writeText(m.content).then(() => toast('Copied.'), () => toast('Could not copy.', 'error')); };
   const download = (m: AiMessage) => {
     const title = (listQ.data?.find((c) => c.id === convId)?.title ?? 'assistant-answer').replace(/[^\w -]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'assistant-answer';
-    const url = URL.createObjectURL(new Blob([m.content], { type: 'text/markdown;charset=utf-8' }));
-    const a = document.createElement('a'); a.href = url; a.download = `${title}.md`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    void saveFile(new Blob([m.content], { type: 'text/markdown;charset=utf-8' }), `${title}.md`);
   };
   const regenerate = (index: number) => {
     const before = [...messages.slice(0, index)].reverse().find((x) => x.role === 'user');

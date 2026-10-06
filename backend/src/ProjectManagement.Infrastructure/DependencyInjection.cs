@@ -112,7 +112,10 @@ public static class DependencyInjection
         // Push notifications to devices (Web Push with VAPID; keys are made on first use).
         services.Configure<ProjectManagement.Application.Features.Notifications.PushOptions>(config.GetSection(ProjectManagement.Application.Features.Notifications.PushOptions.Section));
         services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15));
-        services.AddSingleton<ProjectManagement.Application.Features.Notifications.IWebPushSender, WebPushSender>();
+        services.AddSingleton<WebPushSender>();
+        services.AddSingleton<FcmSender>();
+        // One sender for every kind of device: browsers and installed web apps (Web Push), the Android app (Firebase Cloud Messaging).
+        services.AddSingleton<ProjectManagement.Application.Features.Notifications.IWebPushSender, DevicePushSender>();
         services.AddSingleton<ProjectManagement.Application.Features.Notifications.PushDispatcher>();
         services.AddHostedService<PushWorker>();
         return services;

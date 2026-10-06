@@ -1,5 +1,6 @@
 import { orgHref } from '../../lib/orgPath';
 import { pushApi } from '../../api/endpoints';
+import { enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
 
 /**
  * Reminders on this device, outside the Project Tracker tab: the operating system's notifications (Windows, macOS, Android) through the
@@ -22,6 +23,11 @@ export const onDeviceAlerts = (l: (s: DeviceAlerts) => void) => { listeners.add(
 
 /** Where this device stands. "tab-only": allowed, but no push subscription - notifications only while a Project Tracker tab is open. */
 export async function deviceAlerts(): Promise<DeviceAlerts> {
+  if (isNativeApp()) {   // the Android app: Firebase push, not the browser's
+    const perm = await nativePermission();
+    subscribed = perm === 'granted' && !!nativeEndpoint();
+    return perm === 'denied' ? 'blocked' : subscribed ? 'on' : 'off';
+  }
   if (!canNotify()) return 'unsupported';
   if (Notification.permission === 'denied') return 'blocked';
   if (Notification.permission !== 'granted') return 'off';
@@ -33,6 +39,13 @@ export async function deviceAlerts(): Promise<DeviceAlerts> {
 
 /** Asks the browser for permission, then subscribes this device to push (when the service worker is there). */
 export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
+  if (isNativeApp()) {
+    const r = await enableNativePush((token) => pushApi.subscribeNative(token));
+    const s: DeviceAlerts = r === 'on' ? 'on' : r === 'blocked' ? 'blocked' : 'off';
+    subscribed = r === 'on';
+    listeners.forEach((l) => l(s));
+    return s;
+  }
   if (!canNotify()) return 'unsupported';
   const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
   if (permission !== 'granted') { const s = permission === 'denied' ? 'blocked' : 'off'; listeners.forEach((l) => l(s)); return s; }

@@ -1,7 +1,8 @@
 import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { setAccessToken, setAuthLostHandler, refreshSession } from '../api/client';
-import { authApi, meApi, workspaceApi } from '../api/endpoints';
+import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
+import { disableNativePush } from '../lib/native';
 import type { AppContext, AuthResponse } from '../api/types';
 import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
 
@@ -67,6 +68,8 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // This phone stops receiving this person's alerts (the next person to sign in turns them on for themselves).
+    await disableNativePush((e) => pushApi.unsubscribe(e)).catch(() => undefined);
     try { await authApi.logout(); } catch { /* session may already be gone */ }
     clearOfflineData();   // nothing of this person stays on the device
     setAccessToken(null);

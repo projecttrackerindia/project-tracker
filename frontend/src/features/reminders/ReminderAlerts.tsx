@@ -6,6 +6,8 @@ import { toast } from '../../stores/ui';
 import { onReminders, type ReminderEvent } from '../live/bus';
 import { reminderApi, type SnoozePreset } from './api';
 import { refreshReminders, useReminderCounts } from './store';
+import { syncNativePush } from '../../lib/native';
+import { pushApi } from '../../api/endpoints';
 import { deviceAlerts, playChime, primeSound, pushCoversThisDevice, soundOn, systemNotification } from './device';
 import { deviceZone } from './time';
 
@@ -41,7 +43,7 @@ export function ReminderAlerts() {
       for (const i of items) void systemNotification(i.from ? `${i.from}: ${i.title}` : `⏰ ${i.title}`, i.note ?? i.targetKey, `reminder-${i.id}`);
   };
 
-  useEffect(() => { primeSound(); void deviceAlerts(); }, []);
+  useEffect(() => { primeSound(); void deviceAlerts(); void syncNativePush((token) => pushApi.subscribeNative(token)); }, []);
 
   useEffect(() => onReminders((items) => { push(items.filter((i) => fresh(i.id))); void refreshReminders(wid); }), [wid]);
 

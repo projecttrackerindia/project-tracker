@@ -159,7 +159,12 @@ The website's `/download/` page links to files on this repository's GitHub Relea
 - **Android signing:** run `apps/android/make-keystore.sh` once and add the three secrets it prints (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`) under the repository's Actions secrets. Keep the keystore safe: updates must be signed with the same one. Never commit it (this repository is public). Without the secrets the APK step is skipped.
 - **Warnings on first open:** the installers are not signed with a paid certificate, so Windows SmartScreen and macOS Gatekeeper ask for confirmation once. The download page explains the steps.
 - **iPhone and iPad:** Apple does not allow installing from a website, so users add the site to the Home Screen from Safari (alerts need iOS 16.4+).
-- **Android alerts:** the APK shows the site but has no native push; users who want alerts while the app is closed install the site from Chrome.
+- **Android alerts (push to the app):** the APK is the same web app in a native shell with push through Firebase Cloud Messaging (free). One-time set-up:
+  1. Create a Firebase project (console.firebase.google.com) and add an **Android app** with the package name `in.projecttracker.app`. Download its `google-services.json`.
+  2. Add it as the repository secret `ANDROID_GOOGLE_SERVICES_BASE64` (`base64 -w0 google-services.json`). Without it the app is built without push.
+  3. In Firebase: Project settings → Service accounts → **Generate new private key**. Give the server that JSON: `PUSH_FCM_SERVICE_ACCOUNT_JSON` in `.env` (the JSON on one line; `Push__FcmServiceAccountFile` takes a mounted file instead). Admin → System health shows nothing more to set; `GET /api/v1/push` reports `nativeEnabled`.
+  4. Push a new tag so the APK is rebuilt. Each person then turns alerts on in Account → Mobile app (or Notifications → Push on this device).
+  What the app also does: Back goes back and leaves from the first screen, tapped notifications and `https://<your domain>/…` links open the right page, files (invoice PDFs, exports) go to the share sheet, the status bar follows the theme, photos can be attached from the camera or gallery. Passkeys are not offered inside the app (Android's web view has none); phone approval and passwords work.
 
 ## Live chat
 

@@ -18,6 +18,11 @@ public class PushController(PushService push, ProjectManagement.Application.Feat
     public async Task<IActionResult> Subscribe([FromBody] PushSubscribeRequest req, CancellationToken ct) =>
         Ok(await push.SubscribeAsync(req, Request.Headers.UserAgent.ToString(), ct));
 
+    /// <summary>The Android app's device token (Firebase Cloud Messaging).</summary>
+    [HttpPost("native")]
+    public async Task<IActionResult> SubscribeNative([FromBody] NativePushRequest req, CancellationToken ct) =>
+        Ok(await push.SubscribeNativeAsync(req, Request.Headers.UserAgent.ToString(), ct));
+
     [HttpPost("unsubscribe")]
     public async Task<IActionResult> Unsubscribe([FromBody] PushEndpointRequest req, CancellationToken ct) => Ok(await push.UnsubscribeAsync(req.Endpoint, ct));
 

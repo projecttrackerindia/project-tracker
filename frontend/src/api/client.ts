@@ -1,4 +1,5 @@
 import type { ApiErrorItem, AuthResponse } from './types';
+import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -143,9 +144,5 @@ export async function fetchBlobUrl(path: string, signal?: AbortSignal): Promise<
 export async function download(path: string, filename: string) {
   const res = await fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' });
   if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Download failed', []);
-  const url = URL.createObjectURL(await res.blob());
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  await saveFile(await res.blob(), filename);
 }

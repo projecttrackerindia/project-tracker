@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isNativeApp } from './native';
 
 /** The browser's "install this app" offer (Android Chrome, Edge, desktop Chrome), kept from the moment it arrives until it is used. */
 interface InstallEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
@@ -22,7 +23,7 @@ export function useInstall() {
   useEffect(() => { const l = () => force((n) => n + 1); listeners.add(l); return () => { listeners.delete(l); }; }, []);
   return {
     platform: platform(),
-    installed: installed || isStandalone(),
+    installed: installed || isStandalone() || isNativeApp(),
     canPrompt: offer !== null,
     install: async () => {
       if (!offer) return false;

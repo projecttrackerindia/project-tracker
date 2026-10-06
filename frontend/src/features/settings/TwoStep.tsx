@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icon';
 import { Badge, Field, Modal, SubmitButton } from '../../components/ui';
 import { formatDate } from '../../lib/format';
 import { useAuth } from '../../stores/auth';
+import { saveFile } from '../../lib/native';
 import { toast } from '../../stores/ui';
 
 type Mode = null | 'setup' | 'disable' | 'regenerate';
@@ -119,11 +120,7 @@ function ConfirmModal({ mode, onClose, onDone }: { mode: 'disable' | 'regenerate
 function RecoveryCodesModal({ codes, onClose }: { codes: string[]; onClose: () => void }) {
   const text = codes.join('\n');
   const download = () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([`Project Management recovery codes\nEach code works once.\n\n${text}\n`], { type: 'text/plain' }));
-    a.download = 'recovery-codes.txt';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    void saveFile(new Blob([`Project Management recovery codes\nEach code works once.\n\n${text}\n`], { type: 'text/plain' }), 'recovery-codes.txt');
   };
   return (
     <Modal size="sm" title="Save your recovery codes" onClose={onClose}

@@ -24,6 +24,9 @@ import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
 import './lib/pwa';
 import { startResponsiveTables } from './lib/responsiveTables';
+import { startNativeApp } from './lib/native';
+
+startNativeApp();
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 

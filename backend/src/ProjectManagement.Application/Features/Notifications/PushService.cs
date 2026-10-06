@@ -20,6 +20,10 @@ public class PushOptions
     public int IntervalSeconds { get; set; } = 10;
     /// <summary>Contact for push services ("mailto:..." or an https URL). Empty = the web address of this installation.</summary>
     public string? Subject { get; set; }
+    /// <summary>Firebase service-account key (the JSON itself) for pushing to the Android app. Empty = Android devices are not pushed to.</summary>
+    public string? FcmServiceAccountJson { get; set; }
+    /// <summary>Or the path of that JSON file (a mounted secret).</summary>
+    public string? FcmServiceAccountFile { get; set; }
 }
 
 /// <summary>The VAPID key pair (base64url: the 65-byte public point, the 32-byte private scalar) and the contact sent with every push.</summary>
@@ -33,7 +37,8 @@ public interface IWebPushSender
 
 public record PushKeysRequest(string? P256dh, string? Auth);
 public record PushSubscribeRequest(string? Endpoint, PushKeysRequest? Keys);
-public record PushStatusDto(string PublicKey, int Devices);
+public record PushStatusDto(string PublicKey, int Devices, bool NativeEnabled = false);
+public record NativePushRequest(string? Token);
 
 public static class Base64Url
 {
@@ -88,7 +93,8 @@ public class PushService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var uid = ctx.RequireUserId();
         var keys = await KeysAsync(db, protector, SubjectOf(options.Value, app.Value), ct);
-        return new PushStatusDto(keys.PublicKey, await db.PushSubscriptions.CountAsync(s => s.UserId == uid, ct));
+        return new PushStatusDto(keys.PublicKey, await db.PushSubscriptions.CountAsync(s => s.UserId == uid, ct),
+            !string.IsNullOrWhiteSpace(options.Value.FcmServiceAccountJson) || !string.IsNullOrWhiteSpace(options.Value.FcmServiceAccountFile));
     }
 
     public async Task<PushStatusDto> SubscribeAsync(PushSubscribeRequest req, string? userAgent, CancellationToken ct = default)
@@ -112,6 +118,29 @@ public class PushService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         await db.SaveChangesAsync(ct);
         return await StatusAsync(ct);
     }
+
+    /// <summary>The Android app's own push token (Firebase Cloud Messaging). Stored like a browser subscription, with the endpoint "fcm:" + token.</summary>
+    public async Task<PushStatusDto> SubscribeNativeAsync(NativePushRequest req, string? userAgent, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var token = req.Token?.Trim();
+        if (string.IsNullOrEmpty(token) || token.Length > 600 || token.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+            throw new ValidationException("token", "That is not a device token.");
+        var endpoint = NativeEndpoint(token);
+        var sub = await db.PushSubscriptions.FirstOrDefaultAsync(s => s.Endpoint == endpoint, ct);
+        if (sub is null) { sub = new PushSubscription { Endpoint = endpoint, CreatedAt = clock.Now }; db.PushSubscriptions.Add(sub); }
+        else if (sub.UserId != uid) sub.AllowsSignIn = false;   // the phone changed hands: the new person chooses again
+        sub.UserId = uid; sub.P256dh = ""; sub.Auth = ""; sub.Failures = 0;
+        sub.UserAgent = userAgent is { Length: > 300 } ? userAgent[..300] : userAgent;
+        var old = await db.PushSubscriptions.Where(s => s.UserId == uid && s.Endpoint != endpoint).OrderByDescending(s => s.CreatedAt).Skip(9).ToListAsync(ct);
+        db.PushSubscriptions.RemoveRange(old);
+        await db.SaveChangesAsync(ct);
+        return await StatusAsync(ct);
+    }
+
+    public const string NativePrefix = "fcm:";
+    public static string NativeEndpoint(string token) => NativePrefix + token;
+    public static bool IsNative(string endpoint) => endpoint.StartsWith(NativePrefix, StringComparison.Ordinal);
 
     public async Task<PushStatusDto> UnsubscribeAsync(string? endpoint, CancellationToken ct = default)
     {

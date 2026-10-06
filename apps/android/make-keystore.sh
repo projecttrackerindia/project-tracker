@@ -8,6 +8,7 @@
 #   ANDROID_KEYSTORE_BASE64    the output of:  base64 -w0 projecttracker-release.keystore
 #   ANDROID_KEYSTORE_PASSWORD  the password you typed below
 #   ANDROID_KEY_ALIAS          projecttracker
+# For push notifications also add  ANDROID_GOOGLE_SERVICES_BASE64  (your Firebase project's google-services.json, base64 -w0); see deploy/DEPLOY.md.
 # Never commit the keystore (it is in .gitignore).
 set -euo pipefail
 keytool -genkeypair -v -keystore projecttracker-release.keystore -alias projecttracker -keyalg RSA -keysize 4096 -validity 36500 \

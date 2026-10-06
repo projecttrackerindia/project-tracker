@@ -47,6 +47,7 @@ services:
       Email__ReplyTo: ${EMAIL_REPLY_TO:-}
       # Payments: "Mock" simulates them (nothing real is charged); "Razorpay" takes real subscriptions (see deploy/DEPLOY.md, section Payments).
       Billing__Provider: ${BILLING_PROVIDER:-Mock}
+      Push__FcmServiceAccountJson: ${PUSH_FCM_SERVICE_ACCOUNT_JSON:-}
       Billing__Razorpay__KeyId: ${BILLING_RAZORPAY_KEY_ID:-}
       Billing__Razorpay__KeySecret: ${BILLING_RAZORPAY_KEY_SECRET:-}
       Billing__Razorpay__WebhookSecret: ${BILLING_RAZORPAY_WEBHOOK_SECRET:-}

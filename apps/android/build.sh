@@ -21,6 +21,17 @@ fs.writeFileSync('capacitor.config.json',JSON.stringify(c,null,2));"
 [ -d android ] || npx cap add android
 npx cap sync android
 
+# Permissions, links that open the app, the notification icon and channel
+python3 patch-android.py "$HOST"
+
+# Push to this app goes through Firebase: the project's google-services.json (a repository secret, not committed) is added when given.
+if [ -n "${GOOGLE_SERVICES_B64:-}" ]; then
+  echo "$GOOGLE_SERVICES_B64" | base64 -d > android/app/google-services.json
+  echo "Firebase configuration added: push to the app is on."
+else
+  echo "No Firebase configuration (GOOGLE_SERVICES_B64): the app is built without push notifications."
+fi
+
 # Name and version
 sed -i "s/versionCode [0-9]*/versionCode ${CODE}/; s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" android/app/build.gradle
 

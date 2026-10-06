@@ -5,7 +5,30 @@
   "server": {
     "url": "https://projecttracker.in",
     "cleartext": false,
-    "allowNavigation": ["projecttracker.in", "*.projecttracker.in", "checkout.razorpay.com", "api.razorpay.com", "accounts.google.com", "login.microsoftonline.com", "github.com", "appleid.apple.com"]
+    "allowNavigation": [
+      "projecttracker.in",
+      "*.projecttracker.in",
+      "checkout.razorpay.com",
+      "api.razorpay.com",
+      "accounts.google.com",
+      "login.microsoftonline.com",
+      "github.com",
+      "appleid.apple.com"
+    ]
   },
-  "android": { "allowMixedContent": false, "backgroundColor": "#f4f1fb" }
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f4f1fb",
+    "appendUserAgent": "ProjectTrackerApp"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 250,
+      "backgroundColor": "#7c3aed",
+      "showSpinner": false
+    },
+    "PushNotifications": {}
+  }
 }

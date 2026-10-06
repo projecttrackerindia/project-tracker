@@ -8,6 +8,7 @@ import { Field, Modal } from '../../components/ui';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { saveFile } from '../../lib/native';
 import { Select } from '../../components/Select';
 
 const FIELDS: { id: string; label: string; required?: boolean; hint?: string }[] = [
@@ -84,9 +85,7 @@ export function ImportModal({ projectId, onClose }: { projectId: string; onClose
   };
 
   const downloadTemplate = () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['﻿' + TEMPLATE], { type: 'text/csv' }));
-    a.download = 'tasks-template.csv'; a.click(); URL.revokeObjectURL(a.href);
+    void saveFile(new Blob(['﻿' + TEMPLATE], { type: 'text/csv' }), 'tasks-template.csv');
   };
 
   const canImport = !!preview && mapping.title !== undefined && mapping.title !== '' && preview.validRows > 0 && (preview.invalidRows === 0 || skipInvalid) && !checking && !busy;

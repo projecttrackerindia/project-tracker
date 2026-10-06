@@ -4,7 +4,7 @@ name: Release apps
 # points ("releases/latest/download/<fixed name>"). Nothing here costs anything: GitHub builds and hosts the files.
 #
 # Make a release:   git tag v1.0.0 && git push origin v1.0.0     (or run this workflow by hand and give the version)
-# Android needs three repository secrets once (see apps/android/make-keystore.sh); without them the release still goes out, minus the Android file.
+# Android push also wants ANDROID_GOOGLE_SERVICES_BASE64 (the Firebase google-services.json, base64). Android needs three repository secrets once (see apps/android/make-keystore.sh); without them the release still goes out, minus the Android file.
 on:
   push:
     tags: ['v*']
@@ -85,6 +85,7 @@ jobs:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GOOGLE_SERVICES_B64: ${{ secrets.ANDROID_GOOGLE_SERVICES_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             echo "No ANDROID_KEYSTORE_BASE64 secret: the Android app is skipped (see apps/android/make-keystore.sh)."

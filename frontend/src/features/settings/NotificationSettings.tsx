@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
 import { queryClient } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { disableNativePush, enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
 
 type Permission = 'granted' | 'denied' | 'default' | 'unsupported';
 const currentPermission = (): Permission => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
@@ -26,6 +27,7 @@ function PushRow({ onPermission }: { onPermission: (p: Permission) => void }) {
   const [state, setState] = useState<'checking' | 'on' | 'off' | 'unsupported'>('checking');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
+    if (isNativeApp()) { void nativePermission().then((p) => setState(p === 'granted' && nativeEndpoint() ? 'on' : 'off')); return; }
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setState('unsupported'); return; }
     void navigator.serviceWorker.getRegistration().then(async (reg) => {
       if (!reg) { setState('unsupported'); return; }
@@ -34,6 +36,15 @@ function PushRow({ onPermission }: { onPermission: (p: Permission) => void }) {
   }, []);
   const turnOn = async () => {
     setBusy(true);
+    if (isNativeApp()) {
+      try {
+        const r = await enableNativePush((token) => pushApi.subscribeNative(token));
+        if (r === 'on') { setState('on'); toast('Push is on for this phone. Events in the Desktop column now arrive even when the app is closed.'); }
+        else if (r === 'blocked') toast('Notifications are blocked for this app. Allow them in Android Settings → Apps → Project Tracker → Notifications.', 'warning');
+        else toast('Push is not set up in this build of the app.', 'warning');
+      } finally { setBusy(false); }
+      return;
+    }
     try {
       const permission = await Notification.requestPermission();
       onPermission(permission);
@@ -50,6 +61,7 @@ function PushRow({ onPermission }: { onPermission: (p: Permission) => void }) {
   };
   const turnOff = async () => {
     setBusy(true);
+    if (isNativeApp()) { try { await disableNativePush((e) => pushApi.unsubscribe(e)); setState('off'); toast('Push is off for this phone.'); } finally { setBusy(false); } return; }
     try {
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = await reg?.pushManager.getSubscription();
