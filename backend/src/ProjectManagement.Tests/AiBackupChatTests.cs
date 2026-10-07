@@ -51,8 +51,11 @@ public class AiBackupChatTests
         return new OpenAiCompatibleChat(client, Microsoft.Extensions.Options.Options.Create(o), oneShot, NullLogger<OpenAiCompatibleChat>.Instance);
     }
 
+    // The caller's chosen model deliberately differs from the Fallback's configured model (as it does for real: AiAgent picks a Claude
+    // tier model like "claude-haiku-4-5" regardless of which provider ends up serving the request) - the request actually sent must use
+    // this provider's own configured model, never the caller's.
     private static AiChatRequest Ask(string text, IReadOnlyList<AiToolDef>? tools = null) =>
-        new("qwen3:8b", "Be brief.", "Workspace: Atlas Inc.", [AiTurn.User(text)], tools ?? [], 500, null, false);
+        new("claude-haiku-4-5", "Be brief.", "Workspace: Atlas Inc.", [AiTurn.User(text)], tools ?? [], 500, null, false);
 
     [Fact]
     public async Task Streamed_text_arrives_as_deltas_and_the_turn_ends_with_what_was_said()

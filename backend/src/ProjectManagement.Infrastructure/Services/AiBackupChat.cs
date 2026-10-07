@@ -116,7 +116,9 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         var tokens = Math.Clamp(r.MaxTokens, 64, options.Value.MaxTokens) + Math.Max(0, F.ThinkingTokens);
         var messages = new JsonArray { new JsonObject { ["role"] = "system", ["content"] = string.IsNullOrWhiteSpace(r.Context) ? r.System : $"{r.System}\n\n{r.Context}" } };
         foreach (var turn in r.Turns) AppendTurn(messages, turn);
-        var body = new JsonObject { ["model"] = r.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages, ["stream_options"] = new JsonObject { ["include_usage"] = true } };
+        // r.Model is whichever Claude model the tier router picked (e.g. "claude-haiku-4-5") - meaningless to this provider, which has
+        // its own configured model regardless of which Claude tier the person's question was routed to.
+        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages, ["stream_options"] = new JsonObject { ["include_usage"] = true } };
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
         if (!string.IsNullOrWhiteSpace(F.ReasoningEffort)) body["reasoning_effort"] = F.ReasoningEffort.Trim();
         return body;
