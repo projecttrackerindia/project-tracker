@@ -271,4 +271,23 @@ public class TaskStageTests(ApiFactory factory)
         var dto = await Task(c, task);
         Assert.Null(dto["stageId"]);
     }
+
+    /// <summary>A stage past its planned end reads as Delayed only while the project itself is still under way: nothing is late once the project is finished.</summary>
+    [Fact]
+    public async Task A_stage_past_its_planned_end_stops_reading_as_delayed_once_the_project_is_finished()
+    {
+        var (c, project, _, stages) = await Setup();
+        var dev = stages["Development"];
+        var moved = await c.Put($"/api/v1/projects/{project}/stages/{dev}", new { name = "Development", plannedEnd = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-10).ToString("yyyy-MM-dd"), status = "InProgress" });
+        Assert.True(moved.Ok, moved.ToString());
+        Assert.Equal("Delayed", (await Stage(c, project, dev))["effectiveStatus"]!.GetValue<string>());
+
+        var p = (await c.Get($"/api/v1/projects/{project}")).Data!["project"]!;
+        var completed = await c.Put($"/api/v1/projects/{project}", new { name = p["name"]!.GetValue<string>(), priority = p["priority"]!.GetValue<string>(), status = "Completed", version = p["version"]!.GetValue<int>() });
+        Assert.True(completed.Ok, completed.ToString());
+
+        var after = await Stage(c, project, dev);
+        Assert.Equal("InProgress", StageStatus(after));                       // its own status is untouched
+        Assert.Equal("InProgress", after["effectiveStatus"]!.GetValue<string>());   // but no longer synthesised as Delayed
+    }
 }

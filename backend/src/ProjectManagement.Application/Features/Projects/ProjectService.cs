@@ -86,8 +86,14 @@ public static partial class ProjectMetrics
         return ProjectHealth.OnTrack;
     }
 
-    public static StageStatus EffectiveStage(ProjectStage s, DateOnly today) =>
-        s.Status is StageStatus.Pending or StageStatus.InProgress && s.PlannedEnd is { } end && end < today ? StageStatus.Delayed : s.Status;
+    /// <summary>
+    /// A stage reads as Delayed once its planned end has passed while it is still open - except on a project that is itself finished
+    /// (Completed, Cancelled or Archived): there is nothing left to be late for, and a red "Delayed" stage under a 100% complete project
+    /// reads as a problem that needs fixing when it is really just a stage nobody walked through the timeline for.
+    /// </summary>
+    public static StageStatus EffectiveStage(ProjectStage s, DateOnly today, ProjectStatus projectStatus = ProjectStatus.Active) =>
+        projectStatus is ProjectStatus.Completed or ProjectStatus.Cancelled or ProjectStatus.Archived ? s.Status
+        : s.Status is StageStatus.Pending or StageStatus.InProgress && s.PlannedEnd is { } end && end < today ? StageStatus.Delayed : s.Status;
 
     [GeneratedRegex("^[A-Z][A-Z0-9]{1,9}$")] public static partial Regex KeyPattern();
 }
@@ -565,6 +571,7 @@ public class ProjectService(
     public async Task<IReadOnlyList<StageDto>> GetStagesAsync(Guid projectId, CancellationToken ct = default)
     {
         var today = clock.Today;
+        var projectStatus = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => p.Status).FirstOrDefaultAsync(ct);
         var rows = await (from s in db.ProjectStages
                           join o in db.Users on s.OwnerId equals (Guid?)o.Id into owners
                           from owner in owners.DefaultIfEmpty()
@@ -591,7 +598,7 @@ public class ProjectService(
             var previous = i > 0 ? rows[i - 1].Stage : null;
             var locked = StageSequence.IsLocked(previous, r.Stage.Status);
             return new StageDto(r.Stage.Id, r.Stage.Name, r.Stage.Order, r.Stage.PlannedStart, r.Stage.PlannedEnd,
-                r.Stage.ActualStart, r.Stage.ActualEnd, r.Stage.Status, ProjectMetrics.EffectiveStage(r.Stage, today),
+                r.Stage.ActualStart, r.Stage.ActualEnd, r.Stage.Status, ProjectMetrics.EffectiveStage(r.Stage, today, projectStatus),
                 r.OwnerName is null ? null : new UserRefDto(r.Stage.OwnerId!.Value, r.OwnerName),
                 r.AssigneeName is null ? null : new UserRefDto(r.Stage.AssigneeId!.Value, r.AssigneeName),
                 r.Stage.Description,

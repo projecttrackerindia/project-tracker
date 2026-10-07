@@ -115,6 +115,7 @@ export function ProjectDetailPage() {
   const method = p.deliveryMethod ?? 'Hybrid';
   const days = daysUntil(p.dueDate);
   const archived = p.status === 'Archived';
+  const finished = p.status === 'Completed' || p.status === 'Cancelled' || p.status === 'Archived';
   const openIssues = detail.stages.reduce((n, s) => n + s.openIssues, 0);
   const reportable = canReportIssue && seeTasks && !archived;
   const setTabAndUrl = (t: Tab) => { setTab(t); const n = new URLSearchParams(params); n.set('tab', t); n.delete('task'); n.delete('action'); setParams(n, { replace: true }); };
@@ -162,10 +163,11 @@ export function ProjectDetailPage() {
             <div className="dh-sub">{!(['Active', 'Planning'] as string[]).includes(p.status) && <ProjectStatusBadge status={p.status} />}<PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /><ProjectTypeBadge type={p.projectType} /><span title="Delivery method: decides which planning views the project shows"><Badge tone="neutral">{deliveryLabel(method)} delivery</Badge></span></div>
             {p.description && <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 12, maxWidth: 640, lineHeight: 1.6 }}>{p.description}</p>}
           </div>
+          {/* Once a project is finished, a red "N overdue" count reads as a problem that needs fixing - there is nothing left to be late for. */}
           <div style={{ textAlign: 'right' }}>
-            <div className="dh-cell"><label>Days remaining</label></div>
-            <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: '-.03em', color: days !== null && days < 0 && p.progress < 100 ? 'var(--danger)' : days !== null && days <= 7 ? 'var(--warning)' : undefined }}>
-              {days === null ? '—' : days < 0 ? `${Math.abs(days)} overdue` : days}
+            <div className="dh-cell"><label>{finished ? 'Status' : 'Days remaining'}</label></div>
+            <div style={{ fontSize: finished ? 22 : 28, fontWeight: 750, letterSpacing: '-.03em', color: finished ? undefined : days !== null && days < 0 && p.progress < 100 ? 'var(--danger)' : days !== null && days <= 7 ? 'var(--warning)' : undefined }}>
+              {finished ? p.status : days === null ? '—' : days < 0 ? `${Math.abs(days)} overdue` : days}
             </div>
           </div>
         </div>
