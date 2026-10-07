@@ -1,4 +1,5 @@
 import { WorkspaceLogoCard } from './WorkspaceLogo';
+import { ProfilePhotoCard } from './ProfilePhoto';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
@@ -93,6 +94,7 @@ function ProfileSection() {
   return (
     <>
       <PageHead title="Profile" sub="How you appear to others, and how dates are shown to you." />
+      <ProfilePhotoCard />
       <div className="card mb-22">
         <div className="card-head"><h3>Profile</h3></div>
         <div className="card-body">

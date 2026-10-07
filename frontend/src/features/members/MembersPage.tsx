@@ -12,6 +12,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { Select } from '../../components/Select';
+import { MemberProfileModal } from '../people/MemberProfileModal';
 
 const RANK: Record<Role, number> = { Guest: 1, Member: 2, Manager: 3, Admin: 4, Owner: 5 };
 
@@ -58,6 +59,7 @@ function MembersTable() {
   const myRole = useAuth((s) => s.ctx!.current!.role);
   const canManage = useCan('members.manage');
   const q = useWsQuery(['members'], workspaceApi.members);
+  const [viewProfile, setViewProfile] = useState<string | null>(null);
 
   const setRole = async (m: Member, role: string) => {
     try { await workspaceApi.setRole(m.userId, role); toast(`${m.displayName} is now ${role}.`); invalidateWorkspace(wid); }
@@ -86,7 +88,7 @@ function MembersTable() {
             const options = ROLES.filter((r) => r !== 'Owner' && (myRole === 'Owner' || RANK[r] < RANK[myRole]));
             return (
               <tr key={m.userId}>
-                <td><div className="row"><Avatar name={m.displayName} size="lg" /><div><div className="td-title">{m.displayName}{m.userId === meId && <span className="muted" style={{ fontWeight: 500 }}> (you)</span>}</div><div className="td-sub">{m.email}</div></div></div></td>
+                <td><button type="button" className="row member-name-btn" onClick={() => setViewProfile(m.userId)} aria-label={`${m.displayName}'s profile`}><Avatar name={m.displayName} size="lg" userId={m.userId} hasAvatar={m.hasAvatar} /><div><div className="td-title">{m.displayName}{m.userId === meId && <span className="muted" style={{ fontWeight: 500 }}> (you)</span>}</div><div className="td-sub">{m.email}</div></div></button></td>
                 <td>{editable
                   ? <Select className="select" style={{ width: 130, height: 32 }} value={m.role} onChange={(e) => setRole(m, e.target.value)} aria-label={`Role for ${m.displayName}`}>{options.map((r) => <option key={r}>{r}</option>)}</Select>
                   : <RoleBadge role={m.role} />}</td>
@@ -101,6 +103,7 @@ function MembersTable() {
           })}
         </tbody>
       </table></div>
+      {viewProfile && <MemberProfileModal userId={viewProfile} onClose={() => setViewProfile(null)} />}
     </div>
   );
 }

@@ -13,7 +13,7 @@ export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
 
-export interface User { id: string; email: string; displayName: string; emailVerified: boolean; isPlatformAdmin: boolean; timeZone: string; mfaEnabled?: boolean;
+export interface User { id: string; email: string; displayName: string; emailVerified: boolean; isPlatformAdmin: boolean; timeZone: string; mfaEnabled?: boolean; hasAvatar?: boolean;
   /** An administrator created this account: the first password is temporary and has to be replaced before anything else works. */
   mustChangePassword?: boolean }
 export interface AuthResponse { accessToken: string; expiresAt: string; user: User; refreshToken: string | null }
@@ -71,7 +71,14 @@ export interface SsoConnectionInput {
 export interface OrgSecurity { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[]; myIp: string | null; entitled: boolean }
 export interface MyConsent { upToDate: boolean; pending: ConsentDocument[] }
 
-export interface Member { userId: string; displayName: string; email: string; role: Role; joinedAt: string; jobRole: string | null }
+export interface Member { userId: string; displayName: string; email: string; role: Role; joinedAt: string; jobRole: string | null; hasAvatar?: boolean }
+
+export interface TeamRef { id: string; name: string; isLead: boolean }
+export interface MemberProfile {
+  userId: string; displayName: string; email: string; hasAvatar: boolean; role: Role;
+  jobRole: string | null; jobRoleColor: string | null; teams: TeamRef[]; reportsTo: { id: string; name: string } | null;
+  joinedAt: string; open: number; overdue: number; doneLast30Days: number; doneTotal: number; isMe: boolean; canMessage: boolean;
+}
 export interface Invitation { id: string; email: string; role: Role; status: string; expiresAt: string; createdAt: string; invitedBy: string | null; jobRole: string | null; reportsTo: string | null }
 export interface InvitationLookup { workspaceName: string; email: string; role: Role; invitedBy: string | null; expired: boolean; accepted: boolean; jobRole: string | null }
 export interface PermissionMatrix {
@@ -464,8 +471,8 @@ export interface AdminTestEmailResult { sent: boolean; provider: string; to: str
 // ------------------------------------------------------------------ chat
 /** Project: the team chat of one project (who is in it follows the project). */
 export type ConversationType = 'Direct' | 'Group' | 'Project';
-export interface ChatPerson { userId: string; name: string; email: string; online: boolean }
-export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean }
+export interface ChatPerson { userId: string; name: string; email: string; online: boolean; hasAvatar?: boolean }
+export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; hasAvatar?: boolean }
 export interface ChatLastMessage { id: string; senderName: string | null; snippet: string; at: string; isMine: boolean; isSystem: boolean }
 export interface Conversation {
   id: string; type: ConversationType; name: string; members: ChatMember[]; lastMessage: ChatLastMessage | null;

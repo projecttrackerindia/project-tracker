@@ -38,7 +38,7 @@ export function ChatPage() {
 
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
-  const [info, setInfo] = useState(() => window.innerWidth > 1280);
+  const [info, setInfo] = useState(false);
   const term = useDebounced(search.trim(), 300);
 
   const conversations = useQuery({

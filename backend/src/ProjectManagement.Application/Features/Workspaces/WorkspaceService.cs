@@ -25,7 +25,7 @@ public record CreateWorkspaceRequest(string Name, string? Description);
 public record UpdateWorkspaceRequest(string Name, string? Description);
 public record SwitchResult(string AccessToken, DateTime ExpiresAt);
 
-public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null);
+public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null, bool HasAvatar = false);
 public record UpdateMemberRoleRequest(TenantRole Role);
 /// <summary>Creates the account directly: the administrator picks the first password, which the person must replace at first sign-in.</summary>
 public record CreateMemberRequest(string Email, string DisplayName, TenantRole Role, string Password, Guid? OrgRoleId = null, Guid? ReportsToUserId = null);
@@ -186,7 +186,7 @@ public class WorkspaceService(
         var roleIds = rows.Where(m => m.OrgRoleId != null).Select(m => m.OrgRoleId!.Value).Distinct().ToList();
         var roleNames = await db.OrgRoles.AsNoTracking().Where(r => roleIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name, ct); // deleted roles are filtered out
         return rows.Select(m => new MemberDto(m.UserId, m.User!.DisplayName, hideEmail ? "" : m.User.Email, m.Role, m.CreatedAt,
-            m.OrgRoleId is { } rid && roleNames.TryGetValue(rid, out var jobRole) ? jobRole : null)).ToList();
+            m.OrgRoleId is { } rid && roleNames.TryGetValue(rid, out var jobRole) ? jobRole : null, m.User.AvatarKey is not null)).ToList();
     }
 
     /// <summary>

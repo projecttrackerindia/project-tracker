@@ -93,9 +93,31 @@ export function Progress({ value, tone = 'auto', large, active = 0 }: { value: n
   );
 }
 
-export const Avatar = ({ name, size }: { name?: string | null; size?: 'sm' | 'lg' }) => (
-  <span className={`avatar ${size ?? ''}`} title={name ?? undefined}>{initials(name)}</span>
-);
+const avatarUrlCache = new Map<string, string>();
+
+/** Call after a photo is uploaded or removed so every <Avatar> for that person re-fetches instead of showing the stale cached one. */
+export function invalidateAvatarCache(userId: string) {
+  const url = avatarUrlCache.get(userId);
+  if (url) { URL.revokeObjectURL(url); avatarUrlCache.delete(userId); }
+}
+
+/** A person's photo if they have one (fetched once per user per session, cached as an object URL), initials otherwise. */
+export const Avatar = ({ name, size, userId, hasAvatar }: { name?: string | null; size?: 'sm' | 'lg'; userId?: string; hasAvatar?: boolean }) => {
+  const [url, setUrl] = useState<string | null>(() => (userId && avatarUrlCache.get(userId)) || null);
+  useEffect(() => {
+    if (!userId || !hasAvatar) { setUrl(null); return; }
+    const cached = avatarUrlCache.get(userId);
+    if (cached) { setUrl(cached); return; }
+    let cancelled = false;
+    void import('../api/endpoints').then(({ workspaceApi }) => workspaceApi.memberAvatarUrl(userId)).then((u) => {
+      if (cancelled) { URL.revokeObjectURL(u); return; }
+      avatarUrlCache.set(userId, u); setUrl(u);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId, hasAvatar]);
+  if (url) return <span className={`avatar avatar-photo ${size ?? ''}`} title={name ?? undefined}><img src={url} alt="" /></span>;
+  return <span className={`avatar ${size ?? ''}`} title={name ?? undefined}>{initials(name)}</span>;
+};
 
 export const Spinner = () => <span className="spinner" role="status" aria-label="Loading" />;
 export const PageLoader = () => <div className="page-loader"><Spinner /></div>;

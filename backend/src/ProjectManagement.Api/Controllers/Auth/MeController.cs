@@ -10,7 +10,7 @@ namespace ProjectManagement.Api.Controllers.Auth;
 
 [Route("api/v1/me")]
 public class MeController(AuthService auth, WorkspaceService workspaces, NotificationPreferenceService preferences, MfaService mfa,
-    ProjectManagement.Application.Features.Sso.SsoLoginService logins) : ApiControllerBase
+    ProjectManagement.Application.Features.Sso.SsoLoginService logins, ProjectManagement.Application.Features.People.UserAvatarService avatars) : ApiControllerBase
 {
     /// <summary>Outside accounts connected to mine (Google, Microsoft, GitHub, Apple, an organization's single sign-on).</summary>
     [HttpGet("logins")]
@@ -34,6 +34,22 @@ public class MeController(AuthService auth, WorkspaceService workspaces, Notific
     [HttpPut]
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest req, CancellationToken ct) =>
         Ok(await auth.UpdateProfileAsync(req, ct));
+
+    /// <summary>My own profile photo. PNG or JPEG, up to 3 MB; replaces whatever was there before.</summary>
+    [HttpPost("avatar"), RequestSizeLimit(4_000_000)]
+    public async Task<IActionResult> SetAvatar(IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        await avatars.SetAsync(stream, file.Length, ct);
+        return NoContent();
+    }
+
+    [HttpDelete("avatar")]
+    public async Task<IActionResult> RemoveAvatar(CancellationToken ct)
+    {
+        await avatars.RemoveAsync(ct);
+        return NoContent();
+    }
 
     [HttpPost("password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req, CancellationToken ct)

@@ -35,8 +35,8 @@ public static class ChatEvents
     public const string Notification = "notification";
 }
 
-public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online);
-public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online);
+public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online, bool HasAvatar = false);
+public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false);
 public record ChatLastMessageDto(Guid Id, string? SenderName, string Snippet, DateTime At, bool IsMine, bool IsSystem);
 public record ConversationDto(Guid Id, ConversationType Type, string Name, IReadOnlyList<ChatMemberDto> Members, ChatLastMessageDto? LastMessage,
     int Unread, bool IsMuted, bool CanManage, Guid? OtherUserId, DateTime LastActivityAt, Guid? ProjectId = null, int UnreadMentions = 0);
@@ -231,8 +231,8 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var (tenant, me) = Require();
         var rows = await Eligible(tenant).Where(m => m.UserId != me).OrderBy(m => m.User!.DisplayName)
-            .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email }).ToListAsync(ct);
-        return rows.Select(r => new ChatPersonDto(r.UserId, r.DisplayName, r.Email, presence.IsOnline(tenant, r.UserId))).ToList();
+            .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, HasAvatar = m.User.AvatarKey != null }).ToListAsync(ct);
+        return rows.Select(r => new ChatPersonDto(r.UserId, r.DisplayName, r.Email, presence.IsOnline(tenant, r.UserId), r.HasAvatar)).ToList();
     }
 
     // ------------------------------------------------------------------ conversations
@@ -262,7 +262,7 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var tenant = ctx.RequireTenantId();
         var conversations = await db.Conversations.AsNoTracking().Where(c => ids.Contains(c.Id)).ToListAsync(ct);
         var members = await db.ConversationMembers.AsNoTracking().Where(m => ids.Contains(m.ConversationId))
-            .Select(m => new { m.ConversationId, m.UserId, Name = m.User!.DisplayName, m.Role, m.LastReadAt, m.IsMuted, m.CreatedAt }).ToListAsync(ct);
+            .Select(m => new { m.ConversationId, m.UserId, Name = m.User!.DisplayName, m.Role, m.LastReadAt, m.IsMuted, m.CreatedAt, HasAvatar = m.User.AvatarKey != null }).ToListAsync(ct);
 
         // How many messages from other people I have not read, per conversation, in one query.
         var unread = await (from msg in db.ChatMessages.AsNoTracking()
@@ -301,7 +301,7 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
                     c.LastMessageSenderId == me, c.LastMessageSenderId is null)
                 : null;
             result[c.Id] = new ConversationDto(c.Id, c.Type, name,
-                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId))).ToList(),
+                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar)).ToList(),
                 last, unread.GetValueOrDefault(c.Id), mine.IsMuted,
                 CanModerate(c.Type, mine.Role), other?.UserId, c.LastMessageAt, c.ProjectId, mentionUnread.GetValueOrDefault(c.Id));
         }

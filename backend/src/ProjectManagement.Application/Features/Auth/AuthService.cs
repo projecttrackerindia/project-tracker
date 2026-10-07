@@ -22,7 +22,7 @@ public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public record UpdateProfileRequest(string DisplayName, string? TimeZone);
 public record RefreshRequest(string? RefreshToken);
 
-public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerified, bool IsPlatformAdmin, string TimeZone, bool MfaEnabled = false, bool MustChangePassword = false);
+public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerified, bool IsPlatformAdmin, string TimeZone, bool MfaEnabled = false, bool MustChangePassword = false, bool HasAvatar = false);
 public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null);
 
 /// <summary>Result of login / refresh. The refresh token is delivered by the API layer (cookie or body).</summary>
@@ -68,7 +68,7 @@ public class AuthService(
 {
     private readonly AppOptions _opt = options.Value;
 
-    public static UserDto ToDto(User u) => new(u.Id, u.Email, u.DisplayName, u.EmailVerified, u.IsPlatformAdmin, u.TimeZone, u.MfaEnabled, u.MustChangePassword);
+    public static UserDto ToDto(User u) => new(u.Id, u.Email, u.DisplayName, u.EmailVerified, u.IsPlatformAdmin, u.TimeZone, u.MfaEnabled, u.MustChangePassword, u.AvatarKey is not null);
 
     // ---------------------------------------------------------------- registration
 

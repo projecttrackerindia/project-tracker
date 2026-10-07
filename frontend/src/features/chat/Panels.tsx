@@ -9,6 +9,7 @@ import { Avatar, EmptyState, Field, Modal, PageLoader, Tabs } from '../../compon
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { chatKeys, useChat } from './chatStore';
+import { MemberProfileModal } from '../people/MemberProfileModal';
 
 const errorText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
@@ -148,6 +149,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
   const online = useChat((s) => s.online);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState<string | null>(null);   // non-null while the group is being renamed
+  const [viewProfile, setViewProfile] = useState<string | null>(null);
   const group = conversation.type === 'Group';
 
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) }); void queryClient.invalidateQueries({ queryKey: chatKeys.thread(wid, conversation.id) }); };
@@ -181,10 +183,15 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
 
       <div className="chat-info-body">
         <div className="info-hero">
-          {group ? <span className="avatar lg group-avatar"><Icon name="users" size={22} /></span> : <Avatar name={conversation.name} size="lg" />}
+          {group ? <span className="avatar lg group-avatar"><Icon name="users" size={22} /></span>
+            : conversation.otherUserId
+              ? <button type="button" className="avatar-btn" onClick={() => setViewProfile(conversation.otherUserId)} aria-label={`${conversation.name}'s profile`}><Avatar name={conversation.name} size="lg" /></button>
+              : <Avatar name={conversation.name} size="lg" />}
           {name === null ? (
             <>
-              <h4>{conversation.name}</h4>
+              {conversation.otherUserId
+                ? <button type="button" className="link-btn h4-link" onClick={() => setViewProfile(conversation.otherUserId)}><h4>{conversation.name}</h4></button>
+                : <h4>{conversation.name}</h4>}
               {group && conversation.canManage && <button className="link-btn" onClick={() => setName(conversation.name)}>Rename group</button>}
             </>
           ) : (
@@ -207,8 +214,10 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
           <ul className="member-list">
             {conversation.members.map((m) => (
               <li key={m.userId}>
-                <PersonAvatar name={m.name} userId={m.userId} fallback={m.online} />
-                <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{(online[m.userId] ?? m.online) ? 'Active now' : 'Offline'}</small></span>
+                <button type="button" className="member-row-btn" onClick={() => setViewProfile(m.userId)} aria-label={`${m.name}'s profile`}>
+                  <PersonAvatar name={m.name} userId={m.userId} fallback={m.online} />
+                  <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{(online[m.userId] ?? m.online) ? 'Active now' : 'Offline'}</small></span>
+                </button>
                 {m.role === 'Admin' && group && <span className="badge badge-neutral">Admin</span>}
                 {group && conversation.canManage && m.userId !== me && (
                   <button className="btn-icon danger" onClick={() => void kick(m.userId, m.name)} aria-label={`Remove ${m.name}`} title="Remove"><Icon name="close" size={14} /></button>
@@ -222,6 +231,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
         {!group && conversation.members.length < 2 && <EmptyState icon="user" title="Former member" text="This person is no longer in the conversation." />}
       </div>
       {adding && <AddPeopleModal conversation={conversation} onClose={() => setAdding(false)} />}
+      {viewProfile && <MemberProfileModal userId={viewProfile} onClose={() => setViewProfile(null)} />}
     </aside>
   );
 }

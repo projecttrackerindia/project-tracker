@@ -26,6 +26,11 @@ public class User : AuditableEntity
     public DateTime? LastLoginAt { get; set; }
     public string TimeZone { get; set; } = "Asia/Kolkata";
 
+    /// <summary>A photo the person chose for themselves (PNG or JPEG), in file storage. Null = initials are shown instead. Visible to anyone
+    /// they share a workspace with; changed only by the person themselves, from My account.</summary>
+    public string? AvatarKey { get; set; }
+    public string? AvatarContentType { get; set; }
+
     // Two-step verification (authenticator app). Secrets are stored encrypted, never in clear text.
     public bool MfaEnabled { get; set; }
     public DateTime? MfaEnabledAt { get; set; }

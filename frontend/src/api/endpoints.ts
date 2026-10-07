@@ -1,7 +1,7 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile } from './client';
 import type { ChatAttachment, BillingSettings, TimelineTemplate,
   Activity, AdminPlan, AdminStats, AdminTenant, AdminTenantDetail, AdminUser, AdminUserDetail, AppContext, AppNotification, AuditLog, AuthResponse, ApiKey, GoLive, AdminTestEmailResult, PlatformBilling, AdminUsage, FeatureOverride, PlatformSettings, PlatformStatus, SystemHealth, Workload, WorkloadPersonDetail, WorkloadScope, WorkItem, WorkItemKind, EffectiveAccessList, Webhook, WebhookDelivery, Checklist, CustomField, CustomFieldValue, ImportPreview, ImportResult, PriorityInfo, ReportExport, ReportFormat, ReportKind, Sprint, SprintDetail, AutomationInput, AutomationRule, ProjectTime, TaskTime, TimeEntry, Timesheet, MfaChallenge, MfaSetup, MfaStatus, PasswordPolicy, BillingOverview, CalendarEvent,
-  AccessMatrix, DependencyType, Milestone, MilestoneInput, TaskDependencies, ActionItem, ActionItemInput, ActionItemStatus, Attachment, AttachmentLimits, ProjectChatUnread, ProjectGroup, ProjectStatusReport, StatusGroup, Issue, IssueDetail, IssueInput, NotificationPreference, TestEmailResult, Comment, Dashboard, DevEmail, OrgRole, OrgStructure, Invitation, InvitationLookup, Label, Member, Paged, PermissionMatrix, Project, ProjectDetail, ProjectMember,
+  AccessMatrix, DependencyType, Milestone, MilestoneInput, TaskDependencies, ActionItem, ActionItemInput, ActionItemStatus, Attachment, AttachmentLimits, ProjectChatUnread, ProjectGroup, ProjectStatusReport, StatusGroup, Issue, IssueDetail, IssueInput, NotificationPreference, TestEmailResult, Comment, Dashboard, DevEmail, OrgRole, OrgStructure, Invitation, InvitationLookup, Label, Member, MemberProfile, Paged, PermissionMatrix, Project, ProjectDetail, ProjectMember,
   ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
@@ -50,6 +50,8 @@ export const meApi = {
   unlinkLogin: (id: string) => del(`/me/logins/${id}`),
   /** Starts connecting Google / Microsoft / GitHub / Apple: returns where to send the browser. */
   linkLogin: (provider: string) => post<{ url: string }>(`/auth/external/${provider}/link`),
+  setAvatar: (file: File) => uploadFile<void>('/me/avatar', file),
+  removeAvatar: () => del('/me/avatar'),
 };
 
 /** Workspace settings → Single sign-on (owners and admins of an organization). */
@@ -91,6 +93,9 @@ export const workspaceApi = {
   setSecurity: (b: { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[] }) => put<OrgSecurity>('/workspace/security', b),
   projectVisibility: () => get<ProjectVisibility>('/workspace/project-visibility'),
   setProjectVisibility: (mode: 'organization' | 'teams') => put<ProjectVisibility>('/workspace/project-visibility', { mode }),
+  memberProfile: (userId: string) => get<MemberProfile>(`/workspace/members/${userId}/profile`),
+  /** An authenticated object URL for a member's photo; caller must revoke it when done. */
+  memberAvatarUrl: (userId: string, signal?: AbortSignal) => fetchBlobUrl(`/workspace/members/${userId}/avatar`, signal),
 };
 
 export const teamApi = {

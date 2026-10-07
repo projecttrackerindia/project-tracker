@@ -10,7 +10,8 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>The current workspace (resolved from the access token, never from the URL).</summary>
 [Route("api/v1/workspace"), RequireWorkspace]
-public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, WorkspaceLogoService logo) : ApiControllerBase
+public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, WorkspaceLogoService logo,
+    ProjectManagement.Application.Features.People.MemberProfileService profiles, ProjectManagement.Application.Features.People.UserAvatarService avatars) : ApiControllerBase
 {
     /// <summary>The logo printed on document PDFs.</summary>
     [HttpGet("logo")]
@@ -70,6 +71,18 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
     {
         await workspaces.RemoveMemberAsync(userId, ct);
         return NoContent();
+    }
+
+    /// <summary>A member's profile card: role, job role, team(s), who they report to, and how their work is going.</summary>
+    [HttpGet("members/{userId:guid}/profile")]
+    public async Task<IActionResult> MemberProfile(Guid userId, CancellationToken ct) => Ok(await profiles.GetAsync(userId, ct));
+
+    /// <summary>A member's own profile photo, for anyone who shares this workspace with them.</summary>
+    [HttpGet("members/{userId:guid}/avatar")]
+    public async Task<IActionResult> MemberAvatar(Guid userId, CancellationToken ct)
+    {
+        var f = await avatars.OpenForMemberAsync(userId, ct);
+        return f is null ? NotFound() : File(f.Value.Bytes, f.Value.ContentType);
     }
 
     [HttpGet("invitations"), RequireModule(Modules.Members)]

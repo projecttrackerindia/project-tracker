@@ -323,6 +323,27 @@ tr.clickable { cursor: pointer; }
 .kb-phase { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin: -2px 0 8px; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); font-size: 10.5px; font-weight: 600; }
 
 /* ---------- people ---------- */
+.member-row-btn, .member-name-btn, .avatar-btn { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; border-radius: 10px; }
+.member-row-btn:hover .member-text b, .member-name-btn:hover .td-title { color: var(--primary); }
+.h4-link { background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; }
+.h4-link:hover h4 { color: var(--primary); }
+.avatar-btn { display: inline-flex; width: auto; flex: none; border-radius: 50%; }
+
+.member-card { display: flex; flex-direction: column; gap: 14px; margin: -8px 0 0; }
+.member-card-banner { height: 56px; border-radius: 14px; margin: 0 0 -28px; background: linear-gradient(135deg, var(--primary), #8b5cf6); }
+.member-card-head { display: flex; align-items: flex-end; gap: 12px; padding: 0 2px; }
+.member-card-head .avatar.lg { width: 56px; height: 56px; font-size: 18px; border: 3px solid var(--panel-solid); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.member-card-head h4 { margin: 0; font-size: 15.5px; }
+.member-card-sub { display: block; font-size: 12px; color: var(--text-3); font-weight: 600; margin-top: 2px; }
+.member-card-row { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-2); }
+.member-card-row a { color: inherit; }
+.member-card-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 2px; }
+.member-card-stats > div { text-align: center; padding: 10px 4px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
+.member-card-stats b { display: block; font-size: 17px; font-weight: 800; }
+.member-card-stats small { font-size: 10.5px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.photo-drop { border-radius: 50%; width: 96px; height: 96px; padding: 0; }
+.photo-drop .avatar.lg { width: 100%; height: 100%; font-size: 26px; }
+
 .member-list { display: flex; flex-direction: column; gap: 10px; }
 .member-item { display: flex; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); box-shadow: var(--hl-2); }
 .member-main { min-width: 0; flex: 1; }
