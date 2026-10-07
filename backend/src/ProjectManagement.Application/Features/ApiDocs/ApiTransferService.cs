@@ -37,9 +37,10 @@ public class ApiTransferService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var fallback = Path.GetFileNameWithoutExtension(req.FileName ?? "") is { Length: > 0 } fn ? fn : "Imported API";
 
         var probe = new List<ImportIssue>();
-        var node = ApiOpenApi.ParseText(text, probe);
         string format; ParseResult parsed;
-        if (node is null) { parsed = new ParseResult(null, probe); format = "unknown"; }
+        var node = ApiCurl.Looks(text) ? null : ApiOpenApi.ParseText(text, probe);
+        if (ApiCurl.Looks(text)) { format = "curl"; parsed = ApiCurl.Import(text, fallback); }
+        else if (node is null) { parsed = new ParseResult(null, probe); format = "unknown"; }
         else if (ApiPostman.Looks(node)) { format = "postman"; parsed = ApiPostman.Import(node, text, fallback); }
         else { format = "openapi"; parsed = ApiOpenApi.Import(text, fallback); }
 

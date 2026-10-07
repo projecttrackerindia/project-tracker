@@ -92,7 +92,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
       {canEdit && o.limit >= 0 && <p className={`muted api-limit${overLimit ? ' over' : ''}`}>{o.used.toLocaleString()} of {o.limit.toLocaleString()} endpoints used in this workspace.{overLimit ? ' Upgrade the plan to document more.' : ''}</p>}
 
       {defs.length === 0 ? (
-        <EmptyState icon="git" title="No API described yet" text={canEdit ? 'Describe an API by hand, or import an OpenAPI or Postman file and edit from there.' : 'The owner has not described an API in this document yet.'}
+        <EmptyState icon="git" title="No API described yet" text={canEdit ? 'Describe an API by hand, or import an OpenAPI file, a Postman collection or cURL commands and edit from there.' : 'The owner has not described an API in this document yet.'}
           action={canEdit ? <div className="api-empty-actions"><button className="btn btn-primary" onClick={() => setModal('def')}><Icon name="plus" /> Describe an API</button><button className="btn btn-ghost" onClick={() => setModal('import')}><Icon name="upload" /> Import a file</button></div> : undefined} />
       ) : (
         <div className="api-body">

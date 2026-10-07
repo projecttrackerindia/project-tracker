@@ -78,6 +78,14 @@ await page.locator('.modal-foot button', { hasText: 'Close' }).click(); await pa
 check('the imported API appears with its endpoints grouped', (await page.locator('.api-def', { hasText: 'Imported shop' }).count()) === 1 && (await page.locator('.api-group-head', { hasText: 'Orders' }).count()) === 1 && (await page.locator('.api-ep').count()) === 3);
 await page.locator('.api-ep', { hasText: '/orders/{id}' }).click(); await page.waitForTimeout(800);
 check('a path parameter from the file is shown as required', (await page.locator('.apv-table td b', { hasText: 'id *' }).count()) >= 1);
+// ---- cURL: paste commands, see the check, and never keep a credential (checked only, not applied)
+await page.locator('.api-bar button', { hasText: 'Import' }).click(); await page.waitForTimeout(500);
+await page.locator('.imp-source button', { hasText: 'cURL' }).click();
+await page.locator('.imp-curl textarea').fill("curl -X POST 'https://api.curl.example/v1/orders?expand=items' -H 'Authorization: Bearer SECRETTOKEN' -H 'Content-Type: application/json' -d '{\"sku\":\"A1\"}'\ncurl https://api.curl.example/v1/orders/{id}");
+await page.locator('.imp-curl button', { hasText: 'Read commands' }).click(); await page.waitForTimeout(1500);
+check('cURL commands are read and checked', (await page.locator('.imp-tiles .add b').innerText()) === '2' && (await page.locator('.imp-file-main', { hasText: 'cURL commands' }).count()) === 1);
+check('credentials are reported as left out', (await page.locator('.modal', { hasText: 'Credentials' }).count()) >= 1 && (await page.locator('.modal', { hasText: 'SECRETTOKEN' }).count()) === 0);
+await page.locator('.modal-foot button', { hasText: 'Cancel' }).click(); await page.waitForTimeout(500);
 
 // ---- search and export
 await page.locator('input[aria-label="Find an endpoint"]').fill('orders/'); await page.waitForTimeout(900);

@@ -53,7 +53,7 @@ export function DefinitionModal({ documentId, existing, onClose, onSaved }: { do
   );
 }
 
-/** Bring in an OpenAPI 3 file (JSON or YAML) or a Postman collection: check it first, then import it. */
+/** Bring in an OpenAPI 3 file (JSON or YAML), a Postman collection or pasted cURL commands: check it first, then import it. */
 export function ImportModal({ documentId, definitions, onClose, onDone }: { documentId: string; definitions: ApiDefinition[]; onClose: () => void; onDone: (o: ApiOverview | null) => void }) {
   const wid = useWorkspaceId();
   const [file, setFile] = useState<{ name: string; text: string; size: number } | null>(null);
@@ -63,6 +63,8 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
   const [result, setResult] = useState<ApiImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
+  const [source, setSource] = useState<'file' | 'curl'>('file');
+  const [pasted, setPasted] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const run = useMutation({
     mutationFn: (dryRun: boolean) => apiDocApi.import(documentId, { content: file!.text, fileName: file!.name, definitionId: target || null, newDefinitionName: target ? null : newName.trim() || null, mode, dryRun }),
@@ -84,27 +86,44 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
     const t = window.setTimeout(() => run.mutate(true), 250);
     return () => window.clearTimeout(t);
   }, [file, target, mode, newName]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const kind = file ? (/"?openapi"?\s*:|"?swagger"?\s*:/.test(file.text.slice(0, 2000)) ? 'OpenAPI' : /postman|"item"\s*:/.test(file.text.slice(0, 4000)) ? 'Postman collection' : 'Unknown format') : null;
+  const kind = file ? (/^\s*(#.*\n\s*)*curl(\.exe)?\s/i.test(file.text.slice(0, 2000)) ? 'cURL commands' : /"?openapi"?\s*:|"?swagger"?\s*:/.test(file.text.slice(0, 2000)) ? 'OpenAPI' : /postman|"item"\s*:/.test(file.text.slice(0, 4000)) ? 'Postman collection' : 'Unknown format') : null;
   const errors = result?.issues.filter((i) => i.severity === 'error') ?? [];
   const canImport = !!result?.success && !result.applied && (result.added + result.updated + result.removed > 0);
   const step = !file ? 1 : result?.success ? 3 : 2;
   return (
-    <Modal title="Import an API" subtitle="Bring in an existing description instead of typing it endpoint by endpoint." size="lg" onClose={onClose}
+    <Modal title="Import an API" subtitle="Bring in an OpenAPI file, a Postman collection or cURL commands instead of typing it endpoint by endpoint." size="lg" onClose={onClose}
       footer={<><button className="btn btn-ghost" onClick={onClose}>{result?.applied ? 'Close' : 'Cancel'}</button>
         {!result?.applied && <button className="btn btn-primary" disabled={!canImport || run.isPending} onClick={() => run.mutate(false)}>{run.isPending ? <span className="spinner" /> : <Icon name="upload" size={15} />} Import{canImport ? ` ${result!.added + result!.updated} endpoint${result!.added + result!.updated === 1 ? '' : 's'}` : ''}</button>}</>}>
       <ol className="imp-steps" aria-label="Steps">{['Choose a file', 'Choose where it goes', 'Review and import'].map((t, i) => <li key={t} className={step === i + 1 ? 'on' : step > i + 1 ? 'done' : ''}><span>{step > i + 1 ? '✓' : i + 1}</span>{t}</li>)}</ol>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
 
       {!file ? (
-        <div className={`imp-drop${over ? ' over' : ''}`} onClick={() => input.current?.click()} role="button" tabIndex={0} aria-label="Choose a file to import"
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') input.current?.click(); }}
-          onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void pick(e.dataTransfer.files?.[0]); }}>
-          <div className="imp-drop-ico"><Icon name="upload" size={26} /></div>
-          <b>Drop a file here, or click to choose</b>
-          <span>Up to 6 MB and 10,000 endpoints</span>
-          <div className="imp-formats"><span>OpenAPI 3 · JSON</span><span>OpenAPI 3 · YAML</span><span>Postman 2.1</span></div>
-          <input ref={input} type="file" hidden accept=".json,.yaml,.yml,application/json" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} />
-        </div>
+        <>
+          <div className="seg imp-source" role="tablist" aria-label="Where it comes from">
+            <button role="tab" aria-selected={source === 'file'} className={source === 'file' ? 'on' : ''} onClick={() => setSource('file')}>File</button>
+            <button role="tab" aria-selected={source === 'curl'} className={source === 'curl' ? 'on' : ''} onClick={() => setSource('curl')}>cURL</button>
+          </div>
+          {source === 'file' ? (
+            <div className={`imp-drop${over ? ' over' : ''}`} onClick={() => input.current?.click()} role="button" tabIndex={0} aria-label="Choose a file to import"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') input.current?.click(); }}
+              onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void pick(e.dataTransfer.files?.[0]); }}>
+              <div className="imp-drop-ico"><Icon name="upload" size={26} /></div>
+              <b>Drop a file here, or click to choose</b>
+              <span>Up to 6 MB and 10,000 endpoints</span>
+              <div className="imp-formats"><span>OpenAPI 3 · JSON</span><span>OpenAPI 3 · YAML</span><span>Postman 2.1</span><span>cURL · .sh / .txt</span></div>
+              <input ref={input} type="file" hidden accept=".json,.yaml,.yml,.sh,.txt,.curl,application/json,text/plain" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} />
+            </div>
+          ) : (
+            <div className="imp-curl">
+              <textarea className="input mono" rows={8} value={pasted} onChange={(e) => setPasted(e.target.value)} aria-label="cURL commands" spellCheck={false}
+                placeholder={"curl -X POST 'https://api.example.com/v1/orders' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"sku\":\"A1\"}'"} />
+              <div className="imp-curl-foot">
+                <span className="muted">Paste one or more commands. Each becomes an endpoint. Passwords, tokens and cookies are never kept.</span>
+                <button className="btn btn-primary btn-sm" disabled={!/curl/i.test(pasted)} onClick={() => { setResult(null); setError(null); setFile({ name: 'cURL commands', text: pasted, size: pasted.length }); }}>Read commands</button>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <div className="imp-file">
           <div className="imp-file-ico"><Icon name="note" size={20} /></div>
