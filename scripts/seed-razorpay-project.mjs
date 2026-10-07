@@ -177,7 +177,7 @@ const TASKS = [
 (async () => {
   let me;
   if (API_KEY) {
-    me = await call('GET', '/me');
+    me = (await call('GET', '/me')).user;   // GET /me returns the workspace context ({ user, workspaces, current, ... }), not a bare user
     say(`Using an API key, acting as ${me.displayName} (${me.email}).`);
   } else {
     const login = await call('POST', '/auth/login', { email: EMAIL, password: PASSWORD });
