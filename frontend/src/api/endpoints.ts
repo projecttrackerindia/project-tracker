@@ -10,6 +10,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
   DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
+  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile,
 } from './types';
 
 export const authApi = {
@@ -609,4 +610,15 @@ export const documentApi = {
   addLink: (id: string, b: { targetType: LinkTarget; targetId: string; relation: LinkRelation }) => post<LinkedWork>(`/documents/${id}/links`, b),
   removeLink: (id: string, linkId: string) => del(`/documents/${id}/links/${linkId}`),
   linkedTo: (targetType: LinkTarget, targetId: string) => get<LinkedDocuments>('/linked-documents', { targetType, targetId }),
+  versions: (id: string) => get<DocVersions>(`/documents/${id}/versions`),
+  version: (id: string, versionId: string) => get<DocVersionContent>(`/documents/${id}/versions/${versionId}`),
+  compare: (id: string, from: string, to: string) => get<VersionDiff>(`/documents/${id}/compare`, { from, to }),
+  publish: (id: string, b: { changeSummary: string; changeReason?: string; major: boolean; revision: number }) => post<DocVersions>(`/documents/${id}/publish`, b),
+  restoreVersion: (id: string, versionId: string, b: { reason?: string; discardChanges: boolean; revision: number }) => post<DocVersions>(`/documents/${id}/versions/${versionId}/restore`, b),
+  access: (id: string) => get<DocAccess>(`/documents/${id}/access`),
+  grant: (id: string, b: { principalType: GrantPrincipal; principalId: string; level: DocAccessLevel; deny?: boolean; expiresAt?: string | null; note?: string }) => post<DocAccess>(`/documents/${id}/grants`, b),
+  removeGrant: (id: string, grantId: string) => del<DocAccess>(`/documents/${id}/grants/${grantId}`),
+  files: (id: string) => get<DocFile[]>(`/documents/${id}/files`),
+  uploadFile: (id: string, file: File) => uploadFile<DocFile>(`/documents/${id}/files`, file),
+  removeFile: (id: string, fileId: string) => del(`/documents/${id}/files/${fileId}`),
 };

@@ -12,6 +12,10 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { LinkedWork } from './LinkedWork';
+import { DocumentFiles } from './DocumentFiles';
+import { DocumentIdContext } from './DocImage';
+import { HistoryModal, PublishModal } from './DocumentHistory';
+import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
 
@@ -59,6 +63,7 @@ export function DocumentPage() {
   const q = useWsQuery(['documents', id], () => documentApi.get(id), { retry: false });
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [details, setDetails] = useState(false);
+  const [panel, setPanel] = useState<'publish' | 'history' | 'access' | null>(null);
   const [stale, setStale] = useState(false);
   const detail = q.data;
   const dirty = Object.keys(edits).length > 0;
@@ -82,6 +87,20 @@ export function DocumentPage() {
     window.addEventListener('beforeunload', warn); window.addEventListener('keydown', key);
     return () => { window.removeEventListener('beforeunload', warn); window.removeEventListener('keydown', key); };
   }, [dirty, save]);
+
+  // A picture for the text: choose a file, add it to the document's files, and hand its id to the editor.
+  const pickImage = useCallback(() => new Promise<{ fileId: string; alt: string } | null>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/png,image/jpeg,image/gif,image/webp';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      try { const f = await documentApi.uploadFile(id, file); invalidateWorkspace(wid, 'documents'); resolve({ fileId: f.id, alt: file.name.replace(/\.[^.]+$/, '') }); }
+      catch (e) { toast(e instanceof ApiError ? e.message : 'Could not add the picture.', 'error'); resolve(null); }
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  }), [id, wid]);
 
   const templates = useWsQuery(['document-types'], documentApi.types);
   const type = templates.data?.find((t) => t.id === detail?.item.typeId);
@@ -111,14 +130,19 @@ export function DocumentPage() {
           <h1>{d.title}</h1>
           <div className="doc-head-sub">
             <span className="doc-key">{d.key}</span><span>{d.typeName}</span><DocStatusBadge status={d.status} /><span className="muted">Version {detail.versionLabel}</span>
+            {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="doc-dirty" title="The draft differs from the published version">Not published yet</span>}
             {dirty && <span className="doc-dirty">Unsaved changes</span>}
           </div>
         </div>
         <div className="doc-head-actions">
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
+          {editable && detail.can.publish && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
+          <button className="btn btn-ghost" onClick={() => setPanel('history')}><Icon name="clock" size={15} /> History</button>
+          <button className="btn btn-ghost" onClick={() => setPanel('access')}><Icon name="users" size={15} /> {detail.can.share ? 'Share' : 'Access'}</button>
           {detail.can.edit && <button className="btn btn-ghost" onClick={() => setDetails(true)}><Icon name="edit" size={15} /> Details</button>}
           {d.status !== 'Archived' && detail.can.edit && <button className="btn btn-ghost" onClick={() => run.mutate(() => documentApi.archive(id))}>Archive</button>}
-          {d.status === 'Archived' && detail.can.delete && <button className="btn btn-ghost" onClick={() => run.mutate(() => documentApi.reopen(id))}>Reopen</button>}
+          {detail.viewingPublished && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {detail.publishedLabel}, the latest published one.</div></div>}
+      {d.status === 'Archived' && detail.can.delete && <button className="btn btn-ghost" onClick={() => run.mutate(() => documentApi.reopen(id))}>Reopen</button>}
           {detail.can.delete && (
             <button className="btn btn-ghost danger" onClick={async () => {
               if (!(await confirmDialog({ title: 'Delete this document?', message: `${d.key} “${d.title}” disappears for everyone. You can bring it back for 30 days.`, confirmText: 'Delete' }))) return;
@@ -137,9 +161,11 @@ export function DocumentPage() {
           <ul>{detail.sections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{edits[s.key] !== undefined && <i className="dot-dirty" />}{s.title}</a></li>)}</ul>
         </aside>
         <main className="doc-body">
-          {detail.sections.map((s) => (
-            <SectionEditor key={s.key} id={`sec-${s.key}`} section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} />
-          ))}
+          <DocumentIdContext.Provider value={id}>
+            {detail.sections.map((s) => (
+              <SectionEditor key={s.key} id={`sec-${s.key}`} section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} />
+            ))}
+          </DocumentIdContext.Provider>
         </main>
         <aside className="doc-side">
           <div className="card doc-side-card">
@@ -156,9 +182,13 @@ export function DocumentPage() {
             </div>
           </div>
           <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />
+          <DocumentFiles documentId={id} canEdit={editable} />
         </aside>
       </div>
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
+      {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}
+      {panel === 'history' && <HistoryModal detail={detail} onClose={() => setPanel(null)} />}
+      {panel === 'access' && <AccessModal detail={detail} onClose={() => setPanel(null)} />}
     </div>
   );
 }

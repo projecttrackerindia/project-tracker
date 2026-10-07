@@ -28,6 +28,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<DocumentSection> DocumentSections => Set<DocumentSection>();
     public DbSet<DocumentTag> DocumentTags => Set<DocumentTag>();
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
+    public DbSet<DocumentGrant> DocumentGrants => Set<DocumentGrant>();
+    public DbSet<DocumentFile> DocumentFiles => Set<DocumentFile>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<OrgRole> OrgRoles => Set<OrgRole>();
     public DbSet<Project> Projects => Set<Project>();
@@ -116,6 +118,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     internal bool ProjectsRestricted => current.RestrictsProjects;
     internal bool CurrentIsOrgAdmin => current.Role is TenantRole.Owner or TenantRole.Admin;
     internal bool CurrentIsGuest => current.Role == TenantRole.Guest;
+    internal DateTime CurrentNow => clock.GetUtcNow().UtcDateTime;
     internal Guid[] ReachableProjects => current.ProjectIds;
 
     public async Task<int> PendingMigrationCountAsync(CancellationToken ct = default) => (await Database.GetPendingMigrationsAsync(ct)).Count();
@@ -165,6 +168,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<SectionKind>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkTarget>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkRelation>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<GrantPrincipal>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<DocAccessLevel>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -315,6 +320,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => new { x.TenantId, x.DocumentId, x.Tag }).IsUnique();
             e.HasIndex(x => new { x.TenantId, x.Tag });
             e.Property(x => x.Tag).HasMaxLength(40);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentGrant>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.PrincipalType, x.PrincipalId, x.Deny }).IsUnique();
+            // "Which documents can this person, team or role open through a grant?" is asked for every document list.
+            e.HasIndex(x => new { x.TenantId, x.PrincipalType, x.PrincipalId });
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentFile>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId });
+            e.Property(x => x.FileName).HasMaxLength(200);
+            e.Property(x => x.ContentType).HasMaxLength(120);
+            e.Property(x => x.StorageKey).HasMaxLength(200);
+            e.Property(x => x.Sha256).HasMaxLength(64);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<DocumentLink>(e =>
@@ -906,12 +928,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         // A document is hidden the same way everywhere (lists, counts, links, search, assistant tools): its project must be reachable, and its own
         // visibility must let this person in. Owners and admins of the organization are never locked out of a document in their workspace.
         b.Entity<Document>().HasQueryFilter(d => d.TenantId == CurrentTenantId && !d.IsDeleted
-            && (d.ProjectId == null || !ProjectsRestricted || ReachableProjects.Contains(d.ProjectId.Value))
             && (CurrentIsOrgAdmin
-                || (d.Visibility == DocumentVisibility.Project && d.ProjectId != null)
-                || (d.Visibility == DocumentVisibility.Private && d.OwnerId == CurrentUserId)
-                || (d.Visibility == DocumentVisibility.Team && TeamMembers.Any(m => m.TeamId == d.TeamId && m.UserId == CurrentUserId))
-                || (d.Visibility == DocumentVisibility.Organization && !CurrentIsGuest)));
+                || (!DocumentGrants.Any(g => g.DocumentId == d.Id && g.Deny && (g.ExpiresAt == null || g.ExpiresAt > CurrentNow)
+                        && ((g.PrincipalType == GrantPrincipal.User && g.PrincipalId == CurrentUserId)
+                            || (g.PrincipalType == GrantPrincipal.Team && TeamMembers.Any(m => m.TeamId == g.PrincipalId && m.UserId == CurrentUserId))
+                            || (g.PrincipalType == GrantPrincipal.JobRole && TenantMembers.Any(tm => tm.TenantId == d.TenantId && tm.UserId == CurrentUserId && tm.OrgRoleId == g.PrincipalId))))
+                    && (DocumentGrants.Any(g => g.DocumentId == d.Id && !g.Deny && (g.ExpiresAt == null || g.ExpiresAt > CurrentNow)
+                            && ((g.PrincipalType == GrantPrincipal.User && g.PrincipalId == CurrentUserId)
+                                || (g.PrincipalType == GrantPrincipal.Team && TeamMembers.Any(m => m.TeamId == g.PrincipalId && m.UserId == CurrentUserId))
+                                || (g.PrincipalType == GrantPrincipal.JobRole && TenantMembers.Any(tm => tm.TenantId == d.TenantId && tm.UserId == CurrentUserId && tm.OrgRoleId == g.PrincipalId))))
+                        || ((d.ProjectId == null || !ProjectsRestricted || ReachableProjects.Contains(d.ProjectId.Value))
+                            && ((d.Visibility == DocumentVisibility.Project && d.ProjectId != null)
+                                || (d.Visibility == DocumentVisibility.Private && d.OwnerId == CurrentUserId)
+                                || (d.Visibility == DocumentVisibility.Team && TeamMembers.Any(m => m.TeamId == d.TeamId && m.UserId == CurrentUserId))
+                                || (d.Visibility == DocumentVisibility.Organization && !CurrentIsGuest)))))));
     }
 
     /// <summary>Entities that must not outlive their project's visibility, with the property that points at the project or task.</summary>

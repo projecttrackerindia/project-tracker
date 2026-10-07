@@ -15,6 +15,12 @@ public enum DocumentVisibility { Project = 0, Team = 1, Organization = 2, Privat
 /// <summary>How a section's content is stored and edited: ProseMirror JSON for rich text, or a small JSON grid for a table.</summary>
 public enum SectionKind { RichText = 0, Table = 1 }
 
+/// <summary>Who a grant is for: one person, every member of a team, or everyone who holds a job role on the organization chart.</summary>
+public enum GrantPrincipal { User = 0, Team = 1, JobRole = 2 }
+
+/// <summary>What a grant allows on one document. Manager can also share it with others.</summary>
+public enum DocAccessLevel { Viewer = 1, Editor = 2, Manager = 3 }
+
 public enum LinkTarget { Project = 0, Task = 1, Issue = 2, WorkItem = 3, Sprint = 4 }
 
 /// <summary>What a document is to the thing it is linked to.</summary>
@@ -53,6 +59,8 @@ public class Document : TenantEntity, ITenantScoped, ISoftDelete
     public DocumentVisibility Visibility { get; set; } = DocumentVisibility.Project;
     /// <summary>The version people are editing now (the draft).</summary>
     public Guid? DraftVersionId { get; set; }
+    /// <summary>The newest published (frozen) version. People who may read but not edit the document see this one. Null until the first publish.</summary>
+    public Guid? PublishedVersionId { get; set; }
     /// <summary>Optimistic concurrency: a save that was made from an older copy is refused instead of overwriting.</summary>
     public int Revision { get; set; } = 1;
 
@@ -74,6 +82,10 @@ public class DocumentVersion : TenantEntity, ITenantScoped
     public bool IsDraft { get; set; } = true;
     public string? ChangeSummary { get; set; }
     public string? ChangeReason { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public Guid? PublishedBy { get; set; }
+    /// <summary>Set when this version was made by restoring an older one.</summary>
+    public Guid? RestoredFromId { get; set; }
     /// <summary>SHA-256 of the section contents, so a frozen version can be shown to be unchanged.</summary>
     public string ContentHash { get; set; } = "";
     public ICollection<DocumentSection> Sections { get; set; } = new List<DocumentSection>();
@@ -105,6 +117,32 @@ public class DocumentLink : TenantEntity, ITenantScoped
     public LinkTarget TargetType { get; set; }
     public Guid TargetId { get; set; }
     public LinkRelation Relation { get; set; } = LinkRelation.Describes;
+}
+
+/// <summary>
+/// An extra door into one document: a person, a team or a job role gets Viewer, Editor or Manager access on top of the document's visibility. A deny
+/// grant shuts a person, team or role out even where visibility would let them in (organization owners and admins are never shut out).
+/// </summary>
+public class DocumentGrant : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public GrantPrincipal PrincipalType { get; set; }
+    public Guid PrincipalId { get; set; }
+    public DocAccessLevel Level { get; set; } = DocAccessLevel.Viewer;
+    public bool Deny { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public string? Note { get; set; }
+}
+
+/// <summary>A file attached to a document (an image in its text, a specification, a spreadsheet). The bytes are in file storage; the plan's file size and storage limits apply.</summary>
+public class DocumentFile : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string StorageKey { get; set; } = "";
+    public string Sha256 { get; set; } = "";
 }
 
 /// <summary>One entry of a document type's template (what a new document starts with).</summary>

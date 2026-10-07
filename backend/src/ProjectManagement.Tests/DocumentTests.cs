@@ -48,7 +48,7 @@ public class DocumentTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.Created, res.Status);
         Assert.Equal("DOC-1", S(res.Data!["item"]!["key"]));
         Assert.Equal("Draft", S(res.Data["item"]!["status"]));
-        Assert.Equal("0.1 (draft)", S(res.Data["versionLabel"]));
+        Assert.Equal("Draft", S(res.Data["versionLabel"]));
         var sections = res.Data["sections"]!.AsArray();
         Assert.Equal(12, sections.Count);
         Assert.Equal("businessRequirements", S(sections[1]!["key"]));

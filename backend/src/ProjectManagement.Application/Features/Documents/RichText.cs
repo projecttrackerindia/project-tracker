@@ -15,15 +15,16 @@ public static class SectionContent
     public const int MaxChars = 200_000, MaxNodes = 20_000, MaxDepth = 14, MaxColumns = 12, MaxRows = 500, MaxCell = 2000;
     private const string Empty = """{"type":"doc","content":[{"type":"paragraph"}]}""";
 
-    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem"];
+    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage"];
     private static readonly HashSet<string> Inline = ["text", "hardBreak"];
     private static readonly HashSet<string> Marks = ["bold", "italic", "underline", "strike", "code", "link", "highlight"];
     private static readonly string[] SafeLinks = ["http://", "https://", "mailto:", "/", "#"];
 
-    public static string Normalize(SectionKind kind, string? content, string field = "content") =>
-        kind == SectionKind.Table ? NormalizeTable(content, field) : NormalizeRichText(content, field);
+    /// <param name="images">The files of this document an image may point to; an image that points anywhere else is dropped.</param>
+    public static string Normalize(SectionKind kind, string? content, string field = "content", IReadOnlySet<Guid>? images = null) =>
+        kind == SectionKind.Table ? NormalizeTable(content, field) : NormalizeRichText(content, field, images);
 
-    public static string NormalizeRichText(string? content, string field = "content")
+    public static string NormalizeRichText(string? content, string field = "content", IReadOnlySet<Guid>? images = null)
     {
         if (string.IsNullOrWhiteSpace(content)) return Empty;
         if (content.Length > MaxChars) throw new ValidationException(field, "This section is too long. Split it into two sections or shorten it.");
@@ -32,11 +33,11 @@ public static class SectionContent
         catch (JsonException) { throw new ValidationException(field, "The text could not be read."); }
         if (root is not JsonObject obj || obj["type"]?.GetValue<string>() != "doc") throw new ValidationException(field, "The text could not be read.");
         var budget = MaxNodes;
-        var clean = CleanNode(obj, 0, ref budget) ?? new JsonObject { ["type"] = "doc", ["content"] = new JsonArray(new JsonObject { ["type"] = "paragraph" }) };
+        var clean = CleanNode(obj, 0, ref budget, images ?? new HashSet<Guid>()) ?? new JsonObject { ["type"] = "doc", ["content"] = new JsonArray(new JsonObject { ["type"] = "paragraph" }) };
         return clean.ToJsonString();
     }
 
-    private static JsonObject? CleanNode(JsonObject node, int depth, ref int budget)
+    private static JsonObject? CleanNode(JsonObject node, int depth, ref int budget, IReadOnlySet<Guid> images)
     {
         if (depth > MaxDepth || --budget < 0) throw new ValidationException("content", "This section is too complex. Simplify it or split it.");
         var type = node["type"] is JsonValue tv && tv.TryGetValue<string>(out var t) ? t : null;
@@ -69,6 +70,16 @@ public static class SectionContent
             return o;
         }
 
+        if (type == "docImage")
+        {
+            // An image is only ever a file of this document, named by id: never an address someone typed.
+            var id = node["attrs"]?["fileId"] is JsonValue fv && fv.TryGetValue<string>(out var fs) && Guid.TryParse(fs, out var g) ? g : Guid.Empty;
+            if (!images.Contains(id)) return null;
+            var alt = node["attrs"]?["alt"] is JsonValue av && av.TryGetValue<string>(out var a2) ? a2 : "";
+            o["attrs"] = new JsonObject { ["fileId"] = id.ToString(), ["alt"] = alt.Length > 200 ? alt[..200] : alt };
+            return o;
+        }
+
         var attrs = new JsonObject();
         if (node["attrs"] is JsonObject a)
         {
@@ -87,7 +98,7 @@ public static class SectionContent
         {
             var kept = new JsonArray();
             foreach (var c in children.OfType<JsonObject>())
-                if (CleanNode(c, depth + 1, ref budget) is { } cc) kept.Add(cc);
+                if (CleanNode(c, depth + 1, ref budget, images) is { } cc) kept.Add(cc);
             if (kept.Count > 0) o["content"] = kept;
         }
         return o;

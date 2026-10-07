@@ -12,13 +12,13 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Documents;
 
 public record DocumentTypeDto(Guid Id, string Code, string Name, string? Description, string Icon, string Color, IReadOnlyList<SectionTemplate> Sections, int SortOrder);
-public record DocumentCan(bool Edit, bool Delete, bool Link);
+public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false, bool Publish = false);
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
     IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
-public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can);
+public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false);
 
 public record SectionInput(string Key, string? Content);
 public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId = null, Guid? TeamId = null, DocumentVisibility? Visibility = null,
@@ -31,7 +31,7 @@ public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? 
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
 
@@ -145,19 +145,23 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private async Task<DocumentDto> ToDtoAsync(Document doc, CancellationToken ct)
     {
         var item = (await ToItemsAsync([doc], ct))[0];
-        var sections = doc.DraftVersionId is { } vid
-            ? await db.DocumentSections.AsNoTracking().Where(s => s.VersionId == vid).OrderBy(s => s.SortOrder).ToListAsync(ct) : [];
-        var version = doc.DraftVersionId is { } v ? await db.DocumentVersions.AsNoTracking().Where(x => x.Id == v).Select(x => new { x.Major, x.Minor, x.IsDraft }).FirstOrDefaultAsync(ct) : null;
-        var label = version is null ? "" : $"{version.Major}.{version.Minor}{(version.IsDraft ? " (draft)" : "")}";
-        return new DocumentDto(item, doc.Revision, label, sections.Select(s => new SectionDto(s.Key, s.Title, s.Kind, s.SortOrder, s.ContentJson)).ToList(), await CanAsync(doc, ct));
+        var can = await CanAsync(doc, ct);
+        var published = doc.PublishedVersionId is { } pv ? await db.DocumentVersions.AsNoTracking().Where(x => x.Id == pv).Select(x => new { x.Major, x.Minor, x.ContentHash }).FirstOrDefaultAsync(ct) : null;
+        var draft = doc.DraftVersionId is { } dv ? await db.DocumentVersions.AsNoTracking().Where(x => x.Id == dv).Select(x => new { x.ContentHash }).FirstOrDefaultAsync(ct) : null;
+        // People who may edit work on the draft; people who may only read see the newest published version (the draft only until there is one).
+        var showPublished = !can.Edit && published is not null;
+        var vid = showPublished ? doc.PublishedVersionId : doc.DraftVersionId;
+        var sections = vid is { } id ? await db.DocumentSections.AsNoTracking().Where(s => s.VersionId == id).OrderBy(s => s.SortOrder).ToListAsync(ct) : [];
+        var publishedLabel = published is null ? null : DocumentVersionService.Label(published.Major, published.Minor);
+        var unpublished = draft is not null && (published is null || draft.ContentHash != published.ContentHash);
+        var label = publishedLabel is null ? "Draft" : showPublished ? publishedLabel : unpublished ? $"{publishedLabel} + changes" : publishedLabel;
+        return new DocumentDto(item, doc.Revision, label, sections.Select(s => new SectionDto(s.Key, s.Title, s.Kind, s.SortOrder, s.ContentJson)).ToList(), can, publishedLabel, unpublished && (can.Edit || published is null), showPublished);
     }
 
     private async Task<DocumentCan> CanAsync(Document doc, CancellationToken ct)
     {
-        var level = await permissions.LevelAsync(Modules.Documents, ct);
-        var editable = level >= AccessLevel.Edit && doc.Status != DocumentStatus.Archived && (doc.OwnerId == ctx.UserId || await permissions.HasAsync(Permissions.DocsEdit, ct));
-        var delete = level >= AccessLevel.Edit && (doc.OwnerId == ctx.UserId || await permissions.HasAsync(Permissions.DocsDelete, ct));
-        return new DocumentCan(editable, delete, level >= AccessLevel.Edit);
+        var r = await rights.RightsAsync(doc, ct);
+        return new DocumentCan(r.Edit, r.Delete, r.Link, r.Share, r.Edit);
     }
 
     // ------------------------------------------------------------------ writing
@@ -187,7 +191,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             Visibility = visibility, Status = DocumentStatus.Draft, CreatedAt = now, UpdatedAt = now, CreatedBy = uid,
             Number = await NextNumberAsync(tid, ct),
         };
-        var version = new DocumentVersion { TenantId = tid, DocumentId = doc.Id, Major = 0, Minor = 1, IsDraft = true, CreatedAt = now, CreatedBy = uid };
+        var version = new DocumentVersion { TenantId = tid, DocumentId = doc.Id, Major = 0, Minor = 0, IsDraft = true, CreatedAt = now, CreatedBy = uid };
         var given = (req.Sections ?? []).Where(s => !string.IsNullOrEmpty(s.Key)).GroupBy(s => s.Key).ToDictionary(g => g.Key, g => g.Last().Content);
         var order = 0;
         foreach (var t in DocumentTemplates.FromJson(type.TemplateJson).Take(MaxSections))
@@ -269,11 +273,12 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (doc.Revision != req.Revision) throw Changed();
         var vid = doc.DraftVersionId ?? throw new ConflictException("This document has no draft to edit.", "NO_DRAFT");
         var sections = await db.DocumentSections.Where(s => s.VersionId == vid).ToListAsync(ct);
+        var images = (await db.DocumentFiles.Where(f => f.DocumentId == doc.Id && f.ContentType.StartsWith("image/")).Select(f => f.Id).ToListAsync(ct)).ToHashSet();
         var now = clock.Now;
         foreach (var input in req.Sections)
         {
             var s = sections.FirstOrDefault(x => x.Key == input.Key) ?? throw new ValidationException("sections", $"There is no section \"{input.Key}\" in this document.");
-            s.ContentJson = SectionContent.Normalize(s.Kind, input.Content, $"sections.{s.Key}");
+            s.ContentJson = SectionContent.Normalize(s.Kind, input.Content, $"sections.{s.Key}", images);
             s.UpdatedAt = now;
         }
         var version = await db.DocumentVersions.FirstAsync(v => v.Id == vid, ct);
@@ -288,7 +293,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var doc = await db.Documents.FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException("Document not found.");
         if (!(await CanAsync(doc, ct)).Edit && !(doc.Status == DocumentStatus.Archived && (await CanAsync(doc, ct)).Delete)) throw new ForbiddenException("You cannot change this document.", "PERMISSION_DENIED");
-        doc.Status = archived ? DocumentStatus.Archived : DocumentStatus.Draft;
+        doc.Status = archived ? DocumentStatus.Archived : doc.PublishedVersionId is not null ? DocumentStatus.Published : DocumentStatus.Draft;
         Touch(doc);
         recorder.Activity(archived ? "document.archived" : "document.unarchived", "Document", doc.Id, $"{(archived ? "Archived" : "Reopened")} {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
         recorder.Audit(archived ? "document.archived" : "document.unarchived", "Document", doc.Id);

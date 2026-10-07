@@ -6,6 +6,7 @@ import Highlight from '@tiptap/extension-highlight';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { emptyDoc } from './docUi';
+import { DocImage } from './DocImage';
 
 function parse(value: string) {
   try { const v = JSON.parse(value); return v && v.type === 'doc' ? v : JSON.parse(emptyDoc); } catch { return JSON.parse(emptyDoc); }
@@ -15,7 +16,7 @@ function Btn({ on, label, children, active, disabled }: { on: () => void; label:
   return <button type="button" className={`rte-btn${active ? ' on' : ''}`} onClick={on} title={label} aria-label={label} aria-pressed={active} disabled={disabled}>{children}</button>;
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) {
   const link = () => {
     const prev = editor.getAttributes('link').href as string | undefined;
     const url = window.prompt('Link address (https://…)', prev ?? 'https://');
@@ -42,6 +43,7 @@ function Toolbar({ editor }: { editor: Editor }) {
       <Btn label="Code" active={editor.isActive('codeBlock')} on={() => c().toggleCodeBlock().run()}>{'</>'}</Btn>
       <span className="rte-sep" />
       <Btn label="Link" active={editor.isActive('link')} on={link}>🔗</Btn>
+      {onImage && <Btn label="Insert picture" on={onImage}>🖼</Btn>}
       <Btn label="Insert table" on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>▦</Btn>
       {editor.isActive('table') && <>
         <Btn label="Add row below" on={() => c().addRowAfter().run()}>＋row</Btn>
@@ -61,7 +63,7 @@ function Toolbar({ editor }: { editor: Editor }) {
  * Rich text for one section. The content is ProseMirror JSON (never HTML): what is typed here is stored as data, and the server drops anything
  * outside the editor's own node and mark types.
  */
-export function RichEditor({ value, onChange, readOnly, placeholder, label }: { value: string; onChange?: (json: string) => void; readOnly?: boolean; placeholder?: string; label: string }) {
+export function RichEditor({ value, onChange, readOnly, placeholder, label, onPickImage }: { value: string; onChange?: (json: string) => void; readOnly?: boolean; placeholder?: string; label: string; onPickImage?: () => Promise<{ fileId: string; alt: string } | null> }) {
   const initial = useMemo(() => parse(value), []); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef(value);
   const editor = useEditor({
@@ -70,7 +72,7 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label }: { 
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: { openOnClick: !!readOnly, autolink: true, protocols: ['http', 'https', 'mailto'], HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' } } }),
       Placeholder.configure({ placeholder: placeholder ?? 'Start writing…' }),
-      Highlight, TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: false } }),
+      Highlight, TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: false } }), DocImage,
     ],
     editorProps: { attributes: { class: 'rte-content', 'aria-label': label, role: 'textbox', 'aria-multiline': 'true' } },
     onUpdate: ({ editor: e }) => { const json = JSON.stringify(e.getJSON()); last.current = json; onChange?.(json); },
@@ -87,7 +89,7 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label }: { 
   if (!editor) return <div className="rte rte-loading" />;
   return (
     <div className={`rte${readOnly ? ' readonly' : ''}`}>
-      {!readOnly && <Toolbar editor={editor} />}
+      {!readOnly && <Toolbar editor={editor} onImage={onPickImage ? async () => { const pic = await onPickImage(); if (pic) editor.chain().focus().insertContent({ type: 'docImage', attrs: pic }).run(); } : undefined} />}
       <EditorContent editor={editor} />
     </div>
   );

@@ -556,7 +556,10 @@ export interface DocumentItem {
 }
 export interface DocumentPage { items: DocumentItem[]; nextCursor: string | null; total: number | null }
 export interface DocumentSection { key: string; title: string; kind: SectionKind; sortOrder: number; content: string }
-export interface DocumentDetail { item: DocumentItem; revision: number; versionLabel: string; sections: DocumentSection[]; can: { edit: boolean; delete: boolean; link: boolean } }
+export interface DocumentDetail {
+  item: DocumentItem; revision: number; versionLabel: string; sections: DocumentSection[]; can: { edit: boolean; delete: boolean; link: boolean; share: boolean; publish: boolean };
+  publishedLabel: string | null; hasUnpublishedChanges: boolean; viewingPublished: boolean;
+}
 export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; cursor?: string; limit?: number }
 export interface LinkedItem {
   linkId: string; targetType: LinkTarget; targetId: string; relation: LinkRelation; restricted: boolean; key: string; title: string; status: string;
@@ -565,3 +568,33 @@ export interface LinkedItem {
 export interface LinkedWork { items: LinkedItem[]; total: number; done: number; overdue: number; open: number; restricted: number }
 export interface LinkedDocument { linkId: string; relation: LinkRelation; document: DocumentItem }
 export interface LinkedDocuments { items: LinkedDocument[]; restricted: number }
+
+// ---- Document history, sharing and files
+export type DocAccessLevel = 'Viewer' | 'Editor' | 'Manager';
+export type GrantPrincipal = 'User' | 'Team' | 'JobRole';
+export interface DocVersion {
+  id: string; label: string; major: number; minor: number; isDraft: boolean; isCurrent: boolean; changeSummary: string | null; changeReason: string | null;
+  publishedAt: string | null; publishedBy: UserRef | null; restoredFrom: string | null; contentHash: string; hasChanges: boolean;
+}
+export interface DocVersions { items: DocVersion[]; publishedLabel: string | null; hasUnpublishedChanges: boolean; nextLabelMinor: string; nextLabelMajor: string }
+export interface DocVersionContent { version: DocVersion; sections: DocumentSection[] }
+export interface DiffWord { op: 'eq' | 'add' | 'del'; text: string }
+export interface DiffLine { op: 'eq' | 'add' | 'del'; text: string; style: string; words: DiffWord[] | null }
+export interface DiffRow { op: 'eq' | 'add' | 'del' | 'chg'; cells: string[]; changedCells: number[] | null }
+export interface SectionDiff {
+  key: string; title: string; kind: SectionKind; change: 'Unchanged' | 'Changed' | 'Added' | 'Removed'; lines: DiffLine[] | null; columns: string[] | null; rows: DiffRow[] | null; formattingOnly: boolean;
+}
+export interface VersionDiff {
+  from: { id: string; label: string; isDraft: boolean }; to: { id: string; label: string; isDraft: boolean };
+  sections: SectionDiff[]; changed: number; added: number; removed: number; unchanged: number;
+}
+export interface DocGrant {
+  id: string; principalType: GrantPrincipal; principalId: string; name: string; members: number | null; level: DocAccessLevel; deny: boolean; expiresAt: string | null;
+  note: string | null; by: UserRef | null; createdAt: string;
+}
+export interface AccessPerson { userId: string; name: string; role: string; level: DocAccessLevel; reasons: string[] }
+export interface DocAccess {
+  owner: UserRef; visibility: DocumentVisibility; visibilityText: string; grants: DocGrant[]; people: AccessPerson[]; peopleTotal: number; truncated: boolean;
+  canManage: boolean; advancedPermissions: boolean;
+}
+export interface DocFile { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean; uploadedBy: UserRef | null; createdAt: string; canDelete: boolean }

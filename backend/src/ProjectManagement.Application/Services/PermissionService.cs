@@ -55,6 +55,23 @@ public class PermissionService(IAppDbContext db, ICurrentContext ctx)
         return await RoleHasAsync(role, permission, ct);
     }
 
+    /// <summary>Whether someone else (not the signed-in person) holds a permission, by their access level and job-role profile. Used to explain who can open a document.</summary>
+    public async Task<bool> HasForAsync(TenantRole role, string? accessJson, string permission, CancellationToken ct = default)
+    {
+        if (role == TenantRole.Owner || ctx.WorkspaceType == WorkspaceType.Personal) return true;
+        if (role is TenantRole.Manager or TenantRole.Member or TenantRole.Guest && AccessProfile.Parse(accessJson) is { } profile) return profile.Permissions().Contains(permission);
+        return await RoleHasAsync(role, permission, ct);
+    }
+
+    /// <summary>The level of a module for someone else, by their access level and job-role profile.</summary>
+    public async Task<int> ModuleLevelForAsync(string module, TenantRole role, string? accessJson, CancellationToken ct = default)
+    {
+        var def = Modules.Find(module) ?? throw new ArgumentException($"Unknown module '{module}'.", nameof(module));
+        if (role == TenantRole.Owner || ctx.WorkspaceType == WorkspaceType.Personal) return def.Max;
+        if (role is TenantRole.Manager or TenantRole.Member or TenantRole.Guest && AccessProfile.Parse(accessJson) is { } profile) return profile.Level(module);
+        return def.Snap(await TierLevelAsync(module, role, ct));
+    }
+
     /// <summary>The defaults of an access level (with the tenant's overrides). Used when no job-role profile applies.</summary>
     public async Task<bool> RoleHasAsync(TenantRole role, string permission, CancellationToken ct = default)
     {

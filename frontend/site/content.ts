@@ -33,7 +33,7 @@ export const FEATURES: Feature[] = [
   { icon: 'monitor', title: 'A portfolio view for leaders', text: 'Every project ranked by risk with the reasons, a forecast of when it will really finish, and the history of every delivery date that moved.' },
   { icon: 'users', title: 'Teams that stay separate', text: 'Five access levels, job-role profiles and teams. Choose whether everyone sees every project or each team sees only its own, and switch the whole app to one team.' },
   { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens. Every plan includes a taste of it; Pro adds 60 credits per person a month, Business 200 with deep reasoning.' },
-  { icon: 'note', title: 'Documents linked to the work', text: 'Write requirement documents, API documentation and test plans from templates, keep them next to the project, and link each one to the tasks that build it and the tests that check it. See how far the linked work has got, and choose who can open each document.' },
+  { icon: 'note', title: 'Documents linked to the work', text: 'Write requirement documents, API documentation and test plans from templates, keep them next to the project, and link each one to the tasks that build it and the tests that check it. Publish versions, compare any two and go back to an earlier one, and choose exactly who can open each document and why.' },
   { icon: 'alarm', title: 'Reminders that arrive on time', text: 'Automatic due-date reminders, a daily briefing, a weekly portfolio brief and push or e-mail delivery, in each person\'s own working hours.' },
   { icon: 'clock', title: 'Time, workload and capacity', text: 'Timesheets with approvals, workload by person and weekly capacity, so work is shared out before people are overloaded.' },
   { icon: 'bolt', title: 'Operational work with service levels', text: 'Bugs, support and requests with response and resolution targets that warn before they are missed. Business plan and above.' },
@@ -218,6 +218,9 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'Reminder escalation', v: ['–', '–', '✓', '✓'] },
     { label: 'Documents (requirements, API, test plans)', v: ['10', 'Unlimited', 'Unlimited', 'Unlimited'] },
     { label: 'Documents linked to projects and tasks', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Versions, compare and restore', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Share with a person, team or job role', v: ['–', '✓', '✓', '✓'] },
+    { label: 'Block someone or end access on a date', v: ['–', '–', '✓', '✓'] },
     { label: 'Mobile app and phone sign-in', v: ['–', '✓', '✓', '✓'] },
   ] },
   { group: 'Intelligence', rows: [

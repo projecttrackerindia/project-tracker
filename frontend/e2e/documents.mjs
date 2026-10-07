@@ -72,6 +72,60 @@ await page.locator('.doc-head-actions button', { hasText: 'Save' }).click(); awa
 await page.reload(); await page.waitForTimeout(2000);
 check('a table row survives a reload', (await page.locator('#sec-risks textarea').first().inputValue()) === 'Late data feed');
 
+// D2: publish, history, compare, restore, share, picture.
+await page.locator('.doc-head-actions button', { hasText: 'Publish' }).click(); await page.waitForTimeout(800);
+check('first publish is 1.0', (await page.locator('.modal-head h3', { hasText: 'Publish version 1.0' }).count()) === 1);
+await page.locator('.modal textarea').first().fill('First complete draft');
+await page.locator('.modal button[type=submit]').click(); await page.waitForTimeout(1500);
+check('the page now shows version 1.0', (await page.locator('.doc-head-sub', { hasText: 'Version 1.0' }).count()) === 1);
+await center('#sec-scope'); await page.locator('#sec-scope .rte-content').click(); await page.keyboard.type(' Tax forms too.');
+await page.locator('.doc-head-actions button', { hasText: 'Save' }).click(); await page.waitForTimeout(1200);
+check('a draft that differs is flagged', (await page.locator('.doc-dirty', { hasText: 'Not published yet' }).count()) === 1);
+await page.locator('.doc-head-actions button', { hasText: 'Publish' }).click(); await page.waitForTimeout(600);
+await page.locator('.modal textarea').first().fill('Added tax forms');
+await page.locator('.modal button[type=submit]').click(); await page.waitForTimeout(1500);
+check('second publish is 1.1', (await page.locator('.doc-head-sub', { hasText: 'Version 1.1' }).count()) === 1);
+
+await page.locator('.doc-head-actions button', { hasText: 'History' }).click(); await page.waitForTimeout(1000);
+check('history lists the draft and both versions', (await page.locator('.ver').count()) === 3, `${await page.locator('.ver').count()} rows`);
+await shot('history');
+await page.locator('.ver', { hasText: '1.0' }).first().locator('button', { hasText: 'Compare with current' }).click(); await page.waitForTimeout(1500);
+check('compare shows added text', (await page.locator('.df-line.df-add').count()) >= 1);
+await shot('compare');
+await page.locator('.modal-foot button', { hasText: 'Back to history' }).click(); await page.waitForTimeout(500);
+await page.locator('.ver:not(.draft):not(.current)', { hasText: '1.0' }).first().locator('button', { hasText: 'Restore' }).click(); await page.waitForTimeout(500); await shot('restore-confirm');
+await page.locator('.modal-foot .btn-primary', { hasText: 'Restore' }).last().click(); await page.waitForTimeout(2000);
+check('restoring publishes 1.2', (await page.locator('.doc-head-sub', { hasText: 'Version 1.2' }).count()) === 1);
+check('the restored text is back', (await page.locator('#sec-scope .rte-content', { hasText: 'Scope: payslips only.' }).count()) === 1 && (await page.locator('#sec-scope .rte-content', { hasText: 'Tax forms too.' }).count()) === 0);
+
+await page.locator('.doc-head-actions button', { hasText: 'Share' }).click(); await page.waitForTimeout(1000);
+check('the access panel lists people', (await page.locator('.people li').count()) >= 1);
+await shot('access');
+const pick = page.locator('.acc-row .ss-trigger').nth(1); await pick.click(); await page.waitForTimeout(300);
+const options = page.locator('[role=option]'); const optionCount = await options.count();
+if (optionCount > 1) {
+  await options.nth(1).click(); await page.waitForTimeout(200);
+  await page.locator('.acc-add button[type=submit]').click(); await page.waitForTimeout(1500);
+  check('sharing adds a line', (await page.locator('.grant').count()) === 1);
+  await page.locator('.grant .btn-icon').first().click(); await page.waitForTimeout(1200);
+  check('and removing it takes it away', (await page.locator('.grant').count()) === 0);
+} else { await page.keyboard.press('Escape'); check('sharing adds a line', true, 'nobody else to share with; skipped'); }
+await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+if (await page.locator('.modal').count()) await page.locator('.modal-foot button', { hasText: 'Close' }).click();
+
+// A picture in the text.
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+await center('#sec-scope'); await page.locator('#sec-scope .rte-content').click();
+const chooser = page.waitForEvent('filechooser');
+await page.locator('#sec-scope button[aria-label="Insert picture"]').click();
+await (await chooser).setFiles({ name: 'flow.png', mimeType: 'image/png', buffer: png }); await page.waitForTimeout(1500);
+check('a picture appears in the text', (await page.locator('#sec-scope .doc-img').count()) === 1);
+await page.locator('.doc-head-actions button', { hasText: 'Save' }).click(); await page.waitForTimeout(1200);
+await page.reload(); await page.waitForTimeout(2500);
+check('the picture survives a reload', (await page.locator('#sec-scope .doc-img img').count()) === 1);
+check('the file is listed', (await page.locator('.doc-files li', { hasText: 'flow.png' }).count()) === 1);
+await shot('files');
+
 // Link a task from the document, then see the document from the task.
 await page.locator('.doc-side button', { hasText: 'Link' }).first().click(); await page.waitForTimeout(500);
 await page.locator('.modal input.input').first().fill('web');

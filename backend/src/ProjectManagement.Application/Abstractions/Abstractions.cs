@@ -23,6 +23,8 @@ public interface IAppDbContext
     DbSet<DocumentSection> DocumentSections { get; }
     DbSet<DocumentTag> DocumentTags { get; }
     DbSet<DocumentLink> DocumentLinks { get; }
+    DbSet<DocumentGrant> DocumentGrants { get; }
+    DbSet<DocumentFile> DocumentFiles { get; }
     DbSet<TeamMember> TeamMembers { get; }
     DbSet<OrgRole> OrgRoles { get; }
     DbSet<Project> Projects { get; }

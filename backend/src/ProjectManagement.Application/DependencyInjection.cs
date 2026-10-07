@@ -63,6 +63,10 @@ public static class DependencyInjection
         services.AddScoped<TeamService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentLinkService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAccessService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentVersionService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentFileService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentRetentionService>();
         services.AddScoped<OrgService>();
         services.AddScoped<AccessService>();
         services.AddScoped<ProjectService>();

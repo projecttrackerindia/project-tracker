@@ -133,6 +133,7 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
         (await db.Attachments.Where(a => db.Projects.Any(p => p.Id == a.ProjectId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
         + (await db.WorkTaskAttachments.Where(a => db.WorkTasks.Any(t => t.Id == a.WorkTaskId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
         // Files sent in chat and shown to the AI assistant live in the same storage and count against the same plan limit.
+        + (await db.DocumentFiles.Where(f => db.Documents.IgnoreQueryFilters().Any(d => d.Id == f.DocumentId && !d.IsDeleted)).SumAsync(f => (long?)f.SizeBytes, ct) ?? 0)
         + (await db.ChatAttachments.SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
         + (await db.AiAttachments.SumAsync(a => (long?)a.SizeBytes, ct) ?? 0);
 
