@@ -852,6 +852,74 @@ public class AiWorkspaceTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_new_project_can_be_put_straight_in_a_team_and_list_projects_can_search_every_team()
+    {
+        var o = await Setup();
+        var teamId = Guid.Parse(S((await o.Owner.Post("/api/v1/teams", new { name = "MuleSoft" })).Data!["team"]!["id"]));
+
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "Razor pay", project_type = "Integration", team = "mulesoft" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Create the Razor pay project under MuleSoft");
+        var card = res.Last("action")["action"]!;
+        Assert.Contains("team MuleSoft", S(card["summary"]));
+        var confirm = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.True(confirm.Ok, confirm.ToString());
+        var project = Assert.Single(factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == o.Owner.WorkspaceId && p.Name == "Razor pay").ToList()));
+        Assert.Equal(teamId, project.TeamId);
+
+        // A team that doesn't exist is refused by name, not silently dropped.
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_project", new { name = "Something Else", team = "Nonexistent Team" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Can't."));
+        await Ask(o.Owner, "Create a project called Something Else under the Nonexistent Team");
+        Assert.Contains("No team matches", Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content);
+
+        // list_projects, by default, is scoped the same way the Projects page is (the caller's team lens) and says so;
+        // all_teams finds a project under a team the caller isn't currently viewing.
+        o.Owner.TeamLens = teamId;
+        var scoped = await RunTool(o.Owner, "list_projects", new { }, "Which projects are running?");
+        Assert.Contains("Razor pay", scoped);
+        Assert.DoesNotContain("Atlas", scoped);           // Atlas has no team, so it's out of the MuleSoft lens
+        Assert.Contains("scoped to the", scoped);
+        var all = await RunTool(o.Owner, "list_projects", new { all_teams = true }, "Which projects are running, across every team?");
+        Assert.Contains("Razor pay", all);
+        Assert.Contains("Atlas", all);
+        o.Owner.TeamLens = null;
+    }
+
+    [Fact]
+    public async Task A_document_can_be_created_by_the_assistant_without_waiting_for_a_confirm_click()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_document", new
+        {
+            title = "Razorpay API",
+            type = "API documentation",
+            project = "Atlas",
+            tags = new[] { "razorpay", "mulesoft" },
+            content = "# Overview\nThis API lets merchant systems start Razorpay orders.\n\n## Endpoints\n- POST /api/v1/create\n- GET /payments/status",
+        }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Published it."));
+        var res = await Ask(o.Owner, "Write up the Razorpay API as a document under Atlas");
+
+        // No confirm click needed: the card in the stream already shows "done", and the model was told so (not "has NOT been done").
+        var card = res.Last("action")["action"]!;
+        Assert.Equal("done", S(card["status"]));
+        Assert.Contains("Done:", Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content);
+
+        var doc = Assert.Single(factory.WithDb(db => db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == o.Owner.WorkspaceId && d.Title == "Razorpay API").ToList()));
+        Assert.Equal(o.Project, doc.ProjectId);
+        var opened = await o.Owner.Get($"/api/v1/documents/{doc.Id}");
+        Assert.True(opened.Ok, opened.ToString());
+        var overview = opened.Data!["sections"]!.AsArray().FirstOrDefault(s => S(s!["key"]) == "overview");
+        Assert.NotNull(overview);   // the markdown body landed in the document's main section, not left empty
+        Assert.Contains("razorpay", opened.Data["item"]!["tags"]!.AsArray().Select(t => S(t)));
+
+        // Re-confirming an already-auto-run card is refused, same as double-clicking any other confirm button.
+        var again = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.Equal(HttpStatusCode.Conflict, again.Status);
+    }
+
+    [Fact]
     public async Task A_request_to_change_something_and_its_short_follow_up_are_not_left_to_the_smallest_model()
     {
         var o = await Setup();

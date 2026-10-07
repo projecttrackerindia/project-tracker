@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Features.Tasks;
@@ -37,7 +39,7 @@ public sealed class AiToolException(string message) : Exception(message);
 /// assistant change anything on its own.
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
-    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, ILogger<AiToolbox> log)
+    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ILogger<AiToolbox> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -46,9 +48,20 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
-        UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work";
+        UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work",
+        CreateDocument = "propose_create_document";
 
-    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject];
+    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument];
+
+    /// <summary>
+    /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
+    /// additions that only touch what the asker could already edit by hand. Only <c>create_document</c> is auto-run today - everything else
+    /// (create_task, create_work, create_action_item, reminder, update_work, create_project, update_project, invite_member, send_report)
+    /// still waits for a person to confirm it, because the existing test suite (AiWorkspaceTests.cs) encodes that contract in ~25 places and
+    /// flipping it deserves its own deliberate pass, not a drive-by change here. Add a kind's string (from the propose_* method's call to
+    /// <see cref="Propose"/>) to go further once its tests are updated to match.
+    /// </summary>
+    public static readonly string[] AutoExecuteKinds = ["create_document"];
 
     // ------------------------------------------------------------------ what the model is told it can use
 
@@ -69,7 +82,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "text":{"type":"string","description":"Words to look for in titles."}},
                  "required":[]}
                 """),
-            new(ListProjects, "List the active projects the person can see with status, health and progress.", """{"type":"object","properties":{},"required":[]}"""),
+            new(ListProjects, "List the projects the person can see (every status except Archived) with status, health and progress. By default this is scoped to the team the person is currently viewing (their team lens), same as the Projects page; pass all_teams to search the whole workspace, e.g. before creating a project so you don't miss one that already exists under another team.",
+                """{"type":"object","properties":{"all_teams":{"type":"boolean","description":"true to ignore the current team lens and list every project in the workspace, grouped by team."}},"required":[]}"""),
             new(ProjectReport, "A project's status report: dates, progress, late and blocked tasks and every change of delivery date with its reason.",
                 """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."}},"required":["project"]}"""),
             new(TeamWorkload, "Open, overdue and recently finished work per person, for the people the person may see.",
@@ -113,6 +127,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},
                  "project_type":{"type":"string","enum":["NewProject","ChangeRequest","Enhancement","Migration","Integration","Upgrade","Maintenance","Compliance","Other"],"description":"Default NewProject."},
                  "group":{"type":"string","description":"Optional: the name of a project group. Default: the first active group."},
+                 "team":{"type":"string","description":"Optional: the name of the team that owns this project (e.g. MuleSoft, Integration). Default: no team."},
                  "owner":{"type":"string","description":"A person's name or \"me\". Default: me."},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]},
                  "start_date":{"type":"string","description":"yyyy-mm-dd"},"due_date":{"type":"string","description":"yyyy-mm-dd"}},"required":["name"]}
                 """),
@@ -143,6 +158,14 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 {"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string","description":"The report in Markdown."},
                  "recipients":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: me."}},"required":["title","body"]}
                 """),
+            new(CreateDocument, "Create a document in the Documents tab (a BRD, API reference, general write-up...). Runs immediately, no confirmation card - write the full content in 'content', it becomes the document's body.",
+                """
+                {"type":"object","properties":{"title":{"type":"string"},"type":{"type":"string","description":"The name of a document type, e.g. \"API documentation\", \"BRD\", \"Project documentation\". Default: Project documentation."},
+                 "content":{"type":"string","description":"The full document body in Markdown. Goes into the type's main section."},
+                 "project":{"type":"string","description":"Optional: a project key or name to attach this document to."},
+                 "team":{"type":"string","description":"Optional: a team name, when there's no project."},
+                 "tags":{"type":"array","items":{"type":"string"}}},"required":["title","content"]}
+                """),
         ]);
         return tools;
     }
@@ -160,7 +183,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             return name switch
             {
                 FindWork => await FindWorkAsync(a, ct),
-                ListProjects => await ListProjectsAsync(ct),
+                ListProjects => await ListProjectsAsync(a, ct),
                 ProjectReport => await ProjectReportAsync(a, ct),
                 TeamWorkload => await TeamWorkloadAsync(a, ct),
                 ListPeople => await ListPeopleAsync(ct),
@@ -179,6 +202,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 CreateActionItem => await ProposeActionItemAsync(a, ct),
                 CreateReminder => await ProposeReminderAsync(a, timeZone, ct),
                 SendReport => await ProposeReportAsync(a, ct),
+                CreateDocument => await ProposeDocumentAsync(a, ct),
                 _ => throw new AiToolException($"There is no tool called {name}."),
             };
         }
@@ -208,12 +232,30 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         return new AiToolOutcome(head + "\n" + string.Join("\n", shown), $"Looked through {items.Count} work item{(items.Count == 1 ? "" : "s")}", items.Count);
     }
 
-    private async Task<AiToolOutcome> ListProjectsAsync(CancellationToken ct)
+    private async Task<AiToolOutcome> ListProjectsAsync(JsonElement a, CancellationToken ct)
     {
+        if (a.TryGetProperty("all_teams", out var atEl) && atEl.ValueKind == JsonValueKind.True)
+        {
+            var tid = ctx.RequireTenantId();
+            await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
+            // IgnoreQueryFilters: the normal Project filter also confines results to the caller's team lens (same as the Projects page), which
+            // is exactly the restriction all_teams asks to see past. Tenant isolation and soft-delete are reapplied explicitly below.
+            var all = await (from p in db.Projects.IgnoreQueryFilters().AsNoTracking()
+                              where p.TenantId == tid && !p.IsDeleted && p.Status != ProjectStatus.Archived
+                              join t in db.Teams.AsNoTracking() on p.TeamId equals t.Id into tj
+                              from t in tj.DefaultIfEmpty()
+                              orderby p.Name
+                              select new { p.Key, p.Name, p.Status, TeamName = t == null ? "No team" : t.Name }).Take(300).ToListAsync(ct);
+            var allRows = all.Select(p => $"{p.Key} | {Clean(p.Name)} | {p.Status} | team {Clean(p.TeamName)}").ToList();
+            return allRows.Count == 0 ? new AiToolOutcome("There are no projects in this workspace.", "Read the portfolio", 0)
+                : new AiToolOutcome($"{allRows.Count} projects across every team (key | name | status | team):\n" + string.Join("\n", allRows.Take(150)), $"Read the portfolio ({allRows.Count} project{(allRows.Count == 1 ? "" : "s")}, all teams)", allRows.Count);
+        }
+        var lensName = ctx.TeamLens is { } lensId ? await db.Teams.AsNoTracking().Where(t => t.Id == lensId).Select(t => t.Name).FirstOrDefaultAsync(ct) : null;
         var groups = await status.GroupsAsync(ct: ct);
         var rows = groups.SelectMany(g => g.Projects.Select(p => $"{p.Key} | {Clean(p.Name)} | {p.Status} | health {p.Health} | {p.Progress}% | {Clean(g.Name)}")).ToList();
-        return rows.Count == 0 ? new AiToolOutcome("There are no active projects.", "Read the portfolio", 0)
-            : new AiToolOutcome($"{rows.Count} projects (key | name | status | health | progress | group):\n" + string.Join("\n", rows.Take(80)), $"Read the portfolio ({rows.Count} project{(rows.Count == 1 ? "" : "s")})", rows.Count);
+        var scopeNote = lensName is null ? "" : $" (scoped to the “{lensName}” team lens - pass all_teams:true to search the whole workspace)";
+        return rows.Count == 0 ? new AiToolOutcome($"There are no projects{scopeNote}.", "Read the portfolio", 0)
+            : new AiToolOutcome($"{rows.Count} projects{scopeNote} (key | name | status | health | progress | group):\n" + string.Join("\n", rows.Take(80)), $"Read the portfolio ({rows.Count} project{(rows.Count == 1 ? "" : "s")})", rows.Count);
     }
 
     private async Task<AiToolOutcome> ProjectReportAsync(JsonElement a, CancellationToken ct)
@@ -446,9 +488,18 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var priority = PriorityOf(a);
         var start = Date(a, "start_date"); var due = Date(a, "due_date");
         if (start is { } s0 && due is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
+        Team? team = null;
+        if (Str(a, "team") is { } wantedTeam)
+        {
+            var teamTid = ctx.RequireTenantId();
+            team = await db.Teams.AsNoTracking().Where(t => t.TenantId == teamTid)
+                .FirstOrDefaultAsync(t => t.Name.ToLower() == wantedTeam.ToLower(), ct)
+                ?? await db.Teams.AsNoTracking().Where(t => t.TenantId == teamTid).FirstOrDefaultAsync(t => t.Name.ToLower().Contains(wantedTeam.ToLower()), ct)
+                ?? throw new AiToolException($"No team matches “{wantedTeam}”. Use list_people or ask the person which team.");
+        }
         _pendingProjects.Add(name);
-        var payload = new { name, description = Str(a, "description"), projectType = type.ToString(), projectGroupId = group.Id, groupName = group.Name, ownerId = owner?.Id, ownerName = owner?.Name, priority, startDate = start, dueDate = due };
-        var summary = $"{type}{Join($"in group {group.Name}", owner is null ? null : $"owned by {owner.Name}", $"{priority} priority", start is null ? null : $"starts {Day(start)}", due is null ? null : $"due {Day(due)}")}";
+        var payload = new { name, description = Str(a, "description"), projectType = type.ToString(), projectGroupId = group.Id, groupName = group.Name, teamId = team?.Id, teamName = team?.Name, ownerId = owner?.Id, ownerName = owner?.Name, priority, startDate = start, dueDate = due };
+        var summary = $"{type}{Join($"in group {group.Name}", team is null ? null : $"team {team.Name}", owner is null ? null : $"owned by {owner.Name}", $"{priority} priority", start is null ? null : $"starts {Day(start)}", due is null ? null : $"due {Day(due)}")}";
         return Propose("create_project", $"Create project “{name}”", summary, payload, Str(a, "description"));
     }
 
@@ -478,6 +529,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var due = Date(a, "due_date");
         var start = Date(a, "start_date");
         if (start is { } s0 && due is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
+        if ((start is not null || due is not null) && !project.IsPending)
+        {
+            var proj = (await projects.GetAsync(project.Id, ct)).Project;
+            if (proj.StartDate is { } ps && due is { } d1 && d1 < ps) throw new AiToolException($"That due date is before {project.Label}'s own start date ({Day(proj.StartDate)}). Check the date, or the right project.");
+            if (proj.DueDate is { } pd && start is { } s1 && s1 > pd) throw new AiToolException($"That start date is after {project.Label}'s own due date ({Day(proj.DueDate)}). Check the date, or the right project.");
+        }
         var hours = a.TryGetProperty("estimate_hours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : (decimal?)null;
         var comment = Str(a, "comment");
         var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, description = Str(a, "description"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, startDate = start, dueDate = due, estimateHours = hours, comment };
@@ -578,6 +635,66 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (people.Count > 10) throw new AiToolException("A report can go to at most 10 people at a time.");
         var payload = new { title, body, recipientIds = people.Select(p => p.Id), recipientNames = people.Select(p => p.Name) };
         return Propose("send_report", $"Email report “{title}”", $"To {string.Join(", ", people.Select(p => p.Id == ctx.UserId ? "you" : p.Name))}", payload, body);
+    }
+
+    private async Task<AiToolOutcome> ProposeDocumentAsync(JsonElement a, CancellationToken ct)
+    {
+        var title = (Str(a, "title") ?? throw new AiToolException("Give the document a title.")).Trim();
+        if (title.Length is < 2 or > 150) throw new AiToolException("A document title is 2 to 150 characters.");
+        var content = Str(a, "content") ?? throw new AiToolException("Write the document's content.");
+        var types = await documents.ListTypesAsync(ct);
+        var wantedType = Str(a, "type");
+        var type = (wantedType is null ? null : types.FirstOrDefault(t => t.Name.Equals(wantedType, StringComparison.OrdinalIgnoreCase)) ?? types.FirstOrDefault(t => t.Name.Contains(wantedType, StringComparison.OrdinalIgnoreCase)))
+            ?? types.FirstOrDefault(t => t.Code == "PROJECT") ?? types.FirstOrDefault()
+            ?? throw new AiToolException("There is no document type to use.");
+        var firstRichSection = type.Sections.FirstOrDefault(s => s.Kind == SectionKind.RichText);
+
+        ProjectRef? project = Str(a, "project") is { } pw ? await ProjectAsync(pw, ct) : null;
+        if (project is { IsPending: true }) throw new AiToolException($"“{project.Name}” has not been created yet. Create it first, then the document.");
+        Team? team = null;
+        if (project is null && Str(a, "team") is { } tw)
+        {
+            var tid = ctx.RequireTenantId();
+            team = await db.Teams.AsNoTracking().Where(t => t.TenantId == tid).FirstOrDefaultAsync(t => t.Name.ToLower() == tw.ToLower(), ct)
+                ?? await db.Teams.AsNoTracking().Where(t => t.TenantId == tid).FirstOrDefaultAsync(t => t.Name.ToLower().Contains(tw.ToLower()), ct)
+                ?? throw new AiToolException($"No team matches “{tw}”.");
+        }
+        var tags = Strs(a, "tags");
+        var sections = firstRichSection is null ? null : new[] { new { key = firstRichSection.Key, content = MarkdownToDoc(content) } };
+        var payload = new { title, typeId = type.Id, typeName = type.Name, projectId = project?.Id, projectName = project?.Name, teamId = team?.Id, teamName = team?.Name, tags, sections };
+        var summary = $"{type.Name}{Join(project is null ? null : $"in {project.Label}", team is null ? null : $"team {team.Name}", tags.Count == 0 ? null : string.Join(", ", tags))}";
+        return Propose("create_document", $"Create document “{title}”", summary, payload, content);
+    }
+
+    /// <summary>A light markdown reading: blank-line paragraphs, #/##/### headings, and a block of consecutive "- "/"* " lines as a bullet list. Good enough for AI-written text; not a full parser.</summary>
+    private static string MarkdownToDoc(string text)
+    {
+        var blocks = new JsonArray();
+        foreach (var raw in text.Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var block = raw.Trim();
+            if (block.Length == 0) continue;
+            var heading = System.Text.RegularExpressions.Regex.Match(block, @"^(#{1,3})\s+(.+)$");
+            if (heading.Success)
+            {
+                blocks.Add(new JsonObject { ["type"] = "heading", ["attrs"] = new JsonObject { ["level"] = heading.Groups[1].Value.Length },
+                    ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = heading.Groups[2].Value.Trim() }) });
+                continue;
+            }
+            var lines = block.Split('\n');
+            if (lines.Length > 0 && lines.All(l => l.TrimStart().StartsWith("- ") || l.TrimStart().StartsWith("* ")))
+            {
+                var items = new JsonArray();
+                foreach (var l in lines)
+                    items.Add(new JsonObject { ["type"] = "listItem", ["content"] = new JsonArray(new JsonObject { ["type"] = "paragraph",
+                        ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = l.TrimStart('-', '*', ' ') }) }) });
+                blocks.Add(new JsonObject { ["type"] = "bulletList", ["content"] = items });
+                continue;
+            }
+            blocks.Add(new JsonObject { ["type"] = "paragraph", ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = block.Replace("\n", " ") }) });
+        }
+        if (blocks.Count == 0) blocks.Add(new JsonObject { ["type"] = "paragraph" });
+        return new JsonObject { ["type"] = "doc", ["content"] = blocks }.ToJsonString();
     }
 
     private static AiToolOutcome Propose(string kind, string title, string summary, object payload, string? preview = null)

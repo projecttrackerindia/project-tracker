@@ -301,9 +301,25 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 var tu = new AiToolUseDto(use.Name, outcome.Label, outcome.Count);
                 if (!outcome.IsError) used.Add(tu);
                 yield return new AiStreamTool(use.Id, use.Name, outcome.Label, outcome.IsError ? "failed" : "done", outcome.Count);
-                if (outcome.Proposal is { } p) { proposals.Add(p); yield return new AiStreamAction(p.ToDto()); }
-                results.Add(new AiToolResult(use.Id, outcome.Content, outcome.IsError));
-                seen.Append(' ').Append(outcome.Content);
+                var content = outcome.Content;
+                if (outcome.Proposal is { } p)
+                {
+                    var final = p;
+                    if (AiToolbox.AutoExecuteKinds.Contains(p.Kind))
+                    {
+                        AiActionResult? result = null; string? error = null;
+                        try { result = await runner.RunAsync(p, ct); }
+                        catch (AppException ex) { error = ex.Message; }
+                        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "An auto-run AI suggestion failed ({Kind})", p.Kind); error = "That could not be done. Try it by hand."; }
+                        final = error is null ? p with { Status = "done", Link = result!.Link } : p with { Status = "failed", Error = error };
+                        content = error is null ? $"Done: {p.Title} ({p.Summary})." : $"That could not be done: {error}";
+                        if (error is null) recorder.Audit("ai.action_auto", "AiAssistant", null, null, new { kind = p.Kind, title = p.Title });
+                    }
+                    proposals.Add(final);
+                    yield return new AiStreamAction(final.ToDto());
+                }
+                results.Add(new AiToolResult(use.Id, content, outcome.IsError));
+                seen.Append(' ').Append(content);
             }
             turns = [.. turns, new AiTurn("user", results)];
         }
@@ -419,6 +435,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         AiToolbox.TeamWorkload => "Checking workload…",
         AiToolbox.ListPeople => "Looking up people…",
         AiToolbox.MyWorkSummary => "Checking your work…",
+        AiToolbox.CreateDocument => "Writing the document…",
         _ when AiToolbox.WriteTools.Contains(tool) => "Preparing a suggestion…",
         _ => "Working…",
     };

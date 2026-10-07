@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Features.Tasks;
@@ -27,7 +28,7 @@ public sealed record AiActionResult(string? Link);
 /// made the change by hand.
 /// </summary>
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
-    ReminderService reminders, ProjectService projects, WorkspaceService workspaces, IEmailSender email, ILogger<AiActionRunner> log)
+    ReminderService reminders, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email, ILogger<AiActionRunner> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -40,7 +41,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             case "create_project":
             {
                 var type = Enum.Parse<ProjectType>(Str(a, "projectType") ?? "NewProject", true);
-                var created = await projects.CreateAsync(new CreateProjectRequest(Str(a, "name")!, null, Str(a, "description"), Prio(a), null, Guid(a, "ownerId"), null, Date(a, "startDate"), Date(a, "dueDate"), null,
+                var created = await projects.CreateAsync(new CreateProjectRequest(Str(a, "name")!, null, Str(a, "description"), Prio(a), null, Guid(a, "ownerId"), Guid(a, "teamId"), Date(a, "startDate"), Date(a, "dueDate"), null,
                     null, Guid(a, "projectGroupId"), type), ct);
                 return new AiActionResult($"/projects/{created.Project.Id}");
             }
@@ -82,6 +83,15 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             case "send_report":
                 await SendReportAsync(a, ct);
                 return new AiActionResult(null);
+            case "create_document":
+            {
+                IReadOnlyList<SectionInput>? sections = a.TryGetProperty("sections", out var secEl) && secEl.ValueKind == JsonValueKind.Array
+                    ? secEl.EnumerateArray().Select(s => new SectionInput(Str(s, "key")!, Str(s, "content"))).ToList() : null;
+                var tags = a.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array
+                    ? tagsEl.EnumerateArray().Select(t => t.GetString()!).ToList() : null;
+                var d = await documents.CreateAsync(new CreateDocumentRequest(Str(a, "title")!, Guid(a, "typeId")!.Value, Guid(a, "projectId"), Guid(a, "teamId"), null, tags, sections), ct);
+                return new AiActionResult($"/documents/{d.Item.Id}");
+            }
             default:
                 throw new ValidationException("action", "This kind of suggestion is not supported.");
         }
