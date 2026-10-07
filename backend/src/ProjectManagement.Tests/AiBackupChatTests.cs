@@ -81,8 +81,9 @@ public class AiBackupChatTests
         // The request itself: streamed, the model from config, system+context combined into one system message, the plain question after it.
         var body = JsonNode.Parse(stub.Body!)!;
         Assert.True(body["stream"]!.GetValue<bool>());
-        Assert.False(body["think"]!.GetValue<bool>());        // the native field - harmless to send, but Ollama's /v1 silently drops it
-        Assert.Equal("none", S(body["reasoning_effort"]));    // this is the one Ollama's /v1/chat/completions actually honours
+        Assert.Null(body["think"]);              // never sent: no measurable effect against a live server, not worth the request noise
+        Assert.Null(body["reasoning_effort"]);   // only sent when an administrator explicitly configures one
+        Assert.Null(body["stream_options"]);     // dropped - a newer field than the core spec, suspected of confusing some compat servers
         Assert.Equal("qwen3:8b", S(body["model"]));
         Assert.Contains("Be brief.", S(body["messages"]![0]!["content"]));
         Assert.Contains("Atlas Inc.", S(body["messages"]![0]!["content"]));
@@ -90,7 +91,7 @@ public class AiBackupChatTests
     }
 
     [Fact]
-    public async Task An_administrator_can_set_their_own_reasoning_effort_instead_of_the_default_none()
+    public async Task An_administrator_can_opt_in_to_a_reasoning_effort_though_nothing_is_sent_by_default()
     {
         var stub = new SseStub("""{"choices":[{"delta":{"content":"Hi"},"finish_reason":"stop"}]}""");
         var o = Options("http://localhost:11434/v1"); o.Fallback.ReasoningEffort = "low";

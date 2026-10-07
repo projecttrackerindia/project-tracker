@@ -118,17 +118,14 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         foreach (var turn in r.Turns) AppendTurn(messages, turn);
         // r.Model is whichever Claude model the tier router picked (e.g. "claude-haiku-4-5") - meaningless to this provider, which has
         // its own configured model regardless of which Claude tier the person's question was routed to.
-        // think: the native Ollama field for turning off a reasoning trace - harmless to send, but Ollama's /v1/chat/completions silently
-        // drops it (confirmed: sending it changed nothing against a live Ollama server). reasoning_effort is what that endpoint actually
-        // honours, so "none" is the real default here, not just a value an administrator might set. A model whose template has no notion
-        // of thinking at all 400s ("<model> does not support thinking") if neither is sent. This provider never reads a reasoning trace
-        // back out anyway (AiThinking/AiRedactedThinking are Claude-specific blocks this class never produces), so thinking is always off
-        // unless an administrator deliberately sets Ai:Fallback:ReasoningEffort to something else.
-        var body = new JsonObject
-        {
-            ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["think"] = false, ["messages"] = messages,
-            ["stream_options"] = new JsonObject { ["include_usage"] = true }, ["reasoning_effort"] = string.IsNullOrWhiteSpace(F.ReasoningEffort) ? "none" : F.ReasoningEffort.Trim(),
-        };
+        // think / reasoning_effort: tried both, live, against a real Ollama server - neither changed the "<model> does not support
+        // thinking" 400 at all, including a request with NEITHER field present. So that 400 is not actually about a thinking-control
+        // field's presence or value; something else in the request body is tripping it. stream_options is the next suspect: a newer
+        // OpenAI field (added after the core chat-completions spec) that less mature compat layers are known to mishandle. Left out
+        // entirely for now - token-accounting (InputTokens/OutputTokens) just defaults to 0 without it, already handled below.
+        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages };
+        // An administrator's own explicit choice is still sent if set; nothing is added by default any more (see note above).
+        if (!string.IsNullOrWhiteSpace(F.ReasoningEffort)) body["reasoning_effort"] = F.ReasoningEffort.Trim();
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
         return body;
     }
