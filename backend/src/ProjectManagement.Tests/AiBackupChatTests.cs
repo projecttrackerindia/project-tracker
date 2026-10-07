@@ -81,6 +81,7 @@ public class AiBackupChatTests
         // The request itself: streamed, the model from config, system+context combined into one system message, the plain question after it.
         var body = JsonNode.Parse(stub.Body!)!;
         Assert.True(body["stream"]!.GetValue<bool>());
+        Assert.False(body["think"]!.GetValue<bool>());   // or a model whose template has no notion of thinking 400s instead of just ignoring it
         Assert.Equal("qwen3:8b", S(body["model"]));
         Assert.Contains("Be brief.", S(body["messages"]![0]!["content"]));
         Assert.Contains("Atlas Inc.", S(body["messages"]![0]!["content"]));

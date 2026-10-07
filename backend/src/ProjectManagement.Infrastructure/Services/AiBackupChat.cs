@@ -118,7 +118,11 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         foreach (var turn in r.Turns) AppendTurn(messages, turn);
         // r.Model is whichever Claude model the tier router picked (e.g. "claude-haiku-4-5") - meaningless to this provider, which has
         // its own configured model regardless of which Claude tier the person's question was routed to.
-        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages, ["stream_options"] = new JsonObject { ["include_usage"] = true } };
+        // think: Ollama defaults to asking for a thinking model's reasoning trace unless told not to, and 400s a model whose template
+        // does not support thinking at all (most quantized instruct models) rather than just ignoring the request. This provider does not
+        // read reasoning traces back out (AiThinking/AiRedactedThinking are Claude-specific blocks this class never produces), so it is
+        // always turned off, not only when r.ShowReasoning is false.
+        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["think"] = false, ["messages"] = messages, ["stream_options"] = new JsonObject { ["include_usage"] = true } };
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
         if (!string.IsNullOrWhiteSpace(F.ReasoningEffort)) body["reasoning_effort"] = F.ReasoningEffort.Trim();
         return body;
