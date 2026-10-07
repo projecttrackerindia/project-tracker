@@ -1,6 +1,6 @@
 {
   "name": "Project Tracker",
-  "short_name": "Projects",
+  "short_name": "Project Tracker",
   "description": "Projects, tasks, operational work, time and team chat in one workspace.",
   "id": "/",
   "start_url": "/",

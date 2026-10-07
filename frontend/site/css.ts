@@ -54,7 +54,7 @@ h1,h2,h3,h4,p,ul{margin:0}
 .top{position:sticky;top:0;z-index:20;background:rgba(10,7,22,.86);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-bottom:1px solid var(--glass-line)}
 .top .wrap{display:flex;align-items:center;gap:26px;height:66px}
 .brand{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--on-ink);letter-spacing:-.3px}.brand:hover{text-decoration:none}
-.brand img{width:32px;height:32px;border-radius:9px;display:block}
+.brand .logo,.brand img{width:32px;height:32px;border-radius:9px;display:block}
 .nav{display:flex;gap:4px;margin-left:6px}.nav a{padding:8px 13px;border-radius:99px;color:var(--on-ink-2);font-weight:600;font-size:14.5px;transition:background .2s,color .2s}
 .nav a:hover,.nav a[aria-current]{color:#fff;background:var(--glass);text-decoration:none}
 .actions{margin-left:auto;display:flex;align-items:center;gap:10px}

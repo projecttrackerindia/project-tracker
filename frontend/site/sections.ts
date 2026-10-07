@@ -11,12 +11,12 @@ const aurora = '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></di
 const reveal = (i = 0) => `data-r style="--d:${(i * 0.07).toFixed(2)}s"`;
 
 export const header = (active = '') => `<div class="progress" aria-hidden="true"></div><header class="top"><div class="wrap">
-<a class="brand" href="/" aria-label="${SITE.name} home"><img src="/favicon-48x48.png" width="32" height="32" alt="" />${SITE.name}</a>
+<a class="brand" href="/" aria-label="${SITE.name} home"><svg class="logo" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#a855f7"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M7.3 16.7l5.3 5.3L18.7 13.3M18.7 13.3l4.3-4.8" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="24.4" cy="7.6" r="2.8" fill="#fff"/></svg>${SITE.name}</a>
 <nav class="nav" aria-label="Main">${NAV.map((n) => `<a href="${n.href}"${n.href === active ? ' aria-current="page"' : ''}>${n.label}</a>`).join('')}</nav>
 <div class="actions"><a class="btn btn-glass" href="/login">Sign in</a><a class="btn btn-primary" href="/register">Get started</a></div></div></header>`;
 
 export const footer = () => `<footer><div class="wrap"><div class="cols">
-<div><a class="brand" href="/"><img src="/favicon-48x48.png" width="32" height="32" alt="" />${SITE.name}</a><p style="margin-top:12px;max-width:22em">${esc(SITE.tagline)}.</p></div>
+<div><a class="brand" href="/"><svg class="logo" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#a855f7"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M7.3 16.7l5.3 5.3L18.7 13.3M18.7 13.3l4.3-4.8" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="24.4" cy="7.6" r="2.8" fill="#fff"/></svg>${SITE.name}</a><p style="margin-top:12px;max-width:22em">${esc(SITE.tagline)}.</p></div>
 <div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a></li></ul></div>

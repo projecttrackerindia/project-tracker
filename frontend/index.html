@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--site:head-->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Projects" />
+    <meta name="apple-mobile-web-app-title" content="Project Tracker" />
     <script>
       // Apply the saved theme before first paint to avoid a light/dark flash. Light is the default: it is only dark when the person chose dark.
       try {
@@ -18,7 +18,15 @@
       try {
         var home = location.pathname === '/';
         var known = localStorage.getItem('pm_hint') === '1';
-        document.documentElement.className = home && !known ? 'landing' : 'app';
+        var inApp = (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+        document.documentElement.className = home && !known && !inApp ? 'landing' : 'app';
+        // An installed app behaves like an app: no pinch or double-tap zoom, no page bounce. The website in a browser keeps normal zoom.
+        if (inApp) {
+          document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+          document.documentElement.classList.add('installed');
+          ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (g) { document.addEventListener(g, function (e) { e.preventDefault(); }); });
+          document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+        }
       } catch (e) { document.documentElement.className = 'app'; }
       // Only the public screens are for search engines. Every other address (an organization's pages, a reset link, a mistyped path) is
       // answered with this same file, so it says "do not index" instead of looking like a duplicate of the home page.
@@ -29,7 +37,7 @@
         } else document.querySelector('meta[name="robots"]').setAttribute('content', 'noindex, nofollow');
       } catch (e) {}
     </script>
-    <style>html.app #site{display:none}html.landing #root{display:none}html.landing,html.landing body{background:#0a0716}</style>
+    <style>html.installed,html.installed body{touch-action:pan-x pan-y;overscroll-behavior:none;-webkit-user-select:none;user-select:none}html.installed input,html.installed textarea,html.installed [contenteditable]{-webkit-user-select:text;user-select:text}html.installed body{overflow-x:hidden}#root:empty{position:fixed;inset:0;background:#0a0716 url(/icons/icon-192.png) center/84px no-repeat;border-radius:0}html.app #site{display:none}html.landing #root{display:none}html.landing,html.landing body{background:#0a0716}</style>
     <style><!--site:css--></style>
   </head>
   <body>
