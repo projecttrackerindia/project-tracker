@@ -81,11 +81,21 @@ public class AiBackupChatTests
         // The request itself: streamed, the model from config, system+context combined into one system message, the plain question after it.
         var body = JsonNode.Parse(stub.Body!)!;
         Assert.True(body["stream"]!.GetValue<bool>());
-        Assert.False(body["think"]!.GetValue<bool>());   // or a model whose template has no notion of thinking 400s instead of just ignoring it
+        Assert.False(body["think"]!.GetValue<bool>());        // the native field - harmless to send, but Ollama's /v1 silently drops it
+        Assert.Equal("none", S(body["reasoning_effort"]));    // this is the one Ollama's /v1/chat/completions actually honours
         Assert.Equal("qwen3:8b", S(body["model"]));
         Assert.Contains("Be brief.", S(body["messages"]![0]!["content"]));
         Assert.Contains("Atlas Inc.", S(body["messages"]![0]!["content"]));
         Assert.Equal("Hi", S(body["messages"]![1]!["content"]));
+    }
+
+    [Fact]
+    public async Task An_administrator_can_set_their_own_reasoning_effort_instead_of_the_default_none()
+    {
+        var stub = new SseStub("""{"choices":[{"delta":{"content":"Hi"},"finish_reason":"stop"}]}""");
+        var o = Options("http://localhost:11434/v1"); o.Fallback.ReasoningEffort = "low";
+        await foreach (var _ in Chat(stub, o).StreamAsync(Ask("Hi"), default)) { }
+        Assert.Equal("low", S(JsonNode.Parse(stub.Body!)!["reasoning_effort"]));
     }
 
     [Fact]

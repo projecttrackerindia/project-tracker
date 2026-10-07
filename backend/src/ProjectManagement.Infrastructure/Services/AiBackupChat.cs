@@ -118,13 +118,18 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         foreach (var turn in r.Turns) AppendTurn(messages, turn);
         // r.Model is whichever Claude model the tier router picked (e.g. "claude-haiku-4-5") - meaningless to this provider, which has
         // its own configured model regardless of which Claude tier the person's question was routed to.
-        // think: Ollama defaults to asking for a thinking model's reasoning trace unless told not to, and 400s a model whose template
-        // does not support thinking at all (most quantized instruct models) rather than just ignoring the request. This provider does not
-        // read reasoning traces back out (AiThinking/AiRedactedThinking are Claude-specific blocks this class never produces), so it is
-        // always turned off, not only when r.ShowReasoning is false.
-        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["think"] = false, ["messages"] = messages, ["stream_options"] = new JsonObject { ["include_usage"] = true } };
+        // think: the native Ollama field for turning off a reasoning trace - harmless to send, but Ollama's /v1/chat/completions silently
+        // drops it (confirmed: sending it changed nothing against a live Ollama server). reasoning_effort is what that endpoint actually
+        // honours, so "none" is the real default here, not just a value an administrator might set. A model whose template has no notion
+        // of thinking at all 400s ("<model> does not support thinking") if neither is sent. This provider never reads a reasoning trace
+        // back out anyway (AiThinking/AiRedactedThinking are Claude-specific blocks this class never produces), so thinking is always off
+        // unless an administrator deliberately sets Ai:Fallback:ReasoningEffort to something else.
+        var body = new JsonObject
+        {
+            ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["think"] = false, ["messages"] = messages,
+            ["stream_options"] = new JsonObject { ["include_usage"] = true }, ["reasoning_effort"] = string.IsNullOrWhiteSpace(F.ReasoningEffort) ? "none" : F.ReasoningEffort.Trim(),
+        };
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
-        if (!string.IsNullOrWhiteSpace(F.ReasoningEffort)) body["reasoning_effort"] = F.ReasoningEffort.Trim();
         return body;
     }
 
