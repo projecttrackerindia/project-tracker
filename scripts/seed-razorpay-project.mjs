@@ -197,7 +197,9 @@ const TASKS = [
 
   // who the tasks go to: a named team member (by default "Prasanna"), falling back to whoever is running this
   const members = items(await call('GET', '/workspace/members'));
-  const assignee = members.find((m) => m.displayName.toLowerCase().includes(ASSIGNEE.toLowerCase())) ?? me;
+  // GET /workspace/members returns { userId, displayName, email, ... } (no "id"): normalize so the rest of this script can say assignee.id.
+  const assigneeMember = members.find((m) => m.displayName.toLowerCase().includes(ASSIGNEE.toLowerCase()));
+  const assignee = assigneeMember ? { id: assigneeMember.userId, displayName: assigneeMember.displayName, email: assigneeMember.email } : me;
   if (assignee.id !== me.id) say(`Tasks will be assigned to ${assignee.displayName} (${assignee.email}).`);
   else if (members.length && !members.some((m) => m.displayName.toLowerCase().includes(ASSIGNEE.toLowerCase()))) say(`No workspace member matches "${ASSIGNEE}"; assigning to ${me.displayName} instead.`);
   if (team && !DRY) {
@@ -219,7 +221,8 @@ const TASKS = [
     if (DRY) say('[dry] would create the project'); else { await call('POST', '/projects', body); project = items(await call('GET', '/projects?pageSize=200')).find((p) => p.name.toLowerCase() === PROJECT.toLowerCase()); say(`Created the project ${project.key} · ${project.name}, team "${team?.name ?? '-'}", owner ${assignee.displayName}.`); }
   } else {
     say(`Project ${project.key} · ${project.name} found.`);
-    const needsName = project.name !== PROJECT, needsTeam = team && project.teamId !== team.id, needsOwner = project.ownerId !== assignee.id;
+    // ProjectListItemDto nests the owner as { id, name } - there is no flat ownerId on it.
+    const needsName = project.name !== PROJECT, needsTeam = team && project.teamId !== team.id, needsOwner = project.owner?.id !== assignee.id;
     if (needsName || needsTeam || needsOwner) {
       if (DRY) say(`  [dry] would update: ${[needsName && 'name', needsTeam && 'team', needsOwner && 'owner'].filter(Boolean).join(', ')}`);
       else {
