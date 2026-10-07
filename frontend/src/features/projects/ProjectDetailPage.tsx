@@ -184,6 +184,7 @@ export function ProjectDetailPage() {
       </div>
 
       {method !== 'Agile' && <div style={{ marginBottom: 18 }}><Timeline projectId={p.id} projectName={p.name} stages={detail.stages} canEdit={canEdit && !archived} canReportIssue={reportable}
+          taskProgress={p.progress} finished={finished}
           onShowIssues={showIssues} onReportIssue={(stageId) => setReporting({ stageId })} /></div>}
 
       <div style={{ marginBottom: 18 }}>

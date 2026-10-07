@@ -27,11 +27,18 @@ function Dot({ status }: { status: StageDisplayStatus }) {
   return <span>!</span>;
 }
 
-/** Horizontal, data-driven project lifecycle (spec 13.3). */
-export function Timeline({ projectId, projectName, stages, canEdit, canReportIssue, onShowIssues, onReportIssue }: {
+/** Remembers, per browser, that the "all tasks are done" nudge was dismissed for a project - so it does not reappear every visit. */
+const nudgeKey = (projectId: string) => `pm_timeline_nudge_${projectId}`;
+
+/** Horizontal, data-driven project lifecycle (spec 13.3). This is a formal phase sign-off, kept deliberately separate from task
+ *  completion: a stage only advances when someone marks it so, whatever share of its tasks (or the project's) is done. */
+export function Timeline({ projectId, projectName, stages, canEdit, canReportIssue, taskProgress, finished, onShowIssues, onReportIssue }: {
   projectId: string; projectName: string; stages: Stage[]; canEdit: boolean;
   /** Issues: whether the person may report one, and the ways into them from a stage. */
-  canReportIssue: boolean; onShowIssues: (stageId: string) => void; onReportIssue: (stageId: string) => void;
+  canReportIssue: boolean;
+  /** The project's own task-completion percentage (0-100) and whether it is itself Completed/Cancelled/Archived - to offer, not force, closing out any stage left open once the work is done. */
+  taskProgress: number; finished: boolean;
+  onShowIssues: (stageId: string) => void; onReportIssue: (stageId: string) => void;
 }) {
   const wid = useWorkspaceId();
   const [modal, setModal] = useState<{ stage?: Stage } | null>(null);
@@ -73,10 +80,16 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
   const endDrag = () => { setDragId(null); setOver(null); };
   const canReorder = canEdit && stages.length > 1;
 
+  const [nudgeDismissed, setNudgeDismissed] = useState(() => { try { return sessionStorage.getItem(nudgeKey(projectId)) === '1'; } catch { return false; } });
+  const dismissNudge = () => { setNudgeDismissed(true); try { sessionStorage.setItem(nudgeKey(projectId), '1'); } catch { /* storage unavailable */ } };
+  // All the work is done, the project itself is still open, and at least one stage was never walked through to Completed.
+  const showNudge = canEdit && !finished && !nudgeDismissed && taskProgress >= 100 && done < stages.length;
+  const open = stages.length - done;
+
   return (
     <div className="card">
       <div className="card-head">
-        <div><h3>Project timeline</h3><p>{stages.length ? `${done} of ${stages.length} stages completed${canReorder ? ' · drag a stage to reorder' : ''}` : 'No stages defined yet'}</p></div>
+        <div><h3>Project timeline</h3><p>{stages.length ? `${done} of ${stages.length} stages completed${canReorder ? ' · drag a stage to reorder' : ''}` : 'No stages defined yet'}<span className="htl-sub"> · tracks phase sign-off, separately from task completion above</span></p></div>
         <div className="row">
           <div className="legend"><span>✓ Completed</span><span>● In progress</span><span>○ Pending</span><span><Icon name="lock" size={11} /> Locked</span><span>! Delayed</span></div>
           {canEdit && <button className="btn-icon" title="Timeline templates" aria-label="Timeline templates" onClick={() => setManager(true)}><Icon name="layers" /></button>}
@@ -84,6 +97,18 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
         </div>
       </div>
       <div className="card-body">
+        {showNudge && (
+          <div className="form-info" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Icon name="info" size={14} />
+            <span style={{ flex: 1 }}>
+              All tasks are done, but {open} {open === 1 ? 'stage is' : 'stages are'} still open below. Walk {open === 1 ? 'it' : 'them'} through to Completed to close out the timeline too - it will not do that on its own.
+            </span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModal({ stage: ordered.find((s) => displayOf(s) !== 'Completed' && displayOf(s) !== 'Locked') ?? ordered.find((s) => displayOf(s) !== 'Completed') })}>
+              Review
+            </button>
+            <button type="button" className="btn-icon" aria-label="Dismiss" onClick={dismissNudge}><Icon name="close" size={13} /></button>
+          </div>
+        )}
         {stages.length === 0 ? <EmptyState icon="flag" title="No stages yet" text="Add lifecycle stages such as Planning, Development and UAT." /> : (
           <div className="htl">
             {ordered.map((s) => {
