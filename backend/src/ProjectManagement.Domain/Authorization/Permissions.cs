@@ -41,13 +41,15 @@ public static class Permissions
     public const string DocsDelete = "docs.delete";
     /// <summary>Documents: set up the approval workflows (who approves which kind of document).</summary>
     public const string DocsWorkflow = "docs.workflow";
+    /// <summary>Documents: reveal a protected value (a secret) once; every reveal is recorded.</summary>
+    public const string DocsSecrets = "docs.secrets.reveal";
 
     public static readonly string[] All =
     [
         OrgManage, OrgStructure, AccessManage, BillingManage, MembersInvite, MembersManage, TeamsManage,
         ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll, WorkflowManage, ProjectGroupsManage, LabelsManage,
         WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView, PermissionsManage,
-        DocsCreate, DocsEdit, DocsDelete, DocsWorkflow,
+        DocsCreate, DocsEdit, DocsDelete, DocsWorkflow, DocsSecrets,
     ];
 
     /// <summary>Permissions that can never be changed from their defaults.</summary>
@@ -60,12 +62,12 @@ public static class Permissions
         [
             OrgManage, OrgStructure, AccessManage, MembersInvite, MembersManage, TeamsManage, ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll,
             WorkflowManage, ProjectGroupsManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView,
-            DocsCreate, DocsEdit, DocsDelete, DocsWorkflow,
+            DocsCreate, DocsEdit, DocsDelete, DocsWorkflow, DocsSecrets,
         ],
         [TenantRole.Manager] =
         [
             TeamsManage, ProjectsCreate, ProjectsEdit, WorkflowManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete,
-            TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, DocsCreate, DocsEdit, DocsDelete,
+            TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, DocsCreate, DocsEdit, DocsDelete, DocsSecrets,
         ],
         // Members can create tasks and comment on any of them, but edit only tasks assigned to them
         // (PermissionService.RequireTaskEditAsync) - TasksEdit here would grant editing everyone's tasks.

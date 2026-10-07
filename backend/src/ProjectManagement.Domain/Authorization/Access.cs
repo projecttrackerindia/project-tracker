@@ -99,7 +99,7 @@ public static class Modules
                 case Projects: yield return Permissions.ProjectsDelete; yield return Permissions.WorkflowManage; yield return Permissions.ProjectGroupsManage; break;
                 case Tasks: yield return Permissions.TasksDelete; break;
                 case Work: yield return Permissions.WorkDelete; yield return Permissions.WorkTypesManage; break;
-                case Documents: yield return Permissions.DocsDelete; yield return Permissions.DocsWorkflow; break;
+                case Documents: yield return Permissions.DocsDelete; yield return Permissions.DocsWorkflow; yield return Permissions.DocsSecrets; break;
                 case Members: yield return Permissions.MembersManage; break;
                 case Billing: yield return Permissions.BillingManage; break;
             }

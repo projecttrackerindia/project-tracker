@@ -20,6 +20,7 @@ import { PublishApprovedModal, ReviewPanel, SubmitModal } from './DocumentReview
 import { RequirementsCard } from './DocumentRequirements';
 import { ActivityCard } from './DocumentActivity';
 import { ApiReference } from './ApiReference';
+import { DocumentSecrets } from './DocumentSecrets';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
@@ -205,6 +206,7 @@ export function DocumentPage() {
           </div>
           <RequirementsCard documentId={id} canEdit={editable} />
           <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />
+          <DocumentSecrets documentId={id} canEdit={editable} />
           <DocumentFiles documentId={id} canEdit={editable} />
           <ActivityCard id={id} title={`${d.key} · ${d.title}`} />
         </aside>

@@ -269,6 +269,12 @@ public class AuditLog : Entity
     public string? UserAgent { get; set; }
     public DateTime CreatedAt { get; set; }
     public User? User { get; set; }
+    /// <summary>Position in the workspace's tamper-evident chain (1, 2, 3 ...); null for rows written before the chain existed and for platform-level rows.</summary>
+    public long? Seq { get; set; }
+    /// <summary>The <see cref="Hash"/> of the row before this one in the chain.</summary>
+    public string? PrevHash { get; set; }
+    /// <summary>SHA-256 over this row's content and <see cref="PrevHash"/>. Changing or removing a row breaks every hash after it.</summary>
+    public string? Hash { get; set; }
 }
 
 /// <summary>A time-boxed batch of a project's tasks. Planned, then Active (at most one per project), then Completed.</summary>

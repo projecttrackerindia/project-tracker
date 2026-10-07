@@ -659,3 +659,11 @@ export interface ApiImportResult { success: boolean; applied: boolean; format: s
 export interface ApiChange { level: 'Breaking' | 'Warning' | 'Info'; code: string; definition: string; method: string; path: string; message: string; where: string | null }
 export interface ApiChanges { from: { versionId: string | null; label: string }; to: { versionId: string | null; label: string }; items: ApiChange[]; breaking: number; warnings: number; info: number; added: number; removed: number; modified: number }
 export interface EndpointHit { documentId: string; documentKey: string; documentTitle: string; definition: string; method: ApiMethod; path: string; summary: string }
+
+export type SecretClass = 'Secret' | 'Confidential';
+export interface SecretItem { id: string; label: string; note: string | null; class: SecretClass; createdAt: string; valueChangedAt: string | null; by: { id: string; displayName: string } | null }
+export interface SecretList { items: SecretItem[]; canReveal: boolean; canEdit: boolean; confidentialAllowed: boolean; revealSeconds: number }
+export interface SecretReveal { value: string; revealSeconds: number }
+export interface StepUpToken { token: string; expiresAt: string }
+export interface ChainStatus { intact: boolean; records: number; verifiedUpTo: number; verifiedAt: string | null; brokenSeq: number | null; brokenId: string | null; reason: string | null }
+export interface DocSecurity { revealSeconds: number; entitled: boolean; keyVersion: number; valuesTotal: number; valuesOnOldKeys: number; lastRotatedAt: string | null; chain: ChainStatus }

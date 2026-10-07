@@ -317,3 +317,42 @@ public class EndpointRevision : TenantEntity, ITenantScoped
     public Guid? OwnerId { get; set; }
     public string DetailsJson { get; set; } = "{}";
 }
+
+
+/// <summary>How a protected value is treated: a Secret is masked and revealed with the permission (audited); Confidential also needs a fresh two-step check (Business plan).</summary>
+public enum SensitivityClass { Secret = 0, Confidential = 1 }
+
+/// <summary>
+/// A secret kept with a document (an API key, a password, a connection string). The text of the document holds only a reference to it, never the value;
+/// the value is encrypted with the workspace's current data key and bound to this row, so copied ciphertext opens nowhere else.
+/// </summary>
+public class SensitiveValue : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public string Label { get; set; } = "";
+    public string? Note { get; set; }
+    public SensitivityClass Class { get; set; } = SensitivityClass.Secret;
+    /// <summary>The value, encrypted (AES-256-GCM): nonce, tag and cipher text, base64. Never sent to a client except by a successful reveal.</summary>
+    public string Cipher { get; set; } = "";
+    /// <summary>Which of the workspace's data keys encrypted it.</summary>
+    public int KeyVersion { get; set; }
+    public DateTime? ValueChangedAt { get; set; }
+    public DateTime? ReencryptedAt { get; set; }
+}
+
+/// <summary>A workspace's data key, itself encrypted with the platform's master key (envelope encryption). A new version is made when an administrator rotates; old versions decrypt until every value has moved.</summary>
+public class DocumentKey : TenantEntity, ITenantScoped
+{
+    public int Version { get; set; }
+    public string WrappedKey { get; set; } = "";
+    public bool Active { get; set; }
+    public DateTime? RetiredAt { get; set; }
+}
+
+/// <summary>Proof that a person passed a fresh two-step check, valid for a few minutes; confidential values are revealed only with one.</summary>
+public class StepUpGrant : Entity
+{
+    public Guid UserId { get; set; }
+    public string TokenHash { get; set; } = "";
+    public DateTime ExpiresAt { get; set; }
+}

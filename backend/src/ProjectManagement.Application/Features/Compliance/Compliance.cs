@@ -58,7 +58,7 @@ public class DataPolicyService(IAppDbContext db, ICurrentContext ctx, AppClock c
     }
 
     /// <summary>Applies every workspace's policy (maintenance job, no request context). Returns how many records were deleted.</summary>
-    public static async Task<int> PurgeAllAsync(IAppDbContext db, DateTime now, ILogger log, CancellationToken ct)
+    public static async Task<int> PurgeAllAsync(IAppDbContext db, DateTime now, ILogger log, CancellationToken ct, ProjectManagement.Application.Features.Documents.AuditChainService? chain = null)
     {
         var total = 0;
         var policies = await db.TenantDataPolicies.IgnoreQueryFilters().ToListAsync(ct);
@@ -83,7 +83,12 @@ public class DataPolicyService(IAppDbContext db, ICurrentContext ctx, AppClock c
             if (p.AuditRetentionDays is { } au)
             {
                 var cutoff = now.AddDays(-au);
-                n += await db.AuditLogs.IgnoreQueryFilters().Where(x => x.TenantId == p.TenantId && x.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
+                // The tamper-evident chain keeps the last removed row's hash as its new start; rows from before the chain existed have no hash and go by date.
+                if (chain is not null) n += await chain.PurgeAsync(p.TenantId, cutoff, ct);
+                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                await db.AllowAuditPurgeAsync(ct);
+                n += await db.AuditLogs.IgnoreQueryFilters().Where(x => x.TenantId == p.TenantId && x.Seq == null && x.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
+                await tx.CommitAsync(ct);
             }
             p.LastPurgedAt = now;
             if (n > 0) log.LogInformation("Data policy of workspace {Tenant}: deleted {Count} old record(s)", p.TenantId, n);

@@ -38,6 +38,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<ApiDefinition> ApiDefinitions => Set<ApiDefinition>();
     public DbSet<ApiEndpoint> ApiEndpoints => Set<ApiEndpoint>();
     public DbSet<ApiSnapshot> ApiSnapshots => Set<ApiSnapshot>();
+    public DbSet<SensitiveValue> SensitiveValues => Set<SensitiveValue>();
+    public DbSet<DocumentKey> DocumentKeys => Set<DocumentKey>();
+    public DbSet<StepUpGrant> StepUpGrants => Set<StepUpGrant>();
     public DbSet<EndpointRevision> EndpointRevisions => Set<EndpointRevision>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<OrgRole> OrgRoles => Set<OrgRole>();
@@ -177,6 +180,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<SectionKind>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkTarget>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkRelation>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<SensitivityClass>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<ApiMethod>().HaveConversion<string>().HaveMaxLength(8);
         builder.Properties<ApiAuthScheme>().HaveConversion<string>().HaveMaxLength(12);
         builder.Properties<ApproverKind>().HaveConversion<string>().HaveMaxLength(16);
@@ -395,6 +399,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Reason).HasMaxLength(500);
             e.Property(x => x.DecisionNote).HasMaxLength(500);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<SensitiveValue>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId });
+            e.HasIndex(x => new { x.TenantId, x.KeyVersion });
+            e.Property(x => x.Label).HasMaxLength(80);
+            e.Property(x => x.Note).HasMaxLength(200);
+            e.Property(x => x.Cipher).HasMaxLength(12000);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentKey>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Version }).IsUnique();
+            e.Property(x => x.WrappedKey).HasMaxLength(500);
+        });
+        b.Entity<StepUpGrant>(e =>
+        {
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => x.ExpiresAt);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
         });
         b.Entity<ApiDefinition>(e =>
         {
@@ -961,6 +985,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         {
             e.HasIndex(x => new { x.TenantId, x.CreatedAt });
             e.HasIndex(x => x.CreatedAt);
+            // The chain: one position per workspace. Two writers that both read the same last row cannot both win (the loser tries again).
+            e.HasIndex(x => new { x.TenantId, x.Seq }).IsUnique();
+            e.Property(x => x.PrevHash).HasMaxLength(64);
+            e.Property(x => x.Hash).HasMaxLength(64);
             e.Property(x => x.Action).HasMaxLength(60);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -1100,7 +1128,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         // Activity written in this save is what other people's open screens need to hear about (sent only once it is committed).
         var changes = changeFeed is null ? null : ChangeTracker.Entries<Activity>().Where(e => e.State == EntityState.Added)
             .Select(e => new ChangeEvent(e.Entity.TenantId, e.Entity.EntityType, e.Entity.EntityId, e.Entity.ProjectId, e.Entity.Action, e.Entity.ActorId)).ToList();
-        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var saved = await SaveChainedAsync(acceptAllChangesOnSuccess, cancellationToken);
         if (entitlementCache is not null)
         {
             if (plansChanged) entitlementCache.InvalidateAllPlans();
@@ -1108,6 +1136,60 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         }
         if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
         return saved;
+    }
+
+    /// <summary>
+    /// Saves, first giving each new audit row its place in its workspace's chain (position, the previous row's hash, its own hash). If another request took the
+    /// same position a moment earlier, the unique index refuses and this tries again from the new end of the chain.
+    /// </summary>
+    private async Task<int> SaveChainedAsync(bool acceptAllChangesOnSuccess, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var chained = await ChainAuditAsync(ct);
+            try { return await base.SaveChangesAsync(acceptAllChangesOnSuccess, ct); }
+            catch (DbUpdateException e) when (chained && attempt < 6 && IsChainConflict(e))
+            {
+                await Task.Delay(Random.Shared.Next(5, 40) * attempt, ct);
+            }
+        }
+    }
+
+    public async Task AllowAuditPurgeAsync(CancellationToken ct)
+    {
+        if (Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+            await Database.ExecuteSqlRawAsync("SELECT set_config('app.audit_purge', 'on', true)", ct);
+    }
+
+    private static bool IsChainConflict(DbUpdateException e)
+    {
+        for (Exception? x = e; x is not null; x = x.InnerException)
+            if (x.Message.Contains("AuditLogs", StringComparison.OrdinalIgnoreCase) && (x.Message.Contains("Seq", StringComparison.OrdinalIgnoreCase) || x.Message.Contains("23505"))) return true;
+        return false;
+    }
+
+    private async Task<bool> ChainAuditAsync(CancellationToken ct)
+    {
+        var added = ChangeTracker.Entries<AuditLog>().Where(e => e.State == EntityState.Added && e.Entity.TenantId != null).Select(e => e.Entity).ToList();
+        if (added.Count == 0) return false;
+        foreach (var group in added.GroupBy(a => a.TenantId!.Value))
+        {
+            var last = await AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == group.Key && a.Seq != null).OrderByDescending(a => a.Seq).Select(a => new { a.Seq, a.Hash }).FirstOrDefaultAsync(ct);
+            var seq = last?.Seq ?? 0; var prev = last?.Hash ?? AuditChain.Genesis;
+            if (last is null)
+            {
+                // After old rows were purged the chain continues from the recorded anchor.
+                var anchor = await TenantSecuritySettings.IgnoreQueryFilters().Where(t => t.TenantId == group.Key).Select(t => new { t.ChainAnchorSeq, t.ChainAnchorHash }).FirstOrDefaultAsync(ct);
+                if (anchor?.ChainAnchorSeq is { } aseq) { seq = aseq; prev = anchor.ChainAnchorHash ?? AuditChain.Genesis; }
+            }
+            foreach (var a in group.OrderBy(a => a.CreatedAt == default ? DateTime.MaxValue : a.CreatedAt))
+            {
+                if (a.CreatedAt == default) a.CreatedAt = clock.GetUtcNow().UtcDateTime;
+                a.CreatedAt = AuditChain.Normalize(a.CreatedAt);
+                a.Seq = ++seq; a.PrevHash = prev; a.Hash = prev = AuditChain.Compute(a, prev);
+            }
+        }
+        return true;
     }
 
     private void Stamp()

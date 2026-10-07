@@ -4,10 +4,11 @@ import { Icon } from '../../components/Icon';
 import { PageHead } from '../../components/ui';
 import { documentApi } from '../../api/endpoints';
 import { useWsQuery } from '../../lib/hooks';
-import { useModule } from '../../stores/auth';
+import { useAuth, useModule } from '../../stores/auth';
 import { DocumentList } from './DocumentList';
 import { InboxView } from './DocumentInbox';
 import { WorkflowsModal } from './DocumentWorkflows';
+import { DocumentSecurityModal } from './DocumentSecurity';
 import { DocumentWizard } from './DocumentWizard';
 
 /** Every document the person may open, wherever it lives: in a project, a team, or the whole organization. */
@@ -16,6 +17,8 @@ export function DocumentsPage() {
   const canCreate = useModule('documents') >= 2;
   const [creating, setCreating] = useState(false);
   const [flows, setFlows] = useState(false);
+  const [security, setSecurity] = useState(false);
+  const isAdmin = useAuth((s) => s.ctx?.current?.role === 'Owner' || s.ctx?.current?.role === 'Admin');
   const [params, setParams] = useSearchParams();
   const view = params.get('view') === 'inbox' ? 'inbox' : 'all';
   const inbox = useWsQuery(['documents', 'inbox'], documentApi.inbox);
@@ -24,6 +27,7 @@ export function DocumentsPage() {
   return (
     <>
       <PageHead title="Documents" sub="Requirements, API documentation, test plans and more, linked to the projects and tasks that deliver them.">
+        {isAdmin && <button className="btn btn-ghost" onClick={() => setSecurity(true)}><Icon name="shield" size={15} /> Security</button>}
         <button className="btn btn-ghost" onClick={() => setFlows(true)}><Icon name="checks" size={15} /> Approval workflows</button>
         {canCreate && <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New document</button>}
       </PageHead>
@@ -33,6 +37,7 @@ export function DocumentsPage() {
       </div>
       {view === 'inbox' ? <InboxView /> : <DocumentList canCreate={canCreate} onNew={() => setCreating(true)} />}
       {flows && <WorkflowsModal onClose={() => setFlows(false)} />}
+      {security && <DocumentSecurityModal onClose={() => setSecurity(false)} />}
       {creating && <DocumentWizard onClose={() => setCreating(false)} onCreated={(id) => nav(`/documents/${id}`)} />}
     </>
   );

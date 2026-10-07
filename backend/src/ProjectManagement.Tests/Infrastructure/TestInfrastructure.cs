@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Domain.Entities;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Infrastructure.Persistence;
@@ -82,11 +83,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     /// <summary>Stands in for the internet: records every webhook request and answers with whatever the test asks for.</summary>
     public RecordingWebhookTransport Webhooks { get; } = new();
+    /// <summary>Everything the application logged, so a test can prove a secret never reaches a log line.</summary>
+    public LogSink Logs { get; } = new();
     public FakePayments Payments { get; } = new();
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureLogging(l => l.AddProvider(Logs));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<ProjectManagement.Application.Features.Integrations.IWebhookTransport>();
@@ -353,5 +357,21 @@ public sealed class RecordingWebhookTransport : ProjectManagement.Application.Fe
         return Task.FromResult(status == 0
             ? new ProjectManagement.Application.Features.Integrations.WebhookSendResult(null, "Could not connect to the receiver.", null)
             : new ProjectManagement.Application.Features.Integrations.WebhookSendResult(status, null, status >= 400 ? "error" : "ok"));
+    }
+}
+
+public sealed class LogSink : ILoggerProvider
+{
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _lines = new();
+    public IReadOnlyCollection<string> Lines => _lines.ToArray();
+    public ILogger CreateLogger(string categoryName) => new Sink(_lines, categoryName);
+    public void Dispose() { }
+
+    private sealed class Sink(System.Collections.Concurrent.ConcurrentQueue<string> lines, string category) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            lines.Enqueue($"{category}: {formatter(state, exception)} {exception}");
     }
 }

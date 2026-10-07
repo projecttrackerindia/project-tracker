@@ -582,7 +582,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         Assert.True((await Write(owner, doc, "first")).Ok);
 
         long Rows() => factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().LongCount(a => a.TenantId == owner.WorkspaceId));
-        Guid apiDef = Guid.Empty, apiEndpoint = Guid.Empty, grant = Guid.Empty, link = Guid.Empty, requirement = Guid.Empty, access = Guid.Empty, file = Guid.Empty, version = Guid.Empty;
+        Guid apiDef = Guid.Empty, apiEndpoint = Guid.Empty, grant = Guid.Empty, link = Guid.Empty, requirement = Guid.Empty, access = Guid.Empty, file = Guid.Empty, version = Guid.Empty, secret = Guid.Empty;
 
         // One scenario per write endpoint, keyed "VERB template". Each runs the call and the test checks that the audit table grew.
         var scenarios = new Dictionary<string, Func<Task<ApiResult>>>
@@ -630,10 +630,25 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["POST documents/{id:guid}/requirements"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/requirements", new { titles = new[] { "One" } }); requirement = Guid.Parse(S(r.Data!.AsArray()[0]!["id"])); return r; },
             ["PUT documents/{id:guid}/requirements/{requirementId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/requirements/{requirement}", new { title = "One, better", priority = "High" }),
             ["DELETE documents/{id:guid}/requirements/{requirementId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/requirements/{requirement}"),
+            ["POST documents/{id:guid}/secrets"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/secrets", new { label = "Audit key", value = "v1" }); secret = Guid.Parse(S(r.Data!["items"]![0]!["id"])); return r; },
+            ["PUT documents/{id:guid}/secrets/{secretId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/secrets/{secret}", new { label = "Audit key", value = "v2" }),
+            ["POST documents/{id:guid}/secrets/{secretId:guid}/reveal"] = () => owner.Post($"/api/v1/documents/{doc}/secrets/{secret}/reveal", new { }),
+            ["DELETE documents/{id:guid}/secrets/{secretId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/secrets/{secret}"),
+            ["POST documents/step-up"] = async () =>
+            {
+                var setup = await owner.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!x" });
+                var key = setup.Data!["secret"]!.GetValue<string>().Replace(" ", "");
+                Assert.True((await owner.Post("/api/v1/me/mfa/enable", new { code = ProjectManagement.Application.Common.Totp.Compute(key, ProjectManagement.Application.Common.Totp.StepOf(DateTime.UtcNow)) })).Ok);
+                factory.WithDb(db => { db.Users.IgnoreQueryFilters().Where(u => u.Id == owner.UserId).ExecuteUpdate(x => x.SetProperty(u => u.MfaLastStep, 0L)); return 0; });
+                return await owner.Post("/api/v1/documents/step-up", new { code = ProjectManagement.Application.Common.Totp.Compute(key, ProjectManagement.Application.Common.Totp.StepOf(DateTime.UtcNow)) });
+            },
+            ["PUT document-security/reveal-duration"] = () => owner.Put("/api/v1/document-security/reveal-duration", new { seconds = 30 }),
+            ["POST document-security/rotate-key"] = () => owner.Post("/api/v1/document-security/rotate-key"),
+            ["POST document-security/verify-audit"] = () => owner.Post("/api/v1/document-security/verify-audit"),
         };
 
         // 1. Every write endpoint of the controller must have a scenario (a new endpoint without one fails here, until it is covered).
-        var written = new[] { typeof(DocumentsController), typeof(ApiDocsController) }.SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        var written = new[] { typeof(DocumentsController), typeof(ApiDocsController), typeof(SecretsController) }.SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .SelectMany(m => m.GetCustomAttributes<HttpMethodAttribute>(true))
             .Where(a => a.HttpMethods.Any(h => h is "POST" or "PUT" or "DELETE" or "PATCH"))
             .Select(a => $"{a.HttpMethods.First()} {a.Template}").ToHashSet();

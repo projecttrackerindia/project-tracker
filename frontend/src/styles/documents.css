@@ -460,3 +460,31 @@
   .api-tree { position: static; max-height: 360px; }
   .apx-grid { grid-template-columns: 1fr; }
 }
+
+/* secrets */
+.doc-secrets { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.doc-secrets li { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.doc-secrets li:last-child { border-bottom: 0; padding-bottom: 0; }
+.doc-secret-head { display: flex; gap: 8px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+.doc-secret-note, .doc-secret-meta { margin: 0; font-size: 12px; }
+.doc-secret-row { display: flex; gap: 6px; align-items: center; }
+.doc-secret-value { flex: 1 1 auto; min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,.1)); font-size: 12.5px; letter-spacing: .08em; overflow-x: auto; white-space: nowrap; user-select: none; }
+.doc-secret-value.open { letter-spacing: 0; user-select: all; color: var(--text); box-shadow: inset 0 0 0 1px var(--primary); }
+.doc-secret-lock { display: inline-flex; padding: 0 6px; }
+.doc-secret-timer { height: 3px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.doc-secret-timer i { display: block; height: 100%; width: 100%; background: var(--primary); transform-origin: left; animation: doc-secret-run linear forwards; }
+@keyframes doc-secret-run { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .doc-secret-timer i { animation: none; } }
+.doc-secret-foot { margin: 12px 0 0; font-size: 12px; }
+.doc-secret-class { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.doc-secret-class legend { font-size: 12px; margin-bottom: 4px; color: var(--text-muted); }
+.doc-secret-class label.off { opacity: .6; }
+
+/* document security dialog */
+.dsec { display: grid; gap: 22px; }
+.dsec h4 { margin: 0 0 4px; font-size: 14px; }
+.dsec p { margin: 0 0 10px; font-size: 13px; }
+.dsec-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
+.dsec-custom { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.dsec-custom input { width: 96px; }
+.dsec-plan { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
