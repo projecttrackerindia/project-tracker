@@ -24,21 +24,21 @@ function RelationField({ value, onChange, document }: { value: LinkRelation; onC
 }
 
 /** From a document: find a project, task, issue or work item and link it. */
-export function WorkPicker({ documentId, onClose }: { documentId: string; onClose: () => void }) {
+export function WorkPicker({ documentId, onClose, requirementId, fixedRelation }: { documentId: string; onClose: () => void; requirementId?: string; fixedRelation?: LinkRelation }) {
   const wid = useWorkspaceId();
   const [q, setQ] = useState('');
-  const [relation, setRelation] = useState<LinkRelation>('Implements');
+  const [relation, setRelation] = useState<LinkRelation>(fixedRelation ?? 'Implements');
   const dq = useDebounced(q.trim(), 250);
   const hits = useWsQuery(['search', dq], () => insightApi.search(dq), { enabled: dq.length >= 2 });
   const add = useMutation({
-    mutationFn: (h: { type: LinkTarget; id: string }) => documentApi.addLink(documentId, { targetType: h.type, targetId: h.id, relation }),
+    mutationFn: (h: { type: LinkTarget; id: string }) => documentApi.addLink(documentId, { targetType: h.type, targetId: h.id, relation, requirementId }),
     onSuccess: () => { toast('Linked.'); invalidateWorkspace(wid, 'documents'); invalidateWorkspace(wid, 'linked-documents'); onClose(); },
     onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not link it.', 'error'),
   });
   const usable = (hits.data?.hits ?? []).filter((h) => HIT_TO_TARGET[h.type]);
   return (
-    <Modal title="Link work" subtitle="Link a project, task, issue or work item to this document." size="sm" onClose={onClose}>
-      <RelationField value={relation} onChange={setRelation} />
+    <Modal title="Link work" subtitle={requirementId ? (fixedRelation === 'Verifies' ? 'Find the test (a task or a test issue) that verifies this requirement.' : 'Find the task or work item that builds this requirement.') : 'Link a project, task, issue or work item to this document.'} size="sm" onClose={onClose}>
+      {!fixedRelation && <RelationField value={relation} onChange={setRelation} />}
       <Field label="Find it"><input className="input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type a title or a key such as WT-12…" /></Field>
       <div className="pick-list">
         {dq.length < 2 ? <p className="muted">Type at least two letters.</p> : hits.isLoading ? <PageLoader /> : usable.length === 0 ? <EmptyState icon="search" title="Nothing found" /> :

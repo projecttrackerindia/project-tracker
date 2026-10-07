@@ -14,8 +14,17 @@ namespace ProjectManagement.Tests;
 /// to projects and work, limited by plan, and stored as data (never as markup).
 /// </summary>
 [Collection("api")]
-public class DocumentTests(ApiFactory factory)
+public class DocumentTests(ApiFactory factory) : IAsyncLifetime
 {
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    /// <summary>The notices these tests create are not meant to be e-mailed; leaving them queued would crowd the batch that the notification tests count on.</summary>
+    public Task DisposeAsync()
+    {
+        factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.Type == NotificationType.Document && (n.EmailPending || n.PushPending)).ExecuteUpdate(s => s.SetProperty(n => n.EmailPending, false).SetProperty(n => n.PushPending, false)));
+        return Task.CompletedTask;
+    }
+
     private static string S(JsonNode? n) => n!.GetValue<string>();
 
     private async Task<(TestClient Owner, Guid Brd)> OwnerWithTypes(string plan = "BUSINESS")

@@ -23,7 +23,7 @@ public record AddGrantRequest(GrantPrincipal PrincipalType, Guid PrincipalId, Do
 /// grants and explicit denials), and an explanation of everyone who can open it and why. The same rules the data layer applies to every query are
 /// worked out here for the whole workspace, and a test keeps the two in step.
 /// </summary>
-public class DocumentAccessService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements)
+public class DocumentAccessService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, DocumentNotifier notifier)
 {
     public const int MaxGrants = 200, MaxPeople = 1000;
 
@@ -39,6 +39,9 @@ public class DocumentAccessService(IAppDbContext db, ICurrentContext ctx, AppClo
                 || (g.PrincipalType == GrantPrincipal.Team && db.TeamMembers.Any(m => m.TeamId == g.PrincipalId && m.UserId == me))
                 || (g.PrincipalType == GrantPrincipal.JobRole && db.TenantMembers.Any(tm => tm.TenantId == tid && tm.UserId == me && tm.OrgRoleId == g.PrincipalId))));
     }
+
+    /// <summary>Whether an explicit block on this document applies to the signed-in person.</summary>
+    public Task<bool> IsBlockedAsync(Guid documentId, CancellationToken ct = default) => MyGrants(documentId, true).AnyAsync(ct);
 
     public async Task<DocumentRights> RightsAsync(Document doc, CancellationToken ct = default)
     {
@@ -201,6 +204,8 @@ public class DocumentAccessService(IAppDbContext db, ICurrentContext ctx, AppClo
             db.DocumentGrants.Add(grant);
         }
         grant.Level = req.Level; grant.ExpiresAt = req.ExpiresAt; grant.Note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim()[..Math.Min(300, req.Note.Trim().Length)]; grant.UpdatedAt = clock.Now;
+        if (!req.Deny && req.PrincipalType == GrantPrincipal.User)
+            await notifier.SendAsync([req.PrincipalId], doc, $"shared:{grant.Id:N}:{(int)req.Level}", $"{DocumentService.KeyOf(doc.Number)} was shared with you", $"{doc.Title} · you can {(req.Level == DocAccessLevel.Viewer ? "read" : req.Level == DocAccessLevel.Editor ? "edit" : "manage")} it", ct: ct);
         recorder.Activity(req.Deny ? "document.access_denied" : "document.shared", "Document", doc.Id, $"{(req.Deny ? "Blocked" : "Shared")} {DocumentService.KeyOf(doc.Number)} {(req.Deny ? "for" : "with")} {name}", doc.ProjectId);
         recorder.Audit(req.Deny ? "document.access_denied" : "document.shared", "Document", doc.Id, before, new { req.PrincipalType, req.PrincipalId, name, req.Level, req.ExpiresAt });
         await db.SaveChangesAsync(ct);

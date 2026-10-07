@@ -48,6 +48,8 @@ jobs:
           node e2e/smoke.mjs
           node e2e/public.mjs
           node e2e/mobile.mjs
+          node e2e/documents.mjs
+          node e2e/documents-review.mjs
       - name: Logs
         if: failure()
         run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true

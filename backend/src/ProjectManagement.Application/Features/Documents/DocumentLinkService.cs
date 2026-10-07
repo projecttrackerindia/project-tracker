@@ -12,11 +12,11 @@ namespace ProjectManagement.Application.Features.Documents;
 
 /// <summary>One thing a document is linked to, as the person asking may see it. A target they cannot open is shown as restricted, with no title.</summary>
 public record LinkedItemDto(Guid LinkId, LinkTarget TargetType, Guid TargetId, LinkRelation Relation, bool Restricted, string Key, string Title, string Status,
-    bool Done, DateOnly? DueDate, bool Overdue, Guid? ProjectId, string? Assignee);
+    bool Done, DateOnly? DueDate, bool Overdue, Guid? ProjectId, string? Assignee, Guid? RequirementId = null);
 public record LinkedWorkDto(IReadOnlyList<LinkedItemDto> Items, int Total, int Done, int Overdue, int Open, int Restricted);
 public record LinkedDocumentDto(Guid LinkId, LinkRelation Relation, DocumentItemDto Document);
 public record LinkedDocumentsDto(IReadOnlyList<LinkedDocumentDto> Items, int Restricted);
-public record AddLinkRequest(LinkTarget TargetType, Guid TargetId, LinkRelation Relation = LinkRelation.Describes);
+public record AddLinkRequest(LinkTarget TargetType, Guid TargetId, LinkRelation Relation = LinkRelation.Describes, Guid? RequirementId = null);
 
 /// <summary>
 /// Links in both directions from one table: a document shows the work it is linked to (with live progress), and a task, issue, work item, sprint or
@@ -36,9 +36,9 @@ public class DocumentLinkService(IAppDbContext db, ICurrentContext ctx, AppClock
             foreach (var (id, r) in await ResolveAsync(g.Key, g.Select(l => l.TargetId).Distinct().ToList(), today, ct)) resolved[(g.Key, id)] = r;
 
         var items = links.Select(l => resolved.TryGetValue((l.TargetType, l.TargetId), out var r)
-            ? new LinkedItemDto(l.Id, l.TargetType, l.TargetId, l.Relation, false, r.Key, r.Title, r.Status, r.Done, r.Due, r.Overdue, r.ProjectId, r.Assignee)
+            ? new LinkedItemDto(l.Id, l.TargetType, l.TargetId, l.Relation, false, r.Key, r.Title, r.Status, r.Done, r.Due, r.Overdue, r.ProjectId, r.Assignee, l.RequirementId)
             // Not visible to this person: no title, no id of the thing, nothing to learn from it.
-            : new LinkedItemDto(l.Id, l.TargetType, Guid.Empty, l.Relation, true, "", "", "", false, null, false, null, null)).ToList();
+            : new LinkedItemDto(l.Id, l.TargetType, Guid.Empty, l.Relation, true, "", "", "", false, null, false, null, null, l.RequirementId)).ToList();
         var counted = items.Where(i => !i.Restricted && i.TargetType is LinkTarget.Task or LinkTarget.WorkItem or LinkTarget.Issue).ToList();
         return new LinkedWorkDto(items, counted.Count, counted.Count(i => i.Done), counted.Count(i => i.Overdue), counted.Count(i => !i.Done), items.Count(i => i.Restricted));
     }
@@ -66,11 +66,16 @@ public class DocumentLinkService(IAppDbContext db, ICurrentContext ctx, AppClock
         var target = (await ResolveAsync(req.TargetType, [req.TargetId], today, ct)).GetValueOrDefault(req.TargetId) ?? throw new NotFoundException("The item to link was not found.");
         if (await db.DocumentLinks.AnyAsync(l => l.DocumentId == documentId, ct) && await db.DocumentLinks.CountAsync(l => l.DocumentId == documentId, ct) >= MaxLinksPerDocument)
             throw new ValidationException("targetId", $"A document can be linked to at most {MaxLinksPerDocument} items.");
-        if (await db.DocumentLinks.AnyAsync(l => l.DocumentId == documentId && l.TargetType == req.TargetType && l.TargetId == req.TargetId && l.Relation == req.Relation, ct))
+        if (req.RequirementId is { } rid)
+        {
+            if (req.Relation is not (LinkRelation.Implements or LinkRelation.Verifies)) throw new ValidationException("relation", "A requirement is implemented or verified by work.");
+            if (!await db.DocumentRequirements.AnyAsync(x => x.Id == rid && x.DocumentId == documentId, ct)) throw new ValidationException("requirementId", "Requirement not found in this document.");
+        }
+        if (await db.DocumentLinks.AnyAsync(l => l.DocumentId == documentId && l.TargetType == req.TargetType && l.TargetId == req.TargetId && l.Relation == req.Relation && l.RequirementId == req.RequirementId, ct))
             throw new ConflictException("This document is already linked to that item.", "LINK_EXISTS");
-        db.DocumentLinks.Add(new DocumentLink { TenantId = tid, DocumentId = documentId, TargetType = req.TargetType, TargetId = req.TargetId, Relation = req.Relation, CreatedAt = clock.Now, CreatedBy = ctx.UserId });
+        db.DocumentLinks.Add(new DocumentLink { TenantId = tid, DocumentId = documentId, TargetType = req.TargetType, TargetId = req.TargetId, Relation = req.Relation, RequirementId = req.RequirementId, CreatedAt = clock.Now, CreatedBy = ctx.UserId });
         recorder.Activity("document.linked", "Document", doc.Id, $"Linked {DocumentService.KeyOf(doc.Number)} to {target.Key}", doc.ProjectId);
-        recorder.Audit("document.linked", "Document", doc.Id, null, new { req.TargetType, req.TargetId, req.Relation });
+        recorder.Audit("document.linked", "Document", doc.Id, null, new { req.TargetType, req.TargetId, req.Relation, req.RequirementId });
         await db.SaveChangesAsync(ct);
         return await ForDocumentAsync(documentId, ct);
     }
@@ -88,9 +93,9 @@ public class DocumentLinkService(IAppDbContext db, ICurrentContext ctx, AppClock
 
     // ------------------------------------------------------------------ resolving targets (through each target's own visibility filter)
 
-    private sealed record Resolved(string Key, string Title, string Status, bool Done, DateOnly? Due, bool Overdue, Guid? ProjectId, string? Assignee);
+    public sealed record Resolved(string Key, string Title, string Status, bool Done, DateOnly? Due, bool Overdue, Guid? ProjectId, string? Assignee);
 
-    private async Task<Dictionary<Guid, Resolved>> ResolveAsync(LinkTarget type, List<Guid> ids, DateOnly today, CancellationToken ct)
+    public async Task<Dictionary<Guid, Resolved>> ResolveAsync(LinkTarget type, List<Guid> ids, DateOnly today, CancellationToken ct)
     {
         switch (type)
         {

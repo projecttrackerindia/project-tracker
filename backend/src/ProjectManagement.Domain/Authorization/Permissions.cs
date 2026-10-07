@@ -39,13 +39,15 @@ public static class Permissions
     public const string DocsCreate = "docs.create";
     public const string DocsEdit = "docs.edit";
     public const string DocsDelete = "docs.delete";
+    /// <summary>Documents: set up the approval workflows (who approves which kind of document).</summary>
+    public const string DocsWorkflow = "docs.workflow";
 
     public static readonly string[] All =
     [
         OrgManage, OrgStructure, AccessManage, BillingManage, MembersInvite, MembersManage, TeamsManage,
         ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll, WorkflowManage, ProjectGroupsManage, LabelsManage,
         WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView, PermissionsManage,
-        DocsCreate, DocsEdit, DocsDelete,
+        DocsCreate, DocsEdit, DocsDelete, DocsWorkflow,
     ];
 
     /// <summary>Permissions that can never be changed from their defaults.</summary>
@@ -58,7 +60,7 @@ public static class Permissions
         [
             OrgManage, OrgStructure, AccessManage, MembersInvite, MembersManage, TeamsManage, ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll,
             WorkflowManage, ProjectGroupsManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView,
-            DocsCreate, DocsEdit, DocsDelete,
+            DocsCreate, DocsEdit, DocsDelete, DocsWorkflow,
         ],
         [TenantRole.Manager] =
         [

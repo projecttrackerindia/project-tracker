@@ -20,7 +20,7 @@ public record RestoreRequest(string? Reason, bool DiscardChanges, int Revision);
 /// The history of a document. Publishing freezes the draft as the next version (1.0, then 1.1, or 2.0 for a major change) and starts a fresh draft from it;
 /// nothing that was published is ever changed. Restoring an old version publishes a new version with its content, so the history shows both.
 /// </summary>
-public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights)
+public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows)
 {
     public static string Label(int major, int minor) => $"{major}.{minor}";
 
@@ -81,6 +81,11 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
     {
         var doc = await EditableAsync(documentId, ct);
         if (doc.Revision != req.Revision) throw new ConflictException("Someone else changed this document while you were editing. Reload it to see their changes.", "DOCUMENT_CHANGED");
+        // With an approval workflow a document is published only from Approved, with the summary it was submitted with.
+        var approval = await workflows.RequireApprovedAsync(doc, (await db.DocumentVersions.AsNoTracking().FirstAsync(v => v.Id == doc.DraftVersionId, ct)).ContentHash, ct);
+        if (approval is not null) req = new PublishRequest(approval.Summary, approval.Reason, approval.Major, req.Revision);
+        if (DocumentStateMachine.Next(doc.Status, DocAction.Publish, doc.PublishedVersionId is not null, approval is not null) is not { } after)
+            throw new ConflictException("This document cannot be published from its current status.", "ILLEGAL_TRANSITION");
         var summary = (req.ChangeSummary ?? "").Trim();
         if (summary.Length == 0) throw new ValidationException("changeSummary", "Say in a sentence what changed.");
         if (summary.Length > 500) throw new ValidationException("changeSummary", "Keep the summary under 500 characters.");
@@ -98,9 +103,10 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         var frozen = draft;
         frozen.Major = major; frozen.Minor = minor; frozen.IsDraft = false; frozen.ChangeSummary = summary; frozen.ChangeReason = reason; frozen.PublishedAt = now; frozen.PublishedBy = ctx.UserId; frozen.UpdatedAt = now;
         var next = StartDraft(doc, frozen, sections, now);
-        doc.PublishedVersionId = frozen.Id; doc.DraftVersionId = next.Id; doc.Status = DocumentStatus.Published; Touch(doc);
+        doc.PublishedVersionId = frozen.Id; doc.DraftVersionId = next.Id; doc.Status = after; Touch(doc);
         recorder.Activity("document.published", "Document", doc.Id, $"Published {DocumentService.KeyOf(doc.Number)} version {Label(major, minor)}", doc.ProjectId, newValue: summary);
         recorder.Audit("document.published", "Document", doc.Id, latest is null ? null : new { version = Label(latest.Major, latest.Minor) }, new { version = Label(major, minor), summary, reason, hash = frozen.ContentHash });
+        await workflows.OnPublishedAsync(doc, approval, Label(major, minor), summary, ct);
         await SaveAsync(ct);
         return await ListAsync(documentId, ct);
     }
@@ -118,6 +124,19 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         var (major, minor) = (latest.Major, latest.Minor + 1);
         var source = await db.DocumentSections.AsNoTracking().Where(s => s.VersionId == old.Id).OrderBy(s => s.SortOrder).ToListAsync(ct);
         var now = clock.Now;
+        if (await workflows.AppliesAsync(doc, ct))
+        {
+            // With an approval workflow nothing becomes a published version without a review: the old words are loaded into the draft, to be submitted.
+            await workflows.OnContentChangedAsync(doc, ct);
+            db.DocumentSections.RemoveRange(await db.DocumentSections.Where(s => s.VersionId == draft.Id).ToListAsync(ct));
+            foreach (var s in source) db.DocumentSections.Add(Copy(s, draft.Id, now));
+            draft.ContentHash = old.ContentHash; draft.UpdatedAt = now;
+            Touch(doc);
+            recorder.Activity("document.version_loaded", "Document", doc.Id, $"Loaded version {Label(old.Major, old.Minor)} of {DocumentService.KeyOf(doc.Number)} into the draft", doc.ProjectId);
+            recorder.Audit("document.version_loaded", "Document", doc.Id, new { replaced = Label(latest.Major, latest.Minor) }, new { loaded = Label(old.Major, old.Minor), reason = req.Reason });
+            await SaveAsync(ct);
+            return await ListAsync(documentId, ct);
+        }
         var restored = new DocumentVersion
         {
             TenantId = doc.TenantId, DocumentId = doc.Id, Major = major, Minor = minor, IsDraft = false, PublishedAt = now, PublishedBy = ctx.UserId, RestoredFromId = old.Id,

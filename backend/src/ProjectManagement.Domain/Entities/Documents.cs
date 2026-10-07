@@ -1,4 +1,5 @@
 using ProjectManagement.Domain.Common;
+using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Domain.Entities;
 
@@ -20,6 +21,18 @@ public enum GrantPrincipal { User = 0, Team = 1, JobRole = 2 }
 
 /// <summary>What a grant allows on one document. Manager can also share it with others.</summary>
 public enum DocAccessLevel { Viewer = 1, Editor = 2, Manager = 3 }
+
+/// <summary>Who an approval step is waiting for: a person, every member of a team (or any one of them), a job role, or the owner of the document's project.</summary>
+public enum ApproverKind { User = 0, Team = 1, JobRole = 2, ProjectOwner = 3 }
+
+/// <summary>Whether one approver is enough for a step, or all of the step's approvers must agree.</summary>
+public enum ApprovalRule { Any = 0, All = 1 }
+
+public enum ApprovalState { Pending = 0, Approved = 1, ChangesRequested = 2, Cancelled = 3, Published = 4 }
+
+public enum DecisionKind { Approved = 1, ChangesRequested = 2 }
+
+public enum AccessRequestStatus { Pending = 0, Approved = 1, Rejected = 2, Cancelled = 3 }
 
 public enum LinkTarget { Project = 0, Task = 1, Issue = 2, WorkItem = 3, Sprint = 4 }
 
@@ -117,6 +130,8 @@ public class DocumentLink : TenantEntity, ITenantScoped
     public LinkTarget TargetType { get; set; }
     public Guid TargetId { get; set; }
     public LinkRelation Relation { get; set; } = LinkRelation.Describes;
+    /// <summary>When the link is about one requirement of the document (Implements / Verifies), which one. Null = the document as a whole.</summary>
+    public Guid? RequirementId { get; set; }
 }
 
 /// <summary>
@@ -147,3 +162,88 @@ public class DocumentFile : TenantEntity, ITenantScoped
 
 /// <summary>One entry of a document type's template (what a new document starts with).</summary>
 public sealed record SectionTemplate(string Key, string Title, SectionKind Kind, string? Hint = null, string[]? Columns = null);
+
+
+/// <summary>
+/// The path a document of a kind takes before it is published: ordered steps, each naming who approves. One definition without a kind is the
+/// workspace's default; a definition for a kind overrides it (Business plan). No active definition = whoever may edit the document publishes it.
+/// </summary>
+public class WorkflowDefinition : TenantEntity, ITenantScoped
+{
+    public Guid? TypeId { get; set; }
+    public string Name { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    /// <summary>The steps as JSON (<see cref="WorkflowStepSpec"/> list).</summary>
+    public string StepsJson { get; set; } = "[]";
+    /// <summary>Remind approvers once when a step is overdue (Business plan).</summary>
+    public bool Remind { get; set; }
+}
+
+/// <summary>One step of a workflow definition. <see cref="PrincipalId"/> is the user, team or job role; empty for the project owner.</summary>
+public sealed record WorkflowStepSpec(string Name, ApproverKind Kind, Guid? PrincipalId, ApprovalRule Rule = ApprovalRule.Any, int? DueDays = null);
+
+/// <summary>One step as it was when the document was submitted, with the people who could decide it then. Later edits to the workflow never change a running approval.</summary>
+public sealed record ApprovalStepSnapshot(string Name, ApproverKind Kind, Guid? PrincipalId, string Who, ApprovalRule Rule, int? DueDays, List<Guid> Approvers);
+
+/// <summary>A workflow running on one draft: submitted by someone, waiting on a step, and finally approved, sent back, withdrawn or published.</summary>
+public class DocumentApproval : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid VersionId { get; set; }
+    /// <summary>The draft's content hash at submission; an approval is only valid for exactly this content.</summary>
+    public string ContentHash { get; set; } = "";
+    public ApprovalState State { get; set; } = ApprovalState.Pending;
+    public Guid SubmittedBy { get; set; }
+    public DateTime SubmittedAt { get; set; }
+    public int CurrentStep { get; set; }
+    public DateTime StepStartedAt { get; set; }
+    public bool ReminderSent { get; set; }
+    public string WorkflowName { get; set; } = "";
+    public bool Remind { get; set; }
+    public string StepsJson { get; set; } = "[]";
+    public string Summary { get; set; } = "";
+    public string? Reason { get; set; }
+    public bool Major { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public Guid? ClosedBy { get; set; }
+    public string? ClosedNote { get; set; }
+}
+
+public class ApprovalDecision : TenantEntity, ITenantScoped
+{
+    public Guid ApprovalId { get; set; }
+    public Guid DocumentId { get; set; }
+    public int StepIndex { get; set; }
+    public Guid UserId { get; set; }
+    public DecisionKind Decision { get; set; }
+    public string? Comment { get; set; }
+}
+
+/// <summary>Someone who cannot open a document asks the people who manage it for access, with a reason and how long they need it.</summary>
+public class AccessRequest : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid RequesterId { get; set; }
+    public DocAccessLevel Level { get; set; } = DocAccessLevel.Viewer;
+    public string Reason { get; set; } = "";
+    /// <summary>How long they need it, in days. Null = no end date.</summary>
+    public int? DurationDays { get; set; }
+    public AccessRequestStatus Status { get; set; } = AccessRequestStatus.Pending;
+    public Guid? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public string? DecisionNote { get; set; }
+    public DocAccessLevel? GrantedLevel { get; set; }
+    public DateTime? GrantedUntil { get; set; }
+    public Guid? GrantId { get; set; }
+}
+
+/// <summary>A numbered requirement of a document (REQ-1 ...). Tasks, work items and tests are linked to it, which is what the coverage report counts.</summary>
+public class DocumentRequirement : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public int Number { get; set; }
+    public string Title { get; set; } = "";
+    public string? Detail { get; set; }
+    public Priority Priority { get; set; } = Priority.Medium;
+    public int SortOrder { get; set; }
+}

@@ -563,7 +563,7 @@ export interface DocumentDetail {
 export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; cursor?: string; limit?: number }
 export interface LinkedItem {
   linkId: string; targetType: LinkTarget; targetId: string; relation: LinkRelation; restricted: boolean; key: string; title: string; status: string;
-  done: boolean; dueDate: string | null; overdue: boolean; projectId: string | null; assignee: string | null;
+  done: boolean; dueDate: string | null; overdue: boolean; projectId: string | null; assignee: string | null; requirementId?: string | null;
 }
 export interface LinkedWork { items: LinkedItem[]; total: number; done: number; overdue: number; open: number; restricted: number }
 export interface LinkedDocument { linkId: string; relation: LinkRelation; document: DocumentItem }
@@ -598,3 +598,35 @@ export interface DocAccess {
   canManage: boolean; advancedPermissions: boolean;
 }
 export interface DocFile { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean; uploadedBy: UserRef | null; createdAt: string; canDelete: boolean }
+
+// ---- Document review, access requests, requirements and audit
+export type ApproverKind = 'User' | 'Team' | 'JobRole' | 'ProjectOwner';
+export type ApprovalRule = 'Any' | 'All';
+export type ApprovalState = 'Pending' | 'Approved' | 'ChangesRequested' | 'Cancelled' | 'Published';
+export interface WorkflowStepInput { name: string; kind: ApproverKind; principalId: string | null; rule: ApprovalRule; dueDays: number | null }
+export interface WorkflowStep extends WorkflowStepInput { who: string }
+export interface DocWorkflow { id: string; typeId: string | null; typeName: string | null; name: string; isActive: boolean; remind: boolean; steps: WorkflowStep[] }
+export interface DocWorkflows { items: DocWorkflow[]; canManage: boolean; allowed: boolean; perType: boolean; reminders: boolean }
+export interface SaveWorkflow { typeId: string | null; name: string; isActive: boolean; remind: boolean; steps: WorkflowStepInput[] }
+export interface ApprovalPerson { userId: string; name: string; decision: string | null; comment: string | null; at: string | null }
+export interface ApprovalStep { name: string; who: string; rule: ApprovalRule; dueDays: number | null; state: 'Done' | 'Current' | 'Waiting' | 'ChangesRequested' | 'Skipped'; people: ApprovalPerson[] }
+export interface Approval {
+  id: string; state: ApprovalState; workflowName: string; submittedBy: UserRef; submittedAt: string; summary: string; reason: string | null; major: boolean; currentStep: number;
+  steps: ApprovalStep[]; canDecide: boolean; canWithdraw: boolean; dueAt: string | null; closedAt: string | null; closedNote: string | null;
+}
+export interface DocumentReview { workflowApplies: boolean; workflowName: string | null; stepCount: number; current: Approval | null; history: Approval[]; canSubmit: boolean }
+export type AccessRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
+export interface AccessRequest {
+  id: string; documentId: string; documentKey: string; documentTitle: string | null; requester: UserRef; level: DocAccessLevel; reason: string; durationDays: number | null; status: AccessRequestStatus;
+  decidedBy: UserRef | null; decidedAt: string | null; decisionNote: string | null; grantedLevel: DocAccessLevel | null; grantedUntil: string | null; createdAt: string; canDecide: boolean; expired: boolean;
+}
+export interface DocumentGate { id: string; key: string; title: string | null; ownerName: string | null; teamName: string | null; canRequest: boolean; pending: AccessRequest | null; last: AccessRequest | null }
+export interface ReviewItem { approvalId: string; document: DocumentItem; step: string; state: ApprovalState; submittedBy: UserRef; submittedAt: string; summary: string; dueAt: string | null; overdue: boolean }
+export interface DocumentInbox { toReview: ReviewItem[]; submitted: ReviewItem[]; accessToDecide: AccessRequest[]; myAccessRequests: AccessRequest[]; waiting: number }
+export interface Requirement { id: string; key: string; number: number; title: string; detail: string | null; priority: Priority; implementing: number; verifying: number }
+export interface CoverageItem { linkId: string; targetType: LinkTarget; targetId: string; restricted: boolean; key: string; title: string; status: string; done: boolean; failing: boolean; assignee: string | null }
+export interface CoverageRow { requirement: Requirement; state: 'Covered' | 'NoTask' | 'NoTest' | 'Failing'; implementing: CoverageItem[]; verifying: CoverageItem[] }
+export interface Coverage { rows: CoverageRow[]; requirements: number; covered: number; withoutTask: number; withoutTest: number; failingTests: number; workWithoutTest: number; restricted: number }
+export interface DocActivity { id: string; at: string; action: string; summary: string; by: UserRef | null }
+export interface DocAuditEntry { id: string; at: string; action: string; by: UserRef | null; ip: string | null; device: string | null; oldValue: string | null; newValue: string | null }
+export interface DocAuditPage { items: DocAuditEntry[]; nextCursor: string | null }

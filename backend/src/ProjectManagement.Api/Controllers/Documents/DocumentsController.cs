@@ -8,7 +8,8 @@ namespace ProjectManagement.Api.Controllers.Documents;
 
 /// <summary>Documents (BRDs, API documentation, test plans ...). Who may open a document is decided in the data layer; see <see cref="DocumentService"/>.</summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Documents)]
-public class DocumentsController(DocumentService documents, DocumentLinkService links, DocumentVersionService versions, DocumentAccessService access, DocumentFileService files) : ApiControllerBase
+public class DocumentsController(DocumentService documents, DocumentLinkService links, DocumentVersionService versions, DocumentAccessService access, DocumentFileService files,
+    DocumentWorkflowService workflows, DocumentAccessRequestService requests, DocumentTraceService trace, DocumentAuditService audit, DocumentInboxService inbox) : ApiControllerBase
 {
     [HttpGet("document-types")]
     public async Task<IActionResult> Types(CancellationToken ct) => Ok(await documents.ListTypesAsync(ct));
@@ -120,5 +121,88 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     {
         await files.DeleteAsync(id, fileId, ct);
         return NoContent();
+    }
+
+    // ---- approval workflow
+    [HttpGet("document-workflows")]
+    public async Task<IActionResult> Workflows(CancellationToken ct) => Ok(await workflows.ListAsync(ct));
+
+    [HttpPost("document-workflows")]
+    public async Task<IActionResult> CreateWorkflow([FromBody] SaveWorkflowRequest req, CancellationToken ct) => Created(await workflows.SaveAsync(null, req, ct));
+
+    [HttpPut("document-workflows/{id:guid}")]
+    public async Task<IActionResult> UpdateWorkflow(Guid id, [FromBody] SaveWorkflowRequest req, CancellationToken ct) => Ok(await workflows.SaveAsync(id, req, ct));
+
+    [HttpDelete("document-workflows/{id:guid}")]
+    public async Task<IActionResult> DeleteWorkflow(Guid id, CancellationToken ct)
+    {
+        await workflows.DeleteAsync(id, ct);
+        return NoContent();
+    }
+
+    [HttpGet("documents/{id:guid}/review")]
+    public async Task<IActionResult> Review(Guid id, CancellationToken ct) => Ok(await workflows.ReviewAsync(id, ct));
+
+    [HttpPost("documents/{id:guid}/submit")]
+    public async Task<IActionResult> Submit(Guid id, [FromBody] SubmitRequest req, CancellationToken ct) => Ok(await workflows.SubmitAsync(id, req, ct));
+
+    [HttpPost("documents/{id:guid}/approve")]
+    public async Task<IActionResult> Approve(Guid id, [FromBody] DecideRequest req, CancellationToken ct) => Ok(await workflows.ApproveAsync(id, req, ct));
+
+    [HttpPost("documents/{id:guid}/request-changes")]
+    public async Task<IActionResult> RequestChanges(Guid id, [FromBody] DecideRequest req, CancellationToken ct) => Ok(await workflows.RequestChangesAsync(id, req, ct));
+
+    [HttpPost("documents/{id:guid}/withdraw")]
+    public async Task<IActionResult> Withdraw(Guid id, [FromBody] DecideRequest req, CancellationToken ct) => Ok(await workflows.WithdrawAsync(id, req, ct));
+
+    /// <summary>Everything waiting on the signed-in person: reviews to decide, their submissions, access requests.</summary>
+    [HttpGet("documents/inbox")]
+    public async Task<IActionResult> Inbox(CancellationToken ct) => Ok(await inbox.GetAsync(ct));
+
+    // ---- asking for access
+    [HttpGet("documents/{id:guid}/gate")]
+    public async Task<IActionResult> Gate(Guid id, CancellationToken ct) => Ok(await requests.GateAsync(id, ct));
+
+    [HttpPost("documents/{id:guid}/access-requests")]
+    public async Task<IActionResult> RequestAccess(Guid id, [FromBody] RequestAccessRequest req, CancellationToken ct) => Created(await requests.RequestAsync(id, req, ct));
+
+    [HttpGet("documents/{id:guid}/access-requests")]
+    public async Task<IActionResult> AccessRequests(Guid id, CancellationToken ct) => Ok(await requests.ForDocumentAsync(id, ct));
+
+    [HttpPost("access-requests/{requestId:guid}/decide")]
+    public async Task<IActionResult> DecideAccess(Guid requestId, [FromBody] DecideAccessRequest req, CancellationToken ct) => Ok(await requests.DecideAsync(requestId, req, ct));
+
+    [HttpPost("access-requests/{requestId:guid}/cancel")]
+    public async Task<IActionResult> CancelAccess(Guid requestId, CancellationToken ct) => Ok(await requests.CancelAsync(requestId, ct));
+
+    // ---- requirements and coverage
+    [HttpGet("documents/{id:guid}/requirements")]
+    public async Task<IActionResult> Requirements(Guid id, CancellationToken ct) => Ok(await trace.ListAsync(id, ct));
+
+    [HttpPost("documents/{id:guid}/requirements")]
+    public async Task<IActionResult> AddRequirements(Guid id, [FromBody] AddRequirementsRequest req, CancellationToken ct) => Created(await trace.AddAsync(id, req, ct));
+
+    [HttpPut("documents/{id:guid}/requirements/{requirementId:guid}")]
+    public async Task<IActionResult> UpdateRequirement(Guid id, Guid requirementId, [FromBody] SaveRequirementRequest req, CancellationToken ct) => Ok(await trace.UpdateAsync(id, requirementId, req, ct));
+
+    [HttpDelete("documents/{id:guid}/requirements/{requirementId:guid}")]
+    public async Task<IActionResult> DeleteRequirement(Guid id, Guid requirementId, CancellationToken ct) => Ok(await trace.DeleteAsync(id, requirementId, ct));
+
+    [HttpGet("documents/{id:guid}/coverage")]
+    public async Task<IActionResult> Coverage(Guid id, CancellationToken ct) => Ok(await trace.CoverageAsync(id, ct));
+
+    // ---- activity and audit
+    [HttpGet("documents/{id:guid}/activity")]
+    public async Task<IActionResult> Activity(Guid id, CancellationToken ct) => Ok(await audit.ActivityAsync(id, ct));
+
+    [HttpGet("documents/{id:guid}/audit")]
+    public async Task<IActionResult> Audit(Guid id, [FromQuery] string? action, [FromQuery] string? cursor, CancellationToken ct) => Ok(await audit.AuditAsync(id, action, cursor, ct));
+
+    [HttpGet("documents/{id:guid}/audit/export")]
+    public async Task<IActionResult> ExportAudit(Guid id, CancellationToken ct)
+    {
+        var csv = await audit.ExportCsvAsync(id, ct);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(System.Text.Encoding.UTF8.GetBytes("\uFEFF" + csv), "text/csv; charset=utf-8", $"document-audit-{DateTime.UtcNow:yyyyMMdd}.csv");
     }
 }

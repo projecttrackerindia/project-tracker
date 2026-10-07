@@ -30,6 +30,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
     public DbSet<DocumentGrant> DocumentGrants => Set<DocumentGrant>();
     public DbSet<DocumentFile> DocumentFiles => Set<DocumentFile>();
+    public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
+    public DbSet<DocumentApproval> DocumentApprovals => Set<DocumentApproval>();
+    public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
+    public DbSet<AccessRequest> AccessRequests => Set<AccessRequest>();
+    public DbSet<DocumentRequirement> DocumentRequirements => Set<DocumentRequirement>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<OrgRole> OrgRoles => Set<OrgRole>();
     public DbSet<Project> Projects => Set<Project>();
@@ -168,6 +173,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<SectionKind>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkTarget>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkRelation>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<ApproverKind>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<ApprovalRule>().HaveConversion<string>().HaveMaxLength(8);
+        builder.Properties<ApprovalState>().HaveConversion<string>().HaveMaxLength(20);
+        builder.Properties<DecisionKind>().HaveConversion<string>().HaveMaxLength(20);
+        builder.Properties<AccessRequestStatus>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<GrantPrincipal>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<DocAccessLevel>().HaveConversion<string>().HaveMaxLength(16);
 
@@ -341,9 +351,49 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         });
         b.Entity<DocumentLink>(e =>
         {
-            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.TargetType, x.TargetId, x.Relation }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.TargetType, x.TargetId, x.Relation, x.RequirementId }).IsUnique();
             // "Which documents describe this task?" is asked on every task screen.
             e.HasIndex(x => new { x.TenantId, x.TargetType, x.TargetId });
+            e.HasIndex(x => new { x.TenantId, x.RequirementId });
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<WorkflowDefinition>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.TypeId });
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.StepsJson).HasMaxLength(8000);
+        });
+        b.Entity<DocumentApproval>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.SubmittedAt });
+            e.HasIndex(x => new { x.TenantId, x.State });
+            e.Property(x => x.ContentHash).HasMaxLength(64);
+            e.Property(x => x.WorkflowName).HasMaxLength(80);
+            e.Property(x => x.StepsJson).HasMaxLength(16000);
+            e.Property(x => x.Summary).HasMaxLength(500);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.ClosedNote).HasMaxLength(500);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ApprovalDecision>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.ApprovalId, x.StepIndex });
+            e.Property(x => x.Comment).HasMaxLength(1000);
+            e.HasOne<DocumentApproval>().WithMany().HasForeignKey(x => x.ApprovalId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<AccessRequest>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.RequesterId, x.Status });
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.DecisionNote).HasMaxLength(500);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentRequirement>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.Number }).IsUnique();
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Detail).HasMaxLength(2000);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -31,7 +31,7 @@ public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? 
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
 
@@ -149,7 +149,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var published = doc.PublishedVersionId is { } pv ? await db.DocumentVersions.AsNoTracking().Where(x => x.Id == pv).Select(x => new { x.Major, x.Minor, x.ContentHash }).FirstOrDefaultAsync(ct) : null;
         var draft = doc.DraftVersionId is { } dv ? await db.DocumentVersions.AsNoTracking().Where(x => x.Id == dv).Select(x => new { x.ContentHash }).FirstOrDefaultAsync(ct) : null;
         // People who may edit work on the draft; people who may only read see the newest published version (the draft only until there is one).
-        var showPublished = !can.Edit && published is not null;
+        var showPublished = !can.Edit && published is not null && !(doc.Status == DocumentStatus.InReview && await workflows.IsReviewerAsync(doc.Id, ct));
         var vid = showPublished ? doc.PublishedVersionId : doc.DraftVersionId;
         var sections = vid is { } id ? await db.DocumentSections.AsNoTracking().Where(s => s.VersionId == id).OrderBy(s => s.SortOrder).ToListAsync(ct) : [];
         var publishedLabel = published is null ? null : DocumentVersionService.Label(published.Major, published.Minor);
@@ -257,6 +257,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (doc.OwnerId != ctx.UserId && !await permissions.HasAsync(Permissions.DocsEdit, ct)) throw new ForbiddenException("Only the owner can hand a document over.", "PERMISSION_DENIED");
             await access.EnsureTenantMemberAsync(owner, "ownerId", ct);
             doc.OwnerId = owner;
+            await notifier.SendAsync([owner], doc, $"owner:{doc.Revision}", $"{KeyOf(doc.Number)} was handed over to you", doc.Title, ct: ct);
         }
         doc.Title = title; doc.Visibility = visibility; doc.TeamId = teamId;
         await SetTagsAsync(doc.Id, req.Tags, ct);
@@ -282,9 +283,12 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             s.UpdatedAt = now;
         }
         var version = await db.DocumentVersions.FirstAsync(v => v.Id == vid, ct);
-        version.ContentHash = Hash(sections); version.UpdatedAt = now;
+        var hash = Hash(sections);
+        if (hash != version.ContentHash) await workflows.OnContentChangedAsync(doc, ct);
+        version.ContentHash = hash; version.UpdatedAt = now;
         Touch(doc);
         recorder.Activity("document.edited", "Document", doc.Id, $"Edited {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
+        recorder.Audit("document.edited", "Document", doc.Id, null, new { sections = req.Sections.Select(x => x.Key), hash });   // which sections, never the words
         await SaveAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -293,7 +297,11 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var doc = await db.Documents.FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException("Document not found.");
         if (!(await CanAsync(doc, ct)).Edit && !(doc.Status == DocumentStatus.Archived && (await CanAsync(doc, ct)).Delete)) throw new ForbiddenException("You cannot change this document.", "PERMISSION_DENIED");
-        doc.Status = archived ? DocumentStatus.Archived : doc.PublishedVersionId is not null ? DocumentStatus.Published : DocumentStatus.Draft;
+        var next = DocumentStateMachine.Next(doc.Status, archived ? DocAction.Archive : DocAction.Reopen, doc.PublishedVersionId is not null, true)
+            ?? throw new ConflictException(archived
+                ? (doc.Status == DocumentStatus.InReview ? "Withdraw the document from review before archiving it." : "This document is already archived.")
+                : "Only an archived document can be reopened.", "ILLEGAL_TRANSITION");
+        doc.Status = next;
         Touch(doc);
         recorder.Activity(archived ? "document.archived" : "document.unarchived", "Document", doc.Id, $"{(archived ? "Archived" : "Reopened")} {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
         recorder.Audit(archived ? "document.archived" : "document.unarchived", "Document", doc.Id);

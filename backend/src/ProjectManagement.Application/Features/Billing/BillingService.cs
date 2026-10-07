@@ -268,7 +268,7 @@ public class BillingService(
 }
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
-public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
+public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
 {
     private const int PastDueGraceDays = 7;
 
@@ -280,7 +280,8 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await webhooks.PurgeAsync(ct);
         await files.PurgeOrphansAsync(TimeSpan.FromDays(7), ct: ct); // files of projects / tasks deleted more than a week ago
         await ProjectManagement.Application.Features.Compliance.DataPolicyService.PurgeAllAsync(db, clock.Now, log, ct); // each workspace's own retention
-        await documentRetention.PurgeAsync(ct);   // deleted documents after 30 days; old document versions after the plan's history period
+        await documentRetention.PurgeAsync(ct);
+        await documentWorkflows.SendRemindersAsync(ct);   // Business: approvers of overdue review steps are reminded once   // deleted documents after 30 days; old document versions after the plan's history period
     }
 
     public async Task RunSubscriptionLifecycleAsync(CancellationToken ct = default)

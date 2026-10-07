@@ -10,7 +10,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
   DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
-  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile,
+  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage,
 } from './types';
 
 export const authApi = {
@@ -607,7 +607,7 @@ export const documentApi = {
   restore: (id: string) => post<DocumentDetail>(`/documents/${id}/restore`),
   remove: (id: string) => del(`/documents/${id}`),
   links: (id: string) => get<LinkedWork>(`/documents/${id}/links`),
-  addLink: (id: string, b: { targetType: LinkTarget; targetId: string; relation: LinkRelation }) => post<LinkedWork>(`/documents/${id}/links`, b),
+  addLink: (id: string, b: { targetType: LinkTarget; targetId: string; relation: LinkRelation; requirementId?: string | null }) => post<LinkedWork>(`/documents/${id}/links`, b),
   removeLink: (id: string, linkId: string) => del(`/documents/${id}/links/${linkId}`),
   linkedTo: (targetType: LinkTarget, targetId: string) => get<LinkedDocuments>('/linked-documents', { targetType, targetId }),
   versions: (id: string) => get<DocVersions>(`/documents/${id}/versions`),
@@ -621,4 +621,31 @@ export const documentApi = {
   files: (id: string) => get<DocFile[]>(`/documents/${id}/files`),
   uploadFile: (id: string, file: File) => uploadFile<DocFile>(`/documents/${id}/files`, file),
   removeFile: (id: string, fileId: string) => del(`/documents/${id}/files/${fileId}`),
+  // review and workflow
+  workflows: () => get<DocWorkflows>('/document-workflows'),
+  createWorkflow: (b: SaveWorkflow) => post<DocWorkflow>('/document-workflows', b),
+  updateWorkflow: (id: string, b: SaveWorkflow) => put<DocWorkflow>(`/document-workflows/${id}`, b),
+  removeWorkflow: (id: string) => del(`/document-workflows/${id}`),
+  review: (id: string) => get<DocumentReview>(`/documents/${id}/review`),
+  submit: (id: string, b: { changeSummary: string; changeReason?: string; major: boolean; revision: number }) => post<DocumentReview>(`/documents/${id}/submit`, b),
+  approve: (id: string, comment?: string) => post<DocumentReview>(`/documents/${id}/approve`, { comment }),
+  requestChanges: (id: string, comment: string) => post<DocumentReview>(`/documents/${id}/request-changes`, { comment }),
+  withdraw: (id: string, comment?: string) => post<DocumentReview>(`/documents/${id}/withdraw`, { comment }),
+  inbox: () => get<DocumentInbox>('/documents/inbox'),
+  // asking for access
+  gate: (id: string) => get<DocumentGate>(`/documents/${id}/gate`),
+  requestAccess: (id: string, b: { level: DocAccessLevel; reason: string; durationDays: number | null }) => post<AccessRequest>(`/documents/${id}/access-requests`, b),
+  accessRequests: (id: string) => get<AccessRequest[]>(`/documents/${id}/access-requests`),
+  decideAccess: (requestId: string, b: { approve: boolean; level?: DocAccessLevel; durationDays?: number | null; note?: string }) => post<AccessRequest>(`/access-requests/${requestId}/decide`, b),
+  cancelAccess: (requestId: string) => post<AccessRequest>(`/access-requests/${requestId}/cancel`),
+  // requirements and coverage
+  requirements: (id: string) => get<Requirement[]>(`/documents/${id}/requirements`),
+  addRequirements: (id: string, titles: string[]) => post<Requirement[]>(`/documents/${id}/requirements`, { titles }),
+  updateRequirement: (id: string, rid: string, b: { title: string; detail?: string | null; priority?: Priority }) => put<Requirement[]>(`/documents/${id}/requirements/${rid}`, b),
+  removeRequirement: (id: string, rid: string) => del<Requirement[]>(`/documents/${id}/requirements/${rid}`),
+  coverage: (id: string) => get<Coverage>(`/documents/${id}/coverage`),
+  // activity and audit
+  activity: (id: string) => get<DocActivity[]>(`/documents/${id}/activity`),
+  audit: (id: string, cursor?: string, action?: string) => get<DocAuditPage>(`/documents/${id}/audit`, { cursor, action }),
+  exportAudit: (id: string) => download(`/documents/${id}/audit/export`, `document-audit.csv`),
 };

@@ -25,6 +25,7 @@ public static class NotificationCatalog
         new(NotificationType.Issue, "Test issues", "A test issue is reported, assigned to you, fixed, reopened or resolved on a project you work on.", true, false, false, false),
         new(NotificationType.ReportReady, "Reports ready", "A report you asked for has been generated and can be downloaded.", true, false, true, false),
         new(NotificationType.Approval, "Timesheet approvals", "A timesheet is waiting for you to approve it, or yours was approved or returned.", true, true, false, false),
+        new(NotificationType.Document, "Documents", "A document is waiting for your review, was approved, sent back or published, or someone asks for or gets access.", true, true, false, false),
         new(NotificationType.ServiceLevel, "Service levels (SLA)", "Operational work you are assigned or raised is about to miss, or has missed, its response or resolution target.", true, true, true, false),
         // Security alerts cannot be switched off in-app or by email.
         new(NotificationType.Security, "Security alerts", "Password changes and other account security events. Always on.", true, true, false, true),

@@ -12,6 +12,8 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { VISIBILITY } from './docUi';
+import { AccessRequestRow, DecideAccessModal } from './DocumentInbox';
+import type { AccessRequest } from '../../api/types';
 
 const LEVELS: { value: DocAccessLevel; label: string; hint: string }[] = [
   { value: 'Viewer', label: 'Can read', hint: 'Opens and reads the document.' },
@@ -54,6 +56,9 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
   const [until, setUntil] = useState('');
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState<AccessRequest | null>(null);
+  const requests = useWsQuery(['documents', id, 'access-requests'], () => documentApi.accessRequests(id), { enabled: !!q.data?.canManage });
+  const pending = (requests.data ?? []).filter((r) => r.status === 'Pending');
 
   const apply = (r: DocAccess) => { queryClient.setQueryData([wid, 'documents', id, 'access'], r); invalidateWorkspace(wid, 'documents'); };
   const add = useMutation({
@@ -103,6 +108,13 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
             </form>
           )}
 
+          {data.canManage && pending.length > 0 && (
+            <>
+              <h4>Requests for access ({pending.length})</h4>
+              <ul className="ar-list">{pending.map((r) => <AccessRequestRow key={r.id} r={r} showDoc={false} onDecide={() => setDeciding(r)} />)}</ul>
+            </>
+          )}
+
           <h4>Shared in addition ({data.grants.length})</h4>
           {data.grants.length === 0 ? <p className="muted">Not shared beyond who can open it by default.</p> : (
             <ul className="grants">{data.grants.map((g) => <GrantRow key={g.id} g={g} canManage={data.canManage} onRemove={() => remove.mutate(g.id)} />)}</ul>
@@ -124,6 +136,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
           </ul>
         </div>
       )}
+      {deciding && <DecideAccessModal request={deciding} onClose={() => setDeciding(null)} />}
     </Modal>
   );
 }

@@ -25,6 +25,11 @@ public interface IAppDbContext
     DbSet<DocumentLink> DocumentLinks { get; }
     DbSet<DocumentGrant> DocumentGrants { get; }
     DbSet<DocumentFile> DocumentFiles { get; }
+    DbSet<WorkflowDefinition> WorkflowDefinitions { get; }
+    DbSet<DocumentApproval> DocumentApprovals { get; }
+    DbSet<ApprovalDecision> ApprovalDecisions { get; }
+    DbSet<AccessRequest> AccessRequests { get; }
+    DbSet<DocumentRequirement> DocumentRequirements { get; }
     DbSet<TeamMember> TeamMembers { get; }
     DbSet<OrgRole> OrgRoles { get; }
     DbSet<Project> Projects { get; }

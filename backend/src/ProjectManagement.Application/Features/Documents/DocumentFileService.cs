@@ -45,6 +45,7 @@ public class DocumentFileService(IAppDbContext db, ICurrentContext ctx, AppClock
         var file = new DocumentFile { TenantId = tid, DocumentId = documentId, FileName = stored.Name, ContentType = stored.ContentType, SizeBytes = length, StorageKey = stored.Key, Sha256 = stored.Sha256, CreatedAt = clock.Now, CreatedBy = ctx.UserId };
         db.DocumentFiles.Add(file);
         recorder.Activity("document.file_added", "Document", doc.Id, $"Attached “{stored.Name}” to {DocumentService.KeyOf(doc.Number)}", doc.ProjectId);
+        recorder.Audit("document.file_added", "Document", doc.Id, null, new { stored.Name });
         try { await db.SaveChangesAsync(ct); }
         catch { await storage.DeleteAsync(stored.Key, CancellationToken.None); throw; }
         return (await ListAsync(documentId, ct)).First(f => f.Id == file.Id);

@@ -15,6 +15,10 @@ import { LinkedWork } from './LinkedWork';
 import { DocumentFiles } from './DocumentFiles';
 import { DocumentIdContext } from './DocImage';
 import { HistoryModal, PublishModal } from './DocumentHistory';
+import { DocumentGate } from './DocumentGate';
+import { PublishApprovedModal, ReviewPanel, SubmitModal } from './DocumentReview';
+import { RequirementsCard } from './DocumentRequirements';
+import { ActivityCard } from './DocumentActivity';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
@@ -63,7 +67,8 @@ export function DocumentPage() {
   const q = useWsQuery(['documents', id], () => documentApi.get(id), { retry: false });
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [details, setDetails] = useState(false);
-  const [panel, setPanel] = useState<'publish' | 'history' | 'access' | null>(null);
+  const [panel, setPanel] = useState<'publish' | 'history' | 'access' | 'submit' | 'publishApproved' | null>(null);
+  const review = useWsQuery(['documents', id, 'review'], () => documentApi.review(id), { enabled: !!q.data, retry: false });
   const [stale, setStale] = useState(false);
   const detail = q.data;
   const dirty = Object.keys(edits).length > 0;
@@ -107,9 +112,11 @@ export function DocumentPage() {
   const tplFor = useMemo(() => new Map((type?.sections ?? []).map((s) => [s.key, s])), [type]);
 
   if (q.isLoading) return <PageLoader />;
+  if (q.error instanceof ApiError && q.error.status === 404) return <DocumentGate id={id} original={q.error} />;
   if (q.isError || !detail) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const d = detail.item;
   const editable = detail.can.edit && canWrite;
+  const workflow = !!review.data?.workflowApplies;
   const set = (key: string, v: string) => setEdits((x) => {
     const orig = detail.sections.find((s) => s.key === key)?.content;
     if (v === orig) { const { [key]: _, ...rest } = x; return rest; }
@@ -136,7 +143,8 @@ export function DocumentPage() {
         </div>
         <div className="doc-head-actions">
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
-          {editable && detail.can.publish && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
+          {editable && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
+          {editable && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
           <button className="btn btn-ghost" onClick={() => setPanel('history')}><Icon name="clock" size={15} /> History</button>
           <button className="btn btn-ghost" onClick={() => setPanel('access')}><Icon name="users" size={15} /> {detail.can.share ? 'Share' : 'Access'}</button>
           {detail.can.edit && <button className="btn btn-ghost" onClick={() => setDetails(true)}><Icon name="edit" size={15} /> Details</button>}
@@ -155,6 +163,7 @@ export function DocumentPage() {
 
       {stale && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>Someone else changed this document while you were editing. <button className="link-btn" onClick={() => { setStale(false); q.refetch(); }}>Reload to see their changes</button> (your unsaved words stay here until you save or leave).</div></div>}
       {d.status === 'Archived' && <div className="doc-alert info"><Icon name="info" size={16} /><div>This document is archived and read-only.</div></div>}
+      {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={editable} onPublish={() => setPanel('publishApproved')} />}
 
       <div className="doc-layout">
         <aside className="doc-outline" aria-label="Sections">
@@ -181,14 +190,18 @@ export function DocumentPage() {
               </dl>
             </div>
           </div>
+          <RequirementsCard documentId={id} canEdit={editable} />
           <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />
           <DocumentFiles documentId={id} canEdit={editable} />
+          <ActivityCard id={id} title={`${d.key} · ${d.title}`} />
         </aside>
       </div>
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
       {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'history' && <HistoryModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'access' && <AccessModal detail={detail} onClose={() => setPanel(null)} />}
+      {panel === 'submit' && review.data && <SubmitModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
+      {panel === 'publishApproved' && review.data && <PublishApprovedModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
     </div>
   );
 }
