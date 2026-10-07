@@ -75,10 +75,16 @@ public static class DependencyInjection
         // Claude cannot answer or on its own.
         services.AddHttpClient("anthropic", c => c.Timeout = TimeSpan.FromSeconds(90));
         services.AddHttpClient("ai-backup", c => c.Timeout = TimeSpan.FromSeconds(90));
+        services.AddHttpClient("ai-backup-stream", c => c.Timeout = TimeSpan.FromMinutes(5));   // a CPU-only local model can take far longer than a one-shot sizing call
         services.AddSingleton<AnthropicClient>();
         services.AddSingleton<OpenAiCompatibleClient>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AiRouter>();
-        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat, AnthropicChat>();   // the AI workspace: streamed, with tools and files
+        services.AddSingleton<AnthropicChat>();
+        services.AddSingleton<OpenAiCompatibleChat>();
+        // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted
+        // Ollama/llama.cpp server for a CPU-only deployment, or any other OpenAI-compatible address, used when Claude cannot answer or
+        // there is no Anthropic key at all.
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat, AiChatRouter>();
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IFileStorage, S3FileStorage>();
