@@ -187,6 +187,13 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         // reads a reasoning trace back out regardless, so it is always off.
         var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["think"] = false, ["messages"] = messages };
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
+        if (F.NumCtx.HasValue || F.NumThread.HasValue)
+        {
+            var o = new JsonObject();
+            if (F.NumCtx is { } c) o["num_ctx"] = c;
+            if (F.NumThread is { } t) o["num_thread"] = t;
+            body["options"] = o;
+        }
         return body;
     }
 

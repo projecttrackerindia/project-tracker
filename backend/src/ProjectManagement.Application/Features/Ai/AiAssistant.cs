@@ -54,6 +54,18 @@ public class AiFallbackOptions
     /// speak plain OpenAI chat-completions, which is correct for Groq, OpenRouter and most other providers.
     /// </summary>
     public string? Wire { get; set; }
+    /// <summary>
+    /// Native wire only. Ollama auto-sizes a model's context window from the hardware it sees (CPU-only: 4096 by default for most
+    /// models), which can be well under the system prompt plus the full tool list alone - confirmed live: Ollama silently truncated a
+    /// 4,736-token request to 2,050, then errored. Set this to whatever the server can hold comfortably (e.g. 8192) to stop that.
+    /// </summary>
+    public int? NumCtx { get; set; }
+    /// <summary>
+    /// Native wire only. llama.cpp defaults to one thread per logical CPU it can see, which can badly oversubscribe a container whose
+    /// cgroup limit is lower than that (confirmed live: 48 threads against a ~10 vCPU Railway allocation, with prompt processing running
+    /// at a CPU-bound-but-anomalously-slow ~12 tokens/sec). Set this to the container's real vCPU allocation.
+    /// </summary>
+    public int? NumThread { get; set; }
 }
 
 /// <summary>A language model behind one call: a system prompt and a user message in, the answer and the model that gave it out.</summary>

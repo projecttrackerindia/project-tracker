@@ -181,6 +181,18 @@ public class AiBackupChatTests
         Assert.Equal("qwen2.5:7b-instruct-q4_K_M", S(body["model"]));   // the configured model, never the caller's Claude tier model
         Assert.False(body["think"]!.GetValue<bool>());                  // native route honours this, unlike /v1/chat/completions
         Assert.Null(body["max_tokens"]);                                // the OpenAI-only field has no place in a native request
+        Assert.Null(body["options"]);                                   // nothing sent unless an administrator sets NumCtx/NumThread
+    }
+
+    [Fact]
+    public async Task An_administrator_set_context_size_and_thread_count_are_sent_as_native_options()
+    {
+        var stub = new NdjsonStub("""{"message":{"role":"assistant","content":"Hi"},"done":true,"done_reason":"stop"}""");
+        var o = NativeOptions("http://ollama.railway.internal:11434"); o.Fallback.NumCtx = 8192; o.Fallback.NumThread = 10;
+        await foreach (var _ in Chat(stub, o).StreamAsync(Ask("Hi"), default)) { }
+        var options = JsonNode.Parse(stub.Body!)!["options"]!;
+        Assert.Equal(8192, options["num_ctx"]!.GetValue<int>());
+        Assert.Equal(10, options["num_thread"]!.GetValue<int>());
     }
 
     [Fact]
