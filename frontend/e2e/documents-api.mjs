@@ -48,7 +48,7 @@ await page.locator('.modal input.input').nth(1).fill('v1');
 await page.locator('.modal textarea').nth(1).fill('https://api.example.com');
 await page.locator('.modal button[type=submit]').click(); await page.waitForTimeout(1500);
 check('the API is listed', (await page.locator('.api-def', { hasText: 'Payments' }).count()) === 1);
-await page.locator('.api-bar button', { hasText: 'Endpoint' }).click(); await page.waitForTimeout(600);
+await (await page.locator('.api-bar .menu > button', { hasText: 'Add' }).click(), page.locator('.menu-list button', { hasText: 'Endpoint' }).click()); await page.waitForTimeout(600);
 await page.locator('.epe-path').fill('/payments/{id}');
 await page.locator('.modal input.input[maxlength="300"]').fill('Get a payment');
 await page.locator('.epe-tabs button', { hasText: 'Parameters' }).click();
@@ -67,7 +67,7 @@ await shot('endpoint');
 const spec = { openapi: '3.0.3', info: { title: 'Imported shop', version: '3' }, servers: [{ url: 'https://shop.example.com' }], paths: {
   '/orders': { get: { summary: 'List orders', tags: ['Orders'], responses: { 200: { description: 'ok' } } }, post: { summary: 'Create an order', tags: ['Orders'], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { sku: { type: 'string' } } } } } }, responses: { 201: { description: 'created' } } } },
   '/orders/{id}': { get: { summary: 'Get an order', tags: ['Orders'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'ok' } } } } } };
-await page.locator('.api-bar button', { hasText: 'Import' }).click(); await page.waitForTimeout(500);
+await (await page.locator('.api-bar .menu > button', { hasText: 'Add' }).click(), page.locator('.menu-list button', { hasText: 'Import' }).click()); await page.waitForTimeout(500);
 await page.locator('.modal input[type=file]').setInputFiles({ name: 'shop.openapi.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(spec)) });
 await page.waitForTimeout(2000);   // the file is checked as soon as it is chosen
 check('the check says what would happen', (await page.locator('.imp-tiles .add b').innerText()) === '3' && (await page.locator('.imp-result', { hasText: 'Ready to import' }).count()) === 1);
@@ -79,7 +79,7 @@ check('the imported API appears with its endpoints grouped', (await page.locator
 await page.locator('.api-ep', { hasText: '/orders/{id}' }).click(); await page.waitForTimeout(800);
 check('a path parameter from the file is shown as required', (await page.locator('.apv-table td b', { hasText: 'id *' }).count()) >= 1);
 // ---- cURL: paste commands, see the check, and never keep a credential (checked only, not applied)
-await page.locator('.api-bar button', { hasText: 'Import' }).click(); await page.waitForTimeout(500);
+await (await page.locator('.api-bar .menu > button', { hasText: 'Add' }).click(), page.locator('.menu-list button', { hasText: 'Import' }).click()); await page.waitForTimeout(500);
 await page.locator('.imp-source button', { hasText: 'cURL' }).click();
 await page.locator('.imp-curl textarea').fill("curl -X POST 'https://api.curl.example/v1/orders?expand=items' -H 'Authorization: Bearer SECRETTOKEN' -H 'Content-Type: application/json' -d '{\"sku\":\"A1\"}'\ncurl https://api.curl.example/v1/orders/{id}");
 await page.locator('.imp-curl button', { hasText: 'Read commands' }).click(); await page.waitForTimeout(1500);
@@ -91,7 +91,7 @@ await page.locator('.modal-foot button', { hasText: 'Cancel' }).click(); await p
 await page.locator('input[aria-label="Find an endpoint"]').fill('orders/'); await page.waitForTimeout(900);
 check('search narrows the list', (await page.locator('.api-ep').count()) === 1);
 await page.locator('input[aria-label="Find an endpoint"]').fill('');
-const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('.api-bar button', { hasText: 'OpenAPI' }).click()]);
+const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), (await page.locator('.api-bar .menu > button', { hasText: 'More' }).click(), page.locator('.menu-list button', { hasText: 'Export OpenAPI' }).click())]);
 const exported = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
 check('the export is OpenAPI with the imported paths', exported.openapi === '3.0.3' && Object.keys(exported.paths).length === 2, Object.keys(exported.paths).join(','));
 
@@ -108,7 +108,7 @@ page.once('dialog', (d) => d.accept());
 await page.locator('.apv-tools button[aria-label="Delete endpoint"]').click(); await page.waitForTimeout(500);
 await page.locator('.modal-foot button, .modal button.btn-danger', { hasText: /Remove|Delete/ }).last().click(); await page.waitForTimeout(1500);
 check('removing an endpoint shows in the working copy', (await page.locator('.api-ep').count()) === 2);
-await page.locator('.api-bar button', { hasText: 'API changes' }).click(); await page.waitForTimeout(1500);
+await (await page.locator('.api-bar .menu > button', { hasText: 'More' }).click(), page.locator('.menu-list button', { hasText: 'API changes' }).click()); await page.waitForTimeout(1500);
 check('the changes name the removed endpoint as breaking', (await page.locator('.chg-row.breaking', { hasText: '/orders/{id}' }).count()) === 1 && (await page.locator('.chg-stat.bad').count()) === 1);
 await shot('changes');
 await page.locator('.modal-foot button', { hasText: 'Close' }).click(); await page.waitForTimeout(300);

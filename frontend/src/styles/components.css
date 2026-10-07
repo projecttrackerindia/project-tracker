@@ -1344,3 +1344,12 @@ tr.row-deleted .td-title { font-style: italic; }
   .lens-list li { gap: 9px; padding: 6.4px 8px; border-radius: 9px; }
   .lens-row b { font-size: 10.8px; } .lens-row small { font-size: 9.6px; } .lens-none { font-size: 10.4px; }
 }
+
+/* Menu: a button that opens a short list of actions */
+.menu { position: relative; display: inline-block; }
+.menu-list { position: absolute; z-index: 40; top: calc(100% + 6px); min-width: 220px; margin: 0; padding: 6px; list-style: none; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg, 0 18px 40px -12px rgba(0,0,0,.45)); }
+.menu-list.right { right: 0; } .menu-list.left { left: 0; }
+.menu-list button { width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.menu-list button:hover, .menu-list button:focus-visible { background: var(--tint); outline: none; }
+.menu-list button span { display: grid; gap: 1px; } .menu-list button b { font-weight: 600; font-size: 13px; } .menu-list button small { color: var(--text-3); font-size: 11.5px; }
+.menu-list button.danger { color: var(--danger, #e5484d); }

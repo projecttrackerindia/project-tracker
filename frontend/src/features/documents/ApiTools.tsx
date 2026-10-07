@@ -136,8 +136,9 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
         <section className="imp-dest" aria-label="Where it goes">
           <div className="seg" role="tablist" aria-label="Destination">
             <button role="tab" aria-selected={!target} className={!target ? 'on' : ''} onClick={() => { setTarget(''); setResult(null); }}>A new API</button>
-            <button role="tab" aria-selected={!!target} disabled={definitions.length === 0} className={target ? 'on' : ''} onClick={() => { setTarget(definitions[0]?.id ?? ''); setResult(null); }}>An existing API</button>
+            <button role="tab" aria-selected={!!target} disabled={definitions.length === 0} title={definitions.length === 0 ? 'This document has no API yet. Importing creates the first one.' : undefined} className={target ? 'on' : ''} onClick={() => { setTarget(definitions[0]?.id ?? ''); setResult(null); }}>An existing API</button>
           </div>
+          {definitions.length === 0 && !target && <p className="muted imp-dest-note">This document has no API yet, so the import creates the first one. Once it exists you can import into it again to add or update endpoints.</p>}
           {target ? (
             <div className="imp-dest-grid">
               <Field label="API"><Select className="select" value={target} onChange={(e) => { setTarget(e.target.value); setResult(null); }} aria-label="Import into">{definitions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>

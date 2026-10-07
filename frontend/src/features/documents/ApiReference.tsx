@@ -1,3 +1,4 @@
+import { Menu } from '../../components/Menu';
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -83,9 +84,16 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
           <Select className="select" value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method"><option value="">Any method</option>{METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select>
         </div>
         <div className="api-bar-actions">
-          {defs.length > 0 && <button className="btn btn-ghost" onClick={() => setModal('changes')}><Icon name="layers" size={15} /> API changes</button>}
-          {def && <><button className="btn btn-ghost" onClick={() => exportFile('openapi')}><Icon name="download" size={15} /> OpenAPI</button><button className="btn btn-ghost" onClick={() => exportFile('postman')}><Icon name="download" size={15} /> Postman</button></>}
-          {canEdit && <><button className="btn btn-ghost" onClick={() => setModal('import')}><Icon name="upload" size={15} /> Import</button><button className="btn btn-primary" onClick={() => setModal(def ? 'endpoint' : 'def')}><Icon name="plus" size={15} /> {def ? 'Endpoint' : 'Describe an API'}</button></>}
+          {canEdit && <Menu primary icon="plus" label="Add" items={[
+            { label: def ? 'Endpoint' : 'Describe an API', hint: def ? 'Add one by hand' : 'Start by hand', icon: 'plus', onSelect: () => setModal(def ? 'endpoint' : 'def') },
+            { label: 'Another API', hint: 'A second description in this document', icon: 'layers', onSelect: () => setModal('def'), hidden: !def },
+            { label: 'Import', hint: 'OpenAPI, Postman or cURL', icon: 'upload', onSelect: () => setModal('import') },
+          ]} />}
+          <Menu label="More" items={[
+            { label: 'API changes', hint: 'What changed between versions', icon: 'layers', onSelect: () => setModal('changes'), hidden: defs.length === 0 },
+            { label: 'Export OpenAPI', icon: 'download', onSelect: () => exportFile('openapi'), hidden: !def },
+            { label: 'Export Postman', icon: 'download', onSelect: () => exportFile('postman'), hidden: !def },
+          ]} />
         </div>
       </div>
       {!live && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {o.reading}. It cannot be changed.</div></div>}

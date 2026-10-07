@@ -205,6 +205,13 @@ export function DocumentPage() {
           <ul>{shownSections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{edits[s.key] !== undefined && <i className="dot-dirty" />}{s.title}</a></li>)}</ul>
         </aside>
         <main className="doc-body">
+          {!editable && (
+            <header className="doc-paper-head">
+              <span className="doc-paper-key">{d.key} · {d.typeName}</span>
+              <h1>{d.title}</h1>
+              <p>Version {detail.versionLabel} · {d.status} · {d.owner.name} · Updated {formatDate(d.updatedAt)}</p>
+            </header>
+          )}
           {!editable && shownSections.length === 0 && <p className="muted doc-blank">Nothing has been written yet.{canEdit ? ' Choose the pencil to start.' : ''}</p>}
           <DocumentIdContext.Provider value={id}>
             {shownSections.map((s) => (
