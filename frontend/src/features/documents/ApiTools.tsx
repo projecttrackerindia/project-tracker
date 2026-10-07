@@ -134,11 +134,13 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
 
       {file && (
         <section className="imp-dest" aria-label="Where it goes">
-          <div className="seg" role="tablist" aria-label="Destination">
-            <button role="tab" aria-selected={!target} className={!target ? 'on' : ''} onClick={() => { setTarget(''); setResult(null); }}>A new API</button>
-            <button role="tab" aria-selected={!!target} disabled={definitions.length === 0} title={definitions.length === 0 ? 'This document has no API yet. Importing creates the first one.' : undefined} className={target ? 'on' : ''} onClick={() => { setTarget(definitions[0]?.id ?? ''); setResult(null); }}>An existing API</button>
-          </div>
-          {definitions.length === 0 && !target && <p className="muted imp-dest-note">This document has no API yet, so the import creates the first one. Once it exists you can import into it again to add or update endpoints.</p>}
+          {definitions.length > 0 && (
+            <div className="seg" role="tablist" aria-label="Destination">
+              <button role="tab" aria-selected={!target} className={!target ? 'on' : ''} onClick={() => { setTarget(''); setResult(null); }}>A new API</button>
+              <button role="tab" aria-selected={!!target} className={target ? 'on' : ''} onClick={() => { setTarget(definitions[0]?.id ?? ''); setResult(null); }}>An existing API</button>
+            </div>
+          )}
+          {definitions.length === 0 && <p className="muted imp-dest-note">This document has no API yet, so the import creates the first one. Later imports can add to it or update it.</p>}
           {target ? (
             <div className="imp-dest-grid">
               <Field label="API"><Select className="select" value={target} onChange={(e) => { setTarget(e.target.value); setResult(null); }} aria-label="Import into">{definitions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>
@@ -147,7 +149,7 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
                 <button role="radio" aria-checked={mode === 'replace'} className={mode === 'replace' ? 'on' : ''} onClick={() => { setMode('replace'); setResult(null); }}><b>Make it match the file</b><span>Endpoints that are not in the file are removed.</span></button>
               </div>
             </div>
-          ) : <Field label="Name" hint="Leave empty to use the name in the file."><input className="input" value={newName} maxLength={80} placeholder="Payments API" onChange={(e) => { setNewName(e.target.value); setResult(null); }} /></Field>}
+          ) : <Field label="Name" hint="Leave empty to use the suggested name."><input className="input" value={newName} maxLength={80} placeholder={result?.definition || 'Name of the API'} onChange={(e) => { setNewName(e.target.value); setResult(null); }} /></Field>}
         </section>
       )}
 

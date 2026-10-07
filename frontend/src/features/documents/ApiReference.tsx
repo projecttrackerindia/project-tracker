@@ -33,6 +33,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
   const o = overview.data;
   const live = o?.live ?? true;
   const canEdit = !!o?.canEdit && live && editable;
+  const canManage = !!o?.canEdit && live;   // adding and importing are deliberate actions: they stay available while reading
   const defs = o?.definitions ?? [];
   const def = defs.find((d) => d.id === defId) ?? defs[0];
   const published = (versions.data?.items ?? []).filter((v) => !v.isDraft);
@@ -84,7 +85,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
           <Select className="select" value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method"><option value="">Any method</option>{METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select>
         </div>
         <div className="api-bar-actions">
-          {canEdit && <Menu primary icon="plus" label="Add" items={[
+          {canManage && <Menu primary icon="plus" label="Add" items={[
             { label: def ? 'Endpoint' : 'Describe an API', hint: def ? 'Add one by hand' : 'Start by hand', icon: 'plus', onSelect: () => setModal(def ? 'endpoint' : 'def') },
             { label: 'Another API', hint: 'A second description in this document', icon: 'layers', onSelect: () => setModal('def'), hidden: !def },
             { label: 'Import', hint: 'OpenAPI, Postman or cURL', icon: 'upload', onSelect: () => setModal('import') },
@@ -97,17 +98,17 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
         </div>
       </div>
       {!live && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {o.reading}. It cannot be changed.</div></div>}
-      {canEdit && o.limit >= 0 && <p className={`muted api-limit${overLimit ? ' over' : ''}`}>{o.used.toLocaleString()} of {o.limit.toLocaleString()} endpoints used in this workspace.{overLimit ? ' Upgrade the plan to document more.' : ''}</p>}
+      {canManage && o.limit >= 0 && <p className={`muted api-limit${overLimit ? ' over' : ''}`}>{o.used.toLocaleString()} of {o.limit.toLocaleString()} endpoints used in this workspace.{overLimit ? ' Upgrade the plan to document more.' : ''}</p>}
 
       {defs.length === 0 ? (
-        <EmptyState icon="git" title="No API described yet" text={canEdit ? 'Describe an API by hand, or import an OpenAPI file, a Postman collection or cURL commands and edit from there.' : 'The owner has not described an API in this document yet.'}
-          action={canEdit ? <div className="api-empty-actions"><button className="btn btn-primary" onClick={() => setModal('def')}><Icon name="plus" /> Describe an API</button><button className="btn btn-ghost" onClick={() => setModal('import')}><Icon name="upload" /> Import a file</button></div> : undefined} />
+        <EmptyState icon="git" title="No API described yet" text={canManage ? 'Describe an API by hand, or import an OpenAPI file, a Postman collection or cURL commands and edit from there.' : 'The owner has not described an API in this document yet.'}
+          action={canManage ? <div className="api-empty-actions"><button className="btn btn-primary" onClick={() => setModal('def')}><Icon name="plus" /> Describe an API</button><button className="btn btn-ghost" onClick={() => setModal('import')}><Icon name="upload" /> Import a file</button></div> : undefined} />
       ) : (
         <div className="api-body">
           <aside className="api-tree" aria-label="APIs and endpoints">
             <ul className="api-defs">{defs.map((d) => (
               <li key={d.id}><button className={`api-def${d.id === def?.id ? ' on' : ''}`} onClick={() => { setDefId(d.id); setEpId(''); }}><b>{d.name}</b><span>{d.version ?? ''}</span><i>{d.endpoints.toLocaleString()}</i></button></li>
-            ))}{canEdit && <li><button className="api-def add" onClick={() => setModal('def')}><Icon name="plus" size={13} /> Another API</button></li>}</ul>
+            ))}{canManage && <li><button className="api-def add" onClick={() => setModal('def')}><Icon name="plus" size={13} /> Another API</button></li>}</ul>
             {def && (
               <div className="api-eps">
                 <div className="api-eps-head"><span className="muted">{total !== null ? `${items.length.toLocaleString()} of ${total.toLocaleString()}` : `${items.length} shown`}</span>

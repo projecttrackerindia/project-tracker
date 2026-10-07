@@ -646,3 +646,6 @@
 .doc-layout.reading .ProseMirror pre { padding: 14px 16px; border-radius: 10px; background: #0d1117; color: #e6edf3; font-size: 12.5px; line-height: 1.6; overflow-x: auto; }
 .doc-layout.reading .ProseMirror h2, .doc-layout.reading .ProseMirror h3 { margin: 22px 0 8px; letter-spacing: -.01em; }
 @media (max-width: 760px) { .doc-layout.reading .doc-body { padding: 24px 18px 12px; border-radius: 12px; } .doc-paper-head h1 { font-size: 24px; } }
+.api-bar { padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.api-bar-main { flex: 1 1 auto; }
+.api-bar-main .doc-search { flex: 1 1 280px; max-width: 460px; }
