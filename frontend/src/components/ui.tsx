@@ -101,8 +101,8 @@ export function invalidateAvatarCache(userId: string) {
   if (url) { URL.revokeObjectURL(url); avatarUrlCache.delete(userId); }
 }
 
-/** A person's photo if they have one (fetched once per user per session, cached as an object URL), initials otherwise. */
-export const Avatar = ({ name, size, userId, hasAvatar }: { name?: string | null; size?: 'sm' | 'lg'; userId?: string; hasAvatar?: boolean }) => {
+/** A person's photo URL if they have one (fetched once per user per session, cached as an object URL across every caller). */
+export function useAvatarUrl(userId?: string, hasAvatar?: boolean) {
   const [url, setUrl] = useState<string | null>(() => (userId && avatarUrlCache.get(userId)) || null);
   useEffect(() => {
     if (!userId || !hasAvatar) { setUrl(null); return; }
@@ -115,6 +115,12 @@ export const Avatar = ({ name, size, userId, hasAvatar }: { name?: string | null
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [userId, hasAvatar]);
+  return url;
+}
+
+/** A person's photo if they have one, initials otherwise. */
+export const Avatar = ({ name, size, userId, hasAvatar }: { name?: string | null; size?: 'sm' | 'lg'; userId?: string; hasAvatar?: boolean }) => {
+  const url = useAvatarUrl(userId, hasAvatar);
   if (url) return <span className={`avatar avatar-photo ${size ?? ''}`} title={name ?? undefined}><img src={url} alt="" /></span>;
   return <span className={`avatar ${size ?? ''}`} title={name ?? undefined}>{initials(name)}</span>;
 };

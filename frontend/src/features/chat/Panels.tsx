@@ -24,9 +24,9 @@ function usePeople() {
 }
 
 /** A person with a presence dot: online comes from live events, falling back to what the server said when it was last asked. */
-export function PersonAvatar({ name, userId, fallback }: { name: string; userId: string; fallback: boolean }) {
+export function PersonAvatar({ name, userId, fallback, hasAvatar }: { name: string; userId: string; fallback: boolean; hasAvatar?: boolean }) {
   const online = useChat((s) => s.online[userId]) ?? fallback;
-  return <span className="avatar-wrap"><Avatar name={name} size="sm" />{online && <i className="presence-dot" aria-label="Online" />}</span>;
+  return <span className="avatar-wrap"><Avatar name={name} size="sm" userId={userId} hasAvatar={hasAvatar} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
 }
 
 // ------------------------------------------------------------------ people picker
@@ -47,7 +47,7 @@ function PeoplePicker({ people, multiple, selected, onToggle, onPick, emptyText 
           return (
             <li key={p.userId}>
               <button type="button" className={`picker-row ${on ? 'on' : ''}`} onClick={() => (multiple ? onToggle(p.userId) : onPick(p))} aria-pressed={multiple ? on : undefined}>
-                <PersonAvatar name={p.name} userId={p.userId} fallback={p.online} />
+                <PersonAvatar name={p.name} userId={p.userId} fallback={p.online} hasAvatar={p.hasAvatar} />
                 <span className="picker-text"><b>{p.name}</b><small>{p.email}</small></span>
                 {multiple && <span className={`check ${on ? 'on' : ''}`}>{on && <Icon name="tick" size={12} />}</span>}
               </button>
@@ -215,7 +215,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
             {conversation.members.map((m) => (
               <li key={m.userId}>
                 <button type="button" className="member-row-btn" onClick={() => setViewProfile(m.userId)} aria-label={`${m.name}'s profile`}>
-                  <PersonAvatar name={m.name} userId={m.userId} fallback={m.online} />
+                  <PersonAvatar name={m.name} userId={m.userId} fallback={m.online} hasAvatar={m.hasAvatar} />
                   <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{(online[m.userId] ?? m.online) ? 'Active now' : 'Offline'}</small></span>
                 </button>
                 {m.role === 'Admin' && group && <span className="badge badge-neutral">Admin</span>}

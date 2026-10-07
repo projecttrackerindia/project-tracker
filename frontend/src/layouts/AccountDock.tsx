@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { useNavigate } from 'react-router-dom';
 import type { PlanSummary } from '../api/types';
 import { Icon } from '../components/Icon';
-import { RoleBadge } from '../components/ui';
+import { RoleBadge, useAvatarUrl } from '../components/ui';
 import { formatDate, initials } from '../lib/format';
 import { useAuth, useModule } from '../stores/auth';
 import { useUi } from '../stores/ui';
@@ -51,6 +51,7 @@ export function AccountDock() {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const { user, current } = ctx;
+  const photo = useAvatarUrl(user.id, user.hasAvatar);
   const isAdmin = user.isPlatformAdmin;
   const plan = !isAdmin ? current?.plan : undefined;
   const status = plan ? planStatus(plan) : null;
@@ -87,7 +88,7 @@ export function AccountDock() {
       {open && (
         <div className={`ad-menu tier-${tier}`} role="menu" aria-label="Account" ref={menu} onKeyDown={onMenuKey}>
           <div className="ad-head">
-            <span className="ad-avatar lg" aria-hidden="true">{initials(user.displayName)}<i className="ad-presence" /></span>
+            <span className="ad-avatar lg" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className="ad-presence" /></span>
             <div className="ad-who">
               <b title={user.displayName}>{user.displayName}</b>
               <span title={user.email}>{user.email}</span>
@@ -124,7 +125,7 @@ export function AccountDock() {
 
       <button type="button" ref={trigger} className="account-dock" aria-haspopup="menu" aria-expanded={open} title={`${user.displayName} · account menu`}
         onClick={() => setOpen((o) => !o)}>
-        <span className="ad-avatar" aria-hidden="true">{initials(user.displayName)}<i className="ad-presence" /></span>
+        <span className="ad-avatar" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className="ad-presence" /></span>
         <span className="ad-main">
           <span className="ad-name">{user.displayName}</span>
           <span className="ad-sub">
@@ -140,11 +141,12 @@ export function AccountDock() {
 
 /** On small screens the sidebar is a drawer, so the top bar keeps a small avatar that opens it (where the account card is). */
 export function TopbarMe() {
-  const name = useAuth((s) => s.ctx?.user.displayName);
+  const user = useAuth((s) => s.ctx?.user);
+  const photo = useAvatarUrl(user?.id, user?.hasAvatar);
   const toggleSidebar = useUi((s) => s.toggleSidebar);
   return (
     <button type="button" className="topbar-me" onClick={toggleSidebar} aria-label="Open the menu and your account" title="Your account">
-      <span className="ad-avatar sm" aria-hidden="true">{initials(name)}</span>
+      <span className="ad-avatar sm" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user?.displayName)}</span>
     </button>
   );
 }

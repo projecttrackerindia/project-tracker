@@ -28,6 +28,7 @@
 @keyframes ad-spin { to { rotate: 360deg; } }
 .ad-avatar.lg { width: 44px; height: 44px; font-size: 15px; }
 .ad-avatar.sm { width: 30px; height: 30px; font-size: 11px; }
+.ad-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 .ad-presence { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 50%; background: #22c55e; border: 2px solid var(--panel-solid); box-shadow: 0 0 8px rgba(34, 197, 94, .7); }
 .ad-avatar.lg .ad-presence { width: 13px; height: 13px; }
 
