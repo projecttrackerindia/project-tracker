@@ -500,3 +500,14 @@
 .doc-stat-bars .st-published { background: var(--success, #16a34a); opacity: .8; }
 .doc-stat-bars .st-draft { background: var(--border-strong, #9ca3af); }
 .doc-stat-bars .st-inreview, .doc-stat-bars .st-approved { background: var(--warning, #d97706); opacity: .8; }
+
+/* diagrams drawn from text */
+.doc-diagrams { display: grid; gap: 12px; margin-top: 12px; }
+.doc-diagram { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow-x: auto; }
+.doc-diagram svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.doc-diagram-error { margin: 0; font-size: 13px; color: var(--danger, #b91c1c); }
+:root[data-theme="dark"] .doc-diagram .dg-node { fill: #1e293b; stroke: #94a3b8; }
+:root[data-theme="dark"] .doc-diagram .dg-text { fill: #e2e8f0; }
+:root[data-theme="dark"] .doc-diagram .dg-edge { stroke: #94a3b8; }
+:root[data-theme="dark"] .doc-diagram .dg-head { fill: #94a3b8; }
+:root[data-theme="dark"] .doc-diagram .dg-label-bg { fill: #0f172a; }

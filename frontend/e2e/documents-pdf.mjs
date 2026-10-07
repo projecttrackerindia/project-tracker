@@ -42,10 +42,18 @@ await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await pag
 const docId = page.url().split('/documents/')[1].split('?')[0];
 const detail = await (await fetch(`${API}/api/v1/documents/${docId}`, { headers: auth })).json();
 const first = detail.data.sections[0];
-const body = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'New users meet the marsupial mascot during sign-up.' }] }] };
+const body = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'New users meet the marsupial mascot during sign-up.' }] },
+  { type: 'codeBlock', attrs: { language: 'mermaid' }, content: [{ type: 'text', text: 'flowchart LR\n  A[Sign up] --> B{Email verified?}\n  B -->|yes| C[Welcome tour]\n  B -->|no| D[Send reminder]\n  D --> B' }] }] };
 const saved = await fetch(`${API}/api/v1/documents/${docId}/sections`, { method: 'PUT', headers: auth, body: JSON.stringify({ revision: detail.data.revision, sections: [{ key: first.key, content: JSON.stringify(body) }] }) });
 check('the text was saved', saved.ok);
 await page.reload(); await page.waitForTimeout(2000);
+
+// ---- the diagram on the page
+await page.waitForSelector('.doc-diagram svg', { timeout: 15000 }).catch(() => undefined);
+check('a diagram written as text is drawn under the section', (await page.locator('.doc-diagram svg').count()) === 1);
+check('with its boxes and labels', (await page.locator('.doc-diagram svg text', { hasText: 'Welcome tour' }).count()) === 1 && (await page.locator('.doc-diagram svg text', { hasText: 'yes' }).count()) >= 1);
+await page.locator('.doc-diagram').scrollIntoViewIfNeeded();
+await shot('diagram');
 
 // ---- PDF
 check('the page offers a PDF button', (await page.locator('.doc-head-actions button', { hasText: 'PDF' }).count()) === 1);
@@ -56,6 +64,8 @@ check('a PDF file is downloaded', bytes.subarray(0, 5).toString() === '%PDF-' &&
 const raw = bytes.toString('latin1');
 check('it holds the title, the text, a contents page and page numbers', raw.includes('(Quokka onboarding flow)') && raw.includes('marsupial mascot') && raw.includes('(Contents)') && /Page \d+ of \d+/.test(raw));
 await shot('export');
+const pdfRaw = raw;
+check('the diagram is drawn in the PDF (its box texts are in the page)', pdfRaw.includes('(Email verified?) Tj') && pdfRaw.includes('(Welcome tour) Tj'));
 
 // ---- search finds words inside the text (not only titles)
 await page.goto(`${BASE}/${slug}/documents`); await page.waitForTimeout(1500);

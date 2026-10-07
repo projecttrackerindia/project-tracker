@@ -641,7 +641,8 @@ export const documentApi = {
   accessRequests: (id: string) => get<AccessRequest[]>(`/documents/${id}/access-requests`),
   decideAccess: (requestId: string, b: { approve: boolean; level?: DocAccessLevel; durationDays?: number | null; note?: string }) => post<AccessRequest>(`/access-requests/${requestId}/decide`, b),
   cancelAccess: (requestId: string) => post<AccessRequest>(`/access-requests/${requestId}/cancel`),
-  // PDF and overview
+  // diagrams, PDF and overview
+  renderDiagram: (source: string) => post<{ svg: string; width: number; height: number; nodes: number; edges: number }>('/documents/diagrams/render', { source }),
   exportPdf: (id: string, versionId?: string | null) => post<ReportExport>(`/documents/${id}/export`, { versionId: versionId ?? null }),
   exportStatus: (id: string, exportId: string) => get<ReportExport>(`/documents/${id}/exports/${exportId}`),
   dashboard: () => get<DocumentDashboard>('/documents/dashboard'),

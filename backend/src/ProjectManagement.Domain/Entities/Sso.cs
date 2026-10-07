@@ -76,7 +76,7 @@ public class UserLogin : Entity
 }
 
 /// <summary>Which team a person joins when their identity provider says they belong to a group (the "groups" claim or attribute). Sync happens at sign-in.</summary>
-public class SsoGroupMapping : TenantEntity
+public class SsoGroupMapping : TenantEntity, ITenantScoped
 {
     /// <summary>The group's name or id exactly as the identity provider sends it (compared without regard to case).</summary>
     public string Group { get; set; } = "";

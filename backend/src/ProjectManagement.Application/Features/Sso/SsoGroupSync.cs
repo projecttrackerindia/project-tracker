@@ -22,7 +22,7 @@ public static class SsoGroupSync
 {
     public static async Task SyncAsync(IAppDbContext db, Recorder recorder, AppClock clock, Guid tenantId, Guid userId, IReadOnlyList<string>? groups, CancellationToken ct)
     {
-        var mappings = await db.SsoGroupMappings.AsNoTracking().Where(m => m.TenantId == tenantId).ToListAsync(ct);
+        var mappings = await db.SsoGroupMappings.IgnoreQueryFilters().AsNoTracking().Where(m => m.TenantId == tenantId).ToListAsync(ct);
         if (mappings.Count == 0) return;
         var have = (groups ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);   // a sign-in with no group claim means no groups: providers omit an empty list, and failing closed is the safe way
         var teamIds = mappings.Select(m => m.TeamId).Distinct().ToList();

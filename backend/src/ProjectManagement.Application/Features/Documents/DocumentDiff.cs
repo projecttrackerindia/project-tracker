@@ -56,7 +56,7 @@ public static class DocumentDiff
 
     // ------------------------------------------------------------------ text
 
-    public sealed record Line(string Text, string Style);
+    public sealed record Line(string Text, string Style, string? Lang = null);
 
     public static List<Line> TextLines(string json)
     {
@@ -93,7 +93,7 @@ public static class DocumentDiff
             case "doc": foreach (var k in kids) Walk(k, lines, "p", ""); break;
             case "heading": lines.Add(new Line(Inline(o), "h")); break;
             case "paragraph": lines.Add(new Line(prefix + Inline(o), style)); break;
-            case "codeBlock": lines.Add(new Line(Inline(o), "code")); break;
+            case "codeBlock": lines.Add(new Line(Inline(o), "code", o["attrs"]?["language"]?.GetValue<string>())); break;
             case "blockquote": foreach (var k in kids) Walk(k, lines, "quote", ""); break;
             case "bulletList": foreach (var k in kids) Walk(k, lines, "li", "• "); break;
             case "orderedList": { var i = 1; foreach (var k in kids) Walk(k, lines, "li", $"{i++}. "); break; }

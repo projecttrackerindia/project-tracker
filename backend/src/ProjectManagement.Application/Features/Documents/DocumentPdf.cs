@@ -16,6 +16,7 @@ namespace ProjectManagement.Application.Features.Documents;
 /// hold more than the screen would show. Secret values are never part of it: only their names are listed.
 /// </summary>
 public record ExportDocumentRequest(Guid? VersionId = null);
+public record RenderDiagramRequest(string? Source);
 
 public class DocumentPdfBuilder(DocumentService documents, DocumentVersionService versions, DocumentWorkflowService workflows, DocumentTraceService trace, ApiDocService api,
     SecretService secrets, IAppDbContext db, ICurrentContext ctx, AppClock clock)
@@ -91,6 +92,10 @@ public class DocumentPdfBuilder(DocumentService documents, DocumentVersionServic
                 case "h": blocks.Add(new PdfHeading(2, line.Text)); break;
                 case "li": blocks.Add(new PdfItem(line.Text)); break;
                 case "quote": blocks.Add(new PdfQuote(line.Text)); break;
+                case "code" when DiagramEngine.IsDiagramLanguage(line.Lang):
+                    try { blocks.Add(new PdfDiagram(DiagramEngine.Draw(line.Text))); }
+                    catch (DiagramException e) { blocks.Add(new PdfPara($"This diagram could not be drawn: {e.Message}{(e.Line > 0 ? $" (line {e.Line})" : "")}", true)); blocks.Add(new PdfCode(line.Text.Split('\n'))); }
+                    break;
                 case "code": blocks.Add(new PdfCode(line.Text.Split('\n'))); break;
                 case "row": rows.Add(line.Text.Split(" | ")); break;
                 default: blocks.Add(new PdfPara(line.Text)); break;

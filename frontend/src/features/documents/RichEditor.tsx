@@ -42,6 +42,7 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) 
       <Btn label="Quote" active={editor.isActive('blockquote')} on={() => c().toggleBlockquote().run()}>“</Btn>
       <Btn label="Code" active={editor.isActive('codeBlock')} on={() => c().toggleCodeBlock().run()}>{'</>'}</Btn>
       <span className="rte-sep" />
+      <Btn label="Insert diagram" on={() => c().insertContent({ type: 'codeBlock', attrs: { language: 'mermaid' }, content: [{ type: 'text', text: 'flowchart LR\n  A[Start] --> B{Check}\n  B -->|yes| C[Done]\n  B -->|no| A' }] }).run()}>⬡</Btn>
       <Btn label="Link" active={editor.isActive('link')} on={link}>🔗</Btn>
       {onImage && <Btn label="Insert picture" on={onImage}>🖼</Btn>}
       <Btn label="Insert table" on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>▦</Btn>

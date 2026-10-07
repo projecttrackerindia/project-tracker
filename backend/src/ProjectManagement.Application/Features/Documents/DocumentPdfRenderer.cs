@@ -13,6 +13,7 @@ public sealed record PdfQuote(string Text) : PdfBlock;
 public sealed record PdfCode(IReadOnlyList<string> Lines) : PdfBlock;
 public sealed record PdfTable(IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyList<string>> Rows) : PdfBlock;
 public sealed record PdfFacts(IReadOnlyList<(string Label, string Value)> Items) : PdfBlock;
+public sealed record PdfDiagram(DiagramModel Model) : PdfBlock;
 public sealed record PdfBreak : PdfBlock;
 
 /// <summary>Everything the file shows: a cover (title and facts, approval record), a table of contents made from the headings, then the blocks.</summary>
@@ -85,7 +86,7 @@ public class DocumentPdfRenderer : IDocumentPdfRenderer
     public (byte[] File, int Pages) Render(PdfDocModel doc)
     {
         // Cheap guard before laying out: far more text than 600 pages can hold is refused at once.
-        var chars = doc.Blocks.Sum(b => b switch { PdfPara p => p.Text.Length, PdfItem i => i.Text.Length, PdfQuote q => q.Text.Length, PdfCode c => c.Lines.Sum(l => l.Length + 20), PdfTable t => t.Rows.Sum(r => r.Sum(c => c.Length + 10)), _ => 80 });
+        var chars = doc.Blocks.Sum(b => b switch { PdfPara p => p.Text.Length, PdfItem i => i.Text.Length, PdfQuote q => q.Text.Length, PdfCode c => c.Lines.Sum(l => l.Length + 20), PdfTable t => t.Rows.Sum(r => r.Sum(c => c.Length + 10)), PdfDiagram => 4000, _ => 80 });
         if (chars > MaxPages * 6000L) throw new PdfTooLongException(chars / 3000);
 
         var lay = new Layout();
@@ -196,6 +197,16 @@ public class DocumentPdfRenderer : IDocumentPdfRenderer
                 }
                 l.Y -= 4; break;
             case PdfTable t: DrawTable(l, t, usable); break;
+            case PdfDiagram d:
+                {
+                    var scale = Math.Min(1.0, Math.Min(usable / d.Model.Width, (H - 2 * M - 40) / d.Model.Height));
+                    scale = Math.Max(scale, 0.3);
+                    var h = d.Model.Height * scale;
+                    l.Need(h + 8);
+                    l.P.C.Append(DiagramEngine.ToPdf(d.Model, M + (usable - d.Model.Width * scale) / 2, l.Y, scale));
+                    l.Y -= h + 10;
+                    break;
+                }
         }
     }
 
