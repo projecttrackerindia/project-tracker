@@ -630,6 +630,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["POST documents/{id:guid}/requirements"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/requirements", new { titles = new[] { "One" } }); requirement = Guid.Parse(S(r.Data!.AsArray()[0]!["id"])); return r; },
             ["PUT documents/{id:guid}/requirements/{requirementId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/requirements/{requirement}", new { title = "One, better", priority = "High" }),
             ["DELETE documents/{id:guid}/requirements/{requirementId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/requirements/{requirement}"),
+            ["POST documents/{id:guid}/export"] = () => owner.Post($"/api/v1/documents/{doc}/export", new { }),
             ["POST documents/{id:guid}/secrets"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/secrets", new { label = "Audit key", value = "v1" }); secret = Guid.Parse(S(r.Data!["items"]![0]!["id"])); return r; },
             ["PUT documents/{id:guid}/secrets/{secretId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/secrets/{secret}", new { label = "Audit key", value = "v2" }),
             ["POST documents/{id:guid}/secrets/{secretId:guid}/reveal"] = () => owner.Post($"/api/v1/documents/{doc}/secrets/{secret}/reveal", new { }),

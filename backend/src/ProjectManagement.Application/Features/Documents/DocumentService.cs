@@ -31,7 +31,7 @@ public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? 
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
 
@@ -80,13 +80,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (f.Status is { } s) q = q.Where(d => d.Status == s);
         if (f.OwnerId is { } o) q = q.Where(d => d.OwnerId == o);
         if (!string.IsNullOrWhiteSpace(f.Tag)) { var tag = f.Tag.Trim().ToLowerInvariant(); q = q.Where(d => db.DocumentTags.Any(x => x.DocumentId == d.Id && x.Tag == tag)); }
-        if (!string.IsNullOrWhiteSpace(f.Q))
-        {
-            var text = f.Q.Trim().ToLowerInvariant();
-            var num = text.StartsWith("doc-") && int.TryParse(text[4..], out var n) ? n : (int?)null;
-            q = q.Where(d => d.Title.ToLower().Contains(text) || (num != null && d.Number == num)
-                             || db.DocumentTags.Any(x => x.DocumentId == d.Id && x.Tag.Contains(text)));
-        }
+        if (!string.IsNullOrWhiteSpace(f.Q)) q = DocumentSearchIndexer.Match(q, db, f.Q);
         int? total = cursor is null ? await q.CountAsync(ct) : null;
 
         if (Cursor.TryParse(cursor, out var at, out var after))
@@ -209,7 +203,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         foreach (var tag in CleanTags(req.Tags)) db.DocumentTags.Add(new DocumentTag { TenantId = tid, DocumentId = doc.Id, Tag = tag, CreatedAt = now });
         recorder.Activity("document.created", "Document", doc.Id, $"Created {KeyOf(doc.Number)} \"{title}\"", project?.Id);
         recorder.Audit("document.created", "Document", doc.Id, null, new { doc.Number, title, type = type.Code, project = project?.Key, visibility = visibility.ToString() });
-        try { await db.SaveChangesAsync(ct); }
+        try { await db.SaveChangesAsync(ct); await indexer.IndexAsync(doc.Id, ct); }
         catch (DbUpdateException)
         {
             // Two people created a document at the same moment and drew the same number: take the next free one.
@@ -265,6 +259,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         recorder.Activity("document.updated", "Document", doc.Id, $"Updated {KeyOf(doc.Number)} \"{title}\"", doc.ProjectId);
         recorder.Audit("document.updated", "Document", doc.Id, before, new { Title = title, visibility = visibility.ToString(), doc.OwnerId });
         await SaveAsync(ct);
+        await indexer.IndexAsync(doc.Id, ct);   // the title and tags are part of the search text
         return await GetAsync(id, ct);
     }
 
@@ -290,6 +285,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         recorder.Activity("document.edited", "Document", doc.Id, $"Edited {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
         recorder.Audit("document.edited", "Document", doc.Id, null, new { sections = req.Sections.Select(x => x.Key), hash });   // which sections, never the words
         await SaveAsync(ct);
+        if (doc.PublishedVersionId is null) await indexer.IndexAsync(doc.Id, ct);   // readers see the draft until there is a published version
         return await GetAsync(id, ct);
     }
 

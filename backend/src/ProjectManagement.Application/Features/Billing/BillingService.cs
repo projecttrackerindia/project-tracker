@@ -268,7 +268,7 @@ public class BillingService(
 }
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
-public class MaintenanceService(ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
+public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
 {
     private const int PastDueGraceDays = 7;
 
@@ -283,6 +283,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await keyRotation.ContinueAllAsync(ct);   // values still on an older data key after a rotation
         await auditChain.VerifyRecentAsync(ct);   // tamper check of audit trails that changed since the last one
         await documentRetention.PurgeAsync(ct);
+        await searchIndex.SweepAsync(ct);   // documents not yet in (or changed since) the search index
         await documentWorkflows.SendRemindersAsync(ct);   // Business: approvers of overdue review steps are reminded once   // deleted documents after 30 days; old document versions after the plan's history period
     }
 

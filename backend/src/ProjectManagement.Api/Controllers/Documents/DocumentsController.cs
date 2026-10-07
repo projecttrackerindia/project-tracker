@@ -9,8 +9,25 @@ namespace ProjectManagement.Api.Controllers.Documents;
 /// <summary>Documents (BRDs, API documentation, test plans ...). Who may open a document is decided in the data layer; see <see cref="DocumentService"/>.</summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Documents)]
 public class DocumentsController(DocumentService documents, DocumentLinkService links, DocumentVersionService versions, DocumentAccessService access, DocumentFileService files,
-    DocumentWorkflowService workflows, DocumentAccessRequestService requests, DocumentTraceService trace, DocumentAuditService audit, DocumentInboxService inbox) : ApiControllerBase
+    DocumentWorkflowService workflows, DocumentAccessRequestService requests, DocumentTraceService trace, DocumentAuditService audit, DocumentInboxService inbox, DocumentExportService exports, DocumentDashboardService dashboard) : ApiControllerBase
 {
+    /// <summary>Asks for a PDF of the document (of one published version, or as the person sees it now). The file is built in the background; the person is notified.</summary>
+    [HttpPost("documents/{id:guid}/export")]
+    public async Task<IActionResult> Export(Guid id, [FromBody] ExportDocumentRequest req, CancellationToken ct) => Created(await exports.RequestAsync(id, req.VersionId, ct));
+
+    [HttpGet("documents/{id:guid}/exports/{exportId:guid}")]
+    public async Task<IActionResult> ExportStatus(Guid id, Guid exportId, CancellationToken ct) => Ok(await exports.GetAsync(id, exportId, ct));
+
+    [HttpGet("documents/{id:guid}/exports/{exportId:guid}/file")]
+    public async Task<IActionResult> ExportFile(Guid id, Guid exportId, CancellationToken ct)
+    {
+        var (content, name, type) = await exports.OpenAsync(id, exportId, ct);
+        return File(content, type, name);
+    }
+
+    [HttpGet("documents/dashboard")]
+    public async Task<IActionResult> Dashboard(CancellationToken ct) => Ok(await dashboard.GetAsync(ct));
+
     [HttpGet("document-types")]
     public async Task<IActionResult> Types(CancellationToken ct) => Ok(await documents.ListTypesAsync(ct));
 

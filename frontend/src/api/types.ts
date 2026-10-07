@@ -345,7 +345,7 @@ export interface BurndownPoint { date: string; remaining: number; ideal: number 
 export interface SprintDetail { sprint: Sprint; burndown: BurndownPoint[] }
 
 // ---- generated reports
-export type ReportKind = 'Project' | 'Workload' | 'Timesheet' | 'WorkTasks' | 'WorkspaceExport';
+export type ReportKind = 'Project' | 'Workload' | 'Timesheet' | 'WorkTasks' | 'WorkspaceExport' | 'Document';
 export type ReportFormat = 'Csv' | 'Xlsx' | 'Pdf' | 'Zip';
 
 // ---- integrations
@@ -667,3 +667,6 @@ export interface SecretReveal { value: string; revealSeconds: number }
 export interface StepUpToken { token: string; expiresAt: string }
 export interface ChainStatus { intact: boolean; records: number; verifiedUpTo: number; verifiedAt: string | null; brokenSeq: number | null; brokenId: string | null; reason: string | null }
 export interface DocSecurity { revealSeconds: number; entitled: boolean; keyVersion: number; valuesTotal: number; valuesOnOldKeys: number; lastRotatedAt: string | null; chain: ChainStatus }
+
+export interface DashboardCount { key: string; label: string; count: number }
+export interface DocumentDashboard { total: number; byStatus: DashboardCount[]; byType: DashboardCount[]; mine: number; waitingForMe: number; updatedThisWeek: number; notUpdatedIn90Days: number; unpublished: number; recent: DocumentItem[] }

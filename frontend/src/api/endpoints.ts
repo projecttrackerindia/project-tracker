@@ -10,7 +10,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
   DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
-  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, ApiOverview, EndpointPage, EndpointDetail, SaveEndpoint, SaveDefinition, ApiImportResult, ApiChanges, EndpointHit, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage, SecretClass, SecretList, SecretReveal, StepUpToken, ChainStatus, DocSecurity,
+  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, ApiOverview, EndpointPage, EndpointDetail, SaveEndpoint, SaveDefinition, ApiImportResult, ApiChanges, EndpointHit, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage, SecretClass, DocumentDashboard, SecretList, SecretReveal, StepUpToken, ChainStatus, DocSecurity,
 } from './types';
 
 export const authApi = {
@@ -638,6 +638,10 @@ export const documentApi = {
   accessRequests: (id: string) => get<AccessRequest[]>(`/documents/${id}/access-requests`),
   decideAccess: (requestId: string, b: { approve: boolean; level?: DocAccessLevel; durationDays?: number | null; note?: string }) => post<AccessRequest>(`/access-requests/${requestId}/decide`, b),
   cancelAccess: (requestId: string) => post<AccessRequest>(`/access-requests/${requestId}/cancel`),
+  // PDF and overview
+  exportPdf: (id: string, versionId?: string | null) => post<ReportExport>(`/documents/${id}/export`, { versionId: versionId ?? null }),
+  exportStatus: (id: string, exportId: string) => get<ReportExport>(`/documents/${id}/exports/${exportId}`),
+  dashboard: () => get<DocumentDashboard>('/documents/dashboard'),
   // sensitive values
   secrets: (id: string) => get<SecretList>(`/documents/${id}/secrets`),
   saveSecret: (id: string, secretId: string | null, b: { label: string; value?: string; note?: string; class: SecretClass }) => secretId ? put<SecretList>(`/documents/${id}/secrets/${secretId}`, b) : post<SecretList>(`/documents/${id}/secrets`, b),

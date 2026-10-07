@@ -488,3 +488,15 @@
 .dsec-custom { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .dsec-custom input { width: 96px; }
 .dsec-plan { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+
+/* overview */
+.doc-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0 0 16px; }
+.doc-stat { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.doc-stat b { font-size: 22px; line-height: 1.1; }
+.doc-stat span { font-size: 12px; color: var(--text-muted); }
+.doc-stat.warn b { color: var(--warning, #b45309); }
+.doc-stat-bars { grid-column: 1 / -1; display: flex; gap: 3px; height: 6px; }
+.doc-stat-bars span { border-radius: 3px; background: var(--primary); opacity: .55; min-width: 4px; }
+.doc-stat-bars .st-published { background: var(--success, #16a34a); opacity: .8; }
+.doc-stat-bars .st-draft { background: var(--border-strong, #9ca3af); }
+.doc-stat-bars .st-inreview, .doc-stat-bars .st-approved { background: var(--warning, #d97706); opacity: .8; }

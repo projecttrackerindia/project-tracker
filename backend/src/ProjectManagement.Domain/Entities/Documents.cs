@@ -78,6 +78,9 @@ public class Document : TenantEntity, ITenantScoped, ISoftDelete
     public int Revision { get; set; } = 1;
     /// <summary>A fingerprint of the document's API definitions and endpoints (empty when it has none); part of the draft's content hash, so a changed API counts as an unpublished change.</summary>
     public string ApiHash { get; set; } = "";
+    /// <summary>Lower-case plain text of what readers see (the published version, or the draft until there is one): the section titles and words, for search. Never holds secret values.</summary>
+    public string? SearchText { get; set; }
+    public DateTime? SearchIndexedAt { get; set; }
 
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }

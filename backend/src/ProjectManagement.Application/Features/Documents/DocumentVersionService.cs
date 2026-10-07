@@ -20,7 +20,7 @@ public record RestoreRequest(string? Reason, bool DiscardChanges, int Revision);
 /// The history of a document. Publishing freezes the draft as the next version (1.0, then 1.1, or 2.0 for a major change) and starts a fresh draft from it;
 /// nothing that was published is ever changed. Restoring an old version publishes a new version with its content, so the history shows both.
 /// </summary>
-public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows, ProjectManagement.Application.Features.ApiDocs.ApiTransferService apiData, ProjectManagement.Application.Features.ApiDocs.ApiDocService apiDocs)
+public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows, ProjectManagement.Application.Features.ApiDocs.ApiTransferService apiData, ProjectManagement.Application.Features.ApiDocs.ApiDocService apiDocs, DocumentSearchIndexer indexer)
 {
     public static string Label(int major, int minor) => $"{major}.{minor}";
 
@@ -109,6 +109,7 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         recorder.Audit("document.published", "Document", doc.Id, latest is null ? null : new { version = Label(latest.Major, latest.Minor) }, new { version = Label(major, minor), summary, reason, hash = frozen.ContentHash });
         await workflows.OnPublishedAsync(doc, approval, Label(major, minor), summary, ct);
         await SaveAsync(ct);
+        await indexer.IndexAsync(doc.Id, ct);
         return await ListAsync(documentId, ct);
     }
 
@@ -158,6 +159,7 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         recorder.Activity("document.restored_version", "Document", doc.Id, $"Restored {DocumentService.KeyOf(doc.Number)} to version {Label(old.Major, old.Minor)} as {Label(major, minor)}", doc.ProjectId);
         recorder.Audit("document.version_restored", "Document", doc.Id, new { replaced = Label(latest.Major, latest.Minor) }, new { restored = Label(old.Major, old.Minor), now = Label(major, minor) });
         await SaveAsync(ct);
+        await indexer.IndexAsync(doc.Id, ct);
         await apiDocs.AfterChangeAsync(doc, ct);
         return await ListAsync(documentId, ct);
     }

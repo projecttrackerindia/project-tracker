@@ -52,6 +52,7 @@ jobs:
           node e2e/documents-api.mjs
           node e2e/documents-review.mjs
           node e2e/documents-secrets.mjs
+          node e2e/documents-pdf.mjs
       - name: Logs
         if: failure()
         run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true

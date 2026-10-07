@@ -72,6 +72,12 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAccessRequestService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentTraceService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAuditService>();
+        services.AddSingleton<ProjectManagement.Application.Features.Documents.IDocumentPdfRenderer, ProjectManagement.Application.Features.Documents.DocumentPdfRenderer>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfBuilder>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfJob>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentExportService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentSearchIndexer>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentDashboardService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.EnvelopeCrypto>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.StepUpService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.SecretService>();

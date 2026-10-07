@@ -158,7 +158,7 @@ public static class DocumentDiff
 
     // ------------------------------------------------------------------ tables
 
-    private static (List<string> Columns, List<List<string>> Rows) ReadTable(string json)
+    public static (List<string> Columns, List<List<string>> Rows) ReadTable(string json)
     {
         var cols = new List<string>(); var keys = new List<string>(); var rows = new List<List<string>>();
         try

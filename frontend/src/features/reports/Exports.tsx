@@ -17,6 +17,7 @@ export const KIND_INFO: Record<ReportKind, { label: string; hint: string }> = {
   Workload: { label: 'Team workload', hint: 'Open, overdue and completed work per person.' },
   Timesheet: { label: 'Timesheet', hint: 'Logged time by person, date and task or operational work.' },
   WorkTasks: { label: 'Work tasks', hint: 'Operational work with its type, related project, assignee, status, dates and logged time.' },
+  Document: { label: 'Document PDF', hint: 'A document as a PDF, from its page.' },
   WorkspaceExport: { label: 'Workspace data export', hint: 'Everything the workspace holds, as JSON files in a zip (owners only).' },
 };
 const FORMATS: { id: ReportFormat; label: string }[] = [{ id: 'Csv', label: 'CSV' }, { id: 'Xlsx', label: 'Excel (.xlsx)' }, { id: 'Pdf', label: 'PDF' }];

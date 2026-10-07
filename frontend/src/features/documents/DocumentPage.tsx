@@ -21,6 +21,7 @@ import { RequirementsCard } from './DocumentRequirements';
 import { ActivityCard } from './DocumentActivity';
 import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
+import { ExportPdfButton } from './ExportPdf';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
@@ -152,6 +153,7 @@ export function DocumentPage() {
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
           {editable && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
           {editable && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
+          <ExportPdfButton documentId={id} />
           <button className="btn btn-ghost" onClick={() => setPanel('history')}><Icon name="clock" size={15} /> History</button>
           <button className="btn btn-ghost" onClick={() => setPanel('access')}><Icon name="users" size={15} /> {detail.can.share ? 'Share' : 'Access'}</button>
           {detail.can.edit && <button className="btn btn-ghost" onClick={() => setDetails(true)}><Icon name="edit" size={15} /> Details</button>}

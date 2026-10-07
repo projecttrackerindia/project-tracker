@@ -216,6 +216,11 @@ public class ReportExportProcessor(IServiceScopeFactory scopes, TimeProvider tim
             }
             finally { try { File.Delete(temp); } catch (IOException) { /* best effort */ } }
         }
+        else if (export.Kind == ReportKind.Document)
+        {
+            var pdfKey = await sp.GetRequiredService<ProjectManagement.Application.Features.Documents.DocumentPdfJob>().RunAsync(export, tenant.Name, storage, ct);
+            extension = "pdf"; size = export.SizeBytes; _ = pdfKey;
+        }
         else
         {
             var doc = await sp.GetRequiredService<ReportBuilder>().BuildAsync(export, tenant.Name, ct);
@@ -226,10 +231,10 @@ public class ReportExportProcessor(IServiceScopeFactory scopes, TimeProvider tim
         }
         var key = $"{export.TenantId:N}/exports/{export.Id:N}.{extension}";
 
-        var name = export.Kind == ReportKind.WorkspaceExport ? $"workspace-export-{Now:yyyyMMdd-HHmm}.zip" : $"{export.Kind.ToString().ToLowerInvariant()}-{Now:yyyyMMdd-HHmm}.{extension}";
+        var name = export.Kind == ReportKind.Document ? export.FileName! : export.Kind == ReportKind.WorkspaceExport ? $"workspace-export-{Now:yyyyMMdd-HHmm}.zip" : $"{export.Kind.ToString().ToLowerInvariant()}-{Now:yyyyMMdd-HHmm}.{extension}";
         export.StorageKey = key; export.FileName = name; export.SizeBytes = size;
         export.Status = ReportExportStatus.Ready; export.CompletedAt = Now; export.ExpiresAt = Now + ReportExportService.Retention; export.Error = null;
-        var label = export.Kind switch { ReportKind.WorkTasks => "Work tasks report", ReportKind.WorkspaceExport => "workspace data export", _ => $"{export.Kind} report" };
+        var label = export.Kind switch { ReportKind.WorkTasks => "Work tasks report", ReportKind.WorkspaceExport => "workspace data export", ReportKind.Document => "document PDF", _ => $"{export.Kind} report" };
         await sp.GetRequiredService<NotificationService>().AddAsync(export.UserId, NotificationType.ReportReady, $"Your {label} is ready",
             $"{name} ({size / 1024 + 1:N0} KB) can be downloaded for {ReportExportService.Retention.Days} days.", "/reports", toSelf: true, ct: ct);
         await db.SaveChangesAsync(ct);

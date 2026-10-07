@@ -9,6 +9,7 @@ import { DocumentList } from './DocumentList';
 import { InboxView } from './DocumentInbox';
 import { WorkflowsModal } from './DocumentWorkflows';
 import { DocumentSecurityModal } from './DocumentSecurity';
+import { DocumentOverview } from './DocumentOverview';
 import { DocumentWizard } from './DocumentWizard';
 
 /** Every document the person may open, wherever it lives: in a project, a team, or the whole organization. */
@@ -35,6 +36,7 @@ export function DocumentsPage() {
         <button role="tab" aria-selected={view === 'all'} className={view === 'all' ? 'on' : ''} onClick={() => setView('all')}>All documents</button>
         <button role="tab" aria-selected={view === 'inbox'} className={view === 'inbox' ? 'on' : ''} onClick={() => setView('inbox')}>Waiting for me{waiting > 0 && <span className="doc-count">{waiting}</span>}</button>
       </div>
+      {view === 'all' && <DocumentOverview />}
       {view === 'inbox' ? <InboxView /> : <DocumentList canCreate={canCreate} onNew={() => setCreating(true)} />}
       {flows && <WorkflowsModal onClose={() => setFlows(false)} />}
       {security && <DocumentSecurityModal onClose={() => setSecurity(false)} />}
