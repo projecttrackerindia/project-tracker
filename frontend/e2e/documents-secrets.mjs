@@ -12,10 +12,13 @@ if (!up.ok) { console.log('FAIL  could not move the demo workspace to Business',
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--no-sandbox'] });
 const results = [];
+/** A document opens for reading; switch to editing when the test needs to type. */
+let toEdit = async () => undefined;
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  - ' + detail : ''}`); };
 const errors = [];
 const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 } });
 const page = await ctx.newPage();
+toEdit = async () => { const b = page.locator('.mode-switch button[aria-label="Edit"]'); await b.first().waitFor({ timeout: 8000 }).catch(() => undefined); if ((await b.count()) && (await b.getAttribute('aria-pressed')) !== 'true') { await b.click(); await page.waitForTimeout(500); } };
 page.on('pageerror', (e) => errors.push(e.message));
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/secrets-${n}.png` }); };
 
@@ -37,7 +40,7 @@ for (let i = 0; i < 8; i++) {
   if (await create.count()) { await create.click(); break; }
   await page.locator('.modal button', { hasText: /Next|Review/ }).click(); await page.waitForTimeout(400);
 }
-await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await page.waitForTimeout(1500);
+await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await toEdit(); await page.waitForTimeout(1500);
 const docUrl = page.url().split('?')[0];
 
 // ---- add a secret
@@ -74,7 +77,7 @@ const setPreset = async (label) => {
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 };
 const timeIt = async (seconds) => {
-  await page.goto(docUrl); await page.waitForTimeout(1500);
+  await page.goto(docUrl); await toEdit(); await page.waitForTimeout(1500);
   const r = page.locator('li[data-secret="Production key"]');
   await r.locator('button[aria-label="Reveal Production key"]').click();
   await r.locator('code[data-state=revealed]').waitFor({ timeout: 5000 });
@@ -96,7 +99,7 @@ await page.locator('.dsec button', { hasText: 'Rotate key' }).click(); await pag
 await page.locator('.confirm button, .modal button', { hasText: /^Rotate$/ }).last().click(); await page.waitForTimeout(2000);
 check('rotating the key moves the values to version 2', (await page.locator('.dsec', { hasText: 'Key version 2' }).count()) === 1);
 await page.keyboard.press('Escape');
-await page.goto(docUrl); await page.waitForTimeout(1500);
+await page.goto(docUrl); await toEdit(); await page.waitForTimeout(1500);
 await page.locator('li[data-secret="Production key"] button[aria-label="Reveal Production key"]').click(); await page.waitForTimeout(800);
 check('a value still reveals after the key was rotated', (await page.locator('li[data-secret="Production key"] code[data-state=revealed]').innerText()) === SECRET);
 

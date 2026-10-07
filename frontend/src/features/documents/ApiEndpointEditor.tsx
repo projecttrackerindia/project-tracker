@@ -1,3 +1,4 @@
+import { DiagramFigure } from './DiagramPreviews';
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -11,7 +12,7 @@ import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 
 export const METHODS: ApiMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE'];
-const TABS = ['Basics', 'Parameters', 'Request', 'Responses', 'Errors and samples', 'Depends on'] as const;
+const TABS = ['Basics', 'Parameters', 'Request', 'Responses', 'Errors and samples', 'Flow', 'Depends on'] as const;
 const LANGS = ['curl', 'javascript', 'python', 'csharp', 'java', 'text'];
 export const emptyDetails = (): EndpointDetails => ({ description: null, auth: 'inherit', parameters: [], requestBody: null, responses: [{ status: '200', description: 'OK', contentType: 'application/json', schema: null, example: null }], errors: [], samples: [], dependencies: [] });
 
@@ -170,6 +171,13 @@ export function EndpointEditor({ documentId, definitions, existing, startDefinit
         </div>
       )}
 
+      {tab === 'Flow' && (
+        <div className="epe-pane">
+          <p className="muted">Draw who calls whom for this endpoint as text. It is shown as a picture here, on the page and in the PDF.</p>
+          <Code label="Request flow" value={d.flow ?? null} onChange={(flow) => set({ flow })} rows={6} ph={'flowchart LR\n  A[Portal] -->|POST /create| B[API gateway]\n  B --> C[Payment service]'} hint="Flowchart syntax: A[Box] --> B{Choice}, -->|label|, -.-> dotted." />
+          {d.flow && <DiagramFigure source={d.flow} />}
+        </div>
+      )}
       {tab === 'Depends on' && (
         <div className="epe-pane">
           <p className="muted">Other services, endpoints or systems this one needs to do its work.</p>

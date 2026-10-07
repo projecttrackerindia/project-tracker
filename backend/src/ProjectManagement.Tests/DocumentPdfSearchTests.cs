@@ -81,6 +81,8 @@ public class DocumentPdfSearchTests(ApiFactory factory) : IAsyncLifetime
         return await file.Content.ReadAsByteArrayAsync();
     }
 
+    private static readonly PdfBrand Brand = new("Org", null, "Project Tracker", "Tester", "1 January 2026 at 9:00 am UTC", "Tester", "1 Jan 2026, 9:00 am", "Confidential");
+
     // ------------------------------------------------------------------ PDF
 
     [Fact]
@@ -104,7 +106,7 @@ public class DocumentPdfSearchTests(ApiFactory factory) : IAsyncLifetime
         var pdf = await ExportAsync(owner, doc);
         Assert.StartsWith("%PDF-1.4", Encoding.Latin1.GetString(pdf, 0, 8));
         var text = Extract(pdf);
-        foreach (var expected in new[] { "Payments requirements", "Contents", "Customers can pay by card", "Refunds within 5 days", "API: Payments API", "GET /payments/{id}", "Get a payment",
+        foreach (var expected in new[] { "Payments requirements", "CONTENTS", "Customers can pay by card", "Refunds within 5 days", "Payments API", "API REFERENCE", "GET /payments/{id}", "Get a payment",
                      "Revision history", "Ready", "Approved (Sign-off)", "Rita Reviewer", "Looks right", "Atlas", "Olive Owner", "1.0" })
             Assert.Contains(expected, text);
         Assert.Contains("Gateway key", text);                        // the name is listed
@@ -163,7 +165,7 @@ public class DocumentPdfSearchTests(ApiFactory factory) : IAsyncLifetime
             blocks.Add(new PdfTable(["ID", "Name", "Notes"], Enumerable.Range(0, 20).Select(i => (IReadOnlyList<string>)[$"R-{s}-{i}", $"Item {i}", string.Join(' ', Enumerable.Repeat("note", 12))]).ToList()));
         }
         var sw = Stopwatch.StartNew();
-        var (file, pages) = new DocumentPdfRenderer().Render(new PdfDocModel("Org", "Big", "DOC-1", "1.0", [("Status", "Published")], blocks, "DOC-1 · Big · 1.0"));
+        var (file, pages) = new DocumentPdfRenderer().Render(new PdfDocModel(Brand, "Big", "DOC-1", "1.0", blocks));
         sw.Stop();
         Assert.InRange(pages, 100, 600);
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(30), $"took {sw.Elapsed}");
@@ -173,7 +175,7 @@ public class DocumentPdfSearchTests(ApiFactory factory) : IAsyncLifetime
         // Chapter 60's entry lists the page its heading is on: find that heading's page by counting page breaks before it.
         var raw = Encoding.Latin1.GetString(file);
         var pageObjects = Regex.Split(raw, @"\d+ 0 obj\n<< /Length ").Skip(1).ToList();
-        var onPage = pageObjects.FindIndex(p => p.Contains("(Chapter 60) Tj") && p.Contains("/F2 17 Tf")) + 1;
+        var onPage = pageObjects.FindIndex(p => p.Contains("(Chapter 60) Tj") && p.Contains("/F2 14.5 Tf")) + 1;
         Assert.Matches($@"\(Chapter 60\) Tj ET\nBT[^\n]*\({onPage}\) Tj", raw);
     }
 
@@ -181,7 +183,7 @@ public class DocumentPdfSearchTests(ApiFactory factory) : IAsyncLifetime
     public void A_document_of_more_than_600_pages_is_refused_with_a_clear_message()
     {
         var blocks = Enumerable.Range(0, 1000).Select(i => (PdfBlock)new PdfPara(string.Join(' ', Enumerable.Repeat("word", 700)))).ToList();
-        var e = Assert.Throws<PdfTooLongException>(() => new DocumentPdfRenderer().Render(new PdfDocModel("O", "T", "K", "1", [], blocks, "f")));
+        var e = Assert.Throws<PdfTooLongException>(() => new DocumentPdfRenderer().Render(new PdfDocModel(Brand, "T", "K", "1", blocks)));
         Assert.Contains("600", e.Message);
         Assert.Contains("split it", e.Message);
     }

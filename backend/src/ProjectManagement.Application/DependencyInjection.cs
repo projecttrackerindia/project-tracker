@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentSearchIndexer>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentDashboardService>();
         services.AddScoped<ProjectManagement.Application.Features.Sso.SsoGroupMappingService>();
+        services.AddScoped<ProjectManagement.Application.Features.Workspaces.WorkspaceLogoService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.EnvelopeCrypto>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.StepUpService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.SecretService>();

@@ -6,11 +6,14 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:5173';
 const SHOTS = process.env.SHOTS;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--no-sandbox'] });
 const results = [];
+/** A document opens for reading; switch to editing when the test needs to type. */
+let toEdit = async () => undefined;
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  - ' + detail : ''}`); };
 const errors = [];
 
 const ctx = await browser.newContext({ viewport: { width: 1366, height: 800 } });
 const page = await ctx.newPage();
+toEdit = async () => { const b = page.locator('.mode-switch button[aria-label="Edit"]'); await b.first().waitFor({ timeout: 8000 }).catch(() => undefined); if ((await b.count()) && (await b.getAttribute('aria-pressed')) !== 'true') { await b.click(); await page.waitForTimeout(500); } };
 page.on('pageerror', (e) => errors.push(e.message));
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/doc-${n}.png` }); };
 
@@ -56,9 +59,10 @@ check('what was typed in the wizard is there', (await page.locator('.rte-content
 await shot('document');
 
 // Edit and save.
+await toEdit();
 const center = (sel) => page.locator(sel).evaluate((el) => el.scrollIntoView({ block: 'center' }));
 const scope = page.locator('#sec-scope .rte-content');
-await center('#sec-scope'); await scope.click(); await page.keyboard.type('Scope: payslips only.');
+await toEdit(); await toEdit(); await center('#sec-scope'); await scope.click(); await page.keyboard.type('Scope: payslips only.');
 check('unsaved changes are flagged', (await page.locator('.doc-dirty').count()) === 1);
 await page.locator('.doc-head-actions button', { hasText: 'Save' }).click(); await page.waitForTimeout(1200);
 check('saving clears the flag', (await page.locator('.doc-dirty').count()) === 0);
@@ -67,9 +71,10 @@ check('the text survives a reload', (await page.locator('#sec-scope .rte-content
 
 // A table section.
 const row = page.locator('#sec-risks button', { hasText: 'Add a row' });
-await center('#sec-risks'); await row.click(); await page.locator('#sec-risks textarea').first().fill('Late data feed');
+await toEdit(); await toEdit(); await center('#sec-risks'); await row.click(); await page.locator('#sec-risks textarea').first().fill('Late data feed');
 await page.locator('.doc-head-actions button', { hasText: 'Save' }).click(); await page.waitForTimeout(1200);
 await page.reload(); await page.waitForTimeout(2000);
+await toEdit();
 check('a table row survives a reload', (await page.locator('#sec-risks textarea').first().inputValue()) === 'Late data feed');
 
 // D2: publish, history, compare, restore, share, picture.
@@ -78,7 +83,7 @@ check('first publish is 1.0', (await page.locator('.modal-head h3', { hasText: '
 await page.locator('.modal textarea').first().fill('First complete draft');
 await page.locator('.modal button[type=submit]').click(); await page.waitForTimeout(1500);
 check('the page now shows version 1.0', (await page.locator('.doc-head-sub', { hasText: 'Version 1.0' }).count()) === 1);
-await center('#sec-scope'); await page.locator('#sec-scope .rte-content').click(); await page.keyboard.type(' Tax forms too.');
+await toEdit(); await toEdit(); await center('#sec-scope'); await page.locator('#sec-scope .rte-content').click(); await page.keyboard.type(' Tax forms too.');
 await page.locator('.doc-head-actions button', { hasText: 'Save' }).click(); await page.waitForTimeout(1200);
 check('a draft that differs is flagged', (await page.locator('.doc-dirty', { hasText: 'Not published yet' }).count()) === 1);
 await page.locator('.doc-head-actions button', { hasText: 'Publish' }).click(); await page.waitForTimeout(600);
@@ -115,7 +120,7 @@ if (await page.locator('.modal').count()) await page.locator('.modal-foot button
 
 // A picture in the text.
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-await center('#sec-scope'); await page.locator('#sec-scope .rte-content').click();
+await toEdit(); await toEdit(); await center('#sec-scope'); await page.locator('#sec-scope .rte-content').click();
 const chooser = page.waitForEvent('filechooser');
 await page.locator('#sec-scope button[aria-label="Insert picture"]').click();
 await (await chooser).setFiles({ name: 'flow.png', mimeType: 'image/png', buffer: png }); await page.waitForTimeout(1500);

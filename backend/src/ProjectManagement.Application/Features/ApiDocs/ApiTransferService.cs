@@ -169,7 +169,7 @@ public class ApiTransferService(IAppDbContext db, ICurrentContext ctx, AppClock 
         db.ApiSnapshots.Add(new ApiSnapshot
         {
             TenantId = doc.TenantId, DocumentId = doc.Id, VersionId = versionId, EndpointCount = count, CreatedAt = clock.Now,
-            DefinitionsJson = JsonSerializer.Serialize(defs.Select(d => new ApiDocService.SnapDefinition(d.Id, d.Name, d.Description, d.BasePath, d.Version, d.Auth, d.AuthNote, ApiJson.ReadServers(d.ServersJson), d.SortOrder)), ApiJson.Options),
+            DefinitionsJson = JsonSerializer.Serialize(defs.Select(d => new ApiDocService.SnapDefinition(d.Id, d.Name, d.Description, d.BasePath, d.Version, d.Auth, d.AuthNote, ApiJson.ReadServers(d.ServersJson), d.SortOrder, d.Stage)), ApiJson.Options),
         });
     }
 
@@ -199,7 +199,7 @@ public class ApiTransferService(IAppDbContext db, ICurrentContext ctx, AppClock 
             var map = new Dictionary<Guid, Guid>();
             foreach (var d in defs)
             {
-                var nd = new ApiDefinition { TenantId = doc.TenantId, DocumentId = doc.Id, Name = d.Name, Description = d.Description, BasePath = d.BasePath, Version = d.Version, Auth = d.Auth, AuthNote = d.AuthNote, ServersJson = ApiJson.WriteServers(d.Servers), SortOrder = d.SortOrder, CreatedAt = clock.Now };
+                var nd = new ApiDefinition { TenantId = doc.TenantId, DocumentId = doc.Id, Name = d.Name, Description = d.Description, BasePath = d.BasePath, Version = d.Version, Auth = d.Auth, Stage = d.Stage, AuthNote = d.AuthNote, ServersJson = ApiJson.WriteServers(d.Servers), SortOrder = d.SortOrder, CreatedAt = clock.Now };
                 db.ApiDefinitions.Add(nd); map[d.Id] = nd.Id;
             }
             foreach (var e in await db.EndpointRevisions.AsNoTracking().Where(e => e.VersionId == versionId).ToListAsync(ct))

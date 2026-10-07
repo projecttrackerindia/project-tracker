@@ -47,3 +47,18 @@ export function DiagramPreviews({ value }: { value: string }) {
     </div>
   );
 }
+
+/** One diagram drawn from its text (used by the endpoint page and the editor): the server draws it, a mistake is explained in words. */
+export function DiagramFigure({ source }: { source: string }) {
+  const [shown, setShown] = useState<{ svg?: string; error?: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const t = window.setTimeout(async () => {
+      try { const r = await documentApi.renderDiagram(source); if (live) setShown({ svg: r.svg }); }
+      catch (e) { if (live) setShown({ error: e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not draw it.' }); }
+    }, 350);
+    return () => { live = false; window.clearTimeout(t); };
+  }, [source]);
+  if (!shown) return null;
+  return shown.svg ? <figure className="doc-diagram" data-diagram dangerouslySetInnerHTML={{ __html: shown.svg }} /> : <p className="doc-diagram-error" role="alert">{shown.error}</p>;
+}

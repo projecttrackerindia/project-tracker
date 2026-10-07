@@ -294,8 +294,16 @@ public static class DiagramEngine
         double Along(LNode n) => horizontal ? n.W : n.H;
         var rankSize = new double[maxRank + 1];
         for (var r = 0; r <= maxRank; r++) rankSize[r] = layers.TryGetValue(r, out var l) && l.Count > 0 ? l.Max(Along) : 0;
+        // Room between ranks grows to fit the labels of the arrows that cross it.
+        var gapAfter = Enumerable.Repeat(GapRank, maxRank + 1).ToArray();
+        foreach (var e in rawEdges.Where(e => e.Label is not null && e.From != e.To))
+        {
+            var lo = Math.Min(all[e.From].Rank, all[e.To].Rank); var hi = Math.Max(all[e.From].Rank, all[e.To].Rank);
+            var need = horizontal ? PdfWriter.Width(e.Label!, FontSize - 1) + 34 : 30;
+            for (var g = lo; g < hi; g++) gapAfter[g] = Math.Max(gapAfter[g], need);
+        }
         var rankPos = new double[maxRank + 1]; var acc = Margin;
-        for (var r = 0; r <= maxRank; r++) { rankPos[r] = acc + rankSize[r] / 2; acc += rankSize[r] + GapRank; }
+        for (var r = 0; r <= maxRank; r++) { rankPos[r] = acc + rankSize[r] / 2; acc += rankSize[r] + gapAfter[r]; }
         foreach (var kv in layers) { double x = 0; foreach (var n in kv.Value.OrderBy(n => n.Order)) { n.Cross = x + Across(n) / 2; x += Across(n) + GapNode; } }
         for (var pass = 0; pass < 8; pass++)
         {
@@ -316,7 +324,7 @@ public static class DiagramEngine
         var minCross = layers.Values.SelectMany(x => x).Min(n => n.Cross - Across(n) / 2);
         foreach (var n in layers.Values.SelectMany(x => x)) n.Cross += Margin - minCross;
         foreach (var kv in layers) foreach (var n in kv.Value) n.Main = rankPos[kv.Key];
-        var totalMain = acc - GapRank + Margin;
+        var totalMain = acc - gapAfter[maxRank] + Margin;
         var totalCross = layers.Values.SelectMany(x => x).Max(n => n.Cross + Across(n) / 2) + Margin;
 
         // 6. To drawing coordinates for the chosen direction.
@@ -465,14 +473,14 @@ public static class DiagramEngine
             for (var i = 0; i < lines.Count; i++)
             {
                 var tw = PdfWriter.Width(lines[i], FontSize) * scale;
-                sb.Append($"BT 0.06 0.09 0.16 rg /F1 {F(fs)} Tf {F(PX(n.X + n.W / 2) - tw / 2)} {F(topLine - i * LineH * scale)} Td ({PdfWriter.Pdf(lines[i])}) Tj ET\n");
+                sb.Append($"BT 0.06 0.09 0.16 rg /F1 {F(fs)} Tf 0 Tc {F(PX(n.X + n.W / 2) - tw / 2)} {F(topLine - i * LineH * scale)} Td ({PdfWriter.Pdf(lines[i])}) Tj ET\n");
             }
         }
         foreach (var e in m.Edges.Where(e => e.Label is not null))
         {
             var fs = (FontSize - 1) * scale; var tw = PdfWriter.Width(e.Label!, FontSize - 1) * scale;
             sb.Append($"1 g {F(PX(e.LabelAt.X) - tw / 2 - 4 * scale)} {F(PY(e.LabelAt.Y) - 7 * scale)} {F(tw + 8 * scale)} {F(14 * scale)} re f\n");
-            sb.Append($"BT 0.2 0.25 0.33 rg /F1 {F(fs)} Tf {F(PX(e.LabelAt.X) - tw / 2)} {F(PY(e.LabelAt.Y) - 3 * scale)} Td ({PdfWriter.Pdf(e.Label!)}) Tj ET\n");
+            sb.Append($"BT 0.2 0.25 0.33 rg /F1 {F(fs)} Tf 0 Tc {F(PX(e.LabelAt.X) - tw / 2)} {F(PY(e.LabelAt.Y) - 3 * scale)} Td ({PdfWriter.Pdf(e.Label!)}) Tj ET\n");
         }
         sb.Append("Q\n");
         return sb.ToString();

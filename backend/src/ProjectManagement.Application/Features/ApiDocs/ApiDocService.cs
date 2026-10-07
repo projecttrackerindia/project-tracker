@@ -13,13 +13,13 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.ApiDocs;
 
-public record DefinitionDto(Guid Id, string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, IReadOnlyList<string> Servers, int Endpoints, int SortOrder);
+public record DefinitionDto(Guid Id, string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, IReadOnlyList<string> Servers, int Endpoints, int SortOrder, ApiStage Stage = ApiStage.Draft);
 public record ApiOverviewDto(IReadOnlyList<DefinitionDto> Definitions, int Endpoints, bool Live, string Reading, Guid? VersionId, bool CanEdit, long Limit, int Used);
 public record EndpointItemDto(Guid Id, Guid DefinitionId, string Definition, string Method, string Path, string Summary, string? Tag, bool Deprecated, UserRefDto? Owner);
 public record EndpointPageDto(IReadOnlyList<EndpointItemDto> Items, string? NextCursor, int? Total);
 public record EndpointDto(EndpointItemDto Item, EndpointDetails Details, bool ReadOnly);
 public record EndpointHitDto(Guid DocumentId, string DocumentKey, string DocumentTitle, string Definition, string Method, string Path, string Summary);
-public record SaveDefinitionRequest(string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, IReadOnlyList<string>? Servers);
+public record SaveDefinitionRequest(string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, IReadOnlyList<string>? Servers, ApiStage? Stage = null);
 public record SaveEndpointRequest(Guid DefinitionId, string Method, string Path, string? Summary, string? Tag, bool Deprecated, Guid? OwnerId, EndpointDetails? Details);
 public record EndpointFilter(Guid? DefinitionId = null, string? Q = null, string? Method = null, string? Tag = null, Guid? VersionId = null);
 
@@ -82,13 +82,13 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         ? db.ApiEndpoints.AsNoTracking().Where(e => e.DocumentId == documentId).Select(e => new Row { Id = e.Id, DefinitionId = e.DefinitionId, Method = e.Method, Path = e.Path, Summary = e.Summary, Tag = e.Tag, Deprecated = e.Deprecated, OwnerId = e.OwnerId })
         : db.EndpointRevisions.AsNoTracking().Where(e => e.DocumentId == documentId && e.VersionId == src.VersionId).Select(e => new Row { Id = e.EndpointId, DefinitionId = e.DefinitionId, Method = e.Method, Path = e.Path, Summary = e.Summary, Tag = e.Tag, Deprecated = e.Deprecated, OwnerId = e.OwnerId });
 
-    internal sealed record SnapDefinition(Guid Id, string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, List<string> Servers, int SortOrder);
+    internal sealed record SnapDefinition(Guid Id, string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, List<string> Servers, int SortOrder, ApiStage Stage = ApiStage.Draft);
 
     internal async Task<List<SnapDefinition>> DefinitionsAsync(Guid documentId, ApiSource src, CancellationToken ct)
     {
         if (src.Live)
             return (await db.ApiDefinitions.AsNoTracking().Where(d => d.DocumentId == documentId).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync(ct))
-                .Select(d => new SnapDefinition(d.Id, d.Name, d.Description, d.BasePath, d.Version, d.Auth, d.AuthNote, ApiJson.ReadServers(d.ServersJson), d.SortOrder)).ToList();
+                .Select(d => new SnapDefinition(d.Id, d.Name, d.Description, d.BasePath, d.Version, d.Auth, d.AuthNote, ApiJson.ReadServers(d.ServersJson), d.SortOrder, d.Stage)).ToList();
         var json = await db.ApiSnapshots.AsNoTracking().Where(s => s.VersionId == src.VersionId).Select(s => s.DefinitionsJson).FirstOrDefaultAsync(ct);
         return json is null ? [] : JsonSerializer.Deserialize<List<SnapDefinition>>(json, ApiJson.Options) ?? [];
     }
@@ -105,7 +105,7 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
             : await db.EndpointRevisions.AsNoTracking().Where(e => e.DocumentId == documentId && e.VersionId == src.VersionId).GroupBy(e => e.DefinitionId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var limit = await entitlements.GetValueAsync(FeatureKeys.DocEndpointLimit, ct);
         var used = await db.ApiEndpoints.CountAsync(ct);
-        return new ApiOverviewDto(defs.Select(d => new DefinitionDto(d.Id, d.Name, d.Description, d.BasePath, d.Version, d.Auth, d.AuthNote, d.Servers, counts.GetValueOrDefault(d.Id), d.SortOrder)).ToList(),
+        return new ApiOverviewDto(defs.Select(d => new DefinitionDto(d.Id, d.Name, d.Description, d.BasePath, d.Version, d.Auth, d.AuthNote, d.Servers, counts.GetValueOrDefault(d.Id), d.SortOrder, d.Stage)).ToList(),
             counts.Values.Sum(), src.Live, src.Label, src.VersionId, r.Edit, limit, used);
     }
 
@@ -188,6 +188,7 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         string? Cut(string? s, int max, string f) { var t = string.IsNullOrWhiteSpace(s) ? null : s.Trim(); if (t is { } x && x.Length > max) throw new ValidationException(f, $"Keep this under {max} characters."); return t; }
         var before = id is null ? null : new { def.Name, def.Version, def.Auth };
         def.Name = name; def.Description = Cut(req.Description, 2000, "description"); def.BasePath = Cut(req.BasePath, 200, "basePath"); def.Version = Cut(req.Version, 40, "version");
+        if (req.Stage is { } st) { if (!Enum.IsDefined(st)) throw new ValidationException("stage", "Choose where the API is in its life."); def.Stage = st; }
         def.Auth = req.Auth; def.AuthNote = Cut(req.AuthNote, 500, "authNote"); def.ServersJson = ApiJson.WriteServers(req.Servers); def.UpdatedAt = clock.Now;
         recorder.Activity(id is null ? "document.api_added" : "document.api_changed", "Document", doc.Id, $"{(id is null ? "Added" : "Changed")} the API \"{name}\" in {DocumentService.KeyOf(doc.Number)}", doc.ProjectId);
         recorder.Audit(id is null ? "document.api_added" : "document.api_changed", "Document", doc.Id, before, new { name, req.Version, req.Auth });
@@ -303,7 +304,7 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         if (defs.Count == 0 && rows.Count == 0) return "";
         var names = defs.ToDictionary(d => d.Id, d => d.Name);
         var sb = new StringBuilder();
-        foreach (var d in defs) sb.Append("D|").Append(d.Name).Append('|').Append(d.Description).Append('|').Append(d.BasePath).Append('|').Append(d.Version).Append('|').Append(d.Auth).Append('|').Append(d.AuthNote).Append('|').Append(d.ServersJson).Append('\n');
+        foreach (var d in defs) sb.Append("D|").Append(d.Name).Append('|').Append(d.Description).Append('|').Append(d.BasePath).Append('|').Append(d.Version).Append('|').Append(d.Auth).Append('|').Append(d.Stage).Append('|').Append(d.AuthNote).Append('|').Append(d.ServersJson).Append('\n');
         foreach (var r in rows.OrderBy(r => names.GetValueOrDefault(r.DefinitionId), StringComparer.Ordinal).ThenBy(r => r.Path, StringComparer.Ordinal).ThenBy(r => r.Method.ToString(), StringComparer.Ordinal))
             sb.Append("E|").Append(names.GetValueOrDefault(r.DefinitionId)).Append('|').Append(r.Method).Append('|').Append(r.Path).Append('|').Append(r.Hash).Append('\n');
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()))).ToLowerInvariant();

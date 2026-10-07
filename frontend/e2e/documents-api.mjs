@@ -7,10 +7,13 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:5173';
 const SHOTS = process.env.SHOTS;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--no-sandbox'] });
 const results = [];
+/** A document opens for reading; switch to editing when the test needs to type. */
+let toEdit = async () => undefined;
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  - ' + detail : ''}`); };
 const errors = [];
 const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 }, acceptDownloads: true });
 const page = await ctx.newPage();
+toEdit = async () => { const b = page.locator('.mode-switch button[aria-label="Edit"]'); await b.first().waitFor({ timeout: 8000 }).catch(() => undefined); if ((await b.count()) && (await b.getAttribute('aria-pressed')) !== 'true') { await b.click(); await page.waitForTimeout(500); } };
 page.on('pageerror', (e) => errors.push(e.message));
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/api-${n}.png` }); };
 
@@ -32,7 +35,7 @@ for (let i = 0; i < 8; i++) {
   if (await create.count()) { await create.click(); break; }
   await page.locator('.modal button', { hasText: /Next|Review/ }).click(); await page.waitForTimeout(400);
 }
-await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await page.waitForTimeout(1500);
+await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await toEdit(); await page.waitForTimeout(1500);
 const docUrl = page.url().split('?')[0];
 check('an API document offers an API reference tab', (await page.locator('.doc-tabs button', { hasText: 'API reference' }).count()) === 1);
 await page.locator('.doc-tabs button', { hasText: 'API reference' }).click(); await page.waitForTimeout(1200);
@@ -56,8 +59,8 @@ await page.keyboard.press('Escape');
 await page.locator('.epe-tabs button', { hasText: 'Responses' }).click();
 await page.locator('.epe-row textarea[aria-label="Schema"]').first().fill('{"type":"object","properties":{"id":{"type":"string"},"amount":{"type":"integer"}},"required":["id"]}');
 await page.locator('.modal button[type=submit]').click(); await page.waitForTimeout(1500);
-check('the endpoint opens after saving', (await page.locator('.apr-title code', { hasText: '/payments/{id}' }).count()) === 1);
-check('its response schema is shown', (await page.locator('.apr-block pre', { hasText: '"amount"' }).count()) >= 1);
+check('the endpoint opens after saving', (await page.locator('.apv-banner code', { hasText: '/payments/{id}' }).count()) === 1);
+check('its response schema is shown', (await page.locator('.apv-table td b', { hasText: 'amount' }).count()) >= 1);
 await shot('endpoint');
 
 // ---- import a file
@@ -66,15 +69,15 @@ const spec = { openapi: '3.0.3', info: { title: 'Imported shop', version: '3' },
   '/orders/{id}': { get: { summary: 'Get an order', tags: ['Orders'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'ok' } } } } } };
 await page.locator('.api-bar button', { hasText: 'Import' }).click(); await page.waitForTimeout(500);
 await page.locator('.modal input[type=file]').setInputFiles({ name: 'shop.openapi.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(spec)) });
-await page.locator('.modal button', { hasText: 'Check the file' }).click(); await page.waitForTimeout(1500);
-check('the check says what would happen', (await page.locator('.imp-result', { hasText: '3 new' }).count()) === 1);
+await page.waitForTimeout(2000);   // the file is checked as soon as it is chosen
+check('the check says what would happen', (await page.locator('.imp-tiles .add b').innerText()) === '3' && (await page.locator('.imp-result', { hasText: 'Ready to import' }).count()) === 1);
 await shot('import');
 await page.locator('.modal button.btn-primary', { hasText: 'Import' }).click(); await page.waitForTimeout(2000);
 check('the import is applied', (await page.locator('.imp-result', { hasText: 'Imported' }).count()) === 1);
 await page.locator('.modal-foot button', { hasText: 'Close' }).click(); await page.waitForTimeout(800);
 check('the imported API appears with its endpoints grouped', (await page.locator('.api-def', { hasText: 'Imported shop' }).count()) === 1 && (await page.locator('.api-group-head', { hasText: 'Orders' }).count()) === 1 && (await page.locator('.api-ep').count()) === 3);
 await page.locator('.api-ep', { hasText: '/orders/{id}' }).click(); await page.waitForTimeout(800);
-check('a path parameter from the file is shown as required', (await page.locator('.apr-table tr', { hasText: 'id' }).filter({ hasText: 'Yes' }).count()) >= 1);
+check('a path parameter from the file is shown as required', (await page.locator('.apv-table td b', { hasText: 'id *' }).count()) >= 1);
 
 // ---- search and export
 await page.locator('input[aria-label="Find an endpoint"]').fill('orders/'); await page.waitForTimeout(900);
@@ -94,7 +97,7 @@ await page.locator('.doc-tabs button', { hasText: 'API reference' }).click(); aw
 await page.locator('.api-def', { hasText: 'Imported shop' }).click(); await page.waitForTimeout(800);
 await page.locator('.api-ep', { hasText: '/orders/{id}' }).click(); await page.waitForTimeout(600);
 page.once('dialog', (d) => d.accept());
-await page.locator('.apr-actions button[aria-label="Delete endpoint"]').click(); await page.waitForTimeout(500);
+await page.locator('.apv-tools button[aria-label="Delete endpoint"]').click(); await page.waitForTimeout(500);
 await page.locator('.modal-foot button, .modal button.btn-danger', { hasText: /Remove|Delete/ }).last().click(); await page.waitForTimeout(1500);
 check('removing an endpoint shows in the working copy', (await page.locator('.api-ep').count()) === 2);
 await page.locator('.api-bar button', { hasText: 'API changes' }).click(); await page.waitForTimeout(1500);

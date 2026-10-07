@@ -168,8 +168,8 @@ internal static class PdfWriter
         var sb = new StringBuilder(s.Length + 2);
         foreach (var raw in s)
         {
-            var ch = raw switch { '’' or '‘' => '\'', '“' or '”' => '"', '–' or '—' or '−' => '-', '…' => '.', ' ' => ' ', '\r' or '\n' or '\t' => ' ', _ => raw };
-            if (ch is < ' ' or (> '~' and < '¡') or > 'ÿ') ch = '?';
+            var ch = raw switch { '’' or '‘' => '\'', '“' or '”' => '"', '–' or '—' or '−' => '-', '…' => '.', '•' => '\u0095', ' ' => ' ', '\r' or '\n' or '\t' => ' ', _ => raw };
+            if (ch != '\u0095' && (ch is < ' ' or (> '~' and < '¡') or > 'ÿ')) ch = '?';
             if (ch is '(' or ')' or '\\') sb.Append('\\');
             sb.Append(ch);
         }

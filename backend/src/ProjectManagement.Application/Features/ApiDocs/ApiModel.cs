@@ -24,6 +24,8 @@ public sealed class EndpointDetails
     public List<ApiError> Errors { get; set; } = [];
     public List<ApiSample> Samples { get; set; } = [];
     public List<ApiDependency> Dependencies { get; set; } = [];
+    /// <summary>The request flow as a text diagram (flowchart subset of Mermaid): who calls whom for this endpoint. Drawn on screen and in the PDF.</summary>
+    public string? Flow { get; set; }
 }
 
 /// <summary>Reading, checking and writing endpoint details. The limits keep one endpoint from becoming a way to store a file.</summary>
@@ -62,7 +64,7 @@ public static class ApiJson
         if (!new[] { "inherit", "none", "ApiKey", "Bearer", "Basic", "OAuth2" }.Contains(auth)) throw new ValidationException($"{field}.auth", "Choose how this endpoint is authenticated.");
         var clean = new EndpointDetails
         {
-            Description = T(d.Description, 10_000, $"{field}.description"), Auth = auth,
+            Description = T(d.Description, 10_000, $"{field}.description"), Auth = auth, Flow = FlowText(d.Flow, field),
             Parameters = d.Parameters.Select((p, i) =>
             {
                 var name = T(p.Name, 100, $"{field}.parameters[{i}].name") ?? throw new ValidationException($"{field}.parameters[{i}].name", "Name every parameter.");
@@ -80,6 +82,17 @@ public static class ApiJson
         };
         if (Write(clean).Length > MaxDetailsChars) throw new ValidationException(field, "This endpoint's details are too large.");
         return clean;
+    }
+
+    /// <summary>A request flow must be a drawable diagram, so a mistake is reported where it is typed and not later in a PDF.</summary>
+    private static string? FlowText(string? flow, string field)
+    {
+        if (string.IsNullOrWhiteSpace(flow)) return null;
+        var text = flow.Trim();
+        if (text.Length > 4000) throw new ValidationException($"{field}.flow", "Keep the request flow under 4,000 characters.");
+        try { ProjectManagement.Application.Features.Documents.DiagramEngine.Draw(text); }
+        catch (ProjectManagement.Application.Features.Documents.DiagramException e) { throw new ValidationException($"{field}.flow", e.Line > 0 ? $"Request flow, line {e.Line}: {e.Message}" : $"Request flow: {e.Message}"); }
+        return text;
     }
 
     public static List<string> ReadServers(string? json)

@@ -26,6 +26,16 @@ import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
 
+/** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
+function hasContent(kind: string, value: string): boolean {
+  try {
+    const v = JSON.parse(value);
+    if (kind === 'Table') return Array.isArray(v?.rows) && v.rows.length > 0;
+    const walk = (n: any): boolean => !!n && ((n.type === 'text' && String(n.text ?? '').trim().length > 0) || n.type === 'docImage' || n.type === 'horizontalRule' || (Array.isArray(n.content) && n.content.some(walk)));
+    return walk(v);
+  } catch { return value.trim().length > 0; }
+}
+
 function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: () => void }) {
   const wid = useWorkspaceId();
   const personal = useIsPersonal();
@@ -69,6 +79,7 @@ export function DocumentPage() {
   const canWrite = useModule('documents') >= 2;
   const q = useWsQuery(['documents', id], () => documentApi.get(id), { retry: false });
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [mode, setMode] = useState<'view' | 'edit'>('view');   // a document opens for reading; people who may edit switch to editing
   const [details, setDetails] = useState(false);
   const [panel, setPanel] = useState<'publish' | 'history' | 'access' | 'submit' | 'publishApproved' | null>(null);
   const review = useWsQuery(['documents', id, 'review'], () => documentApi.review(id), { enabled: !!q.data, retry: false });
@@ -120,11 +131,13 @@ export function DocumentPage() {
   if (q.error instanceof ApiError && q.error.status === 404) return <DocumentGate id={id} original={q.error} />;
   if (q.isError || !detail) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const d = detail.item;
-  const editable = detail.can.edit && canWrite;
+  const canEdit = detail.can.edit && canWrite;
+  const editable = canEdit && mode === 'edit';
   const workflow = !!review.data?.workflowApplies;
   const hasApi = type?.code === 'API' || (apiOverview.data?.definitions.length ?? 0) > 0;
   const onApiTab = hasApi && params.get('tab') === 'api';
   const setTab = (t: 'doc' | 'api') => setParams(t === 'api' ? { tab: 'api' } : {}, { replace: true });
+  const shownSections = editable ? detail.sections : detail.sections.filter((s) => hasContent(s.kind, edits[s.key] ?? s.content));
   const set = (key: string, v: string) => setEdits((x) => {
     const orig = detail.sections.find((s) => s.key === key)?.content;
     if (v === orig) { const { [key]: _, ...rest } = x; return rest; }
@@ -150,9 +163,15 @@ export function DocumentPage() {
           </div>
         </div>
         <div className="doc-head-actions">
+          {canEdit && (
+            <div className="mode-switch" role="group" aria-label="Reading or editing">
+              <button type="button" className={mode === 'view' ? 'on' : ''} aria-pressed={mode === 'view'} aria-label="Read" title="Read" onClick={() => setMode('view')}><Icon name="eye" size={16} /></button>
+              <button type="button" className={mode === 'edit' ? 'on' : ''} aria-pressed={mode === 'edit'} aria-label="Edit" title="Edit" onClick={() => setMode('edit')}><Icon name="edit" size={16} /></button>
+            </div>
+          )}
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
-          {editable && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
-          {editable && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
+          {canEdit && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
+          {canEdit && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
           <ExportPdfButton documentId={id} />
           <button className="btn btn-ghost" onClick={() => setPanel('history')}><Icon name="clock" size={15} /> History</button>
           <button className="btn btn-ghost" onClick={() => setPanel('access')}><Icon name="users" size={15} /> {detail.can.share ? 'Share' : 'Access'}</button>
@@ -172,7 +191,7 @@ export function DocumentPage() {
 
       {stale && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>Someone else changed this document while you were editing. <button className="link-btn" onClick={() => { setStale(false); q.refetch(); }}>Reload to see their changes</button> (your unsaved words stay here until you save or leave).</div></div>}
       {d.status === 'Archived' && <div className="doc-alert info"><Icon name="info" size={16} /><div>This document is archived and read-only.</div></div>}
-      {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={editable} onPublish={() => setPanel('publishApproved')} />}
+      {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={canEdit} onPublish={() => setPanel('publishApproved')} />}
 
       {hasApi && (
         <div className="seg doc-tabs" role="tablist" aria-label="Document view">
@@ -181,13 +200,14 @@ export function DocumentPage() {
         </div>
       )}
       {onApiTab ? <ApiReference detail={detail} editable={editable} /> : (
-      <div className="doc-layout">
+      <div className={`doc-layout${editable ? '' : ' reading'}`}>
         <aside className="doc-outline" aria-label="Sections">
-          <ul>{detail.sections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{edits[s.key] !== undefined && <i className="dot-dirty" />}{s.title}</a></li>)}</ul>
+          <ul>{shownSections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{edits[s.key] !== undefined && <i className="dot-dirty" />}{s.title}</a></li>)}</ul>
         </aside>
         <main className="doc-body">
+          {!editable && shownSections.length === 0 && <p className="muted doc-blank">Nothing has been written yet.{canEdit ? ' Choose the pencil to start.' : ''}</p>}
           <DocumentIdContext.Provider value={id}>
-            {detail.sections.map((s) => (
+            {shownSections.map((s) => (
               <SectionEditor key={s.key} id={`sec-${s.key}`} section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} />
             ))}
           </DocumentIdContext.Provider>

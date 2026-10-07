@@ -96,6 +96,10 @@ public class Tenant : AuditableEntity, ISoftDelete
     public ProjectVisibility ProjectVisibility { get; set; } = ProjectVisibility.Organization;
 
     /// <summary>What appears under "Bill to" on invoices: the company's legal name, address and tax id (GSTIN). Empty = the workspace name.</summary>
+    /// <summary>The workspace's logo (PNG or JPEG), printed on the cover and pages of document PDFs.</summary>
+    public string? LogoKey { get; set; }
+    public string? LogoContentType { get; set; }
+
     public string? BillingName { get; set; }
     public string? BillingAddress { get; set; }
     public string? BillingTaxId { get; set; }

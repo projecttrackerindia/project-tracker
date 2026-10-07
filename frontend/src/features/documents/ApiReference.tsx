@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { apiDocApi, documentApi } from '../../api/endpoints';
-import type { ApiDefinition, ApiMethod, DocumentDetail, EndpointDetail, EndpointItem } from '../../api/types';
+import type { ApiDefinition, ApiMethod, DocumentDetail, EndpointItem } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
@@ -11,66 +11,8 @@ import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { ChangesModal, DefinitionModal, ImportModal, AUTH_LABEL } from './ApiTools';
 import { EndpointEditor, METHODS } from './ApiEndpointEditor';
-
-export const Method = ({ m }: { m: string }) => <span className={`mth mth-${m.toLowerCase()}`}>{m}</span>;
-
-function Block({ label, text }: { label: string; text: string | null }) {
-  if (!text) return null;
-  let shown = text;
-  try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch { /* shown as written */ }
-  return <div className="apr-block"><span className="apr-lab">{label}</span><pre>{shown}</pre></div>;
-}
-
-function Detail({ ep, definition, canEdit, onEdit, onDelete }: { ep: EndpointDetail; definition: ApiDefinition | undefined; canEdit: boolean; onEdit: () => void; onDelete: () => void }) {
-  const { item: i, details: d } = ep;
-  const auth = d.auth === 'inherit' ? (definition ? AUTH_LABEL[definition.auth] : '') : d.auth === 'none' ? 'Open: no authentication' : AUTH_LABEL[d.auth as keyof typeof AUTH_LABEL] ?? d.auth;
-  const server = definition?.servers[0];
-  return (
-    <article className="apr">
-      <header className="apr-head">
-        <div className="apr-title"><Method m={i.method} /><code>{i.path}</code>{i.deprecated && <span className="badge badge-warning">Deprecated</span>}</div>
-        {canEdit && !ep.readOnly && <div className="apr-actions"><button className="btn btn-ghost btn-sm" onClick={onEdit}><Icon name="edit" size={14} /> Edit</button><button className="btn-icon" aria-label="Delete endpoint" onClick={onDelete}><Icon name="trash" size={14} /></button></div>}
-      </header>
-      {i.summary && <p className="apr-sum">{i.summary}</p>}
-      <div className="apr-meta">
-        <span>{i.definition}{definition?.version ? ` · ${definition.version}` : ''}</span>{i.tag && <span>Group: {i.tag}</span>}<span><Icon name="lock" size={12} /> {auth}</span>{i.owner && <span>Owner: {i.owner.name}</span>}
-        {server && <span className="apr-server" title="Server">{server}{definition?.basePath ?? ''}{i.path}</span>}
-      </div>
-      {d.description && <p className="apr-desc">{d.description}</p>}
-
-      {d.parameters.length > 0 && (
-        <section><h4>Parameters</h4>
-          <div className="table-wrap"><table className="table apr-table"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-            <tbody>{d.parameters.map((p, n) => <tr key={n}><td><code>{p.name}</code></td><td>{p.in}</td><td>{p.type ?? '–'}</td><td>{p.required ? 'Yes' : 'No'}</td><td>{p.description ?? ''}{p.example ? <small className="muted"> e.g. <code>{p.example}</code></small> : null}</td></tr>)}</tbody></table></div>
-        </section>
-      )}
-      {d.requestBody && (
-        <section><h4>Request body <small className="muted">{d.requestBody.contentType}{d.requestBody.required ? ' · required' : ''}</small></h4>
-          {d.requestBody.description && <p>{d.requestBody.description}</p>}<Block label="Schema" text={d.requestBody.schema} /><Block label="Example" text={d.requestBody.example} /></section>
-      )}
-      {d.responses.length > 0 && (
-        <section><h4>Responses</h4>
-          {d.responses.map((r, n) => (
-            <div className="apr-resp" key={n}>
-              <div className="apr-resp-head"><span className={`apr-status s${r.status[0]}`}>{r.status}</span><span>{r.description}</span>{r.contentType && <small className="muted">{r.contentType}</small>}</div>
-              <Block label="Schema" text={r.schema} /><Block label="Example" text={r.example} />
-            </div>
-          ))}
-        </section>
-      )}
-      {d.errors.length > 0 && (
-        <section><h4>Errors</h4>
-          <div className="table-wrap"><table className="table apr-table"><thead><tr><th>Code</th><th>Message</th><th>When</th></tr></thead>
-            <tbody>{d.errors.map((e, n) => <tr key={n}><td><code>{e.code}</code></td><td>{e.message ?? ''}</td><td>{e.description ?? ''}</td></tr>)}</tbody></table></div>
-        </section>
-      )}
-      {d.samples.length > 0 && <section><h4>Samples</h4>{d.samples.map((s, n) => (
-        <div className="apr-block" key={n}><span className="apr-lab">{s.title} · {s.language}<button className="link-btn" onClick={() => { void navigator.clipboard?.writeText(s.code); toast('Copied.'); }}>Copy</button></span><pre>{s.code}</pre></div>
-      ))}</section>}
-      {d.dependencies.length > 0 && <section><h4>Depends on</h4><ul className="apr-deps">{d.dependencies.map((x, n) => <li key={n}><b>{x.name}</b>{x.note ? <span className="muted"> · {x.note}</span> : null}</li>)}</ul></section>}
-    </article>
-  );
-}
+import { EndpointArticle, LifecycleCard, Method } from './ApiView';
+export { Method };
 
 /** The API reference of a document: its APIs on the left, endpoints grouped under them (a page at a time), the chosen endpoint on the right. */
 export function ApiReference({ detail, editable }: { detail: DocumentDetail; editable: boolean }) {
@@ -183,7 +125,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
           </aside>
           <section className="api-main">
             {epId && ep.isLoading ? <PageLoader /> : epId && ep.data ? (
-              <Detail ep={ep.data} definition={defs.find((d) => d.id === ep.data!.item.definitionId)} canEdit={canEdit} onEdit={() => setModal('editEndpoint')}
+              <EndpointArticle ep={ep.data} definition={defs.find((d) => d.id === ep.data!.item.definitionId)} canEdit={canEdit} onEdit={() => setModal('editEndpoint')}
                 onDelete={async () => { if (await confirmDialog({ title: 'Remove this endpoint?', message: `${ep.data!.item.method} ${ep.data!.item.path} is removed from the working copy. Published versions keep it.`, confirmText: 'Remove' })) removeEp.mutate(); }} />
             ) : def ? (
               <div className="api-def-card">
@@ -196,6 +138,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
                   <div><dt>Endpoints</dt><dd>{def.endpoints.toLocaleString()}</dd></div>
                 </dl>
                 {def.authNote && <p className="muted">{def.authNote}</p>}
+                <LifecycleCard definition={def} />
                 <p className="muted">Choose an endpoint on the left to read it.</p>
               </div>
             ) : null}

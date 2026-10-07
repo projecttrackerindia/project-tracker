@@ -7,6 +7,8 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:5173';
 const API = process.env.API ?? BASE;
 const SHOTS = process.env.SHOTS;
 const results = [];
+/** A document opens for reading; switch to editing when the test needs to type. */
+let toEdit = async () => undefined;
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  - ' + detail : ''}`); };
 
 const login = await (await fetch(`${API}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'demo@example.com', password: 'Demo@12345' }) })).json();
@@ -17,6 +19,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, ar
 const errors = [];
 const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 }, acceptDownloads: true });
 const page = await ctx.newPage();
+toEdit = async () => { const b = page.locator('.mode-switch button[aria-label="Edit"]'); await b.first().waitFor({ timeout: 8000 }).catch(() => undefined); if ((await b.count()) && (await b.getAttribute('aria-pressed')) !== 'true') { await b.click(); await page.waitForTimeout(500); } };
 page.on('pageerror', (e) => errors.push(e.message));
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/pdf-${n}.png` }); };
 
@@ -38,7 +41,7 @@ for (let i = 0; i < 8; i++) {
   if (await create.count()) { await create.click(); break; }
   await page.locator('.modal button', { hasText: /Next|Review/ }).click(); await page.waitForTimeout(400);
 }
-await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await page.waitForTimeout(1500);
+await page.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await toEdit(); await page.waitForTimeout(1500);
 const docId = page.url().split('/documents/')[1].split('?')[0];
 const detail = await (await fetch(`${API}/api/v1/documents/${docId}`, { headers: auth })).json();
 const first = detail.data.sections[0];
@@ -62,7 +65,7 @@ const file = await dl.path();
 const bytes = fs.readFileSync(file);
 check('a PDF file is downloaded', bytes.subarray(0, 5).toString() === '%PDF-' && dl.suggestedFilename().endsWith('.pdf'), dl.suggestedFilename());
 const raw = bytes.toString('latin1');
-check('it holds the title, the text, a contents page and page numbers', raw.includes('(Quokka onboarding flow)') && raw.includes('marsupial mascot') && raw.includes('(Contents)') && /Page \d+ of \d+/.test(raw));
+check('it holds the title, the text, a contents page and page numbers', raw.includes('(Quokka onboarding flow)') && raw.includes('marsupial mascot') && raw.includes('(CONTENTS)') && /Page \d+ of \d+/.test(raw));
 await shot('export');
 const pdfRaw = raw;
 check('the diagram is drawn in the PDF (its box texts are in the page)', pdfRaw.includes('(Email verified?) Tj') && pdfRaw.includes('(Welcome tour) Tj'));
@@ -77,8 +80,8 @@ await page.locator('.doc-search input').fill('');
 await page.waitForTimeout(1200);
 
 // ---- overview
-check('the overview shows the number of documents', (await page.locator('.doc-overview .doc-stat', { hasText: 'Documents' }).count()) === 1);
-const total = Number((await page.locator('.doc-overview .doc-stat', { hasText: 'Documents' }).locator('b').innerText()).replace(/\D/g, ''));
+check('the overview shows the number of documents', (await page.locator('.doc-overview .doc-stat', { hasText: 'documents' }).count()) === 1);
+const total = Number((await page.locator('.doc-overview .doc-stat', { hasText: 'documents' }).locator('b').innerText()).replace(/\D/g, ''));
 const listed = await (await fetch(`${API}/api/v1/documents`, { headers: auth })).json();
 check('and it equals what the list holds', total === listed.data.total, `${total} vs ${listed.data.total}`);
 await shot('overview');

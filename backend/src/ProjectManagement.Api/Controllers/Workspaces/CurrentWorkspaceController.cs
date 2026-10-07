@@ -10,8 +10,29 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>The current workspace (resolved from the access token, never from the URL).</summary>
 [Route("api/v1/workspace"), RequireWorkspace]
-public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity) : ApiControllerBase
+public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, WorkspaceLogoService logo) : ApiControllerBase
 {
+    /// <summary>The logo printed on document PDFs.</summary>
+    [HttpGet("logo")]
+    public async Task<IActionResult> Logo(CancellationToken ct) => Ok(await logo.GetAsync(ct));
+
+    [HttpGet("logo/file")]
+    public async Task<IActionResult> LogoFile(CancellationToken ct)
+    {
+        var f = await logo.OpenAsync(ct);
+        return f is null ? NotFound() : File(f.Value.Bytes, f.Value.ContentType);
+    }
+
+    [HttpPost("logo"), RequestSizeLimit(2_000_000)]
+    public async Task<IActionResult> SetLogo(IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        return Ok(await logo.SetAsync(stream, file.Length, ct));
+    }
+
+    [HttpDelete("logo")]
+    public async Task<IActionResult> RemoveLogo(CancellationToken ct) => Ok(await logo.RemoveAsync(ct));
+
     [HttpPut]
     public async Task<IActionResult> Update([FromBody] UpdateWorkspaceRequest req, CancellationToken ct) =>
         Ok(await workspaces.UpdateAsync(req, ct));

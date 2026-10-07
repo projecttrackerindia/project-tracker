@@ -263,8 +263,12 @@ public enum ApiAuthScheme { None = 0, ApiKey = 1, Bearer = 2, Basic = 3, OAuth2 
 /// One API described inside an API document: its name, base path, own version label, how callers authenticate and a plain list of server addresses
 /// (there are no per-environment copies). A document can describe several APIs.
 /// </summary>
+/// <summary>Where an API is in its life, from first sketch to retirement.</summary>
+public enum ApiStage { Draft = 0, Design = 1, Development = 2, Sit = 3, Uat = 4, PreProd = 5, Production = 6, Deprecated = 7, Retired = 8 }
+
 public class ApiDefinition : TenantEntity, ITenantScoped
 {
+    public ApiStage Stage { get; set; } = ApiStage.Draft;
     public Guid DocumentId { get; set; }
     public string Name { get; set; } = "";
     public string? Description { get; set; }

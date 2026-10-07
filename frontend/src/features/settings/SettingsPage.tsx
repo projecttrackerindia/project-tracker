@@ -1,3 +1,4 @@
+import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
@@ -310,6 +311,7 @@ function GeneralSection() {
           {personal && <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Want to collaborate? Use the workspace menu in the top bar to create an organization.</p>}
         </div>
       </div>
+      {!personal && <WorkspaceLogoCard canEdit={ctx.current.role === 'Owner' || ctx.current.role === 'Admin'} />}
       {(ctx.current.role === 'Owner' || ctx.current.role === 'Admin') && <><AiWorkspaceSwitch /><AiInstructionsCard /><AiUsageCard /></>}
       <AiProfileCard />
     </>

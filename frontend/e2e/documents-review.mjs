@@ -7,12 +7,15 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:5173';
 const SHOTS = process.env.SHOTS;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--no-sandbox'] });
 const results = [];
+/** A document opens for reading; switch to editing when the test needs to type. */
+let toEdit = async () => undefined;
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  - ' + detail : ''}`); };
 const errors = [];
 
 async function session(email) {
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 } });
   const page = await ctx.newPage();
+toEdit = async () => { const b = page.locator('.mode-switch button[aria-label="Edit"]'); await b.first().waitFor({ timeout: 8000 }).catch(() => undefined); if ((await b.count()) && (await b.getAttribute('aria-pressed')) !== 'true') { await b.click(); await page.waitForTimeout(500); } };
   page.on('pageerror', (e) => errors.push(`${email}: ${e.message}`));
   await page.goto(`${BASE}/login`);
   await page.fill('input[type=email], input[name=email]', email);
@@ -61,8 +64,9 @@ async function createBrd(page, title) {
 }
 await createBrd(o, 'Leave management');
 await o.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await o.waitForTimeout(1500);
+const toEditOn = async (pg) => { const b = pg.locator('.mode-switch button[aria-label="Edit"]'); await b.first().waitFor({ timeout: 8000 }).catch(() => undefined); if ((await b.count()) && (await b.getAttribute('aria-pressed')) !== 'true') { await b.click(); await pg.waitForTimeout(500); } };
 const docUrl = o.url();
-await center(o, '#sec-scope'); await o.locator('#sec-scope .rte-content').click(); await o.keyboard.type('Employees request leave online.');
+await toEditOn(o); await center(o, '#sec-scope'); await o.locator('#sec-scope .rte-content').click(); await o.keyboard.type('Employees request leave online.');
 await o.locator('.doc-head-actions button', { hasText: 'Save' }).click(); await o.waitForTimeout(1200);
 check('the header offers Submit for review, not Publish', (await o.locator('.doc-head-actions button', { hasText: 'Submit for review' }).count()) === 1 && (await o.locator('.doc-head-actions button', { hasText: /^\s*Publish/ }).count()) === 0);
 await o.locator('.doc-head-actions button', { hasText: 'Submit for review' }).click(); await o.waitForTimeout(700);
@@ -98,7 +102,7 @@ await o.keyboard.press('Escape'); await o.waitForTimeout(300);
 if (await o.locator('.modal').count()) await o.locator('.modal-foot button', { hasText: 'Close' }).click();
 
 // ---- 5. Requirements and coverage
-await center(o, '.doc-side');
+await toEditOn(o); await center(o, '.doc-side');
 await o.locator('.doc-side-card', { hasText: 'Requirements' }).locator('button').first().click(); await o.waitForTimeout(900);
 await o.locator('.cov-add textarea').fill('Employees can request leave\nManagers can approve leave\nBalances are shown');
 await o.locator('.cov-add button[type=submit]').click(); await o.waitForTimeout(1500);
