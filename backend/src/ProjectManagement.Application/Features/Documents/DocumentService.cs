@@ -283,7 +283,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             s.UpdatedAt = now;
         }
         var version = await db.DocumentVersions.FirstAsync(v => v.Id == vid, ct);
-        var hash = Hash(sections);
+        var hash = Combine(Hash(sections), doc.ApiHash);
         if (hash != version.ContentHash) await workflows.OnContentChangedAsync(doc, ct);
         version.ContentHash = hash; version.UpdatedAt = now;
         Touch(doc);
@@ -379,7 +379,11 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         return t;
     }
 
-    private static string Hash(IEnumerable<DocumentSection> sections)
+    /// <summary>The draft's fingerprint: its sections, and its API data when it has any (a document without an API keeps the plain sections hash).</summary>
+    public static string Combine(string sectionsHash, string? apiHash) =>
+        string.IsNullOrEmpty(apiHash) ? sectionsHash : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sectionsHash + "|" + apiHash))).ToLowerInvariant();
+
+    public static string Hash(IEnumerable<DocumentSection> sections)
     {
         var sb = new StringBuilder();
         foreach (var s in sections.OrderBy(x => x.SortOrder)) sb.Append(s.Key).Append('\n').Append(s.ContentJson).Append('\n');

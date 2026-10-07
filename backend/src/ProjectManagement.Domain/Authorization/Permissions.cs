@@ -127,10 +127,12 @@ public static class FeatureKeys
     public const string MobileApp = "MOBILE_APP";
     /// <summary>Documents (BRDs, API documentation, test plans ...) a workspace may keep. -1 = unlimited.</summary>
     public const string DocumentLimit = "DOCUMENT_LIMIT";
+    /// <summary>Documented API endpoints a workspace may keep (all API documents together). -1 = unlimited.</summary>
+    public const string DocEndpointLimit = "DOC_ENDPOINT_LIMIT";
 
     public const long Unlimited = -1;
 
-    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, DocumentLimit, AiModelTier, AiMonthlyCredits];
+    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, DocumentLimit, DocEndpointLimit, AiModelTier, AiMonthlyCredits];
     public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation, ChatAttachments, MobileApp];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

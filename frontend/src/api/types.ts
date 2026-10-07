@@ -630,3 +630,32 @@ export interface Coverage { rows: CoverageRow[]; requirements: number; covered: 
 export interface DocActivity { id: string; at: string; action: string; summary: string; by: UserRef | null }
 export interface DocAuditEntry { id: string; at: string; action: string; by: UserRef | null; ip: string | null; device: string | null; oldValue: string | null; newValue: string | null }
 export interface DocAuditPage { items: DocAuditEntry[]; nextCursor: string | null }
+
+// ---- API documentation
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'TRACE';
+export type ApiAuthScheme = 'None' | 'ApiKey' | 'Bearer' | 'Basic' | 'OAuth2';
+export interface ApiParam { name: string; in: string; required: boolean; type: string | null; description: string | null; example: string | null; schema: string | null }
+export interface ApiBody { contentType: string | null; required: boolean; description: string | null; schema: string | null; example: string | null }
+export interface ApiResponse { status: string; description: string | null; contentType: string | null; schema: string | null; example: string | null }
+export interface ApiErrorDoc { code: string; message: string | null; description: string | null }
+export interface ApiSample { title: string; language: string; code: string }
+export interface ApiDependency { name: string; note: string | null }
+export interface EndpointDetails {
+  description: string | null; auth: string; parameters: ApiParam[]; requestBody: ApiBody | null; responses: ApiResponse[];
+  errors: ApiErrorDoc[]; samples: ApiSample[]; dependencies: ApiDependency[];
+}
+export interface ApiDefinition {
+  id: string; name: string; description: string | null; basePath: string | null; version: string | null; auth: ApiAuthScheme; authNote: string | null;
+  servers: string[]; endpoints: number; sortOrder: number;
+}
+export interface ApiOverview { definitions: ApiDefinition[]; endpoints: number; live: boolean; reading: string; versionId: string | null; canEdit: boolean; limit: number; used: number }
+export interface EndpointItem { id: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; owner: UserRef | null }
+export interface EndpointPage { items: EndpointItem[]; nextCursor: string | null; total: number | null }
+export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean }
+export interface SaveEndpoint { definitionId: string; method: string; path: string; summary: string; tag: string | null; deprecated: boolean; ownerId: string | null; details: EndpointDetails }
+export interface SaveDefinition { name: string; description: string | null; basePath: string | null; version: string | null; auth: ApiAuthScheme; authNote: string | null; servers: string[] }
+export interface ImportIssue { severity: 'error' | 'warning'; line: number | null; column: number | null; pointer: string | null; message: string }
+export interface ApiImportResult { success: boolean; applied: boolean; format: string; definition: string; added: number; updated: number; unchanged: number; removed: number; issues: ImportIssue[]; overview: ApiOverview | null }
+export interface ApiChange { level: 'Breaking' | 'Warning' | 'Info'; code: string; definition: string; method: string; path: string; message: string; where: string | null }
+export interface ApiChanges { from: { versionId: string | null; label: string }; to: { versionId: string | null; label: string }; items: ApiChange[]; breaking: number; warnings: number; info: number; added: number; removed: number; modified: number }
+export interface EndpointHit { documentId: string; documentKey: string; documentTitle: string; definition: string; method: ApiMethod; path: string; summary: string }

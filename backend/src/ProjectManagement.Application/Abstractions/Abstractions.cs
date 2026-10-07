@@ -30,6 +30,10 @@ public interface IAppDbContext
     DbSet<ApprovalDecision> ApprovalDecisions { get; }
     DbSet<AccessRequest> AccessRequests { get; }
     DbSet<DocumentRequirement> DocumentRequirements { get; }
+    DbSet<ApiDefinition> ApiDefinitions { get; }
+    DbSet<ApiEndpoint> ApiEndpoints { get; }
+    DbSet<ApiSnapshot> ApiSnapshots { get; }
+    DbSet<EndpointRevision> EndpointRevisions { get; }
     DbSet<TeamMember> TeamMembers { get; }
     DbSet<OrgRole> OrgRoles { get; }
     DbSet<Project> Projects { get; }

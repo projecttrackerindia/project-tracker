@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { documentApi, teamApi, workspaceApi } from '../../api/endpoints';
+import { apiDocApi, documentApi, teamApi, workspaceApi } from '../../api/endpoints';
 import type { DocumentDetail, DocumentVisibility } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
@@ -19,6 +19,7 @@ import { DocumentGate } from './DocumentGate';
 import { PublishApprovedModal, ReviewPanel, SubmitModal } from './DocumentReview';
 import { RequirementsCard } from './DocumentRequirements';
 import { ActivityCard } from './DocumentActivity';
+import { ApiReference } from './ApiReference';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
@@ -70,6 +71,8 @@ export function DocumentPage() {
   const [panel, setPanel] = useState<'publish' | 'history' | 'access' | 'submit' | 'publishApproved' | null>(null);
   const review = useWsQuery(['documents', id, 'review'], () => documentApi.review(id), { enabled: !!q.data, retry: false });
   const [stale, setStale] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const apiOverview = useWsQuery(['documents', id, 'api', ''], () => apiDocApi.overview(id), { enabled: !!q.data, retry: false });
   const detail = q.data;
   const dirty = Object.keys(edits).length > 0;
 
@@ -117,6 +120,9 @@ export function DocumentPage() {
   const d = detail.item;
   const editable = detail.can.edit && canWrite;
   const workflow = !!review.data?.workflowApplies;
+  const hasApi = type?.code === 'API' || (apiOverview.data?.definitions.length ?? 0) > 0;
+  const onApiTab = hasApi && params.get('tab') === 'api';
+  const setTab = (t: 'doc' | 'api') => setParams(t === 'api' ? { tab: 'api' } : {}, { replace: true });
   const set = (key: string, v: string) => setEdits((x) => {
     const orig = detail.sections.find((s) => s.key === key)?.content;
     if (v === orig) { const { [key]: _, ...rest } = x; return rest; }
@@ -165,6 +171,13 @@ export function DocumentPage() {
       {d.status === 'Archived' && <div className="doc-alert info"><Icon name="info" size={16} /><div>This document is archived and read-only.</div></div>}
       {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={editable} onPublish={() => setPanel('publishApproved')} />}
 
+      {hasApi && (
+        <div className="seg doc-tabs" role="tablist" aria-label="Document view">
+          <button role="tab" aria-selected={!onApiTab} className={!onApiTab ? 'on' : ''} onClick={() => setTab('doc')}>Document</button>
+          <button role="tab" aria-selected={onApiTab} className={onApiTab ? 'on' : ''} onClick={() => setTab('api')}>API reference{(apiOverview.data?.endpoints ?? 0) > 0 && <span className="doc-count">{apiOverview.data!.endpoints.toLocaleString()}</span>}</button>
+        </div>
+      )}
+      {onApiTab ? <ApiReference detail={detail} editable={editable} /> : (
       <div className="doc-layout">
         <aside className="doc-outline" aria-label="Sections">
           <ul>{detail.sections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{edits[s.key] !== undefined && <i className="dot-dirty" />}{s.title}</a></li>)}</ul>
@@ -196,6 +209,7 @@ export function DocumentPage() {
           <ActivityCard id={id} title={`${d.key} · ${d.title}`} />
         </aside>
       </div>
+      )}
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
       {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'history' && <HistoryModal detail={detail} onClose={() => setPanel(null)} />}

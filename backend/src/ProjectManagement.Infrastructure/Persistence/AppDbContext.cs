@@ -35,6 +35,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
     public DbSet<AccessRequest> AccessRequests => Set<AccessRequest>();
     public DbSet<DocumentRequirement> DocumentRequirements => Set<DocumentRequirement>();
+    public DbSet<ApiDefinition> ApiDefinitions => Set<ApiDefinition>();
+    public DbSet<ApiEndpoint> ApiEndpoints => Set<ApiEndpoint>();
+    public DbSet<ApiSnapshot> ApiSnapshots => Set<ApiSnapshot>();
+    public DbSet<EndpointRevision> EndpointRevisions => Set<EndpointRevision>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<OrgRole> OrgRoles => Set<OrgRole>();
     public DbSet<Project> Projects => Set<Project>();
@@ -173,6 +177,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<SectionKind>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkTarget>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<LinkRelation>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<ApiMethod>().HaveConversion<string>().HaveMaxLength(8);
+        builder.Properties<ApiAuthScheme>().HaveConversion<string>().HaveMaxLength(12);
         builder.Properties<ApproverKind>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<ApprovalRule>().HaveConversion<string>().HaveMaxLength(8);
         builder.Properties<ApprovalState>().HaveConversion<string>().HaveMaxLength(20);
@@ -305,6 +311,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Revision).IsConcurrencyToken();
+            e.Property(x => x.ApiHash).HasMaxLength(64);
             e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
@@ -388,6 +395,44 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Reason).HasMaxLength(500);
             e.Property(x => x.DecisionNote).HasMaxLength(500);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ApiDefinition>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.Name }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.Description).HasMaxLength(2000);
+            e.Property(x => x.BasePath).HasMaxLength(200);
+            e.Property(x => x.Version).HasMaxLength(40);
+            e.Property(x => x.AuthNote).HasMaxLength(500);
+            e.Property(x => x.ServersJson).HasMaxLength(4000);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ApiEndpoint>(e =>
+        {
+            // The tree is read by API and ordered by path; a search by path fragment scans one workspace's rows.
+            e.HasIndex(x => new { x.TenantId, x.DefinitionId, x.Path, x.Method }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.DocumentId });
+            e.HasIndex(x => new { x.TenantId, x.Path });
+            e.Property(x => x.Path).HasMaxLength(400);
+            e.Property(x => x.Summary).HasMaxLength(300);
+            e.Property(x => x.Tag).HasMaxLength(80);
+            e.Property(x => x.Hash).HasMaxLength(64);
+            e.HasOne<ApiDefinition>().WithMany().HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ApiSnapshot>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.VersionId }).IsUnique();
+            e.HasOne<DocumentVersion>().WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<EndpointRevision>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.VersionId, x.DefinitionName, x.Path, x.Method });
+            e.Property(x => x.DefinitionName).HasMaxLength(80);
+            e.Property(x => x.Path).HasMaxLength(400);
+            e.Property(x => x.Summary).HasMaxLength(300);
+            e.Property(x => x.Tag).HasMaxLength(80);
+            e.HasOne<DocumentVersion>().WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<DocumentRequirement>(e =>
         {

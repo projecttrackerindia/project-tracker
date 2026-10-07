@@ -76,6 +76,8 @@ public class Document : TenantEntity, ITenantScoped, ISoftDelete
     public Guid? PublishedVersionId { get; set; }
     /// <summary>Optimistic concurrency: a save that was made from an older copy is refused instead of overwriting.</summary>
     public int Revision { get; set; } = 1;
+    /// <summary>A fingerprint of the document's API definitions and endpoints (empty when it has none); part of the draft's content hash, so a changed API counts as an unpublished change.</summary>
+    public string ApiHash { get; set; } = "";
 
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -246,4 +248,72 @@ public class DocumentRequirement : TenantEntity, ITenantScoped
     public string? Detail { get; set; }
     public Priority Priority { get; set; } = Priority.Medium;
     public int SortOrder { get; set; }
+}
+
+
+public enum ApiMethod { Get = 0, Post = 1, Put = 2, Patch = 3, Delete = 4, Head = 5, Options = 6, Trace = 7 }
+
+/// <summary>How callers prove who they are to an API. The details of a scheme go in the description; the product never stores credentials here.</summary>
+public enum ApiAuthScheme { None = 0, ApiKey = 1, Bearer = 2, Basic = 3, OAuth2 = 4 }
+
+/// <summary>
+/// One API described inside an API document: its name, base path, own version label, how callers authenticate and a plain list of server addresses
+/// (there are no per-environment copies). A document can describe several APIs.
+/// </summary>
+public class ApiDefinition : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public string? BasePath { get; set; }
+    /// <summary>The API's own version label (v1, 2024-05 ...), free text; not the document's version.</summary>
+    public string? Version { get; set; }
+    public ApiAuthScheme Auth { get; set; } = ApiAuthScheme.None;
+    public string? AuthNote { get; set; }
+    /// <summary>The addresses the API is served from, as a JSON list of text.</summary>
+    public string ServersJson { get; set; } = "[]";
+    public int SortOrder { get; set; }
+}
+
+/// <summary>One method and path of an API. The details (parameters, body, responses, errors, samples, dependencies) are JSON; the columns are what lists, search and compare need.</summary>
+public class ApiEndpoint : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid DefinitionId { get; set; }
+    public ApiMethod Method { get; set; }
+    public string Path { get; set; } = "";
+    public string Summary { get; set; } = "";
+    /// <summary>The group it is listed under in the tree.</summary>
+    public string? Tag { get; set; }
+    public bool Deprecated { get; set; }
+    public Guid? OwnerId { get; set; }
+    public string DetailsJson { get; set; } = "{}";
+    /// <summary>Fingerprint of everything above (not the id), so the document's API hash can be worked out without reading the details.</summary>
+    public string Hash { get; set; } = "";
+}
+
+/// <summary>The API data of a document as it was when a version was published: its definitions, once, as JSON.</summary>
+public class ApiSnapshot : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid VersionId { get; set; }
+    public string DefinitionsJson { get; set; } = "[]";
+    public int EndpointCount { get; set; }
+}
+
+/// <summary>One endpoint as it was in a published version. Never changed afterwards; the compare and the breaking-change check read these.</summary>
+public class EndpointRevision : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid VersionId { get; set; }
+    public Guid DefinitionId { get; set; }
+    public string DefinitionName { get; set; } = "";
+    public Guid EndpointId { get; set; }
+    public ApiMethod Method { get; set; }
+    public string Path { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string? Tag { get; set; }
+    public bool Deprecated { get; set; }
+    public Guid? OwnerId { get; set; }
+    public string DetailsJson { get; set; } = "{}";
 }

@@ -582,7 +582,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         Assert.True((await Write(owner, doc, "first")).Ok);
 
         long Rows() => factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().LongCount(a => a.TenantId == owner.WorkspaceId));
-        Guid grant = Guid.Empty, link = Guid.Empty, requirement = Guid.Empty, access = Guid.Empty, file = Guid.Empty, version = Guid.Empty;
+        Guid apiDef = Guid.Empty, apiEndpoint = Guid.Empty, grant = Guid.Empty, link = Guid.Empty, requirement = Guid.Empty, access = Guid.Empty, file = Guid.Empty, version = Guid.Empty;
 
         // One scenario per write endpoint, keyed "VERB template". Each runs the call and the test checks that the audit table grew.
         var scenarios = new Dictionary<string, Func<Task<ApiResult>>>
@@ -620,13 +620,20 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
                 var again = await asker.Post($"/api/v1/documents/{(await Make(owner, brd, "Another team doc", null, "Private"))}/access-requests", new { level = "Viewer", reason = "me too", durationDays = 5 });
                 return again.Ok ? await asker.Post($"/api/v1/access-requests/{S(again.Data!["id"])}/cancel") : again;
             },
+            ["POST documents/{id:guid}/api/definitions"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/api/definitions", new { name = "Audit API", auth = "None" }); apiDef = Guid.Parse(S(r.Data!["definitions"]![0]!["id"])); return r; },
+            ["PUT documents/{id:guid}/api/definitions/{definitionId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/api/definitions/{apiDef}", new { name = "Audit API", version = "v2", auth = "Bearer" }),
+            ["POST documents/{id:guid}/api/endpoints"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/api/endpoints", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited", deprecated = false, details = new { } }); apiEndpoint = Guid.Parse(S(r.Data!["item"]!["id"])); return r; },
+            ["PUT documents/{id:guid}/api/endpoints/{endpointId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited again", deprecated = true, details = new { } }),
+            ["POST documents/{id:guid}/api/import"] = () => owner.Post($"/api/v1/documents/{doc}/api/import", new { content = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"Imp\",\"version\":\"1\"},\"paths\":{\"/imp\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\"}}}}}}", fileName = "imp.json", mode = "merge", dryRun = false }),
+            ["DELETE documents/{id:guid}/api/endpoints/{endpointId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}"),
+            ["DELETE documents/{id:guid}/api/definitions/{definitionId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/api/definitions/{apiDef}"),
             ["POST documents/{id:guid}/requirements"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/requirements", new { titles = new[] { "One" } }); requirement = Guid.Parse(S(r.Data!.AsArray()[0]!["id"])); return r; },
             ["PUT documents/{id:guid}/requirements/{requirementId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/requirements/{requirement}", new { title = "One, better", priority = "High" }),
             ["DELETE documents/{id:guid}/requirements/{requirementId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/requirements/{requirement}"),
         };
 
         // 1. Every write endpoint of the controller must have a scenario (a new endpoint without one fails here, until it is covered).
-        var written = typeof(DocumentsController).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        var written = new[] { typeof(DocumentsController), typeof(ApiDocsController) }.SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .SelectMany(m => m.GetCustomAttributes<HttpMethodAttribute>(true))
             .Where(a => a.HttpMethods.Any(h => h is "POST" or "PUT" or "DELETE" or "PATCH"))
             .Select(a => $"{a.HttpMethods.First()} {a.Template}").ToHashSet();

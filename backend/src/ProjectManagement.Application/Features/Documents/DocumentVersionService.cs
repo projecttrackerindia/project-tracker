@@ -20,7 +20,7 @@ public record RestoreRequest(string? Reason, bool DiscardChanges, int Revision);
 /// The history of a document. Publishing freezes the draft as the next version (1.0, then 1.1, or 2.0 for a major change) and starts a fresh draft from it;
 /// nothing that was published is ever changed. Restoring an old version publishes a new version with its content, so the history shows both.
 /// </summary>
-public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows)
+public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows, ProjectManagement.Application.Features.ApiDocs.ApiTransferService apiData, ProjectManagement.Application.Features.ApiDocs.ApiDocService apiDocs)
 {
     public static string Label(int major, int minor) => $"{major}.{minor}";
 
@@ -103,6 +103,7 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         var frozen = draft;
         frozen.Major = major; frozen.Minor = minor; frozen.IsDraft = false; frozen.ChangeSummary = summary; frozen.ChangeReason = reason; frozen.PublishedAt = now; frozen.PublishedBy = ctx.UserId; frozen.UpdatedAt = now;
         var next = StartDraft(doc, frozen, sections, now);
+        await apiData.SnapshotAsync(doc, frozen.Id, ct);   // the API as published, kept with the version
         doc.PublishedVersionId = frozen.Id; doc.DraftVersionId = next.Id; doc.Status = after; Touch(doc);
         recorder.Activity("document.published", "Document", doc.Id, $"Published {DocumentService.KeyOf(doc.Number)} version {Label(major, minor)}", doc.ProjectId, newValue: summary);
         recorder.Audit("document.published", "Document", doc.Id, latest is null ? null : new { version = Label(latest.Major, latest.Minor) }, new { version = Label(major, minor), summary, reason, hash = frozen.ContentHash });
@@ -131,10 +132,12 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
             db.DocumentSections.RemoveRange(await db.DocumentSections.Where(s => s.VersionId == draft.Id).ToListAsync(ct));
             foreach (var s in source) db.DocumentSections.Add(Copy(s, draft.Id, now));
             draft.ContentHash = old.ContentHash; draft.UpdatedAt = now;
+            await apiData.RestoreAsync(doc, old.Id, ct);
             Touch(doc);
             recorder.Activity("document.version_loaded", "Document", doc.Id, $"Loaded version {Label(old.Major, old.Minor)} of {DocumentService.KeyOf(doc.Number)} into the draft", doc.ProjectId);
             recorder.Audit("document.version_loaded", "Document", doc.Id, new { replaced = Label(latest.Major, latest.Minor) }, new { loaded = Label(old.Major, old.Minor), reason = req.Reason });
             await SaveAsync(ct);
+            await apiDocs.AfterChangeAsync(doc, ct);
             return await ListAsync(documentId, ct);
         }
         var restored = new DocumentVersion
@@ -149,10 +152,13 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         db.DocumentSections.RemoveRange(await db.DocumentSections.Where(s => s.VersionId == draft.Id).ToListAsync(ct));
         foreach (var s in source) db.DocumentSections.Add(Copy(s, draft.Id, now));
         draft.ContentHash = old.ContentHash; draft.Major = major; draft.Minor = minor; draft.UpdatedAt = now;
+        await apiData.RestoreAsync(doc, old.Id, ct);
+        await apiData.SnapshotAfterRestoreAsync(doc, restored.Id, old.Id, ct);
         doc.PublishedVersionId = restored.Id; doc.Status = DocumentStatus.Published; Touch(doc);
         recorder.Activity("document.restored_version", "Document", doc.Id, $"Restored {DocumentService.KeyOf(doc.Number)} to version {Label(old.Major, old.Minor)} as {Label(major, minor)}", doc.ProjectId);
         recorder.Audit("document.version_restored", "Document", doc.Id, new { replaced = Label(latest.Major, latest.Minor) }, new { restored = Label(old.Major, old.Minor), now = Label(major, minor) });
         await SaveAsync(ct);
+        await apiDocs.AfterChangeAsync(doc, ct);
         return await ListAsync(documentId, ct);
     }
 

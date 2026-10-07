@@ -49,6 +49,7 @@ jobs:
           node e2e/public.mjs
           node e2e/mobile.mjs
           node e2e/documents.mjs
+          node e2e/documents-api.mjs
           node e2e/documents-review.mjs
       - name: Logs
         if: failure()

@@ -10,7 +10,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
   DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
-  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage,
+  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, ApiOverview, EndpointPage, EndpointDetail, SaveEndpoint, SaveDefinition, ApiImportResult, ApiChanges, EndpointHit, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage,
 } from './types';
 
 export const authApi = {
@@ -648,4 +648,21 @@ export const documentApi = {
   activity: (id: string) => get<DocActivity[]>(`/documents/${id}/activity`),
   audit: (id: string, cursor?: string, action?: string) => get<DocAuditPage>(`/documents/${id}/audit`, { cursor, action }),
   exportAudit: (id: string) => download(`/documents/${id}/audit/export`, `document-audit.csv`),
+};
+
+export const apiDocApi = {
+  overview: (id: string, versionId?: string | null) => get<ApiOverview>(`/documents/${id}/api`, { versionId: versionId ?? undefined }),
+  addDefinition: (id: string, b: SaveDefinition) => post<ApiOverview>(`/documents/${id}/api/definitions`, b),
+  updateDefinition: (id: string, defId: string, b: SaveDefinition) => put<ApiOverview>(`/documents/${id}/api/definitions/${defId}`, b),
+  removeDefinition: (id: string, defId: string) => del<ApiOverview>(`/documents/${id}/api/definitions/${defId}`),
+  endpoints: (id: string, f: { definitionId?: string; q?: string; method?: string; tag?: string; versionId?: string | null; cursor?: string; limit?: number }) => get<EndpointPage>(`/documents/${id}/api/endpoints`, { ...f, versionId: f.versionId ?? undefined }),
+  endpoint: (id: string, endpointId: string, versionId?: string | null) => get<EndpointDetail>(`/documents/${id}/api/endpoints/${endpointId}`, { versionId: versionId ?? undefined }),
+  addEndpoint: (id: string, b: SaveEndpoint) => post<EndpointDetail>(`/documents/${id}/api/endpoints`, b),
+  updateEndpoint: (id: string, endpointId: string, b: SaveEndpoint) => put<EndpointDetail>(`/documents/${id}/api/endpoints/${endpointId}`, b),
+  removeEndpoint: (id: string, endpointId: string) => del(`/documents/${id}/api/endpoints/${endpointId}`),
+  import: (id: string, b: { content: string; fileName: string; definitionId?: string | null; newDefinitionName?: string | null; mode: 'merge' | 'replace'; dryRun: boolean }) => post<ApiImportResult>(`/documents/${id}/api/import`, b),
+  export: (id: string, format: 'openapi' | 'postman', definitionId: string, versionId: string | null, fileName: string) =>
+    download(`/documents/${id}/api/export?format=${format}&definitionId=${definitionId}${versionId ? `&versionId=${versionId}` : ''}`, fileName),
+  changes: (id: string, from: string, to: string) => get<ApiChanges>(`/documents/${id}/api/changes`, { from, to }),
+  search: (q: string, projectId?: string) => get<EndpointHit[]>('/api-search', { q, projectId }),
 };
