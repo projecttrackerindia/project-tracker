@@ -296,8 +296,8 @@ footer .legal{margin-top:34px;padding-top:20px;border-top:1px solid var(--glass-
 @media (max-width:980px){.dl-grid,.dl-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:620px){.dl-grid,.dl-facts{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:980px){.hero .wrap{grid-template-columns:1fr}.bento{grid-template-columns:repeat(2,1fr)}.tile,.tile.w{grid-column:span 2}.tile.h{grid-row:auto}
-  .plans{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:repeat(2,1fr)}.steps{grid-template-columns:1fr}.nav{display:none}footer .cols{grid-template-columns:1fr 1fr}}
-@media (max-width:620px){.plans,.grid,.two{grid-template-columns:1fr}.bento{grid-template-columns:1fr}.tile,.tile.w{grid-column:auto}.actions .btn-glass{display:none}.top .wrap{gap:12px}
+  .plans{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:repeat(2,1fr)}.steps{grid-template-columns:1fr}footer .cols{grid-template-columns:1fr 1fr}}
+@media (max-width:620px){.plans,.grid,.two{grid-template-columns:1fr}.bento{grid-template-columns:1fr}.tile,.tile.w{grid-column:auto}.top .wrap{gap:12px}
   .hero{padding:110px 0 44px}section.block{padding:64px 0}.vs .hd,.vs .rw{grid-template-columns:1fr}.vs .hd>div:nth-child(2),.vs .hd>div:nth-child(3){display:none}.vs .rw>div:first-child{padding-bottom:4px;color:var(--brand)}
   .whatif .res{margin-left:0;text-align:left}.band{padding:48px 20px}}
 .sticky{display:none}
@@ -306,6 +306,8 @@ footer .legal{margin-top:34px;padding-top:20px;border-top:1px solid var(--glass-
 footer .cols>*{min-width:0}footer a{overflow-wrap:anywhere}
 @media (max-width:980px){footer .cols{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:480px){footer .cols{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:980px){.top .wrap{gap:12px}.nav{margin-left:0}.nav a{padding:7px 10px;font-size:13.5px}}
+@media (max-width:760px){.actions .btn-primary{display:none}.top .wrap{flex-wrap:wrap;height:auto;padding-top:10px;padding-bottom:4px;row-gap:2px}.actions{margin-left:auto}.nav{order:3;flex-basis:100%;overflow-x:auto;scrollbar-width:none;gap:2px;padding:2px 0 6px}.nav::-webkit-scrollbar{display:none}.nav a{white-space:nowrap}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
   __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note{opacity:1!important}}
 `;

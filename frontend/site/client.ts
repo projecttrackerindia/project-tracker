@@ -7,6 +7,8 @@ export const CLIENT_SCRIPT = `<script>
 var d=document,h=d.documentElement;
 if(h.classList.contains('app'))return;
 if(/ProjectTrackerDesktop\\//.test(navigator.userAgent)){location.replace('/login');return}
+// The installed app (Android shell, or a website added to the Home Screen) opens straight at sign-in: the marketing pages are for the browser.
+var cap=window.Capacitor;if((cap&&cap.isNativePlatform&&cap.isNativePlatform())||matchMedia('(display-mode: standalone)').matches||navigator.standalone===true){location.replace('/login');return}
 h.classList.add('pt-js');
 var rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
 var els=[].slice.call(d.querySelectorAll('[data-r]'));
