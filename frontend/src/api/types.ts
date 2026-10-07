@@ -670,3 +670,6 @@ export interface DocSecurity { revealSeconds: number; entitled: boolean; keyVers
 
 export interface DashboardCount { key: string; label: string; count: number }
 export interface DocumentDashboard { total: number; byStatus: DashboardCount[]; byType: DashboardCount[]; mine: number; waitingForMe: number; updatedThisWeek: number; notUpdatedIn90Days: number; unpublished: number; recent: DocumentItem[] }
+
+export interface GroupMapping { id: string; group: string; teamId: string; teamName: string }
+export interface GroupMappings { items: GroupMapping[] }

@@ -74,3 +74,11 @@ public class UserLogin : Entity
     public DateTime CreatedAt { get; set; }
     public DateTime? LastUsedAt { get; set; }
 }
+
+/// <summary>Which team a person joins when their identity provider says they belong to a group (the "groups" claim or attribute). Sync happens at sign-in.</summary>
+public class SsoGroupMapping : TenantEntity
+{
+    /// <summary>The group's name or id exactly as the identity provider sends it (compared without regard to case).</summary>
+    public string Group { get; set; } = "";
+    public Guid TeamId { get; set; }
+}

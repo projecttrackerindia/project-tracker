@@ -189,6 +189,8 @@ public class TeamMember : TenantEntity, ITenantScoped
     public Guid TeamId { get; set; }
     public Guid UserId { get; set; }
     public bool IsLead { get; set; }
+    /// <summary>Added because the identity provider reported a mapped group (and removed again when it stops reporting it). Memberships added by hand are never touched by sign-in.</summary>
+    public bool ViaSso { get; set; }
     public User? User { get; set; }
 }
 

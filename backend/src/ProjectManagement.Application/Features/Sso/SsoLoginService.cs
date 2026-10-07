@@ -229,7 +229,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var c = await ConnectionAsync(p, SsoProtocol.Oidc, ct);
         if (string.IsNullOrWhiteSpace(code)) throw new UnauthorizedException("The identity provider did not sign you in.", "SSO_REJECTED");
         var who = await oidc.RedeemAsync(new OidcRedeemRequest(c.Authority!, c.ClientId!, secrets.Unprotect(c.ClientSecret!), code, PublicUrls.OidcCallback(_o), p.Verifier!, p.Nonce), ct);
-        return await FinishSsoAsync(c, who.Subject, who.Email, who.Name, p.ReturnUrl, ct);
+        return await FinishSsoAsync(c, who.Subject, who.Email, who.Name, who.Groups, p.ReturnUrl, ct);
     }
 
     public async Task<SignInCompletion> CompleteSamlAsync(IReadOnlyDictionary<string, string> form, string? binding, CancellationToken ct = default)
@@ -241,7 +241,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var c = await ConnectionAsync(p, SsoProtocol.Saml, ct);
         var who = saml.ReadResponse(SamlSettingsFor(c), form);
         if (who.InResponseTo != p.SamlRequestId) throw new UnauthorizedException("The sign-in answer does not belong to this sign-in.", "SSO_STATE_INVALID");
-        return await FinishSsoAsync(c, who.NameId, who.Email, who.Name, p.ReturnUrl, ct);
+        return await FinishSsoAsync(c, who.NameId, who.Email, who.Name, who.Groups, p.ReturnUrl, ct);
     }
 
     private async Task<SsoConnection> ConnectionAsync(Pending p, SsoProtocol protocol, CancellationToken ct)
@@ -251,7 +251,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         return c ?? throw new UnauthorizedException("Single sign-on has been turned off for this organization.", "SSO_DISABLED");
     }
 
-    private async Task<SignInCompletion> FinishSsoAsync(SsoConnection c, string subject, string? email, string? name, string returnUrl, CancellationToken ct)
+    private async Task<SignInCompletion> FinishSsoAsync(SsoConnection c, string subject, string? email, string? name, IReadOnlyList<string>? groups, string returnUrl, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email)) throw new UnauthorizedException("The identity provider did not send an email address.", "SSO_NO_EMAIL");
         email = email.Trim();
@@ -284,6 +284,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         login.Email = email;
         if (!user.EmailVerified) user.EmailVerified = true;   // the organization owns the domain and its provider vouched for the address
         c.LastUsedAt = clock.Now;
+        await SsoGroupSync.SyncAsync(db, recorder, clock, c.TenantId, user.Id, groups, ct);
 
         var session = await auth.SignInExternalAsync(user, "sso", c.TenantId, c.TenantId, ct);
         return new SignInCompletion(session, returnUrl);

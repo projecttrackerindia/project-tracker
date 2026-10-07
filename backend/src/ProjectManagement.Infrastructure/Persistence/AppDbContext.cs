@@ -117,6 +117,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<SsoGroupMapping> SsoGroupMappings => Set<SsoGroupMapping>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<PlanFeature> PlanFeatures => Set<PlanFeature>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
@@ -820,6 +821,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.SamlSsoUrl).HasMaxLength(800);
             e.Property(x => x.SamlCertificate).HasMaxLength(12000);
             e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<SsoGroupMapping>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Group, x.TeamId }).IsUnique();
+            e.Property(x => x.Group).HasMaxLength(200);
         });
         b.Entity<SsoDomain>(e =>
         {

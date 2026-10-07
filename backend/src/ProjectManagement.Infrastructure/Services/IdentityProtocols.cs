@@ -92,7 +92,15 @@ public sealed class OidcProtocol(IHttpClientFactory http, ILogger<OidcProtocol> 
             || (req.Issuer == IssuerRule.MicrosoftAnyTenant && (One("tid") == MicrosoftConsumers || string.Equals(One("xms_edov"), "true", StringComparison.OrdinalIgnoreCase)));
         var name = One("name") ?? string.Join(' ', new[] { One("given_name"), One("family_name") }.Where(v => !string.IsNullOrWhiteSpace(v)));
         return new ExternalIdentity(One("sub") ?? throw new UnauthorizedException("The ID token has no subject.", "SSO_TOKEN_INVALID"),
-            string.IsNullOrWhiteSpace(email) ? null : email.Trim(), verified, string.IsNullOrWhiteSpace(name) ? null : name.Trim());
+            string.IsNullOrWhiteSpace(email) ? null : email.Trim(), verified, string.IsNullOrWhiteSpace(name) ? null : name.Trim(), GroupsOf(claims, "groups", "group", "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups"));
+    }
+
+    /// <summary>The groups the provider reported, or null when it sent no group claim at all (so a missing claim never removes anyone from a team).</summary>
+    internal static IReadOnlyList<string>? GroupsOf(ILookup<string, string> claims, params string[] types)
+    {
+        var found = types.Where(t => claims.Contains(t)).ToList();
+        if (found.Count == 0) return null;
+        return found.SelectMany(t => claims[t]).Select(v => v.Trim()).Where(v => v.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToList();
     }
 
     private static Task<TokenValidationResult> ValidateAsync(OidcRedeemRequest req, OpenIdConnectConfiguration config, string idToken, CancellationToken ct)
@@ -237,7 +245,10 @@ public sealed class SamlProtocol : ISamlProtocol
             ?? (nameId.Contains('@') ? nameId : null);
         var name = Find(ClaimTypes.Name, "name", "displayName", "http://schemas.microsoft.com/identity/claims/displayname", "urn:oid:2.16.840.1.113730.3.1.241")
             ?? string.Join(' ', new[] { Find(ClaimTypes.GivenName, "givenName", "firstName"), Find(ClaimTypes.Surname, "sn", "surname", "lastName") }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        return new SamlIdentity(nameId, email, string.IsNullOrWhiteSpace(name) ? null : name, response.InResponseToAsString);
+        var groupTypes = new[] { "groups", "memberOf", "http://schemas.xmlsoap.org/claims/Group", "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups" };
+        var groups = claims.Where(c => groupTypes.Contains(c.Type, StringComparer.OrdinalIgnoreCase)).ToList();
+        return new SamlIdentity(nameId, email, string.IsNullOrWhiteSpace(name) ? null : name, response.InResponseToAsString,
+            groups.Count == 0 ? null : groups.Select(c => c.Value.Trim()).Where(v => v.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToList());
     }
 
     public (string Subject, DateTime NotAfter) Inspect(string certificate)

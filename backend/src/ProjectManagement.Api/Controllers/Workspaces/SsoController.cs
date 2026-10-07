@@ -6,8 +6,18 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>Workspace settings → Single sign-on: the identity provider, verified domains and SCIM tokens (Owners and Admins).</summary>
 [Route("api/v1/workspace/sso"), RequireWorkspace]
-public class SsoController(SsoSettingsService sso) : ApiControllerBase
+public class SsoController(SsoSettingsService sso, SsoGroupMappingService groups) : ApiControllerBase
 {
+    /// <summary>Which team a person joins for each group their identity provider reports at sign-in.</summary>
+    [HttpGet("group-mappings")]
+    public async Task<IActionResult> GroupMappings(CancellationToken ct) => Ok(await groups.ListAsync(ct));
+
+    [HttpPost("group-mappings")]
+    public async Task<IActionResult> AddGroupMapping([FromBody] AddGroupMappingRequest req, CancellationToken ct) => Created(await groups.AddAsync(req, ct));
+
+    [HttpDelete("group-mappings/{id:guid}")]
+    public async Task<IActionResult> RemoveGroupMapping(Guid id, CancellationToken ct) => Ok(await groups.RemoveAsync(id, ct));
+
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct) => Ok(await sso.GetAsync(ct));
 

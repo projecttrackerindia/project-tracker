@@ -10,7 +10,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
   DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
-  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, ApiOverview, EndpointPage, EndpointDetail, SaveEndpoint, SaveDefinition, ApiImportResult, ApiChanges, EndpointHit, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage, SecretClass, DocumentDashboard, SecretList, SecretReveal, StepUpToken, ChainStatus, DocSecurity,
+  DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, ApiOverview, EndpointPage, EndpointDetail, SaveEndpoint, SaveDefinition, ApiImportResult, ApiChanges, EndpointHit, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage, SecretClass, GroupMappings, DocumentDashboard, SecretList, SecretReveal, StepUpToken, ChainStatus, DocSecurity,
 } from './types';
 
 export const authApi = {
@@ -62,6 +62,9 @@ export const ssoApi = {
   removeDomain: (id: string) => del<SsoSettings>(`/workspace/sso/domains/${id}`),
   createScimToken: (name: string) => post<{ token: ScimToken; secret: string }>('/workspace/sso/scim-tokens', { name }),
   revokeScimToken: (id: string) => del<SsoSettings>(`/workspace/sso/scim-tokens/${id}`),
+  groupMappings: () => get<GroupMappings>('/workspace/sso/group-mappings'),
+  addGroupMapping: (group: string, teamId: string) => post<GroupMappings>('/workspace/sso/group-mappings', { group, teamId }),
+  removeGroupMapping: (id: string) => del<GroupMappings>(`/workspace/sso/group-mappings/${id}`),
 };
 
 export const workspaceApi = {

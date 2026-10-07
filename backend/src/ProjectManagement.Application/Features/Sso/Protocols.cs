@@ -6,7 +6,7 @@ public record OidcEndpoints(string Issuer, string AuthorizationEndpoint, string 
 /// <summary>Who an identity provider says signed in.</summary>
 /// <param name="Subject">The provider's stable id for the person (never reassigned).</param>
 /// <param name="EmailVerified">Whether the provider itself says it checked the email address.</param>
-public record ExternalIdentity(string Subject, string? Email, bool EmailVerified, string? Name);
+public record ExternalIdentity(string Subject, string? Email, bool EmailVerified, string? Name, IReadOnlyList<string>? Groups = null);
 
 /// <summary>How the issuer of an ID token is checked. Microsoft's common endpoint issues tokens from each customer's own tenant.</summary>
 public enum IssuerRule { Exact, MicrosoftAnyTenant }
@@ -36,7 +36,7 @@ public interface IAppleClientSecret
 
 public record SamlSettings(string SpEntityId, string AcsUrl, string IdpEntityId, string IdpSsoUrl, string IdpCertificate);
 public record SamlRequest(string RedirectUrl, string RequestId);
-public record SamlIdentity(string NameId, string? Email, string? Name, string? InResponseTo);
+public record SamlIdentity(string NameId, string? Email, string? Name, string? InResponseTo, IReadOnlyList<string>? Groups = null);
 
 /// <summary>SAML 2.0 service provider: sign-in requests (HTTP-Redirect) and validated responses (HTTP-POST, signed by the identity provider).</summary>
 public interface ISamlProtocol

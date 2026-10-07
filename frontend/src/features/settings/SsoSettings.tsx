@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { ssoApi } from '../../api/endpoints';
+import { ssoApi, teamApi } from '../../api/endpoints';
 import type { Role, SsoProtocol, SsoSettings as Settings } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
@@ -67,6 +67,7 @@ export function SsoSettings() {
       <Domains settings={d} onChange={set} />
       <Connection settings={d} verified={verified} onChange={set} />
       <Scim settings={d} onChange={set} onCreated={() => void invalidateWorkspace(wid, 'sso')} />
+      <GroupMappings entitled={d.entitled} />
     </>
   );
 }
@@ -275,6 +276,42 @@ function Scim({ settings: d, onChange, onCreated }: { settings: Settings; onChan
           <code className="secret-box">{secret}</code>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/** Directory groups to teams: at sign-in a person joins the team of each group their provider reports and leaves the ones they no longer have. Teams are what documents are shared with. */
+function GroupMappings({ entitled }: { entitled: boolean }) {
+  const wid = useWorkspaceId();
+  const maps = useWsQuery(['sso', 'group-mappings'], ssoApi.groupMappings);
+  const teams = useWsQuery(['teams'], teamApi.list);
+  const [group, setGroup] = useState('');
+  const [team, setTeam] = useState('');
+  const [busy, setBusy] = useState(false);
+  const refresh = () => invalidateWorkspace(wid, 'sso');
+  const add = async () => {
+    setBusy(true);
+    try { await ssoApi.addGroupMapping(group.trim(), team); setGroup(''); refresh(); toast('Mapping added.'); } catch (e) { toast(errText(e, 'Could not add it.'), 'error'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card mb-22">
+      <div className="card-head"><div><h3>4. Groups to teams</h3><p>Map a group from your identity provider to a team. People join the team when they sign in with that group and leave it when they no longer have it (teams added by hand are never removed). Share documents with the team to give the group access.</p></div></div>
+      <div className="card-body">
+        {(maps.data?.items ?? []).length === 0 ? <p className="muted">No mappings yet.</p> : (
+          <ul className="doc-files">
+            {maps.data!.items.map((m) => (
+              <li key={m.id}><code>{m.group}</code><Icon name="arrowRight" size={14} /><b>{m.teamName}</b>
+                <button className="btn-icon danger" aria-label={`Remove ${m.group}`} onClick={async () => { try { await ssoApi.removeGroupMapping(m.id); refresh(); } catch (e) { toast(errText(e, 'Could not remove it.'), 'error'); } }}><Icon name="close" size={14} /></button></li>
+            ))}
+          </ul>
+        )}
+        <div className="form-row" style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+          <Field label="Group name or id (as your provider sends it)"><input className="input" value={group} maxLength={200} onChange={(e) => setGroup(e.target.value)} placeholder="engineering" disabled={!entitled} /></Field>
+          <Field label="Team"><Select value={team} onChange={(e) => setTeam(e.target.value)}><option value="">Choose a team</option>{(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+          <button className="btn btn-primary" disabled={!entitled || busy || !group.trim() || !team} onClick={add}>{busy && <span className="spinner" />}Add</button>
+        </div>
+        {!entitled && <p className="muted" style={{ marginTop: 8 }}>Part of the Business plan.</p>}
+      </div>
     </div>
   );
 }

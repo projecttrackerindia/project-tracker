@@ -73,6 +73,7 @@ public interface IAppDbContext
     DbSet<ApiKey> ApiKeys { get; }
     DbSet<SsoConnection> SsoConnections { get; }
     DbSet<SsoDomain> SsoDomains { get; }
+    DbSet<SsoGroupMapping> SsoGroupMappings { get; }
     DbSet<ScimToken> ScimTokens { get; }
     DbSet<UserLogin> UserLogins { get; }
     DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; }

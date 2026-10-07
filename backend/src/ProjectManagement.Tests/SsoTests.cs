@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
@@ -217,14 +218,14 @@ public class SsoTests(ApiFactory factory)
         return xml.DocumentElement!.GetAttribute("ID");
     }
 
-    private static string SignedResponse(X509Certificate2 cert, string spEntityId, string acs, string requestId, string email)
+    private static string SignedResponse(X509Certificate2 cert, string spEntityId, string acs, string requestId, string email, IEnumerable<string>? groups = null)
     {
         var config = new Saml2Configuration { Issuer = "https://idp.test/saml", SigningCertificate = cert };
         var response = new Saml2AuthnResponse(config)
         {
             InResponseTo = new Saml2Id(requestId), Status = Saml2StatusCodes.Success, Destination = new Uri(acs),
             NameId = new Saml2NameIdentifier(email, new Uri("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress")),
-            ClaimsIdentity = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, email), new Claim(ClaimTypes.Email, email), new Claim(ClaimTypes.Name, "Sam Saml")]),
+            ClaimsIdentity = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, email), new Claim(ClaimTypes.Email, email), new Claim(ClaimTypes.Name, "Sam Saml"), .. (groups ?? []).Select(g => new Claim("groups", g))]),
         };
         response.CreateSecurityToken(spEntityId, subjectConfirmationLifetime: 5, issuedTokenLifetime: 60);
         var binding = new Saml2PostBinding();
@@ -411,5 +412,117 @@ public class SsoTests(ApiFactory factory)
         var location = res.Headers.Location!.ToString();
         Assert.StartsWith($"{Web}/login?mfa_challenge=", location);
         Assert.Contains("via=google", location);
+    }
+
+    // ------------------------------------------------------------------ group to team mapping
+
+    private async Task<Guid> Team(Org o, string name) => Guid.Parse(S((await o.Owner.Post("/api/v1/teams", new { name })).Data!["team"]!["id"]));
+
+    private async Task SignIn(Org o, string email, string sub, object? groups)
+    {
+        var b = Browser();
+        var q = QueryOf((await b.GetAsync($"/api/v1/auth/sso/start?email={Uri.EscapeDataString(email)}")).Headers.Location!);
+        var claims = new Dictionary<string, object> { ["sub"] = sub, ["email"] = email, ["nonce"] = q["nonce"] };
+        if (groups is not null) claims["groups"] = groups;
+        var code = factory.Idp.Issue(claims);
+        var done = await b.GetAsync($"/api/v1/auth/sso/oidc/callback?code={code}&state={q["state"]}");
+        Assert.DoesNotContain("sso_error", done.Headers.Location!.ToString());
+    }
+
+    private List<Guid> TeamsOf(Guid tenant, string email) => factory.WithDb(db =>
+    {
+        var uid = db.Users.IgnoreQueryFilters().Single(u => u.NormalizedEmail == email.Trim().ToLowerInvariant()).Id;
+        return db.TeamMembers.IgnoreQueryFilters().Where(m => m.TenantId == tenant && m.UserId == uid).Select(m => m.TeamId).ToList();
+    });
+
+    [Fact]
+    public async Task Groups_from_the_provider_put_people_in_teams_and_take_them_out_again()
+    {
+        var o = await OrgWithDomain();
+        await EnableOidc(o);
+        var eng = await Team(o, "Engineering"); var fin = await Team(o, "Finance"); var manual = await Team(o, "Book club");
+        foreach (var (g, t) in new[] { ("eng-group", eng), ("FIN-GROUP", fin) })
+            Assert.True((await o.Owner.Post("/api/v1/workspace/sso/group-mappings", new { group = g, teamId = t })).Ok);
+        Assert.Equal(409, (int)(await o.Owner.Post("/api/v1/workspace/sso/group-mappings", new { group = "ENG-group", teamId = eng })).Status);   // same group, any case
+
+        var email = $"gina@{o.Domain}";
+        await SignIn(o, email, "g1", new[] { "eng-group", "unmapped" });
+        Assert.Equal([eng], TeamsOf(o.TenantId, email));
+
+        // joined by hand: never touched by sign-in
+        var uid = factory.WithDb(db => db.Users.IgnoreQueryFilters().Single(u => u.NormalizedEmail == email.Trim().ToLowerInvariant()).Id);
+        Assert.True((await o.Owner.Post($"/api/v1/teams/{manual}/members", new { userId = uid })).Ok);
+
+        await SignIn(o, email, "g1", new[] { "fin-group" });   // group names compare without regard to case; engineering is no longer reported
+        Assert.Equal(new[] { fin, manual }.Order().ToList(), TeamsOf(o.TenantId, email).Order().ToList());
+
+        await SignIn(o, email, "g1", new[] { "eng-group" });    // back to engineering
+        Assert.Equal(new[] { eng, manual }.Order().ToList(), TeamsOf(o.TenantId, email).Order().ToList());
+
+        await SignIn(o, email, "g1", null);                    // no group claim (what a provider sends for someone in no group): the teams SSO added go, the manual one stays
+        Assert.Equal([manual], TeamsOf(o.TenantId, email));
+        Assert.True(factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().Any(a => a.TenantId == o.TenantId && a.Action == "sso.groups_synced")));
+    }
+
+    [Fact]
+    public async Task A_team_of_a_group_gives_access_to_the_documents_shared_with_that_team_and_only_for_that_workspace()
+    {
+        var o = await OrgWithDomain();
+        await EnableOidc(o);
+        var eng = await Team(o, "Engineering");
+        await o.Owner.Post("/api/v1/workspace/sso/group-mappings", new { group = "eng", teamId = eng });
+        var brd = Guid.Parse(S((await o.Owner.Get("/api/v1/document-types")).Data!.AsArray().First(t => S(t!["code"]) == "BRD")!["id"]));
+        var made = await o.Owner.Post("/api/v1/documents", new { title = "Team only plan", typeId = brd, visibility = "Private" });
+        var doc = S(made.Data!["item"]!["id"]);
+        Assert.True((await o.Owner.Post($"/api/v1/documents/{doc}/grants", new { principalType = "Team", principalId = eng, level = "Viewer" })).Ok);
+
+        var email = $"hal@{o.Domain}";
+        await SignIn(o, email, "h1", new[] { "eng" });
+        var b = Browser();
+        var q = QueryOf((await b.GetAsync($"/api/v1/auth/sso/start?email={Uri.EscapeDataString(email)}")).Headers.Location!);
+        await b.GetAsync($"/api/v1/auth/sso/oidc/callback?code={factory.Idp.Issue(new() { ["sub"] = "h1", ["email"] = email, ["nonce"] = q["nonce"], ["groups"] = new[] { "eng" } })}&state={q["state"]}");
+        var (token, me) = await SessionOf(b);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/documents/{doc}");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        req.Headers.Add("X-Workspace-Id", o.TenantId.ToString());
+        Assert.Equal(HttpStatusCode.OK, (await factory.CreateClient().SendAsync(req)).StatusCode);
+
+        // the mapping of another workspace changes nothing here
+        var other = await OrgWithDomain();
+        var foreign = await Team(other, "Engineering");
+        Assert.Equal(422, (int)(await o.Owner.Post("/api/v1/workspace/sso/group-mappings", new { group = "x", teamId = foreign })).Status);
+    }
+
+    [Fact]
+    public async Task Only_admins_of_a_business_workspace_manage_the_mappings()
+    {
+        var o = await OrgWithDomain();
+        var team = await Team(o, "Ops");
+        var member = await o.Owner.AddMemberAsync(factory, TenantRole.Member);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Get("/api/v1/workspace/sso/group-mappings")).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Post("/api/v1/workspace/sso/group-mappings", new { group = "ops", teamId = team })).Status);
+        Assert.False((await o.Owner.Post("/api/v1/workspace/sso/group-mappings", new { group = "", teamId = team })).Ok);
+    }
+
+    [Fact]
+    public async Task Saml_group_attributes_map_to_teams_too()
+    {
+        var o = await OrgWithDomain();
+        using var cert = IdpCertificate();
+        var saved = await o.Owner.Put("/api/v1/workspace/sso/connection", new { protocol = "Saml", name = "Okta", enabled = true, autoProvision = true, samlEntityId = "https://idp.test/saml", samlSsoUrl = "https://idp.test/sso", samlCertificate = cert.ExportCertificatePem() });
+        var entityId = S(saved.Data!["serviceProvider"]!["samlEntityId"]); var acs = S(saved.Data["serviceProvider"]!["samlAcsUrl"]);
+        var ops = await Team(o, "Operations");
+        Assert.True((await o.Owner.Post("/api/v1/workspace/sso/group-mappings", new { group = "CN=ops,OU=Groups", teamId = ops })).Ok);
+
+        var email = $"olga@{o.Domain}";
+        var browser = Browser();
+        var start = await browser.GetAsync($"/api/v1/auth/sso/start?email={email}");
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["SAMLResponse"] = SignedResponse(cert, entityId, acs, RequestIdOf(start.Headers.Location!), email, ["CN=ops,OU=Groups", "other"]),
+            ["RelayState"] = QueryOf(start.Headers.Location!)["RelayState"],
+        });
+        Assert.Equal(HttpStatusCode.Redirect, (await browser.PostAsync("/api/v1/auth/sso/saml/acs", form)).StatusCode);
+        Assert.Equal([ops], TeamsOf(o.TenantId, email));
     }
 }
