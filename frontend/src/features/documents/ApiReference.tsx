@@ -11,7 +11,7 @@ import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { ChangesModal, DefinitionModal, ImportModal, AUTH_LABEL } from './ApiTools';
-import { EndpointEditor, METHODS } from './ApiEndpointEditor';
+import { EndpointEditor } from './ApiEndpointEditor';
 import { EndpointArticle, LifecycleCard, Method } from './ApiView';
 export { Method };
 
@@ -22,7 +22,6 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
   const [versionId, setVersionId] = useState('');
   const [defId, setDefId] = useState('');
   const [q, setQ] = useState('');
-  const [method, setMethod] = useState('');
   const [epId, setEpId] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<null | 'def' | 'editDef' | 'import' | 'changes' | 'endpoint' | 'editEndpoint'>(null);
@@ -39,9 +38,9 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
   const published = (versions.data?.items ?? []).filter((v) => !v.isDraft);
 
   const list = useInfiniteQuery({
-    queryKey: [wid, 'documents', id, 'api-endpoints', def?.id, dq, method, versionId],
+    queryKey: [wid, 'documents', id, 'api-endpoints', def?.id, dq, versionId],
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => apiDocApi.endpoints(id, { definitionId: def!.id, q: dq || undefined, method: method || undefined, versionId: versionId || null, cursor: pageParam, limit: 100 }),
+    queryFn: ({ pageParam }) => apiDocApi.endpoints(id, { definitionId: def!.id, q: dq || undefined, versionId: versionId || null, cursor: pageParam, limit: 100 }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!wid && !!def,
   });
@@ -82,7 +81,6 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
             </Select>
           )}
           <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Find a path, summary or group…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find an endpoint" /></div>
-          <Select className="select" value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method"><option value="">Any method</option>{METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select>
         </div>
         <div className="api-bar-actions">
           {canManage && <Menu primary icon="plus" label="Add" items={[
@@ -115,7 +113,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
                   {canEdit && <span className="api-def-tools"><button className="btn-icon sm" aria-label="Edit this API" onClick={() => setModal('editDef')}><Icon name="edit" size={13} /></button>
                     <button className="btn-icon sm" aria-label="Remove this API" onClick={async () => { if (await confirmDialog({ title: `Remove ${def.name}?`, message: `Its ${def.endpoints.toLocaleString()} endpoint${def.endpoints === 1 ? '' : 's'} go with it. Published versions keep their copy.`, confirmText: 'Remove' })) removeDef.mutate(def); }}><Icon name="trash" size={13} /></button></span>}
                 </div>
-                {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => list.refetch()} /> : items.length === 0 ? <p className="muted api-none">{dq || method ? 'Nothing matches.' : 'No endpoints yet.'}</p> : (
+                {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => list.refetch()} /> : items.length === 0 ? <p className="muted api-none">{dq ? 'Nothing matches.' : 'No endpoints yet.'}</p> : (
                   <>
                     {groups.map(([tag, eps]) => (
                       <div className="api-group" key={tag}>

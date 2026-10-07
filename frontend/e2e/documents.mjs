@@ -91,7 +91,7 @@ await page.locator('.modal textarea').first().fill('Added tax forms');
 await page.locator('.modal button[type=submit]').click(); await page.waitForTimeout(1500);
 check('second publish is 1.1', (await page.locator('.doc-head-sub', { hasText: 'Version 1.1' }).count()) === 1);
 
-await page.locator('.doc-head-actions button', { hasText: 'History' }).click(); await page.waitForTimeout(1000);
+await (await page.locator('.doc-head-actions .menu > button').click(), page.locator('.doc-head-actions .menu-list button', { hasText: 'History' }).click()); await page.waitForTimeout(1000);
 check('history lists the draft and both versions', (await page.locator('.ver').count()) === 3, `${await page.locator('.ver').count()} rows`);
 await shot('history');
 await page.locator('.ver', { hasText: '1.0' }).first().locator('button', { hasText: 'Compare with current' }).click(); await page.waitForTimeout(1500);
@@ -103,7 +103,7 @@ await page.locator('.modal-foot .btn-primary', { hasText: 'Restore' }).last().cl
 check('restoring publishes 1.2', (await page.locator('.doc-head-sub', { hasText: 'Version 1.2' }).count()) === 1);
 check('the restored text is back', (await page.locator('#sec-scope .rte-content', { hasText: 'Scope: payslips only.' }).count()) === 1 && (await page.locator('#sec-scope .rte-content', { hasText: 'Tax forms too.' }).count()) === 0);
 
-await page.locator('.doc-head-actions button', { hasText: 'Share' }).click(); await page.waitForTimeout(1000);
+await (await page.locator('.doc-head-actions .menu > button').click(), page.locator('.doc-head-actions .menu-list button', { hasText: 'Share' }).click()); await page.waitForTimeout(1000);
 check('the access panel lists people', (await page.locator('.people li').count()) >= 1);
 await shot('access');
 const pick = page.locator('.acc-row .ss-trigger').nth(1); await pick.click(); await page.waitForTimeout(300);

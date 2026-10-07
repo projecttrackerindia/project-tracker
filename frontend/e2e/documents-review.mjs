@@ -96,7 +96,7 @@ check('the owner sees it approved with a Publish button', (await o.locator('.rv'
 await o.locator('.rv button', { hasText: 'Publish' }).click(); await o.waitForTimeout(500);
 await o.locator('.modal button[type=submit]').click(); await o.waitForTimeout(2000);
 check('version 1.0 is published with the submitted summary', (await o.locator('.doc-head-sub', { hasText: 'Version 1.0' }).count()) === 1);
-await o.locator('.doc-head-actions button', { hasText: 'History' }).click(); await o.waitForTimeout(900);
+await (await o.locator('.doc-head-actions .menu > button').click(), o.locator('.doc-head-actions .menu-list button', { hasText: 'History' }).click()); await o.waitForTimeout(900);
 check('the history carries the summary it was submitted with', (await o.locator('.ver', { hasText: 'First complete draft' }).count()) >= 1);
 await o.keyboard.press('Escape'); await o.waitForTimeout(300);
 if (await o.locator('.modal').count()) await o.locator('.modal-foot button', { hasText: 'Close' }).click();
@@ -128,7 +128,7 @@ await o.goto(`${BASE}/${owner.slug}/documents`); await o.waitForTimeout(1500);
 await createBrd(o, 'Salary bands');
 await o.waitForURL(/documents\/[0-9a-f-]{36}/, { timeout: 15000 }); await o.waitForTimeout(1200);
 const privateUrl = o.url();
-await o.locator('.doc-head-actions button', { hasText: 'Details' }).click(); await o.waitForTimeout(500);
+await (await o.locator('.doc-head-actions .menu > button').click(), o.locator('.doc-head-actions .menu-list button', { hasText: 'Details' }).click()); await o.waitForTimeout(500);
 await o.locator('.modal .ss-trigger').first().click(); await o.waitForTimeout(300);
 await o.locator('[role=option]', { hasText: 'Only me' }).click(); await o.waitForTimeout(300);
 await o.locator('.modal button[type=submit]').click(); await o.waitForTimeout(1500);

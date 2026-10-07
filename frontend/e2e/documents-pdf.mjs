@@ -59,8 +59,10 @@ await page.locator('.doc-diagram').scrollIntoViewIfNeeded();
 await shot('diagram');
 
 // ---- PDF
-check('the page offers a PDF button', (await page.locator('.doc-head-actions button', { hasText: 'PDF' }).count()) === 1);
-const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('.doc-head-actions button', { hasText: 'PDF' }).click()]);
+await page.locator('.doc-head-actions .menu > button').click();
+check('the page offers a PDF download', (await page.locator('.doc-head-actions .menu-list button', { hasText: 'Download PDF' }).count()) === 1);
+await page.locator('.doc-head-actions .menu > button').click();
+const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), (await page.locator('.doc-head-actions .menu > button').click(), page.locator('.doc-head-actions .menu-list button', { hasText: 'Download PDF' }).click())]);
 const file = await dl.path();
 const bytes = fs.readFileSync(file);
 check('a PDF file is downloaded', bytes.subarray(0, 5).toString() === '%PDF-' && dl.suggestedFilename().endsWith('.pdf'), dl.suggestedFilename());

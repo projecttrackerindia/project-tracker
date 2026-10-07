@@ -19,9 +19,10 @@ import { DocumentGate } from './DocumentGate';
 import { PublishApprovedModal, ReviewPanel, SubmitModal } from './DocumentReview';
 import { RequirementsCard } from './DocumentRequirements';
 import { ActivityCard } from './DocumentActivity';
+import { Menu } from '../../components/Menu';
+import { useExportPdf } from './ExportPdf';
 import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
-import { ExportPdfButton } from './ExportPdf';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
 import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
@@ -95,6 +96,7 @@ export function DocumentPage() {
     onSuccess: (r) => { setEdits({}); setStale(false); apply(r); toast('Saved.'); },
     onError: (e) => { if (e instanceof ApiError && e.code === 'DOCUMENT_CHANGED') setStale(true); toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); },
   });
+  const pdf = useExportPdf(id);
   const run = useMutation({
     mutationFn: (fn: () => Promise<DocumentDetail | void>) => fn(),
     onSuccess: (r) => { if (r) apply(r); },
@@ -172,20 +174,20 @@ export function DocumentPage() {
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
           {canEdit && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
           {canEdit && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
-          <ExportPdfButton documentId={id} />
-          <button className="btn btn-ghost" onClick={() => setPanel('history')}><Icon name="clock" size={15} /> History</button>
-          <button className="btn btn-ghost" onClick={() => setPanel('access')}><Icon name="users" size={15} /> {detail.can.share ? 'Share' : 'Access'}</button>
-          {detail.can.edit && <button className="btn btn-ghost" onClick={() => setDetails(true)}><Icon name="edit" size={15} /> Details</button>}
-          {d.status !== 'Archived' && detail.can.edit && <button className="btn btn-ghost" onClick={() => run.mutate(() => documentApi.archive(id))}>Archive</button>}
-          {detail.viewingPublished && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {detail.publishedLabel}, the latest published one.</div></div>}
-      {d.status === 'Archived' && detail.can.delete && <button className="btn btn-ghost" onClick={() => run.mutate(() => documentApi.reopen(id))}>Reopen</button>}
-          {detail.can.delete && (
-            <button className="btn btn-ghost danger" onClick={async () => {
+          <Menu label="Actions" icon="more" items={[
+            { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', hint: 'Secret values are never included', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
+            { label: 'History', hint: 'Versions and changes', icon: 'clock', onSelect: () => setPanel('history') },
+            { label: detail.can.share ? 'Share' : 'Access', hint: 'Who can open it', icon: 'users', onSelect: () => setPanel('access') },
+            { label: 'Details', hint: 'Title, tags, owner, visibility', icon: 'edit', onSelect: () => setDetails(true), hidden: !detail.can.edit },
+            { label: 'Archive', hint: 'Make it read-only', icon: 'folder', onSelect: () => run.mutate(() => documentApi.archive(id)), hidden: d.status === 'Archived' || !detail.can.edit },
+            { label: 'Reopen', icon: 'folder', onSelect: () => run.mutate(() => documentApi.reopen(id)), hidden: !(d.status === 'Archived' && detail.can.delete) },
+            { label: 'Delete', hint: 'Recoverable for 30 days', icon: 'trash', danger: true, hidden: !detail.can.delete, onSelect: async () => {
               if (!(await confirmDialog({ title: 'Delete this document?', message: `${d.key} “${d.title}” disappears for everyone. You can bring it back for 30 days.`, confirmText: 'Delete' }))) return;
               try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Document deleted.', 'warning'); nav(d.projectId ? `/projects/${d.projectId}?tab=documents` : '/documents'); }
               catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
-            }}><Icon name="trash" size={15} /></button>
-          )}
+            } },
+          ]} />
+          {detail.viewingPublished && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {detail.publishedLabel}, the latest published one.</div></div>}
         </div>
       </header>
 
