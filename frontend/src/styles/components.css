@@ -341,8 +341,16 @@ tr.clickable { cursor: pointer; }
 .member-card-stats > div { text-align: center; padding: 10px 4px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
 .member-card-stats b { display: block; font-size: 17px; font-weight: 800; }
 .member-card-stats small { font-size: 10.5px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
-.logo-drop.photo-drop { border-radius: 50%; width: 96px; height: 96px; padding: 0; }
-.photo-drop .avatar.lg { width: 100%; height: 100%; font-size: 26px; }
+.photo-card { display: flex; align-items: center; gap: 18px; }
+.photo-well { position: relative; width: 84px; height: 84px; border-radius: 50%; cursor: pointer; flex-shrink: 0; transition: transform .12s; }
+.photo-well:hover, .photo-well.over { transform: scale(1.03); }
+.photo-well:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.photo-well .avatar.lg { width: 84px; height: 84px; font-size: 24px; }
+.photo-well-badge {
+  position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--primary); color: #fff;
+  border: 2.5px solid var(--panel-solid); box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
 
 .member-list { display: flex; flex-direction: column; gap: 10px; }
 .member-item { display: flex; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); box-shadow: var(--hl-2); }

@@ -39,16 +39,17 @@ export function ProfilePhotoCard() {
   return (
     <div className="card mb-22">
       <div className="card-head"><div><h3>Profile photo</h3><p>Shown next to your name throughout the app.</p></div></div>
-      <div className="card-body logo-card">
-        <div className={`logo-drop photo-drop${over ? ' over' : ''}`}
+      <div className="card-body photo-card">
+        <div className={`photo-well${over ? ' over' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); void upload(e.dataTransfer.files?.[0]); }}
-          onClick={() => input.current?.click()} role="button" tabIndex={0} aria-label="Choose a photo">
+          onClick={() => input.current?.click()} role="button" tabIndex={0} aria-label="Change your photo">
           <Avatar name={ctx.user.displayName} size="lg" userId={ctx.user.id} hasAvatar={has} />
+          <span className="photo-well-badge">{busy ? <span className="spinner" /> : <Icon name="upload" size={13} />}</span>
         </div>
         <div className="logo-actions">
           <input ref={input} type="file" hidden accept="image/png,image/jpeg" onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? <span className="spinner" /> : <Icon name="upload" size={14} />} {has ? 'Replace' : 'Upload'}</button>
+          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => input.current?.click()}><Icon name="upload" size={14} /> {has ? 'Replace photo' : 'Upload photo'}</button>
           {has && <button className="btn btn-ghost btn-sm danger" disabled={busy} onClick={remove}>Remove</button>}
           <small className="muted">A square, well-lit photo works best. Up to 3 MB.</small>
         </div>
