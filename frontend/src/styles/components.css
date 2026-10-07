@@ -341,7 +341,7 @@ tr.clickable { cursor: pointer; }
 .member-card-stats > div { text-align: center; padding: 10px 4px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
 .member-card-stats b { display: block; font-size: 17px; font-weight: 800; }
 .member-card-stats small { font-size: 10.5px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
-.photo-drop { border-radius: 50%; width: 96px; height: 96px; padding: 0; }
+.logo-drop.photo-drop { border-radius: 50%; width: 96px; height: 96px; padding: 0; }
 .photo-drop .avatar.lg { width: 100%; height: 100%; font-size: 26px; }
 
 .member-list { display: flex; flex-direction: column; gap: 10px; }
