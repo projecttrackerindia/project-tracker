@@ -45,6 +45,15 @@ public class AiFallbackOptions
     public string? ReasoningEffort { get; set; }
     /// <summary>Room on top of each answer for models that think first: their thinking counts against the same token limit.</summary>
     public int ThinkingTokens { get; set; } = 2048;
+    /// <summary>
+    /// "ollama" talks to a self-hosted Ollama server's own native API (POST {BaseUrl}/api/chat) for the streamed AI workspace instead of
+    /// the OpenAI-compatible one - BaseUrl is still the same address either way (a trailing /v1 is stripped automatically if present).
+    /// Needed because Ollama's own /v1/chat/completions has repeatedly refused real, correctly-shaped requests outright for a model with
+    /// no thinking capability (confirmed live, independent of every documented thinking-related field), while its native route handles
+    /// the exact same model and request correctly. Left empty (default), every address including a self-hosted Ollama one is assumed to
+    /// speak plain OpenAI chat-completions, which is correct for Groq, OpenRouter and most other providers.
+    /// </summary>
+    public string? Wire { get; set; }
 }
 
 /// <summary>A language model behind one call: a system prompt and a user message in, the answer and the model that gave it out.</summary>

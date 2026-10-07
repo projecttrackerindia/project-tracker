@@ -42,7 +42,19 @@ public class AiBackupChatTests
         { Calls++; return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) }); }
     }
 
+    /// <summary>Answers with Ollama's native newline-delimited JSON body: one whole JSON object per line, no "data:" prefix, no [DONE].</summary>
+    private sealed class NdjsonStub(params string[] lines) : HttpMessageHandler
+    {
+        public HttpRequestMessage? Request; public string? Body;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Request = request; Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(string.Join("\n", lines) + "\n", Encoding.UTF8, "application/x-ndjson") };
+        }
+    }
+
     private static AiOptions Options(string baseUrl) => new() { Fallback = new AiFallbackOptions { BaseUrl = baseUrl, Model = "qwen3:8b" } };
+    private static AiOptions NativeOptions(string baseUrl) => new() { Fallback = new AiFallbackOptions { BaseUrl = baseUrl, Model = "qwen2.5:7b-instruct-q4_K_M", Wire = "ollama" } };
 
     private static OpenAiCompatibleChat Chat(HttpMessageHandler handler, AiOptions o)
     {
@@ -144,6 +156,81 @@ public class AiBackupChatTests
         var toolMsg = messages.First(m => S(m!["role"]) == "tool");
         Assert.Equal("call_9", S(toolMsg["tool_call_id"]));
         Assert.Equal("3 overdue tasks.", S(toolMsg["content"]));
+    }
+
+    // ------------------------------------------------------------------ Ollama's own native wire format (Ai:Fallback:Wire = "ollama")
+
+    [Fact]
+    public async Task Ollamas_native_wire_hits_api_chat_not_v1_and_strips_a_trailing_v1_from_the_configured_address()
+    {
+        var stub = new NdjsonStub("""{"message":{"role":"assistant","content":"Hello"},"done":false}""", """{"message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":12,"eval_count":3}""");
+        var chat = Chat(stub, NativeOptions("http://ollama.railway.internal:11434/v1"));
+
+        var events = new List<AiChatEvent>();
+        await foreach (var e in chat.StreamAsync(Ask("Hi"), default)) events.Add(e);
+
+        Assert.Equal("http://ollama.railway.internal:11434/api/chat", stub.Request!.RequestUri!.ToString());
+        Assert.Equal(["Hello"], events.OfType<AiTextDelta>().Select(d => d.Text));
+        var end = Assert.Single(events.OfType<AiTurnEnd>());
+        Assert.Equal("end_turn", end.StopReason);
+        Assert.Equal(12, end.InputTokens);
+        Assert.Equal(3, end.OutputTokens);
+        Assert.Equal("Hello", Assert.IsType<AiText>(Assert.Single(end.Assistant)).Text);
+
+        var body = JsonNode.Parse(stub.Body!)!;
+        Assert.Equal("qwen2.5:7b-instruct-q4_K_M", S(body["model"]));   // the configured model, never the caller's Claude tier model
+        Assert.False(body["think"]!.GetValue<bool>());                  // native route honours this, unlike /v1/chat/completions
+        Assert.Null(body["max_tokens"]);                                // the OpenAI-only field has no place in a native request
+    }
+
+    [Fact]
+    public async Task A_native_tool_call_arrives_whole_in_one_chunk_with_object_arguments_not_a_string()
+    {
+        var stub = new NdjsonStub(
+            """{"message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"list_projects","arguments":{"all_teams":true}}}]},"done":false}""",
+            """{"message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":20,"eval_count":5}""");
+        var chat = Chat(stub, NativeOptions("http://ollama.railway.internal:11434"));
+
+        var events = new List<AiChatEvent>();
+        await foreach (var e in chat.StreamAsync(Ask("List everything", [new AiToolDef("list_projects", "List projects.", """{"type":"object","properties":{}}""")]), default)) events.Add(e);
+
+        var end = Assert.Single(events.OfType<AiTurnEnd>());
+        Assert.Equal("tool_use", end.StopReason);
+        Assert.True(end.WantsTools);
+        var use = Assert.IsType<AiToolUse>(Assert.Single(end.Assistant));
+        Assert.Equal("list_projects", use.Name);
+        Assert.Equal("""{"all_teams":true}""", use.InputJson);
+
+        // The tool definition itself is sent the same shape as the OpenAI wire format (Ollama's native tools use the same schema).
+        var body = JsonNode.Parse(stub.Body!)!;
+        Assert.Equal("list_projects", S(body["tools"]![0]!["function"]!["name"]));
+        Assert.Equal(2, body["messages"]!.AsArray().Count);   // just the system + user message; no history to send back yet
+    }
+
+    [Fact]
+    public async Task A_native_tool_result_is_matched_back_by_name_not_an_id_the_native_api_has_no_notion_of()
+    {
+        var stub = new NdjsonStub("""{"message":{"role":"assistant","content":"Three."},"done":true,"done_reason":"stop"}""");
+        var chat = Chat(stub, NativeOptions("http://ollama.railway.internal:11434"));
+        var turns = new List<AiTurn>
+        {
+            AiTurn.User("How many overdue tasks?"),
+            new("assistant", [new AiToolUse("call_9", "find_work", """{"overdue":true}""")]),
+            new("user", [new AiToolResult("call_9", "3 overdue tasks.")]),
+        };
+        var req = new AiChatRequest("claude-haiku-4-5", "Be brief.", "", turns, [], 500, null, false);
+
+        await foreach (var _ in chat.StreamAsync(req, default)) { }
+
+        var body = JsonNode.Parse(stub.Body!)!;
+        var messages = body["messages"]!.AsArray();
+        var assistantMsg = messages.First(m => S(m!["role"]) == "assistant" && m["tool_calls"] is not null);
+        Assert.Equal("find_work", S(assistantMsg["tool_calls"]![0]!["function"]!["name"]));
+        Assert.True(assistantMsg["tool_calls"]![0]!["function"]!["arguments"] is JsonObject);   // an object, not an arguments string
+        var toolMsg = messages.First(m => S(m!["role"]) == "tool");
+        Assert.Equal("find_work", S(toolMsg["tool_name"]));   // resolved from the id via the assistant turn seen just above - not the id itself
+        Assert.Equal("3 overdue tasks.", S(toolMsg["content"]));
+        Assert.Null(toolMsg["tool_call_id"]);
     }
 
     [Fact]
