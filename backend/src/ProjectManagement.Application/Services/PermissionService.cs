@@ -124,6 +124,7 @@ public class PermissionService(IAppDbContext db, ICurrentContext ctx)
             // Work management is internal operational work: guests never see it.
             case Modules.Work: return role == TenantRole.Guest ? 0 : await Has(Permissions.WorkDelete) ? 3 : await Has(Permissions.WorkCreate) || await Has(Permissions.WorkEdit) ? 2 : 1;
             case Modules.Teams: return await Has(Permissions.TeamsManage) ? 2 : 1;
+            case Modules.Documents: return await Has(Permissions.DocsDelete) ? 3 : await Has(Permissions.DocsCreate) || await Has(Permissions.DocsEdit) ? 2 : 1;
             // Members and Billing are administrative areas: unlike the other modules, no permission means no menu at all,
             // not just a read-only view (the Members roster itself stays reachable elsewhere - see WorkspaceControllers -
             // as the shared "who's in the workspace" picker used when assigning tasks, projects, teams and so on).

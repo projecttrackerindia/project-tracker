@@ -22,6 +22,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
     public DbSet<RolePermissionOverride> RolePermissionOverrides => Set<RolePermissionOverride>();
     public DbSet<Team> Teams => Set<Team>();
+    public DbSet<DocumentType> DocumentTypes => Set<DocumentType>();
+    public DbSet<Document> Documents => Set<Document>();
+    public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
+    public DbSet<DocumentSection> DocumentSections => Set<DocumentSection>();
+    public DbSet<DocumentTag> DocumentTags => Set<DocumentTag>();
+    public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<OrgRole> OrgRoles => Set<OrgRole>();
     public DbSet<Project> Projects => Set<Project>();
@@ -108,6 +114,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     internal ProjectScope CurrentProjectScope => current.ProjectScope;
     internal Guid? CurrentUserId => current.UserId;
     internal bool ProjectsRestricted => current.RestrictsProjects;
+    internal bool CurrentIsOrgAdmin => current.Role is TenantRole.Owner or TenantRole.Admin;
+    internal bool CurrentIsGuest => current.Role == TenantRole.Guest;
     internal Guid[] ReachableProjects => current.ProjectIds;
 
     public async Task<int> PendingMigrationCountAsync(CancellationToken ct = default) => (await Database.GetPendingMigrationsAsync(ct)).Count();
@@ -152,6 +160,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<ReminderSource>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<ReminderState>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<ReminderTarget>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<DocumentStatus>().HaveConversion<string>().HaveMaxLength(24);
+        builder.Properties<DocumentVisibility>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<SectionKind>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<LinkTarget>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<LinkRelation>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -170,6 +183,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     {
         ConfigureIdentity(b);
         ConfigureWork(b);
+        ConfigureDocuments(b);
         ConfigureBilling(b);
         ApplyQueryFilters(b);
     }
@@ -244,11 +258,71 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         {
             e.HasIndex(x => x.TenantId);
             e.HasMany(x => x.Members).WithOne().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TenantId, x.ParentTeamId });
         });
         b.Entity<TeamMember>(e =>
         {
             e.HasIndex(x => new { x.TeamId, x.UserId }).IsUnique();
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureDocuments(ModelBuilder b)
+    {
+        b.Entity<DocumentType>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(24);
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.Property(x => x.Icon).HasMaxLength(32);
+            e.Property(x => x.Color).HasMaxLength(9);
+            e.Property(x => x.TemplateJson).HasMaxLength(20000);
+        });
+        b.Entity<Document>(e =>
+        {
+            // Tenant first in every index: one workspace's queries never walk another's rows.
+            e.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.ProjectId, x.UpdatedAt });
+            e.HasIndex(x => new { x.TenantId, x.TeamId, x.UpdatedAt });
+            e.HasIndex(x => new { x.TenantId, x.TypeId });
+            e.HasIndex(x => new { x.TenantId, x.OwnerId });
+            e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Revision).IsConcurrencyToken();
+            e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Team>().WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<DocumentVersion>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.Major, x.Minor });
+            e.Property(x => x.ChangeSummary).HasMaxLength(500);
+            e.Property(x => x.ChangeReason).HasMaxLength(500);
+            e.Property(x => x.ContentHash).HasMaxLength(64);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Sections).WithOne().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentSection>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.VersionId, x.SortOrder });
+            e.Property(x => x.Key).HasMaxLength(40);
+            e.Property(x => x.Title).HasMaxLength(120);
+        });
+        b.Entity<DocumentTag>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.Tag }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Tag });
+            e.Property(x => x.Tag).HasMaxLength(40);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentLink>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.TargetType, x.TargetId, x.Relation }).IsUnique();
+            // "Which documents describe this task?" is asked on every task screen.
+            e.HasIndex(x => new { x.TenantId, x.TargetType, x.TargetId });
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 
@@ -828,10 +902,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         // The project itself: whole workspace, or - when this person's reach is narrowed - the projects they own, were added to, or
         // that belong to a team they are in. Written once here so no query, report or assistant tool has to remember it.
         b.Entity<Project>().HasQueryFilter(p => p.TenantId == CurrentTenantId && !p.IsDeleted && (!ProjectsRestricted || ReachableProjects.Contains(p.Id)));
+
+        // A document is hidden the same way everywhere (lists, counts, links, search, assistant tools): its project must be reachable, and its own
+        // visibility must let this person in. Owners and admins of the organization are never locked out of a document in their workspace.
+        b.Entity<Document>().HasQueryFilter(d => d.TenantId == CurrentTenantId && !d.IsDeleted
+            && (d.ProjectId == null || !ProjectsRestricted || ReachableProjects.Contains(d.ProjectId.Value))
+            && (CurrentIsOrgAdmin
+                || (d.Visibility == DocumentVisibility.Project && d.ProjectId != null)
+                || (d.Visibility == DocumentVisibility.Private && d.OwnerId == CurrentUserId)
+                || (d.Visibility == DocumentVisibility.Team && TeamMembers.Any(m => m.TeamId == d.TeamId && m.UserId == CurrentUserId))
+                || (d.Visibility == DocumentVisibility.Organization && !CurrentIsGuest)));
     }
 
     /// <summary>Entities that must not outlive their project's visibility, with the property that points at the project or task.</summary>
-    private static readonly HashSet<Type> NotProjectScoped = [typeof(Project), typeof(ProjectMember), typeof(TeamMember), typeof(Team), typeof(TimeEntry)];
+    private static readonly HashSet<Type> NotProjectScoped = [typeof(Project), typeof(ProjectMember), typeof(TeamMember), typeof(Team), typeof(TimeEntry), typeof(Document)];
 
     private Func<ParameterExpression, Expression>? ProjectScoped(Type clr)
     {

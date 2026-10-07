@@ -11,7 +11,7 @@ public static class AccessLevel
     public const int Full = 3;   // also delete / manage
 }
 
-public record ModuleDef(string Id, string Label, string Description, int[] Levels, IReadOnlyDictionary<int, string> Hints)
+public record ModuleDef(string Id, string Label, string Description, int[] Levels, IReadOnlyDictionary<int, string> Hints, int DefaultLevel = 0)
 {
     public int Max => Levels.Max();
     /// <summary>The highest level this module offers that is not above <paramref name="level"/> (so 2 on a None/View/Full module becomes 1).</summary>
@@ -27,7 +27,7 @@ public record ActionDef(string Key, string Label, string Description, bool Deleg
 public static class Modules
 {
     public const string Projects = "projects", Tasks = "tasks", Calendar = "calendar", Teams = "teams", Members = "members",
-        Work = "work", Organization = "organization", Reports = "reports", Activity = "activity", Audit = "audit", Billing = "billing";
+        Work = "work", Organization = "organization", Reports = "reports", Activity = "activity", Audit = "audit", Billing = "billing", Documents = "documents";
 
     public static readonly ModuleDef[] All =
     [
@@ -37,6 +37,9 @@ public static class Modules
             { [0] = "Cannot see tasks", [1] = "See tasks", [2] = "Create, edit, move and comment on tasks", [3] = "Also delete tasks and comments" }),
         new(Work, "Work management", "Work tasks: bug fixes, support, analysis and other operational work that is not a project task, and their reports.", [0, 1, 2, 3], new Dictionary<int, string>
             { [0] = "Menu hidden", [1] = "See work tasks", [2] = "Create, edit and comment on work tasks", [3] = "Also delete work tasks and manage the work types" }),
+        // A job-role profile saved before documents existed has no entry for them: those roles can read documents, not write them.
+        new(Documents, "Documents", "BRDs, API documentation, test plans and other documents, linked to projects and tasks.", [0, 1, 2, 3], new Dictionary<int, string>
+            { [0] = "Menu hidden", [1] = "Read documents", [2] = "Write and edit documents", [3] = "Also delete documents" }, DefaultLevel: 1),
         new(Calendar, "Calendar", "Due dates and stages on a calendar.", [0, 1], new Dictionary<int, string>
             { [0] = "Menu hidden", [1] = "See the calendar" }),
         new(Teams, "Teams", "Teams and who belongs to them.", [0, 1, 2], new Dictionary<int, string>
@@ -87,6 +90,7 @@ public static class Modules
                 case Tasks: yield return Permissions.TasksCreate; yield return Permissions.TasksEdit; yield return Permissions.TasksComment; break;
                 case Work: yield return Permissions.WorkCreate; yield return Permissions.WorkEdit; break;
                 case Teams: yield return Permissions.TeamsManage; break;
+                case Documents: yield return Permissions.DocsCreate; yield return Permissions.DocsEdit; break;
                 case Members: yield return Permissions.MembersInvite; break;
             }
         if (level >= AccessLevel.Full)
@@ -95,6 +99,7 @@ public static class Modules
                 case Projects: yield return Permissions.ProjectsDelete; yield return Permissions.WorkflowManage; yield return Permissions.ProjectGroupsManage; break;
                 case Tasks: yield return Permissions.TasksDelete; break;
                 case Work: yield return Permissions.WorkDelete; yield return Permissions.WorkTypesManage; break;
+                case Documents: yield return Permissions.DocsDelete; break;
                 case Members: yield return Permissions.MembersManage; break;
                 case Billing: yield return Permissions.BillingManage; break;
             }
@@ -116,7 +121,7 @@ public sealed class AccessProfile
     /// <summary>Explicit yes/no for individual actions, only where it differs from what the levels imply.</summary>
     public Dictionary<string, bool> Overrides { get; set; } = new();
 
-    public int Level(string module) => Levels.TryGetValue(module, out var l) ? (Modules.Find(module)?.Snap(l) ?? 0) : 0;
+    public int Level(string module) => Levels.TryGetValue(module, out var l) ? (Modules.Find(module)?.Snap(l) ?? 0) : (Modules.Find(module)?.DefaultLevel ?? 0);
 
     /// <summary>Every capability this profile grants. Locked capabilities are never handed to a job role.</summary>
     public HashSet<string> Permissions()
@@ -132,7 +137,7 @@ public sealed class AccessProfile
     public static AccessProfile Build(IReadOnlyDictionary<string, int> levels, IReadOnlyDictionary<string, bool> wanted)
     {
         var p = new AccessProfile();
-        foreach (var m in Modules.All) p.Levels[m.Id] = m.Snap(levels.TryGetValue(m.Id, out var l) ? l : 0);
+        foreach (var m in Modules.All) p.Levels[m.Id] = m.Snap(levels.TryGetValue(m.Id, out var l) ? l : m.DefaultLevel);
         var implied = new HashSet<string>(Modules.All.SelectMany(m => Modules.PermissionsAt(m.Id, p.Levels[m.Id])));
         foreach (var a in Modules.Actions)
             if (wanted.TryGetValue(a.Key, out var allowed) && allowed != implied.Contains(a.Key)) p.Overrides[a.Key] = allowed;

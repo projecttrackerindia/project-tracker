@@ -54,6 +54,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/projects', label: 'Projects', icon: 'folder', show: lv('projects') > 0 },
       { to: '/portfolio', label: 'Portfolio', icon: 'monitor', show: lv('projects') > 0 },
       { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0 },
+      { to: '/documents', label: 'Documents', icon: 'note', show: lv('documents') > 0, match: (p) => p === '/documents' || p.startsWith('/documents/') },
     ] },
     { title: 'Insights', items: [
       { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },

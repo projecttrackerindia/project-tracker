@@ -46,6 +46,7 @@ public class PlanLimitException(string featureKey, long limit)
         "TASK_LIMIT" => "tasks",
         "MAX_MEMBERS" => "members",
         "MAX_TEAMS" => "teams",
+        "DOCUMENT_LIMIT" => "documents",
         _ => key.ToLowerInvariant(),
     };
 }

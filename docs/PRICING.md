@@ -12,10 +12,13 @@ Paid plans are priced **per person per month**, in the platform's billing curren
 | AI model levels | Quick | Quick, Standard | Quick, Standard, Deep | all |
 | AI credits / month | 10 | **60** per person | **200** per person | 25,000 shared (override per organization) |
 | AI reads files / takes actions | – / – | yes / – | yes / yes | yes / yes |
+| Documents (`DOCUMENT_LIMIT`) | **10** | unlimited | unlimited | unlimited |
 
 **Discounts** (`Billing:Pricing`): paying a year at once takes **20% off**; teams of 10+ get **10%**, 25+ **15%**, 100+ **20%** automatically. They add up to at most **30%**. A discounted total is rounded to a whole rupee. **Trial:** 14 days of Pro or Business, up to 5 people and 100 AI credits, no payment.
 
 Examples: 12 people on Pro, monthly: 349 × 12 − 10% = **₹3,769**. The same, yearly: 349 × 12 × 12 − 30% = **₹35,179** a year (₹244.30 per person per month). 100 people on Business, yearly: 40% would apply, capped at 30%.
+
+**Documents** cost almost nothing to run (rows of text; their files count against the storage pool people already pay for), so the only limit in the first release is how many a Free workspace may hold (10). Deleted documents do not count and can be restored for 30 days. Later releases add the governance features by plan as set out in `docs/proposals/documentation-platform.md` section 12 (approval workflows, expiring grants, secret reveal, audit export, PDF exports per month, history retention that follows `ACTIVITY_RETENTION_DAYS`). A workspace that moves to a lower plan keeps every document; it just cannot create more while it is over the limit.
 
 ## What an AI credit costs us
 

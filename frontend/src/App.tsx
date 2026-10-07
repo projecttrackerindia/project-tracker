@@ -26,6 +26,8 @@ const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
 const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
 const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
 const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
+const DocumentsPage = page(() => import('./features/documents/DocumentsPage'), 'DocumentsPage');
+const DocumentPage = page(() => import('./features/documents/DocumentPage'), 'DocumentPage');
 const DashboardPage = page(() => import('./features/dashboard/DashboardPage'), 'DashboardPage');
 const MailboxPage = page(() => import('./features/dev/MailboxPage'), 'MailboxPage');
 const PeoplePage = page(() => import('./features/people/PeoplePage'), 'PeoplePage');
@@ -282,7 +284,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
   const personal = useIsPersonal();
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
   const mReports = useModule('reports') > 0, mTasks = useModule('tasks') > 0, mProjects = useModule('projects') > 0, mWork = useModule('work') > 0;
-  const mCalendar = useModule('calendar') > 0, mActivity = useModule('activity') > 0;
+  const mCalendar = useModule('calendar') > 0, mActivity = useModule('activity') > 0, mDocuments = useModule('documents') > 0;
   const permReports = useCan('reports.view'), broad = useCan('reports.broad');
   const canReports = permReports && mReports;
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
@@ -321,6 +323,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="projects/:id" element={<Guard allow={mProjects}><ProjectDetailPage /></Guard>} />
         <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
         <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
+        <Route path="documents" element={<Guard allow={mDocuments}><DocumentsPage /></Guard>} />
+        <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
         {/* Insights */}
         <Route path="workload" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage /></Guard>} />
         <Route path="workload/capacity" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage section="capacity" /></Guard>} />

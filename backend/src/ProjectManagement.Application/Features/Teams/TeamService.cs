@@ -9,10 +9,10 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Teams;
 
-public record TeamDto(Guid Id, string Name, string? Description, int MemberCount, int ProjectCount, UserRefDto? Lead);
+public record TeamDto(Guid Id, string Name, string? Description, int MemberCount, int ProjectCount, UserRefDto? Lead, Guid? ParentTeamId = null);
 public record TeamMemberDto(Guid UserId, string Name, string Email, bool IsLead, int OpenTasks);
 public record TeamDetailDto(TeamDto Team, IReadOnlyList<TeamMemberDto> Members);
-public record UpsertTeamRequest(string Name, string? Description);
+public record UpsertTeamRequest(string Name, string? Description, Guid? ParentTeamId = null);
 public record AddTeamMemberRequest(Guid UserId, bool IsLead);
 
 public class TeamService(
@@ -33,7 +33,7 @@ public class TeamService(
     private static TeamDto ToDto(Team t, List<TeamMember> members, int projects)
     {
         var lead = members.FirstOrDefault(m => m.IsLead)?.User;
-        return new TeamDto(t.Id, t.Name, t.Description, members.Count, projects, lead is null ? null : new UserRefDto(lead.Id, lead.DisplayName));
+        return new TeamDto(t.Id, t.Name, t.Description, members.Count, projects, lead is null ? null : new UserRefDto(lead.Id, lead.DisplayName), t.ParentTeamId);
     }
 
     public async Task<TeamDetailDto> GetAsync(Guid id, CancellationToken ct = default)
@@ -58,11 +58,22 @@ public class TeamService(
         var name = req.Name.Trim();
         if (await db.Teams.AnyAsync(t => t.Name.ToLower() == name.ToLower(), ct))
             throw new ConflictException("A team with this name already exists.", "TEAM_EXISTS");
-        var team = new Team { TenantId = ctx.RequireTenantId(), Name = name, Description = req.Description?.Trim(), CreatedAt = clock.Now };
+        var team = new Team { TenantId = ctx.RequireTenantId(), Name = name, Description = req.Description?.Trim(), CreatedAt = clock.Now, ParentTeamId = await CheckParentAsync(null, req.ParentTeamId, ct) };
         db.Teams.Add(team);
         recorder.Activity("team.created", "Team", team.Id, $"Created team \"{team.Name}\"");
         await db.SaveChangesAsync(ct);
         return await GetAsync(team.Id, ct);
+    }
+
+    /// <summary>A department is a team that other teams sit under, one level deep: the parent must exist, must itself be top-level, and a team that has teams under it cannot be placed under another.</summary>
+    private async Task<Guid?> CheckParentAsync(Guid? teamId, Guid? parentId, CancellationToken ct)
+    {
+        if (parentId is not { } pid) return null;
+        if (pid == teamId) throw new ValidationException("parentTeamId", "A team cannot be inside itself.");
+        var parent = await db.Teams.AsNoTracking().FirstOrDefaultAsync(t => t.Id == pid, ct) ?? throw new ValidationException("parentTeamId", "Department not found.");
+        if (parent.ParentTeamId is not null) throw new ValidationException("parentTeamId", "Departments are one level deep: choose a top-level team.");
+        if (teamId is { } id && await db.Teams.AnyAsync(t => t.ParentTeamId == id, ct)) throw new ValidationException("parentTeamId", "This team has teams under it, so it cannot be placed inside another.");
+        return pid;
     }
 
     public async Task<TeamDetailDto> UpdateAsync(Guid id, UpsertTeamRequest req, CancellationToken ct = default)
@@ -74,6 +85,7 @@ public class TeamService(
             throw new ConflictException("A team with this name already exists.", "TEAM_EXISTS");
         team.Name = name;
         team.Description = req.Description?.Trim();
+        team.ParentTeamId = await CheckParentAsync(id, req.ParentTeamId, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -83,6 +95,7 @@ public class TeamService(
         await permissions.RequireAsync(Permissions.TeamsManage, ct);
         var team = await db.Teams.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Team not found.");
         foreach (var p in await db.Projects.Where(p => p.TeamId == id).ToListAsync(ct)) p.TeamId = null;
+        foreach (var child in await db.Teams.Where(t => t.ParentTeamId == id).ToListAsync(ct)) child.ParentTeamId = null;
         db.TeamMembers.RemoveRange(await db.TeamMembers.Where(m => m.TeamId == id).ToListAsync(ct));
         db.Teams.Remove(team);
         recorder.Activity("team.deleted", "Team", id, $"Deleted team \"{team.Name}\"");

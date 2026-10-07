@@ -9,6 +9,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
   CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
+  DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
 } from './types';
 
 export const authApi = {
@@ -88,8 +89,8 @@ export const workspaceApi = {
 export const teamApi = {
   list: () => get<Team[]>('/teams'),
   get: (id: string) => get<TeamDetail>(`/teams/${id}`),
-  create: (b: { name: string; description?: string }) => post<TeamDetail>('/teams', b),
-  update: (id: string, b: { name: string; description?: string }) => put<TeamDetail>(`/teams/${id}`, b),
+  create: (b: { name: string; description?: string; parentTeamId?: string | null }) => post<TeamDetail>('/teams', b),
+  update: (id: string, b: { name: string; description?: string; parentTeamId?: string | null }) => put<TeamDetail>(`/teams/${id}`, b),
   remove: (id: string) => del(`/teams/${id}`),
   addMember: (id: string, b: { userId: string; isLead: boolean }) => post<TeamDetail>(`/teams/${id}/members`, b),
   removeMember: (id: string, userId: string) => del<TeamDetail>(`/teams/${id}/members/${userId}`),
@@ -591,4 +592,21 @@ export const emailAdminApi = {
 export const unsubscribeApi = {
   info: (token: string) => get<UnsubscribeInfo>('/email/unsubscribe', { token }, { auth: false }),
   confirm: (token: string) => post<UnsubscribeInfo>(`/email/unsubscribe?token=${encodeURIComponent(token)}`, {}, { auth: false }),
+};
+
+export const documentApi = {
+  types: () => get<DocumentType[]>('/document-types'),
+  list: (f: DocumentFilters = {}) => get<DocumentPage>('/documents', { ...f }),
+  get: (id: string) => get<DocumentDetail>(`/documents/${id}`),
+  create: (b: { title: string; typeId: string; projectId?: string | null; teamId?: string | null; visibility?: DocumentVisibility; tags?: string[]; sections?: { key: string; content: string }[] }) => post<DocumentDetail>('/documents', b),
+  update: (id: string, b: { title: string; visibility: DocumentVisibility; tags: string[]; ownerId?: string | null; revision: number; teamId?: string | null }) => put<DocumentDetail>(`/documents/${id}`, b),
+  saveSections: (id: string, b: { revision: number; sections: { key: string; content: string }[] }) => put<DocumentDetail>(`/documents/${id}/sections`, b),
+  archive: (id: string) => post<DocumentDetail>(`/documents/${id}/archive`),
+  reopen: (id: string) => post<DocumentDetail>(`/documents/${id}/reopen`),
+  restore: (id: string) => post<DocumentDetail>(`/documents/${id}/restore`),
+  remove: (id: string) => del(`/documents/${id}`),
+  links: (id: string) => get<LinkedWork>(`/documents/${id}/links`),
+  addLink: (id: string, b: { targetType: LinkTarget; targetId: string; relation: LinkRelation }) => post<LinkedWork>(`/documents/${id}/links`, b),
+  removeLink: (id: string, linkId: string) => del(`/documents/${id}/links/${linkId}`),
+  linkedTo: (targetType: LinkTarget, targetId: string) => get<LinkedDocuments>('/linked-documents', { targetType, targetId }),
 };

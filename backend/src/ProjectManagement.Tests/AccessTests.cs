@@ -10,7 +10,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class AccessTests(ApiFactory factory)
 {
-    private static readonly string[] AllModules = ["projects", "tasks", "work", "calendar", "teams", "members", "organization", "reports", "activity", "audit", "billing"];
+    private static readonly string[] AllModules = ["projects", "tasks", "work", "documents", "calendar", "teams", "members", "organization", "reports", "activity", "audit", "billing"];
 
     /// <summary>A modules payload with everything off except the given levels.</summary>
     private static Dictionary<string, int> Levels(params (string Module, int Level)[] on)

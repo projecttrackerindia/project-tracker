@@ -61,6 +61,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Sso.ScimService>();
         services.AddScoped<WorkspaceService>();
         services.AddScoped<TeamService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentLinkService>();
         services.AddScoped<OrgService>();
         services.AddScoped<AccessService>();
         services.AddScoped<ProjectService>();

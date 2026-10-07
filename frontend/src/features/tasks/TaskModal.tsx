@@ -10,6 +10,7 @@ import { TimeTracker } from '../time/TimeTracker';
 import { DevLinks } from '../settings/IntegrationSettings';
 import { Viewers } from '../live/Viewers';
 import { Checklist } from './Checklist';
+import { TargetDocuments } from '../documents/LinkedWork';
 import { CustomFieldsSection } from '../customfields/CustomFieldsSection';
 import { customFieldApi, sprintApi } from '../../api/endpoints';
 import { Avatar, Field, Modal, PageLoader, SubmitButton, PriorityOptions } from '../../components/ui';
@@ -257,6 +258,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
           <DevLinks taskId={task.id} />
           <Dependencies taskId={task.id} projectId={task.projectId} canEdit={task.canEdit} />
           <Attachments projectId={task.projectId} taskId={task.id} canEdit={task.canEdit} compact />
+          <TargetDocuments targetType="Task" targetId={task.id} />
           {!task.parentTaskId && <Subtasks parent={task} subtasks={detail.data.subtasks} statuses={sortedStatuses} canCreate={canCreate && task.canEdit} onOpen={setCurrentId} />}
           <Comments taskId={task.id} canComment={canComment} members={members.data ?? []} />
         </>

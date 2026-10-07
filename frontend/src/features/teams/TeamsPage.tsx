@@ -46,13 +46,18 @@ export function TeamsPage() {
   );
 }
 
-function TeamFormModal({ team, onClose }: { team?: { id: string; name: string; description: string | null }; onClose: () => void }) {
+function TeamFormModal({ team, onClose }: { team?: { id: string; name: string; description: string | null; parentTeamId?: string | null }; onClose: () => void }) {
   const wid = useWorkspaceId();
+  const all = useWsQuery(['teams'], teamApi.list);
+  const [parentId, setParentId] = useState(team?.parentTeamId ?? '');
+  // A department is a top-level team; a team that has teams under it cannot itself be placed inside another.
+  const departments = (all.data ?? []).filter((t) => t.id !== team?.id && !t.parentTeamId);
+  const hasChildren = !!team && (all.data ?? []).some((t) => t.parentTeamId === team.id);
   const [name, setName] = useState(team?.name ?? '');
   const [description, setDescription] = useState(team?.description ?? '');
   const [error, setError] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: () => team ? teamApi.update(team.id, { name: name.trim(), description: description.trim() || undefined }) : teamApi.create({ name: name.trim(), description: description.trim() || undefined }),
+    mutationFn: () => team ? teamApi.update(team.id, { name: name.trim(), description: description.trim() || undefined, parentTeamId: parentId || null }) : teamApi.create({ parentTeamId: parentId || null, name: name.trim(), description: description.trim() || undefined }),
     onSuccess: () => { toast(team ? 'Team updated.' : 'Team created.'); invalidateWorkspace(wid); onClose(); },
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save the team.'),
   });
@@ -64,6 +69,11 @@ function TeamFormModal({ team, onClose }: { team?: { id: string; name: string; d
       <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
         <Field label="Team name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Development" /></Field>
         <Field label="Description"><textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} /></Field>
+        {departments.length > 0 && !hasChildren && (
+          <Field label="Department" hint="Optional. Groups this team under a larger team.">
+            <Select className="select" value={parentId} onChange={(e) => setParentId(e.target.value)} aria-label="Department"><option value="">None (top level)</option>{departments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+          </Field>
+        )}
       </div>
     </Modal>
   );

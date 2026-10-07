@@ -178,6 +178,8 @@ public class RolePermissionOverride : TenantEntity, ITenantScoped
 public class Team : TenantEntity, ITenantScoped
 {
     public string Name { get; set; } = "";
+    /// <summary>The department this team belongs to (itself a team). Null for a top-level team. One level deep.</summary>
+    public Guid? ParentTeamId { get; set; }
     public string? Description { get; set; }
     public ICollection<TeamMember> Members { get; set; } = new List<TeamMember>();
 }

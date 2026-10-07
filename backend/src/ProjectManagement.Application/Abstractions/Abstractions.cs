@@ -17,6 +17,12 @@ public interface IAppDbContext
     DbSet<TenantInvitation> TenantInvitations { get; }
     DbSet<RolePermissionOverride> RolePermissionOverrides { get; }
     DbSet<Team> Teams { get; }
+    DbSet<DocumentType> DocumentTypes { get; }
+    DbSet<Document> Documents { get; }
+    DbSet<DocumentVersion> DocumentVersions { get; }
+    DbSet<DocumentSection> DocumentSections { get; }
+    DbSet<DocumentTag> DocumentTags { get; }
+    DbSet<DocumentLink> DocumentLinks { get; }
     DbSet<TeamMember> TeamMembers { get; }
     DbSet<OrgRole> OrgRoles { get; }
     DbSet<Project> Projects { get; }

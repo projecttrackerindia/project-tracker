@@ -1,6 +1,6 @@
 # Proposal (draft for review, nothing built): Documentation and BRD platform inside Project Tracker
 
-**Status:** revision 2, after review. No product code has been written. The decisions taken in review are in section 0; the few questions still open are in section 15. We then build release by release (section 11), each release shipped, tested and merged on its own.
+**Status:** revision 2, after review. **Release D1 is built** (see section 11, D1); D2 onwards is not. The decisions taken in review are in section 0; the few questions still open are in section 15. We then build release by release (section 11), each release shipped, tested and merged on its own.
 
 **Reference studied:** `projecttrackerindia/doctracker` (Node/Express, PostgreSQL, plain JavaScript front end). We port its ideas into our stack (ASP.NET Core 9, EF Core, React 19). We do not port its code.
 

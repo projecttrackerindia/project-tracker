@@ -16,6 +16,9 @@ import { PlanPanel, deliveryLabel } from '../planning/PlanPanel';
 import { ImportModal } from '../import/ImportModal';
 import { ProjectTime } from '../time/ProjectTime';
 import { ActivityTab } from './ProjectTabs';
+import { DocumentList } from '../documents/DocumentList';
+import { DocumentWizard } from '../documents/DocumentWizard';
+import { TargetDocuments } from '../documents/LinkedWork';
 import { ActionItemsTab } from './ActionItemsPanel';
 import { ProjectSettingsModal, type ProjectSettingsTab } from './ProjectSettingsModal';
 import { Timeline } from './Timeline';
@@ -24,7 +27,7 @@ import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { IssuesPanel } from '../issues/IssuesPanel';
 import { RiskButton } from '../ai/Assistant';
 
-type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'files' | 'time' | 'activity';
+type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'activity';
 /** Addresses from before the tabs were regrouped: planning tabs open Plan, configuration tabs open Project settings. */
 const LEGACY_TAB: Record<string, { tab?: Tab; settings?: ProjectSettingsTab }> = {
   milestones: { tab: 'plan' }, sprints: { tab: 'plan' }, team: { settings: 'members' }, workflow: { settings: 'workflow' }, automation: { settings: 'automation' },
@@ -64,9 +67,11 @@ export function ProjectDetailPage() {
   const canReports = useCan('reports.view');
   const [seeTasks, seeActivity] = [useModule('tasks') > 0, useModule('activity') > 0];
   const seeWork = useModule("work") > 0;
+  const seeDocuments = useModule('documents') > 0, canWriteDocs = useModule('documents') >= 2;
+  const [newDoc, setNewDoc] = useState(false);
   const canReportIssue = useCan('tasks.comment');
-  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'files', 'time', 'activity'] as Tab[]).filter((t) =>
-    t === 'board' || t === 'list' || t === 'issues' || t === 'plan' ? seeTasks : t === 'activity' ? seeActivity : t === 'time' ? canReports && seeTasks : true);
+  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'activity'] as Tab[]).filter((t) =>
+    t === 'board' || t === 'list' || t === 'issues' || t === 'plan' ? seeTasks : t === 'activity' ? seeActivity : t === 'time' ? canReports && seeTasks : t === 'documents' ? seeDocuments : true);
   const rawTab = params.get('tab') ?? 'board';
   const legacy = LEGACY_TAB[rawTab];
   const wanted = (legacy?.tab ?? (legacy ? 'board' : rawTab)) as Tab;
@@ -185,6 +190,7 @@ export function ProjectDetailPage() {
           { id: 'plan' as Tab, label: method === 'Agile' ? 'Sprints' : method === 'Phased' ? 'Milestones' : 'Plan', icon: 'target' as const },
           { id: 'issues' as Tab, label: 'Issues', icon: 'bug' as const, badge: openIssues },
           { id: 'actions' as Tab, label: 'Action items', icon: 'flag' as const },
+          { id: 'documents' as Tab, label: 'Documents', icon: 'note' as const },
           { id: 'files' as Tab, label: 'Files', icon: 'paperclip' as const },
           { id: 'time' as Tab, label: 'Time', icon: 'clock' as const },
           { id: 'activity' as Tab, label: 'Activity', icon: 'activity' as const },
@@ -196,10 +202,17 @@ export function ProjectDetailPage() {
       {tab === 'issues' && <IssuesPanel projectId={p.id} stages={detail.stages} canReport={reportable} stageFilter={issueStage} onStageFilter={setIssueStage} onOpen={openIssue} onReport={(stageId) => setReporting({ stageId })} />}
       {tab === 'plan' && <PlanPanel projectId={p.id} method={method} stages={detail.stages} canEdit={canEdit && !archived} canPlan={canPlanSprints && !archived} onOpenTask={openTask} />}
       {tab === 'actions' && <ActionItemsTab projectId={p.id} highlightId={actionId} />}
+      {tab === 'documents' && (
+        <>
+          <div className="doc-tab-head"><TargetDocuments targetType="Project" targetId={p.id} title="Documents about this project" />{canWriteDocs && !archived && <button className="btn btn-primary btn-sm" onClick={() => setNewDoc(true)}><Icon name="plus" size={15} /> New document</button>}</div>
+          <DocumentList projectId={p.id} canCreate={canWriteDocs && !archived} onNew={() => setNewDoc(true)} />
+        </>
+      )}
       {tab === 'time' && <ProjectTime projectId={p.id} />}
       {tab === 'files' && <Attachments projectId={p.id} canEdit={canEdit && !archived} />}
       {tab === 'activity' && <ActivityTab projectId={p.id} />}
 
+      {newDoc && <DocumentWizard projectId={p.id} onClose={() => setNewDoc(false)} onCreated={(docId) => nav(`/documents/${docId}`)} />}
       {importing && <ImportModal projectId={p.id} onClose={() => setImporting(false)} />}
       {editing && <ProjectFormModal project={p} onClose={() => setEditing(false)} />}
       {settings && <ProjectSettingsModal detail={detail} canEdit={canEdit} initial={settings} onClose={() => {

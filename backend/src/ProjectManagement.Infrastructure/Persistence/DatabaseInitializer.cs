@@ -81,6 +81,7 @@ public static class DatabaseInitializer
             // A taste of the assistant: ten quick answers a month.
             [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 1, [FeatureKeys.AiMonthlyCredits] = 10, [FeatureKeys.AiAttachments] = 0, [FeatureKeys.AiActions] = 0,
             [FeatureKeys.ChatAttachments] = 0, [FeatureKeys.MobileApp] = 0,
+            [FeatureKeys.DocumentLimit] = 10,
         }),
         ("PRO", "Pro", "For teams that plan and deliver together.", 349m, true, 1, new()
         {
@@ -92,6 +93,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ReminderLimit] = 500, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 0,
             [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 2, [FeatureKeys.AiMonthlyCredits] = 60, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 0,   // 60 credits per person
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
+            [FeatureKeys.DocumentLimit] = -1,
         }),
         ("BUSINESS", "Business", "For growing teams and departments.", 699m, true, 2, new()
         {
@@ -103,6 +105,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ReminderLimit] = -1, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 1,
             [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 200, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,   // 200 credits per person
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
+            [FeatureKeys.DocumentLimit] = -1,
         }),
         ("ENTERPRISE", "Enterprise", "Custom pricing, unlimited scale and advanced governance.", null, false, 3, new()
         {
@@ -115,6 +118,7 @@ public static class DatabaseInitializer
             // A contract sets the real figure (per-organization override in Admin); the default is a generous pool, not unlimited, because every answer costs money.
             [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 25000, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
+            [FeatureKeys.DocumentLimit] = -1,
         }),
     ];
 

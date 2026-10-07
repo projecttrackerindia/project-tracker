@@ -33,6 +33,7 @@ export const FEATURES: Feature[] = [
   { icon: 'monitor', title: 'A portfolio view for leaders', text: 'Every project ranked by risk with the reasons, a forecast of when it will really finish, and the history of every delivery date that moved.' },
   { icon: 'users', title: 'Teams that stay separate', text: 'Five access levels, job-role profiles and teams. Choose whether everyone sees every project or each team sees only its own, and switch the whole app to one team.' },
   { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens. Every plan includes a taste of it; Pro adds 60 credits per person a month, Business 200 with deep reasoning.' },
+  { icon: 'note', title: 'Documents linked to the work', text: 'Write requirement documents, API documentation and test plans from templates, keep them next to the project, and link each one to the tasks that build it and the tests that check it. See how far the linked work has got, and choose who can open each document.' },
   { icon: 'alarm', title: 'Reminders that arrive on time', text: 'Automatic due-date reminders, a daily briefing, a weekly portfolio brief and push or e-mail delivery, in each person\'s own working hours.' },
   { icon: 'clock', title: 'Time, workload and capacity', text: 'Timesheets with approvals, workload by person and weekly capacity, so work is shared out before people are overloaded.' },
   { icon: 'bolt', title: 'Operational work with service levels', text: 'Bugs, support and requests with response and resolution targets that warn before they are missed. Business plan and above.' },
@@ -47,8 +48,8 @@ export interface Plan { name: string; price: string; unit?: number; perUser?: bo
  * Keep in step with DatabaseInitializer (the plan catalog) and docs/PRICING.md.
  */
 export const PLANS: Plan[] = [
-  { name: 'Free', price: '₹0', blurb: 'For one person getting started.', cta: 'Start free', points: ['One person, free for good', '5 projects and 500 tasks', '500 MB of files', 'Reminders, calendar and timesheets', 'Portfolio view', 'Try the AI assistant: 10 quick answers a month'] },
-  { name: 'Pro', price: '₹349', unit: 349, perUser: true, blurb: 'For teams that plan and deliver together.', cta: 'Start with Pro', featured: true, points: ['Add as many people as you need', 'Unlimited projects, tasks and teams', '5 GB of files per person', 'Custom workflows, fields and automation', 'Advanced reports and workload', 'Mobile app with phone sign-in', 'AI assistant: 60 credits per person every month'] },
+  { name: 'Free', price: '₹0', blurb: 'For one person getting started.', cta: 'Start free', points: ['One person, free for good', '5 projects and 500 tasks', '500 MB of files', 'Reminders, calendar and timesheets', 'Portfolio view', 'Up to 10 documents, linked to your work', 'Try the AI assistant: 10 quick answers a month'] },
+  { name: 'Pro', price: '₹349', unit: 349, perUser: true, blurb: 'For teams that plan and deliver together.', cta: 'Start with Pro', featured: true, points: ['Add as many people as you need', 'Unlimited projects, tasks and teams', '5 GB of files per person', 'Custom workflows, fields and automation', 'Advanced reports and workload', 'Unlimited documents, shared with your teams', 'Mobile app with phone sign-in', 'AI assistant: 60 credits per person every month'] },
   { name: 'Business', price: '₹699', unit: 699, perUser: true, blurb: 'For growing teams and departments.', cta: 'Start with Business', points: ['Everything in Pro', '25 GB of files per person', 'AI with deep reasoning, file understanding and confirmed actions: 200 credits per person', 'Audit log, API access and advanced permissions', 'Single sign-on, two-step rules, IP allowlist', 'Resource management and service levels'] },
   { name: 'Enterprise', price: 'Custom', blurb: 'Unlimited scale and governance.', cta: 'Talk to us', points: ['Unlimited members and storage', 'A large shared AI pool, sized to your contract', 'Everything in Business', 'Longest history and audit retention', 'Priority onboarding and support'] },
 ];
@@ -215,6 +216,8 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'Custom workflows, fields and automation', v: ['–', '✓', '✓', '✓'] },
     { label: 'Resource management and service levels', v: ['–', '–', '✓', '✓'] },
     { label: 'Reminder escalation', v: ['–', '–', '✓', '✓'] },
+    { label: 'Documents (requirements, API, test plans)', v: ['10', 'Unlimited', 'Unlimited', 'Unlimited'] },
+    { label: 'Documents linked to projects and tasks', v: ['✓', '✓', '✓', '✓'] },
     { label: 'Mobile app and phone sign-in', v: ['–', '✓', '✓', '✓'] },
   ] },
   { group: 'Intelligence', rows: [

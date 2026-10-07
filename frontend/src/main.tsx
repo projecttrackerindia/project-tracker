@@ -16,6 +16,7 @@ import './styles/dark.css';
 import './styles/ai.css';
 import './styles/theme.css';
 import './styles/org.css';
+import './styles/documents.css';
 import './styles/reminders.css';
 import './styles/mobile.css';
 import './styles/phone.css';

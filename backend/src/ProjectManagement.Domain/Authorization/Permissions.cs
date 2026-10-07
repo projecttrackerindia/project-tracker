@@ -35,12 +35,17 @@ public static class Permissions
     public const string OrgStructure = "org.structure";
     /// <summary>Decide what each job role can see and do (the Access tab of the Organization page).</summary>
     public const string AccessManage = "access.manage";
+    /// <summary>Documents: write new ones, edit anyone's (without it a person edits only documents they own), and delete.</summary>
+    public const string DocsCreate = "docs.create";
+    public const string DocsEdit = "docs.edit";
+    public const string DocsDelete = "docs.delete";
 
     public static readonly string[] All =
     [
         OrgManage, OrgStructure, AccessManage, BillingManage, MembersInvite, MembersManage, TeamsManage,
         ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll, WorkflowManage, ProjectGroupsManage, LabelsManage,
         WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView, PermissionsManage,
+        DocsCreate, DocsEdit, DocsDelete,
     ];
 
     /// <summary>Permissions that can never be changed from their defaults.</summary>
@@ -53,15 +58,16 @@ public static class Permissions
         [
             OrgManage, OrgStructure, AccessManage, MembersInvite, MembersManage, TeamsManage, ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll,
             WorkflowManage, ProjectGroupsManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView,
+            DocsCreate, DocsEdit, DocsDelete,
         ],
         [TenantRole.Manager] =
         [
             TeamsManage, ProjectsCreate, ProjectsEdit, WorkflowManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete,
-            TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView,
+            TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, DocsCreate, DocsEdit, DocsDelete,
         ],
         // Members can create tasks and comment on any of them, but edit only tasks assigned to them
         // (PermissionService.RequireTaskEditAsync) - TasksEdit here would grant editing everyone's tasks.
-        [TenantRole.Member] = [ProjectsCreate, LabelsManage, WorkCreate, TasksCreate, TasksComment],
+        [TenantRole.Member] = [ProjectsCreate, LabelsManage, WorkCreate, TasksCreate, TasksComment, DocsCreate],
         [TenantRole.Guest] = [TasksComment],
     };
 
@@ -117,10 +123,12 @@ public static class FeatureKeys
     public const string ReminderEscalation = "REMINDER_ESCALATION";
     /// <summary>The mobile app (installable on a phone, with push alerts) and signing in on a computer by approving on the phone.</summary>
     public const string MobileApp = "MOBILE_APP";
+    /// <summary>Documents (BRDs, API documentation, test plans ...) a workspace may keep. -1 = unlimited.</summary>
+    public const string DocumentLimit = "DOCUMENT_LIMIT";
 
     public const long Unlimited = -1;
 
-    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, AiModelTier, AiMonthlyCredits];
+    public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, DocumentLimit, AiModelTier, AiMonthlyCredits];
     public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation, ChatAttachments, MobileApp];
     public static readonly string[] All = [.. Limits, .. Flags];
 }

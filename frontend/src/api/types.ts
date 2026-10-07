@@ -85,7 +85,7 @@ export interface EffectiveAccess { userId: string; name: string; email: string; 
 export interface EffectiveAccessList { people: EffectiveAccess[]; byJobRole: number; byAccessLevel: number }
 
 export interface UserRef { id: string; name: string }
-export interface Team { id: string; name: string; description: string | null; memberCount: number; projectCount: number; lead: UserRef | null }
+export interface Team { id: string; name: string; description: string | null; memberCount: number; projectCount: number; lead: UserRef | null; parentTeamId?: string | null }
 export interface TeamMember { userId: string; name: string; email: string; isLead: boolean; openTasks: number }
 export interface TeamDetail { team: Team; members: TeamMember[] }
 
@@ -540,3 +540,28 @@ export interface UnsubscribeInfo { label: string; alreadyOff: boolean }
 // ---- invoices people can keep
 export interface InvoiceBuyer { name: string; address: string; taxId: string }
 export interface InvoiceSeller { legalName: string; address: string; taxId: string; email: string; note: string }
+
+// ---- Documents (BRDs, API documentation, test plans ...)
+export type DocumentStatus = 'Draft' | 'InReview' | 'ChangesRequested' | 'Approved' | 'Published' | 'Archived';
+export type DocumentVisibility = 'Project' | 'Team' | 'Organization' | 'Private';
+export type SectionKind = 'RichText' | 'Table';
+export type LinkTarget = 'Project' | 'Task' | 'Issue' | 'WorkItem' | 'Sprint';
+export type LinkRelation = 'Describes' | 'Implements' | 'Verifies' | 'References' | 'DependsOn';
+export interface SectionTemplate { key: string; title: string; kind: SectionKind; hint: string | null; columns: string[] | null }
+export interface DocumentType { id: string; code: string; name: string; description: string | null; icon: string; color: string; sections: SectionTemplate[]; sortOrder: number }
+export interface DocumentItem {
+  id: string; key: string; number: number; title: string; typeId: string; typeCode: string; typeName: string; typeColor: string; typeIcon: string;
+  projectId: string | null; projectKey: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
+  owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
+}
+export interface DocumentPage { items: DocumentItem[]; nextCursor: string | null; total: number | null }
+export interface DocumentSection { key: string; title: string; kind: SectionKind; sortOrder: number; content: string }
+export interface DocumentDetail { item: DocumentItem; revision: number; versionLabel: string; sections: DocumentSection[]; can: { edit: boolean; delete: boolean; link: boolean } }
+export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; cursor?: string; limit?: number }
+export interface LinkedItem {
+  linkId: string; targetType: LinkTarget; targetId: string; relation: LinkRelation; restricted: boolean; key: string; title: string; status: string;
+  done: boolean; dueDate: string | null; overdue: boolean; projectId: string | null; assignee: string | null;
+}
+export interface LinkedWork { items: LinkedItem[]; total: number; done: number; overdue: number; open: number; restricted: number }
+export interface LinkedDocument { linkId: string; relation: LinkRelation; document: DocumentItem }
+export interface LinkedDocuments { items: LinkedDocument[]; restricted: number }
