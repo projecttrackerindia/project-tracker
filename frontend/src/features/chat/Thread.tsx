@@ -174,8 +174,8 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         </div>
         {variant === 'page' && (
           <>
-            <button className={`btn-icon ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="paperclip" /></button>
-            <button className={`btn-icon ${infoOpen ? 'on' : ''}`} onClick={onInfo} aria-label="Conversation details" aria-pressed={infoOpen} title="Details"><Icon name="info" /></button>
+            <button className={`btn-icon chat-head-action ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="folder" size={17} /></button>
+            <button className={`btn-icon chat-head-action ${infoOpen ? 'on' : ''}`} onClick={onInfo} aria-label="Conversation details" aria-pressed={infoOpen} title="Details"><Icon name="info" size={17} /></button>
           </>
         )}
         {variant === 'panel' && <button className="btn-icon" onClick={onClose ?? onBack} aria-label="Close chat" title="Close"><Icon name="close" /></button>}
