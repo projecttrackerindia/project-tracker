@@ -60,9 +60,9 @@ function Sidebar() {
   const reminders = useReminderCounts(!!wid && !isPlatformAdmin);
   // The sidebar's own identity: a Business/Enterprise workspace is confident enough to show its own name; a Free/Pro workspace (which
   // might still be "My organization" from sign-up) shows the product name instead, and a personal space shows its own name.
-  const planCode = ctx?.current?.plan.code;
+  const planCode = ctx?.current?.plan.code?.toUpperCase();
   const brandTitle = isPlatformAdmin ? 'Platform' : personal ? (ctx?.current?.name ?? 'Personal space')
-    : planCode === 'BUSINESS' || planCode === 'ENTERPRISE' ? (ctx?.current?.name ?? 'Projects') : 'Project Tracker';
+    : planCode === 'BUSINESS' || planCode === 'ENTERPRISE' ? (ctx?.current?.name ?? 'Project Tracker') : 'Project Tracker';
   const brandSub = isPlatformAdmin ? 'Administration' : personal ? 'Personal space' : 'Workspace';
   // The same menu as the command palette; the sidebar adds the unread count to Chat and what needs attention to Reminders.
   const groups = useMainNav().map((g) => ({ ...g, items: g.items.map((i) => (i.to === '/chat' ? { ...i, badge: unread.data?.count }
