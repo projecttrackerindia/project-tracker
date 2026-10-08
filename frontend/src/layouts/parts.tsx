@@ -8,7 +8,7 @@ import { toast } from '../stores/ui';
 
 export const NOTIF_ICON: Record<string, string> = {
   TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞', Approval: '✅', ServiceLevel: '⏱️',
-  Reminder: '⏰', Nudge: '👋', Briefing: '☀️',
+  Reminder: '⏰', Nudge: '👋', Briefing: '☀️', Meeting: '📹',
 };
 
 export function CreateOrganizationModal({ onClose }: { onClose: () => void }) {

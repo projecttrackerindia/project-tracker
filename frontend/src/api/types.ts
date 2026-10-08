@@ -364,6 +364,12 @@ export interface InboundMailbox {
 export type GitProvider = 'GitHub' | 'AzureDevOps';
 export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
 export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
+export interface GoogleConnectionStatus { connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
+export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
+export interface Meeting {
+  id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
+  status: 'Scheduled' | 'Cancelled' | 'Completed'; meetUri: string; organizerUserId: string; organizerName: string; participants: MeetingParticipant[];
+}
 export interface DataPolicy {
   activityRetentionDays: number | null; notificationRetentionDays: number | null; chatRetentionDays: number | null; auditRetentionDays: number | null;
   planActivityDays: number; lastPurgedAt: string | null; canManage: boolean;

@@ -8,7 +8,7 @@ import type { ChatAttachment, BillingSettings, TimelineTemplate,
   ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge, InvoiceBuyer, InvoiceSeller, EmailOverview, EmailBlocked, EmailDomainCheck, UnsubscribeInfo,
   ExternalProvider, SsoDiscovery, UserLogin, SsoSettings, SsoConnectionInput, ScimToken,
   TimesheetWeek, Approvals, Rates, Utilisation, ProjectFinancials, SlaSettings, SlaTarget, WebhookFormat,
-  CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority,
+  CalendarFeed, InboundMailbox, GitConnection, GitProvider, DevLink, DataPolicy, Priority, GoogleConnectionStatus, Meeting, MeetingParticipant,
   DocumentType, DocumentPage, DocumentDetail, DocumentFilters, DocumentVisibility, LinkedWork, LinkedDocuments, LinkTarget, LinkRelation,
   DocVersions, DocVersionContent, VersionDiff, DocAccess, DocAccessLevel, GrantPrincipal, DocFile, DocWorkflows, DocWorkflow, ApiOverview, EndpointPage, EndpointDetail, SaveEndpoint, SaveDefinition, ApiImportResult, ApiChanges, EndpointHit, SaveWorkflow, DocumentReview, DocumentInbox, DocumentGate, AccessRequest, Requirement, Coverage, DocActivity, DocAuditPage, SecretClass, WorkspaceLogo, GroupMappings, DocumentDashboard, SecretList, SecretReveal, StepUpToken, ChainStatus, DocSecurity,
 } from './types';
@@ -528,6 +528,22 @@ export const integrationsApi = {
   workTaskLinks: (workTaskId: string) => get<DevLink[]>(`/work-tasks/${workTaskId}/dev-links`),
   dataPolicy: () => get<DataPolicy>('/workspace/data-policy'),
   saveDataPolicy: (b: { activityRetentionDays: number | null; notificationRetentionDays: number | null; chatRetentionDays: number | null; auditRetentionDays: number | null }) => put<DataPolicy>('/workspace/data-policy', b),
+  /** Google Workspace: one Calendar/Meet grant per person (never a shared workspace credential - see GoogleCalendarAuthService). */
+  googleStatus: () => get<GoogleConnectionStatus>('/integrations/google/status'),
+  /** Returns Google's consent screen address; the caller navigates the whole page there itself (window.location.assign) - this call cannot
+   * redirect there itself because only an ordinary authenticated fetch, not a bare page navigation, can carry the Authorization header. */
+  googleConnectUrl: (returnUrl?: string) => get<{ url: string }>('/integrations/google/connect', returnUrl ? { returnUrl } : undefined),
+  googleDisconnect: () => del('/integrations/google/disconnect'),
+};
+
+export const meetingApi = {
+  list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
+  participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
+  start: (projectId: string, b: { title?: string; participantUserIds?: string[] }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
+  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[] }) =>
+    post<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
+  get: (id: string) => get<Meeting>(`/meetings/${id}`),
+  cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),
 };
 
 // ---- capacity and cost

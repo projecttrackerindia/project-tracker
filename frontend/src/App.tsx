@@ -343,6 +343,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="account/notifications" element={<AccountPage section="notifications" />} />
         <Route path="account/security" element={<AccountPage section="security" />} />
         <Route path="account/mobile" element={<AccountPage section="mobile" />} />
+        <Route path="account/integrations" element={<AccountPage section="integrations" />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
         {/* Where pages used to be */}

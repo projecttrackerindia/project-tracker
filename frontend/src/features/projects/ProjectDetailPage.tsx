@@ -26,8 +26,10 @@ import { ProjectChatButton, useProjectChat } from '../chat/ProjectChat';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { IssuesPanel } from '../issues/IssuesPanel';
 import { RiskButton } from '../ai/Assistant';
+import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+import { MeetingsTab } from '../meetings/MeetingsTab';
 
-type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'activity';
+type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'meetings' | 'activity';
 /** Addresses from before the tabs were regrouped: planning tabs open Plan, configuration tabs open Project settings. */
 const LEGACY_TAB: Record<string, { tab?: Tab; settings?: ProjectSettingsTab }> = {
   milestones: { tab: 'plan' }, sprints: { tab: 'plan' }, team: { settings: 'members' }, workflow: { settings: 'workflow' }, automation: { settings: 'automation' },
@@ -70,7 +72,7 @@ export function ProjectDetailPage() {
   const seeDocuments = useModule('documents') > 0, canWriteDocs = useModule('documents') >= 2;
   const [newDoc, setNewDoc] = useState(false);
   const canReportIssue = useCan('tasks.comment');
-  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'activity'] as Tab[]).filter((t) =>
+  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'meetings', 'activity'] as Tab[]).filter((t) =>
     t === 'board' || t === 'list' || t === 'issues' || t === 'plan' ? seeTasks : t === 'activity' ? seeActivity : t === 'time' ? canReports && seeTasks : t === 'documents' ? seeDocuments : true);
   const rawTab = params.get('tab') ?? 'board';
   const legacy = LEGACY_TAB[rawTab];
@@ -141,6 +143,7 @@ export function ProjectDetailPage() {
         </div>
         <div className="page-actions">
           <RiskButton projectId={p.id} />
+          {!archived && <GoogleMeetButton projectId={p.id} projectName={p.name} organizerUserId={me} />}
           <ProjectChatButton projectId={p.id} name={p.name} label />
           {canEdit && <button className="btn btn-ghost" onClick={() => setSettings('members')} title="Members, task workflow and automation"><Icon name="settings" /> Settings</button>}
           <MoreMenu>{(close) => <>
@@ -196,6 +199,7 @@ export function ProjectDetailPage() {
           { id: 'documents' as Tab, label: 'Documents', icon: 'note' as const },
           { id: 'files' as Tab, label: 'Files', icon: 'paperclip' as const },
           { id: 'time' as Tab, label: 'Time', icon: 'clock' as const },
+          { id: 'meetings' as Tab, label: 'Meetings', icon: 'video' as const },
           { id: 'activity' as Tab, label: 'Activity', icon: 'activity' as const },
         ].filter((t) => allowedTabs.includes(t.id))} />
       </div>
@@ -213,6 +217,7 @@ export function ProjectDetailPage() {
       )}
       {tab === 'time' && <ProjectTime projectId={p.id} />}
       {tab === 'files' && <Attachments projectId={p.id} canEdit={canEdit && !archived} />}
+      {tab === 'meetings' && <MeetingsTab projectId={p.id} />}
       {tab === 'activity' && <ActivityTab projectId={p.id} />}
 
       {newDoc && <DocumentWizard projectId={p.id} onClose={() => setNewDoc(false)} onCreated={(docId) => nav(`/documents/${docId}`)} />}
