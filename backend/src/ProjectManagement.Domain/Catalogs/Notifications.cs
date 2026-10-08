@@ -18,7 +18,7 @@ public static class NotificationCatalog
         new(NotificationType.ProjectUpdated, "Project updates", "A project you are a member of changes status.", true, true, false, false),
         new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, false, true, false),
         new(NotificationType.Nudge, "Reminders from others", "Someone reminds you about work.", true, true, true, false),
-        new(NotificationType.DueSoon, "Due date approaching", "Work assigned to you is due soon (when: Reminders → Settings).", true, false, false, false),
+        new(NotificationType.DueSoon, "Due date approaching", "Work assigned to you is due soon (when: Reminders → Settings).", true, true, false, false),
         new(NotificationType.Overdue, "Overdue work", "Work assigned to you, or that you oversee, is past its due date.", true, true, false, false),
         new(NotificationType.Briefing, "Morning briefing", "Once a day: what is due, overdue and coming up.", true, false, false, false),
         new(NotificationType.PortfolioDigest, "Weekly portfolio brief", "Every Monday: which projects are at risk or delayed, and why. Sent to organization owners and admins.", true, true, false, false),
