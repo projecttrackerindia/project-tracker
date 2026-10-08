@@ -79,6 +79,11 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         if (path.StartsWith("/calendar/v3/calendars/primary/events/"))
         {
             var id = path[(path.LastIndexOf('/') + 1)..];
+            if (request.Method == HttpMethod.Get)
+            {
+                if (!_events.TryGetValue(id, out var existing)) return Json(new { error = new { message = "Not Found" } }, HttpStatusCode.NotFound);
+                return Json(existing);
+            }
             if (request.Method == HttpMethod.Delete)
             {
                 _events.TryRemove(id, out _);
@@ -96,6 +101,23 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
+    /// <summary>A test stands in for "the attendee responded on Google's side" - our own app never sets this, so the only way to put a
+    /// responseStatus on a stored event is this direct, out-of-band mutation, the same way a real person clicking a link in their inbox would.</summary>
+    public void SetResponseStatus(string eventId, string email, string status)
+    {
+        if (!_events.TryGetValue(eventId, out var existing)) return;
+        var attendees = new List<object>();
+        if (existing.TryGetProperty("attendees", out var list))
+            foreach (var a in list.EnumerateArray())
+            {
+                var aEmail = a.GetProperty("email").GetString();
+                var aStatus = string.Equals(aEmail, email, StringComparison.OrdinalIgnoreCase) ? status : (a.TryGetProperty("responseStatus", out var r) ? r.GetString() : "needsAction");
+                attendees.Add(new { email = aEmail, responseStatus = aStatus });
+            }
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new { attendees }));
+        _events[eventId] = Merge(eventId, doc.RootElement, existing);
+    }
+
     /// <summary>Builds (or updates) the event JSON the client expects back: an id, htmlLink, and - the first time, or whenever the request
     /// asked for one - a conferenceData block with a fake Meet entry point, the way Calendar really answers conferenceDataVersion=1.</summary>
     private static JsonElement Merge(string id, JsonElement req, JsonElement? existing = null)
@@ -107,6 +129,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
             summary = Prop(req, "summary") ?? Prop(existing, "summary"),
             start = req.TryGetProperty("start", out var s) ? s : existing?.GetProperty("start"),
             end = req.TryGetProperty("end", out var e) ? e : existing?.GetProperty("end"),
+            attendees = req.TryGetProperty("attendees", out var at) ? at : (existing?.TryGetProperty("attendees", out var ea) == true ? ea : (object?)null),
             conferenceData = req.TryGetProperty("conferenceData", out _) || existing is null
                 ? new { conferenceId = $"meet-{id}", entryPoints = new[] { new { entryPointType = "video", uri = $"https://meet.google.com/{id}" } } }
                 : (object?)(existing?.TryGetProperty("conferenceData", out var cd) == true ? cd : null),

@@ -54,6 +54,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Cache__EntitlementSeconds", "0"); // most tests change plans directly in the database; cache tests switch it on themselves
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
+        Environment.SetEnvironmentVariable("GoogleMeetSync__WorkerEnabled", "false"); // tests run the RSVP sync engine explicitly
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
         Environment.SetEnvironmentVariable("Ai__Chat__CompactAfterMessages", "8"); // small, so a test can reach the point where an AI conversation is summarized

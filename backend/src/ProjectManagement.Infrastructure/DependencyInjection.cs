@@ -114,6 +114,8 @@ public static class DependencyInjection
         services.AddHostedService<WebhookWorker>();
         services.Configure<SlaOptions>(config.GetSection(SlaOptions.Section));
         services.AddHostedService<SlaWorker>();
+        services.Configure<GoogleMeetSyncOptions>(config.GetSection(GoogleMeetSyncOptions.Section));
+        services.AddHostedService<GoogleMeetSyncWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
         services.Configure<ReminderOptions>(config.GetSection(ReminderOptions.Section));

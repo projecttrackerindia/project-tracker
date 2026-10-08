@@ -35,4 +35,13 @@ public class MeetingsController(MeetingService meetings) : ApiControllerBase
         await meetings.CancelAsync(id, ct);
         return NoContent();
     }
+
+    [HttpPost("reschedule")]
+    public async Task<IActionResult> Reschedule(Guid id, [FromBody] RescheduleMeetingRequest req, CancellationToken ct) => Ok(await meetings.RescheduleAsync(id, req, ct));
+
+    [HttpPost("participants")]
+    public async Task<IActionResult> AddParticipant(Guid id, [FromBody] AddMeetingParticipantRequest req, CancellationToken ct) => Ok(await meetings.AddParticipantAsync(id, req, ct));
+
+    [HttpDelete("participants/{userId:guid}")]
+    public async Task<IActionResult> RemoveParticipant(Guid id, Guid userId, CancellationToken ct) => Ok(await meetings.RemoveParticipantAsync(id, userId, ct));
 }

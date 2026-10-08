@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Tests.Infrastructure;
 
 namespace ProjectManagement.Tests;
@@ -180,5 +181,127 @@ public class ProjectMeetingTests(ApiFactory factory)
         Assert.Equal(2, cards.Count);   // the original "scheduled" card, plus a new "cancelled" one - never edited in place
         var cancelledBody = System.Text.Json.Nodes.JsonNode.Parse(cards.First(c => System.Text.Json.Nodes.JsonNode.Parse(c!["body"]!.GetValue<string>())!["status"]!.GetValue<string>() == "Cancelled")!["body"]!.GetValue<string>())!;
         Assert.Equal("Cancelled", cancelledBody["status"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Rescheduling_moves_the_meeting_and_an_ordinary_member_cannot_do_it()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
+        var project = await owner.CreateProjectAsync("Employee Portal");
+        await ConnectGoogleAsync(owner);
+        var member = await owner.AddMemberAsync(factory, Domain.Enums.TenantRole.Member, "Kiran");
+        await owner.Post($"/api/v1/projects/{project}/members", new { userId = member.UserId });
+        var created = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { });
+        var meetingId = created.Data!["id"]!.GetValue<string>();
+
+        var newStart = DateTimeOffset.UtcNow.AddDays(2);
+        var denied = await member.Post($"/api/v1/meetings/{meetingId}/reschedule", new { startTime = newStart, endTime = newStart.AddMinutes(30) });
+        Assert.Equal(HttpStatusCode.Forbidden, denied.Status);
+
+        var res = await owner.Post($"/api/v1/meetings/{meetingId}/reschedule", new { startTime = newStart, endTime = newStart.AddMinutes(30) });
+        Assert.True(res.Ok, res.ToString());
+        // DateTimeOffset (not DateTime): its equality compares the instant regardless of which offset the two sides happen to be expressed
+        // in, where plain DateTime would wrongly fail here since the response round-trips through this machine's local offset.
+        Assert.True((newStart - res.Data!["startTime"]!.GetValue<DateTimeOffset>()).Duration() < TimeSpan.FromSeconds(1));
+
+        var backwards = await owner.Post($"/api/v1/meetings/{meetingId}/reschedule", new { startTime = newStart, endTime = newStart.AddMinutes(-5) });
+        Assert.Equal("VALIDATION_FAILED", backwards.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Adding_and_removing_a_participant_updates_the_meeting_and_rejects_someone_outside_the_project()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
+        var project = await owner.CreateProjectAsync("Employee Portal");
+        await ConnectGoogleAsync(owner);
+        var teammate = await owner.AddMemberAsync(factory, Domain.Enums.TenantRole.Member, "Naveen");
+        await owner.Post($"/api/v1/projects/{project}/members", new { userId = teammate.UserId });
+        var outsider = await owner.AddMemberAsync(factory, Domain.Enums.TenantRole.Member, "Outsider");
+        var created = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { participantUserIds = Array.Empty<string>() });
+        var meetingId = created.Data!["id"]!.GetValue<string>();
+        Assert.Single(created.Data["participants"]!.AsArray());   // organizer only, since an empty list was requested explicitly
+
+        var rejected = await owner.Post($"/api/v1/meetings/{meetingId}/participants", new { userId = outsider.UserId });
+        Assert.Equal("VALIDATION_FAILED", rejected.ErrorCode);
+
+        var add = await owner.Post($"/api/v1/meetings/{meetingId}/participants", new { userId = teammate.UserId });
+        Assert.True(add.Ok, add.ToString());
+        Assert.Equal(2, add.Data!["participants"]!.AsArray().Count);
+
+        var dupe = await owner.Post($"/api/v1/meetings/{meetingId}/participants", new { userId = teammate.UserId });
+        Assert.Equal("ALREADY_INVITED", dupe.ErrorCode);
+
+        var remove = await owner.Delete($"/api/v1/meetings/{meetingId}/participants/{teammate.UserId}");
+        Assert.True(remove.Ok, remove.ToString());
+        Assert.Single(remove.Data!["participants"]!.AsArray());
+
+        var removeOrganizer = await owner.Delete($"/api/v1/meetings/{meetingId}/participants/{owner.UserId}");
+        Assert.Equal("ORGANIZER_REQUIRED", removeOrganizer.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Rsvp_status_is_synchronized_from_google_when_the_meeting_is_read_and_never_written_locally()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
+        var project = await owner.CreateProjectAsync("Employee Portal");
+        await ConnectGoogleAsync(owner);
+        var teammate = await owner.AddMemberAsync(factory, Domain.Enums.TenantRole.Member, "Sridhar");
+        await owner.Post($"/api/v1/projects/{project}/members", new { userId = teammate.UserId });
+        var created = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { });
+        var meetingId = created.Data!["id"]!.GetValue<string>();
+        var eventId = factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().First(m => m.Id == Guid.Parse(meetingId)).GoogleCalendarEventId);
+
+        var before = await owner.Get($"/api/v1/meetings/{meetingId}");
+        var teammateBefore = before.Data!["participants"]!.AsArray().First(p => p!["userId"]!.GetValue<string>() == teammate.UserId.ToString());
+        Assert.Equal("NeedsAction", teammateBefore!["rsvpStatus"]!.GetValue<string>());
+
+        // The teammate "accepts" directly on Google's side (a calendar invite reply) - never through a Project Tracker endpoint of our own.
+        factory.GoogleCalendar.SetResponseStatus(eventId, teammate.Email, "accepted");
+
+        var after = await owner.Get($"/api/v1/meetings/{meetingId}");
+        var teammateAfter = after.Data!["participants"]!.AsArray().First(p => p!["userId"]!.GetValue<string>() == teammate.UserId.ToString());
+        Assert.Equal("Accepted", teammateAfter!["rsvpStatus"]!.GetValue<string>());
+
+        // And the same holds through the list endpoint, not only the single-meeting read.
+        var list = await owner.Get($"/api/v1/projects/{project}/meetings");
+        var fromList = list.Data!.AsArray().First(m => m!["id"]!.GetValue<string>() == meetingId)!["participants"]!.AsArray().First(p => p!["userId"]!.GetValue<string>() == teammate.UserId.ToString());
+        Assert.Equal("Accepted", fromList!["rsvpStatus"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_meeting_is_completely_invisible_to_a_different_tenant_even_by_its_own_id()
+    {
+        var ownerA = await TestClient.RegisterAsync(factory, "Tenant A Owner");
+        await ownerA.CreateOrgAsync();
+        var projectA = await ownerA.CreateProjectAsync("Tenant A Project");
+        await ConnectGoogleAsync(ownerA);
+        var meetingA = await ownerA.Post($"/api/v1/projects/{projectA}/meetings/start", new { });
+        var meetingAId = meetingA.Data!["id"]!.GetValue<string>();
+
+        var ownerB = await TestClient.RegisterAsync(factory, "Tenant B Owner");
+        await ownerB.CreateOrgAsync();
+        var projectB = await ownerB.CreateProjectAsync("Tenant B Project");
+
+        // Tenant B cannot read tenant A's meeting directly by id (the generic tenant query filter, not a bespoke check, is what hides it).
+        var directRead = await ownerB.Get($"/api/v1/meetings/{meetingAId}");
+        Assert.Equal(HttpStatusCode.NotFound, directRead.Status);
+
+        // Nor can tenant B act on it.
+        Assert.Equal(HttpStatusCode.NotFound, (await ownerB.Post($"/api/v1/meetings/{meetingAId}/cancel")).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await ownerB.Post($"/api/v1/meetings/{meetingAId}/reschedule", new { startTime = DateTimeOffset.UtcNow.AddDays(1), endTime = DateTimeOffset.UtcNow.AddDays(1).AddMinutes(30) })).Status);
+
+        // Nor does tenant A's meeting ever appear in tenant B's own (empty) project meeting list.
+        var listB = await ownerB.Get($"/api/v1/projects/{projectB}/meetings");
+        Assert.Empty(listB.Data!.AsArray());
+
+        // And tenant A still sees it perfectly normally.
+        var ownReadA = await ownerA.Get($"/api/v1/meetings/{meetingAId}");
+        Assert.True(ownReadA.Ok, ownReadA.ToString());
     }
 }

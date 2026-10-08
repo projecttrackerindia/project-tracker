@@ -39,7 +39,8 @@ public sealed class AiToolException(string message) : Exception(message);
 /// assistant change anything on its own.
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
-    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ILogger<AiToolbox> log)
+    WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents,
+    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -49,9 +50,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
         UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work",
-        CreateDocument = "propose_create_document";
+        CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
-    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument];
+    public static readonly string[] WriteTools = [CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument, StartMeeting, ScheduleMeeting];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -103,6 +104,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """),
             new(HistoryInsights, "What past data says: on-time delivery rate, cycle time, estimate accuracy, weekly pace, projects with the most overdue work, who delivers on time (where the person may see it). Use to forecast, find causes and ground recommendations.",
                 """{"type":"object","properties":{"project":{"type":"string","description":"Optional project key or name; default all the person can see."},"days":{"type":"integer","description":"Look-back window, 14 to 365. Default 90."}},"required":[]}"""),
+            new(ListMeetings, "List a project's Google Meet meetings, upcoming and recent past, with who organized each one and their real RSVP status (accepted, declined, tentative, or awaiting a response) straight from Google Calendar. Use for 'what meetings are scheduled', 'who accepted tomorrow's meeting'.",
+                """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."}},"required":["project"]}"""),
         };
         if (!actionsAllowed) return tools;
         tools.AddRange(
@@ -166,6 +169,17 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "team":{"type":"string","description":"Optional: a team name, when there's no project."},
                  "tags":{"type":"array","items":{"type":"string"}}},"required":["title","content"]}
                 """),
+            new(StartMeeting, "Propose starting a Google Meet right now on a project (an hour long by default). Every project member is invited unless specific people are named. The person confirms first, and needs their own Google account connected (Settings > Google Workspace) - if they have not connected it, say so rather than guessing why it failed.",
+                """
+                {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string","description":"Default: \"<project name> Discussion\"."},
+                 "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project"]}
+                """),
+            new(ScheduleMeeting, "Propose scheduling a Google Meet on a project for a specific time. The person confirms first, and needs their own Google account connected (Settings > Google Workspace).",
+                """
+                {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"agenda":{"type":"string","description":"Optional description/agenda."},
+                 "at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"duration_minutes":{"type":"integer","description":"Default 30."},
+                 "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project","title","at"]}
+                """),
         ]);
         return tools;
     }
@@ -203,6 +217,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 CreateReminder => await ProposeReminderAsync(a, timeZone, ct),
                 SendReport => await ProposeReportAsync(a, ct),
                 CreateDocument => await ProposeDocumentAsync(a, ct),
+                ListMeetings => await ListMeetingsAsync(a, ct),
+                StartMeeting => await ProposeStartMeetingAsync(a, ct),
+                ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
                 _ => throw new AiToolException($"There is no tool called {name}."),
             };
         }
@@ -588,6 +605,56 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         }
         var payload = new { title = text, at = ZoneTime.Write(local), timeZone = zone, forUserId = other?.Id, forName = other?.Name, targetType, targetId };
         return Propose("reminder", $"Remind {(other is null ? "you" : other.Name)}: “{text}”", $"{local:ddd d MMM yyyy, HH:mm}{(aboutKey is null ? "" : $" — about {aboutKey}")}", payload);
+    }
+
+    private async Task<AiToolOutcome> ListMeetingsAsync(JsonElement a, CancellationToken ct)
+    {
+        var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        if (project.IsPending) return new AiToolOutcome($"{project.Label} does not exist yet.", "Looked for meetings", 0);
+        var list = await meetings.ListAsync(project.Id, ct);
+        if (list.Count == 0) return new AiToolOutcome($"No Google Meet meetings on {project.Label}.", "Looked for meetings", 0);
+        var shown = list.Take(ListCap).Select(m =>
+            $"{m.Title} | {m.Status} | {m.StartTime:yyyy-MM-dd HH:mm}–{m.EndTime:HH:mm} UTC | organizer {m.OrganizerName} | " +
+            string.Join(", ", m.Participants.Where(p => p.Role != "Organizer").Select(p => $"{p.Name}:{p.RsvpStatus}")));
+        return new AiToolOutcome(string.Join("\n", shown), $"Found {list.Count} meeting(s) on {project.Label}", list.Count);
+    }
+
+    /// <summary>Names of invited participants, resolved to ids (null when none were named, meaning "default to every project member" -
+    /// MeetingService.CreateAsync's own default, not re-implemented here).</summary>
+    private async Task<List<Guid>?> ParticipantIdsAsync(JsonElement a, CancellationToken ct)
+    {
+        var names = Strs(a, "participants");
+        if (names.Count == 0) return null;
+        var ids = new List<Guid>();
+        foreach (var n in names) ids.Add((await PersonAsync(n, ct)).Id);
+        return ids;
+    }
+
+    private async Task<AiToolOutcome> ProposeStartMeetingAsync(JsonElement a, CancellationToken ct)
+    {
+        var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        if (project.IsPending) throw new AiToolException($"{project.Label} does not exist yet. Confirm its creation first.");
+        var title = Str(a, "title");
+        var participantIds = await ParticipantIdsAsync(a, ct);
+        var payload = new { projectId = project.Id, title, participantUserIds = participantIds };
+        var summary = $"In {project.Label}{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
+        return Propose("start_meeting", $"Start a Google Meet{(title is null ? "" : $" “{title}”")}", summary, payload);
+    }
+
+    private async Task<AiToolOutcome> ProposeScheduleMeetingAsync(JsonElement a, string? timeZone, CancellationToken ct)
+    {
+        var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        if (project.IsPending) throw new AiToolException($"{project.Label} does not exist yet. Confirm its creation first.");
+        var title = Title(a);
+        if (!ZoneTime.TryParseLocal(Str(a, "at"), out var local)) throw new AiToolException("Give the start time as yyyy-mm-ddTHH:mm, in the person's own time.");
+        var zone = ZoneTime.IsKnown(timeZone) ? timeZone!.Trim() : "UTC";
+        var startUtc = ZoneTime.ToUtc(local, ZoneTime.Find(zone));
+        if (startUtc <= clock.Now) throw new AiToolException("That time has already passed; choose a later one.");
+        var minutes = a.TryGetProperty("duration_minutes", out var dm) && dm.ValueKind == JsonValueKind.Number ? Math.Clamp(dm.GetInt32(), 5, 480) : 30;
+        var participantIds = await ParticipantIdsAsync(a, ct);
+        var payload = new { projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds };
+        var summary = $"In {project.Label} — {local:ddd d MMM yyyy, HH:mm} ({zone}), {minutes} minutes{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
+        return Propose("schedule_meeting", $"Schedule a Google Meet “{title}”", summary, payload, Str(a, "agenda"));
     }
 
     /// <summary>An action item by its number (AI-4), as the person may open it: it belongs to a project and is visible with it.</summary>

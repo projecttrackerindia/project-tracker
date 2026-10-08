@@ -8,6 +8,9 @@ namespace ProjectManagement.Application.Features.Integrations;
 
 public record GoogleMeetingAttendee(string Email, bool Optional = false);
 public record CreatedGoogleMeeting(string EventId, string MeetUri, string? MeetSpaceName, string HtmlLink);
+/// <summary>One attendee's real RSVP, straight from Google: "needsAction", "accepted", "declined" or "tentative" - the authoritative state,
+/// never invented locally (spec section 11).</summary>
+public record GoogleAttendeeStatus(string Email, string ResponseStatus);
 
 /// <summary>Google's own error response. Never shown to the person as-is - callers turn it into one of the plain-language messages the
 /// product requires (e.g. "We couldn't create the Google Meet right now. Please try again."); the technical detail stays server-side.</summary>
@@ -58,6 +61,42 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
         var payload = new { start = new { dateTime = startUtc.ToString("o"), timeZone }, end = new { dateTime = endUtc.ToString("o"), timeZone } };
         var doc = await SendAsync(HttpMethod.Patch, $"{EventsUrl}/{eventId}?sendUpdates=all", token, payload, "reschedule", ct);
         return Parse(doc);
+    }
+
+    /// <summary>Replaces the event's attendee list outright (Calendar's PATCH replaces the whole field when it is sent, not merges it) - used
+    /// to add or remove a participant. Existing attendees not included in <paramref name="attendees"/> are dropped from the invitation.</summary>
+    public async Task<CreatedGoogleMeeting> UpdateAttendeesAsync(Guid organizerUserId, string eventId, IReadOnlyList<GoogleMeetingAttendee> attendees, CancellationToken ct = default)
+    {
+        var token = await auth.GetAccessTokenAsync(organizerUserId, ct);
+        var payload = new { attendees = attendees.Select(a => new { email = a.Email, optional = a.Optional }) };
+        var doc = await SendAsync(HttpMethod.Patch, $"{EventsUrl}/{eventId}?sendUpdates=all", token, payload, "update participants", ct);
+        return Parse(doc);
+    }
+
+    /// <summary>Each attendee's real response, straight from the Calendar event - the only place RSVP ever comes from (spec section 11:
+    /// "do not implement our own fake accept/decline system").</summary>
+    public async Task<IReadOnlyList<GoogleAttendeeStatus>> GetAttendeeStatusAsync(Guid organizerUserId, string eventId, CancellationToken ct = default)
+    {
+        var token = await auth.GetAccessTokenAsync(organizerUserId, ct);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{EventsUrl}/{eventId}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var res = await http.CreateClient("google-calendar").SendAsync(req, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        // Gone/NotFound: the organizer (or someone) deleted the event directly in Calendar. Nothing to report - the caller keeps whatever
+        // RSVP state it last knew, rather than failing a page load over an event that no longer exists on Google's side.
+        if (res.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone) return [];
+        if (!res.IsSuccessStatusCode)
+        {
+            log.LogWarning("Google Calendar attendee read failed for event {EventId}: {Status} {Body}", eventId, (int)res.StatusCode, body.Length > 300 ? body[..300] : body);
+            throw new GoogleApiException("read attendees", res.StatusCode, body);
+        }
+        var doc = JsonDocument.Parse(body).RootElement;
+        if (!doc.TryGetProperty("attendees", out var list)) return [];
+        var result = new List<GoogleAttendeeStatus>();
+        foreach (var a in list.EnumerateArray())
+            if (a.TryGetProperty("email", out var e) && e.GetString() is { } email)
+                result.Add(new GoogleAttendeeStatus(email, a.TryGetProperty("responseStatus", out var r) ? r.GetString() ?? "needsAction" : "needsAction"));
+        return result;
     }
 
     /// <summary>Cancels the event; Calendar notifies every attendee itself (sendUpdates=all).</summary>

@@ -28,7 +28,8 @@ public sealed record AiActionResult(string? Link);
 /// made the change by hand.
 /// </summary>
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
-    ReminderService reminders, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email, ILogger<AiActionRunner> log)
+    ReminderService reminders, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
+    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -91,6 +92,19 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                     ? tagsEl.EnumerateArray().Select(t => t.GetString()!).ToList() : null;
                 var d = await documents.CreateAsync(new CreateDocumentRequest(Str(a, "title")!, Guid(a, "typeId")!.Value, Guid(a, "projectId"), Guid(a, "teamId"), null, tags, sections), ct);
                 return new AiActionResult($"/documents/{d.Item.Id}");
+            }
+            case "start_meeting":
+            {
+                var projectId = Guid(a, "projectId")!.Value;
+                var m = await meetings.StartNowAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.StartMeetingRequest(Str(a, "title"), Guids(a, "participantUserIds")), ct);
+                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}");
+            }
+            case "schedule_meeting":
+            {
+                var projectId = Guid(a, "projectId")!.Value;
+                var m = await meetings.ScheduleAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.ScheduleMeetingRequest(
+                    Str(a, "title")!, Str(a, "description"), DateTimeOffset.Parse(Str(a, "startTime")!), DateTimeOffset.Parse(Str(a, "endTime")!), Str(a, "timeZone") ?? "UTC", Guids(a, "participantUserIds")), ct);
+                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}");
             }
             default:
                 throw new ValidationException("action", "This kind of suggestion is not supported.");
@@ -176,6 +190,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
 
     private static string? Str(JsonElement a, string n) => a.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     private static Guid? Guid(JsonElement a, string n) => Str(a, n) is { } s && System.Guid.TryParse(s, out var g) ? g : null;
+    private static List<Guid>? Guids(JsonElement a, string n) => a.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Select(x => System.Guid.Parse(x.GetString()!)).ToList() : null;
     private static DateOnly? Date(JsonElement a, string n) => DateOnly.TryParse(Str(a, n), out var d) ? d : null;
     private static Priority Prio(JsonElement a) => Enum.TryParse<Priority>(Str(a, "priority"), true, out var p) ? p : Priority.Medium;
 }
