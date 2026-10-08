@@ -47,6 +47,26 @@ namespace ProjectManagement.Domain.Entities
     }
 
     /// <summary>
+    /// One person's Google account, connected so Project Tracker can create Calendar events with a Google Meet conference on their behalf.
+    /// Per-user (not a shared workspace credential): a meeting is organized as the Project Tracker user who scheduled it, which is only
+    /// possible when each organizer has their own Google grant. The refresh token is encrypted at rest and is never sent to the browser;
+    /// the short-lived access token is cached here purely to avoid a refresh on every call and is also encrypted.
+    /// </summary>
+    public class GoogleConnection : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        public string GoogleEmail { get; set; } = "";
+        public string RefreshTokenProtected { get; set; } = "";
+        public string? AccessTokenProtected { get; set; }
+        public DateTime? AccessTokenExpiresAt { get; set; }
+        /// <summary>Space-separated OAuth scopes actually granted (Google may grant fewer than requested).</summary>
+        public string Scopes { get; set; } = "";
+        public DateTime ConnectedAt { get; set; }
+        public DateTime? LastSyncAt { get; set; }
+        public string? LastError { get; set; }
+    }
+
+    /// <summary>
     /// A connection to a GitHub or Azure DevOps repository host. Its push and pull-request events are posted to a URL containing the token
     /// and checked with the secret; commits that mention a task key (WEB-12, WT-5) are linked to it.
     /// </summary>

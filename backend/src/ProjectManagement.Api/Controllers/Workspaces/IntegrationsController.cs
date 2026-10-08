@@ -12,8 +12,23 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>Setting up integrations: the work mailbox, repository connections, my calendar subscription, development links on tasks, and the data policy.</summary>
 [Route("api/v1"), RequireWorkspace]
-public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data) : ApiControllerBase
+public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data, GoogleCalendarAuthService google) : ApiControllerBase
 {
+    // ---- Google Workspace (Calendar + Meet): one connection per person, not a shared workspace credential - see GoogleCalendarAuthService.
+    [HttpGet("integrations/google/status")]
+    public async Task<IActionResult> GoogleStatus(CancellationToken ct) => Ok(await google.StatusAsync(ct));
+
+    /// <summary>Redirects straight to Google's consent screen (the frontend navigates the whole page here, the same way it does for "Sign in with Google").</summary>
+    [HttpGet("integrations/google/connect")]
+    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct) => Redirect(await google.StartConnectAsync(returnUrl, ct));
+
+    [HttpPost("integrations/google/disconnect")]
+    public async Task<IActionResult> GoogleDisconnect(CancellationToken ct)
+    {
+        await google.DisconnectAsync(ct);
+        return NoContent();
+    }
+
     // ---- email to work task
     [HttpGet("integrations/inbound-email"), RequireModule(Modules.Work)]
     public async Task<IActionResult> Mailbox(CancellationToken ct) => Ok(await inbound.GetAsync(ct));
@@ -74,8 +89,17 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
 /// Azure DevOps reporting pushes and pull requests. Each is authorised by the secret token in its URL (plus a signature for Git).
 /// </summary>
 [Route("api/v1"), AllowAnonymous]
-public class InboundController(IServiceProvider services) : ApiControllerBase
+public class InboundController(IServiceProvider services, GoogleCalendarAuthService google) : ApiControllerBase
 {
+    /// <summary>
+    /// Google's redirect back after the person grants (or refuses) Calendar/Meet access. No Project Tracker session reaches this request -
+    /// the refresh cookie is scoped to /api/v1/auth, and a full-page redirect through Google loses the in-memory access token - so who
+    /// started this is recovered entirely from the one-time state GoogleCalendarAuthService.StartConnectAsync saved, not from being signed in now.
+    /// </summary>
+    [HttpGet("integrations/google/callback")]
+    public async Task<IActionResult> GoogleCallback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct)
+        => Redirect(await google.CompleteConnectAsync(code, state, error, ct));
+
     [HttpGet("calendar/feed/{token}.ics")]
     public async Task<IActionResult> CalendarFeed(string token, CancellationToken ct)
     {

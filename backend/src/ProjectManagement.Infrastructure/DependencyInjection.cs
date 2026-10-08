@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.Configure<MfaOptions>(config.GetSection(MfaOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.InboundEmailOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.InboundEmailOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Ai.AiOptions>(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section));
 
         var provider = config["Database:Provider"] ?? "Postgres";
@@ -65,6 +66,7 @@ public static class DependencyInjection
 
         // Single sign-on and social sign-in: identity providers are reached through the "oidc" HTTP client.
         services.AddHttpClient("oidc", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IOidcProtocol, OidcProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IGitHubOAuth, GitHubOAuth>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IAppleClientSecret, AppleClientSecret>();

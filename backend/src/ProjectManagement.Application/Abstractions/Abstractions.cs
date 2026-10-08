@@ -88,6 +88,9 @@ public interface IAppDbContext
     DbSet<CalendarFeed> CalendarFeeds { get; }
     DbSet<InboundMailbox> InboundMailboxes { get; }
     DbSet<GitConnection> GitConnections { get; }
+    DbSet<GoogleConnection> GoogleConnections { get; }
+    DbSet<ProjectMeeting> ProjectMeetings { get; }
+    DbSet<MeetingParticipant> MeetingParticipants { get; }
     DbSet<DevLink> DevLinks { get; }
     DbSet<TenantDataPolicy> TenantDataPolicies { get; }
     DbSet<AutomationRun> AutomationRuns { get; }

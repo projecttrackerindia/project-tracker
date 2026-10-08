@@ -90,6 +90,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
     public DbSet<CalendarFeed> CalendarFeeds => Set<CalendarFeed>();
     public DbSet<InboundMailbox> InboundMailboxes => Set<InboundMailbox>();
     public DbSet<GitConnection> GitConnections => Set<GitConnection>();
+    public DbSet<GoogleConnection> GoogleConnections => Set<GoogleConnection>();
+    public DbSet<ProjectMeeting> ProjectMeetings => Set<ProjectMeeting>();
+    public DbSet<MeetingParticipant> MeetingParticipants => Set<MeetingParticipant>();
     public DbSet<DevLink> DevLinks => Set<DevLink>();
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
@@ -191,6 +194,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
         builder.Properties<AccessRequestStatus>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<GrantPrincipal>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<DocAccessLevel>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<MeetingStatus>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<AttendeeRsvpStatus>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<MeetingParticipantRole>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -690,6 +696,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContex
             e.Property(x => x.Token).HasMaxLength(40);
             e.Property(x => x.SecretProtected).HasMaxLength(300);
             e.Property(x => x.LastError).HasMaxLength(300);
+        });
+        b.Entity<GoogleConnection>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.GoogleEmail).HasMaxLength(320);
+            e.Property(x => x.RefreshTokenProtected).HasMaxLength(2000);
+            e.Property(x => x.AccessTokenProtected).HasMaxLength(2000);
+            e.Property(x => x.Scopes).HasMaxLength(500);
+            e.Property(x => x.LastError).HasMaxLength(300);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectMeeting>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.StartTimeUtc });
+            e.HasIndex(x => x.GoogleCalendarEventId);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(4000);
+            e.Property(x => x.TimeZone).HasMaxLength(60);
+            e.Property(x => x.GoogleCalendarEventId).HasMaxLength(200);
+            e.Property(x => x.GoogleMeetSpaceName).HasMaxLength(200);
+            e.Property(x => x.GoogleMeetUri).HasMaxLength(300);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<MeetingParticipant>(e =>
+        {
+            e.HasIndex(x => new { x.MeetingId, x.Email }).IsUnique();
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.Property(x => x.GoogleAttendeeId).HasMaxLength(200);
+            e.HasOne(x => x.Meeting).WithMany(m => m.Participants).HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.SetNull);
         });
         b.Entity<DevLink>(e =>
         {

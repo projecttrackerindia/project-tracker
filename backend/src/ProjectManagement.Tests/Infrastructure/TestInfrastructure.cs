@@ -66,10 +66,15 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Proxy__Trust", "true"); // lets tests simulate a caller address via X-Forwarded-For (org IP-allowlist tests)
         Environment.SetEnvironmentVariable("Auth__Google__ClientId", "google-client");   // social sign-in tests (the fake provider answers for Google)
         Environment.SetEnvironmentVariable("Auth__Google__ClientSecret", "google-secret");
+        Environment.SetEnvironmentVariable("GoogleCalendar__ClientId", "google-cal-client");   // a separate client from sign-in: Calendar/Meet scopes, not identity
+        Environment.SetEnvironmentVariable("GoogleCalendar__ClientSecret", "google-cal-secret");
+        Environment.SetEnvironmentVariable("GoogleCalendar__RedirectUri", "https://testhost/api/v1/integrations/google/callback");
     }
 
     /// <summary>Stands in for OpenID Connect providers (single sign-on and Google): every "oidc" HTTP call lands here.</summary>
     public FakeIdentityProvider Idp { get; } = new();
+    /// <summary>Stands in for Google's OAuth token endpoint and the Calendar API: every "google-calendar" HTTP call lands here.</summary>
+    public FakeGoogleCalendar GoogleCalendar { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -96,6 +101,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ProjectManagement.Application.Features.Integrations.IWebhookTransport>();
             services.AddSingleton<ProjectManagement.Application.Features.Integrations.IWebhookTransport>(Webhooks);
             services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => Idp);
+            services.AddHttpClient("google-calendar").ConfigurePrimaryHttpMessageHandler(() => GoogleCalendar);
             services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiClient>();

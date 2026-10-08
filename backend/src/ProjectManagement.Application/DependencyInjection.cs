@@ -72,6 +72,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAccessRequestService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentTraceService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAuditService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.GoogleCalendarAuthService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.GoogleMeetingClient>();
         services.AddSingleton<ProjectManagement.Application.Features.Documents.IDocumentPdfRenderer, ProjectManagement.Application.Features.Documents.DocumentPdfRenderer>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfBuilder>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfJob>();
