@@ -1,5 +1,9 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Features.ProjectMeetings;
+using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
 
 namespace ProjectManagement.Tests;
@@ -239,6 +243,9 @@ public class ProjectMeetingTests(ApiFactory factory)
         Assert.True(remove.Ok, remove.ToString());
         Assert.Single(remove.Data!["participants"]!.AsArray());
 
+        var teammateNotices = await teammate.Get("/api/v1/notifications");
+        Assert.Contains(teammateNotices.Data!["items"]!.AsArray(), n => n!["title"]!.GetValue<string>().Contains("no longer invited"));
+
         var removeOrganizer = await owner.Delete($"/api/v1/meetings/{meetingId}/participants/{owner.UserId}");
         Assert.Equal("ORGANIZER_REQUIRED", removeOrganizer.ErrorCode);
     }
@@ -303,5 +310,45 @@ public class ProjectMeetingTests(ApiFactory factory)
         // And tenant A still sees it perfectly normally.
         var ownReadA = await ownerA.Get($"/api/v1/meetings/{meetingAId}");
         Assert.True(ownReadA.Ok, ownReadA.ToString());
+    }
+
+    /// <summary>GoogleCalendarAuthService.GetAccessTokenAsync looks up GoogleConnection by an explicit userId, but it is still tenant-scoped,
+    /// so the ambient ICurrentContext still has to be right for the row to be visible at all - a background job has no request to supply
+    /// that, so MeetingSyncEngine's own real callers populate it manually the same way this test does.</summary>
+    private IServiceScope AuthenticatedScope(TestClient c)
+    {
+        var scope = factory.Services.CreateScope();
+        var cc = scope.ServiceProvider.GetRequiredService<CurrentContext>();
+        cc.UserId = c.UserId; cc.TenantId = c.WorkspaceId; cc.Role = TenantRole.Owner; cc.WorkspaceType = WorkspaceType.Organization; cc.IsPlatformAdmin = false;
+        return scope;
+    }
+
+    [Fact]
+    public async Task The_background_sync_sends_a_starts_soon_notice_once_and_never_duplicates_it()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
+        var project = await owner.CreateProjectAsync("Employee Portal");
+        await ConnectGoogleAsync(owner);
+        var teammate = await owner.AddMemberAsync(factory, TenantRole.Member, "Sridhar");
+        await owner.Post($"/api/v1/projects/{project}/members", new { userId = teammate.UserId });
+        var start = DateTimeOffset.UtcNow.AddMinutes(10);
+        var created = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new { title = "Standup", startTime = start, endTime = start.AddMinutes(15), timeZone = "UTC" });
+        Assert.True(created.Ok, created.ToString());
+
+        using (var scope = AuthenticatedScope(owner))
+        {
+            var changed = await scope.ServiceProvider.GetRequiredService<MeetingSyncEngine>().RunAsync();
+            Assert.True(changed >= 0);
+        }
+        var notices = await teammate.Get("/api/v1/notifications");
+        var matches = notices.Data!["items"]!.AsArray().Count(n => n!["title"]!.GetValue<string>().Contains("starts in"));
+        Assert.Equal(1, matches);
+
+        // Running it again must not send a second one (the dedupe key, not exact timing, is what stops it).
+        using (var scope = AuthenticatedScope(owner)) await scope.ServiceProvider.GetRequiredService<MeetingSyncEngine>().RunAsync();
+        var noticesAgain = await teammate.Get("/api/v1/notifications");
+        Assert.Equal(1, noticesAgain.Data!["items"]!.AsArray().Count(n => n!["title"]!.GetValue<string>().Contains("starts in")));
     }
 }

@@ -185,7 +185,7 @@ function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose
  * The project header's "Google Meet" entry point (spec section 1): a fast "Start Meeting" plus "Schedule Meeting" and a link to the
  * project's Meetings tab, in a small menu next to the project's other quick actions.
  */
-export function GoogleMeetButton({ projectId, projectName, organizerUserId }: { projectId: string; projectName: string; organizerUserId?: string }) {
+export function GoogleMeetButton({ projectId, projectName, organizerUserId, compact }: { projectId: string; projectName: string; organizerUserId?: string; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -199,9 +199,15 @@ export function GoogleMeetButton({ projectId, projectName, organizerUserId }: { 
   return (
     <>
       <div className="menu-wrap" ref={ref}>
-        <button type="button" className="btn btn-ghost" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="Google Meet">
-          <Icon name="video" /> Google Meet
-        </button>
+        {compact ? (
+          <button type="button" className="btn-icon chat-head-action" aria-haspopup="menu" aria-expanded={open} aria-label="Google Meet" title="Google Meet" onClick={() => setOpen((o) => !o)}>
+            <Icon name="video" size={17} />
+          </button>
+        ) : (
+          <button type="button" className="btn btn-ghost" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="Google Meet">
+            <Icon name="video" /> Google Meet
+          </button>
+        )}
         {open && (
           <div className="menu-pop" role="menu">
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setStarting(true); }}><Icon name="bolt" size={15} /> Start meeting now</button>

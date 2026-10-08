@@ -15,6 +15,9 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     private sealed record Grant(string Email, string Scope);
     private readonly ConcurrentDictionary<string, Grant> _codes = new();
     private readonly ConcurrentDictionary<string, Grant> _refreshTokens = new();
+    /// <summary>Which grant each issued access token belongs to, so /oauth2/v2/userinfo answers for the token actually presented rather than
+    /// an arbitrary grant - this dictionary accumulates across every test in the collection, so "any" grant is never a safe stand-in.</summary>
+    private readonly ConcurrentDictionary<string, Grant> _accessTokens = new();
     private readonly ConcurrentDictionary<string, JsonElement> _events = new();
     public ConcurrentBag<string> AccessTokensIssued { get; } = new();
     public ConcurrentBag<string> RevokedTokens { get; } = new();
@@ -44,13 +47,15 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
                 var refresh = "rt_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
                 _refreshTokens[refresh] = grant;
                 var access = "at_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
+                _accessTokens[access] = grant;
                 AccessTokensIssued.Add(access);
                 return Json(new { access_token = access, refresh_token = refresh, expires_in = 3600, scope = grant.Scope, token_type = "Bearer" });
             }
             if (form.GetValueOrDefault("grant_type") == "refresh_token")
             {
-                if (!_refreshTokens.ContainsKey(form.GetValueOrDefault("refresh_token") ?? "")) return Json(new { error = "invalid_grant" }, HttpStatusCode.BadRequest);
+                if (!_refreshTokens.TryGetValue(form.GetValueOrDefault("refresh_token") ?? "", out var grant)) return Json(new { error = "invalid_grant" }, HttpStatusCode.BadRequest);
                 var access = "at_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
+                _accessTokens[access] = grant;
                 AccessTokensIssued.Add(access);
                 return Json(new { access_token = access, expires_in = 3600, token_type = "Bearer" });
             }
@@ -65,7 +70,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         if (path == "/oauth2/v2/userinfo")
         {
             var auth = request.Headers.Authorization?.Parameter ?? "";
-            var grant = _refreshTokens.Values.FirstOrDefault(); // any issued grant stands in for "whoever this access token belongs to" - fine for tests
+            _accessTokens.TryGetValue(auth, out var grant);
             return Json(new { email = grant?.Email ?? "owner@example.com" });
         }
         if (path.StartsWith("/calendar/v3/calendars/primary/events") && request.Method == HttpMethod.Post)

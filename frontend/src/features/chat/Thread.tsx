@@ -194,7 +194,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
-        {conversation.type === 'Project' && conversation.projectId && <GoogleMeetButton projectId={conversation.projectId} projectName={conversation.name} organizerUserId={me} />}
+        {conversation.type === 'Project' && conversation.projectId && <GoogleMeetButton projectId={conversation.projectId} projectName={conversation.name} organizerUserId={me} compact />}
         {variant === 'page' && (
           <>
             <button className={`btn-icon chat-head-action ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="folder" size={17} /></button>

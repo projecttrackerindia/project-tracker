@@ -26,6 +26,19 @@ function RsvpSummary({ participants }: { participants: Meeting['participants'] }
 
 const RSVP_ICON: Record<Meeting['participants'][number]['rsvpStatus'], string> = { Accepted: '✓', Declined: '✕', Tentative: '?', NeedsAction: '…' };
 
+/** "Live now" between start and end, "Starts in N minutes/hours" within the next couple of hours - otherwise nothing (the date/time line
+ * already says enough for a meeting that is not imminent). */
+function LiveStatus({ m }: { m: Meeting }) {
+  if (m.status !== 'Scheduled') return null;
+  const now = Date.now();
+  const start = new Date(m.startTime).getTime();
+  const end = new Date(m.endTime).getTime();
+  if (now >= start && now < end) return <Badge tone="success">Live now</Badge>;
+  const minutesToStart = Math.round((start - now) / 60_000);
+  if (minutesToStart > 0 && minutesToStart <= 120) return <Badge tone="warning">Starts in {minutesToStart < 60 ? `${minutesToStart} min` : `${Math.round(minutesToStart / 60)} hr`}</Badge>;
+  return null;
+}
+
 /** Reschedule the time, and add or remove participants - organizer only, on a still-scheduled meeting (spec sections 12 and 14). */
 function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; projectId: string; onClose: () => void; onChanged: () => void }) {
   const inHour = new Date(m.startTime);
@@ -115,7 +128,7 @@ function MeetingCard({ m, projectId, canManage, onCancelled }: { m: Meeting; pro
     <article className="card gm-card">
       <div className="gm-card-head">
         <h4>{m.title}</h4>
-        {m.status === 'Cancelled' && <Badge tone="danger">Cancelled</Badge>}
+        {m.status === 'Cancelled' ? <Badge tone="danger">Cancelled</Badge> : <LiveStatus m={m} />}
       </div>
       <p className="muted" style={{ fontSize: 13.5 }}>{formatDateTime(m.startTime)} – {formatDateTime(m.endTime)}</p>
       <p className="muted" style={{ fontSize: 13 }}>Organizer: {m.organizerName} · {m.participants.length} participant{m.participants.length === 1 ? '' : 's'}</p>

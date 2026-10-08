@@ -194,7 +194,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     /// <summary>Removes a participant (never the organizer - cancel the meeting instead).</summary>
     public async Task<MeetingDto> RemoveParticipantAsync(Guid meetingId, Guid userId, CancellationToken ct = default)
     {
-        var meeting = await db.ProjectMeetings.Include(m => m.Participants).Include(m => m.Organizer)
+        var meeting = await db.ProjectMeetings.Include(m => m.Participants).ThenInclude(p => p.User).Include(m => m.Organizer)
             .FirstOrDefaultAsync(m => m.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
         await RequireOrganizerOrEditAsync(meeting, ct);
         if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can have its participants changed.", "MEETING_NOT_SCHEDULED");
@@ -209,6 +209,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         meeting.Participants.Remove(row);   // also drop it from the in-memory collection, so the DTO returned below does not still list them
         recorder.Activity("meeting.participant_removed", "ProjectMeeting", meeting.Id, $"Removed {row.User?.DisplayName ?? row.Email} from \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_removed", "ProjectMeeting", meeting.Id, oldValue: new { UserId = userId, row.Email });
+        if (row.UserId is { } removedId)
+            await notifications.AddAsync(removedId, NotificationType.Meeting, "You are no longer invited to a Google Meet", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
     }
@@ -255,7 +257,11 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         {
             if (p.Role == MeetingParticipantRole.Organizer || !byEmail.TryGetValue(p.Email, out var status)) continue;
             var mapped = status switch { "accepted" => AttendeeRsvpStatus.Accepted, "declined" => AttendeeRsvpStatus.Declined, "tentative" => AttendeeRsvpStatus.Tentative, _ => AttendeeRsvpStatus.NeedsAction };
-            if (p.RsvpStatus != mapped) p.RsvpStatus = mapped;
+            if (p.RsvpStatus == mapped) continue;
+            var old = p.RsvpStatus;
+            p.RsvpStatus = mapped;
+            // Low volume by construction (only when the status actually moved), same as MeetingSyncEngine's background sweep - GOOGLE_MEET_RSVP_UPDATED either way.
+            recorder.Audit("meeting.rsvp_updated", "ProjectMeeting", meeting.Id, oldValue: new { Rsvp = old.ToString(), p.Email }, newValue: new { Rsvp = mapped.ToString(), p.Email });
         }
     }
 
