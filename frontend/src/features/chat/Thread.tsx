@@ -194,7 +194,6 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
-        {conversation.type === 'Project' && conversation.projectId && <GoogleMeetButton projectId={conversation.projectId} projectName={conversation.name} organizerUserId={me} compact />}
         {variant === 'page' && (
           <>
             <button className={`btn-icon chat-head-action ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="folder" size={17} /></button>
@@ -403,6 +402,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   onCancel: () => void; onSent: (m: ChatMessage) => void;
 }) {
   const id = conversation.id;
+  const me = useAuth((s) => s.ctx!.user.id);
   const [text, setText] = useState(() => editing?.body ?? drafts.get(id) ?? '');
   const [isEmpty, setIsEmpty] = useState(() => !text);
   const [marks, setMarks] = useState({ bold: false, italic: false, underline: false });
@@ -609,6 +609,12 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
         </div>
       )}
       <div className="composer-tools" role="toolbar" aria-label="Formatting">
+        {conversation.type === 'Project' && conversation.projectId && !editing && (
+          <>
+            <GoogleMeetButton projectId={conversation.projectId} projectName={conversation.name} organizerUserId={me} toolbar />
+            <span className="composer-tools-sep" aria-hidden="true" />
+          </>
+        )}
         <button type="button" className={`btn-icon sm ${marks.bold ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => applyMark('bold')}
           aria-label="Bold" aria-pressed={marks.bold} title="Bold (Ctrl+B)"><Icon name="bold" size={15} /></button>
         <button type="button" className={`btn-icon sm ${marks.italic ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => applyMark('italic')}

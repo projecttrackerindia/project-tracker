@@ -185,7 +185,7 @@ function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose
  * The project header's "Google Meet" entry point (spec section 1): a fast "Start Meeting" plus "Schedule Meeting" and a link to the
  * project's Meetings tab, in a small menu next to the project's other quick actions.
  */
-export function GoogleMeetButton({ projectId, projectName, organizerUserId, compact }: { projectId: string; projectName: string; organizerUserId?: string; compact?: boolean }) {
+export function GoogleMeetButton({ projectId, projectName, organizerUserId, compact, toolbar }: { projectId: string; projectName: string; organizerUserId?: string; compact?: boolean; toolbar?: boolean }) {
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -199,7 +199,11 @@ export function GoogleMeetButton({ projectId, projectName, organizerUserId, comp
   return (
     <>
       <div className="menu-wrap" ref={ref}>
-        {compact ? (
+        {toolbar ? (
+          <button type="button" className="btn-icon sm" aria-haspopup="menu" aria-expanded={open} aria-label="Google Meet" title="Google Meet" onClick={() => setOpen((o) => !o)}>
+            <Icon name="video" size={15} />
+          </button>
+        ) : compact ? (
           <button type="button" className="btn-icon chat-head-action" aria-haspopup="menu" aria-expanded={open} aria-label="Google Meet" title="Google Meet" onClick={() => setOpen((o) => !o)}>
             <Icon name="video" size={17} />
           </button>
