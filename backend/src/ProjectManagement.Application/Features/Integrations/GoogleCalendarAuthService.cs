@@ -44,8 +44,10 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>calendar.events: create/update/cancel events and invite attendees. meetings.space.created: give the event a Meet conference.
-    /// Deliberately not the broader "calendar" scope (full read/write of every calendar) or anything touching Drive/Gmail.</summary>
-    public const string Scopes = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created";
+    /// userinfo.email: the one thing shown back to the person in Settings ("Connected account: name@work.com") - without it, the userinfo
+    /// endpoint FetchEmailAsync calls returns no email field at all, and the connection would show no address, not an error. Deliberately
+    /// not the broader "calendar" scope (full read/write of every calendar), "profile", or anything touching Drive/Gmail.</summary>
+    public const string Scopes = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created https://www.googleapis.com/auth/userinfo.email";
 
     private sealed record Pending(Guid TenantId, Guid UserId, string ReturnUrl);
 
