@@ -342,6 +342,12 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (was != task.Status) recorder.Activity("worktask.status", "WorkTask", id, $"{key}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
         if (changes.Count > 0) recorder.Activity("worktask.updated", "WorkTask", id, $"{key}: changed {string.Join(", ", changes)}", null);
         if (reassigned) await NotifyAssignedAsync(task, ct);
+        // Everything that is not the reassignment itself (already told above), to whoever is still on the task.
+        var otherChanges = (was != task.Status ? new List<string> { $"status: {Label(was)} → {Label(task.Status)}" } : new List<string>())
+            .Concat(changes.Where(c => c != "assignee")).ToList();
+        if (otherChanges.Count > 0)
+            foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
+                await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", otherChanges), LinkOf(id), ct: ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Tasks;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
@@ -100,7 +101,8 @@ public static partial class ProjectMetrics
 
 public class ProjectService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
-    EntitlementService entitlements, ProjectAccess access, TaskCompletionService completion, TimelineTemplateService timelines, DueDateHistory dueHistory, ProjectGroupService groupService)
+    EntitlementService entitlements, ProjectAccess access, TaskCompletionService completion, TimelineTemplateService timelines, DueDateHistory dueHistory,
+    ProjectGroupService groupService, NotificationService notifications)
 {
     private static readonly (string Name, StatusCategory Category, string Color)[] DefaultStatuses =
     [
@@ -373,6 +375,9 @@ public class ProjectService(
         {
             recorder.Activity("project.status_changed", "Project", id, $"Changed project \"{project.Name}\" status: {oldStatus} → {req.Status}", id, oldStatus.ToString(), req.Status.ToString());
             recorder.Audit("project.status_changed", "Project", id, oldStatus.ToString(), req.Status.ToString());
+            var memberIds = await db.ProjectMembers.Where(m => m.ProjectId == id).Select(m => m.UserId).ToListAsync(ct);
+            foreach (var who in memberIds.Append(project.OwnerId).Distinct())
+                await notifications.AddAsync(who, NotificationType.ProjectUpdated, $"\"{project.Name}\" is now {req.Status}", $"Status changed: {oldStatus} → {req.Status}", $"/projects/{id}", ct: ct);
         }
         if (dueNote is not null)
         {

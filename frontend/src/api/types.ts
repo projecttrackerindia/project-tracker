@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }

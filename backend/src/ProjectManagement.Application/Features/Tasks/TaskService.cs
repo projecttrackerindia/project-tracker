@@ -328,6 +328,21 @@ public class TaskService(
         if (oldStatus == status.Name && oldAssignee == task.AssigneeId && oldDue == task.DueDate && oldPriority == task.Priority && oldStart == task.StartDate && !stageMoved && !renamed)
             recorder.Activity("task.updated", "Task", id, $"Updated task {key} \"{task.Title}\"", task.ProjectId);
 
+        // Reassignment already tells the new assignee (TaskAssigned, above); this is everything else that changed, to whoever is still
+        // on the task (assignee and reporter), so a watcher is not left to notice a status/date/priority/title change on their own.
+        var changeNotes = new List<string>();
+        if (oldStatus != status.Name) changeNotes.Add($"status: {oldStatus} → {status.Name}");
+        if (dueNote is not null) changeNotes.Add(DueDateHistory.Describe(oldDue, task.DueDate, dueNote.Reason));
+        if (oldPriority != task.Priority) changeNotes.Add($"priority: {oldPriority} → {task.Priority}");
+        if (oldStart != task.StartDate) changeNotes.Add("start date changed");
+        if (renamed) changeNotes.Add($"renamed to “{task.Title}”");
+        if (changeNotes.Count > 0)
+        {
+            var updateLink = $"/projects/{task.ProjectId}?task={id}";
+            foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
+                await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", changeNotes), updateLink, ct: ct);
+        }
+
         await db.SaveChangesAsync(ct);
         if (task.ParentTaskId is null) await completion.SyncStagesAsync([oldStageId, task.StageId], ct);
         return await GetDtoAsync(id, ct);

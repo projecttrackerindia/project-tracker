@@ -56,7 +56,7 @@ public class NotificationTests(ApiFactory factory)
         Assert.True(first.Ok, first.ToString());
         Assert.Equal(ProjectManagement.Domain.NotificationCatalog.All.Length, first.Data!.AsArray().Count);
         Assert.True(Pref(first.Data, "TaskAssigned")["email"]!.GetValue<bool>());
-        Assert.False(Pref(first.Data, "Comment")["email"]!.GetValue<bool>());
+        Assert.True(Pref(first.Data, "Comment")["email"]!.GetValue<bool>());
         Assert.False(Pref(first.Data, "TaskAssigned")["browser"]!.GetValue<bool>());
 
         var saved = await SetPrefs(c, ("TaskAssigned", true, false, true), ("Comment", false, true, false), ("Security", false, false, false));
@@ -134,7 +134,7 @@ public class NotificationTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Mentions_and_comments_use_their_own_defaults()
+    public async Task Mentions_and_comments_both_e_mail_by_default()
     {
         var (owner, mia, project) = await Setup();
         var task = await Assign(owner, project, mia, "Discuss");
@@ -144,10 +144,49 @@ public class NotificationTests(ApiFactory factory)
         Assert.True((await owner.Post($"/api/v1/tasks/{taskId}/comments", new { body = "Plain remark" })).Ok);
 
         await SendPendingAsync();
+        // Three batchable notices (assigned, mentioned, commented) land together as one digest (title-only text), not three separate e-mails.
         var texts = (await MailboxFor(mia)).Select(m => m["text"]!.GetValue<string>()).ToList();
-        Assert.Contains(texts, t => t.Contains("@Mia please look"));       // mention e-mails by default
-        Assert.DoesNotContain(texts, t => t.Contains("Plain remark"));     // comment e-mails are off by default
+        Assert.Contains(texts, t => t.Contains("You were mentioned on"));  // mention e-mails by default
+        Assert.Contains(texts, t => t.Contains("New comment on"));        // comment e-mails by default too
         Assert.Contains((await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => n!["type"]!.GetValue<string>() == "Comment");
+    }
+
+    [Fact]
+    public async Task Changing_a_task_s_priority_or_due_date_notifies_the_assignee_without_touching_the_assignee_field()
+    {
+        var (owner, mia, project) = await Setup();
+        var task = await Assign(owner, project, mia, "Discuss");
+        var taskId = task["id"]!.GetValue<string>();
+        var statuses = (await owner.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray();
+        var statusId = statuses[0]!["id"]!.GetValue<string>();
+
+        var upd = await owner.Put($"/api/v1/tasks/{taskId}", new { title = "Discuss", statusId, priority = "High", assigneeId = mia.UserId, version = task["version"]!.GetValue<int>() });
+        Assert.True(upd.Ok, upd.ToString());
+
+        var bell = (await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray();
+        Assert.Contains(bell, n => n!["type"]!.GetValue<string>() == "TaskUpdated" && n["body"]!.GetValue<string>().Contains("priority"));
+        await SendPendingAsync();
+        Assert.Contains(await MailboxFor(mia), m => m["text"]!.GetValue<string>().Contains("priority"));
+    }
+
+    [Fact]
+    public async Task A_project_s_status_change_notifies_its_members_by_e_mail()
+    {
+        var (owner, mia, project) = await Setup();
+        await owner.Post($"/api/v1/projects/{project}/members", new { userId = mia.UserId });
+        var detail = (await owner.Get($"/api/v1/projects/{project}")).Data!;
+        var p = detail["project"]!;
+
+        var upd = await owner.Put($"/api/v1/projects/{project}", new
+        {
+            name = p["name"]!.GetValue<string>(), priority = p["priority"]!.GetValue<string>(), status = "Completed", version = p["version"]!.GetValue<int>(),
+        });
+        Assert.True(upd.Ok, upd.ToString());
+
+        var bell = (await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray();
+        Assert.Contains(bell, n => n!["type"]!.GetValue<string>() == "ProjectUpdated");
+        await SendPendingAsync();
+        Assert.Contains(await MailboxFor(mia), m => m["subject"]!.GetValue<string>().Contains("Completed"));
     }
 
     [Fact]

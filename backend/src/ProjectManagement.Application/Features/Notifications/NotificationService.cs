@@ -187,7 +187,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
     public const int MaxAttempts = 5;
 
     /// <summary>Kinds that can wait a minute and be read together: three or more for the same person and workspace become one e-mail. Time-critical ones (reminders, overdue, service levels) never wait.</summary>
-    private static readonly HashSet<NotificationType> Batchable = [NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Comment, NotificationType.Issue, NotificationType.Approval, NotificationType.ReportReady];
+    private static readonly HashSet<NotificationType> Batchable = [NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Comment, NotificationType.Issue, NotificationType.Approval, NotificationType.ReportReady, NotificationType.TaskUpdated, NotificationType.ProjectUpdated, NotificationType.Message];
     private const int DigestFrom = 3;
 
     /// <summary>
