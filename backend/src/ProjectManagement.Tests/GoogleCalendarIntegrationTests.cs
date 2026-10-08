@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,20 +33,27 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
     /// final redirect target so a test can assert on it.</summary>
     private async Task<Uri> ConnectAsync(TestClient c, string googleEmail = "owner@example.com", string? returnUrl = null)
     {
-        using var noRedirect = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        using var start = new HttpRequestMessage(HttpMethod.Get, "/api/v1/integrations/google/connect" + (returnUrl is null ? "" : $"?returnUrl={Uri.EscapeDataString(returnUrl)}"));
-        start.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Token);
-        using var startRes = await noRedirect.SendAsync(start);
-        Assert.Equal(HttpStatusCode.Redirect, startRes.StatusCode);
-        var authorize = startRes.Headers.Location!;
-        Assert.StartsWith("https://accounts.google.com/o/oauth2/v2/auth", authorize.ToString());
-        Assert.Contains("meetings.space.created", QueryValue(authorize, "scope"));
-        var state = QueryValue(authorize, "state");
+        var authorizeUrl = await AuthorizeUrlAsync(c, returnUrl);
+        var state = QueryValue(authorizeUrl, "state");
 
+        using var noRedirect = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         var code = factory.GoogleCalendar.IssueCode(googleEmail);
         using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?code={code}&state={state}");
         Assert.Equal(HttpStatusCode.Redirect, cb.StatusCode);
         return cb.Headers.Location!;
+    }
+
+    /// <summary>The one normal, authenticated call: "/connect" returns Google's consent URL as JSON rather than redirecting there itself,
+    /// because a plain window.location.assign (the only way to actually leave the page for Google) cannot attach an Authorization header -
+    /// only this ordinary fetch, made while the person is still on our page, can.</summary>
+    private async Task<Uri> AuthorizeUrlAsync(TestClient c, string? returnUrl = null)
+    {
+        var res = await c.Get("/api/v1/integrations/google/connect" + (returnUrl is null ? "" : $"?returnUrl={Uri.EscapeDataString(returnUrl)}"));
+        Assert.True(res.Ok, res.ToString());
+        var authorize = new Uri(res.Data!["url"]!.GetValue<string>());
+        Assert.StartsWith("https://accounts.google.com/o/oauth2/v2/auth", authorize.ToString());
+        Assert.Contains("meetings.space.created", QueryValue(authorize, "scope"));
+        return authorize;
     }
 
     /// <summary>
@@ -93,12 +99,10 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
         var c = await TestClient.RegisterAsync(factory);
         await c.CreateOrgAsync();
 
-        using var noRedirect = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        using var start = new HttpRequestMessage(HttpMethod.Get, "/api/v1/integrations/google/connect");
-        start.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Token);
-        using var startRes = await noRedirect.SendAsync(start);
-        var state = QueryValue(startRes.Headers.Location!, "state");
+        var authorizeUrl = await AuthorizeUrlAsync(c);
+        var state = QueryValue(authorizeUrl, "state");
 
+        using var noRedirect = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?state={state}&error=access_denied");
         Assert.Equal("/settings/google-workspace?google=declined", cb.Headers.Location!.ToString());
 

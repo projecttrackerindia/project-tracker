@@ -18,9 +18,15 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
     [HttpGet("integrations/google/status")]
     public async Task<IActionResult> GoogleStatus(CancellationToken ct) => Ok(await google.StatusAsync(ct));
 
-    /// <summary>Redirects straight to Google's consent screen (the frontend navigates the whole page here, the same way it does for "Sign in with Google").</summary>
+    /// <summary>
+    /// The address of Google's consent screen, for the frontend to navigate the whole page to itself (window.location.assign). This cannot
+    /// be the redirect endpoint itself: unlike "Sign in with Google" (anonymous - there is no one signed in yet), this action needs to know
+    /// who is connecting, which only an authenticated call carries, and a plain full-page navigation cannot attach an Authorization header.
+    /// So the browser makes one ordinary authenticated fetch here to learn the URL, then navigates itself - Google's own consent screen needs
+    /// no header from us at all.
+    /// </summary>
     [HttpGet("integrations/google/connect")]
-    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct) => Redirect(await google.StartConnectAsync(returnUrl, ct));
+    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct) => Ok(new { url = await google.StartConnectAsync(returnUrl, ct) });
 
     [HttpPost("integrations/google/disconnect")]
     public async Task<IActionResult> GoogleDisconnect(CancellationToken ct)
