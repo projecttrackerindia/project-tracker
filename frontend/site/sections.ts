@@ -109,7 +109,13 @@ const bento = `<div class="bento">
 <article class="tile" ${reveal(5)}><span class="tag">Security</span><h3>Built in, not bolted on</h3><p>Each organization's data is separate in the data layer itself.</p>
 <div class="vis pills"><span>Passkeys</span><span>Two-step</span><span>SSO</span><span>Audit log</span></div></article>
 <article class="tile" ${reveal(6)}><span class="tag">Connect</span><h3>Works with your tools</h3><p>GitHub, Azure DevOps, Slack, Teams, an API and signed webhooks.</p>
-<div class="vis pills"><span>GitHub</span><span>Slack</span><span>Teams</span><span>API</span></div></article>
+<div class="vis chain" aria-hidden="true">
+<span class="chip">${icon('git', 16)}</span><i class="ln"></i>
+<span class="chip">${icon('message', 16)}</span><i class="ln"></i>
+<span class="hub">${icon('sparkle', 17)}</span><i class="ln"></i>
+<span class="chip">${icon('layers', 16)}</span><i class="ln"></i>
+<span class="chip">${icon('bolt', 16)}</span>
+</div></article>
 </div>`;
 
 const steps = `<div class="steps">
@@ -156,11 +162,12 @@ export function landing(): string {
 <h1>${esc(h1a)}. <span class="grad">${esc(h1rest.join('. '))}</span></h1>
 <p class="lead">${esc(HOME.lead)}</p>
 <div class="cta"><a class="btn btn-primary btn-lg" href="/register">Start free</a><a class="btn btn-glass btn-lg" href="/features/">See what it does</a></div>
-<p class="fine">Start on the free plan and move up when your team grows.</p></div><div class="hero-visual">${demo}
-<span class="fbadge b1"><span>${icon('sparkle', 14)}</span>AI assistant</span>
-<span class="fbadge b2"><span>${icon('shield', 14)}</span>Risk forecast</span>
-<span class="fbadge b3"><span>${icon('key', 14)}</span>Passkey sign-in</span>
-</div></div></section>
+<p class="fine">Start on the free plan and move up when your team grows.</p>
+<div class="fbadge-row">
+<span class="fbadge"><span class="b1">${icon('sparkle', 13)}</span>AI assistant</span>
+<span class="fbadge"><span class="b2">${icon('shield', 13)}</span>Risk forecast</span>
+<span class="fbadge"><span class="b3">${icon('key', 13)}</span>Passkey sign-in</span>
+</div></div>${demo}</div></section>
 <div class="dark marquee" aria-label="Works with"><div class="track">${[...INTEGRATIONS, ...INTEGRATIONS].map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>
 <section class="block"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Everything in one place</p><h2>From the first task to the portfolio review</h2>
 <p class="sub">One workspace for planning, doing and reporting, so leaders see the truth without chasing updates.</p></div>${bento}
