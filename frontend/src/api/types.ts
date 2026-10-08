@@ -370,6 +370,10 @@ export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
   status: 'Scheduled' | 'Cancelled' | 'Completed'; meetUri: string; organizerUserId: string; organizerName: string; participants: MeetingParticipant[];
 }
+/** The parsed shape of a chat message whose kind is 'Meeting' (body is JSON, not text - see ChatService.PostMeetingCardAsync). */
+export interface MeetingCard {
+  meetingId: string; title: string; startTimeUtc: string; endTimeUtc: string; timeZone: string; meetUri: string; participantCount: number; status: 'Scheduled' | 'Cancelled' | 'Completed';
+}
 export interface DataPolicy {
   activityRetentionDays: number | null; notificationRetentionDays: number | null; chatRetentionDays: number | null; auditRetentionDays: number | null;
   planActivityDays: number; lastPurgedAt: string | null; canManage: boolean;
@@ -494,7 +498,7 @@ export interface ChatFile { id: string; fileName: string; contentType: string; s
 export interface ChatFilePage { items: ChatFile[]; hasMore: boolean }
 export interface ChatReaction { emoji: string; count: number; mine: boolean; names: string[] }
 export interface ChatMessage {
-  id: string; conversationId: string; senderId: string | null; senderName: string | null; kind: 'User' | 'System'; body: string;
+  id: string; conversationId: string; senderId: string | null; senderName: string | null; kind: 'User' | 'System' | 'Meeting'; body: string;
   replyTo: ChatReplyPreview | null; createdAt: string; editedAt: string | null; isDeleted: boolean;
   attachments?: ChatAttachment[] | null; reactions?: ChatReaction[] | null;
 }

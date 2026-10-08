@@ -1404,3 +1404,7 @@ tr.row-deleted .td-title { font-style: italic; }
 .gm-card { padding: 16px 18px; }
 .gm-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .gm-card-head h4 { font-size: 14.5px; font-weight: 700; margin: 0; }
+.gm-chat-card { max-width: 360px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.gm-chat-card.cancelled { opacity: .7; }
+.gm-chat-card-head { display: flex; align-items: center; gap: 8px; }
+.gm-chat-card-head b { font-size: 13.5px; }

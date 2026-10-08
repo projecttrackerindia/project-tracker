@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Chat;
 using ProjectManagement.Application.Features.Integrations;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Services;
@@ -28,9 +29,10 @@ public record ScheduleMeetingRequest(string Title, string? Description, DateTime
 /// <see cref="ProjectAccess"/> already enforces for everything else project-scoped (spec section 6).
 /// </summary>
 public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access,
-    PermissionService permissions, NotificationService notifications, GoogleMeetingClient google)
+    PermissionService permissions, NotificationService notifications, GoogleMeetingClient google, ChatService chat)
 {
     private const int DefaultStartNowMinutes = 60;
+    private record MeetingCard(Guid MeetingId, string Title, DateTime StartTimeUtc, DateTime EndTimeUtc, string TimeZone, string MeetUri, int ParticipantCount, string Status);
 
     // ---------------------------------------------------------------- who may be invited
 
@@ -112,6 +114,10 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             await notifications.AddAsync(u.Id, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a Google Meet", $"{meetingTitle} · {start:dd MMM} at {start:h:mm tt}", $"/projects/{projectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
 
         await db.SaveChangesAsync(ct);
+
+        var card = new MeetingCard(meeting.Id, meetingTitle, meeting.StartTimeUtc, meeting.EndTimeUtc, timeZone, created.MeetUri, meeting.Participants.Count, "Scheduled");
+        await chat.PostMeetingCardAsync(projectId, card, $"📹 {organizer.DisplayName} scheduled a Google Meet: {meetingTitle}", ct);
+
         return ToDto(meeting, organizer.DisplayName);
     }
 
@@ -148,10 +154,15 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         meeting.CancelledAt = clock.Now;
         recorder.Activity("meeting.cancelled", "ProjectMeeting", meeting.Id, $"Cancelled \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.cancelled", "ProjectMeeting", meeting.Id);
+        var participantCount = await db.MeetingParticipants.AsNoTracking().CountAsync(p => p.MeetingId == meeting.Id, ct);
         var participants = await db.MeetingParticipants.AsNoTracking().Where(p => p.MeetingId == meeting.Id && p.UserId != null && p.UserId != meeting.OrganizerUserId).Select(p => p.UserId!.Value).ToListAsync(ct);
         foreach (var userId in participants)
             await notifications.AddAsync(userId, NotificationType.Meeting, "A Google Meet was cancelled", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
         await db.SaveChangesAsync(ct);
+
+        var byName = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
+        var card = new MeetingCard(meeting.Id, meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, meeting.TimeZone, meeting.GoogleMeetUri, participantCount, "Cancelled");
+        await chat.PostMeetingCardAsync(meeting.ProjectId, card, $"📹 {byName} cancelled the Google Meet: {meeting.Title}", ct);
     }
 
     private static MeetingDto ToDto(ProjectMeeting m, string organizerName) => new(m.Id, m.ProjectId, m.Title, m.Description,

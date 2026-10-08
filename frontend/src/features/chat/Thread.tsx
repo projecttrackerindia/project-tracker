@@ -1,17 +1,39 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
-import type { ChatAttachment, ChatMessage, ChatThread, Conversation } from '../../api/types';
+import type { ChatAttachment, ChatMessage, ChatThread, Conversation, MeetingCard } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, PageLoader, Spinner } from '../../components/ui';
+import { Avatar, Badge, PageLoader, Spinner } from '../../components/ui';
+import { formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
 import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
+import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+
+/** A Google Meet message card (spec section 7): the meeting's own public details only - never anything from the Google connection itself. */
+function MeetingCardMessage({ body, projectId }: { body: string; projectId: string }) {
+  let card: MeetingCard | null = null;
+  try { card = JSON.parse(body) as MeetingCard; } catch { /* malformed - fall through to the plain-text fallback below */ }
+  if (!card) return <div className="sys-line">Google Meet</div>;
+  const cancelled = card.status === 'Cancelled';
+  return (
+    <div className={`gm-chat-card ${cancelled ? 'cancelled' : ''}`}>
+      <div className="gm-chat-card-head"><Icon name="video" size={16} /><b>{card.title}</b>{cancelled && <Badge tone="danger">Cancelled</Badge>}</div>
+      <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 8px' }}>{formatDateTime(card.startTimeUtc)} – {formatDateTime(card.endTimeUtc)} · {card.participantCount} participant{card.participantCount === 1 ? '' : 's'}</p>
+      {!cancelled && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a className="btn btn-primary btn-sm" href={card.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={13} /> Join Meeting</a>
+          <Link className="btn btn-ghost btn-sm" to={`/projects/${projectId}?tab=meetings&meeting=${card.meetingId}`}>View details</Link>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const MAX_LENGTH = 4000;
 const MAX_FILES = 5;
@@ -172,6 +194,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
+        {conversation.type === 'Project' && conversation.projectId && <GoogleMeetButton projectId={conversation.projectId} projectName={conversation.name} organizerUserId={me} />}
         {variant === 'page' && (
           <>
             <button className={`btn-icon chat-head-action ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="folder" size={17} /></button>
@@ -203,6 +226,8 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
               {newDay && <div className="day-sep"><span>{dayLabel(m.createdAt)}</span></div>}
               {m.kind === 'System'
                 ? <div className="sys-line" data-msg={m.id}>{m.body}</div>
+                : m.kind === 'Meeting' && conversation.projectId
+                ? <MeetingCardMessage body={m.body} projectId={conversation.projectId} />
                 : <MessageRow m={m} mine={mine} grouped={grouped} showName={conversation.type !== 'Direct'} canModerate={conversation.canManage}
                     ticks={conversation.type !== 'Project'} aboutMe={!mine && mentionsUser(m.body, me)}
                     read={mine && isRead(m)} showStatus={mine && m.id === lastMineId}

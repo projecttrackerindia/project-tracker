@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Common;
@@ -362,6 +363,27 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         else if (conv.Name != name) { conv.Name = name; await db.SaveChangesAsync(ct); }   // the project was renamed
         await SyncProjectMembersAsync(tenant, conv, ct);
         return (await BuildAsync(me, [conv.Id], ct))[conv.Id];
+    }
+
+    /// <summary>
+    /// Posts a Google Meet card into a project's chat (spec section 7), only when that chat has actually been opened before - nothing is
+    /// created just to hold a card nobody would ever see. Called by MeetingService after scheduling or cancelling a meeting; the card's
+    /// Body is JSON, not text (see ChatMessageKind.Meeting and the frontend's Thread.tsx rendering of it), so it is never shown as a
+    /// Google OAuth token or anything else from the connection - only the meeting's own public details.
+    /// </summary>
+    public async Task PostMeetingCardAsync(Guid projectId, object card, string snippetText, CancellationToken ct = default)
+    {
+        var tenant = ctx.RequireTenantId();
+        var conv = await db.Conversations.FirstOrDefaultAsync(c => c.ProjectId == projectId && c.Type == ConversationType.Project, ct);
+        if (conv is null) return;
+        var now = clock.Now;
+        // camelCase to match every other JSON this API ever sends - the default (PascalCase) would silently break the frontend's
+        // JSON.parse(body) of this card, since nothing else about a "Meeting" message distinguishes it as different from the rest of the API.
+        var line = new ChatMessage { ConversationId = conv.Id, Kind = ChatMessageKind.Meeting, Body = JsonSerializer.Serialize(card, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        db.ChatMessages.Add(line);
+        conv.LastMessageAt = now; conv.LastMessageId = line.Id; conv.LastMessageSenderId = null; conv.LastMessageSnippet = Snippet(snippetText);
+        await db.SaveChangesAsync(ct);
+        await AnnounceAsync(tenant, conv, line, [], ct);
     }
 
     /// <summary>For each project whose chat has news for the caller: how many messages they have not read, and how many of them mention them.</summary>

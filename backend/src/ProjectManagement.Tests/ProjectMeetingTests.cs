@@ -148,4 +148,37 @@ public class ProjectMeetingTests(ApiFactory factory)
         Assert.Contains(owner.UserId.ToString(), ids);
         Assert.Contains(teammate.UserId.ToString(), ids);
     }
+
+    [Fact]
+    public async Task Scheduling_and_then_cancelling_posts_a_meeting_card_into_the_projects_chat()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Prasanna");
+        await owner.CreateOrgAsync();
+        var project = await owner.CreateProjectAsync("Payment Engine");
+        await ConnectGoogleAsync(owner);
+        var opened = await owner.Post($"/api/v1/chat/projects/{project}/open");
+        Assert.True(opened.Ok, opened.ToString());
+        var conversationId = opened.Data!["id"]!.GetValue<string>();
+
+        var created = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { title = "Payment Engine Discussion" });
+        Assert.Equal(HttpStatusCode.Created, created.Status);
+        var meetingId = created.Data!["id"]!.GetValue<string>();
+
+        var afterSchedule = await owner.Get($"/api/v1/chat/conversations/{conversationId}/messages");
+        Assert.True(afterSchedule.Ok, afterSchedule.ToString());
+        var scheduledCard = afterSchedule.Data!["items"]!.AsArray().First(m => m!["kind"]!.GetValue<string>() == "Meeting");
+        var scheduledBody = System.Text.Json.Nodes.JsonNode.Parse(scheduledCard!["body"]!.GetValue<string>())!;
+        Assert.Equal(meetingId, scheduledBody["meetingId"]!.GetValue<string>());
+        Assert.Equal("Payment Engine Discussion", scheduledBody["title"]!.GetValue<string>());
+        Assert.Equal("Scheduled", scheduledBody["status"]!.GetValue<string>());
+
+        var cancel = await owner.Post($"/api/v1/meetings/{meetingId}/cancel");
+        Assert.Equal(HttpStatusCode.NoContent, cancel.Status);
+
+        var afterCancel = await owner.Get($"/api/v1/chat/conversations/{conversationId}/messages");
+        var cards = afterCancel.Data!["items"]!.AsArray().Where(m => m!["kind"]!.GetValue<string>() == "Meeting").ToList();
+        Assert.Equal(2, cards.Count);   // the original "scheduled" card, plus a new "cancelled" one - never edited in place
+        var cancelledBody = System.Text.Json.Nodes.JsonNode.Parse(cards.First(c => System.Text.Json.Nodes.JsonNode.Parse(c!["body"]!.GetValue<string>())!["status"]!.GetValue<string>() == "Cancelled")!["body"]!.GetValue<string>())!;
+        Assert.Equal("Cancelled", cancelledBody["status"]!.GetValue<string>());
+    }
 }

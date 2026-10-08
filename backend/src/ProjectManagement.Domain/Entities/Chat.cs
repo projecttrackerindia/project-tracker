@@ -5,8 +5,9 @@ namespace ProjectManagement.Domain.Enums
     /// <summary>Direct: two people. Group: a named group with its own members. Project: the team chat of one project (who is in it follows the project).</summary>
     public enum ConversationType { Direct, Group, Project }
     public enum ConversationRole { Member, Admin }
-    /// <summary>A person's message, or a line the system adds to the thread ("Priya joined").</summary>
-    public enum ChatMessageKind { User, System }
+    /// <summary>A person's message, a line the system adds to the thread ("Priya joined"), or a Google Meet card (Body is JSON, not text -
+    /// see ChatService.PostMeetingCardAsync and frontend Thread.tsx's rendering of it).</summary>
+    public enum ChatMessageKind { User, System, Meeting }
 }
 
 namespace ProjectManagement.Domain.Entities

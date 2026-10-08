@@ -206,7 +206,7 @@ export function GoogleMeetButton({ projectId, projectName, organizerUserId }: { 
           <div className="menu-pop" role="menu">
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setStarting(true); }}><Icon name="bolt" size={15} /> Start meeting now</button>
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setScheduling(true); }}><Icon name="calendar" size={15} /> Schedule meeting</button>
-            <Link role="menuitem" to="?tab=meetings" onClick={() => setOpen(false)}><Icon name="list" size={15} /> Upcoming meetings</Link>
+            <Link role="menuitem" to={`/projects/${projectId}?tab=meetings`} onClick={() => setOpen(false)}><Icon name="list" size={15} /> Upcoming meetings</Link>
           </div>
         )}
       </div>
