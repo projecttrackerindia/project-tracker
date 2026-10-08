@@ -7,7 +7,7 @@ export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 export const icon = (name: string, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(PATHS as Record<string, string>)[name] ?? ''}</svg>`;
 const tick = icon('tick', 16);
-const aurora = '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div><div class="gridbg" aria-hidden="true"></div>';
+const aurora = '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="gridbg" aria-hidden="true"></div><div class="grain" aria-hidden="true"></div>';
 const reveal = (i = 0) => `data-r style="--d:${(i * 0.07).toFixed(2)}s"`;
 
 export const header = (active = '') => `<div class="progress" aria-hidden="true"></div><header class="top"><div class="wrap">
@@ -156,7 +156,11 @@ export function landing(): string {
 <h1>${esc(h1a)}. <span class="grad">${esc(h1rest.join('. '))}</span></h1>
 <p class="lead">${esc(HOME.lead)}</p>
 <div class="cta"><a class="btn btn-primary btn-lg" href="/register">Start free</a><a class="btn btn-glass btn-lg" href="/features/">See what it does</a></div>
-<p class="fine">Start on the free plan and move up when your team grows.</p></div>${demo}</div></section>
+<p class="fine">Start on the free plan and move up when your team grows.</p></div><div class="hero-visual">${demo}
+<span class="fbadge b1"><span>${icon('sparkle', 14)}</span>AI assistant</span>
+<span class="fbadge b2"><span>${icon('shield', 14)}</span>Risk forecast</span>
+<span class="fbadge b3"><span>${icon('key', 14)}</span>Passkey sign-in</span>
+</div></div></section>
 <div class="dark marquee" aria-label="Works with"><div class="track">${[...INTEGRATIONS, ...INTEGRATIONS].map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>
 <section class="block"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Everything in one place</p><h2>From the first task to the portfolio review</h2>
 <p class="sub">One workspace for planning, doing and reporting, so leaders see the truth without chasing updates.</p></div>${bento}
