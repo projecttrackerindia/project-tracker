@@ -16,6 +16,9 @@
 #pt-winctl button:hover { background: color-mix(in srgb, var(--text, #221a3a) 9%, transparent); color: var(--text, #221a3a); }
 #pt-winctl button.close:hover { background: #e81123; color: #fff; }
 .desktop-win .topbar { padding-right: 146px; }
+/* Same reservation for any panel that, like the topbar, sits flush against the top-right corner where the window buttons float above
+   everything (z-index 2147483001): without it, a panel's own top-right icons render directly underneath them. */
+.desktop-win .pchat-panel .chat-head, .desktop-win .asst-head, .desktop-win .ai-head { padding-right: 146px; }
 .desktop-win.desktop-maximized #pt-winctl { height: 40px; }
 @media (prefers-reduced-motion: reduce) { #pt-winctl button { transition: none; } }
 /* On the sign-in screen the theme switch sits left of the window buttons. */
