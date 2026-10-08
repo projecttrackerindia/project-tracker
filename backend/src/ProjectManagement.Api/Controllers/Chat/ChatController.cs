@@ -95,6 +95,10 @@ public class ChatController(ChatService chat) : ApiControllerBase
         return Created(await chat.UploadAsync(id, file.FileName, stream, file.Length, ct));
     }
 
+    [HttpGet("conversations/{id:guid}/files")]
+    public async Task<IActionResult> Files(Guid id, [FromQuery] DateTime? before, [FromQuery] int? limit, CancellationToken ct) =>
+        Ok(await chat.FilesAsync(id, before, limit, ct));
+
     /// <summary>A file of a conversation the caller is in. Pictures can be shown inline; everything else downloads.</summary>
     [HttpGet("files/{id:guid}")]
     public async Task<IActionResult> DownloadFile(Guid id, [FromQuery] bool inline, CancellationToken ct)

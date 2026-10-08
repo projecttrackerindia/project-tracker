@@ -484,6 +484,8 @@ export interface Conversation {
 export interface ProjectChatUnread { projectId: string; conversationId: string; unread: number; mentions: number }
 export interface ChatReplyPreview { id: string; senderName: string | null; snippet: string; isDeleted: boolean }
 export interface ChatAttachment { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean }
+export interface ChatFile { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean; messageId: string; senderId: string | null; senderName: string; createdAt: string }
+export interface ChatFilePage { items: ChatFile[]; hasMore: boolean }
 export interface ChatReaction { emoji: string; count: number; mine: boolean; names: string[] }
 export interface ChatMessage {
   id: string; conversationId: string; senderId: string | null; senderName: string | null; kind: 'User' | 'System'; body: string;

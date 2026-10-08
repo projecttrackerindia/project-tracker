@@ -67,6 +67,7 @@ export function useTypingNames(conversationId: string | null): string[] {
 export const chatKeys = {
   conversations: (wid: string) => [wid, 'chat', 'conversations'] as const,
   thread: (wid: string, id: string) => [wid, 'chat', 'thread', id] as const,
+  files: (wid: string, id: string) => [wid, 'chat', 'files', id] as const,
   unread: (wid: string) => [wid, 'chat', 'unread'] as const,
   project: (wid: string, projectId: string) => [wid, 'chat', 'project', projectId] as const,
   projectUnread: (wid: string) => [wid, 'chat', 'project-unread'] as const,

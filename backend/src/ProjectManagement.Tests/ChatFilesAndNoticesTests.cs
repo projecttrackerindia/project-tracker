@@ -13,6 +13,7 @@ namespace ProjectManagement.Tests;
 public class ChatFilesAndNoticesTests(ApiFactory factory)
 {
     private record Team(TestClient Ravi, TestClient Priya, TestClient Kumar);
+    private static string S(JsonNode? n) => n!.GetValue<string>();
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1F, 0x15, 0xC4, 0x89];
 
@@ -118,6 +119,34 @@ public class ChatFilesAndNoticesTests(ApiFactory factory)
         Assert.True((await t.Priya.Delete($"/api/v1/chat/messages/{msg["id"]!.GetValue<string>()}")).Ok);
         Assert.Equal(HttpStatusCode.NotFound, (await t.Ravi.Get($"/api/v1/chat/files/{fileId}")).Status);
         Assert.Empty(factory.WithDb(db => db.ChatAttachments.IgnoreQueryFilters().Where(a => a.ConversationId == Guid.Parse(conv)).ToList()));
+    }
+
+    [Fact]
+    public async Task The_files_view_lists_every_file_ever_sent_newest_first_and_follows_the_same_membership_rule_as_messages()
+    {
+        var t = await BuildTeam();
+        var conv = await Direct(t.Priya, t.Ravi);
+
+        var f1 = (await t.Priya.Upload($"/api/v1/chat/conversations/{conv}/files", "first.png", Png)).Data!["id"]!.GetValue<string>();
+        await Say(t.Priya, conv, null, f1);
+        var f2 = (await t.Ravi.Upload($"/api/v1/chat/conversations/{conv}/files", "second.png", Png)).Data!["id"]!.GetValue<string>();
+        await Say(t.Ravi, conv, "Here you go", f2);
+        // An unsent (pending) upload is not in the list - it isn't part of the conversation's history yet.
+        await t.Priya.Upload($"/api/v1/chat/conversations/{conv}/files", "never-sent.png", Png);
+
+        var page = (await t.Priya.Get($"/api/v1/chat/conversations/{conv}/files")).Data!["items"]!.AsArray();
+        Assert.Equal(["second.png", "first.png"], page.Select(f => f!["fileName"]!.GetValue<string>()));   // newest first
+        Assert.Equal("Ravi", page[0]!["senderName"]!.GetValue<string>());
+        Assert.True(page[0]!["isImage"]!.GetValue<bool>());
+
+        // A colleague outside the conversation sees nothing, same as the messages themselves.
+        Assert.Equal(HttpStatusCode.NotFound, (await t.Kumar.Get($"/api/v1/chat/conversations/{conv}/files")).Status);
+
+        // Deleting the message removes its file from the view too (the file itself is gone from storage, per the test above).
+        var secondMsgId = (await t.Ravi.Get($"/api/v1/chat/conversations/{conv}/messages")).Data!["items"]!.AsArray().First(m => S(m!["attachments"]![0]!["fileName"]) == "second.png")["id"]!.GetValue<string>();
+        Assert.True((await t.Ravi.Delete($"/api/v1/chat/messages/{secondMsgId}")).Ok);
+        var after = (await t.Priya.Get($"/api/v1/chat/conversations/{conv}/files")).Data!["items"]!.AsArray();
+        Assert.Equal(["first.png"], after.Select(f => f!["fileName"]!.GetValue<string>()));
     }
 
     [Fact]

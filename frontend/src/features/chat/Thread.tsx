@@ -33,8 +33,9 @@ const keepFocus = (e: SyntheticEvent) => e.preventDefault();
 
 // ------------------------------------------------------------------ the thread of one conversation
 /** `variant="panel"` is the project chat in its slide-in panel: a close button instead of back / details, and no navigating away when access is lost. */
-export function Thread({ conversation, onBack, onInfo, infoOpen = false, variant = 'page', onClose }: {
-  conversation: Conversation; onBack: () => void; onInfo?: () => void; infoOpen?: boolean; variant?: 'page' | 'panel'; onClose?: () => void;
+export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles, filesOpen = false, variant = 'page', onClose }: {
+  conversation: Conversation; onBack: () => void; onInfo?: () => void; infoOpen?: boolean; onFiles?: () => void; filesOpen?: boolean;
+  variant?: 'page' | 'panel'; onClose?: () => void;
 }) {
   const wid = useWorkspaceId()!;
   const me = useAuth((s) => s.ctx!.user.id);
@@ -171,9 +172,13 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, variant
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
-        {variant === 'page'
-          ? <button className={`btn-icon ${infoOpen ? 'on' : ''}`} onClick={onInfo} aria-label="Conversation details" aria-pressed={infoOpen} title="Details"><Icon name="info" /></button>
-          : <button className="btn-icon" onClick={onClose ?? onBack} aria-label="Close chat" title="Close"><Icon name="close" /></button>}
+        {variant === 'page' && (
+          <>
+            <button className={`btn-icon ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="paperclip" /></button>
+            <button className={`btn-icon ${infoOpen ? 'on' : ''}`} onClick={onInfo} aria-label="Conversation details" aria-pressed={infoOpen} title="Details"><Icon name="info" /></button>
+          </>
+        )}
+        {variant === 'panel' && <button className="btn-icon" onClick={onClose ?? onBack} aria-label="Close chat" title="Close"><Icon name="close" /></button>}
       </header>
 
       <div className="chat-messages" ref={listRef} onScroll={onScroll} role="log" aria-label={`Messages with ${conversation.name}`}>

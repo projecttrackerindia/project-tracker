@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
-import type { ChatPerson, Conversation } from '../../api/types';
+import type { ChatFile, ChatPerson, Conversation } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, EmptyState, Field, Modal, PageLoader, Tabs } from '../../components/ui';
+import { Avatar, EmptyState, Field, Modal, PageLoader, Spinner, Tabs } from '../../components/ui';
+import { formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { chatKeys, useChat } from './chatStore';
@@ -138,6 +139,68 @@ function AddPeopleModal({ conversation, onClose }: { conversation: Conversation;
           onPick={() => undefined} emptyText="Everyone in the workspace is already in this group." />
       )}
     </Modal>
+  );
+}
+
+// ------------------------------------------------------------------ files shared in the open conversation
+function fileSize(bytes: number) { return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`; }
+
+function FilesRow({ file }: { file: ChatFile }) {
+  const [busy, setBusy] = useState(false);
+  const [thumb, setThumb] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file.isImage) return;
+    let live = true; let made: string | null = null;
+    chatApi.fileUrl(file.id, true).then((u) => { made = u; if (live) setThumb(u); else URL.revokeObjectURL(u); }).catch(() => undefined);
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+  }, [file.id, file.isImage]);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const url = await chatApi.fileUrl(file.id);
+      const a = document.createElement('a'); a.href = url; a.download = file.fileName; document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch { toast('Could not download the file.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <li className="chat-filerow">
+      <span className="chat-filerow-icon">{thumb ? <img src={thumb} alt="" /> : <Icon name="paperclip" size={16} />}</span>
+      <span className="chat-filerow-meta">
+        <b title={file.fileName}>{file.fileName}</b>
+        <small>{file.senderName} · {fileSize(file.sizeBytes)} · {formatDateTime(file.createdAt)}</small>
+      </span>
+      <button type="button" className="btn-icon" onClick={() => void save()} disabled={busy} aria-label={`Download ${file.fileName}`} title="Download">
+        {busy ? <Spinner /> : <Icon name="download" size={15} />}
+      </button>
+    </li>
+  );
+}
+
+export function FilesPanel({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
+  const wid = useWorkspaceId()!;
+  const q = useInfiniteQuery({
+    queryKey: chatKeys.files(wid, conversation.id),
+    queryFn: ({ pageParam }: { pageParam?: string }) => chatApi.files(conversation.id, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => (last.hasMore ? last.items[last.items.length - 1]?.createdAt : undefined),
+  });
+  const files = q.data?.pages.flatMap((p) => p.items) ?? [];
+
+  return (
+    <aside className="chat-info" aria-label="Files shared in this conversation">
+      <div className="chat-info-head">
+        <h3>Files</h3>
+        <button className="btn-icon" onClick={onClose} aria-label="Close files"><Icon name="close" /></button>
+      </div>
+      <div className="chat-info-body">
+        {q.isLoading && <PageLoader />}
+        {q.isError && <div className="chat-note">Files could not be loaded. <button className="link-btn" onClick={() => void q.refetch()}>Try again</button></div>}
+        {!q.isLoading && files.length === 0 && <EmptyState icon="paperclip" title="No files yet" text="Pictures and files sent in this conversation show up here." />}
+        {files.length > 0 && <ul className="chat-filelist">{files.map((f) => <FilesRow key={f.id} file={f} />)}</ul>}
+        {q.hasNextPage && <button className="btn btn-ghost btn-sm" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{q.isFetchingNextPage ? <Spinner /> : 'Load more'}</button>}
+      </div>
+    </aside>
   );
 }
 

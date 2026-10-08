@@ -2,7 +2,7 @@ import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile } from '
 import type { ChatAttachment, BillingSettings, TimelineTemplate,
   Activity, AdminPlan, AdminStats, AdminTenant, AdminTenantDetail, AdminUser, AdminUserDetail, AppContext, AppNotification, AuditLog, AuthResponse, ApiKey, GoLive, AdminTestEmailResult, PlatformBilling, AdminUsage, FeatureOverride, PlatformSettings, PlatformStatus, SystemHealth, Workload, WorkloadPersonDetail, WorkloadScope, WorkItem, WorkItemKind, EffectiveAccessList, Webhook, WebhookDelivery, Checklist, CustomField, CustomFieldValue, ImportPreview, ImportResult, PriorityInfo, ReportExport, ReportFormat, ReportKind, Sprint, SprintDetail, AutomationInput, AutomationRule, ProjectTime, TaskTime, TimeEntry, Timesheet, MfaChallenge, MfaSetup, MfaStatus, PasswordPolicy, BillingOverview, CalendarEvent,
   AccessMatrix, DependencyType, Milestone, MilestoneInput, TaskDependencies, ActionItem, ActionItemInput, ActionItemStatus, Attachment, AttachmentLimits, ProjectChatUnread, ProjectGroup, ProjectStatusReport, StatusGroup, Issue, IssueDetail, IssueInput, NotificationPreference, TestEmailResult, Comment, Dashboard, DevEmail, OrgRole, OrgStructure, Invitation, InvitationLookup, Label, Member, MemberProfile, Paged, PermissionMatrix, Project, ProjectDetail, ProjectMember,
-  ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
+  ChatFilePage, ChatMessage, ChatPerson, ChatSearchHit, ChatThread, Conversation,
   WorkActivity, WorkAttachment, WorkComment, WorkSummary, WorkTask, WorkTaskInput, WorkType,
   LensTeam, OrgSecurity, ProjectVisibility, ReportSummary, SearchHit, Session, Stage, Task, TaskDetail, Team, TeamDetail, User, Workspace, WorkflowStatus,
   ConsentDocument, MyConsent, SignInDevice, DeviceLoginStart, DeviceLoginPending, Passkey, PasskeyChallenge, InvoiceBuyer, InvoiceSeller, EmailOverview, EmailBlocked, EmailDomainCheck, UnsubscribeInfo,
@@ -469,6 +469,8 @@ export const chatApi = {
   addMembers: (id: string, userIds: string[]) => post<Conversation>(`/chat/conversations/${id}/members`, { userIds }),
   removeMember: (id: string, userId: string) => del(`/chat/conversations/${id}/members/${userId}`),
   messages: (id: string, before?: string) => get<ChatThread>(`/chat/conversations/${id}/messages`, { before, limit: 40 }),
+  /** Every file ever sent in the conversation, newest first - the Files view next to the thread. */
+  files: (id: string, before?: string) => get<ChatFilePage>(`/chat/conversations/${id}/files`, { before, limit: 40 }),
   send: (id: string, body: string, replyToId?: string | null, attachmentIds?: string[]) =>
     post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null, attachmentIds: attachmentIds ?? [] }),
   /** Stores a file for a message about to be sent (the plan decides whether, how big and how much). */

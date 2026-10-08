@@ -49,6 +49,8 @@ public record ChatMessageDto(Guid Id, Guid ConversationId, Guid? SenderId, strin
     ReplyPreviewDto? ReplyTo, DateTime CreatedAt, DateTime? EditedAt, bool IsDeleted,
     IReadOnlyList<ChatAttachmentDto>? Attachments = null, IReadOnlyList<ChatReactionDto>? Reactions = null);
 public record MessagePageDto(IReadOnlyList<ChatMessageDto> Items, bool HasMore);
+public record ChatFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage, Guid MessageId, Guid? SenderId, string SenderName, DateTime CreatedAt);
+public record ChatFilePageDto(IReadOnlyList<ChatFileDto> Items, bool HasMore);
 public record ChatSearchHitDto(Guid MessageId, Guid ConversationId, string ConversationName, string? SenderName, string Snippet, DateTime At);
 public record UnreadDto(int Count);
 
@@ -568,6 +570,27 @@ public class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var hasMore = rows.Count > take;
         var page = rows.Take(take).Reverse().ToList();
         return new MessagePageDto(await ToDtosAsync(page, ct), hasMore);
+    }
+
+    /// <summary>Every file ever sent in a conversation, newest first - the "Files" view next to the thread, same membership rule as messages.</summary>
+    public async Task<ChatFilePageDto> FilesAsync(Guid conversationId, DateTime? before, int? limit, CancellationToken ct = default)
+    {
+        var (_, me) = Require();
+        var mine = await MembershipAsync(conversationId, me, ct);
+        var take = Math.Clamp(limit ?? PageSize, 1, 100);
+
+        var query = from a in db.ChatAttachments.AsNoTracking()
+                    join m in db.ChatMessages.AsNoTracking() on a.MessageId equals m.Id
+                    where a.ConversationId == conversationId && m.CreatedAt >= mine.CreatedAt && m.DeletedAt == null
+                    select new { a.Id, a.FileName, a.ContentType, a.SizeBytes, a.CreatedAt, MessageId = m.Id, m.SenderId };
+        if (before is { } b) query = query.Where(x => x.CreatedAt < b);
+        var rows = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(take + 1).ToListAsync(ct);
+        var hasMore = rows.Count > take;
+        var page = rows.Take(take).ToList();
+        var names = await db.Users.AsNoTracking().Where(u => page.Select(r => r.SenderId).Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var items = page.Select(r => new ChatFileDto(r.Id, r.FileName, r.ContentType, r.SizeBytes, FileRules.IsImage(r.ContentType), r.MessageId, r.SenderId,
+            r.SenderId is { } sid ? names.GetValueOrDefault(sid) ?? "Someone" : "Someone", r.CreatedAt)).ToList();
+        return new ChatFilePageDto(items, hasMore);
     }
 
     /// <summary>Removes the characters that would break a mention's markup from a person's name.</summary>

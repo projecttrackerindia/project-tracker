@@ -9,7 +9,7 @@ import { useDebounced } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { listTime } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
-import { InfoPanel, NewChatModal } from './Panels';
+import { FilesPanel, InfoPanel, NewChatModal } from './Panels';
 import { ConversationAvatar, Thread } from './Thread';
 
 /** True once `on` has been true for `ms` without a break: keeps a routine one-second reconnect from flashing a warning. */
@@ -38,7 +38,7 @@ export function ChatPage() {
 
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
-  const [info, setInfo] = useState(false);
+  const [panel, setPanel] = useState<'info' | 'files' | null>(null);
   const term = useDebounced(search.trim(), 300);
 
   const conversations = useQuery({
@@ -108,7 +108,8 @@ export function ChatPage() {
 
       <section className={`chat-main ${!id || missing ? 'hide-narrow' : ''}`}>
         {current
-          ? <Thread key={current.id} conversation={current} infoOpen={info} onInfo={() => setInfo((v) => !v)} onBack={() => navigate('/chat')} />
+          ? <Thread key={current.id} conversation={current} infoOpen={panel === 'info'} onInfo={() => setPanel((p) => (p === 'info' ? null : 'info'))}
+              filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} onBack={() => navigate('/chat')} />
           : id && !missing
             ? <PageLoader />   // the list is still catching up with a conversation that was just opened
             : <div className="chat-placeholder"><Icon name="message" size={40} /><h3>{missing ? 'Conversation not found' : 'Select a conversation'}</h3>
@@ -116,7 +117,8 @@ export function ChatPage() {
               <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New conversation</button></div>}
       </section>
 
-      {current && info && <InfoPanel key={current.id} conversation={current} onClose={() => setInfo(false)} />}
+      {current && panel === 'info' && <InfoPanel key={current.id} conversation={current} onClose={() => setPanel(null)} />}
+      {current && panel === 'files' && <FilesPanel key={current.id} conversation={current} onClose={() => setPanel(null)} />}
       {creating && <NewChatModal onClose={() => setCreating(false)} />}
     </div>
   );
