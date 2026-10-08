@@ -121,6 +121,8 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 /* Project page header: the "More" menu. */
 .menu-wrap { position: relative; }
 .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 230px; padding: 6px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 18px 40px rgba(20, 16, 40, .18)); }
+/* For a trigger that sits near the bottom of its container (e.g. a composer toolbar): opens upward instead of running off-screen. */
+.menu-pop.up { top: auto; bottom: calc(100% + 6px); }
 .menu-pop button, .menu-pop a { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--text-2); text-align: left; text-decoration: none; }
 .menu-pop button:hover, .menu-pop a:hover { background: var(--hover-bg); color: var(--text); }
 .menu-pop .danger { color: var(--danger); }
