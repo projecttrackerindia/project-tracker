@@ -71,7 +71,7 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
   const where_ = where === 'project' ? (projectId ? 'this project' : projects.data?.items.find((p) => p.id === project)?.name ?? 'a project') : visibility === 'Team' ? teams.data?.find((t) => t.id === teamId)?.name ?? 'a team' : 'the organization';
 
   return (
-    <Modal title="New document" subtitle={`Step ${step + 1} of ${type ? total : '…'}`} size="xl" onClose={onClose}
+    <Modal title="New document" subtitle={`Step ${step + 1} of ${total}`} size="xl" onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" type="button" onClick={step === 0 ? onClose : () => { setError(null); setStep(step - 1); }}>{step === 0 ? 'Cancel' : 'Back'}</button>
         {step < last

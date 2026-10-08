@@ -141,8 +141,9 @@ function GlobalSearch() {
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 250); return () => clearTimeout(t); }, [q]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
-      if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) { e.preventDefault(); input.current?.focus(); }
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName ?? '';
+      if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(tag) && !el?.isContentEditable) { e.preventDefault(); input.current?.focus(); }
     };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);

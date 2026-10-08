@@ -223,8 +223,8 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
               {sprints.data?.filter((x) => x.status !== 'Completed' || x.id === task.sprintId).map((x) => <option key={x.id} value={x.id}>{x.name}{x.status === 'Active' ? ' (running)' : x.status === 'Completed' ? ' (completed)' : ''}</option>)}
             </Select></Field>
           )}
-          {show && <Field label="Estimated hours"><input className="input" type="number" min="0" step="0.5" value={f.estimatedHours} onChange={(e) => set('estimatedHours', e.target.value)} /></Field>}
-          {isEdit && <Field label="Actual hours" hint="Follows the time you log below once there is any."><input className="input" type="number" min="0" step="0.5" value={f.actualHours} onChange={(e) => set('actualHours', e.target.value)} /></Field>}
+          {show && <Field label="Estimated hours" error={errors.estimatedHours}><input className="input" type="number" min="0" max="100000" step="0.5" value={f.estimatedHours} onChange={(e) => set('estimatedHours', e.target.value)} /></Field>}
+          {isEdit && <Field label="Actual hours" hint="Follows the time you log below once there is any." error={errors.actualHours}><input className="input" type="number" min="0" max="100000" step="0.5" value={f.actualHours} onChange={(e) => set('actualHours', e.target.value)} /></Field>}
 
           {show && labels.data && labels.data.length > 0 && (
             <Field label="Labels" full>

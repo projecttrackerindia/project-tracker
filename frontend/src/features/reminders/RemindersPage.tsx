@@ -376,7 +376,7 @@ function ReminderCard({ r, zone, done, sent, onDone, onSnooze, onRemove, onResto
   const otherZone = there && there !== describeInstant(r.nextFireAt!, zone) ? `${there.replace(/^(Today|Tomorrow) /, '')} in ${r.timeZone}` : null;
 
   return (
-    <li ref={el} className={`rp-card ${fired ? 'is-fired' : ''} ${done ? 'is-done' : ''} src-${r.source.toLowerCase()}`}>
+    <li ref={el} className={`rp-card ${fired ? 'is-fired' : ''} ${done ? 'is-done' : ''} ${menu ? 'menu-open' : ''} src-${r.source.toLowerCase()}`}>
       {done
         ? <span className="rp-check checked" aria-hidden><Icon name="tick" size={14} /></span>
         : <button type="button" className="rp-check" aria-label={`Done: ${r.title}`} title="Done" disabled={sent} onClick={() => el.current && onDone?.(r, el.current)}><Icon name="tick" size={14} /></button>}

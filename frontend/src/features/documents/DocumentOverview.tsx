@@ -6,7 +6,7 @@ export function DocumentOverview() {
   const q = useWsQuery(['documents', 'dashboard'], documentApi.dashboard);
   const d = q.data;
   if (!d || d.total === 0) return null;
-  const tiles: [string, number, boolean?][] = [['documents', d.total], ['mine', d.mine], ['waiting for me', d.waitingForMe, d.waitingForMe > 0], ['not published', d.unpublished], ['updated this week', d.updatedThisWeek], ['untouched for 90 days', d.notUpdatedIn90Days, d.notUpdatedIn90Days > 0]];
+  const tiles: [string, number, boolean?][] = [[d.total === 1 ? 'document' : 'documents', d.total], ['mine', d.mine], ['waiting for me', d.waitingForMe, d.waitingForMe > 0], ['not published', d.unpublished], ['updated this week', d.updatedThisWeek], ['untouched for 90 days', d.notUpdatedIn90Days, d.notUpdatedIn90Days > 0]];
   return (
     <section className="doc-overview" aria-label="Documents overview">
       {tiles.map(([label, n, warn]) => <span key={label} className={`doc-stat${warn ? ' warn' : ''}`}><b>{n.toLocaleString()}</b>{label}</span>)}

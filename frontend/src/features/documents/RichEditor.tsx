@@ -67,6 +67,10 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) 
 export function RichEditor({ value, onChange, readOnly, placeholder, label, onPickImage }: { value: string; onChange?: (json: string) => void; readOnly?: boolean; placeholder?: string; label: string; onPickImage?: () => Promise<{ fileId: string; alt: string } | null> }) {
   const initial = useMemo(() => parse(value), []); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef(value);
+  // Some extensions (table, list) run a transaction of their own while the editor is still being built, which can fire onUpdate once
+  // before anyone has typed anything - that falsely marked a brand-new, still-empty section "unsaved" the moment its editor mounted.
+  // onCreate always runs before any real keystroke could, so it is a safe place to start actually listening for edits.
+  const ready = useRef(false);
   const editor = useEditor({
     editable: !readOnly,
     content: initial,
@@ -76,7 +80,11 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
       Highlight, TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: false } }), DocImage,
     ],
     editorProps: { attributes: { class: 'rte-content', 'aria-label': label, role: 'textbox', 'aria-multiline': 'true' } },
-    onUpdate: ({ editor: e }) => { const json = JSON.stringify(e.getJSON()); last.current = json; onChange?.(json); },
+    onCreate: () => { ready.current = true; },
+    onUpdate: ({ editor: e }) => {
+      if (!ready.current) return;
+      const json = JSON.stringify(e.getJSON()); last.current = json; onChange?.(json);
+    },
   });
 
   useEffect(() => { editor?.setEditable(!readOnly); }, [editor, readOnly]);

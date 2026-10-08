@@ -28,7 +28,12 @@ export function DocumentGate({ id, original }: { id: string; original: unknown }
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not send the request.'),
   });
   if (q.isLoading) return <PageLoader />;
-  if (q.isError || !q.data) return <ErrorState error={original ?? q.error} retry={() => q.refetch()} />;
+  if (q.isError || !q.data) {
+    // The document was not found at all (not just "no access") - the original 404 already said as much; retrying a
+    // nonexistent id can never succeed, so there is no "Try again" here, same as a deleted/invalid project.
+    const notFound = q.error instanceof ApiError && q.error.status === 404;
+    return <ErrorState error={notFound ? new ApiError(404, 'This document does not exist or you do not have access to it.', []) : (original ?? q.error)} retry={notFound ? undefined : () => q.refetch()} />;
+  }
   const g = q.data;
   return (
     <div className="gate">

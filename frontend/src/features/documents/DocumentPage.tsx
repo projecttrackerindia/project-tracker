@@ -182,7 +182,7 @@ export function DocumentPage() {
             { label: 'Archive', hint: 'Make it read-only', icon: 'folder', onSelect: () => run.mutate(() => documentApi.archive(id)), hidden: d.status === 'Archived' || !detail.can.edit },
             { label: 'Reopen', icon: 'folder', onSelect: () => run.mutate(() => documentApi.reopen(id)), hidden: !(d.status === 'Archived' && detail.can.delete) },
             { label: 'Delete', hint: 'Recoverable for 30 days', icon: 'trash', danger: true, hidden: !detail.can.delete, onSelect: async () => {
-              if (!(await confirmDialog({ title: 'Delete this document?', message: `${d.key} “${d.title}” disappears for everyone. You can bring it back for 30 days.`, confirmText: 'Delete' }))) return;
+              if (!(await confirmDialog({ title: 'Delete this document?', message: `${d.key} “${d.title}” disappears for everyone. You can bring it back for 30 days.`, confirmText: 'Delete', danger: false }))) return;
               try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Document deleted.', 'warning'); nav(d.projectId ? `/projects/${d.projectId}?tab=documents` : '/documents'); }
               catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
             } },

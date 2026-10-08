@@ -170,6 +170,14 @@ public class TaskService(
         if (found != labelIds.Distinct().Count()) throw new ValidationException("labelIds", "One or more labels do not exist.");
     }
 
+    /// <summary>Keeps hours within the column's own precision (decimal(9,2), so up to 9,999,999.99) with a much more realistic ceiling - without
+    /// this, a value like 99999999 overflows the column and the database rejects the whole save with no field to point the person at.</summary>
+    private const decimal MaxHours = 100_000m;
+    private static void ValidateHours(decimal? hours, string field)
+    {
+        if (hours is { } h && (h < 0 || h > MaxHours)) throw new ValidationException(field, $"Hours must be between 0 and {MaxHours:N0}.");
+    }
+
     private async Task<int> NextNumberAsync(Guid projectId, CancellationToken ct) =>
         (await db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == projectId).MaxAsync(t => (int?)t.Number, ct) ?? 0) + 1;
 
@@ -195,6 +203,7 @@ public class TaskService(
             if (parentTask.ParentTaskId is not null) throw new ValidationException("parentTaskId", "Subtasks cannot have their own subtasks.");
         }
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");
+        ValidateHours(req.EstimatedHours, "estimatedHours");
 
         var statuses = await db.WorkflowStatuses.Where(x => x.ProjectId == projectId).OrderBy(x => x.Order).ToListAsync(ct);
         var status = req.StatusId is { } stid
@@ -240,6 +249,8 @@ public class TaskService(
         if (task.Version != req.Version)
             throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");
+        ValidateHours(req.EstimatedHours, "estimatedHours");
+        ValidateHours(req.ActualHours, "actualHours");
         var dueNote = DueDateHistory.Prepare(task.DueDate, req.DueDate, req.DueDateReason, req.DueDateDependency);   // a delay needs a reason
 
         var project = await db.Projects.FirstAsync(p => p.Id == task.ProjectId, ct);

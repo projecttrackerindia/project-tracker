@@ -99,6 +99,8 @@ export function ProjectsPage() {
   const groups = useWsQuery(['project-groups'], () => projectGroupApi.list());
   const data = projects.data;
   const hasFilters = !!(q || status || priority || ownerId || groupId || projectType || archived);
+  // Only asked for when a filter narrows the list, so the subtitle can say "N of M" instead of implying N is the whole organization.
+  const total = useWsQuery(['projects', 'list', 'total', mineOnly], () => projectApi.list({ mineOnly, pageSize: 1, page: 1 }), { enabled: hasFilters });
   const reset = () => { setQ(''); setStatus(''); setPriority(''); setOwnerId(''); setGroupId(''); setArchived(false); setPage(1); };
   const on = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(1); };
 
@@ -110,7 +112,11 @@ export function ProjectsPage() {
 
   return (
     <>
-      <PageHead title="Projects" sub={data ? `${data.totalItems} project${data.totalItems === 1 ? '' : 's'}${oversees ? (mineOnly ? ' you belong to' : ' in the organization') : ''}` : ' '}>
+      <PageHead title="Projects" sub={data ? (
+        hasFilters && total.data && total.data.totalItems !== data.totalItems
+          ? `${data.totalItems} of ${total.data.totalItems} project${total.data.totalItems === 1 ? '' : 's'}${oversees ? (mineOnly ? ' you belong to' : '') : ''}`
+          : `${data.totalItems} project${data.totalItems === 1 ? '' : 's'}${oversees ? (mineOnly ? ' you belong to' : ' in the organization') : ''}`
+      ) : ' '}>
         <div className="seg" role="group" aria-label="Projects view">
           {([['cards', 'grid', 'Cards'], ['list', 'list', 'List'], ['board', 'kanban', 'Board']] as const).map(([id, icon, label]) => (
             <button key={id} type="button" className={view === id ? 'active' : ''} aria-pressed={view === id} title={`${label} view`} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>
