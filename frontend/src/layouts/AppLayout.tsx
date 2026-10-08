@@ -58,6 +58,12 @@ function Sidebar() {
   useEffect(() => { setTitleParts({ unread: canChat ? unreadCount : 0 }); }, [unreadCount, canChat]);
   const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
   const reminders = useReminderCounts(!!wid && !isPlatformAdmin);
+  // The sidebar's own identity: a Business/Enterprise workspace is confident enough to show its own name; a Free/Pro workspace (which
+  // might still be "My organization" from sign-up) shows the product name instead, and a personal space shows its own name.
+  const planCode = ctx?.current?.plan.code;
+  const brandTitle = isPlatformAdmin ? 'Platform' : personal ? (ctx?.current?.name ?? 'Personal space')
+    : planCode === 'BUSINESS' || planCode === 'ENTERPRISE' ? (ctx?.current?.name ?? 'Projects') : 'Project Tracker';
+  const brandSub = isPlatformAdmin ? 'Administration' : personal ? 'Personal space' : 'Workspace';
   // The same menu as the command palette; the sidebar adds the unread count to Chat and what needs attention to Reminders.
   const groups = useMainNav().map((g) => ({ ...g, items: g.items.map((i) => (i.to === '/chat' ? { ...i, badge: unread.data?.count }
     : i.to === '/reminders' ? { ...i, badge: reminders.data?.now } : i)) }));
@@ -67,7 +73,7 @@ function Sidebar() {
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarOpen ? 'open' : ''}`} id="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark"><BrandMark /></div>
-          <div className="brand-text"><strong>{isPlatformAdmin ? 'Platform' : 'Projects'}</strong><span>{isPlatformAdmin ? 'Administration' : 'Workspace'}</span></div>
+          <div className="brand-text"><strong title={brandTitle}>{brandTitle}</strong><span>{brandSub}</span></div>
         </div>
         <nav className="sidebar-nav" aria-label="Main navigation">
           {groups.map((g) => {
