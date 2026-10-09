@@ -17,7 +17,7 @@ public record DocAuditPageDto(IReadOnlyList<DocAuditDto> Items, string? NextCurs
 /// What happened to a document. The activity of a document is visible to everyone who can open it (every plan). The audit trail, with who, from where and
 /// what changed, is a Business feature for people who hold the audit permission; reading or exporting it is recorded in the trail itself.
 /// </summary>
-public class DocumentAuditService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements)
+public class DocumentAuditService(IAppDbContext db, ICurrentContext ctx, Recorder recorder, PermissionService permissions, EntitlementService entitlements)
 {
     public const int PageSize = 50, ExportMax = 5000;
 
