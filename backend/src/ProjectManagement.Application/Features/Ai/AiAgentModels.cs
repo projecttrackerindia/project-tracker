@@ -19,7 +19,7 @@ public record AiAttachmentDto(Guid Id, string Name, string ContentType, long Siz
 /// (with a link to the result), "failed" (with the reason) or "dismissed". <see cref="Preview"/> is the full text of what would be created or sent,
 /// so the person can read it before confirming.
 /// </summary>
-public record AiActionDto(string Id, string Kind, string Title, string Summary, string Status, string? Link = null, string? Error = null, string? Preview = null);
+public record AiActionDto(string Id, string Kind, string Title, string Summary, string Status, string? Link = null, string? Error = null, string? Preview = null, Guid? ResultId = null);
 
 public record AiMessageDto(Guid Id, string Role, string Content, string? Reasoning, string? Tier, string? Model, string? RouteReason, int Credits, string Status,
     IReadOnlyList<AiToolUseDto> Tools, IReadOnlyList<AiActionDto> Actions, IReadOnlyList<AiAttachmentDto> Attachments, DateTime CreatedAt,
@@ -34,7 +34,8 @@ public record RenameAiConversationRequest(string? Title, bool? Pinned);
 // ---- a question
 
 /// <summary>A question for the assistant. <see cref="Mode"/> is "auto" (the default), "quick", "standard" or "deep".</summary>
-public record AiAskRequest(string? Text, string? Mode, IReadOnlyList<Guid>? AttachmentIds, string? TimeZone);
+public record AiConfirmationBinding(Guid MessageId, string ActionId, string Kind);
+public record AiAskRequest(string? Text, string? Mode, IReadOnlyList<Guid>? AttachmentIds, string? TimeZone, AiConfirmationBinding? Confirmation = null);
 
 // ---- the live stream of one answer
 

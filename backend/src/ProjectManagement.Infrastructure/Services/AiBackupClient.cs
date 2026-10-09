@@ -15,9 +15,11 @@ namespace ProjectManagement.Infrastructure.Services;
 /// chat-completions API (POST {BaseUrl}/chat/completions with a bearer key): Groq, OpenRouter, Mistral, a self-hosted Ollama. Nothing is
 /// called unless <c>Ai:Fallback:BaseUrl</c> and <c>Model</c> are set.
 /// </summary>
-public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions> options, ILogger<OpenAiCompatibleClient> log)
+public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions> options, ILogger<OpenAiCompatibleClient> log, AiInferenceGate? gate = null)
 {
     private AiFallbackOptions F => options.Value.Fallback;
+    internal AiOptions Settings => options.Value;
+    internal AiInferenceGate Gate { get; } = gate ?? new AiInferenceGate(options);
     public bool Configured => !string.IsNullOrWhiteSpace(F.BaseUrl) && !string.IsNullOrWhiteSpace(F.Model);
     public string Model => F.Model?.Trim() ?? "";
     public string Name => !string.IsNullOrWhiteSpace(F.Name) ? F.Name.Trim() : NameFor(F.BaseUrl);
@@ -41,29 +43,37 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
     public async Task<string> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
+        using var lease = await Gate.EnterAsync(ct);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(F.TimeoutSeconds, 1, 600)));
+        var token = deadline.Token;
+        if (system.Length + user.Length > F.MaxPromptChars)
+            throw new AppException(422, "AI_CONTEXT_OVERFLOW", "This request exceeds the local model's context budget. Narrow the question or start a new conversation.");
         // Models that think before answering count the thinking against the same limit, so they get room for it on top.
-        var tokens = Math.Clamp(maxTokens, 64, options.Value.MaxTokens) + Math.Max(0, F.ThinkingTokens);
+        var tokens = Math.Clamp(maxTokens + Math.Max(0, F.ThinkingTokens), 1, F.MaxOutputTokens);
         var gemini = UsesGeminiApi;
-        using var req = gemini ? GeminiRequest(system, user, tokens) : ChatRequest(system, user, tokens);
+        using var req = gemini ? GeminiRequest(system, user, tokens) : F.Wire?.Equals("ollama", StringComparison.OrdinalIgnoreCase) == true ? OllamaRequest(system, user, tokens) : ChatRequest(system, user, tokens);
 
         HttpResponseMessage res;
-        try { res = await http.CreateClient("ai-backup").SendAsync(req, ct); }
+        try { res = await http.CreateClient("ai-backup").SendAsync(req, token); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             log.LogWarning(ex, "The backup model ({Name}) could not be reached", Name);
+            if (ex is TaskCanceledException && deadline.IsCancellationRequested)
+                throw new AiProviderException(504, "AI_TIMEOUT", Name, "exceeded its configured response deadline");
             throw AiFailure.Unreachable(Name, ex);
         }
         using (res)
         {
-            var text = await res.Content.ReadAsStringAsync(ct);
+            var text = await res.Content.ReadAsStringAsync(token);
             if (!res.IsSuccessStatusCode)
             {
-                log.LogWarning("The backup model ({Name}) answered {Status}: {Body}", Name, (int)res.StatusCode, text.Length > 300 ? text[..300] : text);
+                log.LogWarning("The backup model ({Name}) answered {Status}", Name, (int)res.StatusCode);
                 throw AiFailure.For(Name, res.StatusCode, text);
             }
             JsonNode? json;
             try { json = JsonNode.Parse(text); } catch (JsonException) { json = null; }
-            var (content, finish) = gemini ? GeminiAnswer(json) : ChatAnswer(json);
+            var (content, finish) = gemini ? GeminiAnswer(json) : F.Wire?.Equals("ollama", StringComparison.OrdinalIgnoreCase) == true ? (json?["message"]?["content"]?.GetValue<string>(), json?["done_reason"]?.ToString()) : ChatAnswer(json);
             if (string.IsNullOrWhiteSpace(content))
             {
                 log.LogWarning("The backup model ({Name}) gave no answer (finish reason {Reason})", Name, finish);
@@ -74,6 +84,20 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
     }
 
     // ------------------------------------------------------------------ OpenAI chat completions
+
+    private HttpRequestMessage OllamaRequest(string system, string user, int tokens)
+    {
+        var root = F.BaseUrl!.Trim().TrimEnd('/');
+        if (root.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) root = root[..^3];
+        var settings = new JsonObject { ["num_predict"] = tokens };
+        if (F.NumCtx is { } context) settings["num_ctx"] = context;
+        if (F.NumThread is { } threads) settings["num_thread"] = threads;
+        var body = new JsonObject { ["model"] = Model, ["stream"] = false, ["think"] = false, ["keep_alive"] = F.KeepAlive,
+            ["options"] = settings, ["messages"] = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = system }, new JsonObject { ["role"] = "user", ["content"] = user }) };
+        var req = new HttpRequestMessage(HttpMethod.Post, $"{root}/api/chat") { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+        if (!string.IsNullOrWhiteSpace(F.ApiKey)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", F.ApiKey.Trim());
+        return req;
+    }
 
     private HttpRequestMessage ChatRequest(string system, string user, int tokens)
     {
@@ -160,16 +184,16 @@ public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient back
     private long _claudeRestsUntil;   // UTC ticks
     private AiProviderException? _claudeFailure;
 
-    public bool Configured => claude.Configured || backup.Configured;
-    public string Model => claude.Configured ? claude.Model : backup.Model;
-    public string? Provider => claude.Configured ? "Claude (Anthropic)" : backup.Configured ? backup.Name : null;
-    public string? Backup => claude.Configured && backup.Configured ? backup.Name : null;
+    public bool Configured => backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
+    public string Model => backup.Settings.UsesAnthropic && claude.Configured ? claude.Model : backup.Model;
+    public string? Provider => backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Configured ? backup.Name : null;
+    public string? Backup => backup.Settings.UsesAnthropic && claude.Configured && backup.Configured ? backup.Name : null;
 
     public async Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
         AiProviderException? claudeFailed = null;
-        if (claude.Configured)
+        if (backup.Settings.UsesAnthropic && claude.Configured)
         {
             if (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil))
             {

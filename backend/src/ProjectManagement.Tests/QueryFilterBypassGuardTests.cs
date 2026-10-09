@@ -60,6 +60,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Work/WorkTaskService.cs",
         "ProjectManagement.Application/Features/Workspaces/WorkspaceService.cs",
         "ProjectManagement.Application/Services/EntitlementService.cs",
+        "ProjectManagement.Infrastructure/Workers/AiTraceRetentionWorker.cs", // background cleanup: only expired operational traces; no content or business writes
         "ProjectManagement.Infrastructure/Persistence/AppDbContext.Audit.cs",
         "ProjectManagement.Infrastructure/Persistence/AppDbContext.QueryFilters.cs",
         "ProjectManagement.Infrastructure/Persistence/DatabaseInitializer.cs",

@@ -181,7 +181,7 @@ public class AiBackupChatTests
         Assert.Equal("qwen2.5:7b-instruct-q4_K_M", S(body["model"]));   // the configured model, never the caller's Claude tier model
         Assert.False(body["think"]!.GetValue<bool>());                  // native route honours this, unlike /v1/chat/completions
         Assert.Null(body["max_tokens"]);                                // the OpenAI-only field has no place in a native request
-        Assert.Null(body["options"]);                                   // nothing sent unless an administrator sets NumCtx/NumThread
+        Assert.Equal(500, body["options"]!["num_predict"]!.GetValue<int>());                                   // nothing sent unless an administrator sets NumCtx/NumThread
     }
 
     [Fact]

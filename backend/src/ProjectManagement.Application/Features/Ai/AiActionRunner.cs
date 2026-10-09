@@ -1,4 +1,5 @@
 using System.Net;
+using ProjectManagement.Application.Features.Chat;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,7 +21,7 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Ai;
 
-public sealed record AiActionResult(string? Link);
+public sealed record AiActionResult(string? Link, Guid? RecordId = null);
 
 /// <summary>
 /// Carries out a change the assistant proposed, after the person pressed Confirm. It goes through the same services as the app's own
@@ -28,12 +29,30 @@ public sealed record AiActionResult(string? Link);
 /// made the change by hand.
 /// </summary>
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
-    ReminderService reminders, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
+    ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
-    public async Task<AiActionResult> RunAsync(AiProposal p, CancellationToken ct)
+    private async Task ClaimOriginalReminderAsync(JsonElement a, CancellationToken ct)
+    {
+        if (Str(a, "supersedesMessageId") is not { } source) return;
+        if (!System.Guid.TryParse(source, out var id)) throw new ConflictException("The original reminder suggestion is invalid.", "AI_ACTION_HANDLED");
+        var me = ctx.RequireUserId(); var tenant = ctx.RequireTenantId();
+        var original = await db.AiMessages.AsNoTracking().Where(m => m.Id == id && m.UserId == me && m.TenantId == tenant && m.Role == "assistant")
+            .Select(m => new { m.ActionsJson }).FirstOrDefaultAsync(ct) ?? throw new NotFoundException("Original reminder suggestion not found.");
+        var all = JsonSerializer.Deserialize<List<AiProposal>>(original.ActionsJson ?? "[]", Json) ?? [];
+        var index = all.FindIndex(p => p.Id == Str(a, "supersedesProposalId") && p.Kind == "reminder");
+        if (index < 0 || all[index].Status != "proposed" || all.Any(p => p.Status == "running"))
+            throw new ConflictException("The original reminder or another replacement was already handled. Check Reminders before trying again.", "AI_ACTION_HANDLED");
+        all[index] = all[index] with { Status = "dismissed", Error = "Replaced by a confirmed reminder suggestion." };
+        var updated = JsonSerializer.Serialize(all, Json);
+        if (await db.AiMessages.Where(m => m.Id == id && m.TenantId == tenant && m.UserId == me && m.ActionsJson == original.ActionsJson)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, updated), ct) != 1)
+            throw new ConflictException("The original reminder is already being handled.", "AI_ACTION_HANDLED");
+    }
+
+    public async Task<AiActionResult> RunAsync(AiProposal p, CancellationToken ct, Guid? executionId = null)
     {
         using var doc = JsonDocument.Parse(p.PayloadJson);
         var a = doc.RootElement;
@@ -74,12 +93,36 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
                 return new AiActionResult($"/projects/{projectId}");
             }
+            case "update_reminder":
+            {
+                var id = Guid(a, "reminderId") ?? throw new ValidationException("id", "Choose a saved reminder.");
+                var list = await reminders.ListAsync(ct);
+                var existing = list.Open.Concat(list.Sent).FirstOrDefault(r => r.Id == id && r.CanEdit)
+                    ?? throw new NotFoundException("Reminder not available to edit.");
+                await reminders.UpdateAsync(id,
+                    new SaveReminderRequest(null, existing.Note, ReminderTarget.None, null, null,
+                        new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, existing.Recurrence), null, null), ct);
+                return new AiActionResult("/reminders");
+            }
             case "reminder":
             {
+                await ClaimOriginalReminderAsync(a, ct);
                 var target = Enum.TryParse<ReminderTarget>(Str(a, "targetType"), true, out var tt) ? tt : ReminderTarget.None;
                 await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, target, target == ReminderTarget.None ? null : Guid(a, "targetId"), Guid(a, "forUserId"),
                     new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, null), null, null), ct);
                 return new AiActionResult("/reminders");
+            }
+            case "send_message":
+            {
+                var recipient = Guid(a, "recipientId") ?? throw new ValidationException("recipient", "Choose a recipient.");
+                var body = Str(a, "body") ?? throw new ValidationException("body", "Provide the approved message.");
+                var receiptId = executionId ?? throw new ConflictException("A message requires an exact approved action identity.", "AI_ACTION_ID_REQUIRED");
+                var conversation = await messages.OpenDirectAsync(new OpenDirectRequest(recipient), ct);
+                var sent = await messages.SendAsync(conversation.Id, new SendMessageRequest(body, null), ct, receiptId);
+                var stored = await db.ChatMessages.AsNoTracking().AnyAsync(m => m.Id == sent.Id && m.ConversationId == conversation.Id
+                    && m.SenderId == ctx.UserId && m.Body == body && m.DeletedAt == null, ct);
+                if (!stored || sent.Body != body) throw new ConflictException("The exact approved message could not be verified. Check chat before retrying.", "AI_MESSAGE_UNVERIFIED");
+                return new AiActionResult($"/chat/{conversation.Id}", sent.Id);
             }
             case "send_report":
                 await SendReportAsync(a, ct);

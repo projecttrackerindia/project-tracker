@@ -54,6 +54,8 @@ namespace ProjectManagement.Domain.Entities
         /// <summary>The person's verdict on an answer: "up" or "down", with an optional reason ("too_long", "too_short", "wrong", "off_topic").</summary>
         public string? Feedback { get; set; }
         public string? FeedbackReason { get; set; }
+        /// <summary>Sanitized operational trace. No conversation content or tool payloads.</summary>
+        public string? ExecutionJson { get; set; }
         /// <summary>Credits this answer cost. Counts towards the workspace's month.</summary>
         public int Credits { get; set; }
         /// <summary>"complete", "stopped" (the person pressed Stop) or "failed".</summary>

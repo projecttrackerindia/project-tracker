@@ -181,6 +181,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
 
     private static AiOptions WithGemini(string? anthropicKey) => new()
     {
+        PrimaryProvider = "anthropic", AllowAnthropic = true,
         AnthropicApiKey = anthropicKey, Model = "claude-sonnet-5",
         Fallback = new AiFallbackOptions { BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/", ApiKey = "gm-test", Model = "gemini-flash-test", ReasoningEffort = "low" },
     };
@@ -197,7 +198,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         Assert.Equal("Bearer gq-test", stub.Request.Headers.Authorization!.ToString());
         var body = JsonNode.Parse(stub.Body!)!;
         Assert.Equal("openai/gpt-oss-120b", S(body["model"]));
-        Assert.Equal(300 + 2048, body["max_tokens"]!.GetValue<int>());   // room for thinking on top of the answer
+        Assert.Equal(300, body["max_tokens"]!.GetValue<int>());   // no hidden reasoning budget by default
         Assert.Equal("low", S(body["reasoning_effort"]));
         Assert.Equal(["system", "user"], body["messages"]!.AsArray().Select(m => S(m!["role"])));
         Assert.Equal("Be brief.", S(body["messages"]![0]!["content"]));
@@ -220,7 +221,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         Assert.Equal("Be brief.", S(body["systemInstruction"]!["parts"]![0]!["text"]));
         Assert.Equal("user", S(body["contents"]![0]!["role"]));
         Assert.Equal("Hi", S(body["contents"]![0]!["parts"]![0]!["text"]));
-        Assert.Equal(300 + 2048, body["generationConfig"]!["maxOutputTokens"]!.GetValue<int>());
+        Assert.Equal(300, body["generationConfig"]!["maxOutputTokens"]!.GetValue<int>());
         Assert.Equal("low", S(body["generationConfig"]!["thinkingConfig"]!["thinkingLevel"]));
 
         // Gemini 2.x takes a thinking budget instead, and a "models/" prefix is dropped.
@@ -271,7 +272,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         Assert.Equal(2, openai.Calls);
 
         // Without a backup the person is told plainly what is wrong.
-        var alone = Router(new AiOptions { AnthropicApiKey = "sk-test" });
+        var alone = Router(new AiOptions { AnthropicApiKey = "sk-test", PrimaryProvider = "anthropic", AllowAnthropic = true });
         Assert.Null(alone.Backup);
         var noCredit = await Assert.ThrowsAsync<AiProviderException>(() => alone.CompleteAsync("Be brief.", "Hi", 300, default));
         Assert.Equal("AI_NO_CREDIT", noCredit.Code);

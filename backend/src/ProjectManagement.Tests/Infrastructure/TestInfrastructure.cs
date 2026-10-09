@@ -59,6 +59,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
         Environment.SetEnvironmentVariable("Ai__Chat__CompactAfterMessages", "8"); // small, so a test can reach the point where an AI conversation is summarized
         Environment.SetEnvironmentVariable("Ai__Chat__KeepRecentMessages", "4");
+        Environment.SetEnvironmentVariable("Ai__PrimaryProvider", "anthropic");
+        Environment.SetEnvironmentVariable("Ai__AllowAnthropic", "true");
+        Environment.SetEnvironmentVariable("Ai__Chat__RefusalFallbackModel", "claude-opus-4-8");
+        Environment.SetEnvironmentVariable("Ai__Chat__UseClassifier", "true"); // classifier tests opt in explicitly
         Environment.SetEnvironmentVariable("Reminders__WorkerEnabled", "false"); // tests run the reminder engine explicitly
         Environment.SetEnvironmentVariable("Webhooks__AllowPrivateTargets", "true");
         Environment.SetEnvironmentVariable("Webhooks__SettleSeconds", "0");

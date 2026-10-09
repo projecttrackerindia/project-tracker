@@ -27,10 +27,33 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
 
     public Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct) => oneShot.CompleteAsync(system, user, maxTokens, ct);
 
+    internal AiOptions Settings => options.Value;
+    public string Provider => oneShot.Name;
+    public string ModelFor(string requestedModel) => F.Model?.Trim() ?? "";
+
     private bool Native => F.Wire?.Equals("ollama", StringComparison.OrdinalIgnoreCase) == true;
 
-    public IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, CancellationToken ct) =>
-        Native ? StreamOllamaAsync(request, ct) : StreamOpenAiAsync(request, ct);
+    public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
+    {
+        using var lease = await oneShot.Gate.EnterAsync(ct);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(F.TimeoutSeconds, 1, 600)));
+        if (request.Turns.SelectMany(t => t.Blocks).Any(b => b is AiPdf || b is AiImage && !F.SupportsImages))
+            throw new AppException(422, "AI_ATTACHMENT_UNSUPPORTED", "This text model cannot read image or PDF attachments. Attach extracted text instead.");
+        var body = Native ? BuildOllama(request, new()) : Build(request);
+        if (body.ToJsonString().Length > F.MaxPromptChars)
+            throw new AppException(422, "AI_CONTEXT_OVERFLOW", "This request exceeds the local model's context budget. Narrow the question or start a new conversation.");
+        await using var events = (Native ? StreamOllamaAsync(request, deadline.Token) : StreamOpenAiAsync(request, deadline.Token)).GetAsyncEnumerator(deadline.Token);
+        while (true)
+        {
+            bool more;
+            try { more = await events.MoveNextAsync(); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            { throw new AppException(504, "AI_TIMEOUT", "The local model exceeded its response deadline. Try a narrower question."); }
+            if (!more) yield break;
+            yield return events.Current;
+        }
+    }
 
     // ------------------------------------------------------------------ OpenAI chat-completions wire format
 
@@ -50,6 +73,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         string stop = "end_turn";
         int input = 0, output = 0;
         var sawAnyChunk = false;
+        var finished = false;
 
         await using var stream = await res.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
@@ -57,10 +81,12 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         {
             if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal)) continue;
             var payload = line["data:".Length..].Trim();
-            if (payload is "" or "[DONE]") continue;
+            if (payload == "[DONE]") { finished = true; continue; }
+            if (payload == "") continue;
             JsonNode? json;
-            try { json = JsonNode.Parse(payload); } catch (JsonException) { continue; }   // a malformed keep-alive line; nothing useful to read
+            try { json = JsonNode.Parse(payload); } catch (JsonException) { throw new AppException(502, "AI_MALFORMED_RESPONSE", "The model returned invalid streaming data."); }   // a malformed keep-alive line; nothing useful to read
             sawAnyChunk = true;
+            if (json?["error"] is not null) throw new AppException(502, "AI_MODEL_ERROR", "The model reported an inference error.");
 
             if (json?["usage"] is { } u)
             {
@@ -72,6 +98,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
             if (delta?["content"] is JsonValue c && c.TryGetValue<string>(out var textDelta) && textDelta.Length > 0)
             {
                 textAcc.Append(textDelta);
+                if (textAcc.Length > 64000) throw new AppException(502, "AI_RESPONSE_LIMIT", "The model exceeded its response size limit.");
                 yield return new AiTextDelta(textDelta);
             }
             if (delta?["tool_calls"] is JsonArray calls)
@@ -83,19 +110,21 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
                     if (call?["id"]?.GetValue<string>() is { Length: > 0 } id) acc.Id = id;
                     if (call?["function"]?["name"]?.GetValue<string>() is { Length: > 0 } name) acc.Name = name;
                     if (call?["function"]?["arguments"]?.GetValue<string>() is { } args) acc.Arguments.Append(args);
+                    if (tools.Count > 64 || acc.Arguments.Length > 16000) throw new AppException(502, "AI_RESPONSE_LIMIT", "The model exceeded its tool response limits.");
                 }
             }
             if (choice?["finish_reason"]?.GetValue<string>() is { Length: > 0 } fr)
-                stop = fr switch { "tool_calls" => "tool_use", "length" => "max_tokens", "stop" => "end_turn", _ => fr };
+            { finished = true; stop = fr switch { "tool_calls" => "tool_use", "length" => "max_tokens", "stop" => "end_turn", _ => fr }; }
         }
         if (!sawAnyChunk) throw AiFailure.NoAnswer(oneShot.Name, null);
+        if (!finished) throw new AppException(502, "AI_INCOMPLETE_RESPONSE", "The model connection closed before the answer completed.");
 
         var assistant = new List<AiBlock>();
         if (textAcc.Length > 0) assistant.Add(new AiText(textAcc.ToString()));
         foreach (var t in tools.Values) assistant.Add(new AiToolUse(t.Id ?? Guid.NewGuid().ToString("N")[..12], t.Name ?? "", t.Arguments.Length == 0 ? "{}" : t.Arguments.ToString()));
         if (tools.Count > 0 && stop == "end_turn") stop = "tool_use";   // some servers send tool_calls without ever setting finish_reason
         log.LogDebug("{Name} turn on {Model}: {Stop}, {In} in / {Out} out", oneShot.Name, request.Model, stop, input, output);
-        yield return new AiTurnEnd(assistant, stop, input, output);
+        yield return new AiTurnEnd(assistant, stop, input, output, Model: oneShot.Model, Provider: oneShot.Name);
     }
 
     private sealed class ToolAcc { public string? Id, Name; public StringBuilder Arguments = new(); }
@@ -118,6 +147,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         string stop = "end_turn";
         int input = 0, output = 0;
         var sawAnyChunk = false;
+        var finished = false;
 
         await using var stream = await res.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
@@ -125,13 +155,15 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         {
             if (line.Length == 0) continue;
             JsonNode? json;
-            try { json = JsonNode.Parse(line); } catch (JsonException) { continue; }
+            try { json = JsonNode.Parse(line); } catch (JsonException) { throw new AppException(502, "AI_MALFORMED_RESPONSE", "The model returned invalid streaming data."); }
             sawAnyChunk = true;
+            if (json?["error"] is not null) throw new AppException(502, "AI_MODEL_ERROR", "The model reported an inference error.");
 
             var message = json?["message"];
             if (message?["content"] is JsonValue c && c.TryGetValue<string>(out var textDelta) && textDelta.Length > 0)
             {
                 textAcc.Append(textDelta);
+                if (textAcc.Length > 64000) throw new AppException(502, "AI_RESPONSE_LIMIT", "The model exceeded its response size limit.");
                 yield return new AiTextDelta(textDelta);
             }
             if (message?["tool_calls"] is JsonArray calls)
@@ -142,22 +174,26 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
                     var args = call?["function"]?["arguments"];
                     var id = $"{name}|{Guid.NewGuid():N}";
                     idToName[id] = name;
-                    assistant.Add(new AiToolUse(id, name, args is null ? "{}" : args.ToJsonString()));
+                    var arguments = args is null ? "{}" : args.ToJsonString();
+                    if (assistant.Count > 64 || arguments.Length > 16000) throw new AppException(502, "AI_RESPONSE_LIMIT", "The model exceeded its tool response limits.");
+                    assistant.Add(new AiToolUse(id, name, arguments));
                 }
             }
             if (json?["done"]?.GetValue<bool>() == true)
             {
+                finished = true;
                 input = json["prompt_eval_count"]?.GetValue<int>() ?? input;
                 output = json["eval_count"]?.GetValue<int>() ?? output;
                 stop = json["done_reason"]?.GetValue<string>() switch { "length" => "max_tokens", _ => "end_turn" };
             }
         }
         if (!sawAnyChunk) throw AiFailure.NoAnswer(oneShot.Name, null);
+        if (!finished) throw new AppException(502, "AI_INCOMPLETE_RESPONSE", "The model connection closed before the answer completed.");
 
         if (textAcc.Length > 0) assistant.Insert(0, new AiText(textAcc.ToString()));
         if (assistant.OfType<AiToolUse>().Any()) stop = "tool_use";
         log.LogDebug("{Name} turn on {Model} (native): {Stop}, {In} in / {Out} out", oneShot.Name, request.Model, stop, input, output);
-        yield return new AiTurnEnd(assistant, stop, input, output);
+        yield return new AiTurnEnd(assistant, stop, input, output, Model: oneShot.Model, Provider: oneShot.Name);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
@@ -172,7 +208,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         if (!res.IsSuccessStatusCode)
         {
             var text = await res.Content.ReadAsStringAsync(ct);
-            log.LogWarning("The local model ({Name}) answered {Status}: {Body}", oneShot.Name, (int)res.StatusCode, text.Length > 300 ? text[..300] : text);
+            log.LogWarning("The local model ({Name}) answered {Status}", oneShot.Name, (int)res.StatusCode);
             res.Dispose();
             throw AiFailure.For(oneShot.Name, res.StatusCode, text);
         }
@@ -185,15 +221,13 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         foreach (var turn in r.Turns) AppendOllamaTurn(messages, turn, idToName);
         // think:false works correctly on the native route (unlike /v1/chat/completions, which silently drops it) - this provider never
         // reads a reasoning trace back out regardless, so it is always off.
-        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["think"] = false, ["messages"] = messages };
+        var body = new JsonObject { ["model"] = oneShot.Model, ["stream"] = true, ["think"] = false, ["messages"] = messages };
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
-        if (F.NumCtx.HasValue || F.NumThread.HasValue)
-        {
-            var o = new JsonObject();
-            if (F.NumCtx is { } c) o["num_ctx"] = c;
-            if (F.NumThread is { } t) o["num_thread"] = t;
-            body["options"] = o;
-        }
+        var o = new JsonObject { ["num_predict"] = Math.Clamp(r.MaxTokens, 1, F.MaxOutputTokens) };
+        body["keep_alive"] = F.KeepAlive;
+        if (F.NumCtx is { } c) o["num_ctx"] = c;
+        if (F.NumThread is { } t) o["num_thread"] = t;
+        body["options"] = o;
         return body;
     }
 
@@ -241,7 +275,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
 
     private JsonObject Build(AiChatRequest r)
     {
-        var tokens = Math.Clamp(r.MaxTokens, 64, options.Value.MaxTokens) + Math.Max(0, F.ThinkingTokens);
+        var tokens = Math.Clamp(r.MaxTokens + Math.Max(0, F.ThinkingTokens), 1, F.MaxOutputTokens);
         var messages = new JsonArray { new JsonObject { ["role"] = "system", ["content"] = string.IsNullOrWhiteSpace(r.Context) ? r.System : $"{r.System}\n\n{r.Context}" } };
         foreach (var turn in r.Turns) AppendTurn(messages, turn);
         // r.Model is whichever Claude model the tier router picked (e.g. "claude-haiku-4-5") - meaningless to this provider, which has
@@ -251,7 +285,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         // field's presence or value; something else in the request body is tripping it. stream_options is the next suspect: a newer
         // OpenAI field (added after the core chat-completions spec) that less mature compat layers are known to mishandle. Left out
         // entirely for now - token-accounting (InputTokens/OutputTokens) just defaults to 0 without it, already handled below.
-        var body = new JsonObject { ["model"] = F.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages };
+        var body = new JsonObject { ["model"] = oneShot.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages };
         // An administrator's own explicit choice is still sent if set; nothing is added by default any more (see note above).
         if (!string.IsNullOrWhiteSpace(F.ReasoningEffort)) body["reasoning_effort"] = F.ReasoningEffort.Trim();
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());
@@ -315,21 +349,23 @@ public sealed class AiChatRouter(AnthropicChat claude, OpenAiCompatibleChat back
     private static readonly TimeSpan Rest = TimeSpan.FromMinutes(15);
     private long _claudeRestsUntil;
 
-    public bool Configured => claude.Configured || backup.Configured;
+    public bool Configured => backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
+    public string Provider => backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Provider;
+    public string ModelFor(string requestedModel) => backup.Settings.UsesAnthropic && claude.Configured ? requestedModel : backup.ModelFor(requestedModel);
 
     public Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct) =>
-        claude.Configured ? claude.CompleteAsync(model, system, user, maxTokens, ct) : backup.CompleteAsync(model, system, user, maxTokens, ct);
+        backup.Settings.UsesAnthropic && claude.Configured ? claude.CompleteAsync(model, system, user, maxTokens, ct) : backup.CompleteAsync(model, system, user, maxTokens, ct);
 
     public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
-        var useClaude = claude.Configured && (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil));
+        var useClaude = backup.Settings.UsesAnthropic && claude.Configured && (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil));
         if (useClaude)
         {
             // Claude is asked first, one turn at a time; if the very first thing it returns is a failure (not configured, no credit, a
             // network error...) nothing has reached the person yet, so switching to the backup here is still invisible to them. A failure
             // after that point - mid-stream - is rare and is simply let through, rather than silently restarting the answer on another model.
-            var events = claude.StreamAsync(request, ct).GetAsyncEnumerator(ct);
+            await using var events = claude.StreamAsync(request, ct).GetAsyncEnumerator(ct);
             AiProviderException? failure = null;
             bool more;
             try { more = await events.MoveNextAsync(); }

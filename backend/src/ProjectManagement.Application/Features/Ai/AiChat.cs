@@ -36,7 +36,7 @@ public sealed record AiThinkingDelta(string Text) : AiChatEvent;
 /// One model turn is complete: everything it produced (to send back after tool results), why it stopped, and what it used. InputTokens is the
 /// part that was not cached; the cached part is counted apart because the provider bills it very differently.
 /// </summary>
-public sealed record AiTurnEnd(IReadOnlyList<AiBlock> Assistant, string StopReason, int InputTokens, int OutputTokens, int CacheReadTokens = 0, int CacheWriteTokens = 0) : AiChatEvent
+public sealed record AiTurnEnd(IReadOnlyList<AiBlock> Assistant, string StopReason, int InputTokens, int OutputTokens, int CacheReadTokens = 0, int CacheWriteTokens = 0, string? Model = null, string? Provider = null) : AiChatEvent
 {
     public bool WantsTools => StopReason == "tool_use";
 }
@@ -45,6 +45,8 @@ public sealed record AiTurnEnd(IReadOnlyList<AiBlock> Assistant, string StopReas
 public interface IAiChat
 {
     bool Configured { get; }
+    string Provider => "configured provider";
+    string ModelFor(string requestedModel) => requestedModel;
     IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, CancellationToken ct);
     /// <summary>A short, non-streaming answer (used to size up a question before choosing a model level).</summary>
     Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct);

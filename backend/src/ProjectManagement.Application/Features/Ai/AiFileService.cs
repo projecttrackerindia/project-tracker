@@ -46,6 +46,7 @@ public class AiFileService(IAppDbContext db, ICurrentContext ctx, EntitlementSer
         var ext = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
         if (name.Length == 0 || !Extensions.Contains(ext) || !FileRules.TryDescribe(name, out var contentType, out var kind))
             throw new ValidationException("file", $"The assistant can read {string.Join(", ", Extensions.Select(e => "." + e))} files.");
+        EnsureSupported(contentType);
         var isImage = FileRules.IsImage(contentType);
 
         var limit = (long)(isImage ? Opt.MaxImageMb : Opt.MaxDocumentMb) * FileRules.Mb;
@@ -105,8 +106,20 @@ public class AiFileService(IAppDbContext db, ICurrentContext ctx, EntitlementSer
         if (distinct.Count > Opt.MaxFilesPerMessage) throw new ValidationException("attachments", $"Attach up to {Opt.MaxFilesPerMessage} files to one question.");
         var rows = await db.AiAttachments.Where(a => distinct.Contains(a.Id) && a.UserId == uid && a.MessageId == null).ToListAsync(ct);
         if (rows.Count != distinct.Count) throw new ValidationException("attachments", "One of the files is no longer available. Add it again.");
+        foreach (var row in rows) EnsureSupported(row.ContentType);
         if (rows.Sum(r => r.SizeBytes) > (long)Opt.MaxTotalMb * FileRules.Mb) throw new ValidationException("attachments", $"Keep the files of one question under {Opt.MaxTotalMb} MB together.");
         return rows;
+    }
+
+    public IReadOnlyList<string> SupportedExtensions => Extensions.Where(ext => FileRules.TryDescribe("file." + ext, out var type, out _) && Supports(type)).ToList();
+
+    public bool Supports(string contentType) => options.Value.UsesAnthropic ||
+        contentType != "application/pdf" && (!FileRules.IsImage(contentType) || options.Value.Fallback.SupportsImages);
+
+    private void EnsureSupported(string contentType)
+    {
+        if (!Supports(contentType))
+            throw new AppException(422, "AI_ATTACHMENT_UNSUPPORTED", "The configured model cannot read this image or PDF. Paste its text or attach a text, Word, or spreadsheet file.");
     }
 
     /// <summary>The content the model receives for a file: pictures and PDFs as they are, anything else as its text.</summary>

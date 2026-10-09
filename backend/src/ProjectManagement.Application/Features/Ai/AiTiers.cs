@@ -36,14 +36,14 @@ public class AiChatOptions
     public AiTierOptions Deep { get; set; } = new() { Model = "claude-opus-5-5", Credits = 20, MaxTokens = 16000, Effort = "high", ShowReasoning = true, InputPerMTok = 4m, OutputPerMTok = 20m, CacheReadFactor = 0.05m };
 
     /// <summary>For questions the free rules cannot place, ask the smallest model how hard the question is (a few tokens).</summary>
-    public bool UseClassifier { get; set; } = true;
+    public bool UseClassifier { get; set; } = false;
     public string ClassifierModel { get; set; } = "claude-haiku-4-5";
 
     /// <summary>
     /// When the model declines a request (its safety checks sometimes stop harmless work), the same request is tried once on this model before
     /// the person is told. Empty turns it off. The reasoning of the first model is not carried over: it is bound to that model.
     /// </summary>
-    public string? RefusalFallbackModel { get; set; } = "claude-opus-4-8";
+    public string? RefusalFallbackModel { get; set; }
 
     public int MaxFilesPerMessage { get; set; } = 5;
     public int MaxImageMb { get; set; } = 5;
@@ -62,6 +62,8 @@ public class AiChatOptions
     public int SummaryMaxTokens { get; set; } = 700;
     /// <summary>Tool calls the assistant may chain to answer one question.</summary>
     public int MaxToolSteps { get; set; } = 8;
+    public int MaxToolCalls { get; set; } = 16;
+    public int ExecutionTimeoutSeconds { get; set; } = 180;
     /// <summary>Characters of each document's text kept for the assistant.</summary>
     public int MaxDocumentChars { get; set; } = 60_000;
 
