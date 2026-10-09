@@ -98,6 +98,21 @@ public class AttachmentTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Jar_archives_and_other_developer_formats_are_accepted_when_the_content_matches()
+    {
+        var (c, project, task) = await Setup();
+        byte[] zip = [0x50, 0x4B, 0x03, 0x04, 1, 2, 3];
+        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "app.jar", zip)).Status);
+        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "site.war", zip)).Status);
+        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "config.json", "{\"a\":1}"u8.ToArray())).Status);
+        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "logs.gz", [0x1F, 0x8B, 8, 0, 0])).Status);
+        // A .jar still has to be a real zip container, and executables stay blocked.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Upload(ForTask(project, task), "fake.jar", "MZ this is an executable"u8.ToArray())).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Upload(ForTask(project, task), "run.exe", zip)).Status);
+        Assert.Contains((await c.Get("/api/v1/attachments/limits")).Data!["allowedExtensions"]!.AsArray(), e => e!.GetValue<string>() == "jar");
+    }
+
+    [Fact]
     public async Task File_names_are_cleaned_and_never_control_where_a_file_is_stored()
     {
         var (c, project, task) = await Setup();

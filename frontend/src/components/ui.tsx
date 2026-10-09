@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import { useSheetDrag } from './Sheet';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -93,28 +93,59 @@ export function Progress({ value, tone = 'auto', large, active = 0 }: { value: n
   );
 }
 
-const avatarUrlCache = new Map<string, string>();
+/** userId -> the photo as an object URL, and when it was fetched (so a photo someone changed shows up again after a while). */
+const avatarUrlCache = new Map<string, { url: string; at: number }>();
+/** People we found to have no photo, so a card full of the same person does not ask the server again and again. */
+const avatarMissing = new Map<string, number>();
+const avatarPending = new Map<string, Promise<string | null>>();
+const AVATAR_TTL_MS = 10 * 60_000;
+const AVATAR_MISSING_TTL_MS = 60_000;
+
+let avatarEpoch = 0;
+const avatarListeners = new Set<() => void>();
+const subscribeAvatars = (fn: () => void) => { avatarListeners.add(fn); return () => { avatarListeners.delete(fn); }; };
+const getAvatarEpoch = () => avatarEpoch;
 
 /** Call after a photo is uploaded or removed so every <Avatar> for that person re-fetches instead of showing the stale cached one. */
 export function invalidateAvatarCache(userId: string) {
-  const url = avatarUrlCache.get(userId);
-  if (url) { URL.revokeObjectURL(url); avatarUrlCache.delete(userId); }
+  const hit = avatarUrlCache.get(userId);
+  if (hit) { URL.revokeObjectURL(hit.url); avatarUrlCache.delete(userId); }
+  avatarMissing.delete(userId);
+  avatarEpoch += 1;
+  avatarListeners.forEach((fn) => fn());
 }
 
-/** A person's photo URL if they have one (fetched once per user per session, cached as an object URL across every caller). */
+/** The photo's object URL, or null when the person has none. One request per person at a time, shared by every caller. */
+function loadAvatar(userId: string): Promise<string | null> {
+  const hit = avatarUrlCache.get(userId);
+  if (hit && Date.now() - hit.at < AVATAR_TTL_MS) return Promise.resolve(hit.url);
+  const missedAt = avatarMissing.get(userId);
+  if (missedAt !== undefined && Date.now() - missedAt < AVATAR_MISSING_TTL_MS) return Promise.resolve(null);
+  let pending = avatarPending.get(userId);
+  if (!pending) {
+    pending = import('../api/endpoints')
+      .then(({ workspaceApi }) => workspaceApi.memberAvatarUrl(userId))
+      .then((url) => { avatarUrlCache.set(userId, { url, at: Date.now() }); avatarMissing.delete(userId); return url as string | null; })
+      .catch(() => { avatarMissing.set(userId, Date.now()); return hit?.url ?? null; })
+      .finally(() => { avatarPending.delete(userId); });
+    avatarPending.set(userId, pending);
+  }
+  return pending;
+}
+
+/**
+ * A person's photo URL if they have one. Pass `hasAvatar` when the list you have says so (false skips the request); when it is unknown
+ * (most cards only know a person's id and name) the photo is looked up once and cached - a 404 just means "no photo, show initials".
+ */
 export function useAvatarUrl(userId?: string, hasAvatar?: boolean) {
-  const [url, setUrl] = useState<string | null>(() => (userId && avatarUrlCache.get(userId)) || null);
+  const epoch = useSyncExternalStore(subscribeAvatars, getAvatarEpoch);
+  const [url, setUrl] = useState<string | null>(() => (userId ? avatarUrlCache.get(userId)?.url : undefined) ?? null);
   useEffect(() => {
-    if (!userId || !hasAvatar) { setUrl(null); return; }
-    const cached = avatarUrlCache.get(userId);
-    if (cached) { setUrl(cached); return; }
+    if (!userId || hasAvatar === false) { setUrl(null); return; }
     let cancelled = false;
-    void import('../api/endpoints').then(({ workspaceApi }) => workspaceApi.memberAvatarUrl(userId)).then((u) => {
-      if (cancelled) { URL.revokeObjectURL(u); return; }
-      avatarUrlCache.set(userId, u); setUrl(u);
-    }).catch(() => {});
+    void loadAvatar(userId).then((u) => { if (!cancelled) setUrl(u); });
     return () => { cancelled = true; };
-  }, [userId, hasAvatar]);
+  }, [userId, hasAvatar, epoch]);
   return url;
 }
 

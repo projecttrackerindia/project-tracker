@@ -105,7 +105,7 @@ function VersionRow({ v, canRestore, onView, onCompare, onRestore }: { v: DocVer
         <div className="ver-label"><b>{v.label}</b>{v.isCurrent && <span className="badge badge-success">Current</span>}{v.isDraft && v.hasChanges && <span className="badge badge-warning">Unpublished changes</span>}{v.restoredFrom && <span className="badge badge-neutral">Restored from {v.restoredFrom}</span>}</div>
         {v.changeSummary && <p className="ver-sum">{v.changeSummary}</p>}
         {v.changeReason && <p className="ver-why">Why: {v.changeReason}</p>}
-        {v.publishedBy && <div className="ver-by"><Avatar name={v.publishedBy.name} /> {v.publishedBy.name} · <span title={formatDateTime(v.publishedAt)}>{timeAgo(v.publishedAt)}</span></div>}
+        {v.publishedBy && <div className="ver-by"><Avatar name={v.publishedBy.name} userId={v.publishedBy.id} /> {v.publishedBy.name} · <span title={formatDateTime(v.publishedAt)}>{timeAgo(v.publishedAt)}</span></div>}
       </div>
       <div className="ver-actions">
         <button className="btn btn-ghost btn-sm" onClick={onView}>View</button>

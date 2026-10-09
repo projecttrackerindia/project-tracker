@@ -141,7 +141,7 @@ function PersonCard({ m, scope, onAll }: { m: WorkloadPerson; scope: WorkloadSco
   return (
     <div className="card team-card">
       <div className="team-head">
-        <Avatar name={m.name} />
+        <Avatar name={m.name} userId={m.userId} />
         <div className="team-who">
           <b>{m.name}</b> {m.jobRole && <Badge tone="purple">{m.jobRole}</Badge>} {scope === 'Reports' && m.level > 0 && <Badge tone="neutral">{m.level === 1 ? 'Direct report' : 'Indirect report'}</Badge>}
           <div className="muted" style={{ fontSize: 12 }}>{scope === 'Reports' && m.level > 0 ? (m.level === 1 ? 'Reports to you' : `Reports to ${m.reportsTo ?? 'someone in your line'}`) + ' · ' : ''}{m.email}</div>

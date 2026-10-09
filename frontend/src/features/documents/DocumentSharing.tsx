@@ -127,7 +127,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
           <ul className="people">
             {people.map((p) => (
               <li key={p.userId}>
-                <Avatar name={p.name} /><div className="people-main"><b>{p.name}</b><span className="muted">{p.role}</span></div>
+                <Avatar name={p.name} userId={p.userId} /><div className="people-main"><b>{p.name}</b><span className="muted">{p.role}</span></div>
                 <div className="people-why">{p.reasons.map((r) => <span key={r} className="doc-tag">{r}</span>)}</div>
                 <span className={`badge ${p.level === 'Viewer' ? 'badge-neutral' : p.level === 'Editor' ? 'badge-info' : 'badge-success'}`}>{levelLabel(p.level)}</span>
               </li>

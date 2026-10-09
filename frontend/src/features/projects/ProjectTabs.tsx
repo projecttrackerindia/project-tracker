@@ -49,7 +49,7 @@ export function TeamTab({ detail, canEdit }: { detail: ProjectDetail; canEdit: b
         <div className="member-list">
           {detail.members.map((m) => (
             <div className="member-item" key={m.userId}>
-              <Avatar name={m.name} size="lg" />
+              <Avatar name={m.name} size="lg" userId={m.userId} />
               <div className="member-main"><div className="member-name">{m.name}</div><div className="member-role">{m.userId === ownerId ? 'Project owner' : 'Member'}{m.email ? ` · ${m.email}` : ''}</div></div>
               {m.role && <RoleBadge role={m.role} />}
               {canEdit && m.userId !== ownerId && <button className="btn-icon danger" title="Remove" aria-label={`Remove ${m.name}`} onClick={() => remove(m.userId, m.name)}><Icon name="close" /></button>}

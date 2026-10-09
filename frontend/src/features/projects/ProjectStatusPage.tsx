@@ -264,7 +264,7 @@ function TaskRow({ t, onOpen }: { t: StatusTask; onOpen?: () => void }) {
         <div className="ps-task-title"><span className="task-key">{t.key}</span> {t.title}</div>
         {t.blockedBy.length > 0 && <div className="ps-task-note wait"><Icon name="lock" size={12} /> Waiting on {t.blockedBy.map((b) => `${b.key} ${b.title}`).join(', ')}</div>}
       </td>
-      <td className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" /> <span>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</td>
+      <td className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} /> <span>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</td>
       <td className="ps-date">{formatDate(t.startDate)}</td>
       <td className="ps-date">
         <span className={t.overdueDays > 0 ? 'overdue' : ''}>{formatDate(t.dueDate)}</span>
@@ -310,7 +310,7 @@ function ChangeCard({ c }: { c: TimelineChange }) {
       <p className="ps-why"><small>Reason</small>{c.reason ?? <i>No reason was recorded.</i>}</p>
       {c.dependency && <p className="ps-why"><small>Dependency</small>{c.dependency}</p>}
       <footer>
-        {c.changedBy && <Avatar name={c.changedBy.name} size="sm" />}
+        {c.changedBy && <Avatar name={c.changedBy.name} size="sm" userId={c.changedBy.id} />}
         <span>Changed by <b>{c.changedBy?.name ?? 'someone'}</b> on <time dateTime={c.changedAt}>{formatDateTime(c.changedAt)}</time></span>
         <span className="ps-status" style={{ '--c': c.currentCategory === 'Done' ? '#34d399' : c.currentCategory === 'Active' ? '#8b5cf6' : '#94a3b8' } as React.CSSProperties}>{c.currentStatus}</span>
       </footer>

@@ -134,7 +134,7 @@ export function Board({ projectId, statuses, stages, archived, canCreate, onOpen
                       {t.subtaskTotal > 0 && <span className="meta-line"><Icon name="list" /> {t.subtaskDone}/{t.subtaskTotal}</span>}
                       {t.checklistTotal > 0 && <span className="meta-line" title="Checklist"><Icon name="check" /> {t.checklistDone}/{t.checklistTotal}</span>}
                       {t.milestoneName && <span className="meta-line" title={`Milestone: ${t.milestoneName}`}><Icon name="flag" /></span>}
-                      {t.assignee && <Avatar name={t.assignee.name} size="sm" />}
+                      {t.assignee && <Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />}
                     </div>
                   </div>
                   <div className="kb-card-meta" style={{ marginTop: 8 }}><DueMeta task={t} /></div>

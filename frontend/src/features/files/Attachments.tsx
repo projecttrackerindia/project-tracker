@@ -82,7 +82,7 @@ export function Attachments({ projectId, taskId, issueId, canEdit, compact }: { 
             <div className="file-meta">
               {formatBytes(f.sizeBytes)}
               {f.taskKey && !taskId && <> · <span className="file-task">{f.taskKey}</span></>}
-              {f.uploadedBy && <> · <Avatar name={f.uploadedBy.name} size="sm" /> {f.uploadedBy.name}</>}
+              {f.uploadedBy && <> · <Avatar name={f.uploadedBy.name} size="sm" userId={f.uploadedBy.id} /> {f.uploadedBy.name}</>}
               {' '}· {timeAgo(f.createdAt)}
             </div>
           </div>

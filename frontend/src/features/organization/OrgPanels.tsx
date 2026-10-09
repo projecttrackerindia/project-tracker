@@ -25,7 +25,7 @@ export function UnassignedTray({ people, canManage, actions, onSelect }: {
         {free.map((p) => (
           <div key={p.userId} className="org-person-chip" role="button" tabIndex={0} draggable={canManage} onClick={() => onSelect(p.userId)} onKeyDown={(e) => { if (e.key === 'Enter') onSelect(p.userId); }}
             onDragStart={(e) => { e.dataTransfer.setData(PERSON_MIME, p.userId); e.dataTransfer.effectAllowed = 'move'; }} title={canManage ? 'Drag onto a role' : p.displayName}>
-            <Avatar name={p.displayName} />
+            <Avatar name={p.displayName} userId={p.userId} />
             <div className="org-chip-text"><div className="org-chip-name">{p.displayName}</div><div className="org-chip-sub">{p.accessRole}{p.email ? ` · ${p.email}` : ''}</div></div>
           </div>
         ))}
@@ -84,7 +84,7 @@ function RoleDetails({ role, data, actions, onSelect, onEdit, onAddChild, onDele
         {members.length === 0 && <div className="org-value muted">Nobody yet.</div>}
         {members.map((m) => (
           <div key={m.userId} className="org-row">
-            <button className="org-row-main" onClick={() => onSelect(m.userId)} title="View person"><Avatar name={m.displayName} /><span>{m.displayName}</span></button>
+            <button className="org-row-main" onClick={() => onSelect(m.userId)} title="View person"><Avatar name={m.displayName} userId={m.userId} /><span>{m.displayName}</span></button>
             {editable && <button className="btn-icon" title="Take off this role" aria-label={`Remove ${m.displayName} from ${role.name}`} draggable
               onDragStart={(e) => { e.dataTransfer.setData(PERSON_MIME, m.userId); e.dataTransfer.effectAllowed = 'move'; }}
               onClick={() => { void actions.assign(m.userId, null); }}><Icon name="close" size={14} /></button>}
@@ -131,7 +131,7 @@ function PersonDetails({ person, data, actions, onSelect }: InspectorProps & { p
   return (
     <div className="org-details" style={{ '--node': role?.color ?? '#94a3b8' } as CSSProperties}>
       <div className="org-side-head">
-        <div className="row" style={{ minWidth: 0 }}><Avatar name={person.displayName} size="lg" /><div style={{ minWidth: 0 }}><strong className="org-details-title">{person.displayName}</strong><div className="muted" style={{ fontSize: 12 }}>{person.email}</div></div></div>
+        <div className="row" style={{ minWidth: 0 }}><Avatar name={person.displayName} size="lg" userId={person.userId} /><div style={{ minWidth: 0 }}><strong className="org-details-title">{person.displayName}</strong><div className="muted" style={{ fontSize: 12 }}>{person.email}</div></div></div>
         <button className="btn-icon" onClick={() => onSelect(null)} aria-label="Close details" title="Close"><Icon name="close" /></button>
       </div>
       <div className="org-section"><div className="org-label">Access level</div><div><RoleBadge role={person.accessRole} /></div></div>
@@ -157,7 +157,7 @@ function PersonDetails({ person, data, actions, onSelect }: InspectorProps & { p
       <div className="org-section">
         <div className="org-label">Direct reports ({reports.length})</div>
         {reports.length === 0 && <div className="org-value muted">None.</div>}
-        {reports.map((r) => <div key={r.userId} className="org-row"><button className="org-row-main" onClick={() => onSelect(r.userId)}><Avatar name={r.displayName} /><span>{r.displayName}</span></button></div>)}
+        {reports.map((r) => <div key={r.userId} className="org-row"><button className="org-row-main" onClick={() => onSelect(r.userId)}><Avatar name={r.displayName} userId={r.userId} /><span>{r.displayName}</span></button></div>)}
       </div>
     </div>
   );

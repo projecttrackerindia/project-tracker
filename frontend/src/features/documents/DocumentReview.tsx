@@ -71,7 +71,7 @@ function StepTrack({ steps, current }: { steps: ApprovalStep[]; current: number 
               <div className="rv-people">
                 {s.people.slice(0, 6).map((p) => (
                   <span key={p.userId} className={`rv-person ${p.decision ? p.decision.toLowerCase() : ''}`} title={p.comment ?? (p.decision ? p.decision : 'Waiting')}>
-                    <Avatar name={p.name} />{p.name}{p.decision === 'Approved' ? ' ✓' : p.decision ? ' ↩' : ''}
+                    <Avatar name={p.name} userId={p.userId} />{p.name}{p.decision === 'Approved' ? ' ✓' : p.decision ? ' ↩' : ''}
                   </span>
                 ))}
                 {s.people.length > 6 && <span className="muted">+{s.people.length - 6}</span>}

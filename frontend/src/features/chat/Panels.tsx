@@ -248,8 +248,8 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
         <div className="info-hero">
           {group ? <span className="avatar lg group-avatar"><Icon name="users" size={22} /></span>
             : conversation.otherUserId
-              ? <button type="button" className="avatar-btn" onClick={() => setViewProfile(conversation.otherUserId)} aria-label={`${conversation.name}'s profile`}><Avatar name={conversation.name} size="lg" /></button>
-              : <Avatar name={conversation.name} size="lg" />}
+              ? <button type="button" className="avatar-btn" onClick={() => setViewProfile(conversation.otherUserId)} aria-label={`${conversation.name}'s profile`}><Avatar name={conversation.name} size="lg" userId={conversation.otherUserId ?? undefined} /></button>
+              : <Avatar name={conversation.name} size="lg" userId={conversation.otherUserId ?? undefined} />}
           {name === null ? (
             <>
               {conversation.otherUserId

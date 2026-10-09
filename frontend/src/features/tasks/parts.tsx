@@ -46,7 +46,7 @@ export function TaskCard({ task, onOpen, onToggle, archived }: { task: Task; onO
           {task.subtaskTotal > 0 && <span className="meta-line" title="Subtasks"><Icon name="list" /> {task.subtaskDone}/{task.subtaskTotal}</span>}
           {task.checklistTotal > 0 && <span className="meta-line" title="Checklist"><Icon name="check" /> {task.checklistDone}/{task.checklistTotal}</span>}
           {task.commentCount > 0 && <span className="meta-line" title="Comments"><Icon name="message" /> {task.commentCount}</span>}
-          {task.assignee && <Avatar name={task.assignee.name} size="sm" />}
+          {task.assignee && <Avatar name={task.assignee.name} size="sm" userId={task.assignee.id} />}
         </div>
       </div>
     </div>
@@ -76,7 +76,7 @@ export function TaskTable({ tasks, onOpen, onToggle, archived, showProject = tru
               </td>
               {showProject && <td className="cell-muted">{t.projectName}</td>}
               {showPhase && <td className="cell-muted">{t.stageName ?? '—'}</td>}
-              <td className="cell-muted">{t.assignee ? <span className="row" style={{ gap: 7 }}><Avatar name={t.assignee.name} size="sm" />{t.assignee.name}</span> : '—'}</td>
+              <td className="cell-muted">{t.assignee ? <span className="row" style={{ gap: 7 }}><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />{t.assignee.name}</span> : '—'}</td>
               <td><PriorityBadge priority={t.priority} /></td>
               <td><DueMeta task={t} /></td>
               <td><TaskStatusBadge name={t.statusName} category={t.statusCategory} /></td>

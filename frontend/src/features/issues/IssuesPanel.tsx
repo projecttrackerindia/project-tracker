@@ -84,8 +84,8 @@ function IssueRow({ issue: i, onOpen }: { issue: Issue; onOpen: () => void }) {
       <td className="cell-muted">{i.stageName ?? '—'}</td>
       <td><IssueStatusBadge status={i.status} /></td>
       <td><PriorityBadge priority={i.severity} /></td>
-      <td className="cell-muted">{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" />{i.reporter.name}</span> : '—'}</td>
-      <td className="cell-muted">{i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" />{i.assignee.name}</span> : <em>Unassigned</em>}</td>
+      <td className="cell-muted">{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" userId={i.reporter.id} />{i.reporter.name}</span> : '—'}</td>
+      <td className="cell-muted">{i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" userId={i.assignee.id} />{i.assignee.name}</span> : <em>Unassigned</em>}</td>
       <td className="cell-muted" style={{ whiteSpace: 'nowrap' }}>{timeAgo(i.createdAt)}</td>
     </tr>
   );

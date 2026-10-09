@@ -50,7 +50,7 @@ export function Viewers({ kind, id }: { kind: 'task' | 'work'; id: string | unde
   return (
     <div className="viewers" title={`Also viewing: ${names.join(', ')}`} aria-label={`Also viewing: ${names.join(', ')}`}>
       <span className="viewers-dot" />
-      <div className="viewers-faces">{viewers.slice(0, 4).map((v) => <Avatar key={v.id} name={v.name} size="sm" />)}</div>
+      <div className="viewers-faces">{viewers.slice(0, 4).map((v) => <Avatar key={v.id} name={v.name} size="sm" userId={v.id} />)}</div>
       <span className="viewers-text">{viewers.length === 1 ? `${names[0]} is here too` : `${viewers.length} others here`}</span>
     </div>
   );

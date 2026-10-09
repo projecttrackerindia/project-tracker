@@ -203,7 +203,7 @@ function Comments({ task, members, onChanged }: { task: WorkTask; members: Membe
         <div className="comments" style={{ marginBottom: 14 }}>
           {list.data!.map((c) => (
             <div className="comment" key={c.id}>
-              <Avatar name={c.author?.name} size="sm" />
+              <Avatar name={c.author?.name} size="sm" userId={c.author?.id} />
               <div className="comment-bubble">
                 <div className="comment-head"><b>{c.author?.name ?? 'Someone'}</b><span className="muted">{formatDateTime(c.createdAt)}{c.editedAt ? ' · edited' : ''}</span>
                   <span className="spacer" />

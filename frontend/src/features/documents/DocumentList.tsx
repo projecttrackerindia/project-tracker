@@ -30,7 +30,7 @@ function Row({ d, showProject }: { d: DocumentItem; showProject: boolean }) {
         {d.linkedCount > 0 && <span className="doc-links" title={`${d.linkedCount} linked`}><Icon name="git" size={14} /> {d.linkedCount}</span>}
         <span className="doc-vis" title={VISIBILITY[d.visibility].hint}><Icon name={VISIBILITY[d.visibility].icon} size={14} /></span>
         <DocStatusBadge status={d.status} />
-        <span className="doc-owner"><Avatar name={d.owner.name} /><span>{d.owner.name}</span></span>
+        <span className="doc-owner"><Avatar name={d.owner.name} userId={d.owner.id} /><span>{d.owner.name}</span></span>
         <span className="muted doc-when">{timeAgo(d.updatedAt)}</span>
       </div>
     </Link>

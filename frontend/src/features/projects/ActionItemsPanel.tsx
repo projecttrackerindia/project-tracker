@@ -181,7 +181,7 @@ function ItemRow({ item, people, projectId, highlight, onChanged }: { item: Acti
         <button type="button" className="ai-title" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>{item.key && <span className="task-key" style={{ marginRight: 6 }}>{item.key}</span>}{item.title}</button>
         <div className="ai-meta">
           <span className="ai-who" title={item.assignee ? `Assigned to ${item.assignee.name}` : 'Not assigned'}>
-            {item.assignee ? <><Avatar name={item.assignee.name} size="sm" />{item.assignee.name}</> : <em>Unassigned</em>}
+            {item.assignee ? <><Avatar name={item.assignee.name} size="sm" userId={item.assignee.id} />{item.assignee.name}</> : <em>Unassigned</em>}
           </span>
           {item.dueDate && <span className={`ai-due ${item.isOverdue ? 'late' : ''}`} title={item.isOverdue ? 'Overdue' : 'Due date'}><Icon name="calendar" size={12} /> {formatDate(item.dueDate)}{item.isOverdue ? ' · overdue' : ''}</span>}
           <PriorityBadge priority={item.priority} />

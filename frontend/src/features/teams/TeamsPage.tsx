@@ -35,7 +35,7 @@ export function TeamsPage() {
               <div className="pc-stats" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>
                 <div className="pc-stat"><b>{t.memberCount}</b><span>Members</span></div><div className="pc-stat"><b>{t.projectCount}</b><span>Projects</span></div>
               </div>
-              <div className="pc-foot"><span className="row" style={{ gap: 6 }}>{t.lead ? <><Avatar name={t.lead.name} size="sm" />Lead: {t.lead.name}</> : 'No team lead'}</span></div>
+              <div className="pc-foot"><span className="row" style={{ gap: 6 }}>{t.lead ? <><Avatar name={t.lead.name} size="sm" userId={t.lead.id} />Lead: {t.lead.name}</> : 'No team lead'}</span></div>
             </div>
           ))}
         </div>
@@ -116,7 +116,7 @@ function TeamDetailModal({ id, canManage, onClose }: { id: string; canManage: bo
         <div className="member-list">
           {list.map((m) => (
             <div className="member-item" key={m.userId}>
-              <Avatar name={m.name} size="lg" />
+              <Avatar name={m.name} size="lg" userId={m.userId} />
               <div className="member-main"><div className="member-name">{m.name} {m.isLead && <span className="badge badge-purple" style={{ marginLeft: 6 }}>Lead</span>}</div><div className="member-role">{m.email}</div></div>
               <div className="member-role" style={{ textAlign: 'right' }}>{m.openTasks} open task{m.openTasks === 1 ? '' : 's'}</div>
               {canManage && <>

@@ -60,7 +60,7 @@ export function AccessRequestRow({ r, showDoc = true, onDecide }: { r: AccessReq
   const label = r.status === 'Approved' && r.expired ? 'Ended' : r.status === 'Rejected' ? 'Declined' : r.status;
   return (
     <li className="ar-row">
-      <Avatar name={r.requester.name} />
+      <Avatar name={r.requester.name} userId={r.requester.id} />
       <div className="ar-main">
         <div className="ar-title"><b>{r.requester.name}</b><span className="muted">wants to {LEVEL_TEXT[r.level]}</span>{showDoc && <><span className="doc-key">{r.documentKey}</span>{r.documentTitle && <Link to={`/documents/${r.documentId}`}>{r.documentTitle}</Link>}</>}</div>
         <p className="ar-why">“{r.reason}”</p>

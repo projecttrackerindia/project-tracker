@@ -107,7 +107,7 @@ function EffectiveAccessTable() {
                 <Fragment key={p.userId}>
                   <tr className="clickable" tabIndex={0} aria-expanded={open === p.userId} onClick={() => setOpen((o) => (o === p.userId ? null : p.userId))}
                     onKeyDown={(e) => { if (e.key === 'Enter') setOpen((o) => (o === p.userId ? null : p.userId)); }}>
-                    <td><div className="row"><Avatar name={p.name} /><div><div className="td-title">{p.name}</div><div className="td-sub">{p.email}</div></div></div></td>
+                    <td><div className="row"><Avatar name={p.name} userId={p.userId} /><div><div className="td-title">{p.name}</div><div className="td-sub">{p.email}</div></div></div></td>
                     <td><RoleBadge role={p.accessLevel} /></td>
                     <td className="cell-muted">{p.jobRole ?? '—'}</td>
                     <td><span title={SOURCE[p.source].hint}><Badge tone={SOURCE[p.source].tone}>{SOURCE[p.source].label}</Badge></span></td>

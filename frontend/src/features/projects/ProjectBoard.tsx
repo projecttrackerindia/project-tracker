@@ -100,7 +100,7 @@ export function ProjectBoard({ projects, cacheKey, includeArchived, canEditAll, 
                 </div>
                 <div className="kb-card-meta"><PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /></div>
                 <div className="kb-card-meta" style={{ marginTop: 9 }}>
-                  <span className="row" style={{ gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}><Avatar name={p.owner?.name} size="sm" />{p.owner?.name ?? 'Unassigned'}</span>
+                  <span className="row" style={{ gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}><Avatar name={p.owner?.name} size="sm" userId={p.owner?.id} />{p.owner?.name ?? 'Unassigned'}</span>
                   <span className="meta-line"><Icon name="clock" /> {dueLabel(p.dueDate)}</span>
                 </div>
               </div>

@@ -17,7 +17,7 @@ function ActivityList({ id }: { id: string }) {
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   if (q.data.length === 0) return <EmptyState icon="clock" title="Nothing yet" />;
   return (
-    <ul className="act">{q.data.map((a) => <li key={a.id}><Avatar name={a.by?.name ?? '?'} /><div><span>{a.summary}</span><small title={formatDateTime(a.at)}>{a.by?.name ?? 'Someone'} · {timeAgo(a.at)}</small></div></li>)}</ul>
+    <ul className="act">{q.data.map((a) => <li key={a.id}><Avatar name={a.by?.name ?? '?'} userId={a.by?.id} /><div><span>{a.summary}</span><small title={formatDateTime(a.at)}>{a.by?.name ?? 'Someone'} · {timeAgo(a.at)}</small></div></li>)}</ul>
   );
 }
 

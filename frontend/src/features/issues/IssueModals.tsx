@@ -235,7 +235,7 @@ export function IssueDetailModal({ projectId, issueId, stages, members, onClose 
             <dt>Status</dt><dd><IssueStatusBadge status={i.status} /></dd>
             <dt>Severity</dt><dd><PriorityBadge priority={i.severity} /></dd>
             <dt>Stage</dt><dd>{i.stageName ?? '—'}</dd>
-            <dt>Reported by</dt><dd>{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" />{i.reporter.name}</span> : '—'}</dd>
+            <dt>Reported by</dt><dd>{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" userId={i.reporter.id} />{i.reporter.name}</span> : '—'}</dd>
             <dt>Assigned to</dt>
             <dd>
               {i.can.assign
@@ -243,7 +243,7 @@ export function IssueDetailModal({ projectId, issueId, stages, members, onClose 
                     onChange={(e) => void run(() => issueApi.assign(projectId, i.id, e.target.value || null), e.target.value ? 'Issue assigned.' : 'Issue unassigned.')}>
                     <option value="">Unassigned</option>{assigneeChoices.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
                   </Select>
-                : i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" />{i.assignee.name}</span> : <em>Unassigned</em>}
+                : i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" userId={i.assignee.id} />{i.assignee.name}</span> : <em>Unassigned</em>}
             </dd>
             <dt>Reported</dt><dd title={formatDateTime(i.createdAt)}>{timeAgo(i.createdAt)}</dd>
             {i.resolvedAt && <><dt>Resolved</dt><dd title={formatDateTime(i.resolvedAt)}>{timeAgo(i.resolvedAt)}</dd></>}

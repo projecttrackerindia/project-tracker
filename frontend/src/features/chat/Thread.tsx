@@ -335,7 +335,7 @@ function MessageRow({ m, mine, grouped, showName, canModerate, ticks, aboutMe, r
   };
   return (
     <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${aboutMe ? 'mentions-me' : ''}`} data-msg={m.id} ref={pickRef}>
-      {!mine && (grouped ? <span className="avatar-gap" /> : <Avatar name={m.senderName} size="sm" />)}
+      {!mine && (grouped ? <span className="avatar-gap" /> : <Avatar name={m.senderName} size="sm" userId={m.senderId ?? undefined} />)}
       <div className="msg-col">
         {!grouped && (
           <div className="msg-meta">
@@ -596,7 +596,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           {suggestions.map((p, i) => (
             <li key={p.userId} role="option" aria-selected={i === mention.index} className={i === mention.index ? 'active' : ''}
               onMouseDown={(e) => { e.preventDefault(); pickMention(p); }} onMouseEnter={() => setMention({ ...mention, index: i })}>
-              <Avatar name={p.name} size="sm" /><span>{p.name}</span>
+              <Avatar name={p.name} size="sm" userId={p.userId} /><span>{p.name}</span>
             </li>
           ))}
         </ul>
@@ -676,5 +676,5 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
 export function ConversationAvatar({ conversation, online }: { conversation: Conversation; online: boolean }) {
   if (conversation.type === 'Project') return <span className="avatar group-avatar" title={conversation.name}><Icon name="folder" size={16} /></span>;
   if (conversation.type === 'Group') return <span className="avatar group-avatar" title={conversation.name}><Icon name="users" size={16} /></span>;
-  return <span className="avatar-wrap"><Avatar name={conversation.name} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
+  return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
 }

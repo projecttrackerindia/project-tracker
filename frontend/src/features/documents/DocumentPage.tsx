@@ -226,7 +226,7 @@ export function DocumentPage() {
             <div className="card-head"><div><h3>About</h3></div></div>
             <div className="card-body">
               <dl className="doc-facts">
-                <div><dt>Owner</dt><dd><Avatar name={d.owner.name} /> {d.owner.name}</dd></div>
+                <div><dt>Owner</dt><dd><Avatar name={d.owner.name} userId={d.owner.id} /> {d.owner.name}</dd></div>
                 <div><dt>Belongs to</dt><dd>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{d.projectKey} · {d.projectName}</Link> : d.teamName ?? 'The organization'}</dd></div>
                 <div><dt>Visible to</dt><dd><Icon name={VISIBILITY[d.visibility].icon} size={14} /> {VISIBILITY[d.visibility].label}</dd></div>
                 {d.tags.length > 0 && <div><dt>Tags</dt><dd className="doc-tags">{d.tags.map((t) => <span className="doc-tag" key={t}>{t}</span>)}</dd></div>}

@@ -82,7 +82,7 @@ export function PortfolioActionItems({ onClose }: { onClose: () => void }) {
                     <span className="task-key">{i.key}</span>
                     <span className="pai-title">{i.title}</span>
                     <PriorityBadge priority={i.priority} />
-                    <span className="pai-who">{i.assignee ? <><Avatar name={i.assignee.name} size="sm" /> {i.assignee.name}</> : <span className="muted">Unassigned</span>}</span>
+                    <span className="pai-who">{i.assignee ? <><Avatar name={i.assignee.name} size="sm" userId={i.assignee.id} /> {i.assignee.name}</> : <span className="muted">Unassigned</span>}</span>
                     <span className={`pai-due ${i.isOverdue && !isDone(i) ? 'late' : ''}`}>{isDone(i) ? 'Completed' : i.dueDate ? formatDate(i.dueDate) : 'No date'}</span>
                     <Icon name="chevronR" size={14} />
                   </button>

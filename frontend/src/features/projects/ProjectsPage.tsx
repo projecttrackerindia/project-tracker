@@ -36,7 +36,7 @@ export function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: 
       </div>
       <div className="task-meta"><PriorityBadge priority={p.priority} /><ProjectStatusBadge status={p.status} /><ProjectTypeBadge type={p.projectType} /></div>
       <div className="pc-foot">
-        <span className="row" style={{ gap: 6 }}><Avatar name={p.owner?.name} size="sm" />{p.owner?.name ?? 'Unassigned'}</span>
+        <span className="row" style={{ gap: 6 }}><Avatar name={p.owner?.name} size="sm" userId={p.owner?.id} />{p.owner?.name ?? 'Unassigned'}</span>
         <span>{formatDate(p.dueDate)}</span>
       </div>
     </div>

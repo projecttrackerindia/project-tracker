@@ -140,7 +140,7 @@ export function WorkTasksPage() {
                       <td><div className="td-title"><span className="task-key">{t.key}</span> {t.title}</div>{(t.commentCount > 0 || t.attachmentCount > 0) && <div className="td-sub">{t.commentCount > 0 ? `${t.commentCount} comment${t.commentCount === 1 ? '' : 's'}` : ''}{t.commentCount > 0 && t.attachmentCount > 0 ? ' · ' : ''}{t.attachmentCount > 0 ? `${t.attachmentCount} file${t.attachmentCount === 1 ? '' : 's'}` : ''}</div>}</td>
                       <td className="cell-muted">{t.workType}</td>
                       <td className="cell-muted">{t.relatedProject ? <span title={`${t.relatedProject.name} (${t.relatedProject.status})`}>{t.relatedProject.name}</span> : '—'}</td>
-                      <td>{t.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={t.assignee.name} size="sm" />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
+                      <td>{t.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
                       <td><PriorityBadge priority={t.priority} /></td>
                       <td className={t.isOverdue ? 'work-late' : 'cell-muted'}>{t.dueDate ? formatDate(t.dueDate) : '—'}{t.isOverdue ? ' · overdue' : ''}</td>
                       <td><SlaChip sla={t.sla} /></td>

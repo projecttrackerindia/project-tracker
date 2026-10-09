@@ -57,7 +57,7 @@ function RoleNode({ data }: NodeProps<RoleNodeT>) {
       </div>
       <div className="org-node-meta">
         <div className="org-avatars">
-          {people.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" /></span>)}
+          {people.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" userId={p.userId} /></span>)}
           {people.length > 4 && <span className="org-more">+{people.length - 4}</span>}
         </div>
         <span className="org-count">{role.peopleCount} {role.peopleCount === 1 ? 'person' : 'people'}{role.childCount ? ` · ${role.childCount} sub-role${role.childCount === 1 ? '' : 's'}` : ''}</span>
@@ -77,7 +77,7 @@ function PersonNode({ data }: NodeProps<PersonNodeT>) {
   return (
     <div className={`org-person ${selected ? 'selected' : ''} ${dim ? 'dim' : ''}`} style={{ '--node': role?.color ?? '#94a3b8' } as CSSProperties}>
       <Handle type="target" position={Position.Top} />
-      <Avatar name={person.displayName} size="lg" />
+      <Avatar name={person.displayName} size="lg" userId={person.userId} />
       <div className="org-person-text">
         <div className="org-person-name" title={person.displayName}>{person.displayName}</div>
         <div className="org-person-role"><span className="org-dot" />{role?.name ?? 'No role yet'}</div>
@@ -99,7 +99,7 @@ function AdminNode({ data }: NodeProps<AdminNodeT>) {
         </div>
       </div>
       <div className="org-node-meta">
-        <div className="org-avatars">{data.admins.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" /></span>)}</div>
+        <div className="org-avatars">{data.admins.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" userId={p.userId} /></span>)}</div>
         <span className="org-count">{data.admins.map((a) => a.displayName.split(' ')[0]).slice(0, 3).join(', ')}{data.admins.length > 3 ? '…' : ''}</span>
       </div>
       <div className="org-node-foot"><span><Icon name="lock" size={13} /> Fixed — outside the tree</span></div>

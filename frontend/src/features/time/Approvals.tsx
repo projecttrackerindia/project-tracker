@@ -154,7 +154,7 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
 
   const row = (r: ApprovalRow, withWeek = false) => (
     <tr key={`${r.user.id}:${r.weekStart}`}>
-      <td><span className="row" style={{ gap: 8 }}><Avatar name={r.user.name} size="sm" /><b>{r.user.name}</b></span></td>
+      <td><span className="row" style={{ gap: 8 }}><Avatar name={r.user.name} size="sm" userId={r.user.id} /><b>{r.user.name}</b></span></td>
       {withWeek && <td className="cell-muted">{weekLabel(r.weekStart)}</td>}
       <td className="num">{formatMinutes(r.totalMinutes)}</td>
       <td className="num cell-muted">{formatMinutes(r.billableMinutes)}</td>

@@ -111,7 +111,7 @@ export function CapacityPage() {
           <div className="util-list">
             {u.people.map((p) => (
               <div className="util-row" key={p.userId}>
-                <div className="util-who"><Avatar name={p.name} size="sm" /><div><b>{p.name}</b><span>{formatMinutes(p.loggedMinutes)} of {formatMinutes(p.capacityMinutes)}</span></div></div>
+                <div className="util-who"><Avatar name={p.name} size="sm" userId={p.userId} /><div><b>{p.name}</b><span>{formatMinutes(p.loggedMinutes)} of {formatMinutes(p.capacityMinutes)}</span></div></div>
                 <UtilBar p={p} />
                 <div className={`util-pct ${tone(p.utilisation)}`}>{pct(p.utilisation)}</div>
                 <div className="util-meta">
@@ -181,7 +181,7 @@ function RateRow({ m, disabled }: { m: MemberRate; disabled: boolean }) {
   };
   return (
     <tr>
-      <td><span className="row" style={{ gap: 8 }}><Avatar name={m.name} size="sm" /><span><b>{m.name}</b> <RoleBadge role={m.role} /></span></span></td>
+      <td><span className="row" style={{ gap: 8 }}><Avatar name={m.name} size="sm" userId={m.userId} /><span><b>{m.name}</b> <RoleBadge role={m.role} /></span></span></td>
       <td><input className="input rate-input" type="number" min={0} max={100} step={0.5} placeholder="40" aria-label={`${m.name} hours a week`} value={v.cap} disabled={disabled} onChange={(e) => setV({ ...v, cap: e.target.value })} /></td>
       <td><input className="input rate-input" type="number" min={0} step={0.01} placeholder="—" aria-label={`${m.name} cost rate`} value={v.cost} disabled={disabled} onChange={(e) => setV({ ...v, cost: e.target.value })} /></td>
       <td><input className="input rate-input" type="number" min={0} step={0.01} placeholder="—" aria-label={`${m.name} bill rate`} value={v.bill} disabled={disabled} onChange={(e) => setV({ ...v, bill: e.target.value })} /></td>

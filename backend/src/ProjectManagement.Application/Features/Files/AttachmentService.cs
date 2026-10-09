@@ -17,7 +17,7 @@ public record AttachmentDto(Guid Id, Guid ProjectId, Guid? TaskId, string? TaskK
 
 public record AttachmentLimitsDto(long MaxFileBytes, long StorageLimitBytes, long StorageUsedBytes, IReadOnlyList<string> AllowedExtensions);
 
-public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text }
+public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text, SevenZip, Rar, Gzip, Video }
 
 /// <summary>What may be uploaded. The extension decides the type, and the first bytes of the file must agree with it.</summary>
 public static class FileRules
@@ -38,6 +38,20 @@ public static class FileRules
         ["zip"] = ("application/zip", FileKind.Zip),
         ["doc"] = ("application/msword", FileKind.Ole), ["xls"] = ("application/vnd.ms-excel", FileKind.Ole), ["ppt"] = ("application/vnd.ms-powerpoint", FileKind.Ole),
         ["csv"] = ("text/csv", FileKind.Text), ["txt"] = ("text/plain", FileKind.Text), ["md"] = ("text/markdown", FileKind.Text),
+        // Java archives (a .jar / .war / .ear is a zip container) and other archives
+        ["jar"] = ("application/java-archive", FileKind.Zip), ["war"] = ("application/java-archive", FileKind.Zip), ["ear"] = ("application/java-archive", FileKind.Zip),
+        ["7z"] = ("application/x-7z-compressed", FileKind.SevenZip), ["rar"] = ("application/vnd.rar", FileKind.Rar),
+        ["gz"] = ("application/gzip", FileKind.Gzip), ["tgz"] = ("application/gzip", FileKind.Gzip),
+        // OpenDocument files (zip containers)
+        ["odt"] = ("application/vnd.oasis.opendocument.text", FileKind.Zip), ["ods"] = ("application/vnd.oasis.opendocument.spreadsheet", FileKind.Zip),
+        ["odp"] = ("application/vnd.oasis.opendocument.presentation", FileKind.Zip),
+        // More plain-text formats (they are only ever downloaded, never opened in the browser)
+        ["json"] = ("application/json", FileKind.Text), ["xml"] = ("application/xml", FileKind.Text),
+        ["yaml"] = ("application/yaml", FileKind.Text), ["yml"] = ("application/yaml", FileKind.Text),
+        ["log"] = ("text/plain", FileKind.Text), ["sql"] = ("application/sql", FileKind.Text), ["tsv"] = ("text/tab-separated-values", FileKind.Text),
+        ["rtf"] = ("application/rtf", FileKind.Text), ["java"] = ("text/x-java-source", FileKind.Text), ["py"] = ("text/x-python", FileKind.Text),
+        // Short screen recordings and demos
+        ["mp4"] = ("video/mp4", FileKind.Video), ["mov"] = ("video/quicktime", FileKind.Video),
     };
 
     public static IReadOnlyList<string> Extensions => Allowed.Keys.OrderBy(k => k).ToList();
@@ -79,6 +93,11 @@ public static class FileRules
         FileKind.Zip => h.StartsWith((ReadOnlySpan<byte>)[0x50, 0x4B, 0x03, 0x04]) || h.StartsWith((ReadOnlySpan<byte>)[0x50, 0x4B, 0x05, 0x06]),
         FileKind.Ole => h.StartsWith((ReadOnlySpan<byte>)[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]),
         FileKind.Text => !h.Contains((byte)0),
+        FileKind.SevenZip => h.StartsWith((ReadOnlySpan<byte>)[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]),
+        FileKind.Rar => h.StartsWith("Rar!"u8),
+        FileKind.Gzip => h.StartsWith((ReadOnlySpan<byte>)[0x1F, 0x8B]),
+        FileKind.Video => h.Length >= 12 && (h[4..8].SequenceEqual("ftyp"u8) || h[4..8].SequenceEqual("moov"u8) || h[4..8].SequenceEqual("mdat"u8)
+            || h[4..8].SequenceEqual("wide"u8) || h[4..8].SequenceEqual("free"u8)),
         _ => false,
     };
 }

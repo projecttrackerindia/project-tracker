@@ -302,7 +302,7 @@ function Subtasks({ parent, subtasks, statuses, canCreate, onOpen }: {
             <button type="button" className="member-main" style={{ textAlign: 'left', textDecoration: s.statusCategory === 'Done' ? 'line-through' : undefined }} onClick={() => onOpen(s.id)}>
               <span className="member-name">{s.title}</span>
             </button>
-            {s.assignee && <Avatar name={s.assignee.name} size="sm" />}
+            {s.assignee && <Avatar name={s.assignee.name} size="sm" userId={s.assignee.id} />}
           </div>
         ))}
       </div>
@@ -345,7 +345,7 @@ function Comments({ taskId, canComment, members }: { taskId: string; canComment:
         {q.data?.length === 0 && <p className="muted" style={{ fontSize: 12.5 }}>No comments yet.</p>}
         {q.data?.map((c) => (
           <div className="comment" key={c.id}>
-            <Avatar name={c.author.name} size="lg" />
+            <Avatar name={c.author.name} size="lg" userId={c.author.id} />
             <div className="comment-bubble">
               <div className="comment-head">
                 <b>{c.author.name}</b><span className="muted" title={formatDateTime(c.createdAt)}>{timeAgo(c.createdAt)}{c.editedAt && ' · edited'}</span>
