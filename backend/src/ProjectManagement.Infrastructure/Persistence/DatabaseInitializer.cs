@@ -32,6 +32,18 @@ public static class DatabaseInitializer
         if (db.Database.IsSqlite())
         {
             await db.Database.EnsureCreatedAsync(ct);
+            // Development databases use EnsureCreated rather than PostgreSQL migrations. Preserve existing data on upgrade.
+            var connection = db.Database.GetDbConnection();
+            await db.Database.OpenConnectionAsync(ct);
+            bool hasTrace = false;
+            await using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "PRAGMA table_info('AiMessages')";
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct)) hasTrace |= reader.GetString(1) == "ExecutionJson";
+            }
+            if (!hasTrace) await db.Database.ExecuteSqlRawAsync("ALTER TABLE AiMessages ADD COLUMN ExecutionJson TEXT NULL", ct);
+            await db.Database.CloseConnectionAsync();
             await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
         }
         else if (config.GetValue("Database:AutoMigrate", true))

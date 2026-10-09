@@ -1,3 +1,5 @@
+> AI deployments: see [local AI and Agent Tracker operations](deploy/AI-OPERATIONS.md). The local provider is now primary by default; legacy Claude-first descriptions below require explicit opt-in.
+
 # Project Management SaaS
 
 A multi-tenant project management platform: **React + TypeScript** frontend, **ASP.NET Core (.NET 9)** API, **PostgreSQL** (SQLite for local development). It implements the MVP from the product spec plus a good part of Phase 2, using the lavender-glass UI from the reference app (light theme, and the charcoal + lavender dark theme).

@@ -42,14 +42,15 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     private AiTierOptions? TierOf(string? tier) => tier switch { "quick" => options.Value.Chat.Quick, "standard" => options.Value.Chat.Standard, "deep" => options.Value.Chat.Deep, _ => null };
 
     /// <summary>What the answers cost at the provider's prices: uncached input at full price, cached input at a fraction, cache writes at a premium.</summary>
-    private decimal CostOf(string? tier, long tokensIn, long tokensOut, long cacheRead, long cacheWrite)
+    private decimal CostOf(string? model, string? tier, long tokensIn, long tokensOut, long cacheRead, long cacheWrite)
     {
+        if (model?.StartsWith("claude-", StringComparison.OrdinalIgnoreCase) != true) return 0;
         var t = TierOf(tier);
         return t is null ? 0 : (tokensIn * t.InputPerMTok + cacheRead * t.InputPerMTok * t.CacheReadFactor + cacheWrite * t.InputPerMTok * t.CacheWriteFactor + tokensOut * t.OutputPerMTok) / 1_000_000m;
     }
 
     /// <summary>What the cached reads would have cost at full input price, minus what they cost.</summary>
-    private decimal SavedBy(string? tier, long cacheRead) => TierOf(tier) is { } t ? cacheRead * t.InputPerMTok * (1 - t.CacheReadFactor) / 1_000_000m : 0;
+    private decimal SavedBy(string? model, string? tier, long cacheRead) => model?.StartsWith("claude-", StringComparison.OrdinalIgnoreCase) == true && TierOf(tier) is { } t ? cacheRead * t.InputPerMTok * (1 - t.CacheReadFactor) / 1_000_000m : 0;
 
     // ------------------------------------------------------------------ one workspace
 
@@ -81,8 +82,8 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         if (!ctx.IsPlatformAdmin) throw new ForbiddenException("Platform administrators only.", "PERMISSION_DENIED");
         var (label, from, to) = Month(month);
         var groups = await db.AiMessages.IgnoreQueryFilters().AsNoTracking().Where(m => m.Role == "assistant" && m.CreatedAt >= from && m.CreatedAt < to)
-            .GroupBy(m => new { m.TenantId, m.Tier })
-            .Select(g => new { g.Key.TenantId, g.Key.Tier, Answers = g.Count(), Failed = g.Count(x => x.Status == "failed"), Credits = g.Sum(x => (long)x.Credits),
+            .GroupBy(m => new { m.TenantId, m.Tier, m.Model })
+            .Select(g => new { g.Key.TenantId, g.Key.Tier, g.Key.Model, Answers = g.Count(), Failed = g.Count(x => x.Status == "failed"), Credits = g.Sum(x => (long)x.Credits),
                 In = g.Sum(x => (long)x.InputTokens), Out = g.Sum(x => (long)x.OutputTokens), CacheRead = g.Sum(x => (long)x.CacheReadTokens), CacheWrite = g.Sum(x => (long)x.CacheWriteTokens), Last = g.Max(x => x.CreatedAt) }).ToListAsync(ct);
         var ids = groups.Select(g => g.TenantId).Distinct().ToList();
         var tenants = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => ids.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
@@ -104,11 +105,11 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             var seen = read + uncached + written;
             return new AdminAiUsageRowDto(id, tenants.GetValueOrDefault(id, "—"), plan.Code, mine.Sum(g => g.Answers), mine.Sum(g => g.Failed), mine.Sum(g => g.Credits), limit,
                 N("quick"), N("standard"), N("deep"), mine.Sum(g => g.In + g.CacheRead + g.CacheWrite), mine.Sum(g => g.Out),
-                Math.Round(mine.Sum(g => CostOf(g.Tier, g.In, g.Out, g.CacheRead, g.CacheWrite)), 2), mine.Max(g => g.Last), read, seen == 0 ? 0 : (int)Math.Round(read * 100d / seen));
+                Math.Round(mine.Sum(g => CostOf(g.Model, g.Tier, g.In, g.Out, g.CacheRead, g.CacheWrite)), 2), mine.Max(g => g.Last), read, seen == 0 ? 0 : (int)Math.Round(read * 100d / seen));
         }).OrderByDescending(r => r.CreditsUsed).ThenBy(r => r.Name).Take(500).ToList();
 
         long totalRead = rows.Sum(r => r.CacheReadTokens), totalIn = rows.Sum(r => r.TokensIn);
         return new AdminAiUsageDto(label, rows.Count, rows.Sum(r => r.Answers), rows.Sum(r => r.CreditsUsed), totalIn, rows.Sum(r => r.TokensOut),
-            Math.Round(rows.Sum(r => r.EstimatedCost), 2), "USD", rows, Math.Round(groups.Sum(g => SavedBy(g.Tier, g.CacheRead)), 2), totalIn == 0 ? 0 : (int)Math.Round(totalRead * 100d / totalIn));
+            Math.Round(rows.Sum(r => r.EstimatedCost), 2), "USD", rows, Math.Round(groups.Sum(g => SavedBy(g.Model, g.Tier, g.CacheRead)), 2), totalIn == 0 ? 0 : (int)Math.Round(totalRead * 100d / totalIn));
     }
 }

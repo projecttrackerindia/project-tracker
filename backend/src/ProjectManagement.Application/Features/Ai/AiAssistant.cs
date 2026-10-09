@@ -17,6 +17,11 @@ namespace ProjectManagement.Application.Features.Ai;
 public class AiOptions
 {
     public const string Section = "Ai";
+    /// <summary>local (default) or anthropic. A key alone never enables a paid provider.</summary>
+    public string PrimaryProvider { get; set; } = "local";
+    public int TraceRetentionDays { get; set; } = 30;
+    public bool AllowAnthropic { get; set; }
+    public bool UsesAnthropic => AllowAnthropic && PrimaryProvider.Equals("anthropic", StringComparison.OrdinalIgnoreCase);
     /// <summary>The Anthropic API key. Empty, with no backup either = the assistant is off and nothing is ever sent anywhere.</summary>
     public string? AnthropicApiKey { get; set; }
     public string Model { get; set; } = "claude-sonnet-5-5";
@@ -44,7 +49,16 @@ public class AiFallbackOptions
     /// <summary>Sent as reasoning_effort when set ("low" suits Gemini and gpt-oss); left out otherwise, as some models refuse it.</summary>
     public string? ReasoningEffort { get; set; }
     /// <summary>Room on top of each answer for models that think first: their thinking counts against the same token limit.</summary>
-    public int ThinkingTokens { get; set; } = 2048;
+    public int ThinkingTokens { get; set; } = 0;
+    public int MaxOutputTokens { get; set; } = 1024;
+    public int TimeoutSeconds { get; set; } = 120;
+    public int MaxConcurrentRequests { get; set; } = 1;
+    public int MaxQueuedRequests { get; set; } = 4;
+    public int QueueTimeoutSeconds { get; set; } = 10;
+    /// <summary>Conservative character guard, not a tokenizer. Overflow is rejected, never silently truncated.</summary>
+    public int MaxPromptChars { get; set; } = 48000;
+    public string KeepAlive { get; set; } = "10m";
+    public bool SupportsImages { get; set; }
     /// <summary>
     /// "ollama" talks to a self-hosted Ollama server's own native API (POST {BaseUrl}/api/chat) for the streamed AI workspace instead of
     /// the OpenAI-compatible one - BaseUrl is still the same address either way (a trailing /v1 is stripped automatically if present).

@@ -59,6 +59,7 @@ export function useMainNav(): NavGroup[] {
     { title: 'Insights', items: [
       { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },
       { to: '/reports', label: 'Reports', icon: 'chart', end: false, show: canReports || lv('work') > 0 },
+      { to: '/agent-tracker', label: 'Agent Tracker', icon: 'activity', show: ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin' },
       { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0 },
     ] },
     { title: 'Organization', items: [
