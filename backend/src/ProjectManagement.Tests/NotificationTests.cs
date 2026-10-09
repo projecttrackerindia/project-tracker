@@ -57,7 +57,7 @@ public class NotificationTests(ApiFactory factory)
         Assert.Equal(ProjectManagement.Domain.NotificationCatalog.All.Length, first.Data!.AsArray().Count);
         Assert.True(Pref(first.Data, "TaskAssigned")["email"]!.GetValue<bool>());
         Assert.True(Pref(first.Data, "Comment")["email"]!.GetValue<bool>());
-        Assert.False(Pref(first.Data, "TaskAssigned")["browser"]!.GetValue<bool>());
+        Assert.True(Pref(first.Data, "TaskAssigned")["browser"]!.GetValue<bool>());
 
         var saved = await SetPrefs(c, ("TaskAssigned", true, false, true), ("Comment", false, true, false), ("Security", false, false, false));
         Assert.True(saved.Ok, saved.ToString());
@@ -86,7 +86,7 @@ public class NotificationTests(ApiFactory factory)
 
         var bell = await mia.Get("/api/v1/notifications");
         Assert.Contains(bell.Data!["items"]!.AsArray(), n => n!["type"]!.GetValue<string>() == "TaskAssigned");
-        Assert.False(bell.Data["items"]![0]!["browser"]!.GetValue<bool>());
+        Assert.True(bell.Data["items"]![0]!["browser"]!.GetValue<bool>());    // desktop/mobile push by default, same as e-mail
 
         Assert.DoesNotContain(await MailboxFor(mia), m => m["subject"]!.GetValue<string>().StartsWith("You were assigned")); // nothing is sent inside the request
         Assert.True(await SendPendingAsync() >= 1);

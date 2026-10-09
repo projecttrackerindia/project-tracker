@@ -8,6 +8,7 @@ import { PageLoader } from '../../components/ui';
 import { queryClient } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { disableNativePush, enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
+import { isDesktopApp } from '../../lib/desktop';
 
 type Permission = 'granted' | 'denied' | 'default' | 'unsupported';
 const currentPermission = (): Permission => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
@@ -24,10 +25,13 @@ const keyBytes = (b64: string) => {
  * through the browser's push service. Needs the service worker, which production builds register.
  */
 function PushRow({ onPermission }: { onPermission: (p: Permission) => void }) {
-  const [state, setState] = useState<'checking' | 'on' | 'off' | 'unsupported'>('checking');
+  const [state, setState] = useState<'checking' | 'on' | 'off' | 'unsupported' | 'desktop-app'>('checking');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (isNativeApp()) { void nativePermission().then((p) => setState(p === 'granted' && nativeEndpoint() ? 'on' : 'off')); return; }
+    // The Windows/Mac/Linux app's Chromium has no push service wired up (unlike the Android app's Firebase push), so subscribing here
+    // always fails - rather than let someone hit that error, say so up front and point at the one place it does work.
+    if (isDesktopApp()) { setState('desktop-app'); return; }
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setState('unsupported'); return; }
     void navigator.serviceWorker.getRegistration().then(async (reg) => {
       if (!reg) { setState('unsupported'); return; }
@@ -74,7 +78,8 @@ function PushRow({ onPermission }: { onPermission: (p: Permission) => void }) {
   return (
     <div className="setting-row">
       <div className="setting-info"><h4>Push on this device</h4>
-        <p>{state === 'unsupported' ? 'Install the app (or use a browser that supports push) to get notifications while it is closed.'
+        <p>{state === 'desktop-app' ? 'Not available in the installed desktop app yet. Open projecttracker.in in a browser tab on this computer to turn it on there.'
+          : state === 'unsupported' ? 'Install the app (or use a browser that supports push) to get notifications while it is closed.'
           : state === 'on' ? 'On. Events ticked in the Desktop column arrive even when the app is closed.'
           : 'Get the events ticked in the Desktop column even when the app is closed.'}</p></div>
       {state === 'off' && <button className="btn btn-ghost" disabled={busy} onClick={() => void turnOn()}><Icon name="bell" /> Turn on</button>}
