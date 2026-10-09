@@ -1,0 +1,1637 @@
+diff --git a/apps/desktop/src/main.js b/apps/desktop/src/main.js
+index bbc799c..7eef848 100644
+--- a/apps/desktop/src/main.js
++++ b/apps/desktop/src/main.js
+@@ -6,6 +6,9 @@ const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
+ const { autoUpdater } = require('electron-updater');
+ const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer } = require('./links');
+ 
++// Alert sounds must play while the window is hidden in the tray or nobody has clicked yet: the page's timers and audio keep running.
++app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
++
+ const BASE = appUrl();
+ let win = null, tray = null, quitting = false, pendingLink = null;
+ const stateFile = () => path.join(app.getPath('userData'), 'window.json');
+@@ -57,9 +60,10 @@ function createWindow() {
+     // Windows: the app's own top bar is the title bar, with the system's window buttons on top of it. Mac and Linux keep the system's.
+     ...(WIN ? { frame: false } : {}),   // Windows: no system title bar; the app draws its own top bar and window buttons
+     autoHideMenuBar: true,
+-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, backgroundThrottling: true, preload: path.join(__dirname, 'preload.js') },
++    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, backgroundThrottling: false, preload: path.join(__dirname, 'preload.js') },
+   });
+   win.setMenuBarVisibility(false);
++  win.on('focus', () => win.flashFrame(false));
+   win.webContents.setUserAgent(`${win.webContents.getUserAgent().replace(/ Electron\/\S+/, '')} ${UA_MARK()}`);
+   if (st.maximized) win.maximize();
+   win.once('ready-to-show', () => { if (!(settings().startHidden && process.argv.includes('--hidden') && tray)) win.show(); });
+@@ -231,6 +235,14 @@ else {
+       else if (action === 'close') win.close();
+       else if (action === 'query') win.webContents.send('win-maximized', win.isMaximized());
+     });
++    // The page asks for attention when an alert arrives and the window is not in front: the taskbar button flashes (Windows, Linux) or the
++    // dock icon bounces (Mac) until the person comes back. Urgent alerts (reminders, overdue, security) keep going until then.
++    ipcMain.on('attention', (e, kind) => {
++      if (!win || win.isDestroyed() || e.sender !== win.webContents || win.isFocused()) return;
++      const urgent = kind === 'urgent';
++      if (MAC) app.dock?.bounce(urgent ? 'critical' : 'informational');
++      else win.flashFrame(true);
++    });
+     buildMenu(); if (!MAC) createTray(); createWindow();
+     globalShortcut.register('CommandOrControl+Shift+Space', quickSearch);
+     updaterSetup();
+diff --git a/apps/desktop/src/preload.js b/apps/desktop/src/preload.js
+index 47883d9..5d629d0 100644
+--- a/apps/desktop/src/preload.js
++++ b/apps/desktop/src/preload.js
+@@ -1,8 +1,10 @@
+ 'use strict';
+-// The only things the page can ask of the desktop app: minimize / maximize / close its own window (the app draws its own window buttons).
++// The only things the page can ask of the desktop app: minimize / maximize / close its own window (the app draws its own window buttons),
++// and to flash the taskbar button / bounce the dock icon when an alert arrives while the window is not in front.
+ const { contextBridge, ipcRenderer } = require('electron');
+ contextBridge.exposeInMainWorld('ptDesktop', {
+   platform: process.platform,
++  attention: (kind) => { ipcRenderer.send('attention', kind === 'urgent' ? 'urgent' : 'normal'); },
+   windowControl: (action) => { if (action === 'minimize' || action === 'maximize' || action === 'close') ipcRenderer.send('win-control', action); },
+   onMaximizeChange: (cb) => { ipcRenderer.on('win-maximized', (_e, maximized) => cb(!!maximized)); ipcRenderer.send('win-control', 'query'); },
+ });
+diff --git a/backend/src/ProjectManagement.Api/Realtime/ChatHub.cs b/backend/src/ProjectManagement.Api/Realtime/ChatHub.cs
+index e793eb5..4ca7243 100644
+--- a/backend/src/ProjectManagement.Api/Realtime/ChatHub.cs
++++ b/backend/src/ProjectManagement.Api/Realtime/ChatHub.cs
+@@ -52,12 +52,31 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
+ {
+     private static readonly TimeSpan OfflineDelay = TimeSpan.FromSeconds(4);
+ 
+-    public bool IsOnline(Guid tenantId, Guid userId) => store.IsOnline(tenantId, userId);
++    /// <summary>True only while the person is actually active (an open but idle tab does not count).</summary>
++    public bool IsOnline(Guid tenantId, Guid userId) => store.GetStatus(tenantId, userId) == PresenceStatus.Active;
++
++    /// <summary>"active", "away" or "offline".</summary>
++    public string Status(Guid tenantId, Guid userId) => Name(store.GetStatus(tenantId, userId));
++
++    public static string Name(PresenceStatus s) => s switch { PresenceStatus.Active => "active", PresenceStatus.Away => "away", _ => "offline" };
++
++    private Task Broadcast(Guid tenant, Guid user, PresenceStatus status) =>
++        hub.Clients.Group(ChatGroups.Workspace(tenant)).SendAsync("presence", new { userId = user, online = status == PresenceStatus.Active, status = Name(status) });
+ 
+     public async Task ConnectedAsync(string connectionId, Guid tenant, Guid user)
+     {
+-        if (await store.AddAsync(connectionId, tenant, user))
+-            await hub.Clients.Group(ChatGroups.Workspace(tenant)).SendAsync("presence", new { userId = user, online = true });
++        var before = store.GetStatus(tenant, user);
++        var first = await store.AddAsync(connectionId, tenant, user);
++        // A new connection starts active: announce it when that changes how the person looks (offline or away before).
++        if (first || before != PresenceStatus.Active) await Broadcast(tenant, user, PresenceStatus.Active);
++    }
++
++    /// <summary>One of the person's connections went idle or came back; announces the person's overall status if it changed.</summary>
++    public async Task IdleChangedAsync(string connectionId, bool idle)
++    {
++        var who = await store.SetIdleAsync(connectionId, idle);
++        if (who is not { } w) return;
++        await Broadcast(w.Tenant, w.User, store.GetStatus(w.Tenant, w.User));
+     }
+ 
+     public void Disconnected(string connectionId)
+@@ -66,8 +85,8 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
+         {
+             if (await store.RemoveAsync(connectionId) is not { } who) return;
+             await Task.Delay(OfflineDelay);
+-            if (store.IsOnline(who.Tenant, who.User)) return;
+-            await hub.Clients.Group(ChatGroups.Workspace(who.Tenant)).SendAsync("presence", new { userId = who.User, online = false });
++            // Offline only if nothing is left; if another tab is open it may now be the active (or the only, idle) one.
++            await Broadcast(who.Tenant, who.User, store.GetStatus(who.Tenant, who.User));
+         });
+     }
+ }
+@@ -135,6 +154,9 @@ public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock
+         await base.OnDisconnectedAsync(exception);
+     }
+ 
++    /// <summary>The page reports that this tab has had no keyboard, mouse or touch activity for a while (true) or that the person is back (false).</summary>
++    public Task SetIdle(bool idle) => presence.IdleChangedAsync(Context.ConnectionId, idle);
++
+     // ---- who else is looking at the same task: each open task is a group; people announce themselves and answer newcomers.
+ 
+     private static string ViewGroup(Guid tenant, string key) => $"v:{tenant:N}:{key}";
+diff --git a/backend/src/ProjectManagement.Api/Realtime/PresenceStore.cs b/backend/src/ProjectManagement.Api/Realtime/PresenceStore.cs
+index ba6a985..6b815ce 100644
+--- a/backend/src/ProjectManagement.Api/Realtime/PresenceStore.cs
++++ b/backend/src/ProjectManagement.Api/Realtime/PresenceStore.cs
+@@ -13,14 +13,22 @@ public interface IPresenceStore
+     Task<bool> AddAsync(string connectionId, Guid tenant, Guid user);
+     /// <summary>Forgets a connection and says whose it was (null if unknown).</summary>
+     Task<(Guid Tenant, Guid User)?> RemoveAsync(string connectionId);
++    /// <summary>True when the person has at least one open connection (active or idle).</summary>
+     bool IsOnline(Guid tenant, Guid user);
++    /// <summary>Marks one connection idle (no keyboard, mouse or touch for a while) or active again; returns whose it is (null if unknown).</summary>
++    Task<(Guid Tenant, Guid User)?> SetIdleAsync(string connectionId, bool idle);
++    /// <summary>Active when at least one connection is active, Away when every open connection is idle, Offline when there is none.</summary>
++    PresenceStatus GetStatus(Guid tenant, Guid user);
+ }
+ 
++public enum PresenceStatus { Offline, Away, Active }
++
+ /// <summary>Presence for a single API server.</summary>
+ public sealed class InMemoryPresenceStore : IPresenceStore
+ {
+     private readonly ConcurrentDictionary<string, (Guid Tenant, Guid User)> _connections = new();
+     private readonly ConcurrentDictionary<(Guid Tenant, Guid User), int> _counts = new();
++    private readonly HashSet<string> _idle = [];
+     private readonly object _gate = new();
+ 
+     public Task<bool> AddAsync(string connectionId, Guid tenant, Guid user)
+@@ -37,12 +45,33 @@ public sealed class InMemoryPresenceStore : IPresenceStore
+         lock (_gate)
+         {
+             if (!_connections.TryRemove(connectionId, out var who)) return Task.FromResult<(Guid, Guid)?>(null);
++            _idle.Remove(connectionId);
+             if (_counts.AddOrUpdate(who, 0, (_, v) => Math.Max(0, v - 1)) == 0) _counts.TryRemove(who, out _);
+             return Task.FromResult<(Guid, Guid)?>(who);
+         }
+     }
+ 
+     public bool IsOnline(Guid tenant, Guid user) => _counts.TryGetValue((tenant, user), out var n) && n > 0;
++
++    public Task<(Guid Tenant, Guid User)?> SetIdleAsync(string connectionId, bool idle)
++    {
++        lock (_gate)
++        {
++            if (!_connections.TryGetValue(connectionId, out var who)) return Task.FromResult<(Guid, Guid)?>(null);
++            if (idle) _idle.Add(connectionId); else _idle.Remove(connectionId);
++            return Task.FromResult<(Guid, Guid)?>(who);
++        }
++    }
++
++    public PresenceStatus GetStatus(Guid tenant, Guid user)
++    {
++        lock (_gate)
++        {
++            var open = _connections.Where(c => c.Value == (tenant, user)).Select(c => c.Key).ToList();
++            if (open.Count == 0) return PresenceStatus.Offline;
++            return open.Any(c => !_idle.Contains(c)) ? PresenceStatus.Active : PresenceStatus.Away;
++        }
++    }
+ }
+ 
+ /// <summary>
+@@ -56,11 +85,14 @@ public sealed class RedisPresenceStore : IPresenceStore, IHostedService, IDispos
+     private readonly IConnectionMultiplexer _redis;
+     private readonly ILogger<RedisPresenceStore> _log;
+     private readonly ConcurrentDictionary<string, (Guid Tenant, Guid User)> _mine = new();   // connections held by this server
++    private readonly ConcurrentDictionary<string, byte> _myIdle = new();                      // which of them are idle
+     private Timer? _timer;
+ 
+     public RedisPresenceStore(IConnectionMultiplexer redis, ILogger<RedisPresenceStore> log) { _redis = redis; _log = log; }
+ 
+     private static RedisKey Key(Guid tenant, Guid user) => $"pm:presence:{tenant:N}:{user:N}";
++    /// <summary>The idle connections of a person (a subset of <see cref="Key"/>), scored the same way so a crashed server's idle marks expire too.</summary>
++    private static RedisKey IdleKey(Guid tenant, Guid user) => $"pm:presence-idle:{tenant:N}:{user:N}";
+     private static double Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+ 
+     public async Task<bool> AddAsync(string connectionId, Guid tenant, Guid user)
+@@ -81,7 +113,13 @@ public sealed class RedisPresenceStore : IPresenceStore, IHostedService, IDispos
+     public async Task<(Guid Tenant, Guid User)?> RemoveAsync(string connectionId)
+     {
+         if (!_mine.TryRemove(connectionId, out var who)) return null;
+-        try { await _redis.GetDatabase().SortedSetRemoveAsync(Key(who.Tenant, who.User), connectionId); }
++        _myIdle.TryRemove(connectionId, out _);
++        try
++        {
++            var db = _redis.GetDatabase();
++            await db.SortedSetRemoveAsync(Key(who.Tenant, who.User), connectionId);
++            await db.SortedSetRemoveAsync(IdleKey(who.Tenant, who.User), connectionId);
++        }
+         catch (Exception ex) when (ex is RedisException or TimeoutException) { _log.LogWarning(ex, "Presence: Redis unavailable"); }
+         return who;
+     }
+@@ -92,6 +130,35 @@ public sealed class RedisPresenceStore : IPresenceStore, IHostedService, IDispos
+         catch (Exception ex) when (ex is RedisException or TimeoutException) { _log.LogWarning(ex, "Presence: Redis unavailable"); return false; }
+     }
+ 
++    public async Task<(Guid Tenant, Guid User)?> SetIdleAsync(string connectionId, bool idle)
++    {
++        if (!_mine.TryGetValue(connectionId, out var who)) return null;
++        if (idle) _myIdle[connectionId] = 0; else _myIdle.TryRemove(connectionId, out _);
++        try
++        {
++            var db = _redis.GetDatabase();
++            var key = IdleKey(who.Tenant, who.User);
++            if (idle) { await db.SortedSetAddAsync(key, connectionId, Now); await db.KeyExpireAsync(key, KeyLife); }
++            else await db.SortedSetRemoveAsync(key, connectionId);
++        }
++        catch (Exception ex) when (ex is RedisException or TimeoutException) { _log.LogWarning(ex, "Presence: Redis unavailable"); }
++        return who;
++    }
++
++    public PresenceStatus GetStatus(Guid tenant, Guid user)
++    {
++        try
++        {
++            var db = _redis.GetDatabase();
++            var since = Now - Stale.TotalSeconds;
++            var open = db.SortedSetLength(Key(tenant, user), since, double.PositiveInfinity);
++            if (open == 0) return PresenceStatus.Offline;
++            var idle = db.SortedSetLength(IdleKey(tenant, user), since, double.PositiveInfinity);
++            return open - idle > 0 ? PresenceStatus.Active : PresenceStatus.Away;
++        }
++        catch (Exception ex) when (ex is RedisException or TimeoutException) { _log.LogWarning(ex, "Presence: Redis unavailable"); return PresenceStatus.Offline; }
++    }
++
+     private async Task RefreshAsync()
+     {
+         if (_mine.IsEmpty) return;
+@@ -106,6 +173,12 @@ public sealed class RedisPresenceStore : IPresenceStore, IHostedService, IDispos
+                 var key = Key(who.Tenant, who.User);
+                 work.Add(batch.SortedSetAddAsync(key, connection, now));
+                 work.Add(batch.KeyExpireAsync(key, KeyLife));
++                if (_myIdle.ContainsKey(connection))
++                {
++                    var idleKey = IdleKey(who.Tenant, who.User);
++                    work.Add(batch.SortedSetAddAsync(idleKey, connection, now));
++                    work.Add(batch.KeyExpireAsync(idleKey, KeyLife));
++                }
+             }
+             batch.Execute();
+             await Task.WhenAll(work);
+diff --git a/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Conversations.cs b/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Conversations.cs
+index 7b5480b..b005123 100644
+--- a/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Conversations.cs
++++ b/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Conversations.cs
+@@ -23,7 +23,7 @@ public partial class ChatService
+         var (tenant, me) = Require();
+         var rows = await Eligible(tenant).Where(m => m.UserId != me).OrderBy(m => m.User!.DisplayName)
+             .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, HasAvatar = m.User.AvatarKey != null }).ToListAsync(ct);
+-        return rows.Select(r => new ChatPersonDto(r.UserId, r.DisplayName, r.Email, presence.IsOnline(tenant, r.UserId), r.HasAvatar)).ToList();
++        return rows.Select(r => new ChatPersonDto(r.UserId, r.DisplayName, r.Email, presence.IsOnline(tenant, r.UserId), r.HasAvatar, presence.Status(tenant, r.UserId))).ToList();
+     }
+ 
+     // ------------------------------------------------------------------ conversations
+@@ -92,7 +92,7 @@ public partial class ChatService
+                     c.LastMessageSenderId == me, c.LastMessageSenderId is null)
+                 : null;
+             result[c.Id] = new ConversationDto(c.Id, c.Type, name,
+-                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar)).ToList(),
++                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar, presence.Status(tenant, m.UserId))).ToList(),
+                 last, unread.GetValueOrDefault(c.Id), mine.IsMuted,
+                 CanModerate(c.Type, mine.Role), other?.UserId, c.LastMessageAt, c.ProjectId, mentionUnread.GetValueOrDefault(c.Id));
+         }
+diff --git a/backend/src/ProjectManagement.Application/Features/Chat/ChatService.cs b/backend/src/ProjectManagement.Application/Features/Chat/ChatService.cs
+index dd86ea7..c23cd92 100644
+--- a/backend/src/ProjectManagement.Application/Features/Chat/ChatService.cs
++++ b/backend/src/ProjectManagement.Application/Features/Chat/ChatService.cs
+@@ -23,7 +23,10 @@ public interface IChatNotifier
+ /// <summary>Who currently has the app open.</summary>
+ public interface IChatPresence
+ {
++    /// <summary>True only while the person is active (has an open tab that is not idle).</summary>
+     bool IsOnline(Guid tenantId, Guid userId);
++    /// <summary>"active", "away" (open but idle) or "offline".</summary>
++    string Status(Guid tenantId, Guid userId);
+ }
+ 
+ public static class ChatEvents
+@@ -36,8 +39,8 @@ public static class ChatEvents
+     public const string Notification = "notification";
+ }
+ 
+-public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online, bool HasAvatar = false);
+-public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false);
++public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online, bool HasAvatar = false, string Status = "offline");
++public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false, string Status = "offline");
+ public record ChatLastMessageDto(Guid Id, string? SenderName, string Snippet, DateTime At, bool IsMine, bool IsSystem);
+ public record ConversationDto(Guid Id, ConversationType Type, string Name, IReadOnlyList<ChatMemberDto> Members, ChatLastMessageDto? LastMessage,
+     int Unread, bool IsMuted, bool CanManage, Guid? OtherUserId, DateTime LastActivityAt, Guid? ProjectId = null, int UnreadMentions = 0);
+diff --git a/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs b/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs
+index d2cc23c..eeb63b7 100644
+--- a/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs
++++ b/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs
+@@ -11,9 +11,9 @@ public static class NotificationCatalog
+     public static readonly NotificationKind[] All =
+     [
+         new(NotificationType.TaskAssigned, "Task assigned to me", "Someone assigns a task to you.", true, true, true, false),
+-        new(NotificationType.Mention, "Mentions", "Someone @mentions you in a comment or in a project chat.", true, true, false, false),
++        new(NotificationType.Mention, "Mentions", "Someone @mentions you in a comment or in a project chat.", true, true, true, false),
+         new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date). If you switch e-mail on, you only get one when the message is still unread after a few minutes.", true, false, true, false),
+-        new(NotificationType.Comment, "Comments on my tasks", "New comments on tasks you are assigned to or reported.", true, true, false, false),
++        new(NotificationType.Comment, "Comments on my tasks", "New comments on tasks you are assigned to or reported.", true, true, true, false),
+         new(NotificationType.TaskUpdated, "Task updates", "A task you are assigned to or reported on changes status, priority, dates or title.", true, true, false, false),
+         new(NotificationType.ProjectUpdated, "Project updates", "A project you are a member of changes status.", true, true, false, false),
+         new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, true, true, false),
+@@ -22,13 +22,13 @@ public static class NotificationCatalog
+         new(NotificationType.Overdue, "Overdue work", "Work assigned to you, or that you oversee, is past its due date.", true, true, true, false),
+         new(NotificationType.Briefing, "Morning briefing", "Once a day: what is due, overdue and coming up.", true, false, false, false),
+         new(NotificationType.PortfolioDigest, "Weekly portfolio brief", "Every Monday: which projects are at risk or delayed, and why. Sent to organization owners and admins.", true, true, false, false),
+-        new(NotificationType.Invitation, "Invitations", "You are invited to join an organization.", true, true, false, false),
++        new(NotificationType.Invitation, "Invitations", "You are invited to join an organization.", true, true, true, false),
+         new(NotificationType.Subscription, "Billing and subscription", "Plan changes, payment problems and expiry (sent to organization owners).", true, true, false, false),
+         new(NotificationType.Issue, "Test issues", "A test issue is reported, assigned to you, fixed, reopened or resolved on a project you work on.", true, false, false, false),
+         new(NotificationType.ReportReady, "Reports ready", "A report you asked for has been generated and can be downloaded.", true, false, true, false),
+-        new(NotificationType.Approval, "Timesheet approvals", "A timesheet is waiting for you to approve it, or yours was approved or returned.", true, true, false, false),
+-        new(NotificationType.Document, "Documents", "A document is waiting for your review, was approved, sent back or published, or someone asks for or gets access.", true, true, false, false),
+-        new(NotificationType.Meeting, "Meetings", "You are invited to a Google Meet someone scheduled or started, or one you are in is rescheduled or cancelled.", true, true, false, false),
++        new(NotificationType.Approval, "Timesheet approvals", "A timesheet is waiting for you to approve it, or yours was approved or returned.", true, true, true, false),
++        new(NotificationType.Document, "Documents", "A document is waiting for your review, was approved, sent back or published, or someone asks for or gets access.", true, true, true, false),
++        new(NotificationType.Meeting, "Meetings", "You are invited to a Google Meet someone scheduled or started, or one you are in is rescheduled or cancelled.", true, true, true, false),
+         new(NotificationType.ServiceLevel, "Service levels (SLA)", "Operational work you are assigned or raised is about to miss, or has missed, its response or resolution target.", true, true, true, false),
+         // Security alerts cannot be switched off in-app or by email.
+         new(NotificationType.Security, "Security alerts", "Password changes and other account security events. Always on.", true, true, false, true),
+diff --git a/backend/src/ProjectManagement.Tests/ChatTests.cs b/backend/src/ProjectManagement.Tests/ChatTests.cs
+index fb1fa38..a1944b0 100644
+--- a/backend/src/ProjectManagement.Tests/ChatTests.cs
++++ b/backend/src/ProjectManagement.Tests/ChatTests.cs
+@@ -490,6 +490,33 @@ public class ChatTests(ApiFactory factory)
+         Assert.False((await ravi.Get("/api/v1/chat/people")).Data!.AsArray().Single(p => p!["name"]!.GetValue<string>() == "Priya")!["online"]!.GetValue<bool>());
+     }
+ 
++    [Fact]
++    public async Task An_idle_tab_shows_the_person_as_away_until_they_come_back()
++    {
++        var (ravi, priya, _) = await BuildTeam();
++        var (watcher, events) = await Live(ravi);
++        await using var _1 = watcher;
++        var (priyaLive, _) = await Live(priya);
++        await using var _2 = priyaLive;
++        // The newest presence event about Priya, if it says the given status.
++        JsonElement? Status(string status) { lock (events) { var last = events.LastOrDefault(e => e.Name == "presence" && e.Payload.GetProperty("userId").GetString() == priya.UserId.ToString());
++            return last.Name is not null && last.Payload.GetProperty("status").GetString() == status ? last.Payload : null; } }
++        await Eventually(() => Status("active"));
++
++        // Her only tab goes idle: she is Away (not online) although the connection is still open.
++        await priyaLive.InvokeAsync("SetIdle", true);
++        var away = await Eventually(() => Status("away"));
++        Assert.False(away.GetProperty("online").GetBoolean());
++        var person = (await ravi.Get("/api/v1/chat/people")).Data!.AsArray().Single(p => p!["name"]!.GetValue<string>() == "Priya")!;
++        Assert.Equal("away", person["status"]!.GetValue<string>());
++        Assert.False(person["online"]!.GetValue<bool>());
++
++        // Activity again: back to active.
++        await priyaLive.InvokeAsync("SetIdle", false);
++        await Eventually(() => Status("active"));
++        Assert.True((await ravi.Get("/api/v1/chat/people")).Data!.AsArray().Single(p => p!["name"]!.GetValue<string>() == "Priya")!["online"]!.GetValue<bool>());
++    }
++
+     [Fact]
+     public async Task The_live_connection_needs_a_valid_token_and_an_organization_workspace()
+     {
+diff --git a/frontend/public/sw.js b/frontend/public/sw.js
+index f9e514f..bb0b828 100644
+--- a/frontend/public/sw.js
++++ b/frontend/public/sw.js
+@@ -1,6 +1,6 @@
+ /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
+  * Data from the API is never cached here - it belongs to whoever is signed in. */
+-const SHELL = 'pm-shell-v6';
++const SHELL = 'pm-shell-v7';
+ 
+ /** The page and the scripts and styles it names, so the app can start without a connection. */
+ async function cacheShell() {
+@@ -44,6 +44,20 @@ self.addEventListener('fetch', (event) => {
+   }
+ });
+ 
++// Which of the page's alert sounds a kind of notification gets (the same grouping as lib/attention.ts).
++const URGENT = ['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Security', 'SignInRequest'];
++const CHAT = ['Message', 'Mention'];
++
++/** Asks an open page to play its alert sound; resolves true if one did (a page that cannot make sound yet, or none, answers false). */
++function askPage(win, message) {
++  return new Promise((resolve) => {
++    const channel = new MessageChannel();
++    const timer = setTimeout(() => resolve(false), 800);
++    channel.port1.onmessage = (e) => { clearTimeout(timer); resolve(!!(e.data && e.data.played)); };
++    try { win.postMessage(message, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
++  });
++}
++
+ self.addEventListener('push', (event) => {
+   let data = {};
+   try { data = event.data ? event.data.json() : {}; } catch { data = { title: event.data ? event.data.text() : 'Project Tracker' }; }
+@@ -52,12 +66,19 @@ self.addEventListener('push', (event) => {
+   const reminder = !!data.token;
+   // A request to sign in somewhere else is urgent and short-lived: it stays on screen until answered, buzzes, and opens the approval screen.
+   const signIn = data.type === 'SignInRequest';
+-  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+-    const watching = wins.some((w) => w.focused && new URL(w.url).origin === self.location.origin);
++  const urgent = reminder || URGENT.includes(data.type);
++  const kind = urgent ? 'urgent' : CHAT.includes(data.type) ? 'message' : 'update';
++  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (wins) => {
++    const pages = wins.filter((w) => new URL(w.url).origin === self.location.origin);
++    // An open page plays its own (distinct) alert sound, so the system notification stays silent - but only if the page really did: when
++    // the page cannot make sound yet, or the app is closed, the notification makes the device's own sound instead.
++    const played = (await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '' })))).some(Boolean);
+     return self.registration.showNotification(data.title || 'Project Tracker', {
+       body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
+       data: { link: data.link || '/', token: data.token || null },
+-      requireInteraction: reminder || signIn, silent: watching && !signIn, renotify: signIn && !!data.tag, vibrate: signIn ? [200, 80, 200, 80, 400] : undefined,
++      // Urgent ones stay on screen until dismissed; a repeated tag pops up again instead of updating quietly.
++      requireInteraction: urgent || signIn, silent: played && !signIn, renotify: !!data.tag,
++      vibrate: signIn ? [200, 80, 200, 80, 400] : urgent ? [300, 100, 300, 100, 300] : [120, 60, 120],
+       actions: reminder ? [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: 'Snooze 1 hour' }] : [],
+     });
+   }));
+diff --git a/frontend/src/api/types.ts b/frontend/src/api/types.ts
+index 96f18fa..7f2ca35 100644
+--- a/frontend/src/api/types.ts
++++ b/frontend/src/api/types.ts
+@@ -481,8 +481,10 @@ export interface AdminTestEmailResult { sent: boolean; provider: string; to: str
+ // ------------------------------------------------------------------ chat
+ /** Project: the team chat of one project (who is in it follows the project). */
+ export type ConversationType = 'Direct' | 'Group' | 'Project';
+-export interface ChatPerson { userId: string; name: string; email: string; online: boolean; hasAvatar?: boolean }
+-export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; hasAvatar?: boolean }
++/** active = using the app, away = open but idle (5+ minutes without activity), offline = not connected. */
++export type PresenceStatus = 'active' | 'away' | 'offline';
++export interface ChatPerson { userId: string; name: string; email: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean }
++export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean }
+ export interface ChatLastMessage { id: string; senderName: string | null; snippet: string; at: string; isMine: boolean; isSystem: boolean }
+ export interface Conversation {
+   id: string; type: ConversationType; name: string; members: ChatMember[]; lastMessage: ChatLastMessage | null;
+diff --git a/frontend/src/features/chat/ChatPage.tsx b/frontend/src/features/chat/ChatPage.tsx
+index a22585a..b05c936 100644
+--- a/frontend/src/features/chat/ChatPage.tsx
++++ b/frontend/src/features/chat/ChatPage.tsx
+@@ -9,6 +9,7 @@ import { useDebounced } from '../../lib/hooks';
+ import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
+ import { listTime } from './chatFormat';
+ import { chatKeys, useChat, useTypingNames } from './chatStore';
++import { fallbackStatus } from './Presence';
+ import { FilesPanel, InfoPanel, NewChatModal } from './Panels';
+ import { ConversationAvatar, Thread } from './Thread';
+ 
+@@ -127,10 +128,10 @@ export function ChatPage() {
+ }
+ 
+ function ConversationRow({ c, me, active, onOpen }: { c: Conversation; me: string; active: boolean; onOpen: () => void }) {
+-  const online = useChat((s) => s.online);
++  const statuses = useChat((s) => s.status);
+   const typing = useTypingNames(c.id);
+   const other = c.type === 'Direct' ? c.members.find((m) => m.userId !== me) : null;
+-  const isOnline = !!other && (online[other.userId] ?? other.online);
++  const presence = other ? (statuses[other.userId] ?? fallbackStatus(other)) : 'offline';
+   const last = c.lastMessage;
+   const preview = typing.length ? <span className="typing-text">typing…</span>
+     : last ? <>{last.isMine && !last.isSystem ? 'You: ' : c.type === 'Group' && last.senderName && !last.isSystem ? `${last.senderName.split(' ')[0]}: ` : ''}{last.snippet || 'Message deleted'}</>
+@@ -138,7 +139,7 @@ function ConversationRow({ c, me, active, onOpen }: { c: Conversation; me: strin
+   return (
+     <li>
+       <button className={`conv-row ${active ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}`} onClick={onOpen} aria-current={active ? 'true' : undefined}>
+-        <ConversationAvatar conversation={c} online={isOnline} />
++        <ConversationAvatar conversation={c} status={presence} />
+         <span className="conv-text">
+           <span className="conv-top"><b>{c.name}</b>{c.isMuted && <Icon name="bell" size={12} style={{ opacity: 0.5 }} />}<time>{last ? listTime(last.at) : ''}</time></span>
+           <span className="conv-bottom"><span className="conv-preview">{preview}</span>{c.unread > 0 && <span className="unread-badge" aria-label={`${c.unread} unread`}>{c.unread > 99 ? '99+' : c.unread}</span>}</span>
+diff --git a/frontend/src/features/chat/ChatRealtime.tsx b/frontend/src/features/chat/ChatRealtime.tsx
+index 7b2a778..a946ee4 100644
+--- a/frontend/src/features/chat/ChatRealtime.tsx
++++ b/frontend/src/features/chat/ChatRealtime.tsx
+@@ -2,8 +2,12 @@ import { useEffect, useRef } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
+ import { getAccessToken, refreshSession } from '../../api/client';
+-import type { ChatMessage, ChatThread, Conversation } from '../../api/types';
++import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../../api/types';
+ import { appPath } from '../../lib/orgPath';
++import { firstTime, getAttention } from '../../lib/attention';
++import { trackIdle } from '../../lib/idle';
++import { CHECK_NOTIFICATIONS } from '../notifications/events';
++import { pushCoversThisDevice, systemNotification } from '../reminders/device';
+ import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
+ import { toast } from '../../stores/ui';
+ import { plainText } from './chatFormat';
+@@ -16,6 +20,9 @@ const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar',
+   'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'timesheet', 'work', 'workload', 'capacity']);
+ const LIVE_THROTTLE_MS = 1200;
+ 
++/** The person is in another tab, another window or another app. */
++const away = () => document.hidden || !document.hasFocus();
++
+ const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+ const RETRY_MS = 10_000;        // after a failed attempt
+ const REOPEN_MS = 1_000;        // after the server closed the connection on purpose (the access token ran out)
+@@ -70,6 +77,11 @@ export function ChatRealtime() {
+     current = connection;
+     setLiveConnection(connection);
+ 
++    // Tell the server when this tab goes idle (5 minutes without keyboard, mouse or touch) and when the person is back, so they show as
++    // Away instead of Active. A connection starts out active, so after (re)connecting only an idle tab has anything to say.
++    const sendIdle = (idle: boolean) => { if (connection.state === HubConnectionState.Connected) void connection.invoke('SetIdle', idle).catch(() => { /* best effort */ }); };
++    const idle = trackIdle(sendIdle);
++
+     // Live updates: someone changed something - refresh the work screens that are open (at most about once a second).
+     let liveTimer: number | undefined;
+     const refreshWork = () => {
+@@ -82,6 +94,7 @@ export function ChatRealtime() {
+     connection.on('changed', (changes: { actorId: string | null }[]) => {
+       // This tab already refreshed what it changed itself; other people's changes (and my other tabs') are news.
+       if (changes.every((c) => c.actorId === me) && !document.hidden) return;
++      if (changes.some((c) => c.actorId !== me)) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));   // someone else's change may have notified me
+       refreshWork();
+     });
+     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
+@@ -108,12 +121,12 @@ export function ChatRealtime() {
+       const text = message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
+       const title = conversation && conversation.type === 'Group' ? `${message.senderName} in ${conversation.name}` : (message.senderName ?? 'New message');
+       const open = () => { window.focus(); navigate.current(`/chat/${conversationId}`); };
+-      if (document.hidden) {
+-        if ('Notification' in window && Notification.permission === 'granted') {
+-          const n = new Notification(title, { body: text, tag: `chat-${conversationId}` });
+-          n.onclick = () => { n.close(); open(); };
+-        }
+-      } else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/chat')) {
++      if (!firstTime(`chat-${message.id}`)) return;
++      getAttention({ kind: 'message' });
++      // In another tab, another window or another app (not only a hidden tab): the system shows it. When push is on for this device the
++      // server's push already brings it (and respects the person's "Chat messages" choice), so the page does not add a second one.
++      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `chat-${conversationId}`, `/chat/${conversationId}`, { sticky: false }); }
++      else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/chat')) {
+         toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
+       }
+     };
+@@ -123,25 +136,23 @@ export function ChatRealtime() {
+       const text = plainText(message.body).length > 120 ? `${plainText(message.body).slice(0, 119)}…` : plainText(message.body);
+       const title = `${message.senderName ?? 'Someone'} mentioned you in ${projectName}`;
+       const open = () => { window.focus(); useProjectChat.getState().openChat(projectId, projectName); };
+-      if (document.hidden) {
+-        if ('Notification' in window && Notification.permission === 'granted') {
+-          const n = new Notification(title, { body: text, tag: `pchat-${projectId}` });
+-          n.onclick = () => { n.close(); open(); };
+-        }
+-      } else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
++      if (!firstTime(`chat-${message.id}`)) return;
++      getAttention({ kind: 'message' });
++      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `pchat-${projectId}`, '/chat', { sticky: false }); }
++      else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
+     };
+ 
+     connection.on('message', (e: { conversationId: string; message: ChatMessage; projectId?: string | null; conversationName?: string | null; mentioned?: string[] }) => {
+       putInThread(e.conversationId, e.message, false);
+       if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
+       refreshLists();
+-      const viewing = useChat.getState().openConversation === e.conversationId && !document.hidden;
++      const viewing = useChat.getState().openConversation === e.conversationId && !away();
+       if (e.message.kind !== 'User' || e.message.senderId === me || viewing) return;
+       if (e.projectId) { if (e.mentioned?.includes(me)) notifyMention(e.projectId, e.conversationName ?? 'a project', e.message); return; }
+       notify(e.conversationId, e.message);
+     });
+     // Somebody just created a notification for me (a mention): refresh the bell now instead of at the next poll.
+-    connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); });
++    connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); window.dispatchEvent(new Event(CHECK_NOTIFICATIONS)); });
+     connection.on('message.updated', (e: { conversationId: string; message: ChatMessage }) => {
+       putInThread(e.conversationId, e.message, true);
+       refreshLists();
+@@ -152,11 +163,12 @@ export function ChatRealtime() {
+         : { ...c, members: c.members.map((m) => (m.userId === e.userId ? { ...m, lastReadAt: e.at } : m)) }));
+     });
+     connection.on('typing', (e: { conversationId: string; userId: string; name: string | null }) => useChat.getState().markTyping(e.conversationId, e.userId, e.name ?? 'Someone'));
+-    connection.on('presence', (e: { userId: string; online: boolean }) => useChat.getState().setOnline(e.userId, e.online));
++    connection.on('presence', (e: { userId: string; online: boolean; status?: PresenceStatus }) => useChat.getState().setOnline(e.userId, e.online, e.status));
+ 
+     connection.onreconnecting(() => useChat.getState().setLink('reconnecting'));
+     connection.onreconnected(() => {
+-      useChat.setState({ link: 'connected', online: {} });                   // presence may have changed while offline
++      useChat.setState({ link: 'connected', online: {}, status: {} });         // presence may have changed while offline
++      if (idle.isIdle()) sendIdle(true);
+       void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });    // and so may everything else
+       notifyLiveConnected();                                                  // open tasks announce their viewers again
+       refreshWork();
+@@ -176,6 +188,7 @@ export function ChatRealtime() {
+         await connection.start();
+         if (stopped) return;
+         useChat.getState().setLink('connected');
++        if (idle.isIdle()) sendIdle(true);
+         notifyLiveConnected();
+         void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });
+       } catch {
+@@ -190,6 +203,7 @@ export function ChatRealtime() {
+       stopped = true;
+       window.clearTimeout(retry);
+       window.clearTimeout(liveTimer);
++      idle.stop();
+       if (current === connection) { current = null; setLiveConnection(null); }
+       void connection.stop();
+     };
+diff --git a/frontend/src/features/chat/Panels.tsx b/frontend/src/features/chat/Panels.tsx
+index efffb0c..59351a9 100644
+--- a/frontend/src/features/chat/Panels.tsx
++++ b/frontend/src/features/chat/Panels.tsx
+@@ -3,13 +3,14 @@ import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+ import { useNavigate } from 'react-router-dom';
+ import { chatApi } from '../../api/endpoints';
+ import { ApiError } from '../../api/client';
+-import type { ChatFile, ChatPerson, Conversation } from '../../api/types';
++import type { ChatFile, ChatPerson, Conversation, PresenceStatus } from '../../api/types';
+ import { Icon } from '../../components/Icon';
+ import { Avatar, EmptyState, Field, Modal, PageLoader, Spinner, Tabs } from '../../components/ui';
+ import { formatDateTime } from '../../lib/format';
+ import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
+ import { confirmDialog, toast } from '../../stores/ui';
+-import { chatKeys, useChat } from './chatStore';
++import { chatKeys, PRESENCE_LABEL, useChat } from './chatStore';
++import { fallbackStatus, PresenceDot, usePresence } from './Presence';
+ import { MemberProfileModal } from '../people/MemberProfileModal';
+ 
+ const errorText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
+@@ -25,9 +26,9 @@ function usePeople() {
+ }
+ 
+ /** A person with a presence dot: online comes from live events, falling back to what the server said when it was last asked. */
+-export function PersonAvatar({ name, userId, fallback, hasAvatar }: { name: string; userId: string; fallback: boolean; hasAvatar?: boolean }) {
+-  const online = useChat((s) => s.online[userId]) ?? fallback;
+-  return <span className="avatar-wrap"><Avatar name={name} size="sm" userId={userId} hasAvatar={hasAvatar} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
++export function PersonAvatar({ name, userId, fallback, hasAvatar }: { name: string; userId: string; fallback: PresenceStatus; hasAvatar?: boolean }) {
++  const status = usePresence(userId, fallback);
++  return <span className="avatar-wrap"><Avatar name={name} size="sm" userId={userId} hasAvatar={hasAvatar} /><PresenceDot status={status} /></span>;
+ }
+ 
+ // ------------------------------------------------------------------ people picker
+@@ -48,7 +49,7 @@ function PeoplePicker({ people, multiple, selected, onToggle, onPick, emptyText
+           return (
+             <li key={p.userId}>
+               <button type="button" className={`picker-row ${on ? 'on' : ''}`} onClick={() => (multiple ? onToggle(p.userId) : onPick(p))} aria-pressed={multiple ? on : undefined}>
+-                <PersonAvatar name={p.name} userId={p.userId} fallback={p.online} hasAvatar={p.hasAvatar} />
++                <PersonAvatar name={p.name} userId={p.userId} fallback={fallbackStatus(p)} hasAvatar={p.hasAvatar} />
+                 <span className="picker-text"><b>{p.name}</b><small>{p.email}</small></span>
+                 {multiple && <span className={`check ${on ? 'on' : ''}`}>{on && <Icon name="tick" size={12} />}</span>}
+               </button>
+@@ -209,7 +210,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
+   const wid = useWorkspaceId()!;
+   const me = useAuth((s) => s.ctx!.user.id);
+   const navigate = useNavigate();
+-  const online = useChat((s) => s.online);
++  const status = useChat((s) => s.status);
+   const [adding, setAdding] = useState(false);
+   const [name, setName] = useState<string | null>(null);   // non-null while the group is being renamed
+   const [viewProfile, setViewProfile] = useState<string | null>(null);
+@@ -278,8 +279,8 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
+             {conversation.members.map((m) => (
+               <li key={m.userId}>
+                 <button type="button" className="member-row-btn" onClick={() => setViewProfile(m.userId)} aria-label={`${m.name}'s profile`}>
+-                  <PersonAvatar name={m.name} userId={m.userId} fallback={m.online} hasAvatar={m.hasAvatar} />
+-                  <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{(online[m.userId] ?? m.online) ? 'Active now' : 'Offline'}</small></span>
++                  <PersonAvatar name={m.name} userId={m.userId} fallback={fallbackStatus(m)} hasAvatar={m.hasAvatar} />
++                  <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{PRESENCE_LABEL[status[m.userId] ?? fallbackStatus(m)]}</small></span>
+                 </button>
+                 {m.role === 'Admin' && group && <span className="badge badge-neutral">Admin</span>}
+                 {group && conversation.canManage && m.userId !== me && (
+diff --git a/frontend/src/features/chat/Presence.tsx b/frontend/src/features/chat/Presence.tsx
+new file mode 100644
+index 0000000..7f733a9
+--- /dev/null
++++ b/frontend/src/features/chat/Presence.tsx
+@@ -0,0 +1,16 @@
++import type { PresenceStatus } from '../../api/types';
++import { PRESENCE_LABEL, statusOf, useChat } from './chatStore';
++
++/** What the server last said about a person (an older server only says online or not). */
++export const fallbackStatus = (p: { online: boolean; status?: PresenceStatus }): PresenceStatus => p.status ?? statusOf(p.online);
++
++/** A person's status: the live one when we have it, otherwise what the server said when it was last asked. */
++export function usePresence(userId: string | null | undefined, fallback: PresenceStatus): PresenceStatus {
++  return useChat((s) => (userId ? s.status[userId] : undefined)) ?? fallback;
++}
++
++/** The small dot on an avatar: green when active, amber when away, nothing when offline. */
++export function PresenceDot({ status }: { status: PresenceStatus }) {
++  if (status === 'offline') return null;
++  return <i className={`presence-dot ${status}`} role="img" aria-label={PRESENCE_LABEL[status]} />;
++}
+diff --git a/frontend/src/features/chat/Thread.tsx b/frontend/src/features/chat/Thread.tsx
+index 72b6731..ae2a046 100644
+--- a/frontend/src/features/chat/Thread.tsx
++++ b/frontend/src/features/chat/Thread.tsx
+@@ -10,7 +10,9 @@ import { formatDateTime } from '../../lib/format';
+ import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
+ import { confirmDialog, toast } from '../../stores/ui';
+ import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
+-import { chatKeys, useChat, useTypingNames } from './chatStore';
++import { chatKeys, PRESENCE_LABEL, useChat, useTypingNames } from './chatStore';
++import type { PresenceStatus } from '../../api/types';
++import { fallbackStatus, PresenceDot } from './Presence';
+ import { sendTyping } from './ChatRealtime';
+ import { openReminderComposer } from '../reminders/store';
+ import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+@@ -63,7 +65,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
+   const me = useAuth((s) => s.ctx!.user.id);
+   const navigate = useNavigate();
+   const id = conversation.id;
+-  const online = useChat((s) => s.online);
++  const statuses = useChat((s) => s.status);
+   const setOpen = useChat((s) => s.setOpenConversation);
+   const typingNames = useTypingNames(id);
+ 
+@@ -172,12 +174,13 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
+   // ---- who is here
+   const others = useMemo(() => conversation.members.filter((m) => m.userId !== me), [conversation.members, me]);
+   const other = conversation.type === 'Direct' ? others[0] : null;
+-  const isOnline = (userId: string, fallback: boolean) => online[userId] ?? fallback;
+-  const onlineCount = others.filter((m) => isOnline(m.userId, m.online)).length;
++  const presenceOf = (m: { userId: string; online: boolean; status?: PresenceStatus }): PresenceStatus => statuses[m.userId] ?? fallbackStatus(m);
++  const onlineCount = others.filter((m) => presenceOf(m) === 'active').length;
++  const otherStatus: PresenceStatus = other ? presenceOf(other) : 'offline';
+   const status = typingNames.length
+     ? <span className="typing-text">{typingNames.length === 1 ? `${typingNames[0]} is typing` : `${typingNames.slice(0, 2).join(' and ')} are typing`}<i className="dots"><b /><b /><b /></i></span>
+     : conversation.type === 'Direct'
+-      ? (other && isOnline(other.userId, other.online) ? <span className="status-on">Active now</span> : 'Offline')
++      ? (otherStatus === 'active' ? <span className="status-on">{PRESENCE_LABEL.active}</span> : otherStatus === 'away' ? <span className="status-away">{PRESENCE_LABEL.away}</span> : PRESENCE_LABEL.offline)
+       : `${conversation.members.length} members${onlineCount ? ` · ${onlineCount} online` : ''}`;
+ 
+   // A message I sent counts as read once everyone else in the conversation has read past it (the recipient in a direct
+@@ -189,7 +192,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
+     <div className="chat-thread">
+       <header className="chat-head">
+         {variant === 'page' && <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>}
+-        <ConversationAvatar conversation={conversation} online={other ? isOnline(other.userId, other.online) : false} />
++        <ConversationAvatar conversation={conversation} status={otherStatus} />
+         <div className="chat-head-text">
+           <h2>{conversation.name}</h2>
+           <div className="chat-sub" aria-live="polite">{status}</div>
+@@ -673,8 +676,8 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
+ }
+ 
+ // ------------------------------------------------------------------ shared bits
+-export function ConversationAvatar({ conversation, online }: { conversation: Conversation; online: boolean }) {
++export function ConversationAvatar({ conversation, status }: { conversation: Conversation; status: PresenceStatus }) {
+   if (conversation.type === 'Project') return <span className="avatar group-avatar" title={conversation.name}><Icon name="folder" size={16} /></span>;
+   if (conversation.type === 'Group') return <span className="avatar group-avatar" title={conversation.name}><Icon name="users" size={16} /></span>;
+-  return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
++  return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} /><PresenceDot status={status} /></span>;
+ }
+diff --git a/frontend/src/features/chat/chatStore.ts b/frontend/src/features/chat/chatStore.ts
+index 7858028..b450b2d 100644
+--- a/frontend/src/features/chat/chatStore.ts
++++ b/frontend/src/features/chat/chatStore.ts
+@@ -1,5 +1,6 @@
+ import { useEffect, useState } from 'react';
+ import { create } from 'zustand';
++import type { PresenceStatus } from '../../api/types';
+ 
+ export type LinkState = 'connecting' | 'connected' | 'reconnecting' | 'offline';
+ 
+@@ -12,8 +13,10 @@ interface ChatState {
+   setLink: (l: LinkState) => void;
+   /** Who has the app open (seeded from the server, then kept current by live "presence" events). */
+   online: Record<string, boolean>;
+-  seedOnline: (entries: { userId: string; online: boolean }[]) => void;
+-  setOnline: (userId: string, online: boolean) => void;
++  /** The same people with the finer status: active, away (open but idle) or offline. */
++  status: Record<string, PresenceStatus>;
++  seedOnline: (entries: { userId: string; online: boolean; status?: PresenceStatus }[]) => void;
++  setOnline: (userId: string, online: boolean, status?: PresenceStatus) => void;
+   /** conversation id → user id → who is typing right now. */
+   typing: Record<string, Record<string, Typing>>;
+   markTyping: (conversationId: string, userId: string, name: string) => void;
+@@ -24,16 +27,27 @@ interface ChatState {
+   reset: () => void;
+ }
+ 
++/** An older server only says online or not. */
++export const statusOf = (online: boolean): PresenceStatus => (online ? 'active' : 'offline');
++
++export const PRESENCE_LABEL: Record<PresenceStatus, string> = { active: 'Active now', away: 'Away', offline: 'Offline' };
++
+ export const useChat = create<ChatState>((set) => ({
+   link: 'connecting',
+   setLink: (link) => set({ link }),
+   online: {},
++  status: {},
+   seedOnline: (entries) => set((s) => {
+     const next = { ...s.online };
+-    for (const e of entries) if (!(e.userId in next)) next[e.userId] = e.online;   // live events are newer than a fetched snapshot
+-    return { online: next };
++    const nextStatus = { ...s.status };
++    for (const e of entries) {
++      if (e.userId in nextStatus) continue;   // live events are newer than a fetched snapshot
++      next[e.userId] = e.online;
++      nextStatus[e.userId] = e.status ?? statusOf(e.online);
++    }
++    return { online: next, status: nextStatus };
+   }),
+-  setOnline: (userId, online) => set((s) => ({ online: { ...s.online, [userId]: online } })),
++  setOnline: (userId, online, status) => set((s) => ({ online: { ...s.online, [userId]: online }, status: { ...s.status, [userId]: status ?? statusOf(online) } })),
+   typing: {},
+   markTyping: (conversationId, userId, name) => set((s) => ({
+     typing: { ...s.typing, [conversationId]: { ...s.typing[conversationId], [userId]: { name, until: Date.now() + TYPING_MS } } },
+@@ -45,7 +59,7 @@ export const useChat = create<ChatState>((set) => ({
+   }),
+   openConversation: null,
+   setOpenConversation: (openConversation) => set({ openConversation }),
+-  reset: () => set({ link: 'connecting', online: {}, typing: {}, openConversation: null }),
++  reset: () => set({ link: 'connecting', online: {}, status: {}, typing: {}, openConversation: null }),
+ }));
+ 
+ /** Names of the people typing in a conversation right now (entries fade after a few seconds without a new "typing" signal). */
+diff --git a/frontend/src/features/notifications/AlertsSetup.tsx b/frontend/src/features/notifications/AlertsSetup.tsx
+new file mode 100644
+index 0000000..0833fa3
+--- /dev/null
++++ b/frontend/src/features/notifications/AlertsSetup.tsx
+@@ -0,0 +1,75 @@
++import { useEffect, useState } from 'react';
++import { Icon } from '../../components/Icon';
++import { canPlaySound, firstTime, getAttention, kindForType, playSound, unlockSound, type AttentionKind } from '../../lib/attention';
++import { isDesktopApp } from '../../lib/desktop';
++import { useAuth } from '../../stores/auth';
++import { deviceAlerts, enableDeviceAlerts, type DeviceAlerts } from '../reminders/device';
++
++const ASKED_KEY = 'pm_alerts_prompt';   // "asked and answered" - the card is shown once per browser, not on every visit
++
++/** A push the service worker just received while this page is open: it asks the page to play the sound and answers whether it did. */
++interface PushMessage { type: 'pm-push'; kind?: AttentionKind; notificationType?: string; tag?: string }
++
++/**
++ * Makes sure the person actually gets notifications while they are in another tab or app:
++ *  - when the browser already allows notifications, this device is signed up for push by itself (no need to find the setting);
++ *  - otherwise a small card, once, asks them to turn notifications on (the click also lets the page play its alert sound);
++ *  - when a push arrives and the page is open, the page plays the alert sound and flashes the tab, and tells the service worker so the
++ *    system notification does not add a second sound.
++ */
++export function AlertsSetup() {
++  const user = useAuth((s) => s.ctx?.user);
++  const enabled = !!user && !user.isPlatformAdmin;
++  const [state, setState] = useState<DeviceAlerts | null>(null);
++  const [asked, setAsked] = useState(() => { try { return localStorage.getItem(ASKED_KEY) === '1'; } catch { return true; } });
++
++  useEffect(() => {
++    if (!enabled) return;
++    let cancelled = false;
++    void deviceAlerts().then(async (s) => {
++      // Allowed, but not signed up for push yet (a new device, or an older version): sign up quietly.
++      if (!cancelled && s === 'tab-only' && !isDesktopApp()) s = await enableDeviceAlerts();
++      if (!cancelled) setState(s);
++    });
++    return () => { cancelled = true; };
++  }, [enabled]);
++
++  useEffect(() => {
++    if (!enabled || !('serviceWorker' in navigator)) return;
++    const onMessage = (e: MessageEvent<PushMessage>) => {
++      if (e.data?.type !== 'pm-push') return;
++      const kind = e.data.kind ?? kindForType(e.data.notificationType ?? '');
++      // The same alert can also arrive from the live connection or the check: ring once.
++      const fresh = !e.data.tag || firstTime(`push-${e.data.tag}`, 30_000);
++      const played = fresh && canPlaySound() ? getAttention({ kind }) : false;
++      e.ports[0]?.postMessage({ played });
++    };
++    navigator.serviceWorker.addEventListener('message', onMessage);
++    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
++  }, [enabled]);
++
++  const remember = () => { try { localStorage.setItem(ASKED_KEY, '1'); } catch { /* storage unavailable */ } setAsked(true); };
++  const turnOn = async () => {
++    unlockSound();
++    remember();
++    const s = await enableDeviceAlerts();
++    setState(s);
++    if (s === 'on' || s === 'tab-only') playSound('message');   // so they hear what an alert sounds like
++  };
++
++  const canAsk = typeof Notification !== 'undefined' && Notification.permission === 'default';
++  if (!enabled || asked || !canAsk || state === 'unsupported' || state === 'blocked') return null;
++  return (
++    <div className="alerts-card" role="dialog" aria-label="Turn on notifications">
++      <div className="alerts-ico"><Icon name="bell" size={18} /></div>
++      <div className="alerts-main">
++        <b>Don't miss messages and reminders</b>
++        <span>Get a pop-up and a sound when something arrives while you are in another tab or app.</span>
++        <div className="alerts-actions">
++          <button type="button" className="btn btn-primary btn-sm" onClick={() => void turnOn()}>Turn on</button>
++          <button type="button" className="btn btn-ghost btn-sm" onClick={remember}>Not now</button>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/features/notifications/events.ts b/frontend/src/features/notifications/events.ts
+new file mode 100644
+index 0000000..3d38327
+--- /dev/null
++++ b/frontend/src/features/notifications/events.ts
+@@ -0,0 +1,2 @@
++/** Fired (on window) when something suggests a new notification was just created for me: look at the server now instead of at the next check. */
++export const CHECK_NOTIFICATIONS = 'pm:check-notifications';
+diff --git a/frontend/src/features/reminders/ReminderAlerts.tsx b/frontend/src/features/reminders/ReminderAlerts.tsx
+index a4c9341..27453ca 100644
+--- a/frontend/src/features/reminders/ReminderAlerts.tsx
++++ b/frontend/src/features/reminders/ReminderAlerts.tsx
+@@ -8,7 +8,8 @@ import { reminderApi, type SnoozePreset } from './api';
+ import { refreshReminders, useReminderCounts } from './store';
+ import { syncNativePush } from '../../lib/native';
+ import { pushApi } from '../../api/endpoints';
+-import { deviceAlerts, playChime, primeSound, pushCoversThisDevice, soundOn, systemNotification } from './device';
++import { deviceAlerts, primeSound, pushCoversThisDevice, systemNotification } from './device';
++import { getAttention } from '../../lib/attention';
+ import { deviceZone } from './time';
+ 
+ const SOURCE_LABEL: Record<string, string> = { Personal: 'Reminder', Nudge: 'Reminder', DueDate: 'Due soon', Overdue: 'Overdue', Escalation: 'Overdue work' };
+@@ -37,7 +38,7 @@ export function ReminderAlerts() {
+   const push = (items: ReminderEvent[]) => {
+     if (!items.length) return;
+     setAlerts((a) => [...items.filter((i) => !a.some((x) => x.id === i.id)), ...a].slice(0, 4));
+-    if (soundOn()) playChime();
++    getAttention({ kind: 'urgent' });   // the beacon: a reminder must not be mistaken for a chat message
+     // Someone in another app: the operating system shows it now (unless a push is already bringing it to this device).
+     if ((document.hidden || !document.hasFocus()) && !pushCoversThisDevice())
+       for (const i of items) void systemNotification(i.from ? `${i.from}: ${i.title}` : `⏰ ${i.title}`, i.note ?? i.targetKey, `reminder-${i.id}`);
+diff --git a/frontend/src/features/reminders/device.ts b/frontend/src/features/reminders/device.ts
+index 8bf26c4..8543628 100644
+--- a/frontend/src/features/reminders/device.ts
++++ b/frontend/src/features/reminders/device.ts
+@@ -1,5 +1,6 @@
+ import { orgHref } from '../../lib/orgPath';
+ import { pushApi } from '../../api/endpoints';
++import { playSound } from '../../lib/attention';
+ import { enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
+ 
+ /**
+@@ -73,9 +74,15 @@ export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
+ export const pushCoversThisDevice = () => subscribed === true;
+ 
+ /** A notification from the operating system, shown by the page itself (the tab is open but someone is in another app). */
+-export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders') {
++export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean } = {}) {
+   if (!canNotify() || Notification.permission !== 'granted') return;
+-  const options: NotificationOptions = { body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: true, data: { link: orgHref(link) } };
++  // Urgent ones (reminders by default) stay on screen until dismissed; the rest go away by themselves. The page plays its own sound, so
++  // the system one is silent (two sounds for one alert would be noise); renotify makes a repeated tag pop up again instead of updating quietly.
++  const sticky = opts.sticky ?? true;
++  const options: NotificationOptions & { renotify?: boolean; vibrate?: number[] } = {
++    body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: sticky, silent: true, renotify: true,
++    data: { link: orgHref(link) },
++  };
+   try {
+     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
+     if (reg) { await reg.showNotification(title, options); return; }
+@@ -85,44 +92,9 @@ export async function systemNotification(title: string, body: string | null, tag
+ }
+ 
+ // ------------------------------------------------------------------ sound
++// The sounds live in lib/attention.ts (one audio context for the whole app); these names stay for the Reminders screen.
+ 
+-const SOUND_KEY = 'pm_reminder_sound';
+-export const soundOn = () => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; } };
+-export const setSoundOn = (on: boolean) => { try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch { /* storage unavailable */ } };
++export { primeSound, setSoundOn, soundOn } from '../../lib/attention';
+ 
+-let audio: AudioContext | null = null;
+-const context = () => {
+-  if (!audio) {
+-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+-    if (!AC) return null;
+-    audio = new AC();
+-  }
+-  return audio;
+-};
+-
+-/** Browsers only allow sound after the person has touched the page once: get ready on the first click or key press. */
+-export function primeSound() {
+-  const once = () => { void context()?.resume().catch(() => undefined); window.removeEventListener('pointerdown', once); window.removeEventListener('keydown', once); };
+-  window.addEventListener('pointerdown', once);
+-  window.addEventListener('keydown', once);
+-}
+-
+-/** A soft three-note chime (generated, no sound file). Plays in a background tab too, once the page has been touched. */
+-export function playChime() {
+-  const c = context();
+-  if (!c) return;
+-  void c.resume().catch(() => undefined);
+-  const start = c.currentTime + 0.02;
+-  [[880, 0], [1174.66, 0.15], [1567.98, 0.3]].forEach(([freq, at]) => {
+-    const osc = c.createOscillator();
+-    const gain = c.createGain();
+-    osc.type = 'sine';
+-    osc.frequency.value = freq;
+-    gain.gain.setValueAtTime(0.0001, start + at);
+-    gain.gain.exponentialRampToValueAtTime(0.2, start + at + 0.02);
+-    gain.gain.exponentialRampToValueAtTime(0.0001, start + at + 0.55);
+-    osc.connect(gain).connect(c.destination);
+-    osc.start(start + at);
+-    osc.stop(start + at + 0.6);
+-  });
+-}
++/** The reminder sound: the beacon (three bursts of a two-tone alarm), so a reminder is not mistaken for a chat message. */
++export const playChime = () => playSound('urgent');
+diff --git a/frontend/src/features/settings/NotificationSettings.tsx b/frontend/src/features/settings/NotificationSettings.tsx
+index ff3c8b8..349722d 100644
+--- a/frontend/src/features/settings/NotificationSettings.tsx
++++ b/frontend/src/features/settings/NotificationSettings.tsx
+@@ -9,6 +9,7 @@ import { queryClient } from '../../stores/auth';
+ import { toast } from '../../stores/ui';
+ import { disableNativePush, enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
+ import { isDesktopApp } from '../../lib/desktop';
++import { playSound, setSoundOn, soundOn, unlockSound, type AttentionKind } from '../../lib/attention';
+ 
+ type Permission = 'granted' | 'denied' | 'default' | 'unsupported';
+ const currentPermission = (): Permission => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+@@ -20,6 +21,26 @@ const keyBytes = (b64: string) => {
+   return Uint8Array.from(s, (c) => c.charCodeAt(0));
+ };
+ 
++/** The alert sounds on this device: a pop for messages, a chime for updates, and the beacon for reminders and anything urgent. */
++function SoundRow() {
++  const [on, setOn] = useState(soundOn());
++  const test = (kind: AttentionKind) => { unlockSound(); playSound(kind); };
++  return (
++    <div className="setting-row">
++      <div className="setting-info"><h4>Alert sounds on this device</h4>
++        <p>Messages get a quick pop, updates a rising chime, and reminders, overdue work and security alerts the beacon (three bursts of an alarm tone) so they stand out.</p>
++        {on && <div className="rc-chips" style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
++          <button type="button" className="btn btn-ghost btn-sm" onClick={() => test('message')}><Icon name="play" size={12} /> Message</button>
++          <button type="button" className="btn btn-ghost btn-sm" onClick={() => test('update')}><Icon name="play" size={12} /> Update</button>
++          <button type="button" className="btn btn-ghost btn-sm" onClick={() => test('urgent')}><Icon name="play" size={12} /> Urgent</button>
++        </div>}
++      </div>
++      <button type="button" role="switch" aria-checked={on} aria-label="Play alert sounds" className={`switch ${on ? 'on' : ''}`}
++        onClick={() => { const next = !on; setOn(next); setSoundOn(next); if (next) test('message'); }} />
++    </div>
++  );
++}
++
+ /**
+  * Push on this device: the events ticked in the Desktop column also arrive when the app is closed (an installed app, or this browser),
+  * through the browser's push service. Needs the service worker, which production builds register.
+@@ -151,6 +172,7 @@ export function NotificationSettings() {
+           {permission === 'granted' && <span className="badge badge-success">Allowed</span>}
+         </div>
+         <PushRow onPermission={setPermission} />
++        <SoundRow />
+         <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+           <div className="setting-info" style={{ flex: 1 }}><h4>Check that email works</h4>
+             <p>Sends a test message to your address right now.</p>
+diff --git a/frontend/src/layouts/AccountDock.tsx b/frontend/src/layouts/AccountDock.tsx
+index b7711e4..b242fd2 100644
+--- a/frontend/src/layouts/AccountDock.tsx
++++ b/frontend/src/layouts/AccountDock.tsx
+@@ -1,12 +1,13 @@
+ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+ import { useNavigate } from 'react-router-dom';
+-import type { PlanSummary } from '../api/types';
++import type { PlanSummary, PresenceStatus } from '../api/types';
+ import { Icon } from '../components/Icon';
+ import { RoleBadge, useAvatarUrl } from '../components/ui';
+ import { formatDate, initials } from '../lib/format';
+ import { useAuth, useModule } from '../stores/auth';
+ import { useUi } from '../stores/ui';
+ import { useWorkspaceSections } from '../features/settings/sections';
++import { PRESENCE_LABEL, useChat } from '../features/chat/chatStore';
+ 
+ type Tone = 'ok' | 'info' | 'warn' | 'bad';
+ 
+@@ -39,7 +40,16 @@ export function planStatus(plan: PlanSummary): { short: string; long: string; to
+  * for their account, the workspace settings (when they administer something) and signing out. When the sidebar is collapsed only the
+  * avatar shows and the menu opens beside it.
+  */
++/** My own dot: green while I am active, amber once this tab has been idle for 5 minutes, grey while the live connection is down. */
++function useMyPresence(): PresenceStatus {
++  const me = useAuth((s) => s.ctx?.user.id);
++  const link = useChat((s) => s.link);
++  const mine = useChat((s) => (me ? s.status[me] : undefined));
++  return link === 'reconnecting' || link === 'offline' ? 'offline' : mine ?? 'active';
++}
++
+ export function AccountDock() {
++  const presence = useMyPresence();
+   const ctx = useAuth((s) => s.ctx)!;
+   const logout = useAuth((s) => s.logout);
+   const closeSidebar = useUi((s) => s.closeSidebar);
+@@ -88,7 +98,7 @@ export function AccountDock() {
+       {open && (
+         <div className={`ad-menu tier-${tier}`} role="menu" aria-label="Account" ref={menu} onKeyDown={onMenuKey}>
+           <div className="ad-head">
+-            <span className="ad-avatar lg" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className="ad-presence" /></span>
++            <span className="ad-avatar lg" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className={`ad-presence ${presence}`} role="img" aria-label={PRESENCE_LABEL[presence]} title={PRESENCE_LABEL[presence]} /></span>
+             <div className="ad-who">
+               <b title={user.displayName}>{user.displayName}</b>
+               <span title={user.email}>{user.email}</span>
+@@ -125,7 +135,7 @@ export function AccountDock() {
+ 
+       <button type="button" ref={trigger} className="account-dock" aria-haspopup="menu" aria-expanded={open} title={`${user.displayName} · account menu`}
+         onClick={() => setOpen((o) => !o)}>
+-        <span className="ad-avatar" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className="ad-presence" /></span>
++        <span className="ad-avatar" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className={`ad-presence ${presence}`} role="img" aria-label={PRESENCE_LABEL[presence]} title={PRESENCE_LABEL[presence]} /></span>
+         <span className="ad-main">
+           <span className="ad-name">{user.displayName}</span>
+           <span className="ad-sub">
+diff --git a/frontend/src/layouts/AppLayout.tsx b/frontend/src/layouts/AppLayout.tsx
+index 637a459..16b053e 100644
+--- a/frontend/src/layouts/AppLayout.tsx
++++ b/frontend/src/layouts/AppLayout.tsx
+@@ -6,7 +6,6 @@ import { Icon, type IconName } from '../components/Icon';
+ import { BrandMark } from '../components/BrandMark';
+ import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
+ import { timeAgo } from '../lib/format';
+-import { orgHref } from '../lib/orgPath';
+ import { setTitleParts } from '../lib/title';
+ import { queryClient, useAuth, useIsPersonal } from '../stores/auth';
+ import { toast, useUi } from '../stores/ui';
+@@ -29,6 +28,10 @@ import { SignInIsland } from '../components/SignInIsland';
+ import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
+ import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
+ import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
++import { AlertsSetup } from '../features/notifications/AlertsSetup';
++import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
++import { firstTime, getAttention, kindForType } from '../lib/attention';
++import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
+ import { useReminderComposer, useReminderCounts } from '../features/reminders/store';
+ 
+ const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
+@@ -102,7 +105,10 @@ function Sidebar() {
+ 
+ // ------------------------------------------------------------------ desktop notifications
+ /**
+- * Shows a desktop notification for new items the user opted into ("Desktop" in Settings → Notifications) while the app is open.
++ * Shows a system notification (and plays the alert sound) for new items the user opted into ("Desktop" in Settings → Notifications) while
++ * the app is open - also when they are in another tab, window or app. Looks every 15 seconds, and straight away when the live connection
++ * says someone else changed something or a mention arrived. When push is on for this device, the push already brings the notification
++ * (and the page plays the sound when it arrives), so this only covers devices without push.
+  * Nothing is shown for older items on first run, and nothing works until the browser permission has been granted.
+  */
+ function DesktopNotifier() {
+@@ -112,24 +118,31 @@ function DesktopNotifier() {
+     const key = `pm_desktop_seen_${wid}`;
+     const read = () => { try { return Number(localStorage.getItem(key) ?? 0); } catch { return 0; } };
+     const write = (v: number) => { try { localStorage.setItem(key, String(v)); } catch { /* storage unavailable */ } };
++    let running = false;
+     const tick = async () => {
+-      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
++      if (running || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
++      running = true;
+       try {
+         const page = await notificationApi.list(1, true);
+         const times = page.items.map((n) => Date.parse(n.createdAt));
+         const last = read();
+         const newest = Math.max(last, ...times, 0);
+         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
+-        for (const n of page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type)).reverse()) {
+-          const note = new Notification(n.title, { body: n.body ?? undefined, tag: n.id });
+-          note.onclick = () => { window.focus(); if (n.link) window.location.assign(orgHref(n.link)); note.close(); };
++        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && firstTime(`n-${x.id}`, 120_000)).reverse();
++        for (const n of fresh) {
++          const kind = kindForType(n.type);
++          getAttention({ kind });
++          if (!pushCoversThisDevice()) void systemNotification(n.title, n.body, n.id, n.link ?? '/', { sticky: kind === 'urgent' });
+         }
+         write(newest);
+       } catch { /* offline or signed out: try again next time */ }
++      finally { running = false; }
+     };
+     void tick();
+-    const timer = setInterval(() => { void tick(); }, 30_000);
+-    return () => clearInterval(timer);
++    const timer = setInterval(() => { void tick(); }, 15_000);
++    const now = () => { void tick(); };
++    window.addEventListener(CHECK_NOTIFICATIONS, now);
++    return () => { clearInterval(timer); window.removeEventListener(CHECK_NOTIFICATIONS, now); };
+   }, [wid]);
+   return null;
+ }
+@@ -351,6 +364,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
+       <CommandPalette />
+       <AssistantPanel />
+       <ReminderAlerts />
++      <AlertsSetup />
+       <ComposerSlot />
+       {chatOn && <ChatRealtime />}
+       {chatOn && <ProjectChatHost />}
+diff --git a/frontend/src/lib/attention.test.ts b/frontend/src/lib/attention.test.ts
+new file mode 100644
+index 0000000..69d23ce
+--- /dev/null
++++ b/frontend/src/lib/attention.test.ts
+@@ -0,0 +1,46 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { firstTime, kindForType, resetSeen, setSoundOn, soundOn, SOUNDS } from './attention';
++
++describe('attention', () => {
++  const store = new Map<string, string>();
++  beforeEach(() => {
++    resetSeen();
++    store.clear();
++    vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } });
++  });
++  afterEach(() => { vi.unstubAllGlobals(); });
++
++  it('rings once for the same alert, again after it has expired', () => {
++    expect(firstTime('chat-1', 1000, 0)).toBe(true);
++    expect(firstTime('chat-1', 1000, 500)).toBe(false);
++    expect(firstTime('chat-2', 1000, 500)).toBe(true);
++    expect(firstTime('chat-1', 1000, 2000)).toBe(true);
++  });
++
++  it('gives urgent kinds the beacon, chat the pop and the rest the chime', () => {
++    expect(kindForType('Reminder')).toBe('urgent');
++    expect(kindForType('Overdue')).toBe('urgent');
++    expect(kindForType('ServiceLevel')).toBe('urgent');
++    expect(kindForType('Security')).toBe('urgent');
++    expect(kindForType('Message')).toBe('message');
++    expect(kindForType('Mention')).toBe('message');
++    expect(kindForType('TaskAssigned')).toBe('update');
++  });
++
++  it('has three different sounds, the urgent one the longest and loudest to notice', () => {
++    expect(SOUNDS.message.length).toBe(2);
++    expect(SOUNDS.update.length).toBe(3);
++    expect(SOUNDS.urgent.length).toBe(12);
++    const end = (k: keyof typeof SOUNDS) => Math.max(...SOUNDS[k].map((n) => n.at + n.length));
++    expect(end('urgent')).toBeGreaterThan(end('update'));
++    expect(end('update')).toBeGreaterThan(end('message'));
++  });
++
++  it('remembers the sound switch', () => {
++    expect(soundOn()).toBe(true);
++    setSoundOn(false);
++    expect(soundOn()).toBe(false);
++    setSoundOn(true);
++    expect(soundOn()).toBe(true);
++  });
++});
+diff --git a/frontend/src/lib/attention.ts b/frontend/src/lib/attention.ts
+new file mode 100644
+index 0000000..b452d19
+--- /dev/null
++++ b/frontend/src/lib/attention.ts
+@@ -0,0 +1,173 @@
++/**
++ * Getting the person's attention when something arrives: a sound that tells the kinds of alert apart, a flashing tab title, a buzz on
++ * phones, and (in the desktop app) a flashing taskbar button. Everything here is generated in the browser - there are no sound files.
++ *
++ *  - "message": a quick two-note pop - chat messages and @mentions.
++ *  - "update":  a rising three-note chime - assignments, comments, approvals, documents and the like.
++ *  - "urgent":  the beacon, three bursts of a two-tone alarm - reminders, overdue work, SLA breaches and security alerts.
++ */
++import { desktopAttention } from './desktop';
++
++export type AttentionKind = 'message' | 'update' | 'urgent';
++
++// ------------------------------------------------------------------ settings
++
++const SOUND_KEY = 'pm_reminder_sound';   // the name the Reminders screen already used, so an existing choice carries over
++export const soundOn = () => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; } };
++export const setSoundOn = (on: boolean) => { try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch { /* storage unavailable */ } };
++
++// ------------------------------------------------------------------ sound
++
++let audio: AudioContext | null = null;
++const context = () => {
++  if (!audio) {
++    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
++    if (!AC) return null;
++    audio = new AC();
++  }
++  return audio;
++};
++
++/** Browsers only allow sound after the person has touched the page once: get ready on the first click, key press or tap. */
++export function primeSound() {
++  const once = () => {
++    void context()?.resume().catch(() => undefined);
++    window.removeEventListener('pointerdown', once);
++    window.removeEventListener('keydown', once);
++  };
++  window.addEventListener('pointerdown', once);
++  window.addEventListener('keydown', once);
++}
++
++interface Note { freq: number; at: number; length: number; type: OscillatorType; volume: number }
++
++/** Two tones of the same pitch on top of each other would sound thin; every note is a pair slightly apart for a fuller sound. */
++function play(notes: Note[]) {
++  const c = context();
++  if (!c) return;
++  void c.resume().catch(() => undefined);
++  const start = c.currentTime + 0.02;
++  for (const n of notes) {
++    for (const detune of [-6, 6]) {
++      const osc = c.createOscillator();
++      const gain = c.createGain();
++      osc.type = n.type;
++      osc.frequency.value = n.freq;
++      osc.detune.value = detune;
++      gain.gain.setValueAtTime(0.0001, start + n.at);
++      gain.gain.exponentialRampToValueAtTime(n.volume / 2, start + n.at + 0.015);
++      gain.gain.exponentialRampToValueAtTime(0.0001, start + n.at + n.length);
++      osc.connect(gain).connect(c.destination);
++      osc.start(start + n.at);
++      osc.stop(start + n.at + n.length + 0.05);
++    }
++  }
++}
++
++export const SOUNDS: Record<AttentionKind, Note[]> = {
++  message: [
++    { freq: 784, at: 0, length: 0.14, type: 'triangle', volume: 0.3 },
++    { freq: 1318.51, at: 0.11, length: 0.28, type: 'triangle', volume: 0.3 },
++  ],
++  update: [
++    { freq: 659.25, at: 0, length: 0.25, type: 'sine', volume: 0.26 },
++    { freq: 880, at: 0.14, length: 0.25, type: 'sine', volume: 0.26 },
++    { freq: 1174.66, at: 0.28, length: 0.5, type: 'sine', volume: 0.26 },
++  ],
++  // Three bursts of two alternating tones (low-high-low-high), like a siren: nothing else in the app sounds like it.
++  urgent: [0, 0.6, 1.2].flatMap((burst) => [
++    { freq: 1046.5, at: burst, length: 0.12, type: 'square' as const, volume: 0.22 },
++    { freq: 1568, at: burst + 0.13, length: 0.12, type: 'square' as const, volume: 0.22 },
++    { freq: 1046.5, at: burst + 0.26, length: 0.12, type: 'square' as const, volume: 0.22 },
++    { freq: 1568, at: burst + 0.39, length: 0.12, type: 'square' as const, volume: 0.22 },
++  ]),
++};
++
++/** Lets the page make sound (call it from a click or tap). */
++export function unlockSound() { void context()?.resume().catch(() => undefined); }
++
++/** Plays one of the sounds, whatever the sound setting says (for the "test" buttons). */
++export function playSound(kind: AttentionKind) { play(SOUNDS[kind]); }
++
++// ------------------------------------------------------------------ title, buzz, taskbar
++
++const BUZZ: Record<AttentionKind, number[]> = { message: [120, 60, 120], update: [160], urgent: [300, 100, 300, 100, 300, 100, 600] };
++
++let pending = 0;
++let flasher: number | undefined;
++let baseTitle = '';
++
++const away = () => document.hidden || !document.hasFocus();
++
++function stopFlashing() {
++  pending = 0;
++  if (flasher !== undefined) { window.clearInterval(flasher); flasher = undefined; document.title = baseTitle; }
++}
++
++/** The tab title alternates with "🔔 (n) New activity" while the person is somewhere else, and goes back to normal when they return. */
++function flashTitle() {
++  pending += 1;
++  if (flasher !== undefined) return;
++  baseTitle = document.title;
++  let on = false;
++  flasher = window.setInterval(() => {
++    if (!away()) { stopFlashing(); return; }
++    on = !on;
++    document.title = on ? `🔔 (${pending}) New activity` : baseTitle;
++  }, 1000);
++}
++
++let listening = false;
++function listenForReturn() {
++  if (listening) return;
++  listening = true;
++  window.addEventListener('focus', stopFlashing);
++  document.addEventListener('visibilitychange', () => { if (!document.hidden && document.hasFocus()) stopFlashing(); });
++}
++
++// ------------------------------------------------------------------ one alert, once
++
++const seen = new Map<string, number>();
++
++/** True the first time a key is seen within `ttlMs`. The same event can arrive over the live connection, the poll and a push: it should ring once. */
++export function firstTime(key: string, ttlMs = 60_000, now = Date.now()): boolean {
++  for (const [k, at] of seen) if (now - at > ttlMs) seen.delete(k);
++  if (seen.has(key)) return false;
++  seen.set(key, now);
++  return true;
++}
++
++/** Forgets what `firstTime` has seen (tests). */
++export function resetSeen() { seen.clear(); }
++
++export interface AttentionOptions {
++  /** What kind of alert this is; decides the sound, the buzz and whether the desktop app flashes until the person comes back. */
++  kind: AttentionKind;
++  /** Skip the sound (a push that the browser already announces with its own sound). */
++  silent?: boolean;
++}
++
++/** True when a sound would actually be heard right now: switched on, and the browser has let this page make sound. */
++export const canPlaySound = () => soundOn() && audio?.state === 'running';
++
++/**
++ * Gets the person's attention: sound (if they have it on), a buzz on phones, and a flashing title / taskbar button when they are elsewhere.
++ * Returns whether the sound was played, so a caller that also shows a system notification knows whether that one has to make a sound itself.
++ */
++export function getAttention({ kind, silent }: AttentionOptions): boolean {
++  listenForReturn();
++  const sound = !silent && canPlaySound();
++  if (!silent && soundOn()) playSound(kind);
++  if (away()) {
++    flashTitle();
++    desktopAttention(kind === 'urgent');
++    try { navigator.vibrate?.(BUZZ[kind]); } catch { /* not supported */ }
++  }
++  return sound;
++}
++
++const URGENT = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Security', 'SignInRequest']);
++const CHAT = new Set(['Message', 'Mention']);
++
++/** Which sound a kind of notification gets. */
++export const kindForType = (type: string): AttentionKind => (URGENT.has(type) ? 'urgent' : CHAT.has(type) ? 'message' : 'update');
+diff --git a/frontend/src/lib/desktop.ts b/frontend/src/lib/desktop.ts
+index 2899fd4..84441de 100644
+--- a/frontend/src/lib/desktop.ts
++++ b/frontend/src/lib/desktop.ts
+@@ -3,9 +3,12 @@
+  * bar: its own top bar is the title bar and the minimize / maximize / close buttons are drawn here, over the page, so they match the theme.
+  * In a browser this does nothing.
+  */
+-type Bridge = { platform: string; windowControl: (a: 'minimize' | 'maximize' | 'close') => void; onMaximizeChange: (cb: (maximized: boolean) => void) => void };
++type Bridge = { platform: string; attention?: (kind: 'normal' | 'urgent') => void; windowControl: (a: 'minimize' | 'maximize' | 'close') => void; onMaximizeChange: (cb: (maximized: boolean) => void) => void };
+ const bridge = () => (window as unknown as { ptDesktop?: Bridge }).ptDesktop;
+ 
++/** Flash the taskbar button / bounce the dock icon (the desktop app only; it ignores this while its window is in front). */
++export function desktopAttention(urgent: boolean) { try { bridge()?.attention?.(urgent ? 'urgent' : 'normal'); } catch { /* not in the desktop app */ } }
++
+ export const isDesktopApp = () => /ProjectTrackerDesktop\//.test(navigator.userAgent);
+ 
+ const ICONS = {
+diff --git a/frontend/src/lib/idle.test.ts b/frontend/src/lib/idle.test.ts
+new file mode 100644
+index 0000000..0ac5843
+--- /dev/null
++++ b/frontend/src/lib/idle.test.ts
+@@ -0,0 +1,73 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { IDLE_AFTER_MS, trackIdle } from './idle';
++
++// The unit tests run in plain Node (no browser): a window and a document are just something that can send and receive events.
++const fakeWindow = () => Object.assign(new EventTarget(), {
++  setInterval: (fn: () => void, ms: number) => globalThis.setInterval(fn, ms),
++  clearInterval: (id: number) => globalThis.clearInterval(id),
++});
++
++describe('trackIdle', () => {
++  let t = 0;
++  let win: ReturnType<typeof fakeWindow>;
++  let doc: EventTarget;
++  const now = () => t;
++  beforeEach(() => {
++    vi.useFakeTimers();
++    t = 1_000_000;
++    win = fakeWindow();
++    doc = new EventTarget();
++    vi.stubGlobal('window', win);
++    vi.stubGlobal('document', doc);
++  });
++  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
++
++  const run = (ms: number) => { t += ms; vi.advanceTimersByTime(ms); };
++
++  it('starts active and goes idle after five minutes without activity', () => {
++    const changes: boolean[] = [];
++    const tracker = trackIdle((i) => changes.push(i), { now });
++    run(IDLE_AFTER_MS - 20_000);
++    expect(tracker.isIdle()).toBe(false);
++    run(30_000);
++    expect(tracker.isIdle()).toBe(true);
++    expect(changes).toEqual([true]);
++    tracker.stop();
++  });
++
++  it('comes back as soon as there is keyboard, mouse or touch activity', () => {
++    const changes: boolean[] = [];
++    const tracker = trackIdle((i) => changes.push(i), { now });
++    run(IDLE_AFTER_MS + 20_000);
++    win.dispatchEvent(new Event('keydown'));
++    expect(tracker.isIdle()).toBe(false);
++    expect(changes).toEqual([true, false]);
++    tracker.stop();
++  });
++
++  it('activity keeps the person active', () => {
++    const tracker = trackIdle(() => undefined, { now });
++    for (let i = 0; i < 6; i++) { run(IDLE_AFTER_MS / 2); win.dispatchEvent(new Event('mousemove')); }
++    expect(tracker.isIdle()).toBe(false);
++    tracker.stop();
++  });
++
++  it('notices a long sleep at the first check after waking (the timers did not run while asleep)', () => {
++    const tracker = trackIdle(() => undefined, { now });
++    t += 2 * 60 * 60_000;                       // the laptop was closed for two hours; no timer fired
++    doc.dispatchEvent(new Event('visibilitychange'));
++    expect(tracker.isIdle()).toBe(true);
++    tracker.stop();
++  });
++
++  it('reports each change once and stops listening when stopped', () => {
++    const changes: boolean[] = [];
++    const tracker = trackIdle((i) => changes.push(i), { now });
++    run(IDLE_AFTER_MS + 60_000);
++    run(60_000);
++    expect(changes).toEqual([true]);
++    tracker.stop();
++    win.dispatchEvent(new Event('mousemove'));
++    expect(changes).toEqual([true]);
++  });
++});
+diff --git a/frontend/src/lib/idle.ts b/frontend/src/lib/idle.ts
+new file mode 100644
+index 0000000..25f5c5a
+--- /dev/null
++++ b/frontend/src/lib/idle.ts
+@@ -0,0 +1,52 @@
++/**
++ * Notices when the person has stopped using the app: no key, mouse, touch or scroll for a while. A laptop that went to sleep (or a
++ * phone that was locked) stops the page's timers, so the first check after waking sees how long ago the last activity was and
++ * reports idle at once - without that, a closed laptop would look "active" forever.
++ */
++export const IDLE_AFTER_MS = 5 * 60_000;
++const CHECK_EVERY_MS = 15_000;
++const ACTIVITY = ['mousemove', 'mousedown', 'keydown', 'pointerdown', 'touchstart', 'wheel', 'scroll'] as const;
++
++export interface IdleOptions {
++  idleAfterMs?: number;
++  checkEveryMs?: number;
++  /** Replaceable for tests. */
++  now?: () => number;
++}
++
++export interface IdleTracker {
++  isIdle: () => boolean;
++  /** Counts as activity (for example, the person came back to the tab and interacted). */
++  touch: () => void;
++  stop: () => void;
++}
++
++/** Calls `onChange(true)` when the person becomes idle and `onChange(false)` when they are back. Starts out active. */
++export function trackIdle(onChange: (idle: boolean) => void, options: IdleOptions = {}): IdleTracker {
++  const limit = options.idleAfterMs ?? IDLE_AFTER_MS;
++  const now = options.now ?? Date.now;
++  let last = now();
++  let idle = false;
++
++  const set = (value: boolean) => { if (value !== idle) { idle = value; onChange(value); } };
++  const touch = () => { last = now(); set(false); };
++  const check = () => { if (now() - last >= limit) set(true); };
++
++  for (const name of ACTIVITY) window.addEventListener(name, touch, { passive: true, capture: true });
++  const timer = window.setInterval(check, options.checkEveryMs ?? CHECK_EVERY_MS);
++  // Timers are slowed down in hidden tabs and stopped by sleep: look again the moment the page can run.
++  const onVisible = () => check();
++  document.addEventListener('visibilitychange', onVisible);
++  window.addEventListener('pageshow', onVisible);
++
++  return {
++    isIdle: () => idle,
++    touch,
++    stop: () => {
++      window.clearInterval(timer);
++      for (const name of ACTIVITY) window.removeEventListener(name, touch, { capture: true });
++      document.removeEventListener('visibilitychange', onVisible);
++      window.removeEventListener('pageshow', onVisible);
++    },
++  };
++}
+diff --git a/frontend/src/main.tsx b/frontend/src/main.tsx
+index 7ade215..d7d1e90 100644
+--- a/frontend/src/main.tsx
++++ b/frontend/src/main.tsx
+@@ -18,6 +18,7 @@ import './styles/theme.css';
+ import './styles/org.css';
+ import './styles/documents.css';
+ import './styles/reminders.css';
++import './styles/alerts.css';
+ import './styles/mobile.css';
+ import './styles/phone.css';
+ import './styles/desktop.css';
+diff --git a/frontend/src/styles/account.css b/frontend/src/styles/account.css
+index 8e60050..4299782 100644
+--- a/frontend/src/styles/account.css
++++ b/frontend/src/styles/account.css
+@@ -30,6 +30,9 @@
+ .ad-avatar.sm { width: 30px; height: 30px; font-size: 11px; }
+ .ad-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+ .ad-presence { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 50%; background: #22c55e; border: 2px solid var(--panel-solid); box-shadow: 0 0 8px rgba(34, 197, 94, .7); }
++.ad-presence { transition: background-color .25s, box-shadow .25s; }
++.ad-presence.away { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, .7); }
++.ad-presence.offline { background: #94a3b8; box-shadow: none; }
+ .ad-avatar.lg .ad-presence { width: 13px; height: 13px; }
+ 
+ .ad-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+diff --git a/frontend/src/styles/alerts.css b/frontend/src/styles/alerts.css
+new file mode 100644
+index 0000000..84f7b95
+--- /dev/null
++++ b/frontend/src/styles/alerts.css
+@@ -0,0 +1,10 @@
++/* The one-time "turn on notifications" card (features/notifications/AlertsSetup.tsx). */
++.alerts-card { position: fixed; left: 20px; bottom: 20px; z-index: 880; display: flex; gap: 12px; align-items: flex-start; width: min(360px, calc(100vw - 32px));
++  padding: 14px 16px; border-radius: 14px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: 0 12px 40px rgba(15, 12, 29, .28); animation: alerts-in .25s ease-out; }
++.alerts-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--primary-soft, rgba(124, 58, 237, .14)); color: var(--primary, #7c3aed); }
++.alerts-main { display: grid; gap: 4px; font-size: 13px; }
++.alerts-main span { color: var(--text-muted, #6b7280); }
++.alerts-actions { display: flex; gap: 8px; margin-top: 8px; }
++@keyframes alerts-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
++@media (prefers-reduced-motion: reduce) { .alerts-card { animation: none; } }
++@media (max-width: 768px) { .alerts-card { left: 16px; bottom: 76px; } }
+diff --git a/frontend/src/styles/chat.css b/frontend/src/styles/chat.css
+index 4007f31..143f619 100644
+--- a/frontend/src/styles/chat.css
++++ b/frontend/src/styles/chat.css
+@@ -57,6 +57,8 @@
+ .chat-head h2 { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .chat-sub { font-size: 12px; color: var(--text-3); min-height: 16px; }
+ .status-on { color: var(--success); font-weight: 600; }
++.status-away { color: #d97706; font-weight: 600; }
++.presence-dot.away { background: #f59e0b; box-shadow: 0 0 0 1px rgba(217, 119, 6, .35); }
+ .btn-icon.on { background: var(--tint-strong); color: var(--primary); }
+ /* Details/Files toggles in the thread header: the default muted .btn-icon tone reads as too faint here, so they get their own, clearer weight. */
+ .chat-head-action { color: var(--text-2); border: 1px solid transparent; }
