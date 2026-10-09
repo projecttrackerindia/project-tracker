@@ -48,7 +48,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Organization/OrgService.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingSyncEngine.cs",
         "ProjectManagement.Application/Features/Projects/ProjectGroupService.cs",
-        "ProjectManagement.Application/Features/Projects/ProjectService.cs",
+        "ProjectManagement.Application/Features/Projects/ProjectService.Statuses.cs",
         "ProjectManagement.Application/Features/Projects/ProjectStatusService.cs",
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
@@ -60,7 +60,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Work/WorkTaskService.cs",
         "ProjectManagement.Application/Features/Workspaces/WorkspaceService.cs",
         "ProjectManagement.Application/Services/EntitlementService.cs",
-        "ProjectManagement.Infrastructure/Persistence/AppDbContext.cs",
+        "ProjectManagement.Infrastructure/Persistence/AppDbContext.Audit.cs",
+        "ProjectManagement.Infrastructure/Persistence/AppDbContext.QueryFilters.cs",
         "ProjectManagement.Infrastructure/Persistence/DatabaseInitializer.cs",
     ];
 
