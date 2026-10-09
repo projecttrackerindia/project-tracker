@@ -95,6 +95,8 @@ jobs:
       - run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Unit tests
+        run: npm run test
       - name: Type-check
         run: npm run typecheck
       - name: Build

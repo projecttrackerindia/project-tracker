@@ -128,9 +128,16 @@ useAuth.subscribe((s, prev) => {
 });
 
 // ---- selectors / helpers
-export const useWorkspaceId = () => useAuth((s) => s.ctx?.current?.id ?? null);
-export const useCan = (permission: string) => useAuth((s) => s.ctx?.current?.permissions.includes(permission) ?? false);
-export const useEntitlement = (key: string) => useAuth((s) => s.ctx?.current?.entitlements[key] ?? 0);
+// Pure, so they're unit-testable without rendering a component or touching the Zustand store;
+// the hooks below are thin wrappers that just supply the current ctx.
+export const hasPermission = (ctx: AppContext | null | undefined, permission: string) => ctx?.current?.permissions.includes(permission) ?? false;
+export const entitlementOf = (ctx: AppContext | null | undefined, key: string) => ctx?.current?.entitlements[key] ?? 0;
 /** Level (0 none, 1 view, 2 edit, 3 full) the signed-in user has in a module, from their job role. */
-export const useModule = (id: string) => useAuth((s) => s.ctx?.current?.modules?.[id] ?? 0);
-export const useIsPersonal = () => useAuth((s) => s.ctx?.current?.type === 'Personal');
+export const moduleLevelOf = (ctx: AppContext | null | undefined, id: string) => ctx?.current?.modules?.[id] ?? 0;
+export const isPersonalCtx = (ctx: AppContext | null | undefined) => ctx?.current?.type === 'Personal';
+
+export const useWorkspaceId = () => useAuth((s) => s.ctx?.current?.id ?? null);
+export const useCan = (permission: string) => useAuth((s) => hasPermission(s.ctx, permission));
+export const useEntitlement = (key: string) => useAuth((s) => entitlementOf(s.ctx, key));
+export const useModule = (id: string) => useAuth((s) => moduleLevelOf(s.ctx, id));
+export const useIsPersonal = () => useAuth((s) => isPersonalCtx(s.ctx));
