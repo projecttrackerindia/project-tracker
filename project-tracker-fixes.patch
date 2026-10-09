@@ -1,3 +1,16 @@
+diff --git a/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Files.cs b/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Files.cs
+index 3940880..d2f515d 100644
+--- a/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Files.cs
++++ b/backend/src/ProjectManagement.Application/Features/Chat/ChatService.Files.cs
+@@ -94,7 +94,7 @@ public partial class ChatService
+         // Reading the conversation clears its notice in the bell (on this person's other tabs too).
+         var link = $"/chat/{conversationId}";
+         var notices = await db.Notifications.Where(n => n.UserId == me && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null).ToListAsync(ct);
+-        foreach (var n in notices) n.ReadAt = now;
++        foreach (var n in notices) { n.ReadAt = now; n.EmailPending = false; }   // read: no e-mail about it either
+         if (mine.LastReadAt >= now && notices.Count == 0) return;
+         mine.LastReadAt = now;
+         await db.SaveChangesAsync(ct);
 diff --git a/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs b/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs
 index 940bce7..c53b1b6 100644
 --- a/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs
@@ -44,6 +57,70 @@ index 940bce7..c53b1b6 100644
          _ => false,
      };
  }
+diff --git a/backend/src/ProjectManagement.Application/Features/Notifications/NotificationService.cs b/backend/src/ProjectManagement.Application/Features/Notifications/NotificationService.cs
+index f61ab67..730e9fc 100644
+--- a/backend/src/ProjectManagement.Application/Features/Notifications/NotificationService.cs
++++ b/backend/src/ProjectManagement.Application/Features/Notifications/NotificationService.cs
+@@ -185,6 +185,8 @@ public class NotificationPreferenceService(IAppDbContext db, ICurrentContext ctx
+ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOptions<AppOptions> options, AppClock clock, ILogger<NotificationEmailService> log, EmailLinks? links = null)
+ {
+     public const int MaxAttempts = 5;
++    /// <summary>Chat messages are live in the app, so their e-mail only goes out when the notice is still unread after this many quiet minutes.</summary>
++    public const int ChatEmailDelayMinutes = 5;
+ 
+     /// <summary>Kinds that can wait a minute and be read together: three or more for the same person and workspace become one e-mail. Time-critical ones (reminders, overdue, service levels) never wait.</summary>
+     private static readonly HashSet<NotificationType> Batchable = [NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Comment, NotificationType.Issue, NotificationType.Approval, NotificationType.ReportReady, NotificationType.TaskUpdated, NotificationType.ProjectUpdated, NotificationType.Message];
+@@ -205,10 +207,17 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
+ 
+     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
+     {
+-        var rows = await db.Notifications.IgnoreQueryFilters().Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts)
++        var chatCutoff = clock.Now.AddMinutes(-ChatEmailDelayMinutes);
++        var rows = await db.Notifications.IgnoreQueryFilters()
++            .Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts && (n.Type != NotificationType.Message || n.CreatedAt <= chatCutoff))
+             .OrderBy(n => n.CreatedAt).Take(batch).ToListAsync(ct);
+         if (rows.Count == 0) return 0;
+ 
++        // A chat notice that was read in the meantime has nothing left to say: no e-mail for it.
++        foreach (var read in rows.Where(n => n.Type == NotificationType.Message && n.ReadAt != null)) read.EmailPending = false;
++        rows.RemoveAll(n => !n.EmailPending);
++        if (rows.Count == 0) { await db.SaveChangesAsync(ct); return 0; }
++
+         var userIds = rows.Select(n => n.UserId).Distinct().ToList();
+         var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);
+         var tenantIds = rows.Select(n => n.TenantId).Distinct().ToList();
+diff --git a/backend/src/ProjectManagement.Application/Validators/NotificationValidators.cs b/backend/src/ProjectManagement.Application/Validators/NotificationValidators.cs
+index 326e2b5..e6f3aae 100644
+--- a/backend/src/ProjectManagement.Application/Validators/NotificationValidators.cs
++++ b/backend/src/ProjectManagement.Application/Validators/NotificationValidators.cs
+@@ -17,7 +17,8 @@ public class SetPreferencesValidator : AbstractValidator<SetPreferencesRequest>
+ {
+     public SetPreferencesValidator()
+     {
+-        RuleFor(x => x.Items).NotNull().Must(i => i is null || i.Count <= 20).WithMessage("Too many items.");
++        // One row per kind of notification: the limit follows the catalog, so adding a kind never makes the settings page fail to save.
++        RuleFor(x => x.Items).NotNull().Must(i => i is null || i.Count <= ProjectManagement.Domain.NotificationCatalog.All.Length).WithMessage("Too many items.");
+         RuleForEach(x => x.Items).ChildRules(i => i.RuleFor(p => p.Type).IsInEnum());
+     }
+ }
+diff --git a/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs b/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs
+index e716033..d2cc23c 100644
+--- a/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs
++++ b/backend/src/ProjectManagement.Domain/Catalogs/Notifications.cs
+@@ -12,11 +12,11 @@ public static class NotificationCatalog
+     [
+         new(NotificationType.TaskAssigned, "Task assigned to me", "Someone assigns a task to you.", true, true, true, false),
+         new(NotificationType.Mention, "Mentions", "Someone @mentions you in a comment or in a project chat.", true, true, false, false),
+-        new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date).", true, true, true, false),
++        new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date). If you switch e-mail on, you only get one when the message is still unread after a few minutes.", true, false, true, false),
+         new(NotificationType.Comment, "Comments on my tasks", "New comments on tasks you are assigned to or reported.", true, true, false, false),
+         new(NotificationType.TaskUpdated, "Task updates", "A task you are assigned to or reported on changes status, priority, dates or title.", true, true, false, false),
+         new(NotificationType.ProjectUpdated, "Project updates", "A project you are a member of changes status.", true, true, false, false),
+-        new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, false, true, false),
++        new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, true, true, false),
+         new(NotificationType.Nudge, "Reminders from others", "Someone reminds you about work.", true, true, true, false),
+         new(NotificationType.DueSoon, "Due date approaching", "Work assigned to you is due soon (when: Reminders → Settings).", true, true, true, false),
+         new(NotificationType.Overdue, "Overdue work", "Work assigned to you, or that you oversee, is past its due date.", true, true, true, false),
 diff --git a/backend/src/ProjectManagement.Tests/AttachmentTests.cs b/backend/src/ProjectManagement.Tests/AttachmentTests.cs
 index 5990463..9684d59 100644
 --- a/backend/src/ProjectManagement.Tests/AttachmentTests.cs
@@ -70,6 +147,62 @@ index 5990463..9684d59 100644
      [Fact]
      public async Task File_names_are_cleaned_and_never_control_where_a_file_is_stored()
      {
+diff --git a/backend/src/ProjectManagement.Tests/EmailDeliveryTests.cs b/backend/src/ProjectManagement.Tests/EmailDeliveryTests.cs
+index 06f1432..c529f7e 100644
+--- a/backend/src/ProjectManagement.Tests/EmailDeliveryTests.cs
++++ b/backend/src/ProjectManagement.Tests/EmailDeliveryTests.cs
+@@ -140,6 +140,29 @@ public class EmailDeliveryTests(ApiFactory factory)
+         Assert.Contains("Task 1 assigned", mine.Single(m => m.Subject.StartsWith("3 updates")).Html);
+     }
+ 
++    [Fact]
++    public async Task Chat_notices_wait_a_few_minutes_and_are_not_e_mailed_once_they_have_been_read()
++    {
++        var c = await TestClient.RegisterAsync(factory, "Chet Chatter");
++        await c.CreateOrgAsync();
++        var now = factory.Services.GetRequiredService<AppClock>().Now;
++        factory.WithDb(db =>
++        {
++            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Message, Title = "Fresh", Link = "/chat/1", CreatedAt = now, EmailPending = true, InApp = true });
++            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Message, Title = "Old but read", Link = "/chat/2", CreatedAt = now.AddMinutes(-30), ReadAt = now.AddMinutes(-20), EmailPending = true, InApp = true });
++            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Message, Title = "Old and unread", Link = "/chat/3", CreatedAt = now.AddMinutes(-30), EmailPending = true, InApp = true });
++            db.SaveChanges(); return 0;
++        });
++        var sender = new CapturingSender();
++        await using var scope = factory.Services.CreateAsyncScope();
++        var sp = scope.ServiceProvider;
++        var svc = new NotificationEmailService(sp.GetRequiredService<IAppDbContext>(), sender, sp.GetRequiredService<IOptions<AppOptions>>(), sp.GetRequiredService<AppClock>(), NullLogger<NotificationEmailService>.Instance, sp.GetRequiredService<EmailLinks>());
++        await svc.SendPendingAsync(500);
++        var mine = sender.Sent.Where(m => m.To == c.Email).ToList();
++        Assert.Single(mine);                                                 // only the one that stayed unread for more than a few minutes
++        Assert.StartsWith("Old and unread", mine[0].Subject);
++    }
++
+     // ------------------------------------------------------------------ provider events
+ 
+     [Fact]
+diff --git a/backend/src/ProjectManagement.Tests/NotificationTests.cs b/backend/src/ProjectManagement.Tests/NotificationTests.cs
+index 3eca9f8..f7b8221 100644
+--- a/backend/src/ProjectManagement.Tests/NotificationTests.cs
++++ b/backend/src/ProjectManagement.Tests/NotificationTests.cs
+@@ -21,6 +21,17 @@ public class NotificationTests(ApiFactory factory)
+     private static Task<ApiResult> SetPrefs(TestClient c, params (string Type, bool InApp, bool Email, bool Browser)[] items) =>
+         c.Put("/api/v1/me/notification-preferences", new { items = items.Select(i => new { type = i.Type, i.InApp, i.Email, i.Browser }).ToArray() });
+ 
++    [Fact]
++    public async Task Saving_every_kind_of_notification_at_once_works_as_the_settings_page_does()
++    {
++        var c = await TestClient.RegisterAsync(factory, "Sana Saver");
++        await c.CreateOrgAsync();
++        var all = (await c.Get("/api/v1/me/notification-preferences")).Data!.AsArray();
++        var items = all.Select(p => new { type = p!["type"]!.GetValue<string>(), inApp = true, email = false, browser = false }).ToArray();
++        Assert.Equal(items.Length, ProjectManagement.Domain.NotificationCatalog.All.Length);
++        Assert.True((await c.Put("/api/v1/me/notification-preferences", new { items })).Ok);   // not "Too many items"
++    }
++
+     private static JsonNode Pref(JsonNode list, string type) => list.AsArray().First(p => p!["type"]!.GetValue<string>() == type)!;
+ 
+     private async Task<int> SendPendingAsync()
 diff --git a/frontend/src/components/ui.tsx b/frontend/src/components/ui.tsx
 index e36b1eb..cccd6ef 100644
 --- a/frontend/src/components/ui.tsx
