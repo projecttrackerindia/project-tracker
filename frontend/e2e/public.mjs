@@ -22,6 +22,18 @@ const ld = await page.locator('script[type="application/ld+json"]').allTextConte
 check('structured data names the site', ld.some((t) => t.includes('"WebSite"') && t.includes('"alternateName"')));
 check('social image and canonical are set', (await page.locator('meta[property="og:image"]').getAttribute('content')).endsWith('/og-image.png') && !!(await page.locator('link[rel=canonical]').getAttribute('href')));
 
+// The redesigned landing page: the headline with its live controls, the apps with a logo and one button each, and (on a phone) the links in the header.
+check('the headline has its three lines and live controls', (await page.locator('#site h1 .pt-ln').count()) === 3 && (await page.locator('#site h1 .pt-tok').count()) >= 5);
+check('four apps, each with a logo and one Download button', (await page.locator('#site .pt-get').count()) === 4 && (await page.locator('#site .pt-get svg').count()) >= 4 && (await page.locator('#site .pt-get a.pt-btn', { hasText: 'Download' }).count()) === 4);
+check('Windows and macOS download real installers', (await page.locator('#site .pt-get[data-os=windows] a.pt-btn').getAttribute('href')).endsWith('ProjectTracker-Setup.exe') && (await page.locator('#site .pt-get[data-os=mac] a.pt-btn').getAttribute('href')).endsWith('.dmg'));
+check('the orbit and the untangle scene are drawn', (await page.locator('#site .pt-orbit .pt-slot').count()) >= 8 && (await page.locator('#site .pt-mess svg.pt-art').count()) === 2);
+const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+const pp = await phone.newPage(); await pp.goto(`${BASE}/`); await pp.waitForTimeout(1200);
+const navs = await pp.$$eval('#site .pt-nav a', (as) => as.map((a) => { const r = a.getBoundingClientRect(); return [a.textContent, r.width > 0 && r.left >= 0 && r.right <= innerWidth]; }));
+check('on a phone the header shows Features, Pricing, Security and Download', navs.length === 4 && navs.every(([, ok]) => ok), JSON.stringify(navs));
+check('on a phone the page does not scroll sideways', !(await pp.evaluate(() => document.documentElement.scrollWidth > innerWidth)));
+await phone.close();
+
 // The public pages are real pages with their own title, and prices come from the live price list.
 for (const [path, title] of [['/features/', 'Features | Project Tracker'], ['/pricing/', 'Pricing | Project Tracker'], ['/security/', 'Security | Project Tracker']]) {
   await page.goto(`${BASE}${path}`);

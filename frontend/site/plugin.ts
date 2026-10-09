@@ -95,6 +95,7 @@ function staticPage(p: StaticPage): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/sora-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     ${meta(p, [crumbs, page, orgLd])}
     <style>${pageCss()}</style>
   </head>

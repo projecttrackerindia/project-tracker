@@ -7,16 +7,19 @@ export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 export const icon = (name: string, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(PATHS as Record<string, string>)[name] ?? ''}</svg>`;
 const tick = icon('tick', 16);
-const aurora = '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="gridbg" aria-hidden="true"></div><div class="grain" aria-hidden="true"></div>';
+const aurora = '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="gridbg" aria-hidden="true"></div><div class="cross" aria-hidden="true"></div>';
 const reveal = (i = 0) => `data-r style="--d:${(i * 0.07).toFixed(2)}s"`;
+const arrowUp = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg>';
+
+const logoMark = (id: string) => `<svg class="logo" width="34" height="34" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#6366f1"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#${id})"/><path d="M7.3 16.7l5.3 5.3L18.7 13.3M18.7 13.3l4.3-4.8" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="24.4" cy="7.6" r="2.8" fill="#fff"/></svg>`;
 
 export const header = (active = '') => `<div class="progress" aria-hidden="true"></div><header class="top"><div class="wrap">
-<a class="brand" href="/" aria-label="${SITE.name} home"><svg class="logo" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#a855f7"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M7.3 16.7l5.3 5.3L18.7 13.3M18.7 13.3l4.3-4.8" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="24.4" cy="7.6" r="2.8" fill="#fff"/></svg>${SITE.name}</a>
+<a class="brand" href="/" aria-label="${SITE.name} home">${logoMark('lg')}${SITE.name}</a>
 <nav class="nav" aria-label="Main">${NAV.map((n) => `<a href="${n.href}"${n.href === active ? ' aria-current="page"' : ''}>${n.label}</a>`).join('')}</nav>
-<div class="actions"><a class="btn btn-glass" href="/login">Sign in</a><a class="btn btn-primary" href="/register">Get started</a></div></div></header>`;
+<div class="actions"><a class="btn btn-glass" href="/login">Sign in</a><a class="btn btn-primary" href="/register">Get started ${arrowUp}</a></div></div></header>`;
 
 export const footer = () => `<footer><div class="wrap"><div class="cols">
-<div><a class="brand" href="/"><svg class="logo" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#a855f7"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M7.3 16.7l5.3 5.3L18.7 13.3M18.7 13.3l4.3-4.8" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="24.4" cy="7.6" r="2.8" fill="#fff"/></svg>${SITE.name}</a><p style="margin-top:12px;max-width:22em">${esc(SITE.tagline)}.</p></div>
+<div><a class="brand" href="/">${logoMark('lg2')}${SITE.name}</a><p style="margin-top:14px;max-width:22em">${esc(SITE.tagline)}.</p></div>
 <div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a></li></ul></div>
@@ -81,7 +84,7 @@ const band = (title: string, text: string) => `<div class="wrap"><div class="ban
 
 // ---- the landing page
 
-const demo = `<div class="demo" role="group" aria-label="Example portfolio">
+const demo = `<div class="demo glass" role="group" aria-label="Example portfolio" style="--dx:-10px;--dy:-6px">
 <div class="demo-head"><b>Portfolio today</b><span class="live"><i></i>Live example</span></div>
 <div class="proj"><b>Customer portal relaunch</b><span class="chip bad" data-chip>At risk</span><span class="meta" data-meta>Forecast 16 days late</span><div class="bar"><i style="--w:58%"></i></div></div>
 <div class="proj"><b>Mobile app v2</b><span class="chip warn">Watch</span><span class="meta">Forecast 2 days late · 1 overdue task</span><div class="bar"><i style="--w:74%"></i></div></div>
@@ -90,6 +93,38 @@ const demo = `<div class="demo" role="group" aria-label="Example portfolio">
 <div class="row"><button type="button" class="step" data-step="-1" aria-label="Remove a person">−</button><output aria-live="polite">0 people</output><button type="button" class="step" data-step="1" aria-label="Add a person">+</button>
 <div class="res"><b class="bad" data-res>Finishes in 56 days</b><span data-sub>16 days after the due date</span></div></div>
 <div class="small">An example worked out the way the product does it: the pace of the last four weeks, with new people counted at 70%.</div></div></div>`;
+
+const star = (cls: string, color: string, style: string) => `<svg class="spark ${cls}" style="${style}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0c.9 7.2 4.8 11.1 12 12-7.2.9-11.1 4.8-12 12-.9-7.2-4.8-11.1-12-12 7.2-.9 11.1-4.8 12-12z" fill="${color}"/></svg>`;
+const sr = (t: string) => `<span class="sr">${t}</span>`;
+
+/** The headline with small live controls inside it: every size is in em, so they grow and shrink with the words. */
+const headline = `<div class="stage">
+${star('', '#2fbf68', 'left:2%;top:-14%;animation-delay:.2s')}${star('', '#ffc23d', 'right:2%;top:-8%;animation-delay:1.2s')}${star('', '#3b82f6', 'left:10%;bottom:-24%;animation-delay:.7s')}${star('', '#8ec5ff', 'right:12%;bottom:-20%;animation-delay:1.8s')}
+<h1><span class="ln">Plan the work${sr(',')}
+<span class="tok tok-go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#12102a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+<span class="tok tok-bar" aria-hidden="true"><span class="knob"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="15.5" pathLength="100"/><circle class="fg" cx="18" cy="18" r="15.5" pathLength="100"/></svg><b>68%</b></span></span></span>
+<span class="ln"><span class="tok tok-step" aria-hidden="true"><span class="dot"></span><span class="cap"><i></i></span></span>see risk early${sr(',')}
+<span class="tok tok-sw" aria-hidden="true"><i></i></span></span>
+<span class="ln"><span class="tok tok-pair" aria-hidden="true"><span class="a"></span><span class="b"></span><span class="k"><b>⌘K</b></span></span>ship <span class="grad">on time</span>${sr('.')}</span></h1>
+<svg class="wires" viewBox="0 0 1180 300" preserveAspectRatio="none" aria-hidden="true">
+<path d="M112 206 C112 262 122 268 176 268"/><path d="M1034 150 H1080 C1128 150 1122 86 1150 72"/>
+<circle class="end" cx="112" cy="206" r="9"/><circle class="end2" cx="1030" cy="150" r="9"/></svg>
+<span class="cur g" style="left:15.6%;top:84%" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 2l17 8-7.2 2.2L9.6 19z" fill="#22b56b" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><span>Arun</span></span>
+<span class="cur" style="left:96%;top:14%;animation-delay:.8s" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 2l17 8-7.2 2.2L9.6 19z" fill="#3b82f6" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><span>Priya</span></span>
+</div>`;
+
+const fan = `<div class="fan" aria-hidden="false">
+<aside class="f-left glass" aria-label="Reminders"><h4><i>${icon('bell', 14)}</i>Reminders</h4><div class="rem">
+<div class="a"><i>!</i><span>Review the design<small>Due today · Priya M</small></span></div>
+<div class="b"><i>✓</i><span>Daily briefing<small>9:00, in your working hours</small></span></div>
+<div class="c"><i>↗</i><span>Release notes approved<small>Ready to publish</small></span></div></div></aside>
+<aside class="f-right glass" aria-label="Assistant"><h4><i>${icon('sparkle', 14)}</i>Assistant</h4><div class="bub">
+<p class="u">Which projects will miss their dates?</p>
+<p class="a">Two are at risk. Customer portal relaunch is likely 16 days late.<br /><em>Review and confirm a fix</em></p></div></aside>
+${demo}
+<div class="f-pill dk glass"><span class="av">PM</span><span>Priya M<small>Owner · 6 tasks open</small></span></div>
+<div class="f-pill pu"><span class="av b">${icon('calendar', 15)}</span><span>Sprint review<small>Today, 12:00</small></span></div>
+</div>`;
 
 const bento = `<div class="bento">
 <article class="tile w" ${reveal(0)}><span class="tag">Portfolio</span><h3>See which projects will miss their dates, and why</h3><p>Every project ranked by risk with the reasons, and a forecast from the pace the team really works at.</p>
@@ -110,18 +145,30 @@ const bento = `<div class="bento">
 <div class="vis pills"><span>Passkeys</span><span>Two-step</span><span>SSO</span><span>Audit log</span></div></article>
 <article class="tile" ${reveal(6)}><span class="tag">Connect</span><h3>Works with your tools</h3><p>GitHub, Azure DevOps, Slack, Teams, an API and signed webhooks.</p>
 <div class="vis chain" aria-hidden="true">
-<span class="chip">${icon('git', 16)}</span><i class="ln"></i>
-<span class="chip">${icon('message', 16)}</span><i class="ln"></i>
-<span class="hub">${icon('sparkle', 17)}</span><i class="ln"></i>
-<span class="chip">${icon('layers', 16)}</span><i class="ln"></i>
+<span class="chip">${icon('git', 16)}</span><i class="ln2"></i>
+<span class="chip">${icon('message', 16)}</span><i class="ln2"></i>
+<span class="hub">${icon('sparkle', 17)}</span><i class="ln2"></i>
+<span class="chip">${icon('layers', 16)}</span><i class="ln2"></i>
 <span class="chip">${icon('bolt', 16)}</span>
 </div></article>
 </div>`;
 
-const steps = `<div class="steps">
-<div class="stp" ${reveal(0)}><h3>Create your workspace</h3><p>Sign up free and name your organization. It takes a minute.</p></div>
-<div class="stp" ${reveal(1)}><h3>Bring in projects and people</h3><p>Add projects, invite your team and choose who sees what.</p></div>
-<div class="stp" ${reveal(2)}><h3>See risk before it costs you</h3><p>The portfolio shows what is slipping and what to do about it.</p></div></div>`;
+/** A smooth curve through the given points (Catmull-Rom turned into cubic curves). */
+const smooth = (pts: [number, number][]) => {
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] ?? p2;
+    d += ` C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)} ${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)} ${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ${p2[0]} ${p2[1]}`;
+  }
+  return d;
+};
+const PATH_D = smooth([[0, 372], [157, 384], [330, 376], [504, 293], [660, 300], [818, 85], [960, 62], [1120, 70]]);
+const steps = `<div class="path" data-r>
+<svg viewBox="0 0 1120 533" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="ptp" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#22d3ee"/><stop offset=".5" stop-color="#6366f1"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs><path class="curve" pathLength="1" style="--len:1" d="${PATH_D}"/></svg>
+<i class="node" style="left:14%;top:72%" aria-hidden="true"><i></i></i><i class="node" style="left:45%;top:55%" aria-hidden="true"><i></i></i><i class="node" style="left:73%;top:16%" aria-hidden="true"><i></i></i>
+<div class="stop" style="left:5%;top:82%"><b class="n" aria-hidden="true">1</b><h3>Create your workspace</h3><p>Sign up free and name your organization. It takes a minute.</p></div>
+<div class="stop" style="left:40%;top:66%"><b class="n" aria-hidden="true">2</b><h3>Bring in projects and people</h3><p>Add projects, invite your team and choose who sees what.</p></div>
+<div class="stop" style="left:69%;top:26%"><b class="n" aria-hidden="true">3</b><h3>See risk before it costs you</h3><p>The portfolio shows what is slipping and what to do about it.</p></div></div>`;
 
 const versus = `<div class="vs" ${reveal()}><div class="hd"><div>The same question</div><div>Spreadsheets and chat</div><div class="us">${SITE.name}</div></div>${VERSUS.map((v) =>
   `<div class="rw"><div>${esc(v.what)}</div><div class="no">${esc(v.without)}</div><div class="yes">${esc(v.with)}</div></div>`).join('')}</div>`;
@@ -152,34 +199,91 @@ const trio = `<div class="trio">
 <div class="vis"><div class="rq" aria-hidden="true"><div class="l a"><code>POST /projects</code><span>201 created</span></div><div class="l b"><code>retry · same key</code><span>same answer, nothing added</span></div></div></div></article>
 </div>`;
 
-const [h1a, ...h1rest] = HOME.h1.split('. ');
+// ---- tangled tools, then one clear line
+
+const TANGLE = 'M30 276 C90 96 250 66 282 176 C314 286 150 306 192 206 C234 106 404 96 424 206 C444 316 334 336 354 256 C374 176 560 136 612 96';
+const appTile = (x: number, y: number, md: number, _f: string, glyph: string) => `<g class="app" style="--md:${md}s;transform-box:fill-box;transform-origin:center"><rect x="${x}" y="${y}" width="38" height="38" rx="11" fill="#fff"/><g transform="translate(${x + 7} ${y + 7})">${glyph}</g></g>`;
+const bubble = (x: number, y: number, md: number, text: string, w: number) => `<g class="say" style="--md:${md}s;transform-box:fill-box;transform-origin:left bottom"><rect x="${x}" y="${y}" width="${w}" height="26" rx="13"/><text x="${x + 12}" y="${y + 17}">${text}</text></g>`;
+const tangle = `<svg class="art" viewBox="0 0 640 360" role="img" aria-label="Five tools tangled together, with people asking where the latest update is">
+<path class="tube sh" d="${TANGLE}"/><path class="tube base draw" pathLength="1" style="--len:1" d="${TANGLE}"/><path class="tube hi draw" pathLength="1" style="--len:1" d="${TANGLE}"/>
+${appTile(48, 232, 0.5, '', '<rect width="24" height="24" rx="5" fill="#1fa463"/><path d="M6 7h12M6 12h12M6 17h12M12 7v10" stroke="#fff" stroke-width="1.6"/>')}
+${appTile(262, 118, 0.7, '', '<path d="M3 5h18v11H9l-5 4V5z" fill="#7c3aed"/><circle cx="8" cy="10.5" r="1.4" fill="#fff"/><circle cx="12" cy="10.5" r="1.4" fill="#fff"/><circle cx="16" cy="10.5" r="1.4" fill="#fff"/>')}
+${appTile(172, 186, 0.9, '', '<rect x="2" y="5" width="20" height="14" rx="3" fill="#ef4444"/><path d="M3 7l9 6 9-6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/>')}
+${appTile(404, 188, 1.1, '', '<path d="M5 2h9l5 5v15H5z" fill="#3b82f6"/><path d="M9 12h7M9 16h7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>')}
+${appTile(336, 236, 1.3, '', '<rect x="3" y="3" width="18" height="18" rx="4" fill="#f59e0b"/><path d="M8 8v8M12 8v5M16 8v10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>')}
+${bubble(20, 188, 1.6, 'Where is the update?', 148)}${bubble(250, 76, 1.9, 'Which file is latest?', 142)}${bubble(396, 150, 2.2, 'Who owns this?', 112)}${bubble(446, 262, 2.5, 'Still on track?', 106)}
+<g class="alert app" style="--md:2.7s;transform-box:fill-box;transform-origin:center"><circle class="ring" cx="590" cy="130" r="14"/><circle class="core" cx="590" cy="130" r="12"/><path d="M590 124v7M590 135v.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g></svg>`;
+
+const FLOW_STOPS: [string, string][] = [['target', 'Projects'], ['checks', 'Tasks'], ['note', 'Documents'], ['message', 'Chat'], ['chart', 'Reports']];
+const clean = `<svg class="art" viewBox="0 30 520 200" role="img" aria-label="Projects, tasks, documents, chat and reports on one clear line">
+<defs><linearGradient id="ptg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#3b82f6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+<path class="flowline" d="M40 150 H480"/><path class="flowdash" d="M40 150 H480"/>
+${FLOW_STOPS.map(([ic, label], i) => { const x = 40 + i * 110; return `<g class="app" style="--md:${0.3 + i * 0.25}s;transform-box:fill-box;transform-origin:center"><rect x="${x - 26}" y="124" width="52" height="52" rx="16" fill="#fff"/><g transform="translate(${x - 12} ${150 - 12})" style="color:#6d28d9">${icon(ic, 24)}</g><text x="${x}" y="204" text-anchor="middle" font-family="Inter,sans-serif" font-weight="650" font-size="12.5" fill="#35324f">${label}</text></g>`; }).join('')}
+<g class="app" style="--md:1.7s;transform-box:fill-box;transform-origin:center"><circle cx="260" cy="64" r="22" fill="#22c55e"/><path d="M250 64l7 7 13-14" stroke="#fff" stroke-width="3.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="260" y="108" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="13" fill="#15803d">Everyone sees the same truth</text></svg>`;
+
+const mess = `<div class="mess">
+<article class="panel" ${reveal(0)}><h3><span class="tg">Without a tracker</span></h3><p>Updates live in five places. Nobody has the whole picture, and everyone asks.</p>${tangle}</article>
+<article class="panel us" ${reveal(1)}><h3><span class="tg">With ${SITE.name}</span></h3><p>Projects, tasks, documents, chat and reports share one source of truth.</p>${clean}
+<div class="okrow"><span>${tick}One status</span><span>${tick}One forecast</span><span>${tick}One audit trail</span></div></article></div>`;
+
+// ---- one workspace, in orbit
+
+const slot = (deg: number, inner: string) => `<div class="slot" style="--a:${deg}deg"><span class="pos"><span class="spin"><span class="st">${inner}</span></span></span></div>`;
+const sq = (name: string) => `<span class="oc sq">${icon(name, 22)}</span>`;
+const pill = (text: string, kind = '') => `<span class="oc ${kind}">${text}</span>`;
+const person = (ini: string, cls = '') => `<span class="oc round"><span class="av ${cls}">${ini}</span></span>`;
+const ring = (cls: string, chips: string[], offset: number) => `<div class="ring ${cls}">${chips.map((c, i) => slot(offset + (i * 360) / chips.length, c)).join('')}</div>`;
+const orbit = `<div class="orbit-wrap" ${reveal()}><div class="orbit" role="img" aria-label="Projects, tasks, people and approvals orbiting one workspace">
+${ring('r1', [sq('calendar'), pill(`${tick} Release approved`, 'ok'), person('PM'), sq('message'), pill('12 tasks done'), person('AS', 'b'), sq('shield'), pill('Forecast: on time', 'pu')], -70)}
+${ring('r2', [person('KR', 'c'), pill('3 new comments'), sq('chart'), pill(`${tick} Risk: low`, 'ok'), person('SN'), sq('key'), pill('Sprint review 12:00', 'pu'), sq('bolt')], -40)}
+<div class="orbit-center"><div class="stats"><div><b>3</b><span>AI speeds</span></div><div><b>5</b><span>apps and devices</span></div><div><b>₹0</b><span>free for one person</span></div></div>
+<p class="orbit-title">Everything your delivery team touches, in one workspace</p></div></div>
+<div class="tags">${[['kanban', 'Projects'], ['checks', 'Tasks'], ['note', 'Documents'], ['timer', 'Timesheets'], ['message', 'Chat'], ['chart', 'Reports'], ['sparkle', 'Assistant']].map(([i, t]) => `<span>${icon(i, 16)}${t}</span>`).join('')}</div></div>`;
+
+// ---- the apps: a logo and one button each
+
+const glyph = (body: string) => `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${body}</svg>`;
+const LOGO = {
+  windows: glyph('<path d="M3 4.9l7.7-1.1v7.3H3zM11.7 3.6L21 2.3v8.8h-9.3zM3 12.1h7.7v7.3L3 18.3zM11.7 12.1H21v8.8l-9.3-1.3z"/>'),
+  apple: glyph('<path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2-1.1 2.8-2.2.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-.9-2.5-3.9zM14.1 5.8c.6-.8 1.1-1.9.9-3-1 .1-2.1.7-2.8 1.4-.6.7-1.1 1.8-1 2.9 1.1.1 2.2-.5 2.9-1.3z"/>'),
+  android: glyph('<path d="M6.2 9.3a5.8 5.8 0 0 1 11.6 0zM8.7 5.2L7.4 3M15.3 5.2L16.6 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/><path d="M6.2 9.3a5.8 5.8 0 0 1 11.6 0z"/><circle cx="9.4" cy="7.4" r=".8" fill="#fff"/><circle cx="14.6" cy="7.4" r=".8" fill="#fff"/><rect x="6.2" y="10.2" width="11.6" height="7.6" rx="1.6"/><rect x="3.3" y="10.2" width="2" height="6" rx="1"/><rect x="18.7" y="10.2" width="2" height="6" rx="1"/><rect x="8.6" y="17" width="2.1" height="4" rx="1"/><rect x="13.3" y="17" width="2.1" height="4" rx="1"/>'),
+  appstore: glyph('<path d="M12 4.6L6.3 17.8M12 4.6l5.7 13.2M8.1 14.2h7.8" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" fill="none"/><path d="M5.2 19.2h4M14.8 19.2h4" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" fill="none"/>'),
+};
+const dlArrow = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5l5 5 5-5M5 20h14"/></svg>';
+const getTile = (os: string, logo: string, cls: string, name: string, sub: string, href: string, alt: string, i: number) =>
+  `<article class="get" data-os="${os}" ${reveal(i)}><span class="rec">For your device</span><div class="logo2 ${cls}">${logo}</div><h3>${name}</h3><p class="gs">${sub}</p><a class="btn btn-primary" href="${href}">Download ${dlArrow}</a>${alt ? `<p class="alt">${alt}</p>` : ''}</article>`;
+const apps = () => `<div class="apps" ${reveal()}><div class="center"><p class="eyebrow">Apps</p><h2>Take it everywhere</h2><p class="sub">Windows, Mac, iPhone and Android. Same account, same work, alerts that find you.</p></div>
+<div class="app-grid">
+${getTile('windows', LOGO.windows, 'win', 'Windows', 'Windows 10 and 11', dlLink(DOWNLOAD_FILES.windows), '', 0)}
+${getTile('mac', LOGO.apple, '', 'macOS', 'Apple silicon and Intel', dlLink(DOWNLOAD_FILES.macArm), `Intel Mac? <a href="${dlLink(DOWNLOAD_FILES.macIntel)}">Download</a>`, 1)}
+${getTile('ios', LOGO.appstore, 'as', 'iPhone and iPad', 'Add to your Home Screen', '/download/#iphone', '', 2)}
+${getTile('android', LOGO.android, 'droid', 'Android', process.env.SITE_ANDROID_APK === '1' ? 'Android 7 or later' : 'Install from Chrome', process.env.SITE_ANDROID_APK === '1' ? dlLink(DOWNLOAD_FILES.android) : '/download/#android', '', 3)}
+</div><p class="note2 center" style="margin-top:22px">Linux and the browser app are on the <a href="/download/"><strong>download page</strong></a>.</p></div>`;
+
+const section = (inner: string, pad = true) => `<section class="block"${pad ? '' : ' style="padding-top:0"'}><div class="wrap">${inner}</div></section>`;
+const heading = (eyebrow: string, title: string, sub = '') => `<div class="center" ${reveal()}><p class="eyebrow">${eyebrow}</p><h2>${title}</h2>${sub ? `<p class="sub">${sub}</p>` : ''}</div>`;
 
 export function landing(): string {
   return `${header()}
 <main>
-<section class="dark hero">${aurora}<div class="wrap"><div>
+<section class="dark hero">${aurora}<div class="wrap">
 <span class="kicker"><b>New</b> Passkeys, phone sign-in and a mobile app</span>
-<h1>${esc(h1a)}. <span class="grad">${esc(h1rest.join('. '))}</span></h1>
+${headline}
 <p class="lead">${esc(HOME.lead)}</p>
-<div class="cta"><a class="btn btn-primary btn-lg" href="/register">Start free</a><a class="btn btn-glass btn-lg" href="/features/">See what it does</a></div>
+<div class="cta"><a class="btn btn-primary btn-lg" href="/register">Start free ${arrowUp}</a><a class="link" href="/features/">See what it does</a></div>
 <p class="fine">Start on the free plan and move up when your team grows.</p>
-<div class="fbadge-row">
-<span class="fbadge"><span class="b1">${icon('sparkle', 13)}</span>AI assistant</span>
-<span class="fbadge"><span class="b2">${icon('shield', 13)}</span>Risk forecast</span>
-<span class="fbadge"><span class="b3">${icon('key', 13)}</span>Passkey sign-in</span>
-</div></div>${demo}</div></section>
-<div class="dark marquee" aria-label="Works with"><div class="track">${[...INTEGRATIONS, ...INTEGRATIONS].map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>
-<section class="block"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Everything in one place</p><h2>From the first task to the portfolio review</h2>
-<p class="sub">One workspace for planning, doing and reporting, so leaders see the truth without chasing updates.</p></div>${bento}
-<p style="margin-top:26px;text-align:center"><a href="/features/"><strong>Explore every feature →</strong></a></p></div></section>
-<section class="block" style="padding-top:0"><div class="wrap">${signin}<div style="height:18px"></div>${trio}</div></section>
-<section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Why teams switch</p><h2>Stop reconstructing the truth by hand</h2>
-<p class="sub">What changes when projects stop living in spreadsheets and chat.</p></div>${versus}</div></section>
-<section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Getting started</p><h2>Up and running in minutes</h2></div><div style="height:30px"></div>${steps}</div></section>
-<section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Plans</p><h2>Simple plans that grow with you</h2>
-<p class="sub">Free for one person. Pay per person from Pro, and less the more you commit.</p></div>
-${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}<p style="margin-top:10px"><a href="/pricing/"><strong>Compare every plan →</strong></a></p></div></section>
-<section class="block" style="padding-top:0"><div class="wrap"><div class="center" ${reveal()}><p class="eyebrow">Questions</p><h2>Answers before you ask</h2></div><div style="height:30px"></div>${faq()}</div></section>
+${fan}</div></section>
+<div class="marquee" aria-label="Works with"><div class="track">${[...INTEGRATIONS, ...INTEGRATIONS].map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>
+${section(`${heading('Why teams switch', 'Your team\'s week, untangled', 'Every disconnected tool adds friction. Put the work, the people and the truth on one clear line.')}${mess}`)}
+${section(`${heading('One workspace', 'From the first task to the portfolio review')}<div style="height:10px"></div>${orbit}`, false)}
+${section(`${heading('Everything in one place', 'Planning, doing and reporting', 'One workspace for the whole delivery, so leaders see the truth without chasing updates.')}${bento}<p style="margin-top:26px;text-align:center"><a href="/features/"><strong>Explore every feature →</strong></a></p>`, false)}
+${section(`${signin}<div style="height:18px"></div>${trio}`, false)}
+${section(`${heading('Getting started', 'Up and running in minutes')}${steps}<p class="center" style="margin-top:30px"><a class="btn btn-brand btn-lg" href="/register">Create your workspace ${arrowUp}</a></p>`, false)}
+${section(`${heading('Compare', 'Stop reconstructing the truth by hand', 'What changes when projects stop living in spreadsheets and chat.')}${versus}`, false)}
+${section(apps(), false)}
+${section(`${heading('Plans', 'Simple plans that grow with you', 'Free for one person. Pay per person from Pro, and less the more you commit.')}${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}<p style="margin-top:10px"><a href="/pricing/"><strong>Compare every plan →</strong></a></p>`, false)}
+${section(`${heading('Questions', 'Answers before you ask')}<div style="height:30px"></div>${faq()}`, false)}
 ${band('Bring your projects into one clear view', 'Create your workspace in a minute. Invite your team when you are ready.')}
 </main>${footer()}<div class="sticky" aria-hidden="true"><a class="btn btn-glass" href="/login" tabindex="-1">Sign in</a><a class="btn btn-primary" href="/register" tabindex="-1">Start free</a></div>`;
 }
@@ -198,16 +302,18 @@ const detailBody = (d: DetailPage) => `<div class="wrap"><div class="grid two">$
 const dlLink = (file: string) => `${DOWNLOAD_BASE}/${file}`;
 const osIcon = (d: string) => `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const OS_ICONS = {
-  windows: osIcon('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
-  mac: osIcon('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>'),
+  windows: LOGO.windows,
+  mac: LOGO.apple,
   linux: osIcon('<path d="M4 17l4-10 4 6 3-4 5 8z"/>'),
-  android: osIcon('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
-  ios: osIcon('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10 5h4"/>'),
+  android: LOGO.android,
+  ios: LOGO.appstore,
   web: osIcon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>'),
 };
+const OS_CLASS: Record<string, string> = { windows: 'win', android: 'droid', ios: 'as' };
+const OS_ID: Record<string, string> = { ios: 'iphone', web: 'browser' };
 
 const dlCard = (os: string, icon: string, title: string, sub: string, actions: string, notes: string, i: number) =>
-  `<article class="dl" data-os="${os}" ${reveal(i % 3)}><div class="ic">${icon}</div><span class="rec">Recommended for your device</span><h3>${title}</h3><p class="dsub">${sub}</p><div class="dact">${actions}</div>${notes}</article>`;
+  `<article class="dl" id="${OS_ID[os] ?? os}" data-os="${os}" ${reveal(i % 3)}><div class="ic ${OS_CLASS[os] ?? ''}">${icon}</div><span class="rec">Recommended for your device</span><h3>${title}</h3><p class="dsub">${sub}</p><div class="dact">${actions}</div>${notes}</article>`;
 
 const downloadBody = () => `<div class="wrap">
 <div class="dl-grid">

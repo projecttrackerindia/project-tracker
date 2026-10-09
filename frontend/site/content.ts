@@ -115,7 +115,7 @@ export const PAGES: StaticPage[] = [
     description: 'How Project Tracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
 ];
 
-export const HOME = { path: '/', title: `${SITE.name} | Project Management Software for Teams`, description: SITE.description, h1: 'Plan the work. Track it across every team.', lead: 'Projects, tasks, timesheets and portfolio reporting in one secure workspace, with an assistant that works from your real data.' };
+export const HOME = { path: '/', title: `${SITE.name} | Project Management Software for Teams`, description: SITE.description, h1: 'Plan the work, see risk early, ship on time.', lead: 'Projects, tasks, timesheets and portfolio reporting in one secure workspace, with an assistant that works from your real data.' };
 
 /** One page per thing people search for, written to stand on its own. Every statement here describes what the product does today. */
 export interface DetailPage extends StaticPage { sections: { title: string; text: string; points: string[] }[]; related: string[] }
