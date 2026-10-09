@@ -12,11 +12,11 @@ public static class NotificationCatalog
     [
         new(NotificationType.TaskAssigned, "Task assigned to me", "Someone assigns a task to you.", true, true, true, false),
         new(NotificationType.Mention, "Mentions", "Someone @mentions you in a comment or in a project chat.", true, true, false, false),
-        new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date).", true, true, true, false),
+        new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date). If you switch e-mail on, you only get one when the message is still unread after a few minutes.", true, false, true, false),
         new(NotificationType.Comment, "Comments on my tasks", "New comments on tasks you are assigned to or reported.", true, true, false, false),
         new(NotificationType.TaskUpdated, "Task updates", "A task you are assigned to or reported on changes status, priority, dates or title.", true, true, false, false),
         new(NotificationType.ProjectUpdated, "Project updates", "A project you are a member of changes status.", true, true, false, false),
-        new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, false, true, false),
+        new(NotificationType.Reminder, "My reminders", "Reminders you set yourself, when their time comes.", true, true, true, false),
         new(NotificationType.Nudge, "Reminders from others", "Someone reminds you about work.", true, true, true, false),
         new(NotificationType.DueSoon, "Due date approaching", "Work assigned to you is due soon (when: Reminders → Settings).", true, true, true, false),
         new(NotificationType.Overdue, "Overdue work", "Work assigned to you, or that you oversee, is past its due date.", true, true, true, false),

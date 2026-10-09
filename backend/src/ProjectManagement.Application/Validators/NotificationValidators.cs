@@ -17,7 +17,8 @@ public class SetPreferencesValidator : AbstractValidator<SetPreferencesRequest>
 {
     public SetPreferencesValidator()
     {
-        RuleFor(x => x.Items).NotNull().Must(i => i is null || i.Count <= 20).WithMessage("Too many items.");
+        // One row per kind of notification: the limit follows the catalog, so adding a kind never makes the settings page fail to save.
+        RuleFor(x => x.Items).NotNull().Must(i => i is null || i.Count <= ProjectManagement.Domain.NotificationCatalog.All.Length).WithMessage("Too many items.");
         RuleForEach(x => x.Items).ChildRules(i => i.RuleFor(p => p.Type).IsInEnum());
     }
 }

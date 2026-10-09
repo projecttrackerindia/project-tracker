@@ -21,6 +21,17 @@ public class NotificationTests(ApiFactory factory)
     private static Task<ApiResult> SetPrefs(TestClient c, params (string Type, bool InApp, bool Email, bool Browser)[] items) =>
         c.Put("/api/v1/me/notification-preferences", new { items = items.Select(i => new { type = i.Type, i.InApp, i.Email, i.Browser }).ToArray() });
 
+    [Fact]
+    public async Task Saving_every_kind_of_notification_at_once_works_as_the_settings_page_does()
+    {
+        var c = await TestClient.RegisterAsync(factory, "Sana Saver");
+        await c.CreateOrgAsync();
+        var all = (await c.Get("/api/v1/me/notification-preferences")).Data!.AsArray();
+        var items = all.Select(p => new { type = p!["type"]!.GetValue<string>(), inApp = true, email = false, browser = false }).ToArray();
+        Assert.Equal(items.Length, ProjectManagement.Domain.NotificationCatalog.All.Length);
+        Assert.True((await c.Put("/api/v1/me/notification-preferences", new { items })).Ok);   // not "Too many items"
+    }
+
     private static JsonNode Pref(JsonNode list, string type) => list.AsArray().First(p => p!["type"]!.GetValue<string>() == type)!;
 
     private async Task<int> SendPendingAsync()

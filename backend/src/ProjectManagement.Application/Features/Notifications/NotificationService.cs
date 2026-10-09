@@ -185,6 +185,8 @@ public class NotificationPreferenceService(IAppDbContext db, ICurrentContext ctx
 public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOptions<AppOptions> options, AppClock clock, ILogger<NotificationEmailService> log, EmailLinks? links = null)
 {
     public const int MaxAttempts = 5;
+    /// <summary>Chat messages are live in the app, so their e-mail only goes out when the notice is still unread after this many quiet minutes.</summary>
+    public const int ChatEmailDelayMinutes = 5;
 
     /// <summary>Kinds that can wait a minute and be read together: three or more for the same person and workspace become one e-mail. Time-critical ones (reminders, overdue, service levels) never wait.</summary>
     private static readonly HashSet<NotificationType> Batchable = [NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Comment, NotificationType.Issue, NotificationType.Approval, NotificationType.ReportReady, NotificationType.TaskUpdated, NotificationType.ProjectUpdated, NotificationType.Message];
@@ -205,9 +207,16 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
 
     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
     {
-        var rows = await db.Notifications.IgnoreQueryFilters().Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts)
+        var chatCutoff = clock.Now.AddMinutes(-ChatEmailDelayMinutes);
+        var rows = await db.Notifications.IgnoreQueryFilters()
+            .Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts && (n.Type != NotificationType.Message || n.CreatedAt <= chatCutoff))
             .OrderBy(n => n.CreatedAt).Take(batch).ToListAsync(ct);
         if (rows.Count == 0) return 0;
+
+        // A chat notice that was read in the meantime has nothing left to say: no e-mail for it.
+        foreach (var read in rows.Where(n => n.Type == NotificationType.Message && n.ReadAt != null)) read.EmailPending = false;
+        rows.RemoveAll(n => !n.EmailPending);
+        if (rows.Count == 0) { await db.SaveChangesAsync(ct); return 0; }
 
         var userIds = rows.Select(n => n.UserId).Distinct().ToList();
         var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);

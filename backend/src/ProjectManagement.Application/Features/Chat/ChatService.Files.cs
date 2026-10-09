@@ -94,7 +94,7 @@ public partial class ChatService
         // Reading the conversation clears its notice in the bell (on this person's other tabs too).
         var link = $"/chat/{conversationId}";
         var notices = await db.Notifications.Where(n => n.UserId == me && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null).ToListAsync(ct);
-        foreach (var n in notices) n.ReadAt = now;
+        foreach (var n in notices) { n.ReadAt = now; n.EmailPending = false; }   // read: no e-mail about it either
         if (mine.LastReadAt >= now && notices.Count == 0) return;
         mine.LastReadAt = now;
         await db.SaveChangesAsync(ct);

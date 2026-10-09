@@ -140,6 +140,29 @@ public class EmailDeliveryTests(ApiFactory factory)
         Assert.Contains("Task 1 assigned", mine.Single(m => m.Subject.StartsWith("3 updates")).Html);
     }
 
+    [Fact]
+    public async Task Chat_notices_wait_a_few_minutes_and_are_not_e_mailed_once_they_have_been_read()
+    {
+        var c = await TestClient.RegisterAsync(factory, "Chet Chatter");
+        await c.CreateOrgAsync();
+        var now = factory.Services.GetRequiredService<AppClock>().Now;
+        factory.WithDb(db =>
+        {
+            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Message, Title = "Fresh", Link = "/chat/1", CreatedAt = now, EmailPending = true, InApp = true });
+            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Message, Title = "Old but read", Link = "/chat/2", CreatedAt = now.AddMinutes(-30), ReadAt = now.AddMinutes(-20), EmailPending = true, InApp = true });
+            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Message, Title = "Old and unread", Link = "/chat/3", CreatedAt = now.AddMinutes(-30), EmailPending = true, InApp = true });
+            db.SaveChanges(); return 0;
+        });
+        var sender = new CapturingSender();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var svc = new NotificationEmailService(sp.GetRequiredService<IAppDbContext>(), sender, sp.GetRequiredService<IOptions<AppOptions>>(), sp.GetRequiredService<AppClock>(), NullLogger<NotificationEmailService>.Instance, sp.GetRequiredService<EmailLinks>());
+        await svc.SendPendingAsync(500);
+        var mine = sender.Sent.Where(m => m.To == c.Email).ToList();
+        Assert.Single(mine);                                                 // only the one that stayed unread for more than a few minutes
+        Assert.StartsWith("Old and unread", mine[0].Subject);
+    }
+
     // ------------------------------------------------------------------ provider events
 
     [Fact]
