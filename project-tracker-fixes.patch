@@ -1,0 +1,677 @@
+diff --git a/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs b/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs
+index 940bce7..c53b1b6 100644
+--- a/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs
++++ b/backend/src/ProjectManagement.Application/Features/Files/AttachmentService.cs
+@@ -17,7 +17,7 @@ public record AttachmentDto(Guid Id, Guid ProjectId, Guid? TaskId, string? TaskK
+ 
+ public record AttachmentLimitsDto(long MaxFileBytes, long StorageLimitBytes, long StorageUsedBytes, IReadOnlyList<string> AllowedExtensions);
+ 
+-public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text }
++public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text, SevenZip, Rar, Gzip, Video }
+ 
+ /// <summary>What may be uploaded. The extension decides the type, and the first bytes of the file must agree with it.</summary>
+ public static class FileRules
+@@ -38,6 +38,20 @@ public static class FileRules
+         ["zip"] = ("application/zip", FileKind.Zip),
+         ["doc"] = ("application/msword", FileKind.Ole), ["xls"] = ("application/vnd.ms-excel", FileKind.Ole), ["ppt"] = ("application/vnd.ms-powerpoint", FileKind.Ole),
+         ["csv"] = ("text/csv", FileKind.Text), ["txt"] = ("text/plain", FileKind.Text), ["md"] = ("text/markdown", FileKind.Text),
++        // Java archives (a .jar / .war / .ear is a zip container) and other archives
++        ["jar"] = ("application/java-archive", FileKind.Zip), ["war"] = ("application/java-archive", FileKind.Zip), ["ear"] = ("application/java-archive", FileKind.Zip),
++        ["7z"] = ("application/x-7z-compressed", FileKind.SevenZip), ["rar"] = ("application/vnd.rar", FileKind.Rar),
++        ["gz"] = ("application/gzip", FileKind.Gzip), ["tgz"] = ("application/gzip", FileKind.Gzip),
++        // OpenDocument files (zip containers)
++        ["odt"] = ("application/vnd.oasis.opendocument.text", FileKind.Zip), ["ods"] = ("application/vnd.oasis.opendocument.spreadsheet", FileKind.Zip),
++        ["odp"] = ("application/vnd.oasis.opendocument.presentation", FileKind.Zip),
++        // More plain-text formats (they are only ever downloaded, never opened in the browser)
++        ["json"] = ("application/json", FileKind.Text), ["xml"] = ("application/xml", FileKind.Text),
++        ["yaml"] = ("application/yaml", FileKind.Text), ["yml"] = ("application/yaml", FileKind.Text),
++        ["log"] = ("text/plain", FileKind.Text), ["sql"] = ("application/sql", FileKind.Text), ["tsv"] = ("text/tab-separated-values", FileKind.Text),
++        ["rtf"] = ("application/rtf", FileKind.Text), ["java"] = ("text/x-java-source", FileKind.Text), ["py"] = ("text/x-python", FileKind.Text),
++        // Short screen recordings and demos
++        ["mp4"] = ("video/mp4", FileKind.Video), ["mov"] = ("video/quicktime", FileKind.Video),
+     };
+ 
+     public static IReadOnlyList<string> Extensions => Allowed.Keys.OrderBy(k => k).ToList();
+@@ -79,6 +93,11 @@ public static class FileRules
+         FileKind.Zip => h.StartsWith((ReadOnlySpan<byte>)[0x50, 0x4B, 0x03, 0x04]) || h.StartsWith((ReadOnlySpan<byte>)[0x50, 0x4B, 0x05, 0x06]),
+         FileKind.Ole => h.StartsWith((ReadOnlySpan<byte>)[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]),
+         FileKind.Text => !h.Contains((byte)0),
++        FileKind.SevenZip => h.StartsWith((ReadOnlySpan<byte>)[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]),
++        FileKind.Rar => h.StartsWith("Rar!"u8),
++        FileKind.Gzip => h.StartsWith((ReadOnlySpan<byte>)[0x1F, 0x8B]),
++        FileKind.Video => h.Length >= 12 && (h[4..8].SequenceEqual("ftyp"u8) || h[4..8].SequenceEqual("moov"u8) || h[4..8].SequenceEqual("mdat"u8)
++            || h[4..8].SequenceEqual("wide"u8) || h[4..8].SequenceEqual("free"u8)),
+         _ => false,
+     };
+ }
+diff --git a/backend/src/ProjectManagement.Tests/AttachmentTests.cs b/backend/src/ProjectManagement.Tests/AttachmentTests.cs
+index 5990463..9684d59 100644
+--- a/backend/src/ProjectManagement.Tests/AttachmentTests.cs
++++ b/backend/src/ProjectManagement.Tests/AttachmentTests.cs
+@@ -97,6 +97,21 @@ public class AttachmentTests(ApiFactory factory)
+         Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "sheet.xlsx", [0x50, 0x4B, 0x03, 0x04, 1, 2, 3])).Status);
+     }
+ 
++    [Fact]
++    public async Task Jar_archives_and_other_developer_formats_are_accepted_when_the_content_matches()
++    {
++        var (c, project, task) = await Setup();
++        byte[] zip = [0x50, 0x4B, 0x03, 0x04, 1, 2, 3];
++        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "app.jar", zip)).Status);
++        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "site.war", zip)).Status);
++        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "config.json", "{\"a\":1}"u8.ToArray())).Status);
++        Assert.Equal(HttpStatusCode.Created, (await c.Upload(ForTask(project, task), "logs.gz", [0x1F, 0x8B, 8, 0, 0])).Status);
++        // A .jar still has to be a real zip container, and executables stay blocked.
++        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Upload(ForTask(project, task), "fake.jar", "MZ this is an executable"u8.ToArray())).Status);
++        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Upload(ForTask(project, task), "run.exe", zip)).Status);
++        Assert.Contains((await c.Get("/api/v1/attachments/limits")).Data!["allowedExtensions"]!.AsArray(), e => e!.GetValue<string>() == "jar");
++    }
++
+     [Fact]
+     public async Task File_names_are_cleaned_and_never_control_where_a_file_is_stored()
+     {
+diff --git a/frontend/src/components/ui.tsx b/frontend/src/components/ui.tsx
+index e36b1eb..cccd6ef 100644
+--- a/frontend/src/components/ui.tsx
++++ b/frontend/src/components/ui.tsx
+@@ -1,4 +1,4 @@
+-import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
++import { createContext, forwardRef, useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+ import { useSheetDrag } from './Sheet';
+ import { createPortal } from 'react-dom';
+ import { NavLink, useLocation } from 'react-router-dom';
+@@ -93,28 +93,59 @@ export function Progress({ value, tone = 'auto', large, active = 0 }: { value: n
+   );
+ }
+ 
+-const avatarUrlCache = new Map<string, string>();
++/** userId -> the photo as an object URL, and when it was fetched (so a photo someone changed shows up again after a while). */
++const avatarUrlCache = new Map<string, { url: string; at: number }>();
++/** People we found to have no photo, so a card full of the same person does not ask the server again and again. */
++const avatarMissing = new Map<string, number>();
++const avatarPending = new Map<string, Promise<string | null>>();
++const AVATAR_TTL_MS = 10 * 60_000;
++const AVATAR_MISSING_TTL_MS = 60_000;
++
++let avatarEpoch = 0;
++const avatarListeners = new Set<() => void>();
++const subscribeAvatars = (fn: () => void) => { avatarListeners.add(fn); return () => { avatarListeners.delete(fn); }; };
++const getAvatarEpoch = () => avatarEpoch;
+ 
+ /** Call after a photo is uploaded or removed so every <Avatar> for that person re-fetches instead of showing the stale cached one. */
+ export function invalidateAvatarCache(userId: string) {
+-  const url = avatarUrlCache.get(userId);
+-  if (url) { URL.revokeObjectURL(url); avatarUrlCache.delete(userId); }
++  const hit = avatarUrlCache.get(userId);
++  if (hit) { URL.revokeObjectURL(hit.url); avatarUrlCache.delete(userId); }
++  avatarMissing.delete(userId);
++  avatarEpoch += 1;
++  avatarListeners.forEach((fn) => fn());
++}
++
++/** The photo's object URL, or null when the person has none. One request per person at a time, shared by every caller. */
++function loadAvatar(userId: string): Promise<string | null> {
++  const hit = avatarUrlCache.get(userId);
++  if (hit && Date.now() - hit.at < AVATAR_TTL_MS) return Promise.resolve(hit.url);
++  const missedAt = avatarMissing.get(userId);
++  if (missedAt !== undefined && Date.now() - missedAt < AVATAR_MISSING_TTL_MS) return Promise.resolve(null);
++  let pending = avatarPending.get(userId);
++  if (!pending) {
++    pending = import('../api/endpoints')
++      .then(({ workspaceApi }) => workspaceApi.memberAvatarUrl(userId))
++      .then((url) => { avatarUrlCache.set(userId, { url, at: Date.now() }); avatarMissing.delete(userId); return url as string | null; })
++      .catch(() => { avatarMissing.set(userId, Date.now()); return hit?.url ?? null; })
++      .finally(() => { avatarPending.delete(userId); });
++    avatarPending.set(userId, pending);
++  }
++  return pending;
+ }
+ 
+-/** A person's photo URL if they have one (fetched once per user per session, cached as an object URL across every caller). */
++/**
++ * A person's photo URL if they have one. Pass `hasAvatar` when the list you have says so (false skips the request); when it is unknown
++ * (most cards only know a person's id and name) the photo is looked up once and cached - a 404 just means "no photo, show initials".
++ */
+ export function useAvatarUrl(userId?: string, hasAvatar?: boolean) {
+-  const [url, setUrl] = useState<string | null>(() => (userId && avatarUrlCache.get(userId)) || null);
++  const epoch = useSyncExternalStore(subscribeAvatars, getAvatarEpoch);
++  const [url, setUrl] = useState<string | null>(() => (userId ? avatarUrlCache.get(userId)?.url : undefined) ?? null);
+   useEffect(() => {
+-    if (!userId || !hasAvatar) { setUrl(null); return; }
+-    const cached = avatarUrlCache.get(userId);
+-    if (cached) { setUrl(cached); return; }
++    if (!userId || hasAvatar === false) { setUrl(null); return; }
+     let cancelled = false;
+-    void import('../api/endpoints').then(({ workspaceApi }) => workspaceApi.memberAvatarUrl(userId)).then((u) => {
+-      if (cancelled) { URL.revokeObjectURL(u); return; }
+-      avatarUrlCache.set(userId, u); setUrl(u);
+-    }).catch(() => {});
++    void loadAvatar(userId).then((u) => { if (!cancelled) setUrl(u); });
+     return () => { cancelled = true; };
+-  }, [userId, hasAvatar]);
++  }, [userId, hasAvatar, epoch]);
+   return url;
+ }
+ 
+diff --git a/frontend/src/features/chat/Panels.tsx b/frontend/src/features/chat/Panels.tsx
+index e0aea65..efffb0c 100644
+--- a/frontend/src/features/chat/Panels.tsx
++++ b/frontend/src/features/chat/Panels.tsx
+@@ -248,8 +248,8 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
+         <div className="info-hero">
+           {group ? <span className="avatar lg group-avatar"><Icon name="users" size={22} /></span>
+             : conversation.otherUserId
+-              ? <button type="button" className="avatar-btn" onClick={() => setViewProfile(conversation.otherUserId)} aria-label={`${conversation.name}'s profile`}><Avatar name={conversation.name} size="lg" /></button>
+-              : <Avatar name={conversation.name} size="lg" />}
++              ? <button type="button" className="avatar-btn" onClick={() => setViewProfile(conversation.otherUserId)} aria-label={`${conversation.name}'s profile`}><Avatar name={conversation.name} size="lg" userId={conversation.otherUserId ?? undefined} /></button>
++              : <Avatar name={conversation.name} size="lg" userId={conversation.otherUserId ?? undefined} />}
+           {name === null ? (
+             <>
+               {conversation.otherUserId
+diff --git a/frontend/src/features/chat/Thread.tsx b/frontend/src/features/chat/Thread.tsx
+index 5222bbe..72b6731 100644
+--- a/frontend/src/features/chat/Thread.tsx
++++ b/frontend/src/features/chat/Thread.tsx
+@@ -335,7 +335,7 @@ function MessageRow({ m, mine, grouped, showName, canModerate, ticks, aboutMe, r
+   };
+   return (
+     <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${aboutMe ? 'mentions-me' : ''}`} data-msg={m.id} ref={pickRef}>
+-      {!mine && (grouped ? <span className="avatar-gap" /> : <Avatar name={m.senderName} size="sm" />)}
++      {!mine && (grouped ? <span className="avatar-gap" /> : <Avatar name={m.senderName} size="sm" userId={m.senderId ?? undefined} />)}
+       <div className="msg-col">
+         {!grouped && (
+           <div className="msg-meta">
+@@ -596,7 +596,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
+           {suggestions.map((p, i) => (
+             <li key={p.userId} role="option" aria-selected={i === mention.index} className={i === mention.index ? 'active' : ''}
+               onMouseDown={(e) => { e.preventDefault(); pickMention(p); }} onMouseEnter={() => setMention({ ...mention, index: i })}>
+-              <Avatar name={p.name} size="sm" /><span>{p.name}</span>
++              <Avatar name={p.name} size="sm" userId={p.userId} /><span>{p.name}</span>
+             </li>
+           ))}
+         </ul>
+@@ -676,5 +676,5 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
+ export function ConversationAvatar({ conversation, online }: { conversation: Conversation; online: boolean }) {
+   if (conversation.type === 'Project') return <span className="avatar group-avatar" title={conversation.name}><Icon name="folder" size={16} /></span>;
+   if (conversation.type === 'Group') return <span className="avatar group-avatar" title={conversation.name}><Icon name="users" size={16} /></span>;
+-  return <span className="avatar-wrap"><Avatar name={conversation.name} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
++  return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
+ }
+diff --git a/frontend/src/features/documents/DocumentActivity.tsx b/frontend/src/features/documents/DocumentActivity.tsx
+index 1855208..762d6c4 100644
+--- a/frontend/src/features/documents/DocumentActivity.tsx
++++ b/frontend/src/features/documents/DocumentActivity.tsx
+@@ -17,7 +17,7 @@ function ActivityList({ id }: { id: string }) {
+   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+   if (q.data.length === 0) return <EmptyState icon="clock" title="Nothing yet" />;
+   return (
+-    <ul className="act">{q.data.map((a) => <li key={a.id}><Avatar name={a.by?.name ?? '?'} /><div><span>{a.summary}</span><small title={formatDateTime(a.at)}>{a.by?.name ?? 'Someone'} · {timeAgo(a.at)}</small></div></li>)}</ul>
++    <ul className="act">{q.data.map((a) => <li key={a.id}><Avatar name={a.by?.name ?? '?'} userId={a.by?.id} /><div><span>{a.summary}</span><small title={formatDateTime(a.at)}>{a.by?.name ?? 'Someone'} · {timeAgo(a.at)}</small></div></li>)}</ul>
+   );
+ }
+ 
+diff --git a/frontend/src/features/documents/DocumentHistory.tsx b/frontend/src/features/documents/DocumentHistory.tsx
+index 7559cdf..fb60a60 100644
+--- a/frontend/src/features/documents/DocumentHistory.tsx
++++ b/frontend/src/features/documents/DocumentHistory.tsx
+@@ -105,7 +105,7 @@ function VersionRow({ v, canRestore, onView, onCompare, onRestore }: { v: DocVer
+         <div className="ver-label"><b>{v.label}</b>{v.isCurrent && <span className="badge badge-success">Current</span>}{v.isDraft && v.hasChanges && <span className="badge badge-warning">Unpublished changes</span>}{v.restoredFrom && <span className="badge badge-neutral">Restored from {v.restoredFrom}</span>}</div>
+         {v.changeSummary && <p className="ver-sum">{v.changeSummary}</p>}
+         {v.changeReason && <p className="ver-why">Why: {v.changeReason}</p>}
+-        {v.publishedBy && <div className="ver-by"><Avatar name={v.publishedBy.name} /> {v.publishedBy.name} · <span title={formatDateTime(v.publishedAt)}>{timeAgo(v.publishedAt)}</span></div>}
++        {v.publishedBy && <div className="ver-by"><Avatar name={v.publishedBy.name} userId={v.publishedBy.id} /> {v.publishedBy.name} · <span title={formatDateTime(v.publishedAt)}>{timeAgo(v.publishedAt)}</span></div>}
+       </div>
+       <div className="ver-actions">
+         <button className="btn btn-ghost btn-sm" onClick={onView}>View</button>
+diff --git a/frontend/src/features/documents/DocumentInbox.tsx b/frontend/src/features/documents/DocumentInbox.tsx
+index 1eef14b..2f7e89c 100644
+--- a/frontend/src/features/documents/DocumentInbox.tsx
++++ b/frontend/src/features/documents/DocumentInbox.tsx
+@@ -60,7 +60,7 @@ export function AccessRequestRow({ r, showDoc = true, onDecide }: { r: AccessReq
+   const label = r.status === 'Approved' && r.expired ? 'Ended' : r.status === 'Rejected' ? 'Declined' : r.status;
+   return (
+     <li className="ar-row">
+-      <Avatar name={r.requester.name} />
++      <Avatar name={r.requester.name} userId={r.requester.id} />
+       <div className="ar-main">
+         <div className="ar-title"><b>{r.requester.name}</b><span className="muted">wants to {LEVEL_TEXT[r.level]}</span>{showDoc && <><span className="doc-key">{r.documentKey}</span>{r.documentTitle && <Link to={`/documents/${r.documentId}`}>{r.documentTitle}</Link>}</>}</div>
+         <p className="ar-why">“{r.reason}”</p>
+diff --git a/frontend/src/features/documents/DocumentList.tsx b/frontend/src/features/documents/DocumentList.tsx
+index 2e543f3..12577a1 100644
+--- a/frontend/src/features/documents/DocumentList.tsx
++++ b/frontend/src/features/documents/DocumentList.tsx
+@@ -30,7 +30,7 @@ function Row({ d, showProject }: { d: DocumentItem; showProject: boolean }) {
+         {d.linkedCount > 0 && <span className="doc-links" title={`${d.linkedCount} linked`}><Icon name="git" size={14} /> {d.linkedCount}</span>}
+         <span className="doc-vis" title={VISIBILITY[d.visibility].hint}><Icon name={VISIBILITY[d.visibility].icon} size={14} /></span>
+         <DocStatusBadge status={d.status} />
+-        <span className="doc-owner"><Avatar name={d.owner.name} /><span>{d.owner.name}</span></span>
++        <span className="doc-owner"><Avatar name={d.owner.name} userId={d.owner.id} /><span>{d.owner.name}</span></span>
+         <span className="muted doc-when">{timeAgo(d.updatedAt)}</span>
+       </div>
+     </Link>
+diff --git a/frontend/src/features/documents/DocumentPage.tsx b/frontend/src/features/documents/DocumentPage.tsx
+index 4fe51d2..a15f770 100644
+--- a/frontend/src/features/documents/DocumentPage.tsx
++++ b/frontend/src/features/documents/DocumentPage.tsx
+@@ -226,7 +226,7 @@ export function DocumentPage() {
+             <div className="card-head"><div><h3>About</h3></div></div>
+             <div className="card-body">
+               <dl className="doc-facts">
+-                <div><dt>Owner</dt><dd><Avatar name={d.owner.name} /> {d.owner.name}</dd></div>
++                <div><dt>Owner</dt><dd><Avatar name={d.owner.name} userId={d.owner.id} /> {d.owner.name}</dd></div>
+                 <div><dt>Belongs to</dt><dd>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{d.projectKey} · {d.projectName}</Link> : d.teamName ?? 'The organization'}</dd></div>
+                 <div><dt>Visible to</dt><dd><Icon name={VISIBILITY[d.visibility].icon} size={14} /> {VISIBILITY[d.visibility].label}</dd></div>
+                 {d.tags.length > 0 && <div><dt>Tags</dt><dd className="doc-tags">{d.tags.map((t) => <span className="doc-tag" key={t}>{t}</span>)}</dd></div>}
+diff --git a/frontend/src/features/documents/DocumentReview.tsx b/frontend/src/features/documents/DocumentReview.tsx
+index 2980e1a..2a4c013 100644
+--- a/frontend/src/features/documents/DocumentReview.tsx
++++ b/frontend/src/features/documents/DocumentReview.tsx
+@@ -71,7 +71,7 @@ function StepTrack({ steps, current }: { steps: ApprovalStep[]; current: number
+               <div className="rv-people">
+                 {s.people.slice(0, 6).map((p) => (
+                   <span key={p.userId} className={`rv-person ${p.decision ? p.decision.toLowerCase() : ''}`} title={p.comment ?? (p.decision ? p.decision : 'Waiting')}>
+-                    <Avatar name={p.name} />{p.name}{p.decision === 'Approved' ? ' ✓' : p.decision ? ' ↩' : ''}
++                    <Avatar name={p.name} userId={p.userId} />{p.name}{p.decision === 'Approved' ? ' ✓' : p.decision ? ' ↩' : ''}
+                   </span>
+                 ))}
+                 {s.people.length > 6 && <span className="muted">+{s.people.length - 6}</span>}
+diff --git a/frontend/src/features/documents/DocumentSharing.tsx b/frontend/src/features/documents/DocumentSharing.tsx
+index ea22d91..00d5453 100644
+--- a/frontend/src/features/documents/DocumentSharing.tsx
++++ b/frontend/src/features/documents/DocumentSharing.tsx
+@@ -127,7 +127,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
+           <ul className="people">
+             {people.map((p) => (
+               <li key={p.userId}>
+-                <Avatar name={p.name} /><div className="people-main"><b>{p.name}</b><span className="muted">{p.role}</span></div>
++                <Avatar name={p.name} userId={p.userId} /><div className="people-main"><b>{p.name}</b><span className="muted">{p.role}</span></div>
+                 <div className="people-why">{p.reasons.map((r) => <span key={r} className="doc-tag">{r}</span>)}</div>
+                 <span className={`badge ${p.level === 'Viewer' ? 'badge-neutral' : p.level === 'Editor' ? 'badge-info' : 'badge-success'}`}>{levelLabel(p.level)}</span>
+               </li>
+diff --git a/frontend/src/features/files/Attachments.tsx b/frontend/src/features/files/Attachments.tsx
+index ef4fcdb..4e477ba 100644
+--- a/frontend/src/features/files/Attachments.tsx
++++ b/frontend/src/features/files/Attachments.tsx
+@@ -82,7 +82,7 @@ export function Attachments({ projectId, taskId, issueId, canEdit, compact }: {
+             <div className="file-meta">
+               {formatBytes(f.sizeBytes)}
+               {f.taskKey && !taskId && <> · <span className="file-task">{f.taskKey}</span></>}
+-              {f.uploadedBy && <> · <Avatar name={f.uploadedBy.name} size="sm" /> {f.uploadedBy.name}</>}
++              {f.uploadedBy && <> · <Avatar name={f.uploadedBy.name} size="sm" userId={f.uploadedBy.id} /> {f.uploadedBy.name}</>}
+               {' '}· {timeAgo(f.createdAt)}
+             </div>
+           </div>
+diff --git a/frontend/src/features/issues/IssueModals.tsx b/frontend/src/features/issues/IssueModals.tsx
+index 4835033..2c6292b 100644
+--- a/frontend/src/features/issues/IssueModals.tsx
++++ b/frontend/src/features/issues/IssueModals.tsx
+@@ -235,7 +235,7 @@ export function IssueDetailModal({ projectId, issueId, stages, members, onClose
+             <dt>Status</dt><dd><IssueStatusBadge status={i.status} /></dd>
+             <dt>Severity</dt><dd><PriorityBadge priority={i.severity} /></dd>
+             <dt>Stage</dt><dd>{i.stageName ?? '—'}</dd>
+-            <dt>Reported by</dt><dd>{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" />{i.reporter.name}</span> : '—'}</dd>
++            <dt>Reported by</dt><dd>{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" userId={i.reporter.id} />{i.reporter.name}</span> : '—'}</dd>
+             <dt>Assigned to</dt>
+             <dd>
+               {i.can.assign
+@@ -243,7 +243,7 @@ export function IssueDetailModal({ projectId, issueId, stages, members, onClose
+                     onChange={(e) => void run(() => issueApi.assign(projectId, i.id, e.target.value || null), e.target.value ? 'Issue assigned.' : 'Issue unassigned.')}>
+                     <option value="">Unassigned</option>{assigneeChoices.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
+                   </Select>
+-                : i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" />{i.assignee.name}</span> : <em>Unassigned</em>}
++                : i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" userId={i.assignee.id} />{i.assignee.name}</span> : <em>Unassigned</em>}
+             </dd>
+             <dt>Reported</dt><dd title={formatDateTime(i.createdAt)}>{timeAgo(i.createdAt)}</dd>
+             {i.resolvedAt && <><dt>Resolved</dt><dd title={formatDateTime(i.resolvedAt)}>{timeAgo(i.resolvedAt)}</dd></>}
+diff --git a/frontend/src/features/issues/IssuesPanel.tsx b/frontend/src/features/issues/IssuesPanel.tsx
+index 30f3229..c1292ac 100644
+--- a/frontend/src/features/issues/IssuesPanel.tsx
++++ b/frontend/src/features/issues/IssuesPanel.tsx
+@@ -84,8 +84,8 @@ function IssueRow({ issue: i, onOpen }: { issue: Issue; onOpen: () => void }) {
+       <td className="cell-muted">{i.stageName ?? '—'}</td>
+       <td><IssueStatusBadge status={i.status} /></td>
+       <td><PriorityBadge priority={i.severity} /></td>
+-      <td className="cell-muted">{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" />{i.reporter.name}</span> : '—'}</td>
+-      <td className="cell-muted">{i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" />{i.assignee.name}</span> : <em>Unassigned</em>}</td>
++      <td className="cell-muted">{i.reporter ? <span className="row" style={{ gap: 6 }}><Avatar name={i.reporter.name} size="sm" userId={i.reporter.id} />{i.reporter.name}</span> : '—'}</td>
++      <td className="cell-muted">{i.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={i.assignee.name} size="sm" userId={i.assignee.id} />{i.assignee.name}</span> : <em>Unassigned</em>}</td>
+       <td className="cell-muted" style={{ whiteSpace: 'nowrap' }}>{timeAgo(i.createdAt)}</td>
+     </tr>
+   );
+diff --git a/frontend/src/features/live/Viewers.tsx b/frontend/src/features/live/Viewers.tsx
+index 018222b..a9871fd 100644
+--- a/frontend/src/features/live/Viewers.tsx
++++ b/frontend/src/features/live/Viewers.tsx
+@@ -50,7 +50,7 @@ export function Viewers({ kind, id }: { kind: 'task' | 'work'; id: string | unde
+   return (
+     <div className="viewers" title={`Also viewing: ${names.join(', ')}`} aria-label={`Also viewing: ${names.join(', ')}`}>
+       <span className="viewers-dot" />
+-      <div className="viewers-faces">{viewers.slice(0, 4).map((v) => <Avatar key={v.id} name={v.name} size="sm" />)}</div>
++      <div className="viewers-faces">{viewers.slice(0, 4).map((v) => <Avatar key={v.id} name={v.name} size="sm" userId={v.id} />)}</div>
+       <span className="viewers-text">{viewers.length === 1 ? `${names[0]} is here too` : `${viewers.length} others here`}</span>
+     </div>
+   );
+diff --git a/frontend/src/features/organization/OrgCanvas.tsx b/frontend/src/features/organization/OrgCanvas.tsx
+index 26fbb15..a8f12f9 100644
+--- a/frontend/src/features/organization/OrgCanvas.tsx
++++ b/frontend/src/features/organization/OrgCanvas.tsx
+@@ -57,7 +57,7 @@ function RoleNode({ data }: NodeProps<RoleNodeT>) {
+       </div>
+       <div className="org-node-meta">
+         <div className="org-avatars">
+-          {people.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" /></span>)}
++          {people.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" userId={p.userId} /></span>)}
+           {people.length > 4 && <span className="org-more">+{people.length - 4}</span>}
+         </div>
+         <span className="org-count">{role.peopleCount} {role.peopleCount === 1 ? 'person' : 'people'}{role.childCount ? ` · ${role.childCount} sub-role${role.childCount === 1 ? '' : 's'}` : ''}</span>
+@@ -77,7 +77,7 @@ function PersonNode({ data }: NodeProps<PersonNodeT>) {
+   return (
+     <div className={`org-person ${selected ? 'selected' : ''} ${dim ? 'dim' : ''}`} style={{ '--node': role?.color ?? '#94a3b8' } as CSSProperties}>
+       <Handle type="target" position={Position.Top} />
+-      <Avatar name={person.displayName} size="lg" />
++      <Avatar name={person.displayName} size="lg" userId={person.userId} />
+       <div className="org-person-text">
+         <div className="org-person-name" title={person.displayName}>{person.displayName}</div>
+         <div className="org-person-role"><span className="org-dot" />{role?.name ?? 'No role yet'}</div>
+@@ -99,7 +99,7 @@ function AdminNode({ data }: NodeProps<AdminNodeT>) {
+         </div>
+       </div>
+       <div className="org-node-meta">
+-        <div className="org-avatars">{data.admins.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" /></span>)}</div>
++        <div className="org-avatars">{data.admins.slice(0, 4).map((p) => <span key={p.userId} title={p.displayName}><Avatar name={p.displayName} size="sm" userId={p.userId} /></span>)}</div>
+         <span className="org-count">{data.admins.map((a) => a.displayName.split(' ')[0]).slice(0, 3).join(', ')}{data.admins.length > 3 ? '…' : ''}</span>
+       </div>
+       <div className="org-node-foot"><span><Icon name="lock" size={13} /> Fixed — outside the tree</span></div>
+diff --git a/frontend/src/features/organization/OrgPanels.tsx b/frontend/src/features/organization/OrgPanels.tsx
+index 5bbde26..fbcf723 100644
+--- a/frontend/src/features/organization/OrgPanels.tsx
++++ b/frontend/src/features/organization/OrgPanels.tsx
+@@ -25,7 +25,7 @@ export function UnassignedTray({ people, canManage, actions, onSelect }: {
+         {free.map((p) => (
+           <div key={p.userId} className="org-person-chip" role="button" tabIndex={0} draggable={canManage} onClick={() => onSelect(p.userId)} onKeyDown={(e) => { if (e.key === 'Enter') onSelect(p.userId); }}
+             onDragStart={(e) => { e.dataTransfer.setData(PERSON_MIME, p.userId); e.dataTransfer.effectAllowed = 'move'; }} title={canManage ? 'Drag onto a role' : p.displayName}>
+-            <Avatar name={p.displayName} />
++            <Avatar name={p.displayName} userId={p.userId} />
+             <div className="org-chip-text"><div className="org-chip-name">{p.displayName}</div><div className="org-chip-sub">{p.accessRole}{p.email ? ` · ${p.email}` : ''}</div></div>
+           </div>
+         ))}
+@@ -84,7 +84,7 @@ function RoleDetails({ role, data, actions, onSelect, onEdit, onAddChild, onDele
+         {members.length === 0 && <div className="org-value muted">Nobody yet.</div>}
+         {members.map((m) => (
+           <div key={m.userId} className="org-row">
+-            <button className="org-row-main" onClick={() => onSelect(m.userId)} title="View person"><Avatar name={m.displayName} /><span>{m.displayName}</span></button>
++            <button className="org-row-main" onClick={() => onSelect(m.userId)} title="View person"><Avatar name={m.displayName} userId={m.userId} /><span>{m.displayName}</span></button>
+             {editable && <button className="btn-icon" title="Take off this role" aria-label={`Remove ${m.displayName} from ${role.name}`} draggable
+               onDragStart={(e) => { e.dataTransfer.setData(PERSON_MIME, m.userId); e.dataTransfer.effectAllowed = 'move'; }}
+               onClick={() => { void actions.assign(m.userId, null); }}><Icon name="close" size={14} /></button>}
+@@ -131,7 +131,7 @@ function PersonDetails({ person, data, actions, onSelect }: InspectorProps & { p
+   return (
+     <div className="org-details" style={{ '--node': role?.color ?? '#94a3b8' } as CSSProperties}>
+       <div className="org-side-head">
+-        <div className="row" style={{ minWidth: 0 }}><Avatar name={person.displayName} size="lg" /><div style={{ minWidth: 0 }}><strong className="org-details-title">{person.displayName}</strong><div className="muted" style={{ fontSize: 12 }}>{person.email}</div></div></div>
++        <div className="row" style={{ minWidth: 0 }}><Avatar name={person.displayName} size="lg" userId={person.userId} /><div style={{ minWidth: 0 }}><strong className="org-details-title">{person.displayName}</strong><div className="muted" style={{ fontSize: 12 }}>{person.email}</div></div></div>
+         <button className="btn-icon" onClick={() => onSelect(null)} aria-label="Close details" title="Close"><Icon name="close" /></button>
+       </div>
+       <div className="org-section"><div className="org-label">Access level</div><div><RoleBadge role={person.accessRole} /></div></div>
+@@ -157,7 +157,7 @@ function PersonDetails({ person, data, actions, onSelect }: InspectorProps & { p
+       <div className="org-section">
+         <div className="org-label">Direct reports ({reports.length})</div>
+         {reports.length === 0 && <div className="org-value muted">None.</div>}
+-        {reports.map((r) => <div key={r.userId} className="org-row"><button className="org-row-main" onClick={() => onSelect(r.userId)}><Avatar name={r.displayName} /><span>{r.displayName}</span></button></div>)}
++        {reports.map((r) => <div key={r.userId} className="org-row"><button className="org-row-main" onClick={() => onSelect(r.userId)}><Avatar name={r.displayName} userId={r.userId} /><span>{r.displayName}</span></button></div>)}
+       </div>
+     </div>
+   );
+diff --git a/frontend/src/features/organization/RolesAccess.tsx b/frontend/src/features/organization/RolesAccess.tsx
+index 1244621..4c5f669 100644
+--- a/frontend/src/features/organization/RolesAccess.tsx
++++ b/frontend/src/features/organization/RolesAccess.tsx
+@@ -107,7 +107,7 @@ function EffectiveAccessTable() {
+                 <Fragment key={p.userId}>
+                   <tr className="clickable" tabIndex={0} aria-expanded={open === p.userId} onClick={() => setOpen((o) => (o === p.userId ? null : p.userId))}
+                     onKeyDown={(e) => { if (e.key === 'Enter') setOpen((o) => (o === p.userId ? null : p.userId)); }}>
+-                    <td><div className="row"><Avatar name={p.name} /><div><div className="td-title">{p.name}</div><div className="td-sub">{p.email}</div></div></div></td>
++                    <td><div className="row"><Avatar name={p.name} userId={p.userId} /><div><div className="td-title">{p.name}</div><div className="td-sub">{p.email}</div></div></div></td>
+                     <td><RoleBadge role={p.accessLevel} /></td>
+                     <td className="cell-muted">{p.jobRole ?? '—'}</td>
+                     <td><span title={SOURCE[p.source].hint}><Badge tone={SOURCE[p.source].tone}>{SOURCE[p.source].label}</Badge></span></td>
+diff --git a/frontend/src/features/projects/ActionItemsPanel.tsx b/frontend/src/features/projects/ActionItemsPanel.tsx
+index 75a0927..e12f52b 100644
+--- a/frontend/src/features/projects/ActionItemsPanel.tsx
++++ b/frontend/src/features/projects/ActionItemsPanel.tsx
+@@ -181,7 +181,7 @@ function ItemRow({ item, people, projectId, highlight, onChanged }: { item: Acti
+         <button type="button" className="ai-title" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>{item.key && <span className="task-key" style={{ marginRight: 6 }}>{item.key}</span>}{item.title}</button>
+         <div className="ai-meta">
+           <span className="ai-who" title={item.assignee ? `Assigned to ${item.assignee.name}` : 'Not assigned'}>
+-            {item.assignee ? <><Avatar name={item.assignee.name} size="sm" />{item.assignee.name}</> : <em>Unassigned</em>}
++            {item.assignee ? <><Avatar name={item.assignee.name} size="sm" userId={item.assignee.id} />{item.assignee.name}</> : <em>Unassigned</em>}
+           </span>
+           {item.dueDate && <span className={`ai-due ${item.isOverdue ? 'late' : ''}`} title={item.isOverdue ? 'Overdue' : 'Due date'}><Icon name="calendar" size={12} /> {formatDate(item.dueDate)}{item.isOverdue ? ' · overdue' : ''}</span>}
+           <PriorityBadge priority={item.priority} />
+diff --git a/frontend/src/features/projects/Board.tsx b/frontend/src/features/projects/Board.tsx
+index b434bd5..bc950f4 100644
+--- a/frontend/src/features/projects/Board.tsx
++++ b/frontend/src/features/projects/Board.tsx
+@@ -134,7 +134,7 @@ export function Board({ projectId, statuses, stages, archived, canCreate, onOpen
+                       {t.subtaskTotal > 0 && <span className="meta-line"><Icon name="list" /> {t.subtaskDone}/{t.subtaskTotal}</span>}
+                       {t.checklistTotal > 0 && <span className="meta-line" title="Checklist"><Icon name="check" /> {t.checklistDone}/{t.checklistTotal}</span>}
+                       {t.milestoneName && <span className="meta-line" title={`Milestone: ${t.milestoneName}`}><Icon name="flag" /></span>}
+-                      {t.assignee && <Avatar name={t.assignee.name} size="sm" />}
++                      {t.assignee && <Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />}
+                     </div>
+                   </div>
+                   <div className="kb-card-meta" style={{ marginTop: 8 }}><DueMeta task={t} /></div>
+diff --git a/frontend/src/features/projects/PortfolioActionItems.tsx b/frontend/src/features/projects/PortfolioActionItems.tsx
+index 9fd526c..875520c 100644
+--- a/frontend/src/features/projects/PortfolioActionItems.tsx
++++ b/frontend/src/features/projects/PortfolioActionItems.tsx
+@@ -82,7 +82,7 @@ export function PortfolioActionItems({ onClose }: { onClose: () => void }) {
+                     <span className="task-key">{i.key}</span>
+                     <span className="pai-title">{i.title}</span>
+                     <PriorityBadge priority={i.priority} />
+-                    <span className="pai-who">{i.assignee ? <><Avatar name={i.assignee.name} size="sm" /> {i.assignee.name}</> : <span className="muted">Unassigned</span>}</span>
++                    <span className="pai-who">{i.assignee ? <><Avatar name={i.assignee.name} size="sm" userId={i.assignee.id} /> {i.assignee.name}</> : <span className="muted">Unassigned</span>}</span>
+                     <span className={`pai-due ${i.isOverdue && !isDone(i) ? 'late' : ''}`}>{isDone(i) ? 'Completed' : i.dueDate ? formatDate(i.dueDate) : 'No date'}</span>
+                     <Icon name="chevronR" size={14} />
+                   </button>
+diff --git a/frontend/src/features/projects/ProjectBoard.tsx b/frontend/src/features/projects/ProjectBoard.tsx
+index fc5f6cd..0b8edc4 100644
+--- a/frontend/src/features/projects/ProjectBoard.tsx
++++ b/frontend/src/features/projects/ProjectBoard.tsx
+@@ -100,7 +100,7 @@ export function ProjectBoard({ projects, cacheKey, includeArchived, canEditAll,
+                 </div>
+                 <div className="kb-card-meta"><PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /></div>
+                 <div className="kb-card-meta" style={{ marginTop: 9 }}>
+-                  <span className="row" style={{ gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}><Avatar name={p.owner?.name} size="sm" />{p.owner?.name ?? 'Unassigned'}</span>
++                  <span className="row" style={{ gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}><Avatar name={p.owner?.name} size="sm" userId={p.owner?.id} />{p.owner?.name ?? 'Unassigned'}</span>
+                   <span className="meta-line"><Icon name="clock" /> {dueLabel(p.dueDate)}</span>
+                 </div>
+               </div>
+diff --git a/frontend/src/features/projects/ProjectStatusPage.tsx b/frontend/src/features/projects/ProjectStatusPage.tsx
+index 752a691..525a6cd 100644
+--- a/frontend/src/features/projects/ProjectStatusPage.tsx
++++ b/frontend/src/features/projects/ProjectStatusPage.tsx
+@@ -264,7 +264,7 @@ function TaskRow({ t, onOpen }: { t: StatusTask; onOpen?: () => void }) {
+         <div className="ps-task-title"><span className="task-key">{t.key}</span> {t.title}</div>
+         {t.blockedBy.length > 0 && <div className="ps-task-note wait"><Icon name="lock" size={12} /> Waiting on {t.blockedBy.map((b) => `${b.key} ${b.title}`).join(', ')}</div>}
+       </td>
+-      <td className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" /> <span>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</td>
++      <td className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} /> <span>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</td>
+       <td className="ps-date">{formatDate(t.startDate)}</td>
+       <td className="ps-date">
+         <span className={t.overdueDays > 0 ? 'overdue' : ''}>{formatDate(t.dueDate)}</span>
+@@ -310,7 +310,7 @@ function ChangeCard({ c }: { c: TimelineChange }) {
+       <p className="ps-why"><small>Reason</small>{c.reason ?? <i>No reason was recorded.</i>}</p>
+       {c.dependency && <p className="ps-why"><small>Dependency</small>{c.dependency}</p>}
+       <footer>
+-        {c.changedBy && <Avatar name={c.changedBy.name} size="sm" />}
++        {c.changedBy && <Avatar name={c.changedBy.name} size="sm" userId={c.changedBy.id} />}
+         <span>Changed by <b>{c.changedBy?.name ?? 'someone'}</b> on <time dateTime={c.changedAt}>{formatDateTime(c.changedAt)}</time></span>
+         <span className="ps-status" style={{ '--c': c.currentCategory === 'Done' ? '#34d399' : c.currentCategory === 'Active' ? '#8b5cf6' : '#94a3b8' } as React.CSSProperties}>{c.currentStatus}</span>
+       </footer>
+diff --git a/frontend/src/features/projects/ProjectTabs.tsx b/frontend/src/features/projects/ProjectTabs.tsx
+index 9c4bdb9..b80bed8 100644
+--- a/frontend/src/features/projects/ProjectTabs.tsx
++++ b/frontend/src/features/projects/ProjectTabs.tsx
+@@ -49,7 +49,7 @@ export function TeamTab({ detail, canEdit }: { detail: ProjectDetail; canEdit: b
+         <div className="member-list">
+           {detail.members.map((m) => (
+             <div className="member-item" key={m.userId}>
+-              <Avatar name={m.name} size="lg" />
++              <Avatar name={m.name} size="lg" userId={m.userId} />
+               <div className="member-main"><div className="member-name">{m.name}</div><div className="member-role">{m.userId === ownerId ? 'Project owner' : 'Member'}{m.email ? ` · ${m.email}` : ''}</div></div>
+               {m.role && <RoleBadge role={m.role} />}
+               {canEdit && m.userId !== ownerId && <button className="btn-icon danger" title="Remove" aria-label={`Remove ${m.name}`} onClick={() => remove(m.userId, m.name)}><Icon name="close" /></button>}
+diff --git a/frontend/src/features/projects/ProjectsPage.tsx b/frontend/src/features/projects/ProjectsPage.tsx
+index 093e476..e3ed8b1 100644
+--- a/frontend/src/features/projects/ProjectsPage.tsx
++++ b/frontend/src/features/projects/ProjectsPage.tsx
+@@ -36,7 +36,7 @@ export function ProjectCard({ project: p, onOpen }: { project: Project; onOpen:
+       </div>
+       <div className="task-meta"><PriorityBadge priority={p.priority} /><ProjectStatusBadge status={p.status} /><ProjectTypeBadge type={p.projectType} /></div>
+       <div className="pc-foot">
+-        <span className="row" style={{ gap: 6 }}><Avatar name={p.owner?.name} size="sm" />{p.owner?.name ?? 'Unassigned'}</span>
++        <span className="row" style={{ gap: 6 }}><Avatar name={p.owner?.name} size="sm" userId={p.owner?.id} />{p.owner?.name ?? 'Unassigned'}</span>
+         <span>{formatDate(p.dueDate)}</span>
+       </div>
+     </div>
+diff --git a/frontend/src/features/tasks/TaskModal.tsx b/frontend/src/features/tasks/TaskModal.tsx
+index 96dbc8c..2418c0d 100644
+--- a/frontend/src/features/tasks/TaskModal.tsx
++++ b/frontend/src/features/tasks/TaskModal.tsx
+@@ -302,7 +302,7 @@ function Subtasks({ parent, subtasks, statuses, canCreate, onOpen }: {
+             <button type="button" className="member-main" style={{ textAlign: 'left', textDecoration: s.statusCategory === 'Done' ? 'line-through' : undefined }} onClick={() => onOpen(s.id)}>
+               <span className="member-name">{s.title}</span>
+             </button>
+-            {s.assignee && <Avatar name={s.assignee.name} size="sm" />}
++            {s.assignee && <Avatar name={s.assignee.name} size="sm" userId={s.assignee.id} />}
+           </div>
+         ))}
+       </div>
+@@ -345,7 +345,7 @@ function Comments({ taskId, canComment, members }: { taskId: string; canComment:
+         {q.data?.length === 0 && <p className="muted" style={{ fontSize: 12.5 }}>No comments yet.</p>}
+         {q.data?.map((c) => (
+           <div className="comment" key={c.id}>
+-            <Avatar name={c.author.name} size="lg" />
++            <Avatar name={c.author.name} size="lg" userId={c.author.id} />
+             <div className="comment-bubble">
+               <div className="comment-head">
+                 <b>{c.author.name}</b><span className="muted" title={formatDateTime(c.createdAt)}>{timeAgo(c.createdAt)}{c.editedAt && ' · edited'}</span>
+diff --git a/frontend/src/features/tasks/parts.tsx b/frontend/src/features/tasks/parts.tsx
+index b4a6272..ada60dd 100644
+--- a/frontend/src/features/tasks/parts.tsx
++++ b/frontend/src/features/tasks/parts.tsx
+@@ -46,7 +46,7 @@ export function TaskCard({ task, onOpen, onToggle, archived }: { task: Task; onO
+           {task.subtaskTotal > 0 && <span className="meta-line" title="Subtasks"><Icon name="list" /> {task.subtaskDone}/{task.subtaskTotal}</span>}
+           {task.checklistTotal > 0 && <span className="meta-line" title="Checklist"><Icon name="check" /> {task.checklistDone}/{task.checklistTotal}</span>}
+           {task.commentCount > 0 && <span className="meta-line" title="Comments"><Icon name="message" /> {task.commentCount}</span>}
+-          {task.assignee && <Avatar name={task.assignee.name} size="sm" />}
++          {task.assignee && <Avatar name={task.assignee.name} size="sm" userId={task.assignee.id} />}
+         </div>
+       </div>
+     </div>
+@@ -76,7 +76,7 @@ export function TaskTable({ tasks, onOpen, onToggle, archived, showProject = tru
+               </td>
+               {showProject && <td className="cell-muted">{t.projectName}</td>}
+               {showPhase && <td className="cell-muted">{t.stageName ?? '—'}</td>}
+-              <td className="cell-muted">{t.assignee ? <span className="row" style={{ gap: 7 }}><Avatar name={t.assignee.name} size="sm" />{t.assignee.name}</span> : '—'}</td>
++              <td className="cell-muted">{t.assignee ? <span className="row" style={{ gap: 7 }}><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />{t.assignee.name}</span> : '—'}</td>
+               <td><PriorityBadge priority={t.priority} /></td>
+               <td><DueMeta task={t} /></td>
+               <td><TaskStatusBadge name={t.statusName} category={t.statusCategory} /></td>
+diff --git a/frontend/src/features/teams/TeamsPage.tsx b/frontend/src/features/teams/TeamsPage.tsx
+index 51797f5..2667b33 100644
+--- a/frontend/src/features/teams/TeamsPage.tsx
++++ b/frontend/src/features/teams/TeamsPage.tsx
+@@ -35,7 +35,7 @@ export function TeamsPage() {
+               <div className="pc-stats" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>
+                 <div className="pc-stat"><b>{t.memberCount}</b><span>Members</span></div><div className="pc-stat"><b>{t.projectCount}</b><span>Projects</span></div>
+               </div>
+-              <div className="pc-foot"><span className="row" style={{ gap: 6 }}>{t.lead ? <><Avatar name={t.lead.name} size="sm" />Lead: {t.lead.name}</> : 'No team lead'}</span></div>
++              <div className="pc-foot"><span className="row" style={{ gap: 6 }}>{t.lead ? <><Avatar name={t.lead.name} size="sm" userId={t.lead.id} />Lead: {t.lead.name}</> : 'No team lead'}</span></div>
+             </div>
+           ))}
+         </div>
+@@ -116,7 +116,7 @@ function TeamDetailModal({ id, canManage, onClose }: { id: string; canManage: bo
+         <div className="member-list">
+           {list.map((m) => (
+             <div className="member-item" key={m.userId}>
+-              <Avatar name={m.name} size="lg" />
++              <Avatar name={m.name} size="lg" userId={m.userId} />
+               <div className="member-main"><div className="member-name">{m.name} {m.isLead && <span className="badge badge-purple" style={{ marginLeft: 6 }}>Lead</span>}</div><div className="member-role">{m.email}</div></div>
+               <div className="member-role" style={{ textAlign: 'right' }}>{m.openTasks} open task{m.openTasks === 1 ? '' : 's'}</div>
+               {canManage && <>
+diff --git a/frontend/src/features/time/Approvals.tsx b/frontend/src/features/time/Approvals.tsx
+index 5b243c4..e8d8f68 100644
+--- a/frontend/src/features/time/Approvals.tsx
++++ b/frontend/src/features/time/Approvals.tsx
+@@ -154,7 +154,7 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
+ 
+   const row = (r: ApprovalRow, withWeek = false) => (
+     <tr key={`${r.user.id}:${r.weekStart}`}>
+-      <td><span className="row" style={{ gap: 8 }}><Avatar name={r.user.name} size="sm" /><b>{r.user.name}</b></span></td>
++      <td><span className="row" style={{ gap: 8 }}><Avatar name={r.user.name} size="sm" userId={r.user.id} /><b>{r.user.name}</b></span></td>
+       {withWeek && <td className="cell-muted">{weekLabel(r.weekStart)}</td>}
+       <td className="num">{formatMinutes(r.totalMinutes)}</td>
+       <td className="num cell-muted">{formatMinutes(r.billableMinutes)}</td>
+diff --git a/frontend/src/features/work/WorkTaskModal.tsx b/frontend/src/features/work/WorkTaskModal.tsx
+index 1faa6a4..72a2777 100644
+--- a/frontend/src/features/work/WorkTaskModal.tsx
++++ b/frontend/src/features/work/WorkTaskModal.tsx
+@@ -203,7 +203,7 @@ function Comments({ task, members, onChanged }: { task: WorkTask; members: Membe
+         <div className="comments" style={{ marginBottom: 14 }}>
+           {list.data!.map((c) => (
+             <div className="comment" key={c.id}>
+-              <Avatar name={c.author?.name} size="sm" />
++              <Avatar name={c.author?.name} size="sm" userId={c.author?.id} />
+               <div className="comment-bubble">
+                 <div className="comment-head"><b>{c.author?.name ?? 'Someone'}</b><span className="muted">{formatDateTime(c.createdAt)}{c.editedAt ? ' · edited' : ''}</span>
+                   <span className="spacer" />
+diff --git a/frontend/src/features/work/WorkTasksPage.tsx b/frontend/src/features/work/WorkTasksPage.tsx
+index 4662fd2..f8b58e4 100644
+--- a/frontend/src/features/work/WorkTasksPage.tsx
++++ b/frontend/src/features/work/WorkTasksPage.tsx
+@@ -140,7 +140,7 @@ export function WorkTasksPage() {
+                       <td><div className="td-title"><span className="task-key">{t.key}</span> {t.title}</div>{(t.commentCount > 0 || t.attachmentCount > 0) && <div className="td-sub">{t.commentCount > 0 ? `${t.commentCount} comment${t.commentCount === 1 ? '' : 's'}` : ''}{t.commentCount > 0 && t.attachmentCount > 0 ? ' · ' : ''}{t.attachmentCount > 0 ? `${t.attachmentCount} file${t.attachmentCount === 1 ? '' : 's'}` : ''}</div>}</td>
+                       <td className="cell-muted">{t.workType}</td>
+                       <td className="cell-muted">{t.relatedProject ? <span title={`${t.relatedProject.name} (${t.relatedProject.status})`}>{t.relatedProject.name}</span> : '—'}</td>
+-                      <td>{t.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={t.assignee.name} size="sm" />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
++                      <td>{t.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
+                       <td><PriorityBadge priority={t.priority} /></td>
+                       <td className={t.isOverdue ? 'work-late' : 'cell-muted'}>{t.dueDate ? formatDate(t.dueDate) : '—'}{t.isOverdue ? ' · overdue' : ''}</td>
+                       <td><SlaChip sla={t.sla} /></td>
+diff --git a/frontend/src/features/workitems/CapacityPage.tsx b/frontend/src/features/workitems/CapacityPage.tsx
+index 09a7e13..5afdf0e 100644
+--- a/frontend/src/features/workitems/CapacityPage.tsx
++++ b/frontend/src/features/workitems/CapacityPage.tsx
+@@ -111,7 +111,7 @@ export function CapacityPage() {
+           <div className="util-list">
+             {u.people.map((p) => (
+               <div className="util-row" key={p.userId}>
+-                <div className="util-who"><Avatar name={p.name} size="sm" /><div><b>{p.name}</b><span>{formatMinutes(p.loggedMinutes)} of {formatMinutes(p.capacityMinutes)}</span></div></div>
++                <div className="util-who"><Avatar name={p.name} size="sm" userId={p.userId} /><div><b>{p.name}</b><span>{formatMinutes(p.loggedMinutes)} of {formatMinutes(p.capacityMinutes)}</span></div></div>
+                 <UtilBar p={p} />
+                 <div className={`util-pct ${tone(p.utilisation)}`}>{pct(p.utilisation)}</div>
+                 <div className="util-meta">
+@@ -181,7 +181,7 @@ function RateRow({ m, disabled }: { m: MemberRate; disabled: boolean }) {
+   };
+   return (
+     <tr>
+-      <td><span className="row" style={{ gap: 8 }}><Avatar name={m.name} size="sm" /><span><b>{m.name}</b> <RoleBadge role={m.role} /></span></span></td>
++      <td><span className="row" style={{ gap: 8 }}><Avatar name={m.name} size="sm" userId={m.userId} /><span><b>{m.name}</b> <RoleBadge role={m.role} /></span></span></td>
+       <td><input className="input rate-input" type="number" min={0} max={100} step={0.5} placeholder="40" aria-label={`${m.name} hours a week`} value={v.cap} disabled={disabled} onChange={(e) => setV({ ...v, cap: e.target.value })} /></td>
+       <td><input className="input rate-input" type="number" min={0} step={0.01} placeholder="—" aria-label={`${m.name} cost rate`} value={v.cost} disabled={disabled} onChange={(e) => setV({ ...v, cost: e.target.value })} /></td>
+       <td><input className="input rate-input" type="number" min={0} step={0.01} placeholder="—" aria-label={`${m.name} bill rate`} value={v.bill} disabled={disabled} onChange={(e) => setV({ ...v, bill: e.target.value })} /></td>
+diff --git a/frontend/src/features/workitems/WorkloadPage.tsx b/frontend/src/features/workitems/WorkloadPage.tsx
+index 8d7702a..d4b49f9 100644
+--- a/frontend/src/features/workitems/WorkloadPage.tsx
++++ b/frontend/src/features/workitems/WorkloadPage.tsx
+@@ -141,7 +141,7 @@ function PersonCard({ m, scope, onAll }: { m: WorkloadPerson; scope: WorkloadSco
+   return (
+     <div className="card team-card">
+       <div className="team-head">
+-        <Avatar name={m.name} />
++        <Avatar name={m.name} userId={m.userId} />
+         <div className="team-who">
+           <b>{m.name}</b> {m.jobRole && <Badge tone="purple">{m.jobRole}</Badge>} {scope === 'Reports' && m.level > 0 && <Badge tone="neutral">{m.level === 1 ? 'Direct report' : 'Indirect report'}</Badge>}
+           <div className="muted" style={{ fontSize: 12 }}>{scope === 'Reports' && m.level > 0 ? (m.level === 1 ? 'Reports to you' : `Reports to ${m.reportsTo ?? 'someone in your line'}`) + ' · ' : ''}{m.email}</div>
