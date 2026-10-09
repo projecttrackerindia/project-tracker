@@ -29,7 +29,7 @@ export async function createPasskey(o: PasskeyOptions): Promise<Record<string, u
 }
 
 /** The device signs the server's challenge with a key it already holds for this site. */
-export async function usePasskey(o: PasskeyOptions): Promise<Record<string, unknown>> {
+export async function requestPasskey(o: PasskeyOptions): Promise<Record<string, unknown>> {
   const publicKey = { ...o, challenge: toBuffer(o.challenge), allowCredentials: descriptors(o.allowCredentials) } as unknown as PublicKeyCredentialRequestOptions;
   const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
   if (!cred) throw new DOMException('No passkey was used.', 'NotAllowedError');

@@ -101,7 +101,7 @@ export async function syncNativePush(register: (token: string) => Promise<unknow
 /** Opens a path inside the app without reloading it. Only paths of this site are accepted. */
 export function openInApp(link: string | undefined | null) {
   if (!link) return;
-  let path = link;
+  let path: string;
   try { const u = new URL(link, location.origin); if (u.origin !== location.origin && u.protocol !== 'projecttracker:') return; path = u.protocol === 'projecttracker:' ? `/${u.host}${u.pathname}${u.search}` : `${u.pathname}${u.search}${u.hash}`; } catch { return; }
   if (!path.startsWith('/') || path.startsWith('//')) return;
   history.pushState({}, '', path);

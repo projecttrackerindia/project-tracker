@@ -302,9 +302,12 @@ type Making = 'task' | 'project' | 'work' | null;
 
 function CreateSheet({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
-  const canTask = useCan('tasks.create') && useModule('tasks') > 0 && useModule('projects') > 0;
-  const canProject = useCan('projects.create') && useModule('projects') >= 2;
-  const canWork = useCan('work.create') && useModule('work') >= 2;
+  const taskModule = useModule('tasks');
+  const projectModule = useModule('projects');
+  const workModule = useModule('work');
+  const canTask = useCan('tasks.create') && taskModule > 0 && projectModule > 0;
+  const canProject = useCan('projects.create') && projectModule >= 2;
+  const canWork = useCan('work.create') && workModule >= 2;
   const [making, setMaking] = useState<Making>(null);
   const done = () => { setMaking(null); onClose(); };
 

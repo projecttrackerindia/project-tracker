@@ -44,7 +44,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!wid && !!def,
   });
-  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const total = list.data?.pages[0]?.total ?? null;
   const groups = useMemo(() => {
     const m = new Map<string, EndpointItem[]>();

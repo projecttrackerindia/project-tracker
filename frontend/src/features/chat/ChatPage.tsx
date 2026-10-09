@@ -12,6 +12,8 @@ import { chatKeys, useChat, useTypingNames } from './chatStore';
 import { FilesPanel, InfoPanel, NewChatModal } from './Panels';
 import { ConversationAvatar, Thread } from './Thread';
 
+const NO_CONVERSATIONS: Conversation[] = [];
+
 /** True once `on` has been true for `ms` without a break: keeps a routine one-second reconnect from flashing a warning. */
 function useAfter(on: boolean, ms: number) {
   const [late, setLate] = useState(false);
@@ -48,7 +50,7 @@ export function ChatPage() {
   });
   const hits = useQuery({ queryKey: [wid, 'chat', 'search', term], queryFn: () => chatApi.search(term), enabled: !!wid && usable && term.length >= 2, staleTime: 30_000 });
 
-  const list = conversations.data ?? [];
+  const list = conversations.data ?? NO_CONVERSATIONS;
   const current = list.find((c) => c.id === id);
   const shown = useMemo(() => {
     const needle = search.trim().toLowerCase();

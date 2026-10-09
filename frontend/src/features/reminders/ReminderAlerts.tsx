@@ -57,7 +57,6 @@ export function ReminderAlerts() {
         .map((r) => ({ id: r.id, title: r.title, note: r.note, targetKey: r.targetKey, link: r.link, source: r.source, from: r.from?.name ?? null })))).catch(() => undefined);
     }
     lastNow.current = n;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [counts.data?.now]);
 
   // The device's zone, once a session, so "09:00" automatic reminders follow someone who travels (if they keep that setting).

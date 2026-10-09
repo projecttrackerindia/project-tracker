@@ -7,7 +7,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, apiUrl } from '../../api/client';
 import type { ExternalProvider } from '../../api/types';
 import { authApi, consentApi, passkeyApi, workspaceApi } from '../../api/endpoints';
-import { passkeysSupported, usePasskey, wasCancelled } from '../../lib/passkeys';
+import { passkeysSupported, requestPasskey, wasCancelled } from '../../lib/passkeys';
 import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerErrors } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { AuthLayout } from '../../layouts/AuthLayout';
@@ -199,7 +199,7 @@ export function LoginPage() {
     setError(null); setPasskeyBusy(true);
     try {
       const { challengeId, options } = await passkeyApi.signInOptions(getValues('email').trim());
-      const response = await usePasskey(options);
+      const response = await requestPasskey(options);
       setSigningIn(true);
       const auth = await passkeyApi.signIn(challengeId, response);
       await useAuth.getState().completeSession(auth);

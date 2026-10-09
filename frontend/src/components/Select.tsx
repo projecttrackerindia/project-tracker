@@ -46,7 +46,10 @@ export function Select({ children, className = '', style, id, title, disabled, v
   const [active, setActive] = useState(0);
   const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
 
-  // Whatever the children render (options, groups, components that return options) is read from the hidden native select after every render.
+  // Whatever the children render (options, groups, components that return options) is read from the hidden native select after every
+  // render - deliberately no dependency array, since there is no prop/state to list for "whatever JSX was just rendered as children".
+  // Safe from an update loop: setSnap's updater returns the same object back (no re-render) whenever the read-back is unchanged.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = native.current;
     if (!el) return;

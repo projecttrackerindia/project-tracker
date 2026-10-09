@@ -54,8 +54,10 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
     if (!groupId && pickable.length > 0) setGroupId((pickable.find((g) => /^other/i.test(g.name)) ?? pickable[0]).id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups.data]);
-  useEffect(() => { if (!isEdit && !timeline && templates.data?.length) setTimeline((templates.data.find((t) => t.isDefault) ?? templates.data[0]).key); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [templates.data]);
-  useEffect(() => { if (!isEdit && !projectType) setProjectType('Other'); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // New project only: picks a default timeline once templates load, without re-running whenever isEdit/timeline themselves change.
+  useEffect(() => { if (!isEdit && !timeline && templates.data?.length) setTimeline((templates.data.find((t) => t.isDefault) ?? templates.data[0]).key); }, [templates.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // New project only: defaults the type once on mount, without re-running if isEdit/projectType change afterward.
+  useEffect(() => { if (!isEdit && !projectType) setProjectType('Other'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [managing, setManaging] = useState(false);
   const { permitted: canManageTimelines } = useTimelineManagement();
   const [more, setMore] = useState(isEdit);   // a new project asks for a name, an owner and a date; the rest has sensible defaults and is one click away

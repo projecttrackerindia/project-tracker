@@ -32,7 +32,8 @@ export function TeamLensPicker() {
     document.addEventListener('mousedown', away);
     return () => document.removeEventListener('mousedown', away);
   }, [open]);
-  useEffect(() => { if (open) { setQuery(''); setActive(Math.max(0, rows.findIndex((r) => r.id === (teamId ?? '')))); setTimeout(() => search.current?.focus(), 0); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
+  // Resets the search box and selection only when the panel opens - rows/teamId changing while it's already open should not yank the typed query.
+  useEffect(() => { if (open) { setQuery(''); setActive(Math.max(0, rows.findIndex((r) => r.id === (teamId ?? '')))); setTimeout(() => search.current?.focus(), 0); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ready || teams.length === 0) return null;
 

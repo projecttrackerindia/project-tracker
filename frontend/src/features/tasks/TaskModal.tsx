@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { labelApi, planningApi, projectApi, taskApi, workspaceApi } from '../../api/endpoints';
-import type { Priority } from '../../api/types';
+import type { Priority, WorkflowStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Attachments } from '../files/Attachments';
 import { Dependencies } from '../planning/Dependencies';
@@ -28,6 +28,7 @@ interface Form {
   startDate: string; dueDate: string; estimatedHours: string; actualHours: string; labelIds: string[]; milestoneId: string; stageId: string;
 }
 const EMPTY: Form = { title: '', description: '', statusId: '', priority: 'Medium', assigneeId: '', startDate: '', dueDate: '', estimatedHours: '', actualHours: '', labelIds: [], milestoneId: '', stageId: '' };
+const NO_STATUSES: WorkflowStatus[] = [];
 
 /** Create or edit a task. Also hosts subtasks and the comment thread when editing. */
 export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: string; projectId?: string; statusId?: string; onClose: () => void }) {
@@ -60,7 +61,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
   const sprints = useWsQuery(['sprints', pid], () => sprintApi.list(pid), { enabled: !!pid && isEdit && canPlan });
   const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: !isEdit && !projectId });
 
-  const statuses = project.data?.statuses ?? [];
+  const statuses = project.data?.statuses ?? NO_STATUSES;
   const stages = project.data?.stages ?? [];
   // A top-level task must sit in a timeline phase. (An older task that never had one is not forced to pick one just to be edited.)
   const showStage = stages.length > 0 && !task?.parentTaskId;

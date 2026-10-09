@@ -49,7 +49,9 @@ function AuditTrail({ id }: { id: string }) {
 
 /** What happened to the document: the activity everyone who can open it sees, and (Business, with the audit permission) the full trail. */
 export function ActivityModal({ id, title, onClose }: { id: string; title: string; onClose: () => void }) {
-  const canAudit = useEntitlement('AUDIT_LOG') > 0 && useCan('audit.view');
+  const auditEntitled = useEntitlement('AUDIT_LOG') > 0;
+  const hasAuditPermission = useCan('audit.view');
+  const canAudit = auditEntitled && hasAuditPermission;
   const [tab, setTab] = useState<'activity' | 'audit'>('activity');
   return (
     <Modal title="Activity" subtitle={title} size="xl" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
