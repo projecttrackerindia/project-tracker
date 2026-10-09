@@ -1,0 +1,10 @@
+/* The one-time "turn on notifications" card (features/notifications/AlertsSetup.tsx). */
+.alerts-card { position: fixed; left: 20px; bottom: 20px; z-index: 880; display: flex; gap: 12px; align-items: flex-start; width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px; border-radius: 14px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: 0 12px 40px rgba(15, 12, 29, .28); animation: alerts-in .25s ease-out; }
+.alerts-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--primary-soft, rgba(124, 58, 237, .14)); color: var(--primary, #7c3aed); }
+.alerts-main { display: grid; gap: 4px; font-size: 13px; }
+.alerts-main span { color: var(--text-muted, #6b7280); }
+.alerts-actions { display: flex; gap: 8px; margin-top: 8px; }
+@keyframes alerts-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .alerts-card { animation: none; } }
+@media (max-width: 768px) { .alerts-card { left: 16px; bottom: 76px; } }

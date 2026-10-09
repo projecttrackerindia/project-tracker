@@ -9,6 +9,7 @@ import { useDebounced } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { listTime } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
+import { fallbackStatus } from './Presence';
 import { FilesPanel, InfoPanel, NewChatModal } from './Panels';
 import { ConversationAvatar, Thread } from './Thread';
 
@@ -127,10 +128,10 @@ export function ChatPage() {
 }
 
 function ConversationRow({ c, me, active, onOpen }: { c: Conversation; me: string; active: boolean; onOpen: () => void }) {
-  const online = useChat((s) => s.online);
+  const statuses = useChat((s) => s.status);
   const typing = useTypingNames(c.id);
   const other = c.type === 'Direct' ? c.members.find((m) => m.userId !== me) : null;
-  const isOnline = !!other && (online[other.userId] ?? other.online);
+  const presence = other ? (statuses[other.userId] ?? fallbackStatus(other)) : 'offline';
   const last = c.lastMessage;
   const preview = typing.length ? <span className="typing-text">typing…</span>
     : last ? <>{last.isMine && !last.isSystem ? 'You: ' : c.type === 'Group' && last.senderName && !last.isSystem ? `${last.senderName.split(' ')[0]}: ` : ''}{last.snippet || 'Message deleted'}</>
@@ -138,7 +139,7 @@ function ConversationRow({ c, me, active, onOpen }: { c: Conversation; me: strin
   return (
     <li>
       <button className={`conv-row ${active ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}`} onClick={onOpen} aria-current={active ? 'true' : undefined}>
-        <ConversationAvatar conversation={c} online={isOnline} />
+        <ConversationAvatar conversation={c} status={presence} />
         <span className="conv-text">
           <span className="conv-top"><b>{c.name}</b>{c.isMuted && <Icon name="bell" size={12} style={{ opacity: 0.5 }} />}<time>{last ? listTime(last.at) : ''}</time></span>
           <span className="conv-bottom"><span className="conv-preview">{preview}</span>{c.unread > 0 && <span className="unread-badge" aria-label={`${c.unread} unread`}>{c.unread > 99 ? '99+' : c.unread}</span>}</span>

@@ -491,6 +491,33 @@ public class ChatTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task An_idle_tab_shows_the_person_as_away_until_they_come_back()
+    {
+        var (ravi, priya, _) = await BuildTeam();
+        var (watcher, events) = await Live(ravi);
+        await using var _1 = watcher;
+        var (priyaLive, _) = await Live(priya);
+        await using var _2 = priyaLive;
+        // The newest presence event about Priya, if it says the given status.
+        JsonElement? Status(string status) { lock (events) { var last = events.LastOrDefault(e => e.Name == "presence" && e.Payload.GetProperty("userId").GetString() == priya.UserId.ToString());
+            return last.Name is not null && last.Payload.GetProperty("status").GetString() == status ? last.Payload : null; } }
+        await Eventually(() => Status("active"));
+
+        // Her only tab goes idle: she is Away (not online) although the connection is still open.
+        await priyaLive.InvokeAsync("SetIdle", true);
+        var away = await Eventually(() => Status("away"));
+        Assert.False(away.GetProperty("online").GetBoolean());
+        var person = (await ravi.Get("/api/v1/chat/people")).Data!.AsArray().Single(p => p!["name"]!.GetValue<string>() == "Priya")!;
+        Assert.Equal("away", person["status"]!.GetValue<string>());
+        Assert.False(person["online"]!.GetValue<bool>());
+
+        // Activity again: back to active.
+        await priyaLive.InvokeAsync("SetIdle", false);
+        await Eventually(() => Status("active"));
+        Assert.True((await ravi.Get("/api/v1/chat/people")).Data!.AsArray().Single(p => p!["name"]!.GetValue<string>() == "Priya")!["online"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task The_live_connection_needs_a_valid_token_and_an_organization_workspace()
     {
         var anonymous = new HubConnectionBuilder()

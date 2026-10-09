@@ -6,6 +6,9 @@ const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
 const { autoUpdater } = require('electron-updater');
 const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer } = require('./links');
 
+// Alert sounds must play while the window is hidden in the tray or nobody has clicked yet: the page's timers and audio keep running.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 const BASE = appUrl();
 let win = null, tray = null, quitting = false, pendingLink = null;
 const stateFile = () => path.join(app.getPath('userData'), 'window.json');
@@ -57,9 +60,10 @@ function createWindow() {
     // Windows: the app's own top bar is the title bar, with the system's window buttons on top of it. Mac and Linux keep the system's.
     ...(WIN ? { frame: false } : {}),   // Windows: no system title bar; the app draws its own top bar and window buttons
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, backgroundThrottling: true, preload: path.join(__dirname, 'preload.js') },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, backgroundThrottling: false, preload: path.join(__dirname, 'preload.js') },
   });
   win.setMenuBarVisibility(false);
+  win.on('focus', () => win.flashFrame(false));
   win.webContents.setUserAgent(`${win.webContents.getUserAgent().replace(/ Electron\/\S+/, '')} ${UA_MARK()}`);
   if (st.maximized) win.maximize();
   win.once('ready-to-show', () => { if (!(settings().startHidden && process.argv.includes('--hidden') && tray)) win.show(); });
@@ -230,6 +234,14 @@ else {
       else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
       else if (action === 'close') win.close();
       else if (action === 'query') win.webContents.send('win-maximized', win.isMaximized());
+    });
+    // The page asks for attention when an alert arrives and the window is not in front: the taskbar button flashes (Windows, Linux) or the
+    // dock icon bounces (Mac) until the person comes back. Urgent alerts (reminders, overdue, security) keep going until then.
+    ipcMain.on('attention', (e, kind) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || win.isFocused()) return;
+      const urgent = kind === 'urgent';
+      if (MAC) app.dock?.bounce(urgent ? 'critical' : 'informational');
+      else win.flashFrame(true);
     });
     buildMenu(); if (!MAC) createTray(); createWindow();
     globalShortcut.register('CommandOrControl+Shift+Space', quickSearch);

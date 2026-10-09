@@ -10,7 +10,9 @@ import { formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
-import { chatKeys, useChat, useTypingNames } from './chatStore';
+import { chatKeys, PRESENCE_LABEL, useChat, useTypingNames } from './chatStore';
+import type { PresenceStatus } from '../../api/types';
+import { fallbackStatus, PresenceDot } from './Presence';
 import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
 import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
@@ -63,7 +65,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   const me = useAuth((s) => s.ctx!.user.id);
   const navigate = useNavigate();
   const id = conversation.id;
-  const online = useChat((s) => s.online);
+  const statuses = useChat((s) => s.status);
   const setOpen = useChat((s) => s.setOpenConversation);
   const typingNames = useTypingNames(id);
 
@@ -172,12 +174,13 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   // ---- who is here
   const others = useMemo(() => conversation.members.filter((m) => m.userId !== me), [conversation.members, me]);
   const other = conversation.type === 'Direct' ? others[0] : null;
-  const isOnline = (userId: string, fallback: boolean) => online[userId] ?? fallback;
-  const onlineCount = others.filter((m) => isOnline(m.userId, m.online)).length;
+  const presenceOf = (m: { userId: string; online: boolean; status?: PresenceStatus }): PresenceStatus => statuses[m.userId] ?? fallbackStatus(m);
+  const onlineCount = others.filter((m) => presenceOf(m) === 'active').length;
+  const otherStatus: PresenceStatus = other ? presenceOf(other) : 'offline';
   const status = typingNames.length
     ? <span className="typing-text">{typingNames.length === 1 ? `${typingNames[0]} is typing` : `${typingNames.slice(0, 2).join(' and ')} are typing`}<i className="dots"><b /><b /><b /></i></span>
     : conversation.type === 'Direct'
-      ? (other && isOnline(other.userId, other.online) ? <span className="status-on">Active now</span> : 'Offline')
+      ? (otherStatus === 'active' ? <span className="status-on">{PRESENCE_LABEL.active}</span> : otherStatus === 'away' ? <span className="status-away">{PRESENCE_LABEL.away}</span> : PRESENCE_LABEL.offline)
       : `${conversation.members.length} members${onlineCount ? ` · ${onlineCount} online` : ''}`;
 
   // A message I sent counts as read once everyone else in the conversation has read past it (the recipient in a direct
@@ -189,7 +192,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     <div className="chat-thread">
       <header className="chat-head">
         {variant === 'page' && <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>}
-        <ConversationAvatar conversation={conversation} online={other ? isOnline(other.userId, other.online) : false} />
+        <ConversationAvatar conversation={conversation} status={otherStatus} />
         <div className="chat-head-text">
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
@@ -673,8 +676,8 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
 }
 
 // ------------------------------------------------------------------ shared bits
-export function ConversationAvatar({ conversation, online }: { conversation: Conversation; online: boolean }) {
+export function ConversationAvatar({ conversation, status }: { conversation: Conversation; status: PresenceStatus }) {
   if (conversation.type === 'Project') return <span className="avatar group-avatar" title={conversation.name}><Icon name="folder" size={16} /></span>;
   if (conversation.type === 'Group') return <span className="avatar group-avatar" title={conversation.name}><Icon name="users" size={16} /></span>;
-  return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
+  return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} /><PresenceDot status={status} /></span>;
 }

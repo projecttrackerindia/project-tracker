@@ -23,7 +23,7 @@ public partial class ChatService
         var (tenant, me) = Require();
         var rows = await Eligible(tenant).Where(m => m.UserId != me).OrderBy(m => m.User!.DisplayName)
             .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, HasAvatar = m.User.AvatarKey != null }).ToListAsync(ct);
-        return rows.Select(r => new ChatPersonDto(r.UserId, r.DisplayName, r.Email, presence.IsOnline(tenant, r.UserId), r.HasAvatar)).ToList();
+        return rows.Select(r => new ChatPersonDto(r.UserId, r.DisplayName, r.Email, presence.IsOnline(tenant, r.UserId), r.HasAvatar, presence.Status(tenant, r.UserId))).ToList();
     }
 
     // ------------------------------------------------------------------ conversations
@@ -92,7 +92,7 @@ public partial class ChatService
                     c.LastMessageSenderId == me, c.LastMessageSenderId is null)
                 : null;
             result[c.Id] = new ConversationDto(c.Id, c.Type, name,
-                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar)).ToList(),
+                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar, presence.Status(tenant, m.UserId))).ToList(),
                 last, unread.GetValueOrDefault(c.Id), mine.IsMuted,
                 CanModerate(c.Type, mine.Role), other?.UserId, c.LastMessageAt, c.ProjectId, mentionUnread.GetValueOrDefault(c.Id));
         }

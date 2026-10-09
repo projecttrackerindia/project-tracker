@@ -23,7 +23,10 @@ public interface IChatNotifier
 /// <summary>Who currently has the app open.</summary>
 public interface IChatPresence
 {
+    /// <summary>True only while the person is active (has an open tab that is not idle).</summary>
     bool IsOnline(Guid tenantId, Guid userId);
+    /// <summary>"active", "away" (open but idle) or "offline".</summary>
+    string Status(Guid tenantId, Guid userId);
 }
 
 public static class ChatEvents
@@ -36,8 +39,8 @@ public static class ChatEvents
     public const string Notification = "notification";
 }
 
-public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online, bool HasAvatar = false);
-public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false);
+public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online, bool HasAvatar = false, string Status = "offline");
+public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false, string Status = "offline");
 public record ChatLastMessageDto(Guid Id, string? SenderName, string Snippet, DateTime At, bool IsMine, bool IsSystem);
 public record ConversationDto(Guid Id, ConversationType Type, string Name, IReadOnlyList<ChatMemberDto> Members, ChatLastMessageDto? LastMessage,
     int Unread, bool IsMuted, bool CanManage, Guid? OtherUserId, DateTime LastActivityAt, Guid? ProjectId = null, int UnreadMentions = 0);

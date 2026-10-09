@@ -6,7 +6,6 @@ import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
 import { timeAgo } from '../lib/format';
-import { orgHref } from '../lib/orgPath';
 import { setTitleParts } from '../lib/title';
 import { queryClient, useAuth, useIsPersonal } from '../stores/auth';
 import { toast, useUi } from '../stores/ui';
@@ -29,6 +28,10 @@ import { SignInIsland } from '../components/SignInIsland';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
 import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
+import { AlertsSetup } from '../features/notifications/AlertsSetup';
+import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
+import { firstTime, getAttention, kindForType } from '../lib/attention';
+import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
 import { useReminderComposer, useReminderCounts } from '../features/reminders/store';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
@@ -102,7 +105,10 @@ function Sidebar() {
 
 // ------------------------------------------------------------------ desktop notifications
 /**
- * Shows a desktop notification for new items the user opted into ("Desktop" in Settings → Notifications) while the app is open.
+ * Shows a system notification (and plays the alert sound) for new items the user opted into ("Desktop" in Settings → Notifications) while
+ * the app is open - also when they are in another tab, window or app. Looks every 15 seconds, and straight away when the live connection
+ * says someone else changed something or a mention arrived. When push is on for this device, the push already brings the notification
+ * (and the page plays the sound when it arrives), so this only covers devices without push.
  * Nothing is shown for older items on first run, and nothing works until the browser permission has been granted.
  */
 function DesktopNotifier() {
@@ -112,24 +118,31 @@ function DesktopNotifier() {
     const key = `pm_desktop_seen_${wid}`;
     const read = () => { try { return Number(localStorage.getItem(key) ?? 0); } catch { return 0; } };
     const write = (v: number) => { try { localStorage.setItem(key, String(v)); } catch { /* storage unavailable */ } };
+    let running = false;
     const tick = async () => {
-      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      if (running || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      running = true;
       try {
         const page = await notificationApi.list(1, true);
         const times = page.items.map((n) => Date.parse(n.createdAt));
         const last = read();
         const newest = Math.max(last, ...times, 0);
         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
-        for (const n of page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type)).reverse()) {
-          const note = new Notification(n.title, { body: n.body ?? undefined, tag: n.id });
-          note.onclick = () => { window.focus(); if (n.link) window.location.assign(orgHref(n.link)); note.close(); };
+        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && firstTime(`n-${x.id}`, 120_000)).reverse();
+        for (const n of fresh) {
+          const kind = kindForType(n.type);
+          getAttention({ kind });
+          if (!pushCoversThisDevice()) void systemNotification(n.title, n.body, n.id, n.link ?? '/', { sticky: kind === 'urgent' });
         }
         write(newest);
       } catch { /* offline or signed out: try again next time */ }
+      finally { running = false; }
     };
     void tick();
-    const timer = setInterval(() => { void tick(); }, 30_000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => { void tick(); }, 15_000);
+    const now = () => { void tick(); };
+    window.addEventListener(CHECK_NOTIFICATIONS, now);
+    return () => { clearInterval(timer); window.removeEventListener(CHECK_NOTIFICATIONS, now); };
   }, [wid]);
   return null;
 }
@@ -351,6 +364,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <CommandPalette />
       <AssistantPanel />
       <ReminderAlerts />
+      <AlertsSetup />
       <ComposerSlot />
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}

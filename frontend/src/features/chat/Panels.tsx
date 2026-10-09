@@ -3,13 +3,14 @@ import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
-import type { ChatFile, ChatPerson, Conversation } from '../../api/types';
+import type { ChatFile, ChatPerson, Conversation, PresenceStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Avatar, EmptyState, Field, Modal, PageLoader, Spinner, Tabs } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { chatKeys, useChat } from './chatStore';
+import { chatKeys, PRESENCE_LABEL, useChat } from './chatStore';
+import { fallbackStatus, PresenceDot, usePresence } from './Presence';
 import { MemberProfileModal } from '../people/MemberProfileModal';
 
 const errorText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
@@ -25,9 +26,9 @@ function usePeople() {
 }
 
 /** A person with a presence dot: online comes from live events, falling back to what the server said when it was last asked. */
-export function PersonAvatar({ name, userId, fallback, hasAvatar }: { name: string; userId: string; fallback: boolean; hasAvatar?: boolean }) {
-  const online = useChat((s) => s.online[userId]) ?? fallback;
-  return <span className="avatar-wrap"><Avatar name={name} size="sm" userId={userId} hasAvatar={hasAvatar} />{online && <i className="presence-dot" aria-label="Online" />}</span>;
+export function PersonAvatar({ name, userId, fallback, hasAvatar }: { name: string; userId: string; fallback: PresenceStatus; hasAvatar?: boolean }) {
+  const status = usePresence(userId, fallback);
+  return <span className="avatar-wrap"><Avatar name={name} size="sm" userId={userId} hasAvatar={hasAvatar} /><PresenceDot status={status} /></span>;
 }
 
 // ------------------------------------------------------------------ people picker
@@ -48,7 +49,7 @@ function PeoplePicker({ people, multiple, selected, onToggle, onPick, emptyText 
           return (
             <li key={p.userId}>
               <button type="button" className={`picker-row ${on ? 'on' : ''}`} onClick={() => (multiple ? onToggle(p.userId) : onPick(p))} aria-pressed={multiple ? on : undefined}>
-                <PersonAvatar name={p.name} userId={p.userId} fallback={p.online} hasAvatar={p.hasAvatar} />
+                <PersonAvatar name={p.name} userId={p.userId} fallback={fallbackStatus(p)} hasAvatar={p.hasAvatar} />
                 <span className="picker-text"><b>{p.name}</b><small>{p.email}</small></span>
                 {multiple && <span className={`check ${on ? 'on' : ''}`}>{on && <Icon name="tick" size={12} />}</span>}
               </button>
@@ -209,7 +210,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
   const wid = useWorkspaceId()!;
   const me = useAuth((s) => s.ctx!.user.id);
   const navigate = useNavigate();
-  const online = useChat((s) => s.online);
+  const status = useChat((s) => s.status);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState<string | null>(null);   // non-null while the group is being renamed
   const [viewProfile, setViewProfile] = useState<string | null>(null);
@@ -278,8 +279,8 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
             {conversation.members.map((m) => (
               <li key={m.userId}>
                 <button type="button" className="member-row-btn" onClick={() => setViewProfile(m.userId)} aria-label={`${m.name}'s profile`}>
-                  <PersonAvatar name={m.name} userId={m.userId} fallback={m.online} hasAvatar={m.hasAvatar} />
-                  <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{(online[m.userId] ?? m.online) ? 'Active now' : 'Offline'}</small></span>
+                  <PersonAvatar name={m.name} userId={m.userId} fallback={fallbackStatus(m)} hasAvatar={m.hasAvatar} />
+                  <span className="member-text"><b>{m.name}{m.userId === me && ' (you)'}</b><small>{PRESENCE_LABEL[status[m.userId] ?? fallbackStatus(m)]}</small></span>
                 </button>
                 {m.role === 'Admin' && group && <span className="badge badge-neutral">Admin</span>}
                 {group && conversation.canManage && m.userId !== me && (

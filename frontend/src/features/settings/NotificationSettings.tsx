@@ -9,6 +9,7 @@ import { queryClient } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { disableNativePush, enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
 import { isDesktopApp } from '../../lib/desktop';
+import { playSound, setSoundOn, soundOn, unlockSound, type AttentionKind } from '../../lib/attention';
 
 type Permission = 'granted' | 'denied' | 'default' | 'unsupported';
 const currentPermission = (): Permission => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
@@ -19,6 +20,26 @@ const keyBytes = (b64: string) => {
   const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4));
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 };
+
+/** The alert sounds on this device: a pop for messages, a chime for updates, and the beacon for reminders and anything urgent. */
+function SoundRow() {
+  const [on, setOn] = useState(soundOn());
+  const test = (kind: AttentionKind) => { unlockSound(); playSound(kind); };
+  return (
+    <div className="setting-row">
+      <div className="setting-info"><h4>Alert sounds on this device</h4>
+        <p>Messages get a quick pop, updates a rising chime, and reminders, overdue work and security alerts the beacon (three bursts of an alarm tone) so they stand out.</p>
+        {on && <div className="rc-chips" style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => test('message')}><Icon name="play" size={12} /> Message</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => test('update')}><Icon name="play" size={12} /> Update</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => test('urgent')}><Icon name="play" size={12} /> Urgent</button>
+        </div>}
+      </div>
+      <button type="button" role="switch" aria-checked={on} aria-label="Play alert sounds" className={`switch ${on ? 'on' : ''}`}
+        onClick={() => { const next = !on; setOn(next); setSoundOn(next); if (next) test('message'); }} />
+    </div>
+  );
+}
 
 /**
  * Push on this device: the events ticked in the Desktop column also arrive when the app is closed (an installed app, or this browser),
@@ -151,6 +172,7 @@ export function NotificationSettings() {
           {permission === 'granted' && <span className="badge badge-success">Allowed</span>}
         </div>
         <PushRow onPermission={setPermission} />
+        <SoundRow />
         <div className="setting-row" style={{ alignItems: 'flex-start' }}>
           <div className="setting-info" style={{ flex: 1 }}><h4>Check that email works</h4>
             <p>Sends a test message to your address right now.</p>

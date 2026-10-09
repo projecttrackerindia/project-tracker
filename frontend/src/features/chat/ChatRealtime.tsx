@@ -2,8 +2,12 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
 import { getAccessToken, refreshSession } from '../../api/client';
-import type { ChatMessage, ChatThread, Conversation } from '../../api/types';
+import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../../api/types';
 import { appPath } from '../../lib/orgPath';
+import { firstTime, getAttention } from '../../lib/attention';
+import { trackIdle } from '../../lib/idle';
+import { CHECK_NOTIFICATIONS } from '../notifications/events';
+import { pushCoversThisDevice, systemNotification } from '../reminders/device';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
@@ -15,6 +19,9 @@ import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, typ
 const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar', 'dashboard', 'dashboard-report', 'dev-links', 'issues', 'milestones', 'my-work',
   'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'timesheet', 'work', 'workload', 'capacity']);
 const LIVE_THROTTLE_MS = 1200;
+
+/** The person is in another tab, another window or another app. */
+const away = () => document.hidden || !document.hasFocus();
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 const RETRY_MS = 10_000;        // after a failed attempt
@@ -70,6 +77,11 @@ export function ChatRealtime() {
     current = connection;
     setLiveConnection(connection);
 
+    // Tell the server when this tab goes idle (5 minutes without keyboard, mouse or touch) and when the person is back, so they show as
+    // Away instead of Active. A connection starts out active, so after (re)connecting only an idle tab has anything to say.
+    const sendIdle = (idle: boolean) => { if (connection.state === HubConnectionState.Connected) void connection.invoke('SetIdle', idle).catch(() => { /* best effort */ }); };
+    const idle = trackIdle(sendIdle);
+
     // Live updates: someone changed something - refresh the work screens that are open (at most about once a second).
     let liveTimer: number | undefined;
     const refreshWork = () => {
@@ -82,6 +94,7 @@ export function ChatRealtime() {
     connection.on('changed', (changes: { actorId: string | null }[]) => {
       // This tab already refreshed what it changed itself; other people's changes (and my other tabs') are news.
       if (changes.every((c) => c.actorId === me) && !document.hidden) return;
+      if (changes.some((c) => c.actorId !== me)) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));   // someone else's change may have notified me
       refreshWork();
     });
     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
@@ -108,12 +121,12 @@ export function ChatRealtime() {
       const text = message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
       const title = conversation && conversation.type === 'Group' ? `${message.senderName} in ${conversation.name}` : (message.senderName ?? 'New message');
       const open = () => { window.focus(); navigate.current(`/chat/${conversationId}`); };
-      if (document.hidden) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const n = new Notification(title, { body: text, tag: `chat-${conversationId}` });
-          n.onclick = () => { n.close(); open(); };
-        }
-      } else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/chat')) {
+      if (!firstTime(`chat-${message.id}`)) return;
+      getAttention({ kind: 'message' });
+      // In another tab, another window or another app (not only a hidden tab): the system shows it. When push is on for this device the
+      // server's push already brings it (and respects the person's "Chat messages" choice), so the page does not add a second one.
+      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `chat-${conversationId}`, `/chat/${conversationId}`, { sticky: false }); }
+      else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/chat')) {
         toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
       }
     };
@@ -123,25 +136,23 @@ export function ChatRealtime() {
       const text = plainText(message.body).length > 120 ? `${plainText(message.body).slice(0, 119)}…` : plainText(message.body);
       const title = `${message.senderName ?? 'Someone'} mentioned you in ${projectName}`;
       const open = () => { window.focus(); useProjectChat.getState().openChat(projectId, projectName); };
-      if (document.hidden) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const n = new Notification(title, { body: text, tag: `pchat-${projectId}` });
-          n.onclick = () => { n.close(); open(); };
-        }
-      } else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
+      if (!firstTime(`chat-${message.id}`)) return;
+      getAttention({ kind: 'message' });
+      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `pchat-${projectId}`, '/chat', { sticky: false }); }
+      else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
     };
 
     connection.on('message', (e: { conversationId: string; message: ChatMessage; projectId?: string | null; conversationName?: string | null; mentioned?: string[] }) => {
       putInThread(e.conversationId, e.message, false);
       if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
       refreshLists();
-      const viewing = useChat.getState().openConversation === e.conversationId && !document.hidden;
+      const viewing = useChat.getState().openConversation === e.conversationId && !away();
       if (e.message.kind !== 'User' || e.message.senderId === me || viewing) return;
       if (e.projectId) { if (e.mentioned?.includes(me)) notifyMention(e.projectId, e.conversationName ?? 'a project', e.message); return; }
       notify(e.conversationId, e.message);
     });
     // Somebody just created a notification for me (a mention): refresh the bell now instead of at the next poll.
-    connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); });
+    connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); window.dispatchEvent(new Event(CHECK_NOTIFICATIONS)); });
     connection.on('message.updated', (e: { conversationId: string; message: ChatMessage }) => {
       putInThread(e.conversationId, e.message, true);
       refreshLists();
@@ -152,11 +163,12 @@ export function ChatRealtime() {
         : { ...c, members: c.members.map((m) => (m.userId === e.userId ? { ...m, lastReadAt: e.at } : m)) }));
     });
     connection.on('typing', (e: { conversationId: string; userId: string; name: string | null }) => useChat.getState().markTyping(e.conversationId, e.userId, e.name ?? 'Someone'));
-    connection.on('presence', (e: { userId: string; online: boolean }) => useChat.getState().setOnline(e.userId, e.online));
+    connection.on('presence', (e: { userId: string; online: boolean; status?: PresenceStatus }) => useChat.getState().setOnline(e.userId, e.online, e.status));
 
     connection.onreconnecting(() => useChat.getState().setLink('reconnecting'));
     connection.onreconnected(() => {
-      useChat.setState({ link: 'connected', online: {} });                   // presence may have changed while offline
+      useChat.setState({ link: 'connected', online: {}, status: {} });         // presence may have changed while offline
+      if (idle.isIdle()) sendIdle(true);
       void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });    // and so may everything else
       notifyLiveConnected();                                                  // open tasks announce their viewers again
       refreshWork();
@@ -176,6 +188,7 @@ export function ChatRealtime() {
         await connection.start();
         if (stopped) return;
         useChat.getState().setLink('connected');
+        if (idle.isIdle()) sendIdle(true);
         notifyLiveConnected();
         void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });
       } catch {
@@ -190,6 +203,7 @@ export function ChatRealtime() {
       stopped = true;
       window.clearTimeout(retry);
       window.clearTimeout(liveTimer);
+      idle.stop();
       if (current === connection) { current = null; setLiveConnection(null); }
       void connection.stop();
     };

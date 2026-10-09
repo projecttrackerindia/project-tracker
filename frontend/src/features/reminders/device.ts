@@ -1,5 +1,6 @@
 import { orgHref } from '../../lib/orgPath';
 import { pushApi } from '../../api/endpoints';
+import { playSound } from '../../lib/attention';
 import { enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
 
 /**
@@ -73,9 +74,15 @@ export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
 export const pushCoversThisDevice = () => subscribed === true;
 
 /** A notification from the operating system, shown by the page itself (the tab is open but someone is in another app). */
-export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders') {
+export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean } = {}) {
   if (!canNotify() || Notification.permission !== 'granted') return;
-  const options: NotificationOptions = { body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: true, data: { link: orgHref(link) } };
+  // Urgent ones (reminders by default) stay on screen until dismissed; the rest go away by themselves. The page plays its own sound, so
+  // the system one is silent (two sounds for one alert would be noise); renotify makes a repeated tag pop up again instead of updating quietly.
+  const sticky = opts.sticky ?? true;
+  const options: NotificationOptions & { renotify?: boolean; vibrate?: number[] } = {
+    body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: sticky, silent: true, renotify: true,
+    data: { link: orgHref(link) },
+  };
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
     if (reg) { await reg.showNotification(title, options); return; }
@@ -85,44 +92,9 @@ export async function systemNotification(title: string, body: string | null, tag
 }
 
 // ------------------------------------------------------------------ sound
+// The sounds live in lib/attention.ts (one audio context for the whole app); these names stay for the Reminders screen.
 
-const SOUND_KEY = 'pm_reminder_sound';
-export const soundOn = () => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; } };
-export const setSoundOn = (on: boolean) => { try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch { /* storage unavailable */ } };
+export { primeSound, setSoundOn, soundOn } from '../../lib/attention';
 
-let audio: AudioContext | null = null;
-const context = () => {
-  if (!audio) {
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return null;
-    audio = new AC();
-  }
-  return audio;
-};
-
-/** Browsers only allow sound after the person has touched the page once: get ready on the first click or key press. */
-export function primeSound() {
-  const once = () => { void context()?.resume().catch(() => undefined); window.removeEventListener('pointerdown', once); window.removeEventListener('keydown', once); };
-  window.addEventListener('pointerdown', once);
-  window.addEventListener('keydown', once);
-}
-
-/** A soft three-note chime (generated, no sound file). Plays in a background tab too, once the page has been touched. */
-export function playChime() {
-  const c = context();
-  if (!c) return;
-  void c.resume().catch(() => undefined);
-  const start = c.currentTime + 0.02;
-  [[880, 0], [1174.66, 0.15], [1567.98, 0.3]].forEach(([freq, at]) => {
-    const osc = c.createOscillator();
-    const gain = c.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, start + at);
-    gain.gain.exponentialRampToValueAtTime(0.2, start + at + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + at + 0.55);
-    osc.connect(gain).connect(c.destination);
-    osc.start(start + at);
-    osc.stop(start + at + 0.6);
-  });
-}
+/** The reminder sound: the beacon (three bursts of a two-tone alarm), so a reminder is not mistaken for a chat message. */
+export const playChime = () => playSound('urgent');

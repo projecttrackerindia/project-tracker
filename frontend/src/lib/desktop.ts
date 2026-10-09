@@ -3,8 +3,11 @@
  * bar: its own top bar is the title bar and the minimize / maximize / close buttons are drawn here, over the page, so they match the theme.
  * In a browser this does nothing.
  */
-type Bridge = { platform: string; windowControl: (a: 'minimize' | 'maximize' | 'close') => void; onMaximizeChange: (cb: (maximized: boolean) => void) => void };
+type Bridge = { platform: string; attention?: (kind: 'normal' | 'urgent') => void; windowControl: (a: 'minimize' | 'maximize' | 'close') => void; onMaximizeChange: (cb: (maximized: boolean) => void) => void };
 const bridge = () => (window as unknown as { ptDesktop?: Bridge }).ptDesktop;
+
+/** Flash the taskbar button / bounce the dock icon (the desktop app only; it ignores this while its window is in front). */
+export function desktopAttention(urgent: boolean) { try { bridge()?.attention?.(urgent ? 'urgent' : 'normal'); } catch { /* not in the desktop app */ } }
 
 export const isDesktopApp = () => /ProjectTrackerDesktop\//.test(navigator.userAgent);
 

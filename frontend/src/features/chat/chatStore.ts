@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
+import type { PresenceStatus } from '../../api/types';
 
 export type LinkState = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
@@ -12,8 +13,10 @@ interface ChatState {
   setLink: (l: LinkState) => void;
   /** Who has the app open (seeded from the server, then kept current by live "presence" events). */
   online: Record<string, boolean>;
-  seedOnline: (entries: { userId: string; online: boolean }[]) => void;
-  setOnline: (userId: string, online: boolean) => void;
+  /** The same people with the finer status: active, away (open but idle) or offline. */
+  status: Record<string, PresenceStatus>;
+  seedOnline: (entries: { userId: string; online: boolean; status?: PresenceStatus }[]) => void;
+  setOnline: (userId: string, online: boolean, status?: PresenceStatus) => void;
   /** conversation id → user id → who is typing right now. */
   typing: Record<string, Record<string, Typing>>;
   markTyping: (conversationId: string, userId: string, name: string) => void;
@@ -24,16 +27,27 @@ interface ChatState {
   reset: () => void;
 }
 
+/** An older server only says online or not. */
+export const statusOf = (online: boolean): PresenceStatus => (online ? 'active' : 'offline');
+
+export const PRESENCE_LABEL: Record<PresenceStatus, string> = { active: 'Active now', away: 'Away', offline: 'Offline' };
+
 export const useChat = create<ChatState>((set) => ({
   link: 'connecting',
   setLink: (link) => set({ link }),
   online: {},
+  status: {},
   seedOnline: (entries) => set((s) => {
     const next = { ...s.online };
-    for (const e of entries) if (!(e.userId in next)) next[e.userId] = e.online;   // live events are newer than a fetched snapshot
-    return { online: next };
+    const nextStatus = { ...s.status };
+    for (const e of entries) {
+      if (e.userId in nextStatus) continue;   // live events are newer than a fetched snapshot
+      next[e.userId] = e.online;
+      nextStatus[e.userId] = e.status ?? statusOf(e.online);
+    }
+    return { online: next, status: nextStatus };
   }),
-  setOnline: (userId, online) => set((s) => ({ online: { ...s.online, [userId]: online } })),
+  setOnline: (userId, online, status) => set((s) => ({ online: { ...s.online, [userId]: online }, status: { ...s.status, [userId]: status ?? statusOf(online) } })),
   typing: {},
   markTyping: (conversationId, userId, name) => set((s) => ({
     typing: { ...s.typing, [conversationId]: { ...s.typing[conversationId], [userId]: { name, until: Date.now() + TYPING_MS } } },
@@ -45,7 +59,7 @@ export const useChat = create<ChatState>((set) => ({
   }),
   openConversation: null,
   setOpenConversation: (openConversation) => set({ openConversation }),
-  reset: () => set({ link: 'connecting', online: {}, typing: {}, openConversation: null }),
+  reset: () => set({ link: 'connecting', online: {}, status: {}, typing: {}, openConversation: null }),
 }));
 
 /** Names of the people typing in a conversation right now (entries fade after a few seconds without a new "typing" signal). */

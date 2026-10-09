@@ -18,6 +18,7 @@ import './styles/theme.css';
 import './styles/org.css';
 import './styles/documents.css';
 import './styles/reminders.css';
+import './styles/alerts.css';
 import './styles/mobile.css';
 import './styles/phone.css';
 import './styles/desktop.css';

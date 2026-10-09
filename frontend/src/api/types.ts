@@ -481,8 +481,10 @@ export interface AdminTestEmailResult { sent: boolean; provider: string; to: str
 // ------------------------------------------------------------------ chat
 /** Project: the team chat of one project (who is in it follows the project). */
 export type ConversationType = 'Direct' | 'Group' | 'Project';
-export interface ChatPerson { userId: string; name: string; email: string; online: boolean; hasAvatar?: boolean }
-export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; hasAvatar?: boolean }
+/** active = using the app, away = open but idle (5+ minutes without activity), offline = not connected. */
+export type PresenceStatus = 'active' | 'away' | 'offline';
+export interface ChatPerson { userId: string; name: string; email: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean }
+export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean }
 export interface ChatLastMessage { id: string; senderName: string | null; snippet: string; at: string; isMine: boolean; isSystem: boolean }
 export interface Conversation {
   id: string; type: ConversationType; name: string; members: ChatMember[]; lastMessage: ChatLastMessage | null;

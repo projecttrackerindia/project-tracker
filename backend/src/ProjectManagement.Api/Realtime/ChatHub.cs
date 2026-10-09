@@ -52,12 +52,31 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
 {
     private static readonly TimeSpan OfflineDelay = TimeSpan.FromSeconds(4);
 
-    public bool IsOnline(Guid tenantId, Guid userId) => store.IsOnline(tenantId, userId);
+    /// <summary>True only while the person is actually active (an open but idle tab does not count).</summary>
+    public bool IsOnline(Guid tenantId, Guid userId) => store.GetStatus(tenantId, userId) == PresenceStatus.Active;
+
+    /// <summary>"active", "away" or "offline".</summary>
+    public string Status(Guid tenantId, Guid userId) => Name(store.GetStatus(tenantId, userId));
+
+    public static string Name(PresenceStatus s) => s switch { PresenceStatus.Active => "active", PresenceStatus.Away => "away", _ => "offline" };
+
+    private Task Broadcast(Guid tenant, Guid user, PresenceStatus status) =>
+        hub.Clients.Group(ChatGroups.Workspace(tenant)).SendAsync("presence", new { userId = user, online = status == PresenceStatus.Active, status = Name(status) });
 
     public async Task ConnectedAsync(string connectionId, Guid tenant, Guid user)
     {
-        if (await store.AddAsync(connectionId, tenant, user))
-            await hub.Clients.Group(ChatGroups.Workspace(tenant)).SendAsync("presence", new { userId = user, online = true });
+        var before = store.GetStatus(tenant, user);
+        var first = await store.AddAsync(connectionId, tenant, user);
+        // A new connection starts active: announce it when that changes how the person looks (offline or away before).
+        if (first || before != PresenceStatus.Active) await Broadcast(tenant, user, PresenceStatus.Active);
+    }
+
+    /// <summary>One of the person's connections went idle or came back; announces the person's overall status if it changed.</summary>
+    public async Task IdleChangedAsync(string connectionId, bool idle)
+    {
+        var who = await store.SetIdleAsync(connectionId, idle);
+        if (who is not { } w) return;
+        await Broadcast(w.Tenant, w.User, store.GetStatus(w.Tenant, w.User));
     }
 
     public void Disconnected(string connectionId)
@@ -66,8 +85,8 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
         {
             if (await store.RemoveAsync(connectionId) is not { } who) return;
             await Task.Delay(OfflineDelay);
-            if (store.IsOnline(who.Tenant, who.User)) return;
-            await hub.Clients.Group(ChatGroups.Workspace(who.Tenant)).SendAsync("presence", new { userId = who.User, online = false });
+            // Offline only if nothing is left; if another tab is open it may now be the active (or the only, idle) one.
+            await Broadcast(who.Tenant, who.User, store.GetStatus(who.Tenant, who.User));
         });
     }
 }
@@ -134,6 +153,9 @@ public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock
             foreach (var key in watching) await Clients.Group(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, on = false });
         await base.OnDisconnectedAsync(exception);
     }
+
+    /// <summary>The page reports that this tab has had no keyboard, mouse or touch activity for a while (true) or that the person is back (false).</summary>
+    public Task SetIdle(bool idle) => presence.IdleChangedAsync(Context.ConnectionId, idle);
 
     // ---- who else is looking at the same task: each open task is a group; people announce themselves and answer newcomers.
 

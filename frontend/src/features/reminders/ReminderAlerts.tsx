@@ -8,7 +8,8 @@ import { reminderApi, type SnoozePreset } from './api';
 import { refreshReminders, useReminderCounts } from './store';
 import { syncNativePush } from '../../lib/native';
 import { pushApi } from '../../api/endpoints';
-import { deviceAlerts, playChime, primeSound, pushCoversThisDevice, soundOn, systemNotification } from './device';
+import { deviceAlerts, primeSound, pushCoversThisDevice, systemNotification } from './device';
+import { getAttention } from '../../lib/attention';
 import { deviceZone } from './time';
 
 const SOURCE_LABEL: Record<string, string> = { Personal: 'Reminder', Nudge: 'Reminder', DueDate: 'Due soon', Overdue: 'Overdue', Escalation: 'Overdue work' };
@@ -37,7 +38,7 @@ export function ReminderAlerts() {
   const push = (items: ReminderEvent[]) => {
     if (!items.length) return;
     setAlerts((a) => [...items.filter((i) => !a.some((x) => x.id === i.id)), ...a].slice(0, 4));
-    if (soundOn()) playChime();
+    getAttention({ kind: 'urgent' });   // the beacon: a reminder must not be mistaken for a chat message
     // Someone in another app: the operating system shows it now (unless a push is already bringing it to this device).
     if ((document.hidden || !document.hasFocus()) && !pushCoversThisDevice())
       for (const i of items) void systemNotification(i.from ? `${i.from}: ${i.title}` : `⏰ ${i.title}`, i.note ?? i.targetKey, `reminder-${i.id}`);

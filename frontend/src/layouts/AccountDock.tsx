@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { PlanSummary } from '../api/types';
+import type { PlanSummary, PresenceStatus } from '../api/types';
 import { Icon } from '../components/Icon';
 import { RoleBadge, useAvatarUrl } from '../components/ui';
 import { formatDate, initials } from '../lib/format';
 import { useAuth, useModule } from '../stores/auth';
 import { useUi } from '../stores/ui';
 import { useWorkspaceSections } from '../features/settings/sections';
+import { PRESENCE_LABEL, useChat } from '../features/chat/chatStore';
 
 type Tone = 'ok' | 'info' | 'warn' | 'bad';
 
@@ -39,7 +40,16 @@ export function planStatus(plan: PlanSummary): { short: string; long: string; to
  * for their account, the workspace settings (when they administer something) and signing out. When the sidebar is collapsed only the
  * avatar shows and the menu opens beside it.
  */
+/** My own dot: green while I am active, amber once this tab has been idle for 5 minutes, grey while the live connection is down. */
+function useMyPresence(): PresenceStatus {
+  const me = useAuth((s) => s.ctx?.user.id);
+  const link = useChat((s) => s.link);
+  const mine = useChat((s) => (me ? s.status[me] : undefined));
+  return link === 'reconnecting' || link === 'offline' ? 'offline' : mine ?? 'active';
+}
+
 export function AccountDock() {
+  const presence = useMyPresence();
   const ctx = useAuth((s) => s.ctx)!;
   const logout = useAuth((s) => s.logout);
   const closeSidebar = useUi((s) => s.closeSidebar);
@@ -88,7 +98,7 @@ export function AccountDock() {
       {open && (
         <div className={`ad-menu tier-${tier}`} role="menu" aria-label="Account" ref={menu} onKeyDown={onMenuKey}>
           <div className="ad-head">
-            <span className="ad-avatar lg" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className="ad-presence" /></span>
+            <span className="ad-avatar lg" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className={`ad-presence ${presence}`} role="img" aria-label={PRESENCE_LABEL[presence]} title={PRESENCE_LABEL[presence]} /></span>
             <div className="ad-who">
               <b title={user.displayName}>{user.displayName}</b>
               <span title={user.email}>{user.email}</span>
@@ -125,7 +135,7 @@ export function AccountDock() {
 
       <button type="button" ref={trigger} className="account-dock" aria-haspopup="menu" aria-expanded={open} title={`${user.displayName} · account menu`}
         onClick={() => setOpen((o) => !o)}>
-        <span className="ad-avatar" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className="ad-presence" /></span>
+        <span className="ad-avatar" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}<i className={`ad-presence ${presence}`} role="img" aria-label={PRESENCE_LABEL[presence]} title={PRESENCE_LABEL[presence]} /></span>
         <span className="ad-main">
           <span className="ad-name">{user.displayName}</span>
           <span className="ad-sub">
