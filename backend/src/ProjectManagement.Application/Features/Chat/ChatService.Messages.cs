@@ -120,10 +120,21 @@ public partial class ChatService
             await notifications.AddAsync(u, NotificationType.Mention, $"{sender} mentioned you in {projectName}", Snippet(text), link, ct: ct);
     }
 
-    public async Task<ChatMessageDto> SendAsync(Guid conversationId, SendMessageRequest req, CancellationToken ct = default)
+    public async Task<ChatMessageDto> SendAsync(Guid conversationId, SendMessageRequest req, CancellationToken ct = default, Guid? idempotencyId = null)
     {
         var (tenant, me) = Require();
         var mine = await MembershipAsync(conversationId, me, ct);
+        if (idempotencyId is { } existingId)
+        {
+            var existing = await db.ChatMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == existingId, ct);
+            if (existing is not null)
+            {
+                if (existing.ConversationId != conversationId || existing.SenderId != me || existing.Body != req.Body
+                    || existing.DeletedAt != null || req.ReplyToId is not null || req.AttachmentIds is { Count: > 0 })
+                    throw new ConflictException("The message identity does not match the approved operation.", "CHAT_IDEMPOTENCY_MISMATCH");
+                return (await ToDtosAsync([existing], ct))[0];
+            }
+        }
         var conv = await db.Conversations.FirstAsync(c => c.Id == conversationId, ct);
         HashSet<Guid>? audience = null;
         var projectName = "";
@@ -160,6 +171,7 @@ public partial class ChatService
         }
         var now = clock.Now;
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = me, Kind = ChatMessageKind.User, Body = text, ReplyToId = replyTo };
+        if (idempotencyId is { } messageId) msg.Id = messageId;
         db.ChatMessages.Add(msg);
         var preview = text.Length > 0 ? text : attachRows.Count == 1 ? $"Sent a file: {attachRows[0].FileName}" : $"Sent {attachRows.Count} files";
         conv.LastMessageAt = now; conv.LastMessageId = msg.Id; conv.LastMessageSenderId = me; conv.LastMessageSnippet = Snippet(preview);

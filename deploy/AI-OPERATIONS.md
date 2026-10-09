@@ -1,5 +1,7 @@
 # Local AI and Agent Tracker
 
+Message sending and exact confirmation handling: see [AI-MESSAGING.md](AI-MESSAGING.md).
+
 This release makes the configured Ollama/OpenAI-compatible model primary, with no required Claude key. It adds bounded inference, smaller requests, authorized document retrieval and a workspace Agent Tracker. It does not train model weights or establish production model quality or latency.
 
 ## Deployment evidence and storage warning

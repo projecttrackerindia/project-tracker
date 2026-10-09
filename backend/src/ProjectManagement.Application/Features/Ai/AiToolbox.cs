@@ -21,9 +21,9 @@ namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>A change the assistant suggested, kept with everything needed to carry it out once the person confirms it.</summary>
 public sealed record AiProposal(string Id, string Kind, string Title, string Summary, string PayloadJson, string Status = "proposed", string? Link = null, string? Error = null,
-    string? Preview = null)
+    string? Preview = null, Guid? ResultId = null)
 {
-    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview);
+    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId);
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>
@@ -45,6 +45,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
 
+    public const string SendMessage = "propose_send_message";
     public const string ListReminders = "list_reminders", ReviseReminder = "revise_reminder_proposal", UpdateReminder = "propose_update_reminder";
     public const string SearchDocuments = "search_documents", ReadDocument = "read_document";
     public const string FindWork = "find_work", ListProjects = "list_projects", ProjectReport = "project_report", TeamWorkload = "team_workload",
@@ -54,7 +55,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work",
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
-    public static readonly string[] WriteTools = [ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument, StartMeeting, ScheduleMeeting];
+    public static readonly string[] WriteTools = [SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument, StartMeeting, ScheduleMeeting];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -75,6 +76,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (IsGreeting(text)) return [];
         var all = Definitions(actionsAllowed);
         var lower = text.ToLowerInvariant();
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(message|dm|chat)\b") && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
+            return all.Where(t => t.Name is SendMessage or ListPeople).ToList();
         if (!System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b")
             && (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(reminder|reminders|remind)\b")
             || System.Text.RegularExpressions.Regex.IsMatch(lower, @"^(please\s+)?(change|move|reschedule)\s+(it|that)\s+(to|at)\s+\d{1,2}:\d{2}[.!?]*$")))
@@ -193,7 +196,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"at":{"type":"string","description":"Explicit local date/time yyyy-mm-ddTHH:mm"}},"required":["id","at"]}"""),
             new(CreateReminder, "Propose a reminder, optionally about a task, action item or work item (so it opens it and ends when it is finished). The person confirms first.",
                 """{"type":"object","properties":{"text":{"type":"string"},"at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"about":{"type":"string","description":"Optional key of the work item: ATL-12 task, AI-4 action item, WT-3 operational work."},"for_person":{"type":"string","description":"Optional: a colleague to remind instead of the person."}},"required":["text","at"]}"""),
-            new(SendReport, "Propose emailing a written report to people in the workspace (default: the person themselves). The person confirms first. Write the full report in 'body'.",
+            new(SendMessage, "Propose an in-app direct chat message to one active workspace member. Not email, WhatsApp, SMS, Slack or Telegram. Preserve the user's exact requested body without introductions. Requires confirmation; recipient and final body appear on the card.",
+                """{"type":"object","properties":{"recipient":{"type":"string"},"body":{"type":"string","maxLength":4000}},"required":["recipient","body"]}"""),
+            new(SendReport, "For email reports only, never use this to send a chat message. Propose emailing a written report to people in the workspace (default: the person themselves). The person confirms first. Write the full report in 'body'.",
                 """
                 {"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string","description":"The report in Markdown."},
                  "recipients":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: me."}},"required":["title","body"]}
@@ -223,7 +228,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     // ------------------------------------------------------------------ running one
 
-    public async Task<AiToolOutcome> ExecuteAsync(string name, string inputJson, string? timeZone, bool actionsAllowed, CancellationToken ct, Guid? conversationId = null)
+    public async Task<AiToolOutcome> ExecuteAsync(string name, string inputJson, string? timeZone, bool actionsAllowed, CancellationToken ct, Guid? conversationId = null, string? sourceText = null)
     {
         try
         {
@@ -257,6 +262,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 CreateWork => await ProposeWorkAsync(a, ct),
                 CreateActionItem => await ProposeActionItemAsync(a, ct),
                 CreateReminder => await ProposeReminderAsync(a, timeZone, ct),
+                SendMessage => await ProposeMessageAsync(a, sourceText, ct),
                 SendReport => await ProposeReportAsync(a, ct),
                 CreateDocument => await ProposeDocumentAsync(a, ct),
                 ListMeetings => await ListMeetingsAsync(a, ct),
@@ -807,6 +813,26 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var taskId = await access.VisibleTasks().AsNoTracking().Where(t => t.Number == number && t.Project!.Key == prefix).Select(t => t.Id).FirstOrDefaultAsync(ct);
         if (taskId == Guid.Empty) throw new AiToolException($"There is no task {key} that the person can see.");
         return ("Task", taskId, key, (await tasks.GetAsync(taskId, ct)).Task.Title);
+    }
+
+    private async Task<AiToolOutcome> ProposeMessageAsync(JsonElement a, string? sourceText, CancellationToken ct)
+    {
+        if (ctx.WorkspaceType == WorkspaceType.Personal || ctx.Role == TenantRole.Guest)
+            throw new AiToolException("In-app chat is available to non-guest organization members only.");
+        if (AiMessageCommands.UnsupportedChannel(sourceText ?? ""))
+            throw new AiToolException("Sending through WhatsApp, SMS, Slack or Telegram is not supported. I can only propose a Project Tracker chat message.");
+        var recipient = Str(a, "recipient") ?? throw new AiToolException("Choose the recipient.");
+        var body = (Str(a, "body") ?? throw new AiToolException("Provide the exact message.")).Replace("\r\n", "\n").Trim();
+        if (AiMessageCommands.ExactRequest(sourceText ?? "") is { } exact)
+        {
+            recipient = exact.Recipient; body = exact.Body; // The model cannot embellish an explicitly specified message.
+        }
+        if (body.Length is < 1 or > 4000 || body.Contains("@["))
+            throw new AiToolException("Provide 1–4000 characters of plain message text without structured mentions.");
+        var person = await PersonAsync(recipient, ct);
+        if (person.Id == ctx.UserId) throw new AiToolException("Choose another workspace member to message.");
+        return Propose("send_message", $"Send in-app message to {person.Name}", $"Recipient: {person.Name}; channel: Project Tracker chat",
+            new { recipientId = person.Id, recipientName = person.Name, body }, body);
     }
 
     private async Task<AiToolOutcome> ProposeReportAsync(JsonElement a, CancellationToken ct)

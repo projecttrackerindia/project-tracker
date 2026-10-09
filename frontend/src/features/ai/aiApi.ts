@@ -53,7 +53,7 @@ export interface AdminAiUsageRow {
 }
 export interface AdminAiUsage { month: string; organizations: number; answers: number; creditsUsed: number; tokensIn: number; tokensOut: number; estimatedCost: number; estimatedSavedByCache: number; cacheHitPercent: number; currency: string; rows: AdminAiUsageRow[] }
 
-export interface AskBody { text: string; mode: AiMode; attachmentIds: string[]; timeZone: string }
+export interface AskBody { text: string; mode: AiMode; attachmentIds: string[]; timeZone: string; confirmation?: { messageId: string; actionId: string; kind: string } }
 
 export const aiAdminApi = { usage: (month: string) => get<AdminAiUsage>('/admin/ai-usage', { month }) };
 

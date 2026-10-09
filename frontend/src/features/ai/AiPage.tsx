@@ -53,6 +53,7 @@ export function AiPage() {
   const [error, setError] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const actionLock = useRef(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const selfNav = useRef<string | null>(null);
@@ -122,6 +123,11 @@ export function AiPage() {
   const send = async (raw: string, over?: { mode?: AiMode }) => {
     if (streaming) return;
     const q = raw.trim();
+    const approving = /^(yes(?:[,!]?(?:\s+(?:please|send(?:\s+it)?|go ahead|confirm))*)?|confirm(?:\s+it)?|send it|go ahead(?:\s+and send(?:\s+it)?)?)[.!]*$/i.test(q);
+    const latestAnswer = [...messages].reverse().find((m) => m.role === 'assistant');
+    const pending = latestAnswer?.actions.filter((a) => a.status === 'proposed') ?? [];
+    const confirmation = approving && latestAnswer && pending.length === 1 && ['send_message', 'send_report'].includes(pending[0].kind)
+      ? { messageId: latestAnswer.id, actionId: pending[0].id, kind: pending[0].kind } : undefined;
     const ready = files.filter((f) => f.status === 'ready' && f.attachment);
     if (!q && ready.length === 0) return;
     const snapshot = files;
@@ -163,13 +169,19 @@ export function AiPage() {
           setMessages((m) => [...m, e.message]);
           setLive(null);
           setStreaming(false);   // the answer is complete; the box is usable while the server tidies up a long conversation
+          if (e.message.model === 'builtin-confirmation' && convId) {
+            void aiWorkspaceApi.conversation(convId).then((d) => setMessages((ms) => ms.map((x) => {
+              const saved = d.messages.find((y) => y.id === x.id);
+              return saved ? { ...x, actions: saved.actions } : x;
+            }))).catch(() => undefined);
+          }
           break;
         case 'error': run.failure = { code: e.code, message: e.message }; break;
       }
     };
 
     try {
-      await askAi(convId, { text: q, mode: over?.mode ?? mode, attachmentIds: attachments.map((a) => a.id), timeZone: zone() }, onEvent, ac.signal);
+      await askAi(convId, { text: q, mode: over?.mode ?? mode, attachmentIds: attachments.map((a) => a.id), timeZone: zone(), confirmation }, onEvent, ac.signal);
     } catch (e) {
       if (!ac.signal.aborted) {
         if (e instanceof ApiError && !run.route) {
@@ -236,6 +248,8 @@ export function AiPage() {
     }))).catch(() => undefined);
   };
   const act = async (m: AiMessage, a: AiAction, kind: 'confirm' | 'dismiss') => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusyAction(a.id);
     try {
       const res = await (kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
@@ -246,10 +260,12 @@ export function AiPage() {
         refreshActionStates();
       }
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error'); }
-    finally { setBusyAction(null); }
+    finally { actionLock.current = false; setBusyAction(null); }
   };
 
   const confirmAll = async (m: AiMessage) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusyAction('all');
     try {
       const res = await aiWorkspaceApi.confirmAll(m.id);
@@ -259,7 +275,7 @@ export function AiPage() {
       void invalidateWorkspace(wid);
       refreshActionStates();
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error'); }
-    finally { setBusyAction(null); }
+    finally { actionLock.current = false; setBusyAction(null); }
   };
 
   const copy = (m: AiMessage) => { void navigator.clipboard?.writeText(m.content).then(() => toast('Copied.'), () => toast('Could not copy.', 'error')); };
