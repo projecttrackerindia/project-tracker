@@ -142,7 +142,12 @@ export async function fetchBlobUrl(path: string, signal?: AbortSignal): Promise<
 
 /** Authenticated file download (CSV). Blob downloads are user-initiated from a click handler. */
 export async function download(path: string, filename: string) {
-  const res = await fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' });
+  const send = () => fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' });
+  let res = await send();
+  if (res.status === 401) {
+    if (await refreshSession()) res = await send();
+    else { accessToken = null; onAuthLost?.(); }
+  }
   if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Download failed', []);
   await saveFile(await res.blob(), filename);
 }

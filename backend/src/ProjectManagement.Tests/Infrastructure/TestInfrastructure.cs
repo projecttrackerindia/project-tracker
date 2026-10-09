@@ -279,7 +279,7 @@ public sealed class TestClient(ApiFactory factory)
         foreach (var mail in res.Data!.AsArray())
         {
             if (!string.Equals(mail!["to"]!.GetValue<string>(), Email, StringComparison.OrdinalIgnoreCase)) continue;
-            var m = Regex.Match(mail["text"]?.GetValue<string>() ?? "", $@"{linkKind}\?token=([^\s]+)");
+            var m = Regex.Match(mail["text"]?.GetValue<string>() ?? "", $@"{linkKind}\?token=([^&\s]+)");
             if (m.Success) return Uri.UnescapeDataString(m.Groups[1].Value);
         }
         throw new InvalidOperationException($"No {linkKind} email found for {Email}");

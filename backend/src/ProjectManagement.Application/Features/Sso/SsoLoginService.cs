@@ -127,7 +127,8 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     // ---------------------------------------------------------------- starting
 
     public static string SafeReturnUrl(string? url) =>
-        !string.IsNullOrWhiteSpace(url) && url.StartsWith('/') && !url.StartsWith("//") && !url.StartsWith("/\\") && !url.Contains("://") ? url : "/";
+        !string.IsNullOrWhiteSpace(url) && url.Length <= 2048 && url.StartsWith('/') && !url.StartsWith("//")
+        && !url.Contains('\\') && !url.Any(char.IsControl) && !url.Contains("://") ? url : "/";
 
     private static string Random(int bytes) => Base64Url(RandomNumberGenerator.GetBytes(bytes));
     private static string Base64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');

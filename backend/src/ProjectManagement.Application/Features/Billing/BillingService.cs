@@ -54,6 +54,9 @@ public class BillingService(
 
     private static long FeatureOf(Plan plan, string key) => plan.Features.FirstOrDefault(f => f.FeatureKey == key)?.Value ?? 0;
 
+    private static bool CanStartTrial(bool trialUsed, EffectivePlan plan, bool providerLinked) =>
+        !trialUsed && plan.Plan.Code == EntitlementService.FreePlan && !providerLinked;
+
     public async Task<BillingOverviewDto> GetOverviewAsync(CancellationToken ct = default)
     {
         var tid = ctx.RequireTenantId();
@@ -70,11 +73,13 @@ public class BillingService(
 
         var seats = usage.FirstOrDefault(u => u.Key == FeatureKeys.MaxMembers)?.Used ?? 0;
         var paying = plan.Plan.PerSeat && plan.Status != SubscriptionStatus.Trial && plan.Plan.PriceMonthly is > 0;
+        var providerLinked = await db.Subscriptions.AnyAsync(s => s.TenantId == tid
+            && (s.ProviderSubscriptionId != null || s.PendingProviderSubscriptionId != null), ct);
         var seatInfo = new SeatsDto(plan.Plan.PerSeat, plan.Plan.PerSeat ? (plan.Status == SubscriptionStatus.Trial ? Pricing.TrialSeats : plan.Seats) : 1, (int)seats, plan.BillingPeriod,
             paying ? QuoteOf(plan.Plan, plan.Seats, plan.BillingPeriod) : null);
         return new BillingOverviewDto(
             new PlanSummaryDto(plan.Plan.Code, plan.Plan.Name, plan.Status, plan.TrialEnd, plan.PeriodEnd, plan.CancelAtPeriodEnd, plan.Downgraded),
-            usage, invoices, !tenant.TrialUsed, await GetPlansAsync(plan.Plan.Code, ct), canManage, payments.Name, null, seatInfo, Policy());
+            usage, invoices, CanStartTrial(tenant.TrialUsed, plan, providerLinked), await GetPlansAsync(plan.Plan.Code, ct), canManage, payments.Name, null, seatInfo, Policy());
     }
 
     /// <summary>The price and the pooled credits and storage of a choice, for the screen that lets the owner pick people and a billing period.</summary>
@@ -119,6 +124,10 @@ public class BillingService(
         var now = clock.Now;
         var old = await entitlements.GetEffectivePlanAsync(tid, ct);
 
+        if (req.StartTrial && (plan.Code == EntitlementService.FreePlan || !CanStartTrial(tenant.TrialUsed, old,
+            sub.ProviderSubscriptionId is not null || sub.PendingProviderSubscriptionId is not null)))
+            throw new ConflictException("A free trial is not available for this workspace. Refresh billing to see your current plan.", "TRIAL_NOT_AVAILABLE");
+
         if (plan.Code == EntitlementService.FreePlan)
         {
             // Going back to Free ends any recurring payment at the provider at once.
@@ -132,7 +141,7 @@ public class BillingService(
         {
             throw new ValidationException("planCode", "This plan has custom pricing. Contact sales to get started.");
         }
-        else if (req.StartTrial && !tenant.TrialUsed)
+        else if (req.StartTrial)
         {
             sub.PlanId = plan.Id; sub.Status = SubscriptionStatus.Trial; sub.CurrentPeriodStart = now;
             sub.Seats = plan.PerSeat ? Pricing.TrialSeats : 1; sub.BillingPeriod = Pricing.Monthly;

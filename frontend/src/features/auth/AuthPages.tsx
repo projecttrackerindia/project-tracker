@@ -18,6 +18,7 @@ import { toast } from '../../stores/ui';
 import { PhoneStep } from './PhoneSignIn';
 import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
+import { safeRedirect } from './redirect';
 
 /** Purely a convenience: the last email that was signed in with "Remember me" checked, refilled on this device only. */
 const REMEMBERED_EMAIL_KEY = 'pm_remembered_email';
@@ -37,8 +38,6 @@ function usePolicyPassword() {
   }), []);
   return { policy, field };
 }
-
-const safeRedirect = (r: string | null) => (r && r.startsWith('/') && !r.startsWith('//') ? r : '/');
 
 /** The mark of each outside sign-in option. */
 export const PROVIDER_ICON: Record<ExternalProvider['id'], ReactNode> = {
@@ -240,7 +239,7 @@ export function LoginPage() {
       shake();
     },
   });
-  const resend = useMutation({ mutationFn: () => authApi.resendVerification(getValues('email')), onSuccess: () => toast('Verification email sent (if the account exists).', 'info') });
+  const resend = useMutation({ mutationFn: () => authApi.resendVerification(getValues('email'), redirect), onSuccess: () => toast('Verification email sent (if the account exists).', 'info') });
 
   if (status === 'authenticated' && !signingIn && !celebrating) return <Navigate to={redirect} replace />;
   if (phoneEmail) return <PhoneStep email={phoneEmail} onBack={() => setPhoneEmail(null)}
@@ -325,7 +324,7 @@ export function RegisterPage() {
   const typed = watch('password') ?? '';
 
   const m = useMutation({
-    mutationFn: (v: RegisterValues) => authApi.register({ email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms }),
+    mutationFn: (v: RegisterValues) => authApi.register({ email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms, returnUrl: redirect }),
     // The "check your email" step is swapped in underneath the success moment, which then lifts to reveal it.
     onSuccess: (_r, v) => celebrate({
       kind: 'register', name: firstName(v.displayName), detail: v.email,
@@ -348,7 +347,7 @@ export function RegisterPage() {
   );
   return (
     <AuthLayout title="Create your account" sub="Start with a free personal workspace. Create or join an organization anytime."
-      footer={<>Already have an account? <Link className="link" to="/login">Sign in</Link></>}>
+      footer={<>Already have an account? <Link className="link" to={`/login${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Sign in</Link></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); })} noValidate>
         {error && <div className="form-error" role="alert">{error}</div>}
         <Field label="Full name" error={errors.displayName?.message}><input className="input" autoComplete="name" autoFocus {...register('displayName')} /></Field>
@@ -372,6 +371,7 @@ export function RegisterPage() {
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const token = params.get('token');
+  const redirect = safeRedirect(params.get('redirect'));
   const [state, setState] = useState<'working' | 'ok' | 'error'>(token ? 'working' : 'error');
   const [message, setMessage] = useState('This verification link is invalid.');
   const ran = useRef(false);
@@ -385,7 +385,7 @@ export function VerifyEmailPage() {
 
   return (
     <AuthLayout title={state === 'ok' ? 'Email verified' : state === 'working' ? 'Verifying…' : 'Verification failed'}
-      footer={<Link className="link" to="/login">Go to sign in</Link>}>
+      footer={<Link className="link" to={`/login${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Go to sign in</Link>}>
       {state === 'working' && <PageLoader />}
       {state === 'ok' && <div className="form-info">Your email is verified. You can sign in now.</div>}
       {state === 'error' && <div className="form-error">{message}</div>}

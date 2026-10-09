@@ -12,10 +12,10 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Auth;
 
-public record RegisterRequest(string Email, string Password, string DisplayName, bool AcceptedTerms);
+public record RegisterRequest(string Email, string Password, string DisplayName, bool AcceptedTerms, string? ReturnUrl = null);
 public record LoginRequest(string Email, string Password);
 public record VerifyEmailRequest(string Token);
-public record ResendVerificationRequest(string Email);
+public record ResendVerificationRequest(string Email, string? ReturnUrl = null);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Token, string Password);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
@@ -102,7 +102,7 @@ public class AuthService(
         await db.SaveChangesAsync(ct);
         await consent.RecordCurrentAsync(user.Id, ctx.IpAddress, ct);
 
-        if (rawToken is not null) await SendVerificationEmailAsync(user, rawToken, ct);
+        if (rawToken is not null) await SendVerificationEmailAsync(user, rawToken, ct, req.ReturnUrl);
         return new RegisterResult(user.Id, _opt.RequireEmailVerification);
     }
 
@@ -116,9 +116,11 @@ public class AuthService(
 
     // A slow or unreachable mail server must not turn registration/resend into a failed request: the account is already saved by
     // the time this runs, so a delivery problem here is logged and reported through Go live / resend, not thrown back at the caller.
-    private Task<bool> SendVerificationEmailAsync(User user, string rawToken, CancellationToken ct)
+    private Task<bool> SendVerificationEmailAsync(User user, string rawToken, CancellationToken ct, string? returnUrl = null)
     {
         var link = $"{_opt.WebBaseUrl.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(rawToken)}";
+        var redirect = ProjectManagement.Application.Features.Sso.SsoLoginService.SafeReturnUrl(returnUrl);
+        if (redirect != "/") link += $"&redirect={Uri.EscapeDataString(redirect)}";
         return email.TrySendAsync(new EmailMessage(user.Email, "Verify your email address",
             EmailTemplates.Wrap("Verify your email", $"Hi {WebUtility.HtmlEncode(user.DisplayName)},", "Confirm your email address to activate your account.",
                 "Verify email", link, preheader: "Confirm your address to finish creating your account.", kind: EmailKind.Welcome), $"Verify your email: {link}", "verify"), log, ct);
@@ -145,7 +147,7 @@ public class AuthService(
         if (user is null || user.EmailVerified || !user.IsActive) return; // never reveal account state
         var raw = SetVerificationToken(user);
         await db.SaveChangesAsync(ct);
-        await SendVerificationEmailAsync(user, raw, ct);
+        await SendVerificationEmailAsync(user, raw, ct, req.ReturnUrl);
     }
 
     // ---------------------------------------------------------------- login / sessions

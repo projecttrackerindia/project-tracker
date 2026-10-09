@@ -445,12 +445,20 @@ public class WorkspaceService(
         if (invite.NormalizedEmail != user.NormalizedEmail)
             throw new ForbiddenException($"This invitation was sent to {invite.Email}. Sign in with that account to accept it.", "INVITATION_EMAIL_MISMATCH");
 
-        if (!await db.Tenants.AnyAsync(t => t.Id == invite.TenantId, ct)) // soft-deleted tenants are filtered out
+        var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == invite.TenantId && t.Status == TenantStatus.Active, ct);
+        if (tenant is null) // deleted and suspended organizations cannot accept new members
             throw new ConflictException("This organization is no longer available.", "INVITATION_INVALID");
 
-        var alreadyMember = await db.TenantMembers.AnyAsync(m => m.TenantId == invite.TenantId && m.UserId == userId, ct);
-        if (!alreadyMember)
+        var existingMember = await db.TenantMembers.FirstOrDefaultAsync(m => m.TenantId == invite.TenantId && m.UserId == userId, ct);
+        var members = await db.TenantMembers.CountAsync(m => m.TenantId == invite.TenantId, ct);
+        if (existingMember is null)
         {
+            // Check the destination's current plan, not the invitee's active workspace. This invitation already reserves one seat.
+            var pendingOthers = await db.TenantInvitations.CountAsync(i => i.TenantId == invite.TenantId && i.Id != invite.Id
+                && i.Status == InvitationStatus.Pending && i.ExpiresAt > clock.Now, ct);
+            var limit = (await entitlements.GetEntitlementsAsync(invite.TenantId, ct))[FeatureKeys.MaxMembers];
+            if (limit != FeatureKeys.Unlimited && members + pendingOthers + 1 > limit)
+                throw new PlanLimitException(FeatureKeys.MaxMembers, limit);
             // The role or manager may have been deleted / left since the invitation was sent; then the person simply starts unplaced.
             var roleStillThere = invite.OrgRoleId is { } rid && await db.OrgRoles.IgnoreQueryFilters().AnyAsync(r => r.Id == rid && r.TenantId == invite.TenantId && !r.IsDeleted, ct);
             var bossStillThere = invite.ReportsToUserId is { } bid && await db.TenantMembers.AnyAsync(m => m.TenantId == invite.TenantId && m.UserId == bid, ct);
@@ -465,8 +473,10 @@ public class WorkspaceService(
         invite.AcceptedByUserId = userId;
         // The caller's current workspace may differ from the one being joined, so only the (tenant-tagged) audit trail is written here.
         recorder.Audit("member.joined", "TenantInvitation", invite.Id, newValue: new { invite.Role }, tenantId: invite.TenantId);
+        var plan = await entitlements.GetEffectivePlanAsync(invite.TenantId, ct);
         await db.SaveChangesAsync(ct);
-        return (await ListAsync(ct)).First(w => w.Id == invite.TenantId);
+        return new WorkspaceDto(tenant.Id, tenant.Name, tenant.Slug, tenant.Type, existingMember?.Role ?? invite.Role,
+            tenant.Description, plan.Plan.Code, members + (existingMember is null ? 1 : 0));
     }
 
     // ---------------------------------------------------------------- roles & permissions

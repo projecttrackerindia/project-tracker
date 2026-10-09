@@ -51,6 +51,7 @@ public class TaskService(
     {
         var today = clock.Today;
         var canEditAny = await permissions.HasAsync(Permissions.TasksEdit, ct);
+        var canEditAssigned = await permissions.CanEditAssignedTasksAsync(ct);
         var uid = ctx.UserId;
         var rows = await query.AsNoTracking().Select(t => new
         {
@@ -91,7 +92,7 @@ public class TaskService(
                 t.Position, t.ParentTaskId, r.SubtaskTotal, r.SubtaskDone, r.CommentCount, r.Labels, t.CompletedAt, t.CreatedAt, t.UpdatedAt,
                 t.Version, open && t.DueDate is { } due && due < today,
                 t.MilestoneId, r.MilestoneName, r.DependsOn, r.Blocks, open && r.Unmet > 0, t.SprintId, r.SprintName, r.ChecklistTotal, r.ChecklistDone,
-                canEditAny || t.AssigneeId == uid, t.StageId, r.StageName);
+                canEditAny || (canEditAssigned && t.AssigneeId == uid), t.StageId, r.StageName);
         }).ToList();
     }
 

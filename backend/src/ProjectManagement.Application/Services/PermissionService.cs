@@ -97,9 +97,13 @@ public class PermissionService(IAppDbContext db, ICurrentContext ctx)
     public async Task RequireTaskEditAsync(IReadOnlyCollection<TaskItem> tasks, CancellationToken ct = default)
     {
         if (await HasAsync(Permissions.TasksEdit, ct)) return;
-        if (tasks.Count > 0 && tasks.All(t => t.AssigneeId == ctx.UserId)) return;
+        if (await CanEditAssignedTasksAsync(ct) && tasks.Count > 0 && tasks.All(t => t.AssigneeId == ctx.UserId)) return;
         throw new ForbiddenException("You can only edit tasks assigned to you.", "PERMISSION_DENIED");
     }
+
+    /// <summary>Assignee editing is a role default; an explicit View-only job-role profile overrides it.</summary>
+    public async Task<bool> CanEditAssignedTasksAsync(CancellationToken ct = default) =>
+        await ProfileAsync(ct) is not { } profile || profile.Level(Modules.Tasks) >= AccessLevel.Edit;
 
     public async Task<IReadOnlyList<string>> EffectiveAsync(CancellationToken ct = default)
     {

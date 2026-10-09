@@ -46,6 +46,7 @@ jobs:
           npm i --no-save playwright-core
           npx playwright-core install chromium
           node e2e/smoke.mjs
+          node e2e/invitations.mjs
           node e2e/public.mjs
           node e2e/mobile.mjs
           node e2e/documents.mjs

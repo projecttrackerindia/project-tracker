@@ -155,7 +155,10 @@ export function BillingPage() {
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);
     try { await fn(); toast(ok); await refresh(); }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error'); }
+    catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error');
+      if (e instanceof ApiError && e.code === 'TRIAL_NOT_AVAILABLE') await refresh();
+    }
     finally { setBusy(false); }
   };
 

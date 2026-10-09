@@ -3,13 +3,13 @@ import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPo
 
 export const authApi = {
   passwordPolicy: () => get<PasswordPolicy>('/auth/password-policy', undefined, { auth: false }),
-  register: (b: { email: string; password: string; displayName: string; acceptedTerms: boolean }) => post<{ userId: string; requiresEmailVerification: boolean }>('/auth/register', b, { auth: false }),
+  register: (b: { email: string; password: string; displayName: string; acceptedTerms: boolean; returnUrl?: string }) => post<{ userId: string; requiresEmailVerification: boolean }>('/auth/register', b, { auth: false }),
   login: (b: { email: string; password: string }) => post<AuthResponse | MfaChallenge>('/auth/login', b, { auth: false }),
   loginMfa: (b: { challenge: string; code: string }) => post<AuthResponse>('/auth/login/mfa', b, { auth: false }),
   logout: () => post('/auth/logout', {}, { auth: true, retry: false }),
   logoutAll: () => post('/auth/logout-all'),
   verifyEmail: (token: string) => post('/auth/verify-email', { token }, { auth: false }),
-  resendVerification: (email: string) => post('/auth/resend-verification', { email }, { auth: false }),
+  resendVerification: (email: string, returnUrl?: string) => post('/auth/resend-verification', { email, returnUrl }, { auth: false }),
   forgotPassword: (email: string) => post('/auth/forgot-password', { email }, { auth: false }),
   resetPassword: (b: { token: string; password: string }) => post('/auth/reset-password', b, { auth: false }),
   /** Google / Microsoft / GitHub / Apple sign-in options this installation has set up. */
