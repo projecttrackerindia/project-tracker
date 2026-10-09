@@ -33,7 +33,7 @@ public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         var web = new Uri(app.Value.WebBaseUrl);
         var origins = config.GetSection("Passkeys:Origins").Get<string[]>() is { Length: > 0 } o ? o : [web.GetLeftPart(UriPartial.Authority)];
-        return new Fido2(new Fido2Configuration { ServerDomain = config["Passkeys:RpId"] ?? web.Host, ServerName = "Project Tracker", Origins = new HashSet<string>(origins) });
+        return new Fido2(new Fido2Configuration { RPID = config["Passkeys:RpId"] ?? web.Host, RPName = "Project Tracker", Origins = new HashSet<string>(origins) });
     }
 
     // ------------------------------------------------------------------ add a passkey (signed in)

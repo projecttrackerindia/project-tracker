@@ -19,7 +19,7 @@ public record AccessBlockedDto(Guid WorkspaceId, string Code, string Message);
 /// listed IP addresses/ranges. Checked wherever a workspace is entered (CurrentContextMiddleware, WorkspaceService.SwitchAsync) so a
 /// blocked person finds out immediately and clearly, rather than having requests fail one at a time for no obvious reason.
 /// </summary>
-public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements)
+public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder recorder, EntitlementService entitlements)
 {
     private void RequireManage()
     {
