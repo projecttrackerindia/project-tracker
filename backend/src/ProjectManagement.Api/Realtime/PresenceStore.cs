@@ -89,7 +89,7 @@ public sealed class RedisPresenceStore : IPresenceStore, IHostedService, IDispos
     public bool IsOnline(Guid tenant, Guid user)
     {
         try { return _redis.GetDatabase().SortedSetLength(Key(tenant, user), Now - Stale.TotalSeconds, double.PositiveInfinity) > 0; }
-        catch (Exception ex) when (ex is RedisException or TimeoutException) { return false; }
+        catch (Exception ex) when (ex is RedisException or TimeoutException) { _log.LogWarning(ex, "Presence: Redis unavailable"); return false; }
     }
 
     private async Task RefreshAsync()

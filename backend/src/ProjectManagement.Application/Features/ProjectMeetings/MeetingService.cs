@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
@@ -31,7 +32,7 @@ public record AddMeetingParticipantRequest(Guid UserId);
 /// <see cref="ProjectAccess"/> already enforces for everything else project-scoped (spec section 6).
 /// </summary>
 public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access,
-    PermissionService permissions, NotificationService notifications, GoogleMeetingClient google, ChatService chat)
+    PermissionService permissions, NotificationService notifications, GoogleMeetingClient google, ChatService chat, ILogger<MeetingService> log)
 {
     private const int DefaultStartNowMinutes = 60;
     private record MeetingCard(Guid MeetingId, string Title, DateTime StartTimeUtc, DateTime EndTimeUtc, string TimeZone, string MeetUri, int ParticipantCount, string Status);
@@ -250,7 +251,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         IReadOnlyList<GoogleAttendeeStatus> statuses;
         try { statuses = await google.GetAttendeeStatusAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
-        catch { return; }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "RSVP sync failed for meeting {MeetingId}", meeting.Id); return; }
         if (statuses.Count == 0) return;
         var byEmail = statuses.ToDictionary(s => s.Email, s => s.ResponseStatus, StringComparer.OrdinalIgnoreCase);
         foreach (var p in meeting.Participants)

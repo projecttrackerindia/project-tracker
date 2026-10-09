@@ -38,7 +38,8 @@ public record ConfirmPaymentRequest(string PaymentId, string SubscriptionId, str
 
 public class BillingService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
-    EntitlementService entitlements, IPaymentProvider payments, SubscriptionActivator activator, IOptions<AppOptions> options, IOptions<PricingOptions> pricing)
+    EntitlementService entitlements, IPaymentProvider payments, SubscriptionActivator activator, IOptions<AppOptions> options, IOptions<PricingOptions> pricing,
+    ILogger<BillingService> log)
 {
     private readonly AppOptions _opt = options.Value;
     private readonly PricingOptions _pricing = pricing.Value;
@@ -163,6 +164,7 @@ public class BillingService(
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or TaskCanceledException)
                 {
+                    log.LogWarning(ex, "Could not start a provider checkout for tenant {TenantId}", tid);
                     throw new AppException(502, "PAYMENT_PROVIDER_ERROR", "The payment service could not start the payment. Try again in a moment.");
                 }
                 sub.PendingPlanId = plan.Id; sub.PendingProviderSubscriptionId = checkout.SubscriptionId; sub.PendingSeats = seats; sub.PendingBillingPeriod = quote.Period;
