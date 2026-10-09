@@ -6,7 +6,7 @@ This release makes the configured Ollama/OpenAI-compatible model primary, with n
 
 The supplied Railway screenshot shows API, frontend, PostgreSQL, Redis and Ollama as separate services in one project. The reported warning is `ollama-volume` at 96%: 4.79 GB used on approximately 5 GB, leaving approximately 210 MB. This is insufficient headroom for another multi-GB model. Storage pressure can prevent downloads or updates; it is not measured evidence that storage caused slow inference.
 
-The account screenshot confirms the Hobby plan ceiling is up to 8 GB RAM, 8 vCPU and 100 GB shared disk. These plan maxima do not establish this service's configured quotas or the size of its persistent volume. The model tag, actual Ollama CPU quota, memory cap and persistence mount remain unverified. The Railway project is named `ProjectManagment`; it shows approximately $2.19 current project usage. The Sep 26–Oct 26 account cycle shows $7.69 current usage, $5 included usage and a $13.78 estimated account bill, covering other projects too. Neither the account estimate nor usage-chart maxima are an Ollama-specific forecast.
+The account screenshot confirms the Hobby plan ceiling is up to 8 GB RAM, 8 vCPU and 100 GB shared disk. These plan maxima do not establish this service's configured quotas or the size of its persistent volume. The installed tag is `qwen2.5:7b-instruct-q4_K_M` (4.7 GB), confirmed by the supplied model inventory. Actual CPU quota, memory cap and persistence mount still need verification. The Railway project is named `ProjectManagment`; it shows approximately $2.19 current project usage. The Sep 26–Oct 26 account cycle shows $7.69 current usage, $5 included usage and a $13.78 estimated account bill, covering other projects too. Neither the account estimate nor usage-chart maxima are an Ollama-specific forecast.
 
 Before making storage changes, run these **read-only** commands inside the Ollama service:
 
@@ -27,6 +27,8 @@ flowchart LR
   UI[React SSE client] --> API[Authenticated workspace API]
   API --> Gate[Plan and tenant checks]
   Gate --> Context[Private history and concise context]
+  Context --> Fast[Exact greeting and reminder commands]
+  Fast --> Loop
   Context --> Router[Local-first provider router]
   Router --> Queue[Shared bounded inference queue]
   Queue --> Ollama[Native Ollama or compatible API]
@@ -92,8 +94,9 @@ A reproducible scripted-provider test measures these payloads:
 
 | Request component | Previous path | Local path |
 | --- | ---: | ---: |
-| Fixed system instructions | 6,692 characters | 1,152 characters |
-| Greeting tools | 26 | 0 |
+| Fixed system instructions | 6,692 characters | Concise application rules; see LocalSystemPrompt |
+| Greeting model calls | At least 1 | 0, application response |
+| Focused reminder tools | Full catalog | Up to 6 |
 | Common task lookup tools | 26 | 4 |
 | Default preliminary classifier calls | Potentially 1 | 0 |
 | Native output cap | Missing | 1,024 tokens by default |
@@ -112,6 +115,32 @@ Replace `2` with the actual quota. Repeat on the same service with the same data
 Validation on this branch: 844 backend tests and 68 frontend tests passed; TypeScript checking, Vite production build and lint passed (75 existing lint warnings, zero errors). PostgreSQL migration SQL was generated and inspected; no live PostgreSQL migration or Railway inference benchmark was run.
 
 Backend scripted tests cover provider selection with Claude absent or accidentally configured, native one-shot/streaming behavior, errors/EOF, cancellation/deadlines, bounded queues, overflow, tenant/admin privacy, paging, document visibility/chunks, loop stopping and reduced requests. A Chromium smoke test uses a **scripted local provider**, with no Claude credentials, to verify streaming, persisted tracker data, trace expansion, health, switches, filters and empty state. It does not measure LLM intelligence.
+
+## Reminder and attachment reliability follow-up
+
+The supplied October 9 Railway logs establish two separate performance costs:
+
+- A direct cold greeting took 62.58 seconds, including 60.77 seconds loading weights. The immediately repeated cached greeting took 0.37 seconds. This is not a general project-query benchmark.
+- Application prompts reached 5,168 tokens with 57.7 seconds of prompt evaluation. A later request reprocessed 3,677 tokens in 45.9 seconds and generated 52 tokens in 6.1 seconds. The application runner used 10 inference threads and an 8,192-token context; the diagnostic runner used 2 threads and 2,048 tokens. Switching those settings caused another load.
+- API logs explicitly show two HTTP 400 errors: `Multimodal data provided, but model does not support multimodal requests.` The second text question still carried a historical image. This was not a timeout or an out-of-memory diagnosis.
+
+The follow-up implements an application path for exact greetings and a small set of exact reminder commands. It does not call Ollama, spends zero inference credits, and records `application` / `builtin-greeting` or `builtin-reminder` in the tracker with no fictional model token usage. Plan, user, workspace and confirmation checks still apply. Examples:
+
+- `Hi`, `how are you?`, `thanks` return concise application responses.
+- `create reminder for 23:35 as test 3` proposes today only when that local time is still future; otherwise it asks for a date.
+- `change it to 23:36` revises the one pending reminder in this conversation, preserving its date. Ambiguous references fall back to the model.
+
+These are narrow command recognizers, not a general natural-language interpreter. Focused model-driven reminder requests use up to six tools and stop after producing their validated card, avoiding another inference just to narrate it. Compound requests keep the full catalog and model loop for dependent steps. Local requests no longer compute or send the entire workspace overview automatically; relevant facts come from permission-checked tools. History is bounded to twelve messages, with an explicit notice when older turns are omitted. Current local date, time and zone are supplied.
+
+`list_reminders` reads saved reminders through ReminderService. `propose_update_reminder` reschedules an authorized saved reminder after confirmation and preserves notes and recurrence. `revise_reminder_proposal` creates a replacement card for a pending reminder in the same private conversation. Replacements share the original proposal's atomic claim: an original and a replacement, or two replacements, cannot both create a reminder. If one was already handled, the other fails explicitly. After confirmation the UI refreshes older card states.
+
+Replacement claiming happens before creating the new reminder. A validation failure or process crash after that claim leaves the original dismissed and the replacement failed/uncertain; check Reminders and make a new proposal deliberately. This is at-most-once protection, not durable exactly-once recovery. Other replacement cards may still show proposed until their confirmation checks the shared claim.
+
+Unsupported images and PDFs are rejected before upload or question submission with `AI_ATTACHMENT_UNSUPPORTED`. The file picker receives the actual supported extensions. Historical unsupported attachments become a notice rather than binary input, so later text questions work; the assistant is told not to infer the contents. Text, CSV, Markdown, Word and spreadsheet extraction remain supported. Enabling vision needs a tested vision model; this change does not add OCR or image understanding.
+
+Validation after the follow-up: 852 backend tests passed (zero failures/skips); 68 frontend tests, type checking, production build and lint passed (75 existing warnings, zero errors). A twenty-request warm in-process API greeting test measured mean 4.1 ms and p95 7.1 ms with zero model calls. This excludes HTTP transport, Railway scheduling and production database latency; it is not a production benchmark.
+
+No Railway resources, model tags or volume contents are changed by these code fixes. Keep `NumCtx`, `NumThread` and the installed model consistent between diagnostics and the application. `KeepAlive=10m` helps nearby requests but keeps memory resident; do not assume that cost is free. Complex CPU inference and post-idle cold starts still require measured hardware/model tradeoffs. No sub-second production latency is promised.
 
 ## Costs and next acceptance gates
 

@@ -33,6 +33,24 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
+    private async Task ClaimOriginalReminderAsync(JsonElement a, CancellationToken ct)
+    {
+        if (Str(a, "supersedesMessageId") is not { } source) return;
+        if (!System.Guid.TryParse(source, out var id)) throw new ConflictException("The original reminder suggestion is invalid.", "AI_ACTION_HANDLED");
+        var me = ctx.RequireUserId(); var tenant = ctx.RequireTenantId();
+        var original = await db.AiMessages.AsNoTracking().Where(m => m.Id == id && m.UserId == me && m.TenantId == tenant && m.Role == "assistant")
+            .Select(m => new { m.ActionsJson }).FirstOrDefaultAsync(ct) ?? throw new NotFoundException("Original reminder suggestion not found.");
+        var all = JsonSerializer.Deserialize<List<AiProposal>>(original.ActionsJson ?? "[]", Json) ?? [];
+        var index = all.FindIndex(p => p.Id == Str(a, "supersedesProposalId") && p.Kind == "reminder");
+        if (index < 0 || all[index].Status != "proposed" || all.Any(p => p.Status == "running"))
+            throw new ConflictException("The original reminder or another replacement was already handled. Check Reminders before trying again.", "AI_ACTION_HANDLED");
+        all[index] = all[index] with { Status = "dismissed", Error = "Replaced by a confirmed reminder suggestion." };
+        var updated = JsonSerializer.Serialize(all, Json);
+        if (await db.AiMessages.Where(m => m.Id == id && m.TenantId == tenant && m.UserId == me && m.ActionsJson == original.ActionsJson)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, updated), ct) != 1)
+            throw new ConflictException("The original reminder is already being handled.", "AI_ACTION_HANDLED");
+    }
+
     public async Task<AiActionResult> RunAsync(AiProposal p, CancellationToken ct)
     {
         using var doc = JsonDocument.Parse(p.PayloadJson);
@@ -74,8 +92,20 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
                 return new AiActionResult($"/projects/{projectId}");
             }
+            case "update_reminder":
+            {
+                var id = Guid(a, "reminderId") ?? throw new ValidationException("id", "Choose a saved reminder.");
+                var list = await reminders.ListAsync(ct);
+                var existing = list.Open.Concat(list.Sent).FirstOrDefault(r => r.Id == id && r.CanEdit)
+                    ?? throw new NotFoundException("Reminder not available to edit.");
+                await reminders.UpdateAsync(id,
+                    new SaveReminderRequest(null, existing.Note, ReminderTarget.None, null, null,
+                        new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, existing.Recurrence), null, null), ct);
+                return new AiActionResult("/reminders");
+            }
             case "reminder":
             {
+                await ClaimOriginalReminderAsync(a, ct);
                 var target = Enum.TryParse<ReminderTarget>(Str(a, "targetType"), true, out var tt) ? tt : ReminderTarget.None;
                 await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, target, target == ReminderTarget.None ? null : Guid(a, "targetId"), Guid(a, "forUserId"),
                     new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, null), null, null), ct);

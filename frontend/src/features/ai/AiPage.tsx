@@ -227,12 +227,24 @@ export function AiPage() {
   };
 
   // ---- suggestions the assistant made
+  const refreshActionStates = () => {
+    if (!convId) return;
+    // Replacement confirmations can change older cards as well as the current card.
+    void aiWorkspaceApi.conversation(convId).then((d) => setMessages((ms) => ms.map((x) => {
+      const saved = d.messages.find((y) => y.id === x.id);
+      return saved ? { ...x, actions: saved.actions } : x;
+    }))).catch(() => undefined);
+  };
   const act = async (m: AiMessage, a: AiAction, kind: 'confirm' | 'dismiss') => {
     setBusyAction(a.id);
     try {
       const res = await (kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
       setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y) => (y.id === a.id ? res : y)) } : x)));
-      if (kind === 'confirm') { toast(res.status === 'done' ? 'Done.' : res.error ?? 'That could not be done.', res.status === 'done' ? 'success' : 'error'); if (res.status === 'done') void invalidateWorkspace(wid); }
+      if (kind === 'confirm') {
+        toast(res.status === 'done' ? 'Done.' : res.error ?? 'That could not be done.', res.status === 'done' ? 'success' : 'error');
+        if (res.status === 'done') void invalidateWorkspace(wid);
+        refreshActionStates();
+      }
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error'); }
     finally { setBusyAction(null); }
   };
@@ -245,6 +257,7 @@ export function AiPage() {
       const failed = res.find((r) => r.status !== 'done');
       if (failed) toast(failed.error ?? 'One step could not be done, so the rest were not tried.', 'error'); else toast(`Done: ${res.length} changes made.`, 'success');
       void invalidateWorkspace(wid);
+      refreshActionStates();
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Something went wrong.', 'error'); }
     finally { setBusyAction(null); }
   };

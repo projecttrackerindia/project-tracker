@@ -78,15 +78,15 @@ public sealed class AgentTrackerTests(ApiFactory factory)
             options.PrimaryProvider = "local"; factory.Chat.ModelOverride = "qwen2.5:7b";
             factory.Chat.Requests.Clear(); factory.Chat.Classified.Clear();
             await owner.Post("/api/v1/ai/ask", new { text = "Hello" });
-            var greeting = factory.Chat.Requests.Last();
-            Assert.Empty(greeting.Tools); Assert.Equal("qwen2.5:7b", greeting.Model);
-            Assert.True(greeting.System.Length < baseline.System.Length / 2);
+            Assert.Empty(factory.Chat.Requests); // simple greetings never wake the 7B runner
+            var greetingReport = (await owner.Get("/api/v1/ai/tracker?model=builtin-greeting")).Data!;
+            Assert.Equal(1, greetingReport["total"]!.GetValue<int>());
             await owner.Post("/api/v1/ai/ask", new { text = "What tasks are overdue?" });
             var lookup = factory.Chat.Requests.Last();
             Assert.Contains(lookup.Tools, t => t.Name == "find_work");
             Assert.True(lookup.Tools.Count < baseline.Tools.Count);
             Assert.Empty(factory.Chat.Classified);
-            Console.WriteLine($"Payload baseline: system={baseline.System.Length} chars, tools={baseline.Tools.Count}; local greeting: system={greeting.System.Length} chars, tools={greeting.Tools.Count}; local lookup: tools={lookup.Tools.Count}");
+            Console.WriteLine($"Payload baseline: system={baseline.System.Length} chars, tools={baseline.Tools.Count}; local greeting: zero inference; local lookup: tools={lookup.Tools.Count}");
         }
         finally { options.PrimaryProvider = previous; factory.Chat.ModelOverride = null; }
     }
