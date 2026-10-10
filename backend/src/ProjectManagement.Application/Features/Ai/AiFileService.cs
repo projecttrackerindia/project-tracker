@@ -114,7 +114,7 @@ public class AiFileService(IAppDbContext db, ICurrentContext ctx, EntitlementSer
     public IReadOnlyList<string> SupportedExtensions => Extensions.Where(ext => FileRules.TryDescribe("file." + ext, out var type, out _) && Supports(type)).ToList();
 
     public bool Supports(string contentType) => options.Value.UsesAnthropic ||
-        contentType != "application/pdf" && (!FileRules.IsImage(contentType) || options.Value.Fallback.SupportsImages);
+        contentType != "application/pdf" && (!FileRules.IsImage(contentType) || !options.Value.UsesGemini && options.Value.Fallback.SupportsImages);
 
     private void EnsureSupported(string contentType)
     {

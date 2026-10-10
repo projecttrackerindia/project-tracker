@@ -43,7 +43,9 @@ These controls limit abuse and duplicate active work. They do not make the local
 
 ## Step 2: verify Gemini API billing before connecting production
 
-The owner reports a ₹500 credit balance on a personal Google account. This has not yet been verified as Gemini API credit.
+The owner supplied a receipt for ₹500 received on October 10, 2026 and a screenshot showing accepted India tax information. The intended project is **project tracker**, `gen-lang-client-0699313292`, with **Tier 1 / Prepay** and one API key. The earlier Default Gemini Project is a different project; do not configure its key by accident.
+
+The owner reports active interactive Flash-Lite limits of 4,000 RPM, 4 million input TPM and 150,000 RPD. These are project-wide ceilings, not verified sustained throughput. The backend Railway variable `AI_gemini_apikey` exists. A synthetic one-shot check with that secret returned HTTP 200, STOP and READY in 2,300 ms (8 input / 1 output tokens); no business data was sent. This single call does not establish latency percentiles or tool-use accuracy.
 
 1. Open https://aistudio.google.com/billing with that account and select the intended project. Confirm available API credit and an active billing account.
 2. Open https://aistudio.google.com/api-keys and check that project's paid plan/tier. A Gemini app subscription alone does not provide API billing.
@@ -54,9 +56,24 @@ Sources: https://ai.google.dev/gemini-api/docs/billing and https://ai.google.dev
 
 ## Step 3: implement and verify streamed cloud tool use
 
-The current native Gemini one-shot client exists, but streamed chat explicitly excludes Google addresses. Setting a Gemini key or replacing the Ollama URL alone does not enable Project Tracker's streamed agent.
+The independent native Gemini adapter supports streamed text, function declarations/results, opaque response-part/signature replay, cancellation, usage including thinking tokens, response-size guards and sanitized failures. The OpenAI-compatible streamed adapter still excludes Google addresses; select Gemini through its own route rather than overwriting the Ollama fallback. A separate synthetic provider check completed two native SSE requests and a signed arithmetic-tool round in 3,213 ms, with correct arguments/result and STOP. Both requests returned HTTP 200 (274 input / 98 billed output tokens across the two turns). No business data or actions were involved; this verifies the provider contract, not application accuracy or concurrency.
 
-Next implementation: a native Gemini streaming adapter, preserving function-call signatures across tool rounds, sanitized provider failures, cancellation and token usage. Start with `gemini-3.5-flash-lite`, cloud disabled unless explicitly configured, text-only pilot first. Keep permission checks, evidence retrieval, calculations and consequential action confirmation in the backend. Select one cloud model initially; evaluate a stronger model only where accuracy evidence justifies its cost.
+`AI_gemini_apikey` maps to `Ai:Gemini:ApiKey` only when that option has not already been configured. A key alone does not activate paid traffic. Explicit pilot configuration is:
+
+```text
+Ai__PrimaryProvider=gemini
+Ai__Gemini__Enabled=true
+Ai__Gemini__ProjectId=gen-lang-client-0699313292
+Ai__Gemini__Model=gemini-3.5-flash-lite
+```
+
+Keep these activation settings off until verification finishes. The adapter accepts extracted text only; PDF/image processing remains outside the initial pilot. Diagnostics report cloud health as unsupported instead of probing Ollama and presenting its queue as Gemini capacity. Both one-shot routing and streamed routing use the explicitly selected Gemini provider, without automatically replaying on Ollama after dispatch.
+
+Shared Redis admission reserves each dispatched model round, including classifier/one-shot calls. Default pilot ceilings are **60 requests/minute, 120,000 estimated input tokens/minute and 100 requests/UTC day**. Input reservations use UTF-8 request bytes plus 4,096 tokens of overhead; they are conservative estimates, not a tokenizer or provider-reconciled bill. Output reservations use the configured maximum output budget (1,024 by default), including thinking. Failed/cancelled requests are not refunded. Fixed UTC admission windows are not Google's daily window or a rolling token bucket; provider 429 remains possible at boundaries or from other consumers.
+
+Persistent project-wide pilot allowances are **2 million estimated input tokens and 100,000 reserved output tokens**, stored in `pm:gemini:{projectId}:pilot:v1`. They do not reset on application restart or at midnight, and do not expire. This intentionally pauses the pilot when allowance is consumed; review actual provider spend before increasing either allowance. Redis deletion/eviction can lose reservations: these counters are operational guardrails, not the durable financial ledger required in Step 4. Require reliable Redis and a provider spending cap. Other applications/keys on the same Google project do not share this application's counters. Gemini refuses dispatch when Redis is absent or unavailable.
+
+Start with `gemini-3.5-flash-lite`, cloud disabled unless explicitly configured, text-only pilot first. Keep permission checks, evidence retrieval, calculations and consequential action confirmation in the backend. Select one cloud model initially; evaluate a stronger model only where accuracy evidence justifies its cost. Streaming-contract tests and real Redis admission tests are required before merging; actual provider/tool and application load tests remain separate acceptance evidence.
 
 Use provider/project-wide request and token admission in addition to the per-user limits. Share it across replicas. Do not multiply local Ollama parallelism or provider allowances by adding API servers. Do not restart an answer on another provider after partial output or a possible side effect.
 

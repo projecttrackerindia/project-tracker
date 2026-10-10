@@ -178,20 +178,22 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
 /// that is wrong (no credit, a refused key, an unknown model) does not mend itself in seconds, so after one the backup answers straight
 /// away for a while. When both fail, the person hears both reasons.
 /// </summary>
-public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient backup, ILogger<AiRouter> log) : IAiClient
+public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient backup, ILogger<AiRouter> log, GeminiChat? gemini = null) : IAiClient
 {
     private static readonly TimeSpan Rest = TimeSpan.FromMinutes(15);
     private long _claudeRestsUntil;   // UTC ticks
     private AiProviderException? _claudeFailure;
 
-    public bool Configured => backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
-    public string Model => backup.Settings.UsesAnthropic && claude.Configured ? claude.Model : backup.Model;
-    public string? Provider => backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Configured ? backup.Name : null;
+    public bool Configured => backup.Settings.UsesGemini ? gemini?.Configured == true : backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
+    public string Model => backup.Settings.UsesGemini ? gemini?.ModelFor("") ?? "" : backup.Settings.UsesAnthropic && claude.Configured ? claude.Model : backup.Model;
+    public string? Provider => backup.Settings.UsesGemini ? "Google Gemini" : backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Configured ? backup.Name : null;
     public string? Backup => backup.Settings.UsesAnthropic && claude.Configured && backup.Configured ? backup.Name : null;
 
     public async Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
+        if (backup.Settings.UsesGemini)
+            return new AiAnswer(await gemini!.CompleteAsync(Model, system, user, maxTokens, ct), Model);
         AiProviderException? claudeFailed = null;
         if (backup.Settings.UsesAnthropic && claude.Configured)
         {

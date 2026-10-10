@@ -12,10 +12,10 @@ public sealed class AiDiagnostics(IHttpClientFactory http, IOptions<AiOptions> o
         var model = chat.ModelFor(options.Value.Chat.Standard.Model);
         AiDiagnosticsDto Report(bool configured, bool reachable, bool available, string? error) =>
             new(configured, reachable, available, chat.Provider, model, gate.QueueDepth, error,
-                options.Value.UsesAnthropic ? null : gate.ActiveRequests, options.Value.UsesAnthropic ? null : gate.MaxConcurrentRequests,
-                options.Value.UsesAnthropic ? null : gate.MaxQueuedRequests, options.Value.UsesAnthropic ? null : gate.QueueTimeoutSeconds);
+                options.Value.UsesAnthropic || options.Value.UsesGemini ? null : gate.ActiveRequests, options.Value.UsesAnthropic || options.Value.UsesGemini ? null : gate.MaxConcurrentRequests,
+                options.Value.UsesAnthropic || options.Value.UsesGemini ? null : gate.MaxQueuedRequests, options.Value.UsesAnthropic || options.Value.UsesGemini ? null : gate.QueueTimeoutSeconds);
         if (!chat.Configured) return Report(false, false, false, "AI_NOT_CONFIGURED");
-        if (options.Value.UsesAnthropic) return Report(true, false, false, "AI_HEALTH_UNSUPPORTED");
+        if (options.Value.UsesAnthropic || options.Value.UsesGemini) return Report(true, false, false, "AI_HEALTH_UNSUPPORTED");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
         try

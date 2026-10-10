@@ -371,21 +371,26 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
 /// for the workspace itself; even in a workspace that still has Claude a mid-stream failure (and a provider misconfiguration, which does
 /// not mend itself in seconds) rests Claude for a while, same as the one-shot router.
 /// </summary>
-public sealed class AiChatRouter(AnthropicChat claude, OpenAiCompatibleChat backup, ILogger<AiChatRouter> log) : IAiChat
+public sealed class AiChatRouter(AnthropicChat claude, OpenAiCompatibleChat backup, ILogger<AiChatRouter> log, GeminiChat? gemini = null) : IAiChat
 {
     private static readonly TimeSpan Rest = TimeSpan.FromMinutes(15);
     private long _claudeRestsUntil;
 
-    public bool Configured => backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
-    public string Provider => backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Provider;
-    public string ModelFor(string requestedModel) => backup.Settings.UsesAnthropic && claude.Configured ? requestedModel : backup.ModelFor(requestedModel);
+    public bool Configured => backup.Settings.UsesGemini ? gemini?.Configured == true : backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
+    public string Provider => backup.Settings.UsesGemini ? "Google Gemini" : backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Provider;
+    public string ModelFor(string requestedModel) => backup.Settings.UsesGemini ? gemini?.ModelFor(requestedModel) ?? "" : backup.Settings.UsesAnthropic && claude.Configured ? requestedModel : backup.ModelFor(requestedModel);
 
     public Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct) =>
-        backup.Settings.UsesAnthropic && claude.Configured ? claude.CompleteAsync(model, system, user, maxTokens, ct) : backup.CompleteAsync(model, system, user, maxTokens, ct);
+        backup.Settings.UsesGemini && gemini is not null ? gemini.CompleteAsync(model, system, user, maxTokens, ct) : backup.Settings.UsesAnthropic && claude.Configured ? claude.CompleteAsync(model, system, user, maxTokens, ct) : backup.CompleteAsync(model, system, user, maxTokens, ct);
 
     public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
+        if (backup.Settings.UsesGemini)
+        {
+            await foreach (var e in gemini!.StreamAsync(request, ct)) yield return e;
+            yield break;
+        }
         var useClaude = backup.Settings.UsesAnthropic && claude.Configured && (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil));
         if (useClaude)
         {
