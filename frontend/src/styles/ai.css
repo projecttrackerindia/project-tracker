@@ -15,18 +15,18 @@
 .ai-shell.solo { display: grid; place-items: center; grid-template-columns: 1fr; height: auto; min-height: 60vh; }
 [data-theme='dark'] .ai-shell { --ai-a: #8f7bf0; --ai-b: #d65fa4; --ai-c: #4cc9e0; }
 
-/* ---- the assistant's mark: a slowly turning ring of light */
+/* ---- Orbit: a vector mark with transform-only motion, no blurred animated layers */
 .ai-orb {
-  position: relative; display: inline-grid; place-items: center; flex-shrink: 0; border-radius: 50%; color: #fff; isolation: isolate;
-  background: radial-gradient(circle at 30% 25%, #ddd6fe, var(--ai-a, #8b5cf6) 46%, #4c1d95 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28), 0 6px 22px rgba(139, 92, 246, .42);
+  display: inline-grid; place-items: center; flex-shrink: 0; border-radius: 12px; color: #fff;
+  background: linear-gradient(145deg, #6366f1, #4338ca); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 3px 10px rgba(67,56,202,.14);
 }
-.ai-orb i {
-  position: absolute; inset: -3px; z-index: -1; border-radius: 50%; opacity: .55; filter: blur(5px);
-  background: conic-gradient(from 0deg, #8b5cf6, #ec4899, #22d3ee, #8b5cf6); animation: ai-spin 7s linear infinite;
-}
-.ai-orb.busy i { opacity: .95; animation-duration: 1.5s; }
-.ai-orb svg { position: relative; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25)); }
+.ai-orb > svg { width: 90%; height: 90%; overflow: visible; }
+.ai-orbit-track { transform-origin: 24px 24px; }
+.ai-orb.animated .ai-orbit-track { animation: ai-spin 24s linear infinite; }
+.ai-orbit-track ellipse { stroke: #c7d2fe; stroke-width: 1.7; }
+.ai-orbit-track circle { fill: #67e8f9; }
+.ai-orbit-core { fill: #fff; stroke: #fff; stroke-width: .7; stroke-linejoin: round; }
+.ai-orb.busy .ai-orbit-track { animation: ai-spin 3s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
 
 /* ---- conversations */
@@ -68,7 +68,24 @@
     linear-gradient(90deg, rgba(139, 92, 246, .05) 1px, transparent 1px) 0 0 / 34px 34px;
   -webkit-mask-image: radial-gradient(130% 95% at 50% 0%, #000 28%, transparent 86%); mask-image: radial-gradient(130% 95% at 50% 0%, #000 28%, transparent 86%);
 }
-.ai-head { position: relative; z-index: 3; display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--modal-line); background: var(--surface); backdrop-filter: var(--glass-soft); -webkit-backdrop-filter: var(--glass-soft); }
+.ai-head { position: relative; z-index: 3; display: grid; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--modal-line); background: var(--surface); }
+.ai-head-primary, .ai-head-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; min-width: 0; }
+.ai-head-primary .ai-head-title { flex: 1 1 160px; }
+.ai-head-primary .ai-credits { flex: 0 0 auto; margin-left: auto; }
+.ai-head-controls .ai-modes { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; }
+.ai-workflows-link { white-space: nowrap; font-size: 12px; }
+.ai-brand-byline { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.ai-usage-details { flex-basis: 100%; min-width: 0; font-size: 12px; }
+.ai-usage-details summary { display: flex; align-items: center; gap: 6px; width: fit-content; cursor: pointer; color: var(--text-2); padding: 4px 0; list-style: none; }
+.ai-usage-details summary::-webkit-details-marker { display: none; }
+.ai-usage-details summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 3px; }
+.ai-usage-details[open] summary > svg:last-child { transform: rotate(180deg); }
+.ai-usage-panel { padding: 10px 12px; margin-top: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-3); color: var(--text-2); }
+.ai-usage-panel p { margin: 0 0 8px; }
+.ai-limit-values { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; }
+.ai-limit-values span { white-space: nowrap; }
+.ai-limit-values b { color: var(--text); font-variant-numeric: tabular-nums; }
+.ai-usage-panel a { color: var(--primary); }
 .ai-head-title { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1; }
 .ai-head-title div { min-width: 0; display: grid; }
 .ai-head-title b { font-size: 15px; font-weight: 700; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -83,7 +100,7 @@
 .ai-mode:disabled { opacity: .55; cursor: default; }
 .ai-mode:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 
-.ai-credits { display: flex; align-items: center; gap: 8px; }
+.ai-credits { display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
 .ai-credits svg .ring-bg { fill: none; stroke: var(--surface-3); stroke-width: 4; }
 .ai-credits svg .ring { fill: none; stroke: var(--ai-a); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
 .ai-credits.low svg .ring { stroke: var(--warning); }
@@ -262,10 +279,10 @@
   .ai-shell.rail-open .ai-rail { transform: none; }
   .ai-shell.rail-open .ai-rail-scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(15, 10, 40, .4); }
   .ai-rail-toggle { display: grid; }
-  .ai-head { flex-wrap: wrap; gap: 8px 10px; }
-  .ai-head-title { flex-basis: calc(100% - 100px); }
-  .ai-modes { order: 3; max-width: 100%; overflow-x: auto; }
-  .ai-credits { margin-left: auto; }
+  .ai-head { padding: 12px; }
+  .ai-head-primary .ai-head-title { flex-basis: 140px; }
+  .ai-mode { padding: 0 10px; }
+  .ai-brand-byline { display: none; }
   .ai-thread { padding: 18px 14px 8px; }
   .ai-bubble { max-width: 92%; }
   .ai-msg.assistant { grid-template-columns: 28px minmax(0, 1fr); gap: 9px; }
@@ -275,7 +292,7 @@
   .ai-action-side { width: 100%; justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ai-orb i, .ai-reason.live::before, .ai-reason.live .ai-pulse, .ai-caret, .ai-dots i, .ai-box.busy { animation: none; }
+  .ai-orb.animated .ai-orbit-track, .ai-orb.busy .ai-orbit-track, .ai-reason.live::before, .ai-reason.live .ai-pulse, .ai-caret, .ai-dots i, .ai-box.busy { animation: none; }
   .ai-scroll { scroll-behavior: auto; }
 }
 

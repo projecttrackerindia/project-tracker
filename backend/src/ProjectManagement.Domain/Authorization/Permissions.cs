@@ -97,6 +97,8 @@ public static class FeatureKeys
     public const string CustomFields = "CUSTOM_FIELDS";
     /// <summary>API keys for scripts and integrations.</summary>
     public const string ApiAccess = "API_ACCESS";
+    /// <summary>Organization-owned Slack OAuth connections. Disabled unless explicitly enabled in a plan or override.</summary>
+    public const string SlackIntegration = "SLACK_INTEGRATION";
     /// <summary>Total file storage per workspace, in megabytes.</summary>
     public const string StorageLimitMb = "STORAGE_LIMIT_MB";
     /// <summary>Largest single file, in megabytes.</summary>
@@ -135,6 +137,6 @@ public static class FeatureKeys
     public const long Unlimited = -1;
 
     public static readonly string[] Limits = [ProjectLimit, TaskLimit, MaxMembers, MaxTeams, ActivityRetentionDays, StorageLimitMb, MaxFileSizeMb, ReminderLimit, RecurringReminderLimit, DocumentLimit, DocEndpointLimit, AiModelTier, AiMonthlyCredits];
-    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation, ChatAttachments, MobileApp];
+    public static readonly string[] Flags = [AdvancedReports, CustomWorkflows, AdvancedPermissions, AuditLog, Automation, CustomFields, ApiAccess, SlackIntegration, AdvancedSecurity, ResourceManagement, ServiceLevels, AiAssistant, AiAttachments, AiActions, ReminderEscalation, ChatAttachments, MobileApp];
     public static readonly string[] All = [.. Limits, .. Flags];
 }
