@@ -6,8 +6,10 @@ using ProjectManagement.Application.Features.Ai;
 namespace ProjectManagement.Api.Controllers.Workspaces;
 
 [Route("api/v1/ai/operations"), RequireWorkspace]
-public class AiOperationsController(AiOperationsService service) : ApiControllerBase
+public class AiOperationsController(AiOperationsService service, AiForecastService forecasts) : ApiControllerBase
 {
+    [HttpGet("forecasts")]
+    public async Task<IActionResult> Forecasts(CancellationToken ct) => Ok(await forecasts.EvaluateAsync(ct));
     [HttpGet("jobs")]
     public async Task<IActionResult> List(CancellationToken ct) => Ok(await service.ListAsync(ct));
     [HttpGet("jobs/{id:guid}")]

@@ -76,12 +76,23 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
             .OrderBy(s => s.NextRunAt).Take(50).ToListAsync(ct);
         foreach (var schedule in due)
         {
+            scope.ServiceProvider.GetRequiredService<CurrentContext>().TenantId = schedule.TenantId;
             await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
+            await db.LockTenantLedgerAsync(schedule.TenantId, ct);
+            var full = await db.AiJobs.IgnoreQueryFilters().CountAsync(j => j.TenantId == schedule.TenantId && (j.Status == "queued" || j.Status == "running"), ct) >= 100;
+            if (full)
+            {
+                await db.AiSchedules.IgnoreQueryFilters().Where(s => s.Id == schedule.Id && s.Enabled && s.NextRunAt == schedule.NextRunAt)
+                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.NextRunAt, now.AddMinutes(1)), ct);
+                await tx.CommitIfOwnedAsync(ct);
+                continue;
+            }
             var next = now.AddMinutes(schedule.IntervalMinutes);
             var won = await db.AiSchedules.IgnoreQueryFilters().Where(s => s.Id == schedule.Id && s.Enabled && s.NextRunAt == schedule.NextRunAt)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.NextRunAt, next).SetProperty(x => x.LastQueuedAt, now), ct);
             if (won == 0) continue;
-            var pending = await db.AiJobs.IgnoreQueryFilters().AnyAsync(j => j.ScheduleId == schedule.Id && (j.Status == "queued" || j.Status == "running"), ct);
+            var pending = await db.AiJobs.IgnoreQueryFilters().AnyAsync(j => j.TenantId == schedule.TenantId && j.UserId == schedule.UserId
+                && j.Kind == schedule.Kind && j.TeamId == schedule.TeamId && (j.Status == "queued" || j.Status == "running"), ct);
             if (!pending) db.AiJobs.Add(new AiJob { TenantId = schedule.TenantId, UserId = schedule.UserId, TeamId = schedule.TeamId, ScheduleId = schedule.Id,
                 Kind = schedule.Kind, Title = schedule.Title, IdempotencyKey = $"schedule:{schedule.Id:N}:{schedule.NextRunAt.Ticks}", AvailableAt = now });
             await db.SaveChangesAsync(ct); await tx.CommitIfOwnedAsync(ct);
@@ -103,6 +114,8 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
         try
         {
             await SetRequesterAsync(sp, job, deadline.Token);
+            await using var snapshot = await db.BeginEvidenceSnapshotAsync(deadline.Token);
+            var evidenceAt = Now;
             var service = sp.GetRequiredService<AiOperationsService>();
             await service.AuthorizeAsync(job.Kind, deadline.Token);
             var fingerprint = await service.FingerprintAsync(deadline.Token, job.TeamId);
@@ -111,7 +124,8 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
             if (job.Kind == "portfolio")
             {
                 var brief = await sp.GetRequiredService<AiPortfolio>().BriefAsync(job.TeamId, deadline.Token);
-                result = new(AiPortfolio.ToText(brief), Now, "portfolio-rules-v1; 28-day completion pace; confidence is heuristic, not a calibrated probability",
+                await sp.GetRequiredService<AiForecastService>().CaptureAsync(job, brief, evidenceAt, deadline.Token);
+                result = new(AiPortfolio.ToText(brief), evidenceAt, "portfolio-rules-v1; 28-day completion pace; confidence is heuristic, not a calibrated probability",
                     brief.Ranked.Select(p => new AiEvidenceSource("project", p.ProjectId.ToString(), p.Key, $"/projects/{p.ProjectId}")).ToList(), brief);
             }
             else if (job.Kind == "workload")
@@ -125,10 +139,15 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
                 result = new(history.Text, Now, "delivery-history-v1; last 90 days; observed outcomes, not causal predictions", [new("history", "current", "Current portfolio", "/projects")]);
             }
             var json = JsonSerializer.Serialize(result, AiOperationsService.Json);
-            await db.AiJobs.Where(j => j.Id == id && j.Status == "running" && j.LeaseOwner == owner)
+            var finalized = await db.AiJobs.Where(j => j.Id == id && j.Status == "running" && j.LeaseOwner == owner)
                 .ExecuteUpdateAsync(s => s.SetProperty(j => j.Status, "succeeded").SetProperty(j => j.Progress, 100).SetProperty(j => j.CompletedAt, Now)
                     .SetProperty(j => j.ResultJson, json).SetProperty(j => j.AccessFingerprint, fingerprint).SetProperty(j => j.ErrorCode, (string?)null)
                     .SetProperty(j => j.LeaseOwner, (Guid?)null).SetProperty(j => j.LeaseExpiresAt, (DateTime?)null), deadline.Token);
+            if (finalized != 0)
+            {
+                await db.SaveChangesAsync(deadline.Token);
+                await snapshot.CommitAsync(deadline.Token);
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; } // lease recovery after shutdown
         catch (Exception ex)

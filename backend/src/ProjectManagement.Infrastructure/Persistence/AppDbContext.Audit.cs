@@ -11,6 +11,9 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct) =>
+        Database.BeginTransactionAsync(Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
+            ? System.Data.IsolationLevel.RepeatableRead : System.Data.IsolationLevel.Serializable, ct);
     public async Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct)
     {
         if (Database.CurrentTransaction is null || current.TenantId != tenantId)

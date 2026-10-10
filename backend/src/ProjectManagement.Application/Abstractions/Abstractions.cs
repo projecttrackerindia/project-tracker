@@ -9,6 +9,8 @@ namespace ProjectManagement.Application.Abstractions;
 public interface IAppDbContext
 {
     Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct);
+    Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct);
+    DbSet<AiForecastSnapshot> AiForecastSnapshots { get; }
     DbSet<AiCreditAccount> AiCreditAccounts { get; }
     DbSet<AiCreditReservation> AiCreditReservations { get; }
     DbSet<AiCreditEntry> AiCreditEntries { get; }

@@ -20,7 +20,9 @@ export interface AiMessage {
   id: string; role: 'user' | 'assistant'; content: string; reasoning: string | null; tier: AiTier | null; model: string | null; routeReason: string | null;
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
   followUps?: string[]; unverifiedKeys?: string[]; feedback?: 'up' | 'down' | null;
+  sources?: AiKnowledgeSource[];
 }
+export interface AiKnowledgeSource { kind: string; id: string; key: string; title: string; link: string; version: string; evidenceAt: string; projectId?: string | null; ownerId?: string | null; status?: string | null }
 export interface PortfolioRisk {
   projectId: string; key: string; name: string; group: string | null; health: string; progress: number; owner: string | null; startDate: string | null; dueDate: string | null; delayedDays: number;
   openTasks: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number; finishedLast28Days: number; inProgressTasks: number;

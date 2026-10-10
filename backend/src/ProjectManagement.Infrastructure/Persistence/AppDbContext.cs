@@ -19,6 +19,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiCreditBudget> AiCreditBudgets => Set<AiCreditBudget>();
     public DbSet<AiCreditBudgetUsage> AiCreditBudgetUsages => Set<AiCreditBudgetUsage>();
     public DbSet<AiCreditBudgetHold> AiCreditBudgetHolds => Set<AiCreditBudgetHold>();
+    public DbSet<AiForecastSnapshot> AiForecastSnapshots => Set<AiForecastSnapshot>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();

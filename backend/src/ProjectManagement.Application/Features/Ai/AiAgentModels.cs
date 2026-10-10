@@ -23,7 +23,7 @@ public record AiActionDto(string Id, string Kind, string Title, string Summary, 
 
 public record AiMessageDto(Guid Id, string Role, string Content, string? Reasoning, string? Tier, string? Model, string? RouteReason, int Credits, string Status,
     IReadOnlyList<AiToolUseDto> Tools, IReadOnlyList<AiActionDto> Actions, IReadOnlyList<AiAttachmentDto> Attachments, DateTime CreatedAt,
-    IReadOnlyList<string>? FollowUps = null, IReadOnlyList<string>? UnverifiedKeys = null, string? Feedback = null);
+    IReadOnlyList<string>? FollowUps = null, IReadOnlyList<string>? UnverifiedKeys = null, string? Feedback = null, IReadOnlyList<AiKnowledgeReference>? Sources = null);
 
 public record AiConversationDetailDto(AiConversationDto Conversation, IReadOnlyList<AiMessageDto> Messages);
 

@@ -37,3 +37,22 @@ public class AiSchedule : TenantEntity, ITenantScoped
     public DateTime NextRunAt { get; set; }
     public DateTime? LastQueuedAt { get; set; }
 }
+
+/// <summary>Server-calculated forecast evidence. Completion comes from actual audited project status transitions.</summary>
+public class AiForecastSnapshot : TenantEntity, ITenantScoped
+{
+    public Guid UserId { get; set; }
+    public Guid JobId { get; set; }
+    public Guid ProjectId { get; set; }
+    public DateTime EvidenceAt { get; set; }
+    public DateOnly AsOf { get; set; }
+    public DateOnly? DueDate { get; set; }
+    public DateOnly? ProjectedFinish { get; set; }
+    public int ProjectVersion { get; set; }
+    public int TotalTasks { get; set; }
+    public int OpenTasks { get; set; }
+    public int FinishedLast28Days { get; set; }
+    public bool InputComplete { get; set; }
+    public string Confidence { get; set; } = "none";
+    public string MethodologyVersion { get; set; } = "portfolio-pace-v1";
+}

@@ -8,6 +8,13 @@ public partial class AppDbContext
     private static void ConfigureAiOperations(ModelBuilder b)
     {
         b.Entity<AiMessage>().Property(m => m.EstimatedProviderCostUsd).HasPrecision(18, 8);
+        b.Entity<AiForecastSnapshot>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.JobId, x.ProjectId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.EvidenceAt });
+            e.Property(x => x.Confidence).HasMaxLength(16);
+            e.Property(x => x.MethodologyVersion).HasMaxLength(64);
+        });
         b.Entity<AiCreditAccount>(e => e.HasIndex(x => new { x.TenantId, x.PeriodStart }).IsUnique());
         b.Entity<AiCreditBudget>(e =>
         {

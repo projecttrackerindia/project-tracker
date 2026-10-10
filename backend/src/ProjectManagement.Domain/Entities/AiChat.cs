@@ -58,6 +58,7 @@ namespace ProjectManagement.Domain.Entities
         public string? ExecutionJson { get; set; }
         /// <summary>Versioned token-price estimate recorded at execution, separate from customer credits.</summary>
         public string? ProviderCostJson { get; set; }
+        public string? SourcesJson { get; set; }
         public decimal? EstimatedProviderCostUsd { get; set; }
         /// <summary>Credits this answer cost. Counts towards the workspace's month.</summary>
         public int Credits { get; set; }

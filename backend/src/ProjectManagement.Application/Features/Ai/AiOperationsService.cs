@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
@@ -53,28 +54,26 @@ public class AiOperationsService(IAppDbContext db, ICurrentContext ctx, AppClock
             throw new ValidationException("idempotencyKey", "Use a stable request key from 1 to 120 characters.");
         if (req.Priority is < 0 or > 10) throw new ValidationException("priority", "Priority must be from 0 to 10.");
         var team = await access.RequireLensAsync(req.TeamId, ct);
+        await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
+        await db.LockTenantLedgerAsync(ctx.RequireTenantId(), ct);
         var old = await db.AiJobs.FirstOrDefaultAsync(j => j.UserId == uid && j.IdempotencyKey == req.IdempotencyKey, ct);
         if (old is not null)
         {
             if (old.Kind != req.Kind || old.Title != title || old.TeamId != team || old.Priority != req.Priority)
                 throw new ConflictException("This request key belongs to different work.", "AI_JOB_KEY_MISMATCH");
-            return await ToDtoAsync(old, ct);
+            var existing = await ToDtoAsync(old, ct);
+            await tx.CommitIfOwnedAsync(ct);
+            return existing;
         }
         if (await db.AiJobs.CountAsync(j => j.UserId == uid && (j.Status == "queued" || j.Status == "running"), ct) >= 20)
             throw new ConflictException("Finish or cancel some pending reviews before adding more.", "AI_JOB_LIMIT");
+        if (await db.AiJobs.CountAsync(j => j.Status == "queued" || j.Status == "running", ct) >= 100)
+            throw new ConflictException("The workspace already has 100 pending reviews. Finish or cancel existing reviews first.", "AI_WORKSPACE_JOB_LIMIT");
         var row = new AiJob { TenantId = ctx.RequireTenantId(), UserId = uid, TeamId = team, Kind = req.Kind, Title = title,
             IdempotencyKey = req.IdempotencyKey, Priority = req.Priority, AvailableAt = clock.Now };
         db.AiJobs.Add(row);
-        try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
-        {
-            db.AiJobs.Entry(row).State = EntityState.Detached;
-            var winner = await db.AiJobs.AsNoTracking().FirstOrDefaultAsync(j => j.UserId == uid && j.IdempotencyKey == req.IdempotencyKey, ct);
-            if (winner is null) throw;
-            if (winner.Kind != req.Kind || winner.Title != title || winner.TeamId != team || winner.Priority != req.Priority)
-                throw new ConflictException("This request key belongs to different work.", "AI_JOB_KEY_MISMATCH");
-            row = winner;
-        }
+        await db.SaveChangesAsync(ct);
+        await tx.CommitIfOwnedAsync(ct);
         return await ToDtoAsync(row, ct);
     }
 
@@ -118,10 +117,13 @@ public class AiOperationsService(IAppDbContext db, ICurrentContext ctx, AppClock
         await AuthorizeAsync(req.Kind, ct);
         if (req.IntervalMinutes is < 60 or > 10080) throw new ValidationException("intervalMinutes", "Review intervals range from one hour to one week.");
         var uid = ctx.RequireUserId();
-        if (await db.AiSchedules.CountAsync(s => s.UserId == uid, ct) >= 20) throw new ConflictException("Remove a schedule before adding another.", "AI_SCHEDULE_LIMIT");
+        await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
+        await db.LockTenantLedgerAsync(ctx.RequireTenantId(), ct);
+        if (await db.AiSchedules.CountAsync(s => s.UserId == uid, ct) >= 5 || await db.AiSchedules.CountAsync(ct) >= 20)
+            throw new ConflictException("Schedules are limited to five per person and twenty per workspace. Remove an existing schedule first.", "AI_SCHEDULE_LIMIT");
         var row = new AiSchedule { TenantId = ctx.RequireTenantId(), UserId = uid, Kind = req.Kind, Title = Title(req.Title),
             TeamId = await access.RequireLensAsync(req.TeamId, ct), IntervalMinutes = req.IntervalMinutes, Enabled = req.Enabled, NextRunAt = clock.Now };
-        db.AiSchedules.Add(row); await db.SaveChangesAsync(ct); return ScheduleDto(row);
+        db.AiSchedules.Add(row); await db.SaveChangesAsync(ct); await tx.CommitIfOwnedAsync(ct); return ScheduleDto(row);
     }
 
     public async Task<IReadOnlyList<AiScheduleDto>> SchedulesAsync(CancellationToken ct) => (await db.AiSchedules.AsNoTracking()

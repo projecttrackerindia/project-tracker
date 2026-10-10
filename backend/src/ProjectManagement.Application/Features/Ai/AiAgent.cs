@@ -126,7 +126,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var c = await OwnAsync(id, ct);
         await files.DeleteForConversationAsync(id, ct);
         var rows = await db.AiMessages.Where(m => m.ConversationId == id).ToListAsync(ct);
-        foreach (var m in rows) { m.Content = ""; m.Reasoning = null; m.ToolsJson = null; m.ActionsJson = null; m.AttachmentsJson = null; m.FollowUpsJson = null; m.UnverifiedJson = null; }
+        foreach (var m in rows) { m.Content = ""; m.Reasoning = null; m.ToolsJson = null; m.ActionsJson = null; m.AttachmentsJson = null; m.FollowUpsJson = null; m.UnverifiedJson = null; m.SourcesJson = null; }
         c.IsDeleted = true; c.DeletedAt = clock.Now; c.DeletedBy = ctx.UserId; c.Title = DefaultTitle; c.Summary = null; c.SummarizedThroughAt = null;
         await db.SaveChangesAsync(ct);
     }
@@ -304,6 +304,15 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
         var answer = new StringBuilder(); var thinking = new StringBuilder();
         var used = new List<AiToolUseDto>(); var proposals = new List<AiProposal>();
+        var retrievedSources = new List<AiKnowledgeReference>();
+        void RememberSources(AiToolOutcome outcome)
+        {
+            if (outcome.IsError || outcome.Sources is null) return;
+            foreach (var source in outcome.Sources)
+                if (retrievedSources.Count < 20 && !retrievedSources.Any(s => s.Kind == source.Kind && s.Id == source.Id && s.Version == source.Version))
+                    retrievedSources.Add(source);
+        }
+        if (directRead is not null) RememberSources(directRead);
         if (directRead is { IsError: false }) used.Add(new AiToolUseDto(intent, directRead.Label, directRead.Count));
         var actionErrors = new List<string>();
         int inTokens = 0, outTokens = 0, cacheRead = 0, cacheWrite = 0;
@@ -390,6 +399,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { if (callerToken.IsCancellationRequested) cancelled = true; else failure = new AppException(504, "AI_TIMEOUT", "The assistant exceeded its execution deadline. Completed proposals remain available."); break; }
                 toolFailed |= outcome.IsError;
+                RememberSources(outcome);
                 if (outcome.IsError) actionErrors.Add(outcome.Content);
                 toolTimings.Add(new AiToolTiming(tools.Any(t => t.Name == use.Name) ? use.Name : "unavailable_tool", elapsed.ElapsedMilliseconds - toolStart, !outcome.IsError, outcome.Proposal is null ? "read" : "awaiting_confirmation"));
                 var tu = new AiToolUseDto(use.Name, outcome.Label, outcome.Count);
@@ -475,6 +485,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             Reasoning = thinking.Length == 0 ? null : thinking.ToString(),
             Tier = TierId(tier), Model = model, RouteReason = reason, InputTokens = inTokens, OutputTokens = outTokens, CacheReadTokens = cacheRead, CacheWriteTokens = cacheWrite, Credits = credits, Status = status,
             ProviderCostJson = JsonSerializer.Serialize(providerCost, Json), EstimatedProviderCostUsd = providerCost.EstimatedCost,
+            SourcesJson = retrievedSources.Count == 0 ? null : JsonSerializer.Serialize(retrievedSources, Json),
             ExecutionJson = JsonSerializer.Serialize(new AiExecutionTrace("project-assistant", "2", run.Question.Id.ToString(), provider, model,
                 run.Preparation?.StartedAt ?? startedAt, elapsed.ElapsedMilliseconds + (run.Preparation?.DurationMs ?? 0), contextMs, firstTokenMs is { } first ? first + (run.Preparation?.DurationMs ?? 0) : null, promptChars, tools.Count,
                 cancelled ? "cancelled" : failure is AppException { Code: "AI_TIMEOUT" } ? "timeout" : failure is not null ? "failed" : toolFailed ? "partial" : proposals.Any(p => p.Status == "proposed") ? "awaiting_confirmation" : "succeeded",
@@ -922,6 +933,6 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         static List<T> Read<T>(string? json) => string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<T>>(json, Json) ?? [];
         return new AiMessageDto(m.Id, m.Role, m.Content, m.Reasoning, m.Tier, m.Model, m.RouteReason, m.Credits, m.Status,
             Read<AiToolUseDto>(m.ToolsJson), Read<AiProposal>(m.ActionsJson).Select(p => p.ToDto()).ToList(), Read<AiAttachmentDto>(m.AttachmentsJson), m.CreatedAt,
-            Read<string>(m.FollowUpsJson), Read<string>(m.UnverifiedJson), m.Feedback);
+            Read<string>(m.FollowUpsJson), Read<string>(m.UnverifiedJson), m.Feedback, Read<AiKnowledgeReference>(m.SourcesJson));
     }
 }
