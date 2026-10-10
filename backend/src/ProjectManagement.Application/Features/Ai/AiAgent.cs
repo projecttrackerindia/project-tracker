@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Diagnostics;
 using System.Text;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
@@ -20,7 +19,7 @@ namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>A question that passed every check and is saved, waiting to be answered (see <see cref="AiAgent.StreamAsync"/>).</summary>
 public sealed record AiRun(AiConversation Conversation, AiMessage Question, string Text, IReadOnlyList<AiAttachment> Files, AiMode Mode, AiPlanLevels Plan,
-    long CreditsLeft, string? TimeZone, bool Created, AiConfirmationBinding? Confirmation = null);
+    long CreditsLeft, string? TimeZone, bool Created, AiConfirmationBinding? Confirmation = null, AiPreparationTiming? Preparation = null);
 
 /// <summary>
 /// The AI workspace: conversations that understand the organization, reason when a question needs it, look things up and propose changes.
@@ -29,7 +28,7 @@ public sealed record AiRun(AiConversation Conversation, AiMessage Question, stri
 /// access, and anything that would change data comes back as a proposal for the person to confirm. Each answer costs credits by level.
 /// </summary>
 public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiChat chat, EntitlementService entitlements, IDistributedCache cache,
-    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log)
+    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const string DefaultTitle = "New conversation";
@@ -163,9 +162,11 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     /// <summary>Checks a question and saves it. Throws (as an ordinary error response) when anything is wrong; the answer comes from <see cref="StreamAsync"/>.</summary>
     public async Task<AiRun> PrepareAsync(Guid? conversationId, AiAskRequest req, CancellationToken ct = default)
     {
+        using var preparationDatabase = databaseTelemetry.Begin();
+        var preparationStart = clock.Now; var preparationTimer = Stopwatch.StartNew();
         var me = ctx.RequireUserId();
         var text = (req.Text ?? "").Trim();
-        if (req.Confirmation is not null && !AiMessageCommands.IsConfirmation(text))
+        if (req.Confirmation is not null && !AiMessageCommands.IsConfirmation(text) && !AiMessageCommands.IsCancellation(text))
             throw new ValidationException("confirmation", "An action binding requires an explicit confirmation reply.");
         var hasFiles = req.AttachmentIds is { Count: > 0 };
         if (text.Length == 0 && !hasFiles) throw new ValidationException("text", "Write a question first.");
@@ -198,7 +199,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         foreach (var a in attachments) { a.MessageId = question.Id; a.ConversationId = conv.Id; }
         conv.LastMessageAt = clock.Now;
         await db.SaveChangesAsync(ct);
-        return new AiRun(conv, question, text, attachments, mode, plan, left, req.TimeZone, created, req.Confirmation);
+        return new AiRun(conv, question, text, attachments, mode, plan, left, req.TimeZone, created, req.Confirmation, new AiPreparationTiming(preparationStart, preparationTimer.ElapsedMilliseconds, preparationDatabase.Snapshot()));
     }
 
     private static string TitleOf(string text)
@@ -213,6 +214,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     /// </summary>
     public async IAsyncEnumerable<AiStreamEvent> StreamAsync(AiRun run, [EnumeratorCancellation] CancellationToken ct)
     {
+        using var databaseMeasurement = databaseTelemetry.Begin();
         var callerToken = ct;
         using var executionDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         executionDeadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(Opt.ExecutionTimeoutSeconds, 1, 900)));
@@ -247,37 +249,23 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var cfg = Opt.For(tier);
         var intentStart = elapsed.ElapsedMilliseconds;
         var fastGreeting = !options.Value.UsesAnthropic && run.Files.Count == 0 && AiToolbox.IsGreeting(run.Text);
-        var confirming = AiMessageCommands.IsConfirmation(run.Text) && run.Files.Count == 0;
-        var confirmation = confirming ? await ConfirmFromConversationAsync(run, ct) : null;
-        var fastReminder = confirming ? new AiFastReminder(null, null, confirmation!.Reply)
-            : options.Value.UsesAnthropic ? null : await AiFastReminder.TryAsync(run, db, clock, ct);
-        if (!options.Value.UsesAnthropic && !confirming && run.Files.Count == 0 && AiMessageCommands.ExactRequest(run.Text) is { } exact)
-            fastReminder = new AiFastReminder(AiToolbox.SendMessage, JsonSerializer.Serialize(new { recipient = exact.Recipient, body = exact.Body }, Json), null);
-        string intent = confirming ? "confirm_pending_action" : fastGreeting ? "greeting" : fastReminder?.Tool == AiToolbox.SendMessage ? "send_message" : fastReminder is not null ? "reminder" : "reasoning";
-        AiToolOutcome? directRead = null;
-        var readRequest = !options.Value.UsesAnthropic && !confirming && run.Files.Count == 0 ? AiReadCommands.Tasks(run.Text) : null;
-        var missingRecipient = !options.Value.UsesAnthropic && !confirming && run.Files.Count == 0 ? AiMessageCommands.MissingBodyRecipient(run.Text) : null;
-        var intentMs = elapsed.ElapsedMilliseconds - intentStart;
+        var cancelling = AiMessageCommands.IsCancellation(run.Text) && run.Files.Count == 0;
+        var confirming = (AiMessageCommands.IsConfirmation(run.Text) || cancelling) && run.Files.Count == 0;
+        var confirmation = confirming ? await ConfirmFromConversationAsync(run, ct, cancelling) : null;
         var readStart = elapsed.ElapsedMilliseconds;
-        if (readRequest is { } tasksRequest)
-        {
-            intent = "list_person_tasks";
-            directRead = await toolbox.PersonTasksAsync(tasksRequest.Person, tasksRequest.Page, ct);
-        }
-        else if (missingRecipient is not null)
-        {
-            intent = "clarify_message_content";
-            directRead = await toolbox.MessageClarificationAsync(missingRecipient, ct);
-        }
+        var fastPlan = !options.Value.UsesAnthropic && !confirming && !fastGreeting ? await commandPlanner.ResolveAsync(run, ct) : null;
+        var fastReminder = confirming ? new AiFastReminder(null, null, confirmation!.Reply) : fastPlan?.Command;
+        var intent = cancelling ? "cancel_pending_action" : confirming ? "confirm_pending_action" : fastGreeting ? "greeting" : fastPlan?.Intent ?? "reasoning";
+        var directRead = fastPlan?.ReadOutcome;
+        var intentMs = elapsed.ElapsedMilliseconds - intentStart;
         if (directRead is not null)
         {
-            fastReminder = new AiFastReminder(null, null, directRead.Content);
             toolFailed |= directRead.IsError;
             toolTimings.Add(new AiToolTiming(intent, elapsed.ElapsedMilliseconds - readStart, !directRead.IsError, "read"));
         }
         if (confirmation?.Failed == true) toolFailed = true;
         var applicationReply = fastGreeting || fastReminder is not null;
-        var model = directRead is not null ? "builtin-" + intent : confirming ? "builtin-confirmation" : fastReminder?.Tool == AiToolbox.SendMessage ? "builtin-message" : fastReminder is not null ? "builtin-reminder" : fastGreeting ? "builtin-greeting" : chat.ModelFor(cfg.Model);
+        var model = directRead is not null ? "builtin-" + intent : confirming ? "builtin-confirmation" : fastReminder?.Tool == AiToolbox.SendMessage ? "builtin-message" : fastPlan is not null ? "builtin-" + intent : fastGreeting ? "builtin-greeting" : chat.ModelFor(cfg.Model);
         var provider = applicationReply ? "application" : chat.Provider;
         var fellBack = false;
         yield return new AiStreamRoute(TierId(tier), model, reason, limited, TierId(route.Wanted), applicationReply ? 0 : cfg.Credits);
@@ -290,8 +278,9 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         // Everything the answer may legitimately refer to; used afterwards to flag work item keys that appear from nowhere.
         var seen = new StringBuilder(context).Append(' ').Append(run.Conversation.Summary).Append(' ').Append(directRead?.Content);
         foreach (var t in turns) foreach (var b in t.Blocks) if (b is AiText tx) seen.Append(' ').Append(tx.Text);
-        var tools = options.Value.UsesAnthropic ? toolbox.Definitions(run.Plan.Actions) : toolbox.DefinitionsFor(run.Text, run.Plan.Actions);
-        var guardActionWrite = !options.Value.UsesAnthropic && ((tools.Count <= 6 && tools.Any(t => t.Name == AiToolbox.ReviseReminder))
+        var tools = fastReminder?.Tool is { } knownTool ? toolbox.Definitions(run.Plan.Actions).Where(t => t.Name == knownTool).ToList()
+            : options.Value.UsesAnthropic ? toolbox.Definitions(run.Plan.Actions) : toolbox.DefinitionsFor(run.Text, run.Plan.Actions);
+        var guardActionWrite = fastPlan?.RequiresConfirmation == true || !options.Value.UsesAnthropic && ((tools.Count <= 6 && tools.Any(t => t.Name == AiToolbox.ReviseReminder))
             || tools.Any(t => t.Name == AiToolbox.SendMessage) && tools.Count <= 2)
             && System.Text.RegularExpressions.Regex.IsMatch(run.Text, @"\b(create|add|change|move|update|reschedule|remind|set|send)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         var contextMs = elapsed.ElapsedMilliseconds - contextStart;
@@ -343,7 +332,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 }
             }
             finally { await events.DisposeAsync(); }
-            if (!applicationReply) timings.Add(new AiModelTiming(step, elapsed.ElapsedMilliseconds - modelStart, end?.InputTokens ?? 0, end?.OutputTokens ?? 0, end?.StopReason is "end_turn" or "tool_use" or "max_tokens" or "refusal" ? end.StopReason : "failed"));
+            if (!applicationReply) timings.Add(new AiModelTiming(step, elapsed.ElapsedMilliseconds - modelStart, end?.InputTokens ?? 0, end?.OutputTokens ?? 0, end?.StopReason is "end_turn" or "tool_use" or "max_tokens" or "refusal" ? end.StopReason : "failed", end?.Runtime));
             if (failure is not null || cancelled) break;
             if (end is null) { failure = new AppException(502, "AI_INCOMPLETE_RESPONSE", "The model returned no completed turn."); break; }
 
@@ -392,7 +381,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 var content = outcome.Content;
                 if (outcome.Proposal is { } p)
                 {
-                    var final = p;
+                    var final = AiActionPlan.Bind(p, run.Question.Id, ctx.RequireTenantId(), ctx.RequireUserId(), clock.Now, proposals);
                     if (AiToolbox.AutoExecuteKinds.Contains(p.Kind))
                     {
                         AiActionResult? result = null; string? error = null;
@@ -400,7 +389,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                         catch (AppException ex) { error = ex.Message; }
                         catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "An auto-run AI suggestion failed ({Kind})", p.Kind); error = "That could not be done. Try it by hand."; }
                         toolFailed |= error is not null;
-                        final = error is null ? p with { Status = "done", Link = result!.Link } : p with { Status = "failed", Error = error };
+                        final = final with { Status = error is null ? "done" : "failed", Link = result?.Link, ResultId = result?.RecordId, Error = error, Execution = final.Execution is { } metadata ? metadata with { StartedAt = clock.Now, CompletedAt = clock.Now, Attempts = 1 } : null };
                         content = error is null ? $"Done: {p.Title} ({p.Summary})." : $"That could not be done: {error}";
                         if (error is null) recorder.Audit("ai.action_auto", "AiAssistant", null, null, new { kind = p.Kind, title = p.Title });
                     }
@@ -423,7 +412,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             // A focused reminder request is complete once its proposal is valid. The server explains its actual state.
             // Other workflows keep their model loop so dependent operations are not cut short.
             if (guardActionWrite && !toolFailed && results.Count > 0 && proposals.Count > 0
-                && end.Assistant.OfType<AiToolUse>().All(t => t.Name is AiToolbox.CreateReminder or AiToolbox.ReviseReminder or AiToolbox.UpdateReminder or AiToolbox.SendMessage))
+                && (fastPlan?.RequiresConfirmation == true || end.Assistant.OfType<AiToolUse>().All(t => t.Name is AiToolbox.CreateReminder or AiToolbox.ReviseReminder or AiToolbox.UpdateReminder or AiToolbox.SendMessage)))
             {
                 var text = "\n\n" + string.Join("\n", proposals.Select(p => p.Status == "done"
                     ? $"Completed: {p.Title}." : $"Awaiting confirmation: {p.Title} ({p.Summary}). Use Confirm on the card to save it."));
@@ -459,9 +448,9 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             Reasoning = thinking.Length == 0 ? null : thinking.ToString(),
             Tier = TierId(tier), Model = model, RouteReason = reason, InputTokens = inTokens, OutputTokens = outTokens, CacheReadTokens = cacheRead, CacheWriteTokens = cacheWrite, Credits = credits, Status = status,
             ExecutionJson = JsonSerializer.Serialize(new AiExecutionTrace("project-assistant", "2", run.Question.Id.ToString(), provider, model,
-                startedAt, elapsed.ElapsedMilliseconds, contextMs, firstTokenMs, promptChars, tools.Count,
+                run.Preparation?.StartedAt ?? startedAt, elapsed.ElapsedMilliseconds + (run.Preparation?.DurationMs ?? 0), contextMs, firstTokenMs is { } first ? first + (run.Preparation?.DurationMs ?? 0) : null, promptChars, tools.Count,
                 cancelled ? "cancelled" : failure is AppException { Code: "AI_TIMEOUT" } ? "timeout" : failure is not null ? "failed" : toolFailed ? "partial" : proposals.Any(p => p.Status == "proposed") ? "awaiting_confirmation" : "succeeded",
-                (failure as AppException)?.Code, timings, toolTimings, intent, applicationReply ? 1 : null, intentMs), Json),
+                (failure as AppException)?.Code, timings, toolTimings, intent, applicationReply ? 1 : null, intentMs, AiDatabaseTelemetry.Combine(databaseMeasurement.Snapshot(), run.Preparation?.Database), AiActionPlan.Timings(proposals), run.Preparation), Json),
             ToolsJson = used.Count == 0 ? null : JsonSerializer.Serialize(Merge(used), Json),
             ActionsJson = proposals.Count == 0 ? null : JsonSerializer.Serialize(proposals, Json),
         };
@@ -486,7 +475,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
     private sealed record ConfirmationReply(string Reply, bool Failed);
 
-    private async Task<ConfirmationReply> ConfirmFromConversationAsync(AiRun run, CancellationToken ct)
+    private async Task<ConfirmationReply> ConfirmFromConversationAsync(AiRun run, CancellationToken ct, bool cancel = false)
     {
         var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
         var query = db.AiMessages.AsNoTracking().Where(m => m.ConversationId == run.Conversation.Id && m.TenantId == tenant
@@ -496,14 +485,20 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var proposals = JsonSerializer.Deserialize<List<AiProposal>>(latest?.ActionsJson ?? "[]", Json) ?? [];
         var pending = proposals.Where(p => p.Status == "proposed" && (run.Confirmation == null
             || p.Id == run.Confirmation.ActionId && p.Kind == run.Confirmation.Kind)).ToList();
-        if (pending.Count != 1 || latest is null || pending[0].Kind is not ("send_message" or "send_report"))
-            return new("No single matching message action is awaiting confirmation in the latest answer. It may already be handled. Use the exact confirmation card; I have not sent another message.", true);
+        if (pending.Count != 1 || latest is null)
+            return new("No single matching action is awaiting confirmation in the latest answer. It may already be handled. Use the exact confirmation card; I have not sent another message.", true);
         try
         {
+            if (cancel)
+            {
+                await DismissAsync(latest.Id, pending[0].Id, ct);
+                return new("Cancelled the exact pending suggestion. No action was executed.", false);
+            }
             var result = await ConfirmAsync(latest.Id, pending[0].Id, ct);
             return new(result.Status == "done"
                 ? result.Kind == "send_message" ? $"Sent in Project Tracker chat: {result.Title}. Verified saved message ID: {result.ResultId}. Open the completed card to view it."
-                    : "The email report operation completed. Recipient delivery and reading are not verified."
+                    : result.Kind == "send_report" ? "The email report operation completed. Recipient delivery and reading are not verified."
+                    : $"Completed: {result.Title}." + (result.ResultId is { } id ? $" Saved result ID: {id}." : " Open the completed card to inspect the result.")
                 : $"The action was not verified as successful: {result.Error}. Check the application before retrying.", result.Status != "done");
         }
         catch (AppException ex) { return new($"No new message was sent: {ex.Message}", true); }
@@ -614,23 +609,29 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     public async Task<AiActionDto> ConfirmAsync(Guid messageId, string actionId, CancellationToken ct = default)
     {
         var (msg, all, p) = await ProposalAsync(messageId, actionId, ct);
+        AiActionPlan.Validate(p, all, ctx.RequireTenantId(), ctx.RequireUserId(), clock.Now);
         if (all.Any(a => a.Status == "running")) throw new ConflictException("Another suggestion in this answer is still running.", "AI_ACTION_HANDLED");
         if (msg.CreatedAt <= clock.Now.AddHours(-24)) throw new ConflictException("This suggestion expired. Make and review a new proposal.", "AI_ACTION_EXPIRED");
         if (p.Status != "proposed") throw new ConflictException("That suggestion has already been handled.", "AI_ACTION_HANDLED");
         if (!MayAct(await PlanAsync(ct))) await entitlements.EnsureFeatureAsync(FeatureKeys.AiActions, ct);
         // Compare and swap the proposal state: two simultaneous tabs cannot both claim the same side effect.
         var previous = msg.ActionsJson;
-        Replace(all, p with { Status = "running" }, msg);
+        var identity = AiActionPlan.Identity(ctx.RequireTenantId(), ctx.RequireUserId(), messageId, p);
+        var executionStart = Stopwatch.StartNew();
+        using var executionDatabase = databaseTelemetry.Begin();
+        var running = p.Execution is { } metadata ? metadata with { ApprovedAt = clock.Now, StartedAt = clock.Now, Attempts = metadata.Attempts + 1, ExecutionId = identity } : null;
+        Replace(all, p with { Status = "running", Execution = running }, msg);
+        UpdateActionTrace(msg, all);
+        var claimedTrace = msg.ExecutionJson;
         var claimed = msg.ActionsJson;
         var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
         if (await db.AiMessages.Where(m => m.Id == messageId && m.TenantId == tenant && m.UserId == user && m.ActionsJson == previous)
-                .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, claimed), ct) != 1)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, claimed).SetProperty(m => m.ExecutionJson, claimedTrace), ct) != 1)
             throw new ConflictException("That suggestion is already being handled.", "AI_ACTION_HANDLED");
         AiProposal done;
         try
         {
-            var identity = SHA256.HashData(Encoding.UTF8.GetBytes($"{tenant:N}:{user:N}:{messageId:N}:{p.Id}:{p.Kind}"));
-            var result = await runner.RunAsync(p, ct, new Guid(identity.AsSpan(0, 16)));
+            var result = await runner.RunAsync(p, ct, identity, all);
             done = p with { Status = "done", Link = result.Link, ResultId = result.RecordId };
             recorder.Audit("ai.action_confirmed", "AiAssistant", null, null, new { kind = p.Kind, title = p.Title });
             await LearnAsync(p.Kind, true, ct);
@@ -642,18 +643,50 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             log.LogError(ex, "A confirmed AI suggestion failed ({Kind})", p.Kind);
             done = p with { Status = "failed", Error = "That could not be done. Try it by hand." };
         }
+        done = done with { Execution = running is null ? null : running with { CompletedAt = clock.Now, DurationMs = executionStart.ElapsedMilliseconds, Database = executionDatabase.Snapshot() } };
         Replace(all, done, msg);
-        if (msg.ExecutionJson is not null)
-        {
-            try
-            {
-                var trace = JsonSerializer.Deserialize<AiExecutionTrace>(msg.ExecutionJson, Json);
-                if (trace is not null) msg.ExecutionJson = JsonSerializer.Serialize(trace with { Outcome = all.Any(a => a.Status == "failed") ? "partial" : all.Any(a => a.Status == "proposed") ? "awaiting_confirmation" : "succeeded" }, Json);
-            }
-            catch (JsonException) { /* optional telemetry must not prevent saving a business outcome */ }
-        }
+        UpdateActionTrace(msg, all);
         await db.SaveChangesAsync(CancellationToken.None);
         return done.ToDto();
+    }
+
+    private static void UpdateActionTrace(AiMessage message, IReadOnlyList<AiProposal> actions)
+    {
+        if (message.ExecutionJson is null) return;
+        try
+        {
+            var trace = JsonSerializer.Deserialize<AiExecutionTrace>(message.ExecutionJson, Json);
+            if (trace is not null) message.ExecutionJson = JsonSerializer.Serialize(trace with { Outcome = AiActionPlan.Outcome(actions), Actions = AiActionPlan.Timings(actions) }, Json);
+        }
+        catch (JsonException) { /* optional metadata never prevents business state persistence */ }
+    }
+
+    /// <summary>Reconciles a previously approved interrupted message from its exact stored receipt; never sends or retries a mutation.</summary>
+    public async Task<AiActionDto> ReconcileAsync(Guid messageId, string actionId, CancellationToken ct = default)
+    {
+        var (message, all, action) = await ProposalAsync(messageId, actionId, ct);
+        AiActionPlan.ValidateBinding(action, ctx.RequireTenantId(), ctx.RequireUserId());
+        if (action.Status is not ("running" or "failed") || action.Kind != "send_message")
+            throw new ConflictException("Only an interrupted in-app message can be reconciled from its saved receipt. No operation was retried.", "AI_RECOVERY_UNSUPPORTED");
+        var started = action.Execution?.StartedAt ?? message.CreatedAt;
+        if (action.Status == "running" && started > clock.Now.AddSeconds(-Opt.ExecutionTimeoutSeconds - 30))
+            throw new ConflictException("The action may still be running. Wait for its execution deadline before checking recovery.", "AI_ACTION_RUNNING");
+        var identity = AiActionPlan.Identity(ctx.RequireTenantId(), ctx.RequireUserId(), messageId, action);
+        var receipt = await runner.VerifyMessageReceiptAsync(action, identity, ct)
+            ?? throw new ConflictException("No exact persisted message receipt could be verified. No message was resent. Check chat before creating another proposal.", "AI_RECOVERY_UNVERIFIED");
+        await using var reconciliationTransaction = await db.Database.BeginTransactionAsync(ct);
+        var previous = message.ActionsJson;
+        var completed = action with { Status = "done", Link = receipt.Link, ResultId = receipt.RecordId, Error = null,
+            Execution = action.Execution is { } metadata ? metadata with { CompletedAt = clock.Now } : null };
+        Replace(all, completed, message); UpdateActionTrace(message, all);
+        var next = message.ActionsJson; var nextTrace = message.ExecutionJson;
+        if (await db.AiMessages.Where(m => m.Id == messageId && m.TenantId == ctx.TenantId && m.UserId == ctx.UserId && m.ActionsJson == previous)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, next).SetProperty(m => m.ExecutionJson, nextTrace), ct) != 1)
+            throw new ConflictException("The action state changed while checking its receipt.", "AI_ACTION_HANDLED");
+        recorder.Audit("ai.action_reconciled", "AiAssistant", null, null, new { kind = action.Kind, resultId = receipt.RecordId });
+        await db.SaveChangesAsync(ct);
+        await reconciliationTransaction.CommitAsync(ct);
+        return completed.ToDto();
     }
 
     /// <summary>
@@ -684,15 +717,18 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var (msg, all, p) = await ProposalAsync(messageId, actionId, ct);
         if (all.Any(a => a.Status == "running")) throw new ConflictException("Another suggestion in this answer is still running.", "AI_ACTION_HANDLED");
         if (p.Status != "proposed") throw new ConflictException("That suggestion has already been handled.", "AI_ACTION_HANDLED");
+        await using var dismissalTransaction = await db.Database.BeginTransactionAsync(ct);
         var previous = msg.ActionsJson;
-        var done = p with { Status = "dismissed" };
+        var done = p with { Status = "dismissed", Execution = p.Execution is { } e ? e with { CompletedAt = clock.Now } : null };
         Replace(all, done, msg);
         var dismissed = msg.ActionsJson;
         var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
         if (await db.AiMessages.Where(m => m.Id == messageId && m.TenantId == tenant && m.UserId == user && m.ActionsJson == previous)
                 .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, dismissed), ct) != 1)
             throw new ConflictException("That suggestion is already being handled.", "AI_ACTION_HANDLED");
+        UpdateActionTrace(msg, all);
         await db.SaveChangesAsync(ct);
+        await dismissalTransaction.CommitAsync(ct);
         await LearnAsync(p.Kind, false, ct);
         return done.ToDto();
     }

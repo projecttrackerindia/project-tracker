@@ -86,6 +86,9 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     [HttpPost("messages/{messageId:guid}/actions/{actionId}/dismiss")]
     public async Task<IActionResult> Dismiss(Guid messageId, string actionId, CancellationToken ct) => Ok(await agent.DismissAsync(messageId, actionId, ct));
 
+    [HttpPost("messages/{messageId:guid}/actions/{actionId}/reconcile")]
+    public async Task<IActionResult> Reconcile(Guid messageId, string actionId, CancellationToken ct) => Ok(await agent.ReconcileAsync(messageId, actionId, ct));
+
     // ---- files
 
     [HttpPost("files")]

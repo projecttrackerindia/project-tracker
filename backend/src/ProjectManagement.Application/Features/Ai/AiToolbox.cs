@@ -21,9 +21,9 @@ namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>A change the assistant suggested, kept with everything needed to carry it out once the person confirms it.</summary>
 public sealed record AiProposal(string Id, string Kind, string Title, string Summary, string PayloadJson, string Status = "proposed", string? Link = null, string? Error = null,
-    string? Preview = null, Guid? ResultId = null)
+    string? Preview = null, Guid? ResultId = null, AiActionExecution? Execution = null)
 {
-    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId);
+    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId, AiActionPlan.ToDto(Execution));
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>
@@ -96,8 +96,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         return matched ? all.Where(t => selected.Contains(t.Name)).ToList() : all;
     }
 
+    private IReadOnlyList<AiToolDef>? readCatalog, actionCatalog;
     public IReadOnlyList<AiToolDef> Definitions(bool actionsAllowed)
     {
+        if ((actionsAllowed ? actionCatalog : readCatalog) is { } cached) return cached;
         var tools = new List<AiToolDef>
         {
             new(ListReminders, "Read the caller's saved reminders. Unconfirmed proposals are not saved reminders. Use IDs returned here when proposing an update.",
@@ -223,6 +225,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project","title","at"]}
                 """),
         ]);
+        if (actionsAllowed) actionCatalog = tools; else readCatalog = tools;
         return tools;
     }
 
@@ -236,6 +239,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             var a = doc.RootElement;
             if (a.ValueKind != JsonValueKind.Object) throw new AiToolException("The tool input must be a JSON object.");
             if (WriteTools.Contains(name) && !actionsAllowed) throw new AiToolException("This workspace's plan does not let the assistant propose changes.");
+            if (Definitions(actionsAllowed).FirstOrDefault(t => t.Name == name) is { } definition && AiToolInputValidator.Validate(definition, a) is { } invalid)
+                throw new AiToolException("Invalid tool arguments: " + invalid);
             return name switch
             {
                 ListReminders => await ListRemindersAsync(ct),

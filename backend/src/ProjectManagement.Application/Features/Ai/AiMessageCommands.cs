@@ -8,6 +8,7 @@ public static class AiMessageCommands
     private static readonly Regex Request = new(@"^(?:can you\s+|please\s+)?send\s+(?<body>[^\r\n]{1,4000}?)\s+message\s+to\s+(?<recipient>[^\r\n?]{1,150})\??$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     private static readonly Regex Approval = new(@"^(yes(?:[,!]?(?:\s+(?:please|send(?:\s+it)?|go ahead|confirm))*)?|confirm(?:\s+(?:it|sending the message|sending|send))?|send it|go ahead(?:\s+and send(?:\s+it)?)?)[.!]*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     public static bool IsConfirmation(string text) => Approval.IsMatch(text.Trim());
+    public static bool IsCancellation(string text) => Regex.IsMatch(text.Trim(), @"^(?:cancel (?:it|that|sending the message)|not now|dismiss)[.!]*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     public static bool UnsupportedChannel(string text) => Regex.IsMatch(text, @"\b(whatsapp|sms|slack|telegram)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     public static string? MissingBodyRecipient(string text)
     {

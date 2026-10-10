@@ -33,6 +33,8 @@ public static class DependencyInjection
         services.AddScoped<CurrentContext>();
         services.AddScoped<ICurrentContext>(sp => sp.GetRequiredService<CurrentContext>());
 
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiDatabaseTelemetry>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiCommandPlanner>();
         services.AddScoped<AppClock>();
         services.AddScoped<Recorder>();
         services.AddScoped<PermissionService>();

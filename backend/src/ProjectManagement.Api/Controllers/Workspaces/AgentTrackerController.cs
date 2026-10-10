@@ -10,8 +10,8 @@ public sealed class AgentTrackerController(AgentTrackerService tracker, IAiDiagn
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? status,
-        [FromQuery] string? model, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
-        => Ok(await tracker.ListAsync(from, to, status, model, page, pageSize, ct));
+        [FromQuery] string? model, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default, [FromQuery] string? intent = null)
+        => Ok(await tracker.ListAsync(from, to, status, model, page, pageSize, ct, intent));
 
     [HttpGet("health")]
     public async Task<IActionResult> Health(CancellationToken ct)

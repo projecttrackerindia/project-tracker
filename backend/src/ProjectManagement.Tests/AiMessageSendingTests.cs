@@ -15,7 +15,7 @@ namespace ProjectManagement.Tests;
 
 /// <summary>Real application chat services and SQLite persistence; LLM transport is disabled/scripted, not a delivery integration mock.</summary>
 [Collection("api")]
-public sealed class AiMessageSendingTests(ApiFactory factory)
+public sealed partial class AiMessageSendingTests(ApiFactory factory)
 {
     private async Task Run(Func<TestClient, TestClient, Task> test, string recipientName = "Sivareddy")
     {
@@ -307,7 +307,7 @@ public sealed class AiMessageSendingTests(ApiFactory factory)
                 samples.Add(timer.Elapsed.TotalMilliseconds);
             }
             samples.Sort();
-            Console.WriteLine($"Application route benchmark (in-process SQLite; 10 warm samples; not Railway): mean={samples.Average():F2}ms p95={samples[^1]:F2}ms modelCalls=0");
+            Console.WriteLine($"Application route benchmark (in-process SQLite; 10 warm samples; not Railway): mean={samples.Average():F2}ms p50={samples[(int)Math.Ceiling(samples.Count * .5) - 1]:F2}ms p95={samples[^1]:F2}ms modelCalls=0");
         }
         Assert.Empty(factory.Chat.Requests);
     }, "Siva Reddy");

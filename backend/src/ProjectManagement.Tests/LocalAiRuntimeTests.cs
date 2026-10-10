@@ -120,4 +120,13 @@ public sealed class LocalAiRuntimeTests
         Assert.Equal(0, gate.QueueDepth);
         active.Dispose(); using var next = await gate.EnterAsync(default);
     }
+    [Fact]
+    public async Task Native_runtime_metrics_preserve_load_prompt_generation_and_cache_evidence()
+    {
+        var h = new Handler((_, _) => Task.FromResult(Answer("""{"message":{"content":"Hi"},"done":true,"load_duration":60000000000,"prompt_eval_duration":250000000,"eval_duration":750000000,"total_duration":61000000000,"prompt_eval_cached_count":37}""")));
+        var end = Assert.Single((await Read(Chat(h, Settings()))).OfType<AiTurnEnd>());
+        Assert.Equal(60000, end.Runtime!.LoadMs); Assert.Equal(250, end.Runtime.PromptEvalMs);
+        Assert.Equal(750, end.Runtime.GenerationMs); Assert.Equal(61000, end.Runtime.TotalMs); Assert.Equal(37, end.Runtime.CachedPromptTokens);
+    }
+
 }
