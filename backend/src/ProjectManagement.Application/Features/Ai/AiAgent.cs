@@ -245,6 +245,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var tier = route.Tier; var reason = route.Reason; var limited = route.Limited;
         while (tier > AiTier.Quick && run.CreditsLeft < Opt.For(tier).Credits) { tier--; limited = true; reason += " (credits are running low)"; }
         var cfg = Opt.For(tier);
+        var intentStart = elapsed.ElapsedMilliseconds;
         var fastGreeting = !options.Value.UsesAnthropic && run.Files.Count == 0 && AiToolbox.IsGreeting(run.Text);
         var confirming = AiMessageCommands.IsConfirmation(run.Text) && run.Files.Count == 0;
         var confirmation = confirming ? await ConfirmFromConversationAsync(run, ct) : null;
@@ -252,28 +253,53 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             : options.Value.UsesAnthropic ? null : await AiFastReminder.TryAsync(run, db, clock, ct);
         if (!options.Value.UsesAnthropic && !confirming && run.Files.Count == 0 && AiMessageCommands.ExactRequest(run.Text) is { } exact)
             fastReminder = new AiFastReminder(AiToolbox.SendMessage, JsonSerializer.Serialize(new { recipient = exact.Recipient, body = exact.Body }, Json), null);
+        string intent = confirming ? "confirm_pending_action" : fastGreeting ? "greeting" : fastReminder?.Tool == AiToolbox.SendMessage ? "send_message" : fastReminder is not null ? "reminder" : "reasoning";
+        AiToolOutcome? directRead = null;
+        var readRequest = !options.Value.UsesAnthropic && !confirming && run.Files.Count == 0 ? AiReadCommands.Tasks(run.Text) : null;
+        var missingRecipient = !options.Value.UsesAnthropic && !confirming && run.Files.Count == 0 ? AiMessageCommands.MissingBodyRecipient(run.Text) : null;
+        var intentMs = elapsed.ElapsedMilliseconds - intentStart;
+        var readStart = elapsed.ElapsedMilliseconds;
+        if (readRequest is { } tasksRequest)
+        {
+            intent = "list_person_tasks";
+            directRead = await toolbox.PersonTasksAsync(tasksRequest.Person, tasksRequest.Page, ct);
+        }
+        else if (missingRecipient is not null)
+        {
+            intent = "clarify_message_content";
+            directRead = await toolbox.MessageClarificationAsync(missingRecipient, ct);
+        }
+        if (directRead is not null)
+        {
+            fastReminder = new AiFastReminder(null, null, directRead.Content);
+            toolFailed |= directRead.IsError;
+            toolTimings.Add(new AiToolTiming(intent, elapsed.ElapsedMilliseconds - readStart, !directRead.IsError, "read"));
+        }
         if (confirmation?.Failed == true) toolFailed = true;
         var applicationReply = fastGreeting || fastReminder is not null;
-        var model = confirming ? "builtin-confirmation" : fastReminder?.Tool == AiToolbox.SendMessage ? "builtin-message" : fastReminder is not null ? "builtin-reminder" : fastGreeting ? "builtin-greeting" : chat.ModelFor(cfg.Model);
+        var model = directRead is not null ? "builtin-" + intent : confirming ? "builtin-confirmation" : fastReminder?.Tool == AiToolbox.SendMessage ? "builtin-message" : fastReminder is not null ? "builtin-reminder" : fastGreeting ? "builtin-greeting" : chat.ModelFor(cfg.Model);
         var provider = applicationReply ? "application" : chat.Provider;
         var fellBack = false;
         yield return new AiStreamRoute(TierId(tier), model, reason, limited, TierId(route.Wanted), applicationReply ? 0 : cfg.Credits);
+        if (directRead is not null) yield return new AiStreamTool(run.Question.Id.ToString(), intent, directRead.Label, directRead.IsError ? "failed" : "done", directRead.Count);
 
         // ---- what the model is given
-        var (system, context) = (options.Value.UsesAnthropic ? SystemPrompt : LocalSystemPrompt, await ContextAsync(run, ct));
+        var contextStart = elapsed.ElapsedMilliseconds;
+        var (system, context) = applicationReply ? ("", "") : (options.Value.UsesAnthropic ? SystemPrompt : LocalSystemPrompt, await ContextAsync(run, ct));
         var turns = applicationReply ? new List<AiTurn>() : await HistoryAsync(run, ct);
         // Everything the answer may legitimately refer to; used afterwards to flag work item keys that appear from nowhere.
-        var seen = new StringBuilder(context).Append(' ').Append(run.Conversation.Summary);
+        var seen = new StringBuilder(context).Append(' ').Append(run.Conversation.Summary).Append(' ').Append(directRead?.Content);
         foreach (var t in turns) foreach (var b in t.Blocks) if (b is AiText tx) seen.Append(' ').Append(tx.Text);
         var tools = options.Value.UsesAnthropic ? toolbox.Definitions(run.Plan.Actions) : toolbox.DefinitionsFor(run.Text, run.Plan.Actions);
         var guardActionWrite = !options.Value.UsesAnthropic && ((tools.Count <= 6 && tools.Any(t => t.Name == AiToolbox.ReviseReminder))
             || tools.Any(t => t.Name == AiToolbox.SendMessage) && tools.Count <= 2)
             && System.Text.RegularExpressions.Regex.IsMatch(run.Text, @"\b(create|add|change|move|update|reschedule|remind|set|send)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var contextMs = elapsed.ElapsedMilliseconds;
-        var promptChars = system.Length + context.Length + turns.SelectMany(t => t.Blocks).OfType<AiText>().Sum(t => t.Text.Length) + tools.Sum(t => t.SchemaJson.Length + t.Description.Length);
+        var contextMs = elapsed.ElapsedMilliseconds - contextStart;
+        var promptChars = applicationReply ? 0 : system.Length + context.Length + turns.SelectMany(t => t.Blocks).OfType<AiText>().Sum(t => t.Text.Length) + tools.Sum(t => t.SchemaJson.Length + t.Description.Length);
 
         var answer = new StringBuilder(); var thinking = new StringBuilder();
         var used = new List<AiToolUseDto>(); var proposals = new List<AiProposal>();
+        if (directRead is { IsError: false }) used.Add(new AiToolUseDto(intent, directRead.Label, directRead.Count));
         var actionErrors = new List<string>();
         int inTokens = 0, outTokens = 0, cacheRead = 0, cacheWrite = 0;
         Exception? failure = null; var cancelled = false; string? note = null;
@@ -435,7 +461,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             ExecutionJson = JsonSerializer.Serialize(new AiExecutionTrace("project-assistant", "2", run.Question.Id.ToString(), provider, model,
                 startedAt, elapsed.ElapsedMilliseconds, contextMs, firstTokenMs, promptChars, tools.Count,
                 cancelled ? "cancelled" : failure is AppException { Code: "AI_TIMEOUT" } ? "timeout" : failure is not null ? "failed" : toolFailed ? "partial" : proposals.Any(p => p.Status == "proposed") ? "awaiting_confirmation" : "succeeded",
-                (failure as AppException)?.Code, timings, toolTimings), Json),
+                (failure as AppException)?.Code, timings, toolTimings, intent, applicationReply ? 1 : null, intentMs), Json),
             ToolsJson = used.Count == 0 ? null : JsonSerializer.Serialize(Merge(used), Json),
             ActionsJson = proposals.Count == 0 ? null : JsonSerializer.Serialize(proposals, Json),
         };

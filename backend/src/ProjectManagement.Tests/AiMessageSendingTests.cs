@@ -17,7 +17,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public sealed class AiMessageSendingTests(ApiFactory factory)
 {
-    private async Task Run(Func<TestClient, TestClient, Task> test)
+    private async Task Run(Func<TestClient, TestClient, Task> test, string recipientName = "Sivareddy")
     {
         var options = factory.Services.GetRequiredService<IOptions<AiOptions>>().Value;
         var previous = options.PrimaryProvider;
@@ -26,7 +26,7 @@ public sealed class AiMessageSendingTests(ApiFactory factory)
             options.PrimaryProvider = "local"; factory.Chat.Reset(); factory.Chat.Configured = true;
             factory.Chat.ModelOverride = "qwen2.5:7b";
             var sender = await TestClient.RegisterAsync(factory, "Prasanna"); await sender.CreateOrgAsync(); await sender.UpgradeAsync("BUSINESS");
-            var recipient = await sender.AddMemberAsync(factory, TenantRole.Member, "Sivareddy");
+            var recipient = await sender.AddMemberAsync(factory, TenantRole.Member, recipientName);
             await test(sender, recipient);
         }
         finally { options.PrimaryProvider = previous; factory.Chat.ModelOverride = null; factory.Chat.Reset(); }
@@ -180,4 +180,136 @@ public sealed class AiMessageSendingTests(ApiFactory factory)
         var response = await Ask(sender, "Send Hi through WhatsApp message to Sivareddy");
         Assert.Empty(response["actions"]!.AsArray()); Assert.Equal(0, Sent(sender));
     });
+    [Theory]
+    [InlineData("Can you send a Hi message to Sivareddy?", "Hi")]
+    [InlineData("can you send is that project completed message to sivaredy", "is that project completed")]
+    [InlineData("can you send is that project completed message to sivareddy", "is that project completed")]
+    [InlineData("can you send is that project completed message to siva reddy", "is that project completed")]
+    [InlineData("Send \"a Hi!\" message to Siva Reddy", "a Hi!")]
+    public Task Real_spaced_recipient_and_typo_preserve_content_and_verify_delivery(string request, string body) => Run(async (sender, recipient) =>
+    {
+        factory.Chat.Fail = new InvalidOperationException("No model is needed for explicit messages");
+        var proposal = await Ask(sender, request);
+        Assert.Equal(body, proposal["actions"]![0]!["preview"]!.GetValue<string>());
+        Assert.Contains("Siva Reddy", proposal["actions"]![0]!["summary"]!.GetValue<string>());
+        var reply = await Ask(sender, "Confirm sending the message", Conversation(proposal));
+        Assert.Contains("Verified saved message ID", reply["content"]!.GetValue<string>());
+        Assert.Equal(body, factory.WithDb(db => db.ChatMessages.IgnoreQueryFilters().Single(m => m.TenantId == sender.WorkspaceId).Body));
+        Assert.Empty(factory.Chat.Requests);
+    }, "Siva Reddy");
+
+    [Theory]
+    [InlineData("can you send message to sivareddy")]
+    [InlineData("Can you send a message to Siva Reddy?")]
+    public Task Missing_body_asks_a_focused_question_without_a_model_or_action(string request) => Run(async (sender, recipient) =>
+    {
+        factory.Chat.Fail = new InvalidOperationException("Clarification must not call Ollama");
+        var reply = await Ask(sender, request);
+        Assert.Contains("What exact message", reply["content"]!.GetValue<string>());
+        Assert.Contains("Siva Reddy", reply["content"]!.GetValue<string>());
+        Assert.DoesNotContain("reminder", reply["content"]!.GetValue<string>());
+        Assert.Empty(reply["actions"]!.AsArray()); Assert.Equal(0, Sent(sender)); Assert.Empty(factory.Chat.Requests);
+    }, "Siva Reddy");
+
+    [Fact]
+    public Task Ambiguous_normalized_recipient_cannot_prepare_or_send() => Run(async (sender, recipient) =>
+    {
+        await sender.AddMemberAsync(factory, TenantRole.Member, "Sivareddy");
+        var reply = await Ask(sender, "send Hi message to siva-reddy");
+        Assert.Contains("could be", reply["content"]!.GetValue<string>());
+        Assert.Empty(reply["actions"]!.AsArray()); Assert.Equal(0, Sent(sender));
+    }, "Siva Reddy");
+
+    [Fact]
+    public Task Task_lookup_reads_live_status_due_dates_and_pages_without_a_model() => Run(async (sender, recipient) =>
+    {
+        factory.Chat.Fail = new InvalidOperationException("Task questions must read live services");
+        var project = await sender.CreateProjectAsync("Task evidence");
+        for (var i = 0; i < 41; i++)
+            await sender.CreateTaskAsync(project, $"Assigned {i:D2}", new { title = $"Assigned {i:D2}", priority = "High", assigneeId = recipient.UserId, dueDate = "2020-01-01" });
+        await sender.CreateTaskAsync(project, "Unassigned must stay hidden");
+        var completed = await sender.CreateTaskAsync(project, "Completed must stay hidden", new { title = "Completed must stay hidden", assigneeId = recipient.UserId });
+        var statuses = (await sender.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray();
+        var done = statuses.First(s => s!["category"]!.GetValue<string>() == "Done")!["id"]!.GetValue<string>();
+        Assert.True((await sender.Send(HttpMethod.Patch, $"/api/v1/tasks/{completed["id"]}/move", new { statusId = done })).Ok);
+        var first = await Ask(sender, "Which task is currently Sivareddy doing?");
+        var content = first["content"]!.GetValue<string>();
+        Assert.Contains("Siva Reddy", content); Assert.Contains("2020-01-01", content); Assert.Contains("overdue", content);
+        Assert.Contains("page 2", content); Assert.DoesNotContain("must stay hidden", content);
+        Assert.Equal(40, content.Split('\n').Count(l => l.Contains(": Assigned")));
+        var second = await Ask(sender, "show tasks for Siva Reddy page 2");
+        var secondContent = second["content"]!.GetValue<string>();
+        Assert.Equal(1, secondContent.Split('\n').Count(l => l.Contains(": Assigned")));
+        var allLines = content.Split('\n').Concat(secondContent.Split('\n')).Where(l => l.Contains(": Assigned")).ToList();
+        Assert.Equal(41, allLines.Distinct().Count()); Assert.Empty(factory.Chat.Requests);
+        var trace = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().Single(m => m.Id == Guid.Parse(first["id"]!.GetValue<string>())).ExecutionJson);
+        Assert.Contains("list_person_tasks", trace); Assert.Contains("intentMs", trace);
+        // In-process timings exclude Railway networking and local model inference.
+        Console.WriteLine($"Deterministic task request trace: {trace}");
+    }, "Siva Reddy");
+
+    [Fact]
+    public Task Task_lookup_distinguishes_completed_assignments_from_no_assignments() => Run(async (sender, recipient) =>
+    {
+        var empty = await Ask(sender, "which task is currently sivareddy doing?");
+        Assert.Contains("no project tasks assigned that you can see", empty["content"]!.GetValue<string>());
+        var project = await sender.CreateProjectAsync();
+        var task = await sender.CreateTaskAsync(project, "Already done", new { title = "Already done", assigneeId = recipient.UserId });
+        var statuses = (await sender.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray();
+        var done = statuses.First(s => s!["category"]!.GetValue<string>() == "Done")!["id"]!.GetValue<string>();
+        Assert.True((await sender.Send(HttpMethod.Patch, $"/api/v1/tasks/{task["id"]}/move", new { statusId = done })).Ok);
+        var reply = await Ask(sender, "which task is currently sivareddy doing?");
+        Assert.Contains("assigned tasks are completed or cancelled", reply["content"]!.GetValue<string>());
+    }, "Siva Reddy");
+
+    [Fact]
+    public Task Foreign_recipient_names_are_not_resolved_or_disclosed() => Run(async (sender, recipient) =>
+    {
+        var outsider = await TestClient.RegisterAsync(factory, "Foreign Secret"); await outsider.CreateOrgAsync();
+        var reply = await Ask(sender, "send Hi message to foreignsecret");
+        Assert.Empty(reply["actions"]!.AsArray()); Assert.Equal(0, Sent(sender));
+        Assert.DoesNotContain("Foreign Secret", reply["content"]!.GetValue<string>());
+    }, "Siva Reddy");
+
+    [Fact]
+    public Task Task_fast_path_preserves_module_permissions_and_tenant_scope() => Run(async (sender, recipient) =>
+    {
+        var outsider = await TestClient.RegisterAsync(factory); await outsider.CreateOrgAsync();
+        var foreignProject = await outsider.CreateProjectAsync();
+        var foreignTask = await outsider.CreateTaskAsync(foreignProject, "Foreign secret task");
+        factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().Single(t => t.Id == Guid.Parse(foreignTask["id"]!.GetValue<string>())).AssigneeId = recipient.UserId; db.SaveChanges(); return 0; });
+        var answer = await Ask(sender, "which task is currently sivareddy doing?");
+        Assert.DoesNotContain("Foreign secret task", answer["content"]!.GetValue<string>());
+        Assert.Contains("no project tasks assigned that you can see", answer["content"]!.GetValue<string>());
+        var role = (await sender.Post("/api/v1/org/roles", new { name = "No tasks" })).Data!["id"]!.GetValue<string>();
+        Assert.True((await sender.Put($"/api/v1/org/members/{recipient.UserId}/role", new { roleId = role })).Ok);
+        var modules = new[] { "projects", "tasks", "work", "calendar", "teams", "members", "organization", "reports", "activity", "audit", "billing" }.ToDictionary(m => m, m => m == "tasks" ? 0 : 1);
+        Assert.True((await sender.Put($"/api/v1/org/roles/{role}/access", new { modules, actions = new Dictionary<string, bool>() })).Ok);
+        var denied = await Ask(recipient, "show tasks for Siva Reddy");
+        Assert.Empty(denied["actions"]!.AsArray());
+        Assert.DoesNotContain("Open project tasks assigned", denied["content"]!.GetValue<string>());
+        Assert.DoesNotContain("no project tasks", denied["content"]!.GetValue<string>());
+        Assert.Empty(factory.Chat.Requests);
+    }, "Siva Reddy");
+
+    [Fact]
+    public Task Warm_application_routes_record_real_in_process_latency_without_model_calls() => Run(async (sender, recipient) =>
+    {
+        factory.Chat.Fail = new InvalidOperationException("Benchmark must not call a model");
+        foreach (var prompt in new[] { "Hi", "can you send message to sivareddy", "which task is currently sivareddy doing?" })
+        {
+            await Ask(sender, prompt); // warm service/EF caches
+            var samples = new List<double>();
+            for (var i = 0; i < 10; i++)
+            {
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                await Ask(sender, prompt);
+                samples.Add(timer.Elapsed.TotalMilliseconds);
+            }
+            samples.Sort();
+            Console.WriteLine($"Application route benchmark (in-process SQLite; 10 warm samples; not Railway): mean={samples.Average():F2}ms p95={samples[^1]:F2}ms modelCalls=0");
+        }
+        Assert.Empty(factory.Chat.Requests);
+    }, "Siva Reddy");
+
 }
