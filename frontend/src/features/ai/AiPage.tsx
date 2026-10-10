@@ -9,8 +9,8 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
-import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, UsageDetails, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
-import { AI_NAME, AI_BYLINE } from './aiBrand';
+import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
+import { AI_NAME } from './aiBrand';
 import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
 
@@ -362,13 +362,11 @@ export function AiPage() {
             <Orb size={30} busy={streaming} animated />
             <div><b>{title}</b><span>{streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
           </div>
-          <CreditMeter usage={usage} />
           </div>
           <div className="ai-head-controls">
             <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
-            <Link className="btn ai-workflows-link" to="/ai/operations"><Icon name="workflow" size={15} />Proactive workflows</Link>
-            <span className="ai-brand-byline">{AI_BYLINE}</span>
-            <UsageDetails usage={usage} />
+            <Link className="btn ai-workflows-link" to="/ai/operations" aria-label="Proactive workflows"><Icon name="workflow" size={15} />Workflows</Link>
+            <CreditMeter usage={usage} />
           </div>
         </header>
 

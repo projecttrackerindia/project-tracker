@@ -53,46 +53,59 @@ export function ModeSwitch({ mode, onChange, usage, disabled }: { mode: AiMode; 
   );
 }
 
-/** A ring showing how much of the month's credits is left. */
+/** A compact balance control. The arc represents remaining organization credits, never provider capacity. */
 export function CreditMeter({ usage }: { usage?: AiUsage }) {
+  const role = useAuth((s) => s.ctx?.current?.role);
+  const control = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (control.current && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && control.current) {
+        control.current.open = false;
+        control.current.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
   if (!usage) return null;
   const unlimited = usage.unlimited;
   const pct = unlimited ? 100 : usage.creditsLimit > 0 ? Math.max(0, Math.min(100, (usage.creditsLeft / usage.creditsLimit) * 100)) : 0;
   const low = !unlimited && pct < 15;
-  const r = 15, c = 2 * Math.PI * r;
+  const r = 17, c = 2 * Math.PI * r;
   return (
-    <div className={`ai-credits ${low ? 'low' : ''}`} title={unlimited ? 'Unlimited organization credits on your plan; request limits still apply.' : `${usage.creditsUsed.toLocaleString()} of ${usage.creditsLimit.toLocaleString()} organization credits used this month. Shared across your workspace and renewed on the 1st (UTC).`}>
-      <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
-        <circle cx="19" cy="19" r={r} className="ring-bg" />
-        <circle cx="19" cy="19" r={r} className="ring" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} transform="rotate(-90 19 19)" />
-      </svg>
-      <span><b>{unlimited ? 'Unlimited' : `${usage.creditsLeft.toLocaleString()} credits left`}</b><i>Organization balance</i></span>
-    </div>
-  );
-}
-
-/** Detailed caps live in normal document flow, so keyboard/touch users can read them without a hover tooltip. */
-export function UsageDetails({ usage }: { usage?: AiUsage }) {
-  const role = useAuth((s) => s.ctx?.current?.role);
-  if (!usage) return null;
-  const limits = usage.requestLimits;
-  return <details className="ai-usage-details">
-    <summary><Icon name="info" size={14} /> Usage & limits <Icon name="chevronD" size={12} /></summary>
-    <div className="ai-usage-panel">
-      <p>Credits are shared by your organization. Each person's request caps are separate.</p>
-      {limits && <div className="ai-limit-values" aria-label="Per-person request limits">
-        <span><b>{limits.perMinute.toLocaleString()}</b> / minute</span>
-        <span><b>{limits.perHour.toLocaleString()}</b> / hour</span>
-        <span><b>{limits.perDay.toLocaleString()}</b> / day</span>
-        <span><b>{limits.concurrent}</b> active at once</span>
-      </div>}
-      <div className="ai-limit-values" aria-label="Credits per completed answer">
-        {usage.tiers.filter((t) => t.allowed).map((t) => <span key={t.id}><b>{t.label}</b> {t.credits} credit{t.credits === 1 ? '' : 's'} / answer</span>)}
+    <details ref={control} className={`ai-credit-control ${low ? 'low' : ''}`} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="ai-credit-button" aria-label={unlimited ? 'Usage: unlimited organization credits' : `Usage: ${usage.creditsLeft.toLocaleString()} organization credits remaining, ${Math.round(pct)} percent`} title="View organization credit balance">
+        <span className="ai-credit-ring">
+          <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+            <circle cx="21" cy="21" r={r} className="ring-bg" />
+            <circle cx="21" cy="21" r={r} className="ring" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} transform="rotate(-90 21 21)" />
+          </svg>
+          <Icon name={unlimited ? 'sparkle' : 'bolt'} size={15} />
+        </span>
+        <span>Usage</span><Icon name="chevronD" size={12} />
+      </summary>
+      <div className="ai-credit-panel">
+        <div className="ai-credit-panel-heading"><span>Organization credits</span><Icon name="orbit" size={18} /></div>
+        <strong>{unlimited ? 'Unlimited' : usage.creditsLeft.toLocaleString()}<small>{unlimited ? 'on your plan' : 'remaining'}</small></strong>
+        {!unlimited && <>
+          <div className="ai-credit-bar" role="meter" aria-label="Organization credits remaining" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={`${usage.creditsLeft.toLocaleString()} credits remaining`}><span style={{ width: `${pct}%` }} /></div>
+          <div className="ai-credit-caption"><span>{Math.round(pct)}% remaining</span><span>{usage.creditsLimit.toLocaleString()} monthly</span></div>
+        </>}
+        <p>Shared across your organization. Monthly credits renew on the 1st (UTC).</p>
+        <p>Auto selects a level within your plan. Request safeguards and any user or team budget still apply.</p>
+        {(role === 'Owner' || role === 'Admin') && <Link to="/settings/general" onClick={() => { if (control.current) control.current.open = false; }}>View usage & budgets <Icon name="chevronR" size={13} /></Link>}
       </div>
-      <p>Auto chooses a level within your plan. Provider capacity and any user or team budget also apply.</p>
-      {(role === 'Owner' || role === 'Admin') && <Link to="/settings/general">View usage & budgets</Link>}
-    </div>
-  </details>;
+    </details>
+  );
 }
 
 // ------------------------------------------------------------------ an answer's parts

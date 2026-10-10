@@ -1,8 +1,10 @@
 # Orbit AI and application performance priorities
 
-The screenshot's credit/rate wrapping was a header layout issue. The interface now uses separate identity/balance and control rows, a fixed-size vector mark, and an accessible expandable usage panel. Organization credits and person limits are explicitly different. Agent Tracker uses a workflow icon; Activity keeps its activity trace. The AI display identity is Orbit AI, by Project Tracker; it does not rename the underlying Gemini provider or model.
+The screenshot's credit/rate wrapping was a header layout issue. The header now aligns identity and controls on one row when space allows, and adapts to the conversation pane's actual width on smaller screens. A compact Usage button combines a credit ring with an accessible balance popover. The arc shrinks as shared organization credits are consumed and grows when the balance renews; it is not a provider-capacity or personal request meter. Numeric per-minute/hour/day caps are absent from the AI header and its popover; backend safeguards still apply. Agent Tracker uses a workflow icon; Activity keeps its activity trace. The AI display identity is Orbit AI; it does not rename the underlying Gemini provider or model.
 
 Changes made here: header blur removed; animated blurred logo layers replaced with transform-only SVG motion; historical message marks stay static; idle animation is limited to the header/empty-state hero; reduced-motion preferences stop mark animation including the busy state. No animation library, raster asset, extra inference service or runtime dependency was added. Conversation pages no longer fetch the portfolio insights and starters used only on the empty chat page. Existing caching and requestAnimationFrame stream batching remain in use. These are code changes, not an end-to-end speed benchmark.
+
+The credit arc and balance bar animate between server-reported values, with a low-balance color below 15%. The popover opens by keyboard or touch, closes with Escape or an outside click, and honors reduced-motion preferences. Local component previews at 1,100, 420 and 320 pixels verified that controls fit without horizontal overflow, including dark mode; simulated balance changes verified decreasing and increasing arcs. These previews used synthetic credits and made no AI calls.
 
 ## Next improvements, ordered by value
 

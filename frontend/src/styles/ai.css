@@ -58,7 +58,7 @@
 .ai-rail-scrim { display: none; }
 
 /* ---- the main column */
-.ai-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ai-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; container-type: inline-size; container-name: ai-workspace; }
 .ai-aurora {
   position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background:
@@ -68,46 +68,64 @@
     linear-gradient(90deg, rgba(139, 92, 246, .05) 1px, transparent 1px) 0 0 / 34px 34px;
   -webkit-mask-image: radial-gradient(130% 95% at 50% 0%, #000 28%, transparent 86%); mask-image: radial-gradient(130% 95% at 50% 0%, #000 28%, transparent 86%);
 }
-.ai-head { position: relative; z-index: 3; display: grid; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--modal-line); background: var(--surface); }
-.ai-head-primary, .ai-head-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; min-width: 0; }
-.ai-head-primary .ai-head-title { flex: 1 1 160px; }
-.ai-head-primary .ai-credits { flex: 0 0 auto; margin-left: auto; }
-.ai-head-controls .ai-modes { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; }
-.ai-workflows-link { white-space: nowrap; font-size: 12px; }
-.ai-brand-byline { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
-.ai-usage-details { flex-basis: 100%; min-width: 0; font-size: 12px; }
-.ai-usage-details summary { display: flex; align-items: center; gap: 6px; width: fit-content; cursor: pointer; color: var(--text-2); padding: 4px 0; list-style: none; }
-.ai-usage-details summary::-webkit-details-marker { display: none; }
-.ai-usage-details summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 3px; }
-.ai-usage-details[open] summary > svg:last-child { transform: rotate(180deg); }
-.ai-usage-panel { padding: 10px 12px; margin-top: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-3); color: var(--text-2); }
-.ai-usage-panel p { margin: 0 0 8px; }
-.ai-limit-values { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; }
-.ai-limit-values span { white-space: nowrap; }
-.ai-limit-values b { color: var(--text); font-variant-numeric: tabular-nums; }
-.ai-usage-panel a { color: var(--primary); }
+.ai-head { position: relative; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; padding: 16px 22px; border-bottom: 1px solid var(--modal-line); background: var(--surface); }
+.ai-head-primary, .ai-head-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ai-head-primary { flex: 1 1 200px; }
+.ai-head-controls { flex: 0 1 auto; flex-wrap: wrap; margin-left: auto; }
+.ai-head-controls .ai-modes { min-width: 0; max-width: 100%; }
+.ai-workflows-link { white-space: nowrap; font-size: 12px; border-radius: 12px; height: 42px; padding: 0 12px; }
 .ai-head-title { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1; }
 .ai-head-title div { min-width: 0; display: grid; }
 .ai-head-title b { font-size: 15px; font-weight: 700; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-head-title span { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-rail-toggle { display: none; }
 
-.ai-modes { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--border); }
-.ai-mode { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--text-2); transition: background .15s, color .15s; white-space: nowrap; }
+.ai-modes { display: inline-flex; gap: 3px; padding: 4px; border-radius: 13px; background: var(--surface-3); border: 1px solid var(--border); }
+.ai-mode { display: inline-flex; justify-content: center; align-items: center; gap: 5px; height: 32px; padding: 0 12px; border-radius: 9px; font-size: 12.5px; font-weight: 600; color: var(--text-2); transition: background .2s, color .2s, box-shadow .2s; white-space: nowrap; }
 .ai-mode:hover:not(:disabled):not(.on) { background: var(--hover-bg); color: var(--text); }
-.ai-mode.on { color: #fff; background: var(--ai-grad); box-shadow: 0 4px 14px rgba(139, 92, 246, .35); }
+.ai-mode.on { color: #fff; background: linear-gradient(125deg, #4338ca, #7c3aed); box-shadow: 0 2px 8px rgba(79, 70, 229, .2); }
 .ai-mode.locked { opacity: .5; cursor: not-allowed; }
 .ai-mode:disabled { opacity: .55; cursor: default; }
 .ai-mode:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 
-.ai-credits { display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
-.ai-credits svg .ring-bg { fill: none; stroke: var(--surface-3); stroke-width: 4; }
-.ai-credits svg .ring { fill: none; stroke: var(--ai-a); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
-.ai-credits.low svg .ring { stroke: var(--warning); }
-.ai-credits span { display: grid; line-height: 1.15; }
-.ai-credits b { font-size: 13.5px; font-weight: 750; font-variant-numeric: tabular-nums; }
-.ai-credits i { font-style: normal; font-size: 10.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
-.ai-credits.low b { color: var(--warning); }
+.ai-credit-control { position: relative; flex: none; color: var(--primary); }
+.ai-credit-button { display: flex; align-items: center; gap: 7px; height: 44px; padding: 0 10px 0 1px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); cursor: pointer; list-style: none; font-size: 12px; font-weight: 650; transition: background .2s, border-color .2s, box-shadow .2s; }
+.ai-credit-button::-webkit-details-marker { display: none; }
+.ai-credit-button:hover, .ai-credit-control[open] .ai-credit-button { background: var(--primary-soft); border-color: var(--ai-a); box-shadow: 0 0 0 3px var(--primary-soft); }
+.ai-credit-button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.ai-credit-button > svg { color: var(--text-3); transition: transform .2s; }
+.ai-credit-control[open] .ai-credit-button > svg { transform: rotate(180deg); }
+.ai-credit-ring { position: relative; display: grid; place-items: center; width: 42px; height: 42px; color: var(--primary); }
+.ai-credit-ring > svg:first-child { position: absolute; inset: 0; }
+.ai-credit-ring .ring-bg { fill: none; stroke: var(--border); stroke-width: 3; }
+.ai-credit-ring .ring { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .8s cubic-bezier(.22, 1, .36, 1), stroke .3s; }
+.ai-credit-control.low .ai-credit-ring { color: var(--warning); }
+.ai-credit-panel { position: absolute; top: calc(100% + 12px); right: 0; width: min(320px, calc(100vw - 48px)); padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel-solid); box-shadow: var(--shadow-lg); color: var(--text); animation: ai-credit-reveal .18s ease-out; }
+@keyframes ai-credit-reveal { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+.ai-credit-panel-heading { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 650; color: var(--text-2); }
+.ai-credit-panel-heading svg { color: var(--primary); }
+.ai-credit-panel > strong { display: flex; align-items: baseline; gap: 8px; margin: 14px 0; font-size: 30px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.ai-credit-panel > strong small { font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--text-3); }
+.ai-credit-bar { height: 6px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.ai-credit-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4338ca, #8b5cf6); transition: width .8s cubic-bezier(.22, 1, .36, 1); }
+.ai-credit-control.low .ai-credit-bar span { background: var(--warning); }
+.ai-credit-caption { display: flex; justify-content: space-between; margin-top: 8px; color: var(--text-3); font-size: 11px; }
+.ai-credit-panel p { margin: 14px 0; font-size: 12px; line-height: 1.6; color: var(--text-2); white-space: normal; overflow: visible; text-overflow: clip; }
+.ai-credit-panel a { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 650; color: var(--primary); }
+@container ai-workspace (max-width: 760px) {
+  .ai-head-primary { flex-basis: 100%; }
+  .ai-head-controls { flex: 1; margin-left: 0; }
+  .ai-head-controls .ai-modes { flex: 1; }
+  .ai-mode { flex: 1; padding-inline: 8px; }
+}
+@container ai-workspace (max-width: 500px) {
+  .ai-head-controls .ai-modes { flex-basis: 100%; }
+  .ai-workflows-link { flex: 1; justify-content: flex-start; }
+  .ai-credit-control { margin-left: auto; }
+}
+@container ai-workspace (max-width: 350px) {
+  .ai-mode > svg { display: none; }
+}
 
 /* ---- the thread */
 .ai-scroll { position: relative; z-index: 1; flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; overscroll-behavior: contain; }
@@ -280,9 +298,7 @@
   .ai-shell.rail-open .ai-rail-scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(15, 10, 40, .4); }
   .ai-rail-toggle { display: grid; }
   .ai-head { padding: 12px; }
-  .ai-head-primary .ai-head-title { flex-basis: 140px; }
   .ai-mode { padding: 0 10px; }
-  .ai-brand-byline { display: none; }
   .ai-thread { padding: 18px 14px 8px; }
   .ai-bubble { max-width: 92%; }
   .ai-msg.assistant { grid-template-columns: 28px minmax(0, 1fr); gap: 9px; }
@@ -294,6 +310,8 @@
 @media (prefers-reduced-motion: reduce) {
   .ai-orb.animated .ai-orbit-track, .ai-orb.busy .ai-orbit-track, .ai-reason.live::before, .ai-reason.live .ai-pulse, .ai-caret, .ai-dots i, .ai-box.busy { animation: none; }
   .ai-scroll { scroll-behavior: auto; }
+  .ai-credit-panel { animation: none; }
+  .ai-credit-ring .ring, .ai-credit-bar span, .ai-credit-button, .ai-credit-button > svg, .ai-mode { transition: none; }
 }
 
 /* ---- guidance: live starters, next steps, feedback, a gentle check */
