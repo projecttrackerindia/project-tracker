@@ -81,6 +81,10 @@ jobs:
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
         run: dotnet test --no-build -c Release --filter FullyQualifiedName~IdempotencyTransactionTests
+      - name: Agent capacity with 100 users on PostgreSQL
+        env:
+          PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
+        run: dotnet test --no-build -c Release --filter FullyQualifiedName~Hundred_distinct_users
       - name: Integration tests against PostgreSQL (the production engine)
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres

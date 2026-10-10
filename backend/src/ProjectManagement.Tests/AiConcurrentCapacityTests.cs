@@ -1,5 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Abstractions;
@@ -77,12 +81,22 @@ public sealed partial class AiMessageSendingTests
             {
                 await start.Task;
                 var timer = Stopwatch.StartNew();
-                var answer = await Ask(client, prompt);
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/ai/ask")
+                { Content = JsonContent.Create(new { text = prompt, timeZone = "Asia/Kolkata" }) };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", client.Token);
+                using var response = await client.Http.SendAsync(request);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                var body = await response.Content.ReadAsStringAsync();
+                var blocks = body.Split("\n\n").Where(b => b.StartsWith("event: done\n")).ToArray();
+                Assert.True(blocks.Length == 1, "Incomplete synthetic load-test stream: " + body + "\nServer failures: "
+                    + string.Join("\n", factory.Logs.Lines.Where(l => l.Contains("Exception") || l.Contains("failed", StringComparison.OrdinalIgnoreCase)).TakeLast(3)));
+                var answer = JsonNode.Parse(blocks[0].Split('\n')[1][6..])!["message"]!;
                 return (client.UserId, Answer: answer, DurationMs: timer.Elapsed.TotalMilliseconds);
             }).ToArray();
             var elapsed = Stopwatch.StartNew(); start.SetResult();
-            var results = await Task.WhenAll(pending);
-            elapsed.Stop(); monitoring.Cancel(); await sampler;
+            (Guid UserId, JsonNode Answer, double DurationMs)[] results;
+            try { results = await Task.WhenAll(pending); }
+            finally { elapsed.Stop(); monitoring.Cancel(); await sampler; }
             var durations = results.Select(r => r.DurationMs).Order().ToArray();
             var ids = results.Select(r => Guid.Parse(r.Answer["id"]!.GetValue<string>())).ToArray();
             var saved = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().AsNoTracking().Where(m => ids.Contains(m.Id)).ToList());
