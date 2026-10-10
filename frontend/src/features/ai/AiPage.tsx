@@ -361,6 +361,7 @@ export function AiPage() {
             <div><b>{title}</b><span>{streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
           </div>
           <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
+          <Link className="btn" to="/ai/operations">Proactive workflows</Link>
           <CreditMeter usage={usage} />
           {usage?.requestLimits && <span className="muted" style={{ fontSize: 12 }}>
             Per person: {usage.requestLimits.perMinute}/min · {usage.requestLimits.perHour}/hour · {usage.requestLimits.perDay}/day

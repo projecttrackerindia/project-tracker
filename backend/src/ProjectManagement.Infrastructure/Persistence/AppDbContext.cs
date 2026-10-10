@@ -106,6 +106,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<PasskeyChallenge> PasskeyChallenges => Set<PasskeyChallenge>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiJob> AiJobs => Set<AiJob>();
+    public DbSet<AiSchedule> AiSchedules => Set<AiSchedule>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
@@ -217,6 +219,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureWork(b);
         ConfigureDocuments(b);
         ConfigureBilling(b);
+        ConfigureAiOperations(b);
         ApplyQueryFilters(b);
     }
 }

@@ -104,6 +104,8 @@ public interface IAppDbContext
     DbSet<PasskeyChallenge> PasskeyChallenges { get; }
     DbSet<Reminder> Reminders { get; }
     DbSet<AiConversation> AiConversations { get; }
+    DbSet<AiJob> AiJobs { get; }
+    DbSet<AiSchedule> AiSchedules { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<AiAttachment> AiAttachments { get; }
     DbSet<ChatAttachment> ChatAttachments { get; }
