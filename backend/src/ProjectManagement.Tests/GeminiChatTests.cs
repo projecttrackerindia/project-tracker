@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Infrastructure;
@@ -44,6 +45,88 @@ public class GeminiChatTests
         public HttpClient CreateClient(string name) => new(this, false);
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         { await Task.Delay(Timeout.Infinite, ct); throw new InvalidOperationException("Unreachable after cancellation"); }
+    }
+
+    private sealed class LocalStub : HttpMessageHandler, IHttpClientFactory
+    {
+        public int Calls;
+        public HttpClient CreateClient(string name) => new(this, false);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                """{"model":"backup-model","message":{"role":"assistant","content":"Local answer"},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":2}""" + "\n") });
+        }
+    }
+
+    private static AiChatRouter Router(IOptions<AiOptions> o, IHttpClientFactory cloud, LocalStub local, GeminiAdmission? admission = null)
+    {
+        o.Value.Fallback = new() { BaseUrl = "http://local.test/v1", Model = "backup-model", Wire = "ollama", MaxQueuedRequests = 0 };
+        var one = new OpenAiCompatibleClient(local, o, NullLogger<OpenAiCompatibleClient>.Instance);
+        return new(new AnthropicChat(o, NullLogger<AnthropicChat>.Instance), new OpenAiCompatibleChat(local, o, one, NullLogger<OpenAiCompatibleChat>.Instance),
+            NullLogger<AiChatRouter>.Instance, new GeminiChat(cloud, o, admission ?? new Admission(o)));
+    }
+
+    [Fact]
+    public async Task Server_unavailable_before_response_uses_local_backup_once()
+    {
+        var o = Settings(); var cloud = new Stub([], HttpStatusCode.ServiceUnavailable); var local = new LocalStub();
+        var events = new List<AiChatEvent>();
+        await foreach (var e in Router(o, cloud, local).StreamAsync(Ask(), default)) events.Add(e);
+        Assert.Equal("Local answer", string.Concat(events.OfType<AiTextDelta>().Select(t => t.Text)));
+        Assert.Equal(1, cloud.Calls); Assert.Equal(1, local.Calls);
+        Assert.Equal("backup-model", Assert.Single(events.OfType<AiTurnEnd>()).Model);
+    }
+
+    [Theory]
+    [InlineData(429)]
+    [InlineData(403)]
+    [InlineData(400)]
+    public async Task Capacity_and_configuration_errors_do_not_flood_local_backup(int status)
+    {
+        var o = Settings(); var local = new LocalStub();
+        var router = Router(o, new Stub([], (HttpStatusCode)status), local);
+        await Assert.ThrowsAnyAsync<AppException>(async () => { await foreach (var e in router.StreamAsync(Ask(), default)) { } });
+        Assert.Equal(0, local.Calls);
+    }
+
+    [Fact]
+    public async Task One_shot_routes_use_backup_only_before_cloud_response()
+    {
+        var o = Settings(); var cloud = new Stub([], HttpStatusCode.ServiceUnavailable); var local = new LocalStub();
+        var chat = Router(o, cloud, local);
+        Assert.Equal("Local answer", await chat.CompleteAsync("ignored", "Be brief", "Explain", 500, default));
+        var one = new OpenAiCompatibleClient(local, o, NullLogger<OpenAiCompatibleClient>.Instance);
+        var router = new AiRouter(new AnthropicClient(cloud, o, NullLogger<AnthropicClient>.Instance), one,
+            NullLogger<AiRouter>.Instance, new GeminiChat(cloud, o, new Admission(o)));
+        var answer = await router.CompleteAsync("Be brief", "Explain", 500, default);
+        Assert.Equal("Local answer", answer.Text); Assert.Equal("backup-model", answer.Model); Assert.NotNull(router.Backup);
+        Assert.Equal(2, local.Calls);
+        var partial = Router(o, new Stub(["""{"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}"""]), local);
+        await Assert.ThrowsAsync<AppException>(() => partial.CompleteAsync("ignored", "Be brief", "Explain", 500, default));
+        Assert.Equal(2, local.Calls);
+    }
+
+    [Fact]
+    public async Task Partial_cloud_answer_and_previous_tool_round_never_switch_providers()
+    {
+        var o = Settings(); var local = new LocalStub();
+        var cloud = new Stub(["""{"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}"""]);
+        var router = Router(o, cloud, local);
+        await Assert.ThrowsAnyAsync<AppException>(async () => { await foreach (var e in router.StreamAsync(Ask(), default)) { } });
+        var rejected = Router(o, new Stub([], HttpStatusCode.ServiceUnavailable), local);
+        var history = Ask([AiTurn.User("continue"), new("assistant", [new AiToolUse("one", "read", "{}")]), new("user", [new AiToolResult("one", "[]")])]);
+        await Assert.ThrowsAsync<GeminiUnavailableException>(async () => { await foreach (var e in rejected.StreamAsync(history, default)) { } });
+        Assert.Equal(0, local.Calls);
+    }
+
+    [Fact]
+    public async Task Missing_shared_capacity_store_never_uses_backup()
+    {
+        var o = Settings(); var cloud = new Stub([]); var local = new LocalStub();
+        var router = Router(o, cloud, local, new GeminiAdmission(o));
+        var error = await Assert.ThrowsAsync<AppException>(async () => { await foreach (var e in router.StreamAsync(Ask(), default)) { } });
+        Assert.Equal("AI_LIMIT_STORE_UNAVAILABLE", error.Code); Assert.Equal(0, cloud.Calls); Assert.Equal(0, local.Calls);
     }
 
     [Fact]

@@ -380,15 +380,39 @@ public sealed class AiChatRouter(AnthropicChat claude, OpenAiCompatibleChat back
     public string Provider => backup.Settings.UsesGemini ? "Google Gemini" : backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Provider;
     public string ModelFor(string requestedModel) => backup.Settings.UsesGemini ? gemini?.ModelFor(requestedModel) ?? "" : backup.Settings.UsesAnthropic && claude.Configured ? requestedModel : backup.ModelFor(requestedModel);
 
-    public Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct) =>
-        backup.Settings.UsesGemini && gemini is not null ? gemini.CompleteAsync(model, system, user, maxTokens, ct) : backup.Settings.UsesAnthropic && claude.Configured ? claude.CompleteAsync(model, system, user, maxTokens, ct) : backup.CompleteAsync(model, system, user, maxTokens, ct);
+    public async Task<string> CompleteAsync(string model, string system, string user, int maxTokens, CancellationToken ct)
+    {
+        if (backup.Settings.UsesGemini && gemini is not null)
+        {
+            try { return await gemini.CompleteAsync(model, system, user, maxTokens, ct); }
+            catch (GeminiUnavailableException) when (backup.Configured && !ct.IsCancellationRequested)
+            { return await backup.CompleteAsync(model, system, user, maxTokens, ct); }
+        }
+        return backup.Settings.UsesAnthropic && claude.Configured
+            ? await claude.CompleteAsync(model, system, user, maxTokens, ct)
+            : await backup.CompleteAsync(model, system, user, maxTokens, ct);
+    }
 
     public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
         if (backup.Settings.UsesGemini)
         {
-            await foreach (var e in gemini!.StreamAsync(request, ct)) yield return e;
+            // Switching after any provider output or tool history could lose signatures or replay actions.
+            var safe = !request.Turns.SelectMany(t => t.Blocks).Any(b => b is AiGeminiPart or AiToolUse or AiToolResult);
+            await using var events = gemini!.StreamAsync(request, ct).GetAsyncEnumerator(ct);
+            bool more;
+            var failed = false;
+            try { more = await events.MoveNextAsync(); }
+            catch (GeminiUnavailableException) when (safe && backup.Configured && !ct.IsCancellationRequested)
+            { more = false; failed = true; }
+            if (failed)
+            {
+                log.LogWarning("Gemini unavailable before response; attempting bounded local backup");
+                await foreach (var e in backup.StreamAsync(request, ct)) yield return e;
+            }
+            else
+                while (more) { yield return events.Current; more = await events.MoveNextAsync(); }
             yield break;
         }
         var useClaude = backup.Settings.UsesAnthropic && claude.Configured && (!backup.Configured || DateTime.UtcNow.Ticks >= Interlocked.Read(ref _claudeRestsUntil));
