@@ -58,7 +58,10 @@ public class GeminiAdmission(IOptions<AiOptions> options, IConnectionMultiplexer
     }
 }
 
-/// <summary>Native Gemini SSE, text-only pilot. No automatic retries or provider switching after dispatch.</summary>
+/// <summary>A connection failure or HTTP server rejection before any response content. Safe for bounded local fallback.</summary>
+public sealed class GeminiUnavailableException(string code, string message) : AppException(502, code, message);
+
+/// <summary>Native Gemini SSE. No automatic retries or provider switching after response content.</summary>
 public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> options, GeminiAdmission admission) : IAiChat
 {
     private AiGeminiOptions G => options.Value.Gemini;
@@ -105,8 +108,10 @@ public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> opti
         req.Headers.Add("x-goog-api-key", G.ApiKey!.Trim());
         HttpResponseMessage response;
         try { response = await http.CreateClient("ai-gemini").SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct); }
-        catch (HttpRequestException) { throw new AppException(502, "AI_UNREACHABLE", "Gemini could not be reached. Please try again later."); }
+        catch (HttpRequestException) { throw new GeminiUnavailableException("AI_UNREACHABLE", "Gemini could not be reached. Please try again later."); }
         using var res = response;
+        if ((int)res.StatusCode >= 500)
+            throw new GeminiUnavailableException("AI_PROVIDER_ERROR", "Gemini is temporarily unavailable.");
         if (res.StatusCode == HttpStatusCode.TooManyRequests)
             throw new AiRequestLimitException("AI_PROVIDER_LIMIT", 60, "Gemini's capacity limit was reached. Please try again shortly.");
         if (!res.IsSuccessStatusCode)

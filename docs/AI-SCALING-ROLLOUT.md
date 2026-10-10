@@ -79,6 +79,16 @@ Use provider/project-wide request and token admission in addition to the per-use
 
 ## Step 4: durable document jobs and cost controls
 
+### October 10 production activation
+
+Gemini is now the primary provider for all AI tiers; Ollama remains a bounded backup. Production uses `gemini-3.5-flash-lite`, 3,000 model calls/minute, 3,000,000 conservative input tokens/minute and 100,000 calls/UTC day. These application limits retain headroom below the owner-reported provider quota, but are not measured throughput guarantees. Each tool round consumes another provider call. The existing per-user plan caps remain active and `Ai__RateLimits__RequireDistributed=true` requires shared Redis.
+
+The initial persistent allowance is 8,000,000 estimated input tokens and 1,000,000 reserved output tokens, with a 2,048-token maximum per round. At the current Flash-Lite standard rates ($0.30/M input and $2.50/M output), those allowances imply at most about $4.90 of token charges for admitted traffic, before taxes, other project consumers and possible accounting differences. These are conservative reservations without reconciliation; they can pause service before the actual prepaid credit is exhausted. Increasing throughput does not remove this finite startup budget. Review Google billing and add credit before broad usage; this configuration does not fund a 5,000-user rollout.
+
+Automatic local fallback applies only to a connection failure or HTTP 5xx before any cloud response event, and only without prior tool/signature history. It never restarts partial output, tool rounds or possible actions. Provider 429, application capacity/budget rejection, missing Redis, invalid requests, authentication/billing errors, safety refusals and timeouts do not trigger fallback. This prevents a cloud quota incident from overwhelming the local server or bypassing admission controls. Local backup has one active request and zero waiting slots. Its existing gate is process-wide: keep a single API replica until a shared local fallback lease is implemented; do not scale that gate by adding replicas.
+
+The application status endpoint identifies Gemini as primary and Ollama as backup after the fallback release. A synthetic arithmetic request through the production SSE endpoint completed in 1.9 seconds on Gemini during activation; this verifies routing, not aggregate capacity. The old local-primary pilot observations above remain historical evidence.
+
 Use PostgreSQL-backed jobs with idempotent job IDs, worker leases, progress, cancellation and saved results. Start with one background worker and isolate document generation from interactive traffic. Reserve estimated worst-case provider cost before dispatch, reconcile actual usage, and enforce workspace and platform budgets atomically. Keep request caps separate from credits and currency spending limits. Apply organization fairness so one tenant's burst cannot monopolize capacity.
 
 ## Step 5: expand only from measured demand

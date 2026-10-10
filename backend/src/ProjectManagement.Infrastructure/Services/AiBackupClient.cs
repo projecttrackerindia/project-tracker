@@ -187,13 +187,20 @@ public sealed class AiRouter(AnthropicClient claude, OpenAiCompatibleClient back
     public bool Configured => backup.Settings.UsesGemini ? gemini?.Configured == true : backup.Settings.UsesAnthropic ? claude.Configured || backup.Configured : backup.Configured;
     public string Model => backup.Settings.UsesGemini ? gemini?.ModelFor("") ?? "" : backup.Settings.UsesAnthropic && claude.Configured ? claude.Model : backup.Model;
     public string? Provider => backup.Settings.UsesGemini ? "Google Gemini" : backup.Settings.UsesAnthropic && claude.Configured ? "Claude (Anthropic)" : backup.Configured ? backup.Name : null;
-    public string? Backup => backup.Settings.UsesAnthropic && claude.Configured && backup.Configured ? backup.Name : null;
+    public string? Backup => backup.Configured && (backup.Settings.UsesGemini || backup.Settings.UsesAnthropic && claude.Configured) ? backup.Name : null;
 
     public async Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
     {
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
         if (backup.Settings.UsesGemini)
-            return new AiAnswer(await gemini!.CompleteAsync(Model, system, user, maxTokens, ct), Model);
+        {
+            try { return new AiAnswer(await gemini!.CompleteAsync(Model, system, user, maxTokens, ct), Model); }
+            catch (GeminiUnavailableException) when (backup.Configured && !ct.IsCancellationRequested)
+            {
+                log.LogWarning("Gemini unavailable before response; attempting bounded local backup");
+                return new AiAnswer(await backup.CompleteAsync(system, user, maxTokens, ct), backup.Model);
+            }
+        }
         AiProviderException? claudeFailed = null;
         if (backup.Settings.UsesAnthropic && claude.Configured)
         {
