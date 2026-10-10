@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Projects;
@@ -18,7 +19,7 @@ public record WorkItemDto(WorkItemKind Kind, Guid Id, string Key, string Title, 
 
 /// <summary>Filters for a list of work items. With no kinds given, every kind the caller can see is included.</summary>
 public record WorkItemQuery(IReadOnlyList<WorkItemKind>? Kinds = null, Guid? AssigneeId = null, bool Mine = false, bool OpenOnly = true,
-    Guid? ProjectId = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool Overdue = false, string? Q = null, int Limit = 200, bool Unassigned = false);
+    Guid? ProjectId = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool Overdue = false, string? Q = null, int Limit = 200, bool Unassigned = false, int Offset = 0);
 
 public record WorkKindCounts(int Tasks, int Issues, int ActionItems, int Operational)
 {
@@ -111,6 +112,8 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var limit = Math.Clamp(query.Limit, 1, MaxLimit);
         var visible = await VisibleKindsAsync(scope, ct);
         var wanted = query.Kinds is { Count: > 0 } k ? visible.Intersect(k).ToHashSet() : visible;
+        if (query.Offset < 0 || query.Offset > 10000 || query.Offset > 0 && query.Kinds is not { Count: 1 } || query.Offset > 0 && query.Kinds![0] != WorkItemKind.Task)
+            throw new AppException(400, "INVALID_PAGE", "Paging is supported for project tasks with an offset between 0 and 10000.");
         var assignee = query.Mine ? ctx.RequireUserId() : query.AssigneeId;
         var today = clock.Today;
         var q = query.Q?.Trim().ToLowerInvariant();
@@ -129,7 +132,9 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.DueTo is { } to) tq = tq.Where(t => t.DueDate != null && t.DueDate <= to);
             if (query.Overdue) tq = tq.Where(t => t.DueDate != null && t.DueDate < today && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
             if (q is not null) tq = tq.Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || t.Number == number);
-            var tasks = await tq.OrderBy(t => t.DueDate == null).ThenBy(t => t.DueDate).Take(limit)
+            var tasks = await tq.OrderBy(t => t.Status!.Category == StatusCategory.Done || t.Status.Category == StatusCategory.Cancelled)
+                .ThenBy(t => t.DueDate == null).ThenBy(t => t.DueDate).ThenByDescending(t => t.Priority)
+                .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt).ThenBy(t => t.Id).Skip(query.Offset).Take(limit)
                 .Select(t => new { t.Id, t.Number, t.Title, t.ProjectId, ProjectKey = t.Project!.Key, ProjectName = t.Project.Name, Status = t.Status!.Name, t.Status.Category,
                     t.Priority, t.DueDate, t.AssigneeId, Updated = t.UpdatedAt ?? t.CreatedAt })
                 .ToListAsync(ct);
@@ -193,7 +198,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         rows.OrderBy(r => r.Category is StatusCategory.Done or StatusCategory.Cancelled)
             .ThenBy(r => r.DueDate is null).ThenBy(r => r.DueDate)
             .ThenByDescending(r => (int)r.Priority)
-            .ThenByDescending(r => r.UpdatedAt);
+            .ThenByDescending(r => r.UpdatedAt).ThenBy(r => r.Id);
 
     private async Task FillNamesAsync(List<WorkItemDto> rows, CancellationToken ct)
     {

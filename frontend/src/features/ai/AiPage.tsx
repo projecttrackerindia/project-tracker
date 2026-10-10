@@ -123,7 +123,7 @@ export function AiPage() {
   const send = async (raw: string, over?: { mode?: AiMode }) => {
     if (streaming) return;
     const q = raw.trim();
-    const approving = /^(yes(?:[,!]?(?:\s+(?:please|send(?:\s+it)?|go ahead|confirm))*)?|confirm(?:\s+it)?|send it|go ahead(?:\s+and send(?:\s+it)?)?)[.!]*$/i.test(q);
+    const approving = /^(yes(?:[,!]?(?:\s+(?:please|send(?:\s+it)?|go ahead|confirm))*)?|confirm(?:\s+(?:it|sending the message|sending|send))?|send it|go ahead(?:\s+and send(?:\s+it)?)?)[.!]*$/i.test(q);
     const latestAnswer = [...messages].reverse().find((m) => m.role === 'assistant');
     const pending = latestAnswer?.actions.filter((a) => a.status === 'proposed') ?? [];
     const confirmation = approving && latestAnswer && pending.length === 1 && ['send_message', 'send_report'].includes(pending[0].kind)

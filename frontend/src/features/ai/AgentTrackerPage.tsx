@@ -8,7 +8,7 @@ import { ErrorState, PageHead, PageLoader } from '../../components/ui';
 interface Trace {
   agent: string; version: string; correlationId: string; provider: string; model: string; startedAt: string;
   durationMs: number; contextMs: number; firstTokenMs: number | null; promptChars: number; toolDefinitions: number;
-  outcome: string; errorCode: string | null;
+  outcome: string; errorCode: string | null; intent?: string | null; intentConfidence?: number | null; intentMs?: number | null;
   models: { step: number; durationMs: number; inputTokens: number; outputTokens: number; stopReason: string }[];
   tools: { name: string; durationMs: number; succeeded: boolean; state: string }[];
 }
@@ -86,7 +86,7 @@ function RunRow({ run: r, expanded, select }: { run: Run; expanded: boolean; sel
   return <>
     <tr><td>{new Date(r.trace.startedAt).toLocaleString()}</td><td>{r.status.replaceAll('_', ' ')}</td><td>{r.trace.model}</td><td>{seconds(r.trace.durationMs)}</td><td>{r.trace.firstTokenMs === null ? '—' : seconds(r.trace.firstTokenMs)}</td><td>{r.trace.models.length}</td><td>{r.trace.tools.length}</td><td><button className="btn" aria-expanded={expanded} onClick={select}>Trace</button></td></tr>
     {expanded && <tr><td colSpan={8}><div className="card-body">
-      <p>Correlation: {r.trace.correlationId} · {r.trace.provider} · Context: {seconds(r.trace.contextMs)} · Prompt: {r.trace.promptChars.toLocaleString()} characters · {r.trace.toolDefinitions} available tools</p>
+      <p>{r.trace.intent && <>Intent: {r.trace.intent.replaceAll('_', ' ')} · Routing: {r.trace.intentMs ?? 0}ms · </>}Correlation: {r.trace.correlationId} · {r.trace.provider} · Context: {seconds(r.trace.contextMs)} · Prompt: {r.trace.promptChars.toLocaleString()} characters · {r.trace.toolDefinitions} available tools</p>
       {r.trace.errorCode && <p>Error: {r.trace.errorCode}</p>}
       {r.trace.models.map((m, i) => <p key={i}>Model call {i + 1}: {seconds(m.durationMs)} · {m.inputTokens} input / {m.outputTokens} output tokens · {m.stopReason}</p>)}
       {r.trace.tools.map((t, i) => <p key={i}>{t.name}: {seconds(t.durationMs)} · {t.succeeded ? t.state.replaceAll('_', ' ') : 'failed'}</p>)}

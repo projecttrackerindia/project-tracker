@@ -309,6 +309,41 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     // ------------------------------------------------------------------ reading
 
+    public async Task<AiToolOutcome> PersonTasksAsync(string recipient, int page, CancellationToken ct)
+    {
+        try
+        {
+            await permissions.RequireModuleAsync(Modules.Tasks, AccessLevel.View, ct);
+            var person = await PersonAsync(recipient, ct);
+            const int pageSize = 40;
+            var items = await workItems.ListAsync(new WorkItemQuery(Kinds: [WorkItemKind.Task], AssigneeId: person.Id,
+                Limit: pageSize + 1, Offset: (page - 1) * pageSize), WorkItemScope.Caller, ct);
+            if (items.Count == 0)
+            {
+                if (page > 1) return new AiToolOutcome($"No more open project tasks visible to you for {person.Name}.", "Read current project tasks", 0);
+                var anyAssigned = await workItems.ListAsync(new WorkItemQuery(Kinds: [WorkItemKind.Task], AssigneeId: person.Id, OpenOnly: false, Limit: 1), WorkItemScope.Caller, ct);
+                return new AiToolOutcome(anyAssigned.Count == 0
+                    ? $"{person.Name} has no project tasks assigned that you can see. Other work types are not included."
+                    : $"{person.Name} has no open project tasks assigned that you can see; assigned tasks are completed or cancelled. Other work types are not included.", "Read current project tasks", 0);
+            }
+            var lines = items.Take(pageSize).Select(i => $"{i.Key}: {Clean(i.Title)} | {i.Status} | due {Day(i.DueDate)}{(i.IsOverdue ? " (overdue)" : "")} | {Clean(i.ProjectName ?? "-")}");
+            var more = items.Count > pageSize ? $"\nMore results are available. Ask: show tasks for {person.Name} page {page + 1}." : "";
+            return new AiToolOutcome($"Open project tasks assigned to {person.Name} that you can see (page {page}):\n" + string.Join("\n", lines) + more, "Read current project tasks", Math.Min(items.Count, pageSize));
+        }
+        catch (AiToolException ex) { return new AiToolOutcome(ex.Message, "Could not resolve the person", IsError: true); }
+        catch (AppException ex) { return new AiToolOutcome(ex.Message, "Could not read project tasks", IsError: true); }
+    }
+
+    public async Task<AiToolOutcome> MessageClarificationAsync(string recipient, CancellationToken ct)
+    {
+        try
+        {
+            var person = await PersonAsync(recipient, ct);
+            return new AiToolOutcome($"What exact message should I send to {person.Name} in Project Tracker chat? Nothing has been sent.", "Message content needed");
+        }
+        catch (AiToolException ex) { return new AiToolOutcome(ex.Message, "Could not resolve the recipient", IsError: true); }
+    }
+
     private async Task<AiToolOutcome> FindWorkAsync(JsonElement a, CancellationToken ct)
     {
         var assignee = Str(a, "assignee") is { } who ? (await PersonAsync(who, ct)).Id : (Guid?)null;
@@ -930,7 +965,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var tid = ctx.RequireTenantId();   // TenantMember is not filtered by workspace on its own: without this, people from every organization come back
         return _people ??= (await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
             .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, m.Role, JobRole = db.OrgRoles.Where(r => r.Id == m.OrgRoleId).Select(r => r.Name).FirstOrDefault() })
-            .Take(500).ToListAsync(ct)).Select(m => new Person(m.UserId, m.DisplayName, m.Email, m.Role.ToString(), m.JobRole)).ToList();
+            .ToListAsync(ct)).Select(m => new Person(m.UserId, m.DisplayName, m.Email, m.Role.ToString(), m.JobRole)).ToList();
     }
 
     private async Task<Person> PersonAsync(string text, CancellationToken ct)
@@ -941,13 +976,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             return (await PeopleAsync(ct)).FirstOrDefault(p => p.Id == me) ?? throw new AiToolException("You are not listed as a member who can be assigned work.");
         var people = await PeopleAsync(ct);
         if (Guid.TryParse(t, out var id)) return people.FirstOrDefault(p => p.Id == id) ?? throw new AiToolException("No such person in this workspace.");
-        var exact = people.Where(p => p.Name.Equals(t, StringComparison.OrdinalIgnoreCase) || p.Email.Equals(t, StringComparison.OrdinalIgnoreCase)).ToList();
-        var found = exact.Count > 0 ? exact : people.Where(p => p.Name.Contains(t, StringComparison.OrdinalIgnoreCase)).ToList();
+        var found = AiPersonMatching.Match(t, people.Select(p => (p.Name, p.Email)).ToList()).Select(i => people[i]).ToList();
         return found.Count switch
         {
             1 => found[0],
-            0 => throw new AiToolException($"No one is called “{t}”. Use list_people to see who is here."),
-            _ => throw new AiToolException($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => p.Name))}. Ask which one."),
+            0 => throw new AiToolException($"I could not find “{t}” among the available workspace members. Please provide their full name or email."),
+            _ => throw new AiToolException($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => p.Name))}. Please specify the full name or email."),
         };
     }
 
@@ -971,7 +1005,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             1 => found[0],
             0 when _pendingProjects.FirstOrDefault(n => n.Equals(t, StringComparison.OrdinalIgnoreCase)) is { } pending => new ProjectRef(Guid.Empty, "NEW", pending),
             0 => throw new AiToolException($"No project matches “{t}”. Use list_projects to see them, or propose creating it with propose_create_project first."),
-            _ => throw new AiToolException($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => $"{p.Key} ({p.Name})"))}. Ask which one."),
+            _ => throw new AiToolException($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => $"{p.Key} ({p.Name})"))}. Please specify the full name or email."),
         };
     }
 
