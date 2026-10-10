@@ -51,4 +51,4 @@ public sealed record AiStreamText(string Delta) : AiStreamEvent("text");
 public sealed record AiStreamTool(string Id, string Tool, string Label, string State, int? Count) : AiStreamEvent("tool");
 public sealed record AiStreamAction(AiActionDto Action) : AiStreamEvent("action");
 public sealed record AiStreamDone(AiMessageDto Message, long CreditsLeft, bool Unlimited) : AiStreamEvent("done");
-public sealed record AiStreamError(string Code, string Message) : AiStreamEvent("error");
+public sealed record AiStreamError(string Code, string Message, int? RetryAfterSeconds = null) : AiStreamEvent("error");

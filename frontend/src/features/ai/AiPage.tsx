@@ -191,7 +191,13 @@ export function AiPage() {
             }))).catch(() => undefined);
           }
           break;
-        case 'error': run.failure = { code: e.code, message: e.message }; break;
+        case 'error':
+          run.failure = { code: e.code, message: e.message };
+          if (e.retryAfterSeconds && Number.isFinite(e.retryAfterSeconds) && e.retryAfterSeconds > 0) {
+            setCooldownSeconds(e.retryAfterSeconds);
+            setCooldownUntil(Date.now() + e.retryAfterSeconds * 1000);
+          }
+          break;
       }
     };
 

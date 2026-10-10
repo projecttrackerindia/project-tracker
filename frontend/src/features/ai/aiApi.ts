@@ -69,7 +69,7 @@ export type AiStreamEvent =
   | { name: 'tool'; id: string; tool: string; label: string; state: 'running' | 'done' | 'failed'; count: number | null }
   | { name: 'action'; action: AiAction }
   | { name: 'done'; message: AiMessage; creditsLeft: number; unlimited: boolean }
-  | { name: 'error'; code: string; message: string };
+  | { name: 'error'; code: string; message: string; retryAfterSeconds?: number | null };
 
 // ------------------------------------------------------------------ calls
 
