@@ -102,6 +102,17 @@ public class AiWorkspaceTests(ApiFactory factory)
             Assert.Contains(sources, source => S(source!["id"]) == world.Project.ToString() && !string.IsNullOrWhiteSpace(S(source["version"])));
             var saved = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().AsNoTracking().Single(m => m.Id == Guid.Parse(S(stream.Done["id"]))));
             Assert.Contains(world.Project.ToString(), saved.SourcesJson!);
+            factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.Id == world.Project).ExecuteUpdate(s => s.SetProperty(p => p.Version, p => p.Version + 1)));
+            Chat.Script.Enqueue(request =>
+            {
+                var history = string.Join(" ", request.Turns.SelectMany(t => t.Blocks).OfType<AiText>().Select(t => t.Text));
+                Assert.DoesNotContain("The current project record is the evidence for this answer.", history);
+                Assert.Contains("Earlier evidence is stale", history);
+                return FakeAiChat.Say("I need current evidence before relying on the earlier answer.");
+            });
+            var followUp = await Ask(world.Owner, "Review the earlier evidence again", "quick", stream.Conversation);
+            Assert.True(followUp.Has("done"));
+            Assert.Equal("I need current evidence before relying on the earlier answer.", S(followUp.Done["content"]));
             var stranger = await TestClient.RegisterAsync(factory, "Foreign conversation reader"); await stranger.CreateOrgAsync();
             Assert.Equal(HttpStatusCode.NotFound, (await stranger.Get($"/api/v1/ai/conversations/{stream.Conversation}")).Status);
         }

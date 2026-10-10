@@ -28,7 +28,7 @@ public sealed record AiRun(AiConversation Conversation, AiMessage Question, stri
 /// access, and anything that would change data comes back as a proposal for the person to confirm. Each answer costs credits by level.
 /// </summary>
 public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiChat chat, EntitlementService entitlements, AiRequestLimitService requestLimits,
-    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner, AiCreditService creditLedger)
+    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner, AiCreditService creditLedger, AiKnowledgeService knowledge)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const string DefaultTitle = "New conversation";
@@ -287,7 +287,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var (system, context) = applicationReply ? ("", "") : (options.Value.UsesAnthropic ? SystemPrompt : LocalSystemPrompt, await ContextAsync(run, ct));
         var turns = applicationReply ? new List<AiTurn>() : await HistoryAsync(run, ct);
         // Everything the answer may legitimately refer to; used afterwards to flag work item keys that appear from nowhere.
-        var seen = new StringBuilder(context).Append(' ').Append(run.Conversation.Summary).Append(' ').Append(directRead?.Content);
+        var seen = new StringBuilder(context).Append(' ').Append(directRead?.Content);
         foreach (var t in turns) foreach (var b in t.Blocks) if (b is AiText tx) seen.Append(' ').Append(tx.Text);
         var tools = fastReminder?.Tool is { } knownTool ? toolbox.Definitions(run.Plan.Actions).Where(t => t.Name == knownTool).ToList()
             : options.Value.UsesAnthropic ? toolbox.Definitions(run.Plan.Actions) : toolbox.DefinitionsFor(run.Text, run.Plan.Actions);
@@ -593,6 +593,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     /// </summary>
     private async Task CompactAsync(AiConversation conv, CancellationToken ct)
     {
+        // An unversioned generated summary cannot preserve source ACLs or revisions. Keep bounded, revalidated turns instead.
+        if (await db.AiMessages.AnyAsync(m => m.ConversationId == conv.Id && m.SourcesJson != null, ct)) return;
         var after = conv.SummarizedThroughAt;
         var rows = await db.AiMessages.AsNoTracking().Where(m => m.ConversationId == conv.Id && m.Status != "failed" && m.Content != "" && (after == null || m.CreatedAt > after))
             .OrderBy(m => m.CreatedAt).ToListAsync(ct);
@@ -882,7 +884,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     /// </summary>
     private async Task<IReadOnlyList<AiTurn>> HistoryAsync(AiRun run, CancellationToken ct)
     {
-        var after = run.Conversation.SummarizedThroughAt;
+        var sourced = await db.AiMessages.AnyAsync(m => m.ConversationId == run.Conversation.Id && m.SourcesJson != null, ct);
+        var after = sourced ? null : run.Conversation.SummarizedThroughAt;
         var historyLimit = options.Value.UsesAnthropic ? Opt.HistoryMessages : Math.Min(Opt.HistoryMessages, 12);
         var rows = await db.AiMessages.AsNoTracking().Where(m => m.ConversationId == run.Conversation.Id && m.Id != run.Question.Id && m.Status != "failed" && m.Content != ""
                 && (after == null || m.CreatedAt > after))
@@ -890,10 +893,21 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var trimmed = rows.Count > historyLimit;
         if (trimmed) rows.RemoveAt(rows.Count - 1);
         rows.Reverse();
+        var references = rows.Where(m => m.SourcesJson != null).SelectMany(m => JsonSerializer.Deserialize<List<AiKnowledgeReference>>(m.SourcesJson!, Json) ?? [])
+            .DistinctBy(s => (s.Kind, s.Id, s.Version)).Take(21).ToList();
+        var stale = references.Count > 20;
+        foreach (var source in references.Take(20))
+        {
+            if (stale) break;
+            try { await knowledge.ReadAsync(source.Kind, source.Id, source.Key, source.Version, 0, ct); }
+            catch (AppException) { stale = true; }
+        }
+        if (stale) rows.Clear();
         var withFiles = rows.Where(r => r.Role == "user" && r.AttachmentsJson != null).Select(r => r.Id).TakeLast(2).ToHashSet();
         var attachments = withFiles.Count == 0 ? [] : await db.AiAttachments.AsNoTracking().Where(a => a.MessageId != null && withFiles.Contains(a.MessageId.Value)).ToListAsync(ct);
 
         var turns = new List<AiTurn>();
+        if (stale) turns.Add(AiTurn.User("[Earlier evidence is stale, no longer authorized, or exceeds the validation bound. Earlier turns and summaries were omitted. Retrieve current authorized evidence before answering; do not reuse earlier facts.]"));
         if (trimmed) turns.Add(AiTurn.User("[Earlier conversation turns were omitted to keep this request bounded. Use explicit pending-action context and application lookups; ask if an older reference is unclear. Do not invent missing history.]"));
         void Add(string role, List<AiBlock> blocks)
         {
@@ -901,7 +915,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             else turns.Add(new AiTurn(role, blocks));
         }
         // What was said before the kept messages, in a few lines; it only changes when the conversation is next compacted, so the cache holds.
-        if (!string.IsNullOrWhiteSpace(run.Conversation.Summary))
+        if (!sourced && !string.IsNullOrWhiteSpace(run.Conversation.Summary))
             turns.Add(new AiTurn("user", [new AiText($"<earlier_in_this_conversation>\n{run.Conversation.Summary}\n</earlier_in_this_conversation>")]));
         foreach (var m in rows)
         {
