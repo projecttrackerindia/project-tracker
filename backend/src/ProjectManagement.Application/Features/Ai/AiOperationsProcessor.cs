@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
@@ -15,9 +16,11 @@ namespace ProjectManagement.Application.Features.Ai;
 public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider time)
 {
     private DateTime Now => time.GetUtcNow().UtcDateTime;
+    private long lastRetentionAt;
 
     public async Task<int> ProcessAsync(CancellationToken ct = default)
     {
+        await RetainOperationalEvidenceAsync(ct);
         await RecoverCreditsAsync(ct);
         await QueueSchedulesAsync(ct);
         List<Guid> candidates;
@@ -50,6 +53,21 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
             if (await RunAsync(id, ct)) processed++;
         }
         return processed;
+    }
+
+    private async Task RetainOperationalEvidenceAsync(CancellationToken ct)
+    {
+        var now = Now; var previous = Interlocked.Read(ref lastRetentionAt);
+        if (now.Ticks - previous < TimeSpan.FromHours(1).Ticks || Interlocked.CompareExchange(ref lastRetentionAt, now.Ticks, previous) != previous) return;
+        using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+        // System cleanup only: expire saved read-only payloads, never financial entries or business records.
+        var payloads = await db.AiJobs.IgnoreQueryFilters().Where(j => j.ResultJson != null && j.CompletedAt < now.AddDays(-30))
+            .OrderBy(j => j.CompletedAt).Select(j => j.Id).Take(1000).ToListAsync(ct);
+        await db.AiJobs.IgnoreQueryFilters().Where(j => payloads.Contains(j.Id)).ExecuteUpdateAsync(s => s
+            .SetProperty(j => j.ResultJson, (string?)null).SetProperty(j => j.ErrorCode, "AI_EVIDENCE_EXPIRED"), ct);
+        var forecasts = await db.AiForecastSnapshots.IgnoreQueryFilters().Where(f => f.EvidenceAt < now.AddDays(-90))
+            .OrderBy(f => f.EvidenceAt).Select(f => f.Id).Take(1000).ToListAsync(ct);
+        await db.AiForecastSnapshots.IgnoreQueryFilters().Where(f => forecasts.Contains(f.Id)).ExecuteDeleteAsync(ct);
     }
 
     private async Task RecoverCreditsAsync(CancellationToken ct)
@@ -145,6 +163,10 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
                     .SetProperty(j => j.LeaseOwner, (Guid?)null).SetProperty(j => j.LeaseExpiresAt, (DateTime?)null), deadline.Token);
             if (finalized != 0)
             {
+                if (job.ScheduleId != null && (await sp.GetRequiredService<NotificationRouter>().ChannelsAsync(job.UserId, NotificationType.ReportReady, deadline.Token)).InApp)
+                    db.Notifications.Add(new Notification { TenantId = job.TenantId, UserId = job.UserId, Type = NotificationType.ReportReady,
+                        Title = "Your scheduled agent review is ready", Body = "Open the review to see its evidence and recommendations.",
+                        Link = $"/ai/operations?job={job.Id}", DedupeKey = $"ai-review:{job.Id:N}", InApp = true });
                 await db.SaveChangesAsync(deadline.Token);
                 await snapshot.CommitAsync(deadline.Token);
             }

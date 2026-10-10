@@ -4,6 +4,7 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.WorkItems;
+using ProjectManagement.Application.Features.Work;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
@@ -18,7 +19,7 @@ public record AiKnowledgeSearch(string Query, IReadOnlyList<AiKnowledgeExcerpt> 
 
 /// <summary>Authorized relational and indexed document evidence. Source text never grants authority or supplies SQL.</summary>
 public class AiKnowledgeService(ICurrentContext ctx, AppClock clock, ProjectAccess access,
-    PermissionService permissions, DocumentService documents, WorkItemService workItems)
+    PermissionService permissions, DocumentService documents, WorkItemService workItems, SupportResolutionService resolutions)
 {
     private static string Trim(string? value, int limit) => value is null ? "" : value.Length <= limit ? value : value[..limit];
 
@@ -75,6 +76,14 @@ public class AiKnowledgeService(ICurrentContext ctx, AppClock clock, ProjectAcce
             var matches = await workItems.ListAsync(new(Q: key, OpenOnly: false, Limit: 100), WorkItemScope.Caller, ct);
             var item = matches.FirstOrDefault(w => w.Id == id && w.Key == key) ?? throw new NotFoundException("Source not found.");
             source = WorkReference(item); text = $"{item.Key}: {item.Title}\nStatus: {item.Status}\nDue: {item.DueDate?.ToString("yyyy-MM-dd") ?? "not set"}\nAssignee: {item.Assignee?.Name ?? "unassigned"}\nProject: {item.ProjectName ?? "not linked"}";
+            if (item.Kind == WorkItemKind.Operational)
+            {
+                var resolution = await resolutions.GetAsync(id, ct);
+                if (resolution.Current && resolution.AcceptedAt != null)
+                {
+                    text += $"\nReporter-acknowledged resolution ({resolution.AcceptedAt:O}):\n{resolution.Note}";
+                }
+            }
         }
         else throw new ValidationException("kind", "Choose project, document or workitem.");
         if (expectedVersion is { Length: > 128 }) throw new ValidationException("expectedVersion", "Use the version returned by search_knowledge.");

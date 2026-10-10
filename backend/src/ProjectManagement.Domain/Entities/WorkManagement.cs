@@ -78,6 +78,16 @@ namespace ProjectManagement.Domain.Entities
         public Guid? CompletedBy { get; set; }
         public int Version { get; set; } = 1;
 
+        // Acknowledgment is separate from completion and becomes stale after a work edit.
+        public string? ResolutionNote { get; set; }
+        public int? ResolutionWorkVersion { get; set; }
+        public Guid? ResolutionProposedBy { get; set; }
+        public DateTime? ResolutionProposedAt { get; set; }
+        public Guid? ResolutionAcceptedBy { get; set; }
+        public DateTime? ResolutionAcceptedAt { get; set; }
+        public Guid? ResolutionDocumentId { get; set; }
+        public string? ResolutionDocumentVersion { get; set; }
+
         // Service levels (operational work only). Due times are fixed when the task is raised or its priority or type changes.
         /// <summary>When someone first acted on it: moved it out of To Do, or commented when they did not raise it.</summary>
         public DateTime? RespondedAt { get; set; }

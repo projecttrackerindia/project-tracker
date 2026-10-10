@@ -11,6 +11,17 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    public async Task LockBillingEventsAsync(string provider, CancellationToken ct)
+    {
+        if (Database.CurrentTransaction is null) throw new InvalidOperationException("Billing event admission requires a transaction.");
+        if (Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var key = "project-tracker:billing-events:" + provider;
+            await Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
+        }
+        else
+            await BillingEvents.Where(e => e.Provider == provider).ExecuteUpdateAsync(s => s.SetProperty(e => e.Type, e => e.Type), ct);
+    }
     public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct) =>
         Database.BeginTransactionAsync(Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
             ? System.Data.IsolationLevel.RepeatableRead : System.Data.IsolationLevel.Serializable, ct);

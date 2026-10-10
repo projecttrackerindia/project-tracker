@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { del, get, post } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { PageLoader } from '../../components/ui';
@@ -14,12 +14,15 @@ interface ForecastEvaluation { forecasts: number; verifiedCompletions: number; c
 const labels: Record<Kind, string> = { portfolio: 'Portfolio risks and delivery forecast', workload: 'Workload and capacity review', history: 'Delivery history and recurring blockers' };
 
 export function AgentWorkflowsPage() {
+  const [params] = useSearchParams();
   const jobs = useWsQuery(['agent-workflows', 'jobs'], () => get<Job[]>('/ai/operations/jobs'), { refetchInterval: 15_000 });
   const schedules = useWsQuery(['agent-workflows', 'schedules'], () => get<Schedule[]>('/ai/operations/schedules'), { refetchInterval: 60_000 });
   const forecasts = useWsQuery(['agent-workflows', 'forecasts'], () => get<ForecastEvaluation>('/ai/operations/forecasts'));
   const [kind, setKind] = useState<Kind>('portfolio');
   const [interval, setInterval] = useState(1440);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(() => params.get('job'));
+  useEffect(() => { const job = params.get('job'); if (job) setSelected(job); }, [params]);
+  const selectedJob = useWsQuery(['agent-workflows', 'job', selected], () => get<Job>(`/ai/operations/jobs/${selected}`), { enabled: !!selected });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refresh = async () => { await Promise.all([jobs.refetch(), schedules.refetch(), forecasts.refetch()]); };
@@ -28,7 +31,7 @@ export function AgentWorkflowsPage() {
     try { await fn(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : 'The review could not be updated.'); }
     finally { setBusy(false); }
   };
-  const picked = jobs.data?.find(j => j.id === selected);
+  const picked = jobs.data?.find(j => j.id === selected) ?? selectedJob.data;
   if (jobs.isLoading) return <PageLoader />;
   return <div className="page">
     <div className="page-header"><div><h1>Proactive agent workflows</h1><p>Review delivery, capacity and recurring blockers before you need to ask.</p></div><Link to="/ai" className="btn">Open AI workspace</Link></div>
@@ -58,7 +61,7 @@ export function AgentWorkflowsPage() {
       {forecasts.data.items.slice(0, 20).map(f => <p key={f.id}><Link to={f.link}>{f.project}</Link> · predicted {f.projectedFinish ?? 'insufficient evidence'} · recorded completion {f.recordedCompletedAt ? new Date(f.recordedCompletedAt).toLocaleDateString() : 'not yet observed'}{f.errorDays != null && ` · ${f.errorDays} days from prediction`}{f.scopeChanged && ' · scope changed'}{f.reopened && ' · reopened or unfinished work'}</p>)}
     </section>}
     {picked && <section className="card" style={{ padding: 20, marginTop: 20 }}><h2>{picked.title}</h2>
-      {picked.errorCode && <p role="alert">{picked.errorCode === 'AI_EVIDENCE_ACCESS_CHANGED' ? 'Your access has changed since this review. Run a new review to see current authorized evidence.' : `This review could not finish (${picked.errorCode}).`}</p>}
+      {picked.errorCode && <p role="alert">{picked.errorCode === 'AI_EVIDENCE_ACCESS_CHANGED' ? 'Your access has changed since this review. Run a new review to see current authorized evidence.' : picked.errorCode === 'AI_EVIDENCE_EXPIRED' ? 'Saved review evidence expires after 30 days. Run a new review for current evidence.' : `This review could not finish (${picked.errorCode}).`}</p>}
       {picked.result ? <><p>Evidence as of {new Date(picked.result.evidenceAt).toLocaleString()}</p><Markdown text={picked.result.summary} /><p>{picked.result.methodology}</p><h3>Sources</h3><ul>{picked.result.sources.map(s => <li key={`${s.kind}:${s.id}`}><Link to={s.link}>{s.label}</Link>{s.version && ` · ${s.version}`}</li>)}</ul><Link to="/ai" state={{ ask: `Review this ${picked.kind} analysis and recommend actions. Retrieve current evidence first.`, ts: Date.now() }}>Ask the agent to investigate and propose actions</Link></> : !picked.errorCode && <p>{picked.status === 'cancelled' ? 'This review was cancelled.' : 'A result will appear when the worker finishes.'}</p>}
     </section>}
   </div>;

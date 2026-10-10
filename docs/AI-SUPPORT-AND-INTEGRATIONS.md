@@ -1,0 +1,13 @@
+# Support and optional integrations
+
+Support reuses operational work: requester/reporter, work type/category, priority, assignee, optional related project, status, comments, attachments, timestamps, SLA settings and escalation alerts already exist. The Resolution tab adds a verified fix proposal after completion, reporter-only acknowledgment, optimistic work versions and a link to a published knowledge document. Reopening or editing work makes acknowledgment stale. Authorized knowledge reads can include current, acknowledged resolutions. Knowledge publication continues through existing document permissions and review/publish workflows; no model can acknowledge its own resolution.
+
+Slack and WhatsApp stay disabled as instructed. No external account, channel, telephone identity or consent is inferred from a Project Tracker account. No integration messages were sent during development.
+
+## Activation contracts
+
+Slack: verify the signature against the original request body and signed timestamp before parsing; reject stale requests, persist installation and event IDs, then acknowledge and process asynchronously. Map each external user to a verified local user and tenant, recheck current permissions, and scope channels explicitly. Provider retries must reuse the durable event ID. Minimal OAuth scopes, encrypted installation tokens, revocation and delivery-state tracking are prerequisites. Do not ingest private channel history. See [Slack request verification](https://docs.slack.dev/authentication/verifying-requests-from-slack/).
+
+WhatsApp: verify subscription challenges with the configured verification token and incoming payload signatures with the app secret; persist provider message IDs before processing. Require a verified organization/user mapping, consent, opt-out enforcement, approved templates where applicable and delivery-state/cost tracking. Unmapped senders do not receive private project data. See [Meta webhook signature verification](https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/webhooks/start/). Revalidate current Cloud API requirements when accounts are configured; the SDK reference is not a claim of current production integration validation.
+
+Both adapters must enqueue operations using current local permissions and the same credit ledger and limits. Consequential business actions use existing durable confirmation cards; a verified webhook alone is not authority to act as an arbitrary user. External delivery is a separate idempotent outbox operation and must not replay a paid model call. Keep disabled until real installations, identity mapping, provider credentials and delivery tests are available.

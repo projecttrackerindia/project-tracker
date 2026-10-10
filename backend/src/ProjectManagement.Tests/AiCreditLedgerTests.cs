@@ -147,6 +147,9 @@ public class AiCreditLedgerTests(ApiFactory factory)
             factory.Ai.Answer = (_, _) => "invalid structured response";
             Assert.Equal(System.Net.HttpStatusCode.BadGateway, (await owner.Post($"/api/v1/ai/projects/{project}/risk", new { })).Status);
             Assert.Equal(1, (await owner.Get("/api/v1/ai/credits/balance")).Data!["spent"]!.GetValue<long>());
+            factory.Ai.Answer = (_, _) => "{}";
+            Assert.Equal(System.Net.HttpStatusCode.BadGateway, (await owner.Post($"/api/v1/ai/projects/{project}/risk", new { })).Status);
+            Assert.Equal(1, (await owner.Get("/api/v1/ai/credits/balance")).Data!["spent"]!.GetValue<long>());
             var report = await owner.Get("/api/v1/ai/usage/report"); Assert.True(report.Ok, report.ToString());
             Assert.Equal(1, report.Data!["creditsUsed"]!.GetValue<long>());
             Assert.Contains("portfolio_summary", report.Data["features"]!.ToJsonString());

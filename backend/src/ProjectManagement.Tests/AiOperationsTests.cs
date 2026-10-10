@@ -95,6 +95,8 @@ public class AiOperationsTests(ApiFactory factory)
         await Process(); await Process();
         var jobs = await owner.Get("/api/v1/ai/operations/jobs"); Assert.Single(jobs.Data!.AsArray());
         var schedules = await owner.Get("/api/v1/ai/operations/schedules"); Assert.Single(schedules.Data!.AsArray());
+        var notices = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.TenantId == owner.WorkspaceId && n.DedupeKey != null && n.DedupeKey.StartsWith("ai-review:")).ToList());
+        Assert.Single(notices); Assert.False(notices[0].EmailPending); Assert.False(notices[0].PushPending);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/ai/operations/schedules", new { kind = "portfolio", title = "Runaway", intervalMinutes = 1 })).Status);
     }
 }

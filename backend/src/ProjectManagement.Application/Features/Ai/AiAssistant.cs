@@ -198,6 +198,14 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         }
         if (feature != "portfolio_summary" && JsonIn(answer.Text) is null)
             throw new AppException(502, "AI_FAILED", "The assistant's answer could not be read. Try again.");
+        if (feature == "project_risk")
+        {
+            var riskAnswer = JsonIn(answer.Text)!;
+            if (Str(riskAnswer["risk"])?.ToLowerInvariant() is not ("low" or "medium" or "high")
+                || riskAnswer["score"] is not JsonValue scoreValue || !scoreValue.TryGetValue<int>(out _)
+                || Str(riskAnswer["headline"]) is null || riskAnswer["reasons"] is not JsonArray || riskAnswer["actions"] is not JsonArray)
+                throw new AppException(502, "AI_FAILED", "The risk assessment was incomplete. No AI credits were charged. Try again.");
+        }
         recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, model = answer.Model, credits = reservation.Amount });
         await reservation.SettleAsync(reservation.Amount, ct);
         return answer.Text;
