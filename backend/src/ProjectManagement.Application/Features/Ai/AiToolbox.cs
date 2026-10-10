@@ -239,6 +239,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             var a = doc.RootElement;
             if (a.ValueKind != JsonValueKind.Object) throw new AiToolException("The tool input must be a JSON object.");
             if (WriteTools.Contains(name) && !actionsAllowed) throw new AiToolException("This workspace's plan does not let the assistant propose changes.");
+            if (name == CreateProject && _projectLookupFailed && (sourceText is null || !System.Text.RegularExpressions.Regex.IsMatch(sourceText,
+                @"\b(?:create|add|start|make|set up)\s+(?:(?:a|the|new|missing)\s+){0,2}project\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)))
+                throw new AiToolException("The previous project lookup was incomplete. Ask for its exact key; do not create a project unless the person explicitly requests a new one.");
             if (Definitions(actionsAllowed).FirstOrDefault(t => t.Name == name) is { } definition && AiToolInputValidator.Validate(definition, a) is { } invalid)
                 throw new AiToolException("Invalid tool arguments: " + invalid);
             return name switch
@@ -605,16 +609,22 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (!await permissions.HasAsync(Permissions.ProjectsCreate, ct)) throw new AiToolException("The person's role does not allow them to create projects.");
         var name = (Str(a, "name") ?? throw new AiToolException("Give the project a name.")).Trim();
         if (name.Length is < 2 or > 120) throw new AiToolException("A project name is 2 to 120 characters.");
-        if (await db.Projects.AsNoTracking().AnyAsync(p => p.Name.ToLower() == name.ToLower(), ct))
-            throw new AiToolException($"A project called “{name}” already exists. Use it instead of creating another.");
+        var normalizedName = AiPersonMatching.Normalize(name);
+        // Stream only tenant-filtered names: never infer absence from a truncated portfolio or disclose hidden projects.
+        await foreach (var existing in db.Projects.AsNoTracking().Select(p => p.Name).AsAsyncEnumerable().WithCancellation(ct))
+            if (AiPersonMatching.Normalize(existing) == normalizedName)
+                throw new AiToolException("A project with this name already exists. Look up the existing project or ask an administrator for access.");
+        if (_pendingProjects.Any(n => AiPersonMatching.Normalize(n) == normalizedName))
+            throw new AiToolException("A matching project is already awaiting confirmation in this answer. Confirm that proposal first.");
         var typeText = Str(a, "project_type") ?? "NewProject";
         if (!Enum.TryParse<ProjectType>(typeText, true, out var type)) throw new AiToolException($"project_type must be one of {string.Join(", ", Enum.GetNames<ProjectType>())}.");
         await groups.EnsureDefaultAsync(ct);
         var active = await db.ProjectGroups.AsNoTracking().Where(g => g.IsActive).OrderBy(g => g.Order).Select(g => new { g.Id, g.Name }).ToListAsync(ct);
         if (active.Count == 0) throw new AiToolException("There is no active project group to put the project in.");
         var wanted = Str(a, "group");
-        var group = (wanted is null ? null : active.FirstOrDefault(g => g.Name.Equals(wanted, StringComparison.OrdinalIgnoreCase)) ?? active.FirstOrDefault(g => g.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase)))
-            ?? (wanted is null ? active[0] : throw new AiToolException($"Choose one of these project groups: {string.Join(", ", active.Select(g => g.Name))}."));
+        var matchingGroups = wanted is null ? new List<int> { 0 } : AiPersonMatching.MatchNames(wanted, active.Select(g => g.Name).ToList());
+        if (matchingGroups.Count != 1) throw new AiToolException($"Specify one unambiguous project group: {string.Join(", ", active.Select(g => g.Name))}.");
+        var group = active[matchingGroups[0]];
         var owner = Str(a, "owner") is { } w ? await PersonAsync(w, ct) : null;
         var priority = PriorityOf(a);
         var start = Date(a, "start_date"); var due = Date(a, "due_date");
@@ -622,11 +632,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Team? team = null;
         if (Str(a, "team") is { } wantedTeam)
         {
-            var teamTid = ctx.RequireTenantId();
-            team = await db.Teams.AsNoTracking().Where(t => t.TenantId == teamTid)
-                .FirstOrDefaultAsync(t => t.Name.ToLower() == wantedTeam.ToLower(), ct)
-                ?? await db.Teams.AsNoTracking().Where(t => t.TenantId == teamTid).FirstOrDefaultAsync(t => t.Name.ToLower().Contains(wantedTeam.ToLower()), ct)
-                ?? throw new AiToolException($"No team matches “{wantedTeam}”. Use list_people or ask the person which team.");
+            team = await TeamAsync(wantedTeam, ct);
         }
         _pendingProjects.Add(name);
         var payload = new { name, description = Str(a, "description"), projectType = type.ToString(), projectGroupId = group.Id, groupName = group.Name, teamId = team?.Id, teamName = team?.Name, ownerId = owner?.Id, ownerName = owner?.Name, priority, startDate = start, dueDate = due };
@@ -906,10 +912,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Team? team = null;
         if (project is null && Str(a, "team") is { } tw)
         {
-            var tid = ctx.RequireTenantId();
-            team = await db.Teams.AsNoTracking().Where(t => t.TenantId == tid).FirstOrDefaultAsync(t => t.Name.ToLower() == tw.ToLower(), ct)
-                ?? await db.Teams.AsNoTracking().Where(t => t.TenantId == tid).FirstOrDefaultAsync(t => t.Name.ToLower().Contains(tw.ToLower()), ct)
-                ?? throw new AiToolException($"No team matches “{tw}”.");
+            team = await TeamAsync(tw, ct);
         }
         var tags = Strs(a, "tags");
         var sections = firstRichSection is null ? null : new[] { new { key = firstRichSection.Key, content = MarkdownToDoc(content) } };
@@ -997,20 +1000,46 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         public string Label => IsPending ? $"the new project “{Name}”" : Key;
     }
     private readonly List<string> _pendingProjects = [];
+    private bool _projectLookupFailed;
+    private AiToolException ProjectLookupError(string message)
+    {
+        _projectLookupFailed = true;
+        return new AiToolException(message);
+    }
 
     private async Task<ProjectRef> ProjectAsync(string text, CancellationToken ct)
     {
         var t = text.Trim();
-        var all = await access.VisibleProjects().AsNoTracking().Select(p => new ProjectRef(p.Id, p.Key, p.Name)).Take(500).ToListAsync(ct);
-        if (Guid.TryParse(t, out var id)) return all.FirstOrDefault(p => p.Id == id) ?? throw new AiToolException("No such project.");
-        var exact = all.Where(p => p.Key.Equals(t, StringComparison.OrdinalIgnoreCase) || p.Name.Equals(t, StringComparison.OrdinalIgnoreCase)).ToList();
-        var found = exact.Count > 0 ? exact : all.Where(p => p.Name.Contains(t, StringComparison.OrdinalIgnoreCase)).ToList();
+        var visible = access.VisibleProjects().AsNoTracking();
+        if (Guid.TryParse(t, out var id)) return await visible.Where(p => p.Id == id).Select(p => new ProjectRef(p.Id, p.Key, p.Name)).SingleOrDefaultAsync(ct)
+            ?? throw ProjectLookupError("No such project.");
+        // IDs and keys use authoritative queries before the bounded name search.
+        var key = t.ToUpperInvariant();
+        var keyed = await visible.Where(p => p.Key == key).Select(p => new ProjectRef(p.Id, p.Key, p.Name)).SingleOrDefaultAsync(ct);
+        if (keyed is not null) return keyed;
+        var all = await visible.OrderBy(p => p.Id).Select(p => new ProjectRef(p.Id, p.Key, p.Name)).Take(501).ToListAsync(ct);
+        if (all.Count > 500) throw ProjectLookupError("There are too many visible projects for a safe name match. Please provide the exact project key or ID; no project was created.");
+        var found = AiPersonMatching.MatchNames(t, all.Select(p => p.Name).ToList()).Select(i => all[i]).ToList();
         return found.Count switch
         {
             1 => found[0],
-            0 when _pendingProjects.FirstOrDefault(n => n.Equals(t, StringComparison.OrdinalIgnoreCase)) is { } pending => new ProjectRef(Guid.Empty, "NEW", pending),
-            0 => throw new AiToolException($"No project matches “{t}”. Use list_projects to see them, or propose creating it with propose_create_project first."),
-            _ => throw new AiToolException($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => $"{p.Key} ({p.Name})"))}. Please specify the full name or email."),
+            0 when _pendingProjects.FirstOrDefault(n => AiPersonMatching.Normalize(n) == AiPersonMatching.Normalize(t)) is { } pending => new ProjectRef(Guid.Empty, "NEW", pending),
+            0 => throw ProjectLookupError($"No visible project matches “{t}”. Use list_projects or ask for its exact key. An incomplete lookup is not permission to create a new project."),
+            _ => throw ProjectLookupError($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => $"{p.Key} ({p.Name})"))}. Please specify the exact project key or ID."),
+        };
+    }
+
+    private async Task<Team> TeamAsync(string text, CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId();
+        var teams = await db.Teams.AsNoTracking().Where(t => t.TenantId == tid).OrderBy(t => t.Id).Take(501).ToListAsync(ct);
+        if (teams.Count > 500) throw new AiToolException("Too many teams for a safe name match. Choose the team in the application.");
+        var found = AiPersonMatching.MatchNames(text, teams.Select(t => t.Name).ToList());
+        return found.Count switch
+        {
+            1 => teams[found[0]],
+            0 => throw new AiToolException($"No team matches “{text}”. Ask which existing team to use."),
+            _ => throw new AiToolException($"“{text}” matches several teams: {string.Join(", ", found.Take(6).Select(i => teams[i].Name))}. Please specify the full team name."),
         };
     }
 
@@ -1029,7 +1058,13 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     private static List<string> Strs(JsonElement a, string name) =>
         a.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!.Trim()).Where(x => x.Length > 0).Take(20).ToList() : [];
 
-    private static DateOnly? Date(JsonElement a, string name) => DateOnly.TryParse(Str(a, name), out var d) ? d : null;
+    private static DateOnly? Date(JsonElement a, string name)
+    {
+        if (!a.TryGetProperty(name, out var field) || field.ValueKind == JsonValueKind.Null) return null;
+        var value = Str(a, name);
+        return DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date)
+            ? date : throw new AiToolException($"{name} must be a valid date in yyyy-MM-dd format. Ask for clarification rather than dropping or guessing the date.");
+    }
 
     private static string Title(JsonElement a)
     {

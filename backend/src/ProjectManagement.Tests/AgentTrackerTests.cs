@@ -42,6 +42,27 @@ public sealed class AgentTrackerTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Operational_summaries_rank_paths_and_count_errors_before_pagination()
+    {
+        var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync();
+        Insert(owner, JsonSerializer.Serialize(Trace() with { Intent = "greeting", DurationMs = 10, Models = [] }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        for (var i = 0; i < 2; i++)
+            Insert(owner, JsonSerializer.Serialize(Trace() with { Intent = "reasoning", DurationMs = 5000, Outcome = "timeout", ErrorCode = "AI_TIMEOUT",
+                Models = [new(0, 4900, 40, 10, "error", new(null, null, null, null, null, 100))] }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var data = (await owner.Get("/api/v1/ai/tracker?pageSize=1")).Data!;
+        Assert.Single(data["runs"]!.AsArray());
+        Assert.Equal("reasoning", data["slowestPaths"]![0]!["intent"]!.GetValue<string>());
+        Assert.Equal(2, data["slowestPaths"]![0]!["requests"]!.GetValue<int>());
+        Assert.Equal(100, data["slowestPaths"]![0]!["averageQueueMs"]!.GetValue<double>());
+        Assert.Null(data["slowestPaths"]![1]!["averageQueueMs"]);
+        Assert.Equal("AI_TIMEOUT", data["frequentErrors"]![0]!["code"]!.GetValue<string>());
+        Assert.Equal(2, data["frequentErrors"]![0]!["count"]!.GetValue<int>());
+        var filtered = (await owner.Get("/api/v1/ai/tracker?intent=greeting")).Data!;
+        Assert.Single(filtered["slowestPaths"]!.AsArray());
+        Assert.Empty(filtered["frequentErrors"]!.AsArray());
+    }
+
+    [Fact]
     public async Task Tracker_filters_paginates_and_tolerates_corrupt_optional_traces()
     {
         var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync();

@@ -20,6 +20,8 @@ interface Tracker {
   agent: { id: string; name: string; version: string; enabled: boolean; provider: string; model: string; capabilities: string[]; maxToolCalls: number; timeoutSeconds: number };
   total: number; succeeded: number; failed: number; partial: number; awaitingConfirmation: number; averageMs: number; p95Ms: number;
   p50Ms: number; modelCalls: number; databaseCommands: number; inputTokens: number; outputTokens: number; sampleLimited: boolean; page: number; pageSize: number; runs: Run[];
+  slowestPaths?: { intent: string; requests: number; failures: number; p50Ms: number; p95Ms: number; averageQueueMs: number | null; averageModelMs: number; averageToolMs: number }[];
+  frequentErrors?: { code: string; count: number }[];
 }
 interface Health { configured: boolean; reachable: boolean; modelAvailable: boolean; provider: string; model: string; queueDepth: number; errorCode: string | null }
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -73,6 +75,15 @@ export function AgentTrackerPage() {
         </div>
         <p className="muted">Timing covers context preparation, model calls and tools. Tokens are reported by the provider; missing usage is recorded as zero. Hosting costs are excluded.</p>
         {d.sampleLimited && <p role="status">Metrics cover the latest 10,000 matching runs. Narrow the period for complete results.</p>}
+        {!!d.slowestPaths?.length && <>
+          <h3>Slowest request paths</h3>
+          <p className="muted">These summaries use all matching runs in the sampled period. Model time includes queue and transport time. Missing queue measurements appear as unavailable.</p>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Intent</th><th>Runs</th><th>Failures / partial</th><th>p50</th><th>p95</th><th>Average queue / call</th><th>Average model / run</th><th>Average tools / run</th></tr></thead>
+            <tbody>{d.slowestPaths.map((p) => <tr key={p.intent}><td><button className="btn" onClick={() => { setIntent(p.intent); setPage(1); }}>{p.intent.replaceAll('_', ' ')}</button></td><td>{p.requests}</td><td>{p.failures}</td><td>{seconds(p.p50Ms)}</td><td>{seconds(p.p95Ms)}</td><td>{p.averageQueueMs === null ? 'Unavailable' : seconds(p.averageQueueMs)}</td><td>{seconds(p.averageModelMs)}</td><td>{seconds(p.averageToolMs)}</td></tr>)}</tbody>
+          </table></div>
+        </>}
+        {!!d.frequentErrors?.length && <><h3>Most frequent errors</h3><ul>{d.frequentErrors.map((e) => <li key={e.code}>{e.code}: {e.count} runs</li>)}</ul></>}
         {d.runs.length === 0 ? <div className="card"><div className="card-body">No recorded runs match these filters. Tracking starts with this release.</div></div> : <div className="table-wrap"><table>
           <thead><tr><th>Started</th><th>Outcome</th><th>Model</th><th>Duration</th><th>First token</th><th>Calls</th><th>Tools</th><th>Details</th></tr></thead>
           <tbody>{d.runs.map((r) => <RunRow key={r.id} run={r} expanded={selected === r.id} select={() => setSelected(selected === r.id ? null : r.id)} />)}</tbody>
