@@ -16,7 +16,7 @@ public sealed class LocalAiRuntimeTests
         public string? Body;
         public Uri? Url;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        { Calls++; Url = request.RequestUri; Body = await request.Content!.ReadAsStringAsync(ct); return await respond(request, ct); }
+        { Calls++; Url = request.RequestUri; Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct); return await respond(request, ct); }
     }
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     { public HttpClient CreateClient(string name) => new(handler, false); }
@@ -127,6 +127,87 @@ public sealed class LocalAiRuntimeTests
         var end = Assert.Single((await Read(Chat(h, Settings()))).OfType<AiTurnEnd>());
         Assert.Equal(60000, end.Runtime!.LoadMs); Assert.Equal(250, end.Runtime.PromptEvalMs);
         Assert.Equal(750, end.Runtime.GenerationMs); Assert.Equal(61000, end.Runtime.TotalMs); Assert.Equal(37, end.Runtime.CachedPromptTokens);
+    }
+
+    [Fact]
+    public async Task A_hundred_request_burst_is_bounded_and_drains_without_leaking_capacity()
+    {
+        var o = Settings();
+        using var gate = new AiInferenceGate(Options.Create(o));
+        using var active = await gate.EnterAsync(default);
+        // One active + four queued + 95 controlled rejections, held until admission is observed.
+        var burst = Enumerable.Range(0, 99).Select(async _ =>
+        {
+            try { using var lease = await gate.EnterAsync(default); return "admitted"; }
+            catch (AppException ex) { return ex.Code; }
+        }).ToArray();
+        Assert.Equal(4, gate.QueueDepth);
+        Assert.Equal(1, gate.ActiveRequests);
+        Assert.Equal(1, gate.MaxConcurrentRequests);
+        Assert.Equal(4, gate.MaxQueuedRequests);
+        Assert.Equal(10, gate.QueueTimeoutSeconds);
+        Assert.Equal(95, burst.Count(t => t.IsCompletedSuccessfully && t.Result == "AI_BUSY"));
+        active.Dispose();
+        var results = await Task.WhenAll(burst);
+        Assert.Equal(4, results.Count(r => r == "admitted"));
+        Assert.Equal(95, results.Count(r => r == "AI_BUSY"));
+        Assert.Equal(0, gate.QueueDepth);
+        Assert.Equal(0, gate.ActiveRequests);
+        using var next = await gate.EnterAsync(default);
+    }
+
+    [Fact]
+    public async Task Diagnostics_exposes_local_capacity_without_sending_inference()
+    {
+        var o = Settings(); o.AnthropicApiKey = null;
+        var h = new Handler((_, _) => Task.FromResult(Answer("""{"models":[{"name":"qwen2.5:7b"}]}""")));
+        using var gate = new AiInferenceGate(Options.Create(o));
+        using var lease = await gate.EnterAsync(default);
+        using var cancel = new CancellationTokenSource();
+        var queued = gate.EnterAsync(cancel.Token);
+        var diagnostics = new AiDiagnostics(new Factory(h), Options.Create(o), Chat(h, o), gate);
+        var health = await diagnostics.CheckAsync(default);
+        Assert.True(health.ModelAvailable);
+        Assert.Equal(1, health.ActiveRequests); Assert.Equal(1, health.MaxConcurrentRequests);
+        Assert.Equal(1, health.QueueDepth); Assert.Equal(4, health.MaxQueuedRequests); Assert.Equal(10, health.QueueTimeoutSeconds);
+        Assert.EndsWith("/api/tags", h.Url!.ToString());
+        cancel.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stopping_after_the_queued_event_releases_admission_even_if_a_slot_becomes_available(bool releaseBeforeStop)
+    {
+        var o = Settings();
+        using var gate = new AiInferenceGate(Options.Create(o));
+        var h = new Handler((_, _) => throw new InvalidOperationException("Stopped requests must not reach inference"));
+        var client = new OpenAiCompatibleClient(new Factory(h), Options.Create(o), NullLogger<OpenAiCompatibleClient>.Instance, gate);
+        var chat = new OpenAiCompatibleChat(new Factory(h), Options.Create(o), client, NullLogger<OpenAiCompatibleChat>.Instance);
+        using var active = await gate.EnterAsync(default);
+        var stream = chat.StreamAsync(Ask(), default).GetAsyncEnumerator();
+        Assert.True(await stream.MoveNextAsync());
+        var state = Assert.IsType<AiInferenceState>(stream.Current);
+        Assert.Equal("queued", state.State); Assert.Equal(10, state.WaitLimitSeconds);
+        Assert.Equal(1, gate.QueueDepth);
+        if (releaseBeforeStop) active.Dispose();
+        await stream.DisposeAsync();
+        Assert.Equal(0, gate.QueueDepth); Assert.Equal(releaseBeforeStop ? 0 : 1, gate.ActiveRequests); Assert.Equal(0, h.Calls);
+        active.Dispose(); using var next = await gate.EnterAsync(default);
+    }
+
+    [Fact]
+    public async Task Stopping_after_admission_releases_the_slot_without_sending_inference()
+    {
+        var o = Settings();
+        using var gate = new AiInferenceGate(Options.Create(o));
+        var h = new Handler((_, _) => throw new InvalidOperationException());
+        var client = new OpenAiCompatibleClient(new Factory(h), Options.Create(o), NullLogger<OpenAiCompatibleClient>.Instance, gate);
+        var chat = new OpenAiCompatibleChat(new Factory(h), Options.Create(o), client, NullLogger<OpenAiCompatibleChat>.Instance);
+        var stream = chat.StreamAsync(Ask(), default).GetAsyncEnumerator();
+        Assert.True(await stream.MoveNextAsync()); Assert.Equal("running", Assert.IsType<AiInferenceState>(stream.Current).State);
+        Assert.Equal(1, gate.ActiveRequests);
+        await stream.DisposeAsync(); Assert.Equal(0, gate.ActiveRequests); Assert.Equal(0, h.Calls);
     }
 
 }

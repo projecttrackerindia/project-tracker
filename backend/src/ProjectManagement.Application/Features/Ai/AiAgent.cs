@@ -177,8 +177,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
         var plan = await PlanAsync(ct);
         await GateAsync(plan, ct);
-        var used = await CreditsUsedAsync(ct);
-        var left = plan.UnlimitedCredits ? long.MaxValue : Math.Max(0, plan.MonthlyCredits - used);
+        var left = plan.UnlimitedCredits ? long.MaxValue : Math.Max(0, plan.MonthlyCredits - await CreditsUsedAsync(ct));
         if (left < Opt.Quick.Credits) throw new ConflictException("This workspace has used all of its AI credits for the month. They renew on the 1st, or ask an administrator about a larger plan.", "AI_CREDITS_EXHAUSTED");
 
         var attachments = await files.ForQuestionAsync(req.AttachmentIds, ct);
@@ -331,6 +330,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                     if (!more) break;
                     switch (events.Current)
                     {
+                        case AiInferenceState state: yield return new AiStreamInference(state.State, state.WaitLimitSeconds); break;
                         case AiTextDelta t: answer.Append(t.Text); if (!guardActionWrite) { firstTokenMs ??= elapsed.ElapsedMilliseconds; yield return new AiStreamText(t.Text); } break;
                         case AiThinkingDelta th: if (thinking.Length < 12_000) thinking.Append(th.Text); yield return new AiStreamReasoning(th.Text); break;
                         case AiTurnEnd e: end = e; model = e.Model ?? model; provider = e.Provider ?? provider; break;

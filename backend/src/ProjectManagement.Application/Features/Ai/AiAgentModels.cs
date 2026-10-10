@@ -45,6 +45,7 @@ public sealed record AiStreamStarted(Guid ConversationId, Guid QuestionId, strin
 /// <summary>Which level was chosen and why; <see cref="Limited"/> means the question deserved a higher level than the plan (or the credits left) allows.</summary>
 public sealed record AiStreamRoute(string Tier, string Model, string Reason, bool Limited, string Wanted, int Credits) : AiStreamEvent("route");
 public sealed record AiStreamReasoning(string Delta) : AiStreamEvent("reasoning");
+public sealed record AiStreamInference(string State, int? WaitLimitSeconds) : AiStreamEvent("inference");
 public sealed record AiStreamText(string Delta) : AiStreamEvent("text");
 /// <summary><paramref name="State"/> is "running" or "done".</summary>
 public sealed record AiStreamTool(string Id, string Tool, string Label, string State, int? Count) : AiStreamEvent("tool");

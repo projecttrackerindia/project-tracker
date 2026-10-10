@@ -16,7 +16,8 @@ public record AgentTrackerDto(AgentDefinitionDto Agent, int Total, int Succeeded
     IReadOnlyList<AgentPathSummaryDto>? SlowestPaths = null, IReadOnlyList<AgentErrorSummaryDto>? FrequentErrors = null);
 public record AgentPathSummaryDto(string Intent, int Requests, int Failures, long P50Ms, long P95Ms, double? AverageQueueMs, double AverageModelMs, double AverageToolMs);
 public record AgentErrorSummaryDto(string Code, int Count);
-public record AiDiagnosticsDto(bool Configured, bool Reachable, bool ModelAvailable, string Provider, string Model, int QueueDepth, string? ErrorCode);
+public record AiDiagnosticsDto(bool Configured, bool Reachable, bool ModelAvailable, string Provider, string Model, int QueueDepth, string? ErrorCode,
+    int? ActiveRequests = null, int? MaxConcurrentRequests = null, int? MaxQueuedRequests = null, int? QueueTimeoutSeconds = null);
 public interface IAiDiagnostics { Task<AiDiagnosticsDto> CheckAsync(CancellationToken ct); }
 
 /// <summary>Workspace admins see counts and sanitized operational traces, never private conversation content.</summary>

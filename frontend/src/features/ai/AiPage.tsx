@@ -15,7 +15,7 @@ import { Markdown } from './Markdown';
 
 /** What the page shows while an answer is being written. */
 interface Live {
-  text: string; reasoning: string; stage: 'routing' | 'thinking' | 'writing';
+  text: string; reasoning: string; stage: 'routing' | 'queued' | 'thinking' | 'writing'; waitLimitSeconds?: number | null;
   tools: (AiToolUse & { id: string; state: 'running' | 'done' | 'failed' })[]; actions: AiAction[];
   route?: { tier: AiTier; reason: string; limited: boolean; wanted: AiTier; credits: number };
 }
@@ -156,6 +156,7 @@ export function AiPage() {
           if (!convId) { selfNav.current = e.conversationId; setConvId(e.conversationId); nav(`/ai/${e.conversationId}`, { replace: true }); refresh(); }
           break;
         case 'route': run.route = { tier: e.tier, reason: e.reason, limited: e.limited, wanted: e.wanted, credits: e.credits }; run.stage = 'thinking'; flush(); break;
+        case 'inference': run.stage = e.state === 'queued' ? 'queued' : 'thinking'; run.waitLimitSeconds = e.waitLimitSeconds; flush(); break;
         case 'reasoning': if (run.reasoning.length < 12_000) run.reasoning += e.delta; flush(); break;
         case 'text': run.text += e.delta; run.stage = 'writing'; flush(); break;
         case 'tool': {
@@ -334,7 +335,7 @@ export function AiPage() {
           <button type="button" className="btn-icon ai-rail-toggle" aria-label="Conversations" onClick={() => setRailOpen(true)}><Icon name="menu" /></button>
           <div className="ai-head-title">
             <Orb size={30} busy={streaming} />
-            <div><b>{title}</b><span>{streaming ? (live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
+            <div><b>{title}</b><span>{streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
           </div>
           <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
           <CreditMeter usage={usage} />
@@ -381,6 +382,7 @@ function LiveAnswer({ live }: { live: Live }) {
         )}
         {(live.reasoning || (live.route && live.route.tier !== 'quick' && !live.text)) && <Reasoning text={live.reasoning} live={!live.text} />}
         <ToolChips tools={live.tools} />
+        {live.stage === 'queued' && <p role="status">Waiting for the assistant. This wait is limited to {live.waitLimitSeconds ?? 10} seconds; you can stop at any time.</p>}
         {live.text ? <div className="ai-streaming"><Markdown text={withoutTrailer(live.text)} /><span className="ai-caret" /></div> : !live.reasoning && live.tools.length === 0 && <div className="ai-dots"><i /><i /><i /></div>}
         {live.actions.map((a) => <ActionCard key={a.id} action={a} busy onConfirm={() => undefined} onDismiss={() => undefined} />)}
       </div>

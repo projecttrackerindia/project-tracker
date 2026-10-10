@@ -399,7 +399,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         {
             var reference = await ProjectAsync(name, ct);
             if (reference.IsPending) throw new AiToolException("That project is awaiting confirmation and has not been created yet.");
-            var project = (await projects.GetAsync(reference.Id, ct)).Project;
+            var project = await projects.GetStatusSummaryAsync(reference.Id, ct);
             return new AiToolOutcome($"**{project.Name}** ({project.Key})\n\nStatus: {project.Status}\nProgress: {project.Progress}%\nStart date: {Day(project.StartDate)}\nDue date: {Day(project.DueDate)}",
                 $"Read the status of {project.Key}", 1);
         }

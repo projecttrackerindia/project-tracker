@@ -31,6 +31,9 @@ public sealed class AiPlatformUnitTests
     [InlineData("assign ATLAS-12 to Siva Reddy", "assign_task")]
     [InlineData("mark ATLAS-12 as Done", "update_task_status")]
     [InlineData("list people", "list_people")]
+    [InlineData("Show the status of project ATLAS?", "project_status")]
+    [InlineData("What's the status of project Release Tracker?", "project_status")]
+    [InlineData("Status of project ATLAS", "project_status")]
     public void Typed_planner_recognizes_known_single_commands(string text, string expected) => Assert.Equal(expected, AiCommandPlanner.ParseSimple(text)!.Value.Intent);
     [Fact]
     public void Planner_preserves_multi_step_requests_for_the_reasoning_agent() => Assert.Null(AiCommandPlanner.ParseSimple("Rename project ATLAS to Launch and assign ATLAS-12 to Siva Reddy"));
