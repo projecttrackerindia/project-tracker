@@ -136,7 +136,8 @@ public sealed partial class AiMessageSendingTests
         Assert.Equal("proposed", action["status"]!.GetValue<string>());
         var json = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().Single(m => m.Id == Guid.Parse(reply["id"]!.GetValue<string>())).ActionsJson);
         var payload = JsonNode.Parse(JsonNode.Parse(json!)![0]!["payloadJson"]!.GetValue<string>())!;
-        var tomorrow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata")).Date.AddDays(1);
+        var tomorrow = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(DateTime.UtcNow,
+            ProjectManagement.Application.Features.Reminders.ZoneTime.Find("Asia/Kolkata")).Date.AddDays(1);
         Assert.Equal(tomorrow.ToString("yyyy-MM-dd") + "T09:00", payload["at"]!.GetValue<string>());
         var saved = await sender.Post(ConfirmUrl(reply)); Assert.True(saved.Ok, saved.ToString()); Assert.NotNull(saved.Data!["resultId"]);
         Assert.Empty(factory.Chat.Requests);

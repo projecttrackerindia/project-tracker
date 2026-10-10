@@ -19,6 +19,8 @@ public sealed class AiCommandPlanner(IAppDbContext db, AppClock clock, AiToolbox
         if (Regex.IsMatch(query, @"^(?:list|show) people[.!?]*$", RegexOptions.IgnoreCase)) return Read("list_people", AiToolbox.ListPeople);
         if (Regex.IsMatch(query, @"^(?:list|show) projects[.!?]*$", RegexOptions.IgnoreCase)) return Read("list_projects", AiToolbox.ListProjects);
         if (Regex.IsMatch(query, @"^(?:my work|show my work summary|what is my workload)[.!?]*$", RegexOptions.IgnoreCase)) return Read("my_work_summary", AiToolbox.MyWorkSummary);
+        var report = Regex.Match(query, @"^(?:what is the status of project|show status of project|show project status for) (?<project>[^?\r\n]{1,150}?)\s*\??$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        if (report.Success) return ("project_status", AiToolbox.ProjectReport, JsonSerializer.Serialize(new { project = report.Groups["project"].Value.Trim() }, Json), false);
         var rename = Regex.Match(query, @"^rename project (?<project>[^\r\n]{1,150}?) to (?<name>[^\r\n]{2,120})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         if (rename.Success) return ("rename_project", AiToolbox.UpdateProject, JsonSerializer.Serialize(new { project = rename.Groups["project"].Value.Trim(), name = rename.Groups["name"].Value.Trim() }, Json), true);
         var assign = Regex.Match(query, @"^assign (?<key>[a-z][a-z0-9]*-\d{1,6}) to (?<person>[^\r\n]{1,150})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
@@ -40,6 +42,11 @@ public sealed class AiCommandPlanner(IAppDbContext db, AppClock clock, AiToolbox
         if (ParseSimple(run.Text) is { } simple)
         {
             if (simple.Write) return new(simple.Intent, true, new(simple.Tool, simple.Input, null));
+            if (simple.Intent == "project_status")
+            {
+                using var input = JsonDocument.Parse(simple.Input);
+                return Read(simple.Intent, await tools.ProjectStatusAsync(input.RootElement.GetProperty("project").GetString()!, ct));
+            }
             return Read(simple.Intent, await tools.ExecuteAsync(simple.Tool, simple.Input, run.TimeZone, run.Plan.Actions, ct, run.Conversation.Id, run.Text));
         }
         var reminder = await AiFastReminder.TryAsync(run, db, clock, ct);

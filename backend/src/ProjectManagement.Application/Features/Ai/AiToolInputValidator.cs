@@ -37,8 +37,13 @@ public static class AiToolInputValidator
             foreach (var field in requiredFields)
                 if (!value.TryGetProperty(field, out var found) || found.ValueKind == JsonValueKind.Null) return $"{path}.{field} is required.";
             if (schema.TryGetProperty("properties", out var properties))
+            {
+                foreach (var field in value.EnumerateObject())
+                    if (field.Name.EndsWith("_date", StringComparison.Ordinal) && !properties.TryGetProperty(field.Name, out _))
+                        return $"{path}.{field.Name} is not supported by this tool. Clarify the date's meaning; do not treat end date as due date.";
                 foreach (var definition in properties.EnumerateObject())
                     if (value.TryGetProperty(definition.Name, out var field) && Check(definition.Value, field, path + "." + definition.Name, requiredFields.Contains(definition.Name)) is { } error) return error;
+            }
         }
         if (value.ValueKind == JsonValueKind.Array)
         {

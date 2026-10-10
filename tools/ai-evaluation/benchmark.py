@@ -11,6 +11,20 @@ import urllib.request
 from pathlib import Path
 
 
+def score(case, content, calls):
+    """Score selection only. Extra/duplicate calls must not conceal an unsafe operation."""
+    if case.get("expectText"):
+        return bool(content.strip()) and not calls
+    if not isinstance(calls, list) or len(calls) != 1 or not isinstance(calls[0], dict):
+        return False
+    function = calls[0].get("function", {})
+    if not isinstance(function, dict):
+        return False
+    arguments = function.get("arguments", {})
+    return (function.get("name") == case["expectTool"] and isinstance(arguments, dict)
+            and all(arguments.get(k) == v for k, v in case.get("arguments", {}).items()))
+
+
 def run(base, key, model, case, corpus, context, threads, timeout):
     body = {"model": model, "stream": True, "think": False, "keep_alive": "10m",
             "messages": [{"role": "system", "content": corpus["system"]}, {"role": "user", "content": case["request"]}],
@@ -45,9 +59,7 @@ def run(base, key, model, case, corpus, context, threads, timeout):
                     final = part
         if final is None:
             raise ValueError("incomplete stream")
-        valid = bool(content.strip()) and not calls if case.get("expectText") else any(
-            c.get("function", {}).get("name") == case["expectTool"] and
-            all(c["function"].get("arguments", {}).get(k) == v for k, v in case.get("arguments", {}).items()) for c in calls)
+        valid = score(case, content, calls)
         generation = final.get("eval_duration", 0) / 1e9
         return {"model": model, "case": case["id"], "passed": valid, "elapsed_s": time.monotonic() - start, "first_token_s": first,
                 "input_tokens": final.get("prompt_eval_count"), "output_tokens": final.get("eval_count"),
@@ -67,8 +79,8 @@ def main():
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if not 1 <= args.repeats <= 100 or not 1 <= args.threads <= 64:
-        parser.error("Use 1–100 repeats and 1–64 CPU threads")
+    if not 1 <= args.repeats <= 100 or not 1 <= args.threads <= 64 or not 256 <= args.context <= 131072 or not 1 <= args.timeout <= 600:
+        parser.error("Use 1–100 repeats, 1–64 CPU threads, context 256–131072 and timeout 1–600 seconds")
     base = os.environ.get("OLLAMA_BASE_URL")
     if not base:
         parser.error("Set OLLAMA_BASE_URL in your execution environment")
@@ -80,7 +92,8 @@ def main():
         mine = [s for s in samples if s["model"] == model]
         timings = sorted(s["elapsed_s"] for s in mine)
         summary.append({"model": model, "samples": len(mine), "passed": sum(s["passed"] for s in mine),
-                        "mean_s": statistics.mean(timings), "p95_s": timings[math.ceil(len(timings) * .95) - 1]})
+                        "mean_s": statistics.mean(timings), "p50_s": statistics.median(timings), "p95_s": timings[math.ceil(len(timings) * .95) - 1],
+                        "failure_rate": sum(not s["passed"] for s in mine) / len(mine)})
     report = {"dataset_version": corpus["version"], "context": args.context, "threads": args.threads,
               "scope": "synthetic provider/tool-selection benchmark; does not verify application side effects or security",
               "summary": summary, "samples": samples}

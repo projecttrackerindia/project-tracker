@@ -44,6 +44,7 @@ jobs:
           if-no-files-found: ignore
       - name: Fail on high or critical NuGet vulnerabilities
         run: |
+          python -m unittest discover -s ../tools/ai-evaluation -p test_benchmark.py
           python -m unittest discover -s ../scripts -p test_nuget_audit.py
           dotnet list package --vulnerable --include-transitive --format json --output-version 1 > vulnerable.json
           python ../scripts/check-nuget-audit.py vulnerable.json
