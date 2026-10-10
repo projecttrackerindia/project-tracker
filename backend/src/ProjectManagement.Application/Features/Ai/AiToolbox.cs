@@ -1043,7 +1043,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         {
             1 => found[0],
             0 when _pendingProjects.FirstOrDefault(n => AiPersonMatching.Normalize(n) == AiPersonMatching.Normalize(t)) is { } pending => new ProjectRef(Guid.Empty, "NEW", pending),
-            0 => throw ProjectLookupError($"No visible project matches “{t}”. Use list_projects or ask for its exact key. An incomplete lookup is not permission to create a new project."),
+            0 => throw ProjectLookupError($"No project matches “{t}” in the projects you can access. Use list_projects or ask for its exact key. An incomplete lookup is not permission to create a new project."),
             _ => throw ProjectLookupError($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => $"{p.Key} ({p.Name})"))}. Please specify the exact project key or ID."),
         };
     }
