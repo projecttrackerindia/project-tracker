@@ -9,6 +9,7 @@ export interface AiTierInfo { id: AiTier; label: string; model: string; credits:
 export interface AiUsage {
   month: string; creditsUsed: number; creditsLimit: number; creditsLeft: number; unlimited: boolean; maxTier: AiTier; attachments: boolean; actions: boolean;
   tiers: AiTierInfo[]; attachmentTypes: string[]; maxFiles: number; maxImageMb: number; maxDocumentMb: number;
+  requestLimits?: { planCode: string; perMinute: number; perHour: number; perDay: number; concurrent: number; distributed: boolean };
 }
 export interface AiConversation { id: string; title: string; lastMessageAt: string; isPinned: boolean }
 export interface AiToolUse { name: string; label: string; count: number | null }

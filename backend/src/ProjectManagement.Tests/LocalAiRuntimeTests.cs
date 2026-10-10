@@ -121,6 +121,17 @@ public sealed class LocalAiRuntimeTests
         active.Dispose(); using var next = await gate.EnterAsync(default);
     }
     [Fact]
+    public async Task Queue_wait_expiry_is_not_reported_as_a_full_queue()
+    {
+        var options = Settings(); options.Fallback.QueueTimeoutSeconds = 1;
+        using var gate = new AiInferenceGate(Options.Create(options));
+        using var active = await gate.EnterAsync(default);
+        var timeout = await Assert.ThrowsAsync<AppException>(() => gate.EnterAsync(default));
+        Assert.Equal("AI_QUEUE_TIMEOUT", timeout.Code);
+        Assert.DoesNotContain("queue is full", timeout.Message);
+        Assert.Equal(0, gate.QueueDepth);
+    }
+    [Fact]
     public async Task Native_runtime_metrics_preserve_load_prompt_generation_and_cache_evidence()
     {
         var h = new Handler((_, _) => Task.FromResult(Answer("""{"message":{"content":"Hi"},"done":true,"load_duration":60000000000,"prompt_eval_duration":250000000,"eval_duration":750000000,"total_duration":61000000000,"prompt_eval_cached_count":37}""")));

@@ -19,18 +19,18 @@ public class AiController(AiAssistant assistant) : ApiControllerBase
     [HttpPut("status")]
     public async Task<IActionResult> SetAllowed([FromBody] SetAiAllowedRequest req, CancellationToken ct) => Ok(await assistant.SetAllowedAsync(req.Allowed, ct));
 
-    [HttpPost("portfolio-summary"), RequireModule(Modules.Projects)]
+    [HttpPost("portfolio-summary"), RequireModule(Modules.Projects), AiRequestLimit]
     public async Task<IActionResult> Portfolio(CancellationToken ct) => Ok(await assistant.PortfolioSummaryAsync(ct));
 
-    [HttpPost("projects/{projectId:guid}/risk"), RequireModule(Modules.Projects)]
+    [HttpPost("projects/{projectId:guid}/risk"), RequireModule(Modules.Projects), AiRequestLimit]
     public async Task<IActionResult> Risk(Guid projectId, CancellationToken ct) => Ok(await assistant.ProjectRiskAsync(projectId, ct));
 
-    [HttpPost("search")]
+    [HttpPost("search"), AiRequestLimit]
     public async Task<IActionResult> Search([FromBody] AiSearchRequest req, CancellationToken ct) => Ok(await assistant.SearchAsync(req, ct));
 
-    [HttpPost("triage"), RequireModule(Modules.Work, AccessLevel.Edit)]
+    [HttpPost("triage"), RequireModule(Modules.Work, AccessLevel.Edit), AiRequestLimit]
     public async Task<IActionResult> Triage([FromBody] AiTriageRequest req, CancellationToken ct) => Ok(await assistant.TriageAsync(req, ct));
 
-    [HttpPost("projects/{projectId:guid}/action-items"), RequireModule(Modules.Projects)]
+    [HttpPost("projects/{projectId:guid}/action-items"), RequireModule(Modules.Projects), AiRequestLimit]
     public async Task<IActionResult> ActionItems(Guid projectId, [FromBody] AiNotesRequest req, CancellationToken ct) => Ok(await assistant.ActionItemsFromNotesAsync(projectId, req, ct));
 }

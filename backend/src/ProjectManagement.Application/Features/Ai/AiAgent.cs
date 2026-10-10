@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
@@ -28,7 +27,7 @@ public sealed record AiRun(AiConversation Conversation, AiMessage Question, stri
 /// model level that suits the question within the plan, the model reads the workspace through <see cref="AiToolbox"/> with the asker's own
 /// access, and anything that would change data comes back as a proposal for the person to confirm. Each answer costs credits by level.
 /// </summary>
-public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiChat chat, EntitlementService entitlements, IDistributedCache cache,
+public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiChat chat, EntitlementService entitlements, AiRequestLimitService requestLimits,
     IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -71,7 +70,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 Info(AiTier.Standard, "Standard", "Balanced: most questions, summaries, reading files"),
                 Info(AiTier.Deep, "Deep thinking", "Extended reasoning: analysis, root causes, planning, reports"),
             ],
-            files.SupportedExtensions, Opt.MaxFilesPerMessage, Opt.MaxImageMb, Opt.MaxDocumentMb);
+            files.SupportedExtensions, Opt.MaxFilesPerMessage, Opt.MaxImageMb, Opt.MaxDocumentMb, await requestLimits.LimitsAsync(ct));
     }
 
     private async Task GateAsync(AiPlanLevels plan, CancellationToken ct)
@@ -82,11 +81,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         if (await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct))
             throw new ForbiddenException("The AI assistant is switched off for this workspace.", "AI_DISABLED");
         if (!plan.Enabled) throw new FeatureNotAvailableException(plan.MonthlyCredits == 0 ? FeatureKeys.AiMonthlyCredits : FeatureKeys.AiModelTier);
-        // The same hourly allowance as the assistant's other features.
-        var key = $"ai:{ctx.RequireUserId():N}:{clock.Now:yyyyMMddHH}";
-        var used = int.TryParse(await cache.GetStringAsync(key, ct), out var n) ? n : 0;
-        if (used >= options.Value.HourlyLimit) throw new ConflictException("You have used the assistant a lot in the last hour. Try again later.", "AI_LIMIT");
-        await cache.SetStringAsync(key, (used + 1).ToString(), new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) }, ct);
+        // Atomic plan-based admission is held by AiRequestLimitAttribute for the entire HTTP request.
     }
 
     // ------------------------------------------------------------------ conversations

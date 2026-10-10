@@ -295,21 +295,29 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
     [Fact]
     public Task Warm_application_routes_record_real_in_process_latency_without_model_calls() => Run(async (sender, recipient) =>
     {
-        factory.Chat.Fail = new InvalidOperationException("Benchmark must not call a model");
-        foreach (var prompt in new[] { "Hi", "can you send message to sivareddy", "which task is currently sivareddy doing?" })
+        var limits = factory.Services.GetRequiredService<IOptions<AiRateLimitOptions>>().Value;
+        var previous = limits.Business;
+        // This benchmark intentionally exceeds the production minute cap; cap enforcement has separate tests.
+        limits.Business = previous with { PerMinute = 100 };
+        try
         {
-            await Ask(sender, prompt); // warm service/EF caches
-            var samples = new List<double>();
-            for (var i = 0; i < 10; i++)
+            factory.Chat.Fail = new InvalidOperationException("Benchmark must not call a model");
+            foreach (var prompt in new[] { "Hi", "can you send message to sivareddy", "which task is currently sivareddy doing?" })
             {
-                var timer = System.Diagnostics.Stopwatch.StartNew();
-                await Ask(sender, prompt);
-                samples.Add(timer.Elapsed.TotalMilliseconds);
+                await Ask(sender, prompt); // warm service/EF caches
+                var samples = new List<double>();
+                for (var i = 0; i < 10; i++)
+                {
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
+                    await Ask(sender, prompt);
+                    samples.Add(timer.Elapsed.TotalMilliseconds);
+                }
+                samples.Sort();
+                Console.WriteLine($"Application route benchmark (in-process SQLite; 10 warm samples; not Railway): mean={samples.Average():F2}ms p50={samples[(int)Math.Ceiling(samples.Count * .5) - 1]:F2}ms p95={samples[^1]:F2}ms modelCalls=0");
             }
-            samples.Sort();
-            Console.WriteLine($"Application route benchmark (in-process SQLite; 10 warm samples; not Railway): mean={samples.Average():F2}ms p50={samples[(int)Math.Ceiling(samples.Count * .5) - 1]:F2}ms p95={samples[^1]:F2}ms modelCalls=0");
+            Assert.Empty(factory.Chat.Requests);
         }
-        Assert.Empty(factory.Chat.Requests);
+        finally { limits.Business = previous; }
     }, "Siva Reddy");
 
 }

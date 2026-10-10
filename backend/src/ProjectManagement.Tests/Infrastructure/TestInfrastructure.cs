@@ -103,6 +103,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.ConfigureLogging(l => l.AddProvider(Logs));
         builder.ConfigureTestServices(services =>
         {
+            // Admission windows stay deterministic even when an HTTP test happens to cross a minute boundary.
+            // The standalone Redis tests exercise the real distributed implementation separately.
+            services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiRequestLimiter>();
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiRequestLimiter>(
+                new ProjectManagement.Infrastructure.Services.MemoryAiRequestLimiter(new AiLimitClock()));
             services.RemoveAll<ProjectManagement.Application.Features.Integrations.IWebhookTransport>();
             services.AddSingleton<ProjectManagement.Application.Features.Integrations.IWebhookTransport>(Webhooks);
             services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => Idp);
@@ -125,6 +130,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         return action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+    }
+
+    private sealed class AiLimitClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
     }
 
     protected override void Dispose(bool disposing)

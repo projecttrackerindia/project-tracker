@@ -61,6 +61,11 @@ public static class DependencyInjection
             services.AddStackExchangeRedisCache(o => { o.ConnectionMultiplexerFactory = () => Task.FromResult<StackExchange.Redis.IConnectionMultiplexer>(mux); o.InstanceName = "pm:"; });
         }
         else services.AddDistributedMemoryCache();
+        services.Configure<ProjectManagement.Application.Features.Ai.AiRateLimitOptions>(config.GetSection(ProjectManagement.Application.Features.Ai.AiRateLimitOptions.Section));
+        if (!string.IsNullOrWhiteSpace(redis))
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiRequestLimiter, RedisAiRequestLimiter>();
+        else
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiRequestLimiter, MemoryAiRequestLimiter>();
         services.AddSingleton<ProjectManagement.Application.Services.EntitlementCache>();
 
         services.AddSingleton(TimeProvider.System);

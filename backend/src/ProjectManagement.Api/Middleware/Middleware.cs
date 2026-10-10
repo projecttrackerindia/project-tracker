@@ -114,6 +114,8 @@ public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMi
         try { await next(http); }
         catch (AppException ex)
         {
+            if (ex is ProjectManagement.Application.Features.Ai.AiRequestLimitException limited)
+                http.Response.Headers.RetryAfter = limited.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
             await ErrorWriter.WriteAsync(http, ex.StatusCode, ex.Message, ex.Errors);
         }
         catch (DbUpdateConcurrencyException)

@@ -50,11 +50,11 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     // ---- asking (answers stream back as server-sent events)
 
     /// <summary>Starts a new conversation with a question.</summary>
-    [HttpPost("ask")]
+    [HttpPost("ask"), AiRequestLimit]
     public async Task<IActionResult> AskNew([FromBody] AiAskRequest req, CancellationToken ct) => await StreamAsync(await agent.PrepareAsync(null, req, ct), ct);
 
     /// <summary>Asks a follow-up in an existing conversation.</summary>
-    [HttpPost("conversations/{id:guid}/ask")]
+    [HttpPost("conversations/{id:guid}/ask"), AiRequestLimit]
     public async Task<IActionResult> Ask(Guid id, [FromBody] AiAskRequest req, CancellationToken ct) => await StreamAsync(await agent.PrepareAsync(id, req, ct), ct);
 
     private async Task<IActionResult> StreamAsync(AiRun run, CancellationToken ct)

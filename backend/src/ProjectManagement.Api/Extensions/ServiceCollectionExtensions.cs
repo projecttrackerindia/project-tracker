@@ -108,7 +108,7 @@ public static class ServiceCollectionExtensions
         var origins = config.GetSection("Cors:Origins").Get<string[]>() ?? [];
         services.AddCors(o => o.AddDefaultPolicy(p =>
         {
-            if (origins.Length > 0) p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+            if (origins.Length > 0) p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithExposedHeaders("Retry-After");
         }));
         return services;
     }

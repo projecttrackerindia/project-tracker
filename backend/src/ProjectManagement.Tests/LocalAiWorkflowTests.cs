@@ -126,13 +126,13 @@ public sealed class LocalAiWorkflowTests(ApiFactory factory)
     {
         factory.Chat.Fail = new InvalidOperationException("The model must not be invoked");
         var samples = new List<double>();
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < 10; i++)
         {
             var timer = System.Diagnostics.Stopwatch.StartNew();
-            await Ask(owner, "Hi"); samples.Add(timer.Elapsed.TotalMilliseconds);
+            await Ask(owner, i % 2 == 0 ? "hey hi" : "Hi"); samples.Add(timer.Elapsed.TotalMilliseconds);
         }
         samples.Sort();
-        Console.WriteLine($"In-process API greeting benchmark (20 warm requests, no inference): mean={samples.Average():F1}ms p95={samples[18]:F1}ms");
+        Console.WriteLine($"In-process API greeting benchmark (10 warm requests, no inference): mean={samples.Average():F1}ms p95={samples[9]:F1}ms");
         var greeting = await Ask(owner, "Hi");
         Assert.Equal(0, greeting["credits"]!.GetValue<int>());
         var pending = Pending(owner);

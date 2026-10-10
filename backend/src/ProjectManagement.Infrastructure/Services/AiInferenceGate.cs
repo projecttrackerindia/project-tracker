@@ -27,7 +27,7 @@ public sealed class AiInferenceGate(IOptions<AiOptions> options) : IDisposable
         try
         {
             if (!await slots.WaitAsync(TimeSpan.FromSeconds(QueueTimeoutSeconds), ct))
-                throw new AppException(503, "AI_BUSY", "The local model's queue is full. Try again shortly.");
+                throw new AppException(503, "AI_QUEUE_TIMEOUT", "The local model did not become available within the waiting limit. Try again shortly.");
             return new Lease(slots);
         }
         finally { Interlocked.Decrement(ref waiting); }
