@@ -3,6 +3,7 @@ import { useAuth, useCan, useIsPersonal } from '../stores/auth';
 import { useVisibleKinds } from '../features/workitems/workItems';
 import { usePeopleSections } from '../features/people/sections';
 import { useAi } from '../features/ai/Assistant';
+import { AI_NAME } from '../features/ai/aiBrand';
 
 /** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
 export interface NavDef { to: string; label: string; icon: IconName; end?: boolean; show?: boolean; badge?: number; match?: (path: string) => boolean }
@@ -43,7 +44,7 @@ export function useMainNav(): NavGroup[] {
   return [
     { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
-      { to: '/ai', label: 'AI assistant', icon: 'sparkle', show: ai, match: (p) => p === '/ai' || p.startsWith('/ai/') },
+      { to: '/ai', label: AI_NAME, icon: 'orbit', show: ai, match: (p) => p === '/ai' || p.startsWith('/ai/') },
       { to: '/my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0 },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
       { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
@@ -59,7 +60,7 @@ export function useMainNav(): NavGroup[] {
     { title: 'Insights', items: [
       { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },
       { to: '/reports', label: 'Reports', icon: 'chart', end: false, show: canReports || lv('work') > 0 },
-      { to: '/agent-tracker', label: 'Agent Tracker', icon: 'activity', show: ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin' },
+      { to: '/agent-tracker', label: 'Agent Tracker', icon: 'workflow', show: ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin' },
       { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0 },
     ] },
     { title: 'Organization', items: [

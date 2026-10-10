@@ -43,6 +43,7 @@ import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
 import { MobileAppSection } from './MobileAppSection';
 import { GoogleIntegrationSection } from './GoogleIntegration';
 import { AiUsageCard } from '../ai/AiUsageCard';
+import { SlackSettings } from './SlackSettings';
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -280,7 +281,8 @@ export function WorkspaceSettingsPage() {
       {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
       {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
-      {current.id === 'webhooks' && <div className="card"><div className="card-head"><h3>Interactive Slack and WhatsApp agents</h3></div><div className="card-body"><p>Disabled. Provider accounts, verified user mappings, consent and delivery checks must be configured before interactive agent integrations can be enabled.</p><p>Your existing outgoing webhook settings are managed above.</p></div></div>}
+      {current.id === 'slack' && <><PageHead title="Slack integration" sub="Connect a Slack workspace to this organization." /><SlackSettings /></>}
+      {current.id === 'webhooks' && <div className="card"><div className="card-head"><h3>Interactive Slack and WhatsApp agents</h3></div><div className="card-body"><p>Slack installation is managed in the Slack workspace settings. Interactive agent features and WhatsApp remain disabled pending verified user mappings and delivery checks.</p><p>Your existing outgoing webhook settings are managed above.</p></div></div>}
       {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
       {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}
       {current.id === 'reminders' && <><PageHead title="Reminders" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><ReminderPolicySettings /></>}

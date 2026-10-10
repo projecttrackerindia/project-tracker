@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.InboundEmailOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.InboundEmailOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Integrations.SlackOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.SlackOptions.Section));
         services.AddOptions<ProjectManagement.Application.Features.Ai.AiOptions>()
             .Bind(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section))
             .PostConfigure(o => { if (string.IsNullOrWhiteSpace(o.Gemini.ApiKey)) o.Gemini.ApiKey = config["AI_gemini_apikey"]; })
@@ -86,6 +87,7 @@ public static class DependencyInjection
         // Single sign-on and social sign-in: identity providers are reached through the "oidc" HTTP client.
         services.AddHttpClient("oidc", c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IOidcProtocol, OidcProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IGitHubOAuth, GitHubOAuth>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IAppleClientSecret, AppleClientSecret>();

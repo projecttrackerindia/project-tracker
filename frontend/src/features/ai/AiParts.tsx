@@ -5,12 +5,19 @@ import { Icon, type IconName } from '../../components/Icon';
 import { formatDateTime } from '../../lib/format';
 import type { AiAction, AiAttachment, AiFeedbackReason, AiInsight, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
 import { Markdown } from './Markdown';
+import { AI_NAME } from './aiBrand';
+import { useAuth } from '../../stores/auth';
 
 // ------------------------------------------------------------------ small marks
 
-/** The assistant's mark: a slowly turning ring of light. `busy` quickens it while the assistant is working. */
-export function Orb({ size = 32, busy = false }: { size?: number; busy?: boolean }) {
-  return <span className={`ai-orb ${busy ? 'busy' : ''}`} style={{ width: size, height: size }} aria-hidden="true"><i /><Icon name="sparkle" size={Math.round(size * 0.46)} /></span>;
+/** A direction mark inside an orbit. Transform-only motion keeps the mark inexpensive to render. */
+export function Orb({ size = 32, busy = false, animated = false }: { size?: number; busy?: boolean; animated?: boolean }) {
+  return <span className={`ai-orb ${busy ? 'busy' : ''} ${animated ? 'animated' : ''}`} style={{ width: size, height: size }} aria-hidden="true">
+    <svg viewBox="0 0 48 48" fill="none">
+      <g className="ai-orbit-track"><ellipse cx="24" cy="24" rx="20" ry="13" transform="rotate(-35 24 24)" /><circle cx="40" cy="13" r="2.8" /></g>
+      <path className="ai-orbit-core" d="m24 11 9 23-9-5-9 5 9-23Z" />
+    </svg>
+  </span>;
 }
 
 const TIER_ICON: Record<AiTier, IconName> = { quick: 'bolt', standard: 'sparkle', deep: 'target' };
@@ -46,21 +53,58 @@ export function ModeSwitch({ mode, onChange, usage, disabled }: { mode: AiMode; 
   );
 }
 
-/** A ring showing how much of the month's credits is left. */
+/** A compact balance control. The arc represents remaining organization credits, never provider capacity. */
 export function CreditMeter({ usage }: { usage?: AiUsage }) {
+  const role = useAuth((s) => s.ctx?.current?.role);
+  const control = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (control.current && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && control.current) {
+        control.current.open = false;
+        control.current.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
   if (!usage) return null;
   const unlimited = usage.unlimited;
   const pct = unlimited ? 100 : usage.creditsLimit > 0 ? Math.max(0, Math.min(100, (usage.creditsLeft / usage.creditsLimit) * 100)) : 0;
   const low = !unlimited && pct < 15;
-  const r = 15, c = 2 * Math.PI * r;
+  const r = 17, c = 2 * Math.PI * r;
   return (
-    <div className={`ai-credits ${low ? 'low' : ''}`} title={unlimited ? 'Unlimited AI credits on your plan' : `${usage.creditsUsed.toLocaleString()} of ${usage.creditsLimit.toLocaleString()} credits used this month. They renew on the 1st.`}>
-      <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
-        <circle cx="19" cy="19" r={r} className="ring-bg" />
-        <circle cx="19" cy="19" r={r} className="ring" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} transform="rotate(-90 19 19)" />
-      </svg>
-      <span><b>{unlimited ? 'Unlimited' : usage.creditsLeft.toLocaleString()}</b><i>{unlimited ? 'credits' : 'credits left'}</i></span>
-    </div>
+    <details ref={control} className={`ai-credit-control ${low ? 'low' : ''}`} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="ai-credit-button" aria-label={unlimited ? 'Usage: unlimited organization credits' : `Usage: ${usage.creditsLeft.toLocaleString()} organization credits remaining, ${Math.round(pct)} percent`} title="View organization credit balance">
+        <span className="ai-credit-ring">
+          <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+            <circle cx="21" cy="21" r={r} className="ring-bg" />
+            <circle cx="21" cy="21" r={r} className="ring" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} transform="rotate(-90 21 21)" />
+          </svg>
+          <Icon name={unlimited ? 'sparkle' : 'bolt'} size={15} />
+        </span>
+        <span>Usage</span><Icon name="chevronD" size={12} />
+      </summary>
+      <div className="ai-credit-panel">
+        <div className="ai-credit-panel-heading"><span>Organization credits</span><Icon name="orbit" size={18} /></div>
+        <strong>{unlimited ? 'Unlimited' : usage.creditsLeft.toLocaleString()}<small>{unlimited ? 'on your plan' : 'remaining'}</small></strong>
+        {!unlimited && <>
+          <div className="ai-credit-bar" role="meter" aria-label="Organization credits remaining" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={`${usage.creditsLeft.toLocaleString()} credits remaining`}><span style={{ width: `${pct}%` }} /></div>
+          <div className="ai-credit-caption"><span>{Math.round(pct)}% remaining</span><span>{usage.creditsLimit.toLocaleString()} monthly</span></div>
+        </>}
+        <p>Shared across your organization. Monthly credits renew on the 1st (UTC).</p>
+        <p>Auto selects a level within your plan. Request safeguards and any user or team budget still apply.</p>
+        {(role === 'Owner' || role === 'Admin') && <Link to="/settings/general" onClick={() => { if (control.current) control.current.open = false; }}>View usage & budgets <Icon name="chevronR" size={13} /></Link>}
+      </div>
+    </details>
   );
 }
 
@@ -210,7 +254,7 @@ export function MessageView({ m, onConfirm, onDismiss, onReconcile, onCopy, onDo
       <Orb size={30} />
       <div className="ai-body">
         <div className="ai-meta">
-          <b>Assistant</b>
+          <b>{AI_NAME}</b>
           {m.tier && <RouteChip tier={m.tier} reason={m.routeReason} credits={m.credits || undefined} />}
           {m.status === 'stopped' && <span className="ai-stopped">stopped</span>}
           <time>{formatDateTime(m.createdAt)}</time>
@@ -263,7 +307,7 @@ export function Hero({ name, onPick, onAsk, canAttach, starters, insights }: { n
   const greeting = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   return (
     <div className="ai-hero">
-      <Orb size={92} />
+      <Orb size={92} animated />
       <h1>{greeting}{name ? `, ${name}` : ''}.</h1>
       <p>Ask anything about your work. I read your projects, people and files, reason through hard problems, and prepare changes for you to confirm.</p>
       {insights && insights.length > 0 && (

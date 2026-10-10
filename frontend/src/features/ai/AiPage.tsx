@@ -10,6 +10,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
 import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
+import { AI_NAME } from './aiBrand';
 import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
 
@@ -39,8 +40,8 @@ export function AiPage() {
   const status = useAiStatus();
   const usageQ = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !!status?.enabled, staleTime: 20_000 });
   const listQ = useWsQuery(['ai', 'conversations'], aiWorkspaceApi.conversations, { enabled: !!status?.enabled });
-  const startersQ = useWsQuery(['ai', 'starters'], aiWorkspaceApi.starters, { enabled: !!status?.enabled, staleTime: 60_000 });
-  const insightsQ = useWsQuery(['ai', 'insights'], aiWorkspaceApi.insights, { enabled: !!status?.enabled, staleTime: 120_000 });
+  const startersQ = useWsQuery(['ai', 'starters'], aiWorkspaceApi.starters, { enabled: !!status?.enabled && !id, staleTime: 60_000 });
+  const insightsQ = useWsQuery(['ai', 'insights'], aiWorkspaceApi.insights, { enabled: !!status?.enabled && !id, staleTime: 120_000 });
   const usage = usageQ.data;
 
   const [convId, setConvId] = useState<string | null>(id ?? null);
@@ -323,7 +324,7 @@ export function AiPage() {
   };
 
   const newChat = () => { abort.current?.abort(); setRailOpen(false); setMessages([]); setLive(null); setError(null); setConvId(null); nav('/ai'); };
-  const title = convId ? listQ.data?.find((c) => c.id === convId)?.title ?? 'Conversation' : 'New conversation';
+  const title = convId ? listQ.data?.find((c) => c.id === convId)?.title ?? 'Conversation' : AI_NAME;
   const lastAssistant = [...messages].reverse().findIndex((m) => m.role === 'assistant');
   const lastAssistantIndex = lastAssistant < 0 ? -1 : messages.length - 1 - lastAssistant;
 
@@ -355,17 +356,18 @@ export function AiPage() {
       <section className="ai-main">
         <div className="ai-aurora" aria-hidden="true" />
         <header className="ai-head">
+          <div className="ai-head-primary">
           <button type="button" className="btn-icon ai-rail-toggle" aria-label="Conversations" onClick={() => setRailOpen(true)}><Icon name="menu" /></button>
           <div className="ai-head-title">
-            <Orb size={30} busy={streaming} />
+            <Orb size={30} busy={streaming} animated />
             <div><b>{title}</b><span>{streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
           </div>
-          <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
-          <Link className="btn" to="/ai/operations">Proactive workflows</Link>
-          <CreditMeter usage={usage} />
-          {usage?.requestLimits && <span className="muted" style={{ fontSize: 12 }}>
-            Per person: {usage.requestLimits.perMinute}/min · {usage.requestLimits.perHour}/hour · {usage.requestLimits.perDay}/day
-          </span>}
+          </div>
+          <div className="ai-head-controls">
+            <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
+            <Link className="btn ai-workflows-link" to="/ai/operations" aria-label="Proactive workflows"><Icon name="workflow" size={15} />Workflows</Link>
+            <CreditMeter usage={usage} />
+          </div>
         </header>
 
         <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
@@ -401,7 +403,7 @@ function LiveAnswer({ live }: { live: Live }) {
       <Orb size={30} busy />
       <div className="ai-body">
         <div className="ai-meta">
-          <b>Assistant</b>
+          <b>{AI_NAME}</b>
           {live.route ? <RouteChip tier={live.route.tier} reason={live.route.reason} credits={live.route.credits} limited={live.route.limited} wanted={live.route.wanted} /> : <span className="ai-routing">choosing how much thinking this needs…</span>}
         </div>
         {live.route?.limited && (

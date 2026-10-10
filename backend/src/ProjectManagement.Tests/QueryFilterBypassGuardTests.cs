@@ -40,6 +40,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/CalendarFeedService.cs",
         "ProjectManagement.Application/Features/Integrations/GitLinkService.cs",
         "ProjectManagement.Application/Features/Integrations/InboundEmailService.cs",
+        "ProjectManagement.Application/Features/Integrations/SlackConnectionService.cs", // global workspace uniqueness and signed lifecycle routing only; no business-data reads; exact team/app mapping establishes tenant before writes
         "ProjectManagement.Application/Features/Integrations/WebhookService.cs",
         "ProjectManagement.Application/Features/Issues/IssueService.cs",
         "ProjectManagement.Application/Features/Notifications/NotificationService.cs",

@@ -128,6 +128,7 @@ const FEATURES: { key: string; label: string; flag: boolean }[] = [
   { key: 'AI_ASSISTANT', label: 'AI assistant', flag: true }, { key: 'AI_MODEL_TIER', label: 'AI model level (1 Quick, 2 Standard, 3 Deep)', flag: false },
   { key: 'AI_MONTHLY_CREDITS', label: 'AI credits per month', flag: false }, { key: 'AI_ATTACHMENTS', label: 'AI: read images & documents', flag: true }, { key: 'CHAT_ATTACHMENTS', label: 'Chat: send files & pictures', flag: true },
   { key: 'AI_ACTIONS', label: 'AI: take actions & send reports', flag: true },
+  { key: 'SLACK_INTEGRATION', label: 'Slack workspace integration', flag: true },
 ];
 
 function ExceptionsModal({ org, onClose }: { org: AdminUsage; onClose: () => void }) {

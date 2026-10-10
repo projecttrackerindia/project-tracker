@@ -8,6 +8,9 @@ namespace ProjectManagement.Application.Abstractions;
 
 public interface IAppDbContext
 {
+    DbSet<SlackConnection> SlackConnections { get; }
+    DbSet<SlackOAuthAttempt> SlackOAuthAttempts { get; }
+    DbSet<SlackEventReceipt> SlackEventReceipts { get; }
     Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct);
     Task LockBillingEventsAsync(string provider, CancellationToken ct);
     Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct);
