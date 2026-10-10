@@ -100,7 +100,7 @@
 .ai-credit-ring .ring-bg { fill: none; stroke: var(--border); stroke-width: 3; }
 .ai-credit-ring .ring { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .8s cubic-bezier(.22, 1, .36, 1), stroke .3s; }
 .ai-credit-control.low .ai-credit-ring { color: var(--warning); }
-.ai-credit-panel { position: absolute; top: calc(100% + 12px); right: 0; width: min(320px, calc(100vw - 48px)); padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel-solid); box-shadow: var(--shadow-lg); color: var(--text); animation: ai-credit-reveal .18s ease-out; }
+.ai-credit-panel { position: absolute; top: calc(100% + 12px); right: 0; width: min(320px, calc(100cqw - 32px)); padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel-solid); box-shadow: var(--shadow-lg); color: var(--text); animation: ai-credit-reveal .18s ease-out; }
 @keyframes ai-credit-reveal { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 .ai-credit-panel-heading { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 650; color: var(--text-2); }
 .ai-credit-panel-heading svg { color: var(--primary); }
