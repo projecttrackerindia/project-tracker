@@ -20,7 +20,9 @@ export interface AiMessage {
   id: string; role: 'user' | 'assistant'; content: string; reasoning: string | null; tier: AiTier | null; model: string | null; routeReason: string | null;
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
   followUps?: string[]; unverifiedKeys?: string[]; feedback?: 'up' | 'down' | null;
+  sources?: AiKnowledgeSource[];
 }
+export interface AiKnowledgeSource { kind: string; id: string; key: string; title: string; link: string; version: string; evidenceAt: string; projectId?: string | null; ownerId?: string | null; status?: string | null }
 export interface PortfolioRisk {
   projectId: string; key: string; name: string; group: string | null; health: string; progress: number; owner: string | null; startDate: string | null; dueDate: string | null; delayedDays: number;
   openTasks: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number; finishedLast28Days: number; inProgressTasks: number;
@@ -48,12 +50,12 @@ export interface AiInstructions { text: string | null; canEdit: boolean }
 
 export interface AiTierCount { tier: AiTier; answers: number; credits: number }
 export interface AiPersonUsage { userId: string; name: string; answers: number; credits: number; byTier: AiTierCount[] }
-export interface AiWorkspaceReport { month: string; creditsUsed: number; creditsLimit: number; unlimited: boolean; answers: number; failed: number; byTier: AiTierCount[]; people: AiPersonUsage[] }
+export interface AiWorkspaceReport { month: string; creditsUsed: number; creditsLimit: number; unlimited: boolean; answers: number; failed: number; byTier: AiTierCount[]; people: AiPersonUsage[]; features?: { feature: string; answers: number; credits: number }[] }
 export interface AdminAiUsageRow {
   tenantId: string; name: string; planCode: string; answers: number; failed: number; creditsUsed: number; creditsLimit: number; quick: number; standard: number; deep: number;
-  tokensIn: number; tokensOut: number; cacheReadTokens: number; cacheHitPercent: number; estimatedCost: number; lastUsedAt: string | null;
+  tokensIn: number; tokensOut: number; cacheReadTokens: number; cacheHitPercent: number; estimatedCost: number; lastUsedAt: string | null; unpricedAnswers?: number;
 }
-export interface AdminAiUsage { month: string; organizations: number; answers: number; creditsUsed: number; tokensIn: number; tokensOut: number; estimatedCost: number; estimatedSavedByCache: number; cacheHitPercent: number; currency: string; rows: AdminAiUsageRow[] }
+export interface AdminAiUsage { month: string; organizations: number; answers: number; creditsUsed: number; tokensIn: number; tokensOut: number; estimatedCost: number; estimatedSavedByCache: number; cacheHitPercent: number; currency: string; rows: AdminAiUsageRow[]; unpricedAnswers?: number }
 
 export interface AskBody { text: string; mode: AiMode; attachmentIds: string[]; timeZone: string; confirmation?: { messageId: string; actionId: string; kind: string } }
 

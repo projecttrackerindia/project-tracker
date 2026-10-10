@@ -28,7 +28,7 @@ public sealed record AiRun(AiConversation Conversation, AiMessage Question, stri
 /// access, and anything that would change data comes back as a proposal for the person to confirm. Each answer costs credits by level.
 /// </summary>
 public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiChat chat, EntitlementService entitlements, AiRequestLimitService requestLimits,
-    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner)
+    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner, AiCreditService creditLedger)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const string DefaultTitle = "New conversation";
@@ -54,23 +54,23 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
     private async Task<long> CreditsUsedAsync(CancellationToken ct)
     {
-        var from = MonthStart;
-        return await db.AiMessages.Where(m => m.Role == "assistant" && m.CreatedAt >= from).SumAsync(m => (long?)m.Credits, ct) ?? 0;
+        return (await creditLedger.BalanceAsync(ct)).Spent;
     }
 
     public async Task<AiUsageDto> UsageAsync(CancellationToken ct = default)
     {
         var plan = await PlanAsync(ct);
-        var used = await CreditsUsedAsync(ct);
+        var balance = await creditLedger.BalanceAsync(ct);
+        var used = balance.Spent;
         AiTierInfoDto Info(AiTier t, string label, string what) => new(TierId(t), label, chat.ModelFor(Opt.For(t).Model), Opt.For(t).Credits, t <= plan.MaxTier, what);
-        return new AiUsageDto(MonthStart.ToString("yyyy-MM"), used, plan.UnlimitedCredits ? -1 : plan.MonthlyCredits, plan.UnlimitedCredits ? -1 : Math.Max(0, plan.MonthlyCredits - used),
+        return new AiUsageDto(MonthStart.ToString("yyyy-MM"), used, plan.UnlimitedCredits ? -1 : plan.MonthlyCredits, balance.Available,
             plan.UnlimitedCredits, TierId(plan.MaxTier), plan.Attachments, plan.Actions,
             [
                 Info(AiTier.Quick, "Quick", "Fast answers and lookups"),
                 Info(AiTier.Standard, "Standard", "Balanced: most questions, summaries, reading files"),
                 Info(AiTier.Deep, "Deep thinking", "Extended reasoning: analysis, root causes, planning, reports"),
             ],
-            files.SupportedExtensions, Opt.MaxFilesPerMessage, Opt.MaxImageMb, Opt.MaxDocumentMb, await requestLimits.LimitsAsync(ct));
+            files.SupportedExtensions, Opt.MaxFilesPerMessage, Opt.MaxImageMb, Opt.MaxDocumentMb, await requestLimits.LimitsAsync(ct), balance.Reserved);
     }
 
     private async Task GateAsync(AiPlanLevels plan, CancellationToken ct)
@@ -126,7 +126,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var c = await OwnAsync(id, ct);
         await files.DeleteForConversationAsync(id, ct);
         var rows = await db.AiMessages.Where(m => m.ConversationId == id).ToListAsync(ct);
-        foreach (var m in rows) { m.Content = ""; m.Reasoning = null; m.ToolsJson = null; m.ActionsJson = null; m.AttachmentsJson = null; m.FollowUpsJson = null; m.UnverifiedJson = null; }
+        foreach (var m in rows) { m.Content = ""; m.Reasoning = null; m.ToolsJson = null; m.ActionsJson = null; m.AttachmentsJson = null; m.FollowUpsJson = null; m.UnverifiedJson = null; m.SourcesJson = null; }
         c.IsDeleted = true; c.DeletedAt = clock.Now; c.DeletedBy = ctx.UserId; c.Title = DefaultTitle; c.Summary = null; c.SummarizedThroughAt = null;
         await db.SaveChangesAsync(ct);
     }
@@ -172,8 +172,11 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
         var plan = await PlanAsync(ct);
         await GateAsync(plan, ct);
-        var left = plan.UnlimitedCredits ? long.MaxValue : Math.Max(0, plan.MonthlyCredits - await CreditsUsedAsync(ct));
-        if (left < Opt.Quick.Credits) throw new ConflictException("This workspace has used all of its AI credits for the month. They renew on the 1st, or ask an administrator about a larger plan.", "AI_CREDITS_EXHAUSTED");
+        var balance = await creditLedger.BalanceAsync(ct);
+        var left = plan.UnlimitedCredits ? long.MaxValue : balance.Available;
+        var noModelNeeded = !hasFiles && (AiMessageCommands.IsConfirmation(text) || AiMessageCommands.IsCancellation(text)
+            || !options.Value.UsesAnthropic && AiToolbox.IsGreeting(text));
+        if (left < Opt.Quick.Credits && !noModelNeeded) throw new ConflictException("This workspace has used all of its AI credits for the month. They renew on the 1st, or ask an administrator about a larger plan.", "AI_CREDITS_EXHAUSTED");
 
         var attachments = await files.ForQuestionAsync(req.AttachmentIds, ct);
 
@@ -260,6 +263,19 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         }
         if (confirmation?.Failed == true) toolFailed = true;
         var applicationReply = fastGreeting || fastReminder is not null;
+        AiCreditLease? reservation = null;
+        AppException? admissionError = null;
+        if (!applicationReply)
+        {
+            try { reservation = await creditLedger.ReserveAsync(run.Question.Id, cfg.Credits, "workspace", ct); }
+            catch (AppException ex) { admissionError = ex; }
+        }
+        if (admissionError is not null)
+        {
+            yield return new AiStreamError(admissionError.Code, admissionError.Message);
+            yield break;
+        }
+        await using var creditReservation = reservation;
         var model = directRead is not null ? "builtin-" + intent : confirming ? "builtin-confirmation" : fastReminder?.Tool == AiToolbox.SendMessage ? "builtin-message" : fastPlan is not null ? "builtin-" + intent : fastGreeting ? "builtin-greeting" : chat.ModelFor(cfg.Model);
         var provider = applicationReply ? "application" : chat.Provider;
         var fellBack = false;
@@ -288,6 +304,15 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
         var answer = new StringBuilder(); var thinking = new StringBuilder();
         var used = new List<AiToolUseDto>(); var proposals = new List<AiProposal>();
+        var retrievedSources = new List<AiKnowledgeReference>();
+        void RememberSources(AiToolOutcome outcome)
+        {
+            if (outcome.IsError || outcome.Sources is null) return;
+            foreach (var source in outcome.Sources)
+                if (retrievedSources.Count < 20 && !retrievedSources.Any(s => s.Kind == source.Kind && s.Id == source.Id && s.Version == source.Version))
+                    retrievedSources.Add(source);
+        }
+        if (directRead is not null) RememberSources(directRead);
         if (directRead is { IsError: false }) used.Add(new AiToolUseDto(intent, directRead.Label, directRead.Count));
         var actionErrors = new List<string>();
         int inTokens = 0, outTokens = 0, cacheRead = 0, cacheWrite = 0;
@@ -333,7 +358,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 }
             }
             finally { await events.DisposeAsync(); }
-            if (!applicationReply) timings.Add(new AiModelTiming(step, elapsed.ElapsedMilliseconds - modelStart, end?.InputTokens ?? 0, end?.OutputTokens ?? 0, end?.StopReason is "end_turn" or "tool_use" or "max_tokens" or "refusal" ? end.StopReason : "failed", end?.Runtime));
+            if (!applicationReply) timings.Add(new AiModelTiming(step, elapsed.ElapsedMilliseconds - modelStart, end?.InputTokens ?? 0, end?.OutputTokens ?? 0, end?.StopReason is "end_turn" or "tool_use" or "max_tokens" or "refusal" ? end.StopReason : "failed", end?.Runtime, end?.Model ?? model, end?.CacheReadTokens ?? 0, end?.CacheWriteTokens ?? 0, end?.UsageKnown ?? false));
             if (failure is not null || cancelled) break;
             if (end is null) { failure = new AppException(502, "AI_INCOMPLETE_RESPONSE", "The model returned no completed turn."); break; }
 
@@ -374,6 +399,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { if (callerToken.IsCancellationRequested) cancelled = true; else failure = new AppException(504, "AI_TIMEOUT", "The assistant exceeded its execution deadline. Completed proposals remain available."); break; }
                 toolFailed |= outcome.IsError;
+                RememberSources(outcome);
                 if (outcome.IsError) actionErrors.Add(outcome.Content);
                 toolTimings.Add(new AiToolTiming(tools.Any(t => t.Name == use.Name) ? use.Name : "unavailable_tool", elapsed.ElapsedMilliseconds - toolStart, !outcome.IsError, outcome.Proposal is null ? "read" : "awaiting_confirmation"));
                 var tu = new AiToolUseDto(use.Name, outcome.Label, outcome.Count);
@@ -449,6 +475,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var credits = status == "failed" || applicationReply ? 0 : cfg.Credits;
         var (body, followUps) = SplitFollowUps(answer.ToString());
         var unverified = status == "complete" ? await UnverifiedKeysAsync(body, seen.ToString(), run, CancellationToken.None) : [];
+        var providerCost = AiProviderCost.Estimate(timings, TierId(tier), options.Value, applicationReply);
         var reply = new AiMessage
         {
             ConversationId = run.Conversation.Id, UserId = run.Question.UserId, Role = "assistant",
@@ -457,6 +484,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             UnverifiedJson = unverified.Count == 0 ? null : JsonSerializer.Serialize(unverified, Json),
             Reasoning = thinking.Length == 0 ? null : thinking.ToString(),
             Tier = TierId(tier), Model = model, RouteReason = reason, InputTokens = inTokens, OutputTokens = outTokens, CacheReadTokens = cacheRead, CacheWriteTokens = cacheWrite, Credits = credits, Status = status,
+            ProviderCostJson = JsonSerializer.Serialize(providerCost, Json), EstimatedProviderCostUsd = providerCost.EstimatedCost,
+            SourcesJson = retrievedSources.Count == 0 ? null : JsonSerializer.Serialize(retrievedSources, Json),
             ExecutionJson = JsonSerializer.Serialize(new AiExecutionTrace("project-assistant", "2", run.Question.Id.ToString(), provider, model,
                 run.Preparation?.StartedAt ?? startedAt, elapsed.ElapsedMilliseconds + (run.Preparation?.DurationMs ?? 0), contextMs, firstTokenMs is { } first ? first + (run.Preparation?.DurationMs ?? 0) : null, promptChars, tools.Count,
                 cancelled ? "cancelled" : failure is AppException { Code: "AI_TIMEOUT" } ? "timeout" : failure is not null ? "failed" : toolFailed ? "partial" : proposals.Any(p => p.Status == "proposed") ? "awaiting_confirmation" : "succeeded",
@@ -468,7 +497,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         run.Conversation.LastMessageAt = clock.Now;
         recorder.Audit("ai.used", "AiAssistant", null, null, new { feature = "workspace", tier = reply.Tier, model, fellBack, credits, status, tokensIn = inTokens, tokensOut = outTokens, cacheRead, cacheWrite });
         // Saved even if the person has already gone: the answer is in the history and the credits it used are counted.
-        await db.SaveChangesAsync(CancellationToken.None);
+        if (creditReservation is not null) await creditReservation.SettleAsync(credits, CancellationToken.None);
+        else await db.SaveChangesAsync(CancellationToken.None);
 
         if (cancelled) yield break;
         if (failure is not null) { yield return new AiStreamError((failure as AppException)?.Code ?? "AI_FAILED", failureText!, (failure as AiRequestLimitException)?.RetryAfterSeconds); yield break; }
@@ -903,6 +933,6 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         static List<T> Read<T>(string? json) => string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<T>>(json, Json) ?? [];
         return new AiMessageDto(m.Id, m.Role, m.Content, m.Reasoning, m.Tier, m.Model, m.RouteReason, m.Credits, m.Status,
             Read<AiToolUseDto>(m.ToolsJson), Read<AiProposal>(m.ActionsJson).Select(p => p.ToDto()).ToList(), Read<AiAttachmentDto>(m.AttachmentsJson), m.CreatedAt,
-            Read<string>(m.FollowUpsJson), Read<string>(m.UnverifiedJson), m.Feedback);
+            Read<string>(m.FollowUpsJson), Read<string>(m.UnverifiedJson), m.Feedback, Read<AiKnowledgeReference>(m.SourcesJson));
     }
 }

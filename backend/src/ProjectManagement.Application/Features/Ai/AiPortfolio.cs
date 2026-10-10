@@ -16,7 +16,7 @@ public sealed record PortfolioRiskDto(Guid ProjectId, string Key, string Name, s
 public sealed record PortfolioSlipDto(Guid ProjectId, string ProjectKey, string Project, DateOnly? Previous, DateOnly? Revised, int? DaysShifted, string? Reason, string? Dependency, string? By, DateTime At);
 public sealed record PortfolioPersonDto(string Name, int Projects, int OpenTasks, int OverdueTasks);
 public sealed record PortfolioBriefDto(DateOnly AsOf, int Projects, int OnTrack, int AtRisk, int Delayed, int OnHold, int OverdueTasks, int BlockedTasks, int OpenActionItems, int OverdueActionItems,
-    int DateChangesLast30Days, IReadOnlyList<string> Headlines, IReadOnlyList<PortfolioRiskDto> Ranked, IReadOnlyList<PortfolioSlipDto> RecentSlips, IReadOnlyList<PortfolioPersonDto> Stretched);
+    int DateChangesLast30Days, IReadOnlyList<string> Headlines, IReadOnlyList<PortfolioRiskDto> Ranked, IReadOnlyList<PortfolioSlipDto> RecentSlips, IReadOnlyList<PortfolioPersonDto> Stretched, bool Truncated = false);
 
 public sealed record ScenarioRequest(Guid ProjectId, int SlipDays = 0, int AddPeople = 0, int CutTasks = 0, Guid? TeamId = null);
 public sealed record ScenarioOutcomeDto(DateOnly? Finish, int? SlipDays, string Confidence, int OpenTasks);
@@ -146,7 +146,9 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var since30 = clock.Now.AddDays(-30);
 
         var rows = await access.LensProjects(lens).AsNoTracking().Where(p => p.Status != ProjectStatus.Archived && p.Status != ProjectStatus.Completed && p.Status != ProjectStatus.Cancelled)
-            .Select(p => new { p.Id, p.Key, p.Name, p.Status, p.StartDate, p.DueDate, p.OwnerId, p.ProjectGroupId, Project = p }).Take(500).ToListAsync(ct);
+            .OrderBy(p => p.Id).Select(p => new { p.Id, p.Key, p.Name, p.Status, p.StartDate, p.DueDate, p.OwnerId, p.ProjectGroupId, Project = p }).Take(501).ToListAsync(ct);
+        var truncated = rows.Count > 500;
+        rows = rows.Take(500).ToList();
         var ids = rows.Select(r => r.Id).ToList();
         var stats = ids.Count == 0 ? [] : await projects.GetStatsAsync(ids, ct);
         var groupNames = await db.ProjectGroups.AsNoTracking().ToDictionaryAsync(g => g.Id, g => g.Name, ct);
@@ -155,7 +157,9 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
         // Tasks the person can open, in those projects.
         var tasks = ids.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => ids.Contains(t.ProjectId))
-            .Select(t => new { t.Id, t.ProjectId, t.DueDate, t.CompletedAt, Cat = t.Status!.Category, t.AssigneeId }).Take(40_000).ToListAsync(ct);
+            .OrderBy(t => t.Id).Select(t => new { t.Id, t.ProjectId, t.DueDate, t.CompletedAt, Cat = t.Status!.Category, t.AssigneeId }).Take(40_001).ToListAsync(ct);
+        truncated |= tasks.Count > 40_000;
+        tasks = tasks.Take(40_000).ToList();
         var perProject = tasks.GroupBy(t => t.ProjectId).ToDictionary(g => g.Key, g => new
         {
             Open = g.Count(t => Open(t.Cat)),
@@ -176,12 +180,16 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
         // Action items belong to the project and are visible with it.
         var items = ids.Count == 0 ? [] : await db.WorkTasks.AsNoTracking().Where(w => w.Kind == WorkTaskKind.ActionItem && w.RelatedProjectId != null && ids.Contains(w.RelatedProjectId.Value))
-            .Select(w => new { Project = w.RelatedProjectId!.Value, w.Status, w.DueDate }).Take(20_000).ToListAsync(ct);
+            .OrderBy(w => w.Id).Select(w => new { Project = w.RelatedProjectId!.Value, w.Status, w.DueDate }).Take(20_001).ToListAsync(ct);
+        truncated |= items.Count > 20_000;
+        items = items.Take(20_000).ToList();
         static bool ItemOpen(WorkTaskStatus s) => s is WorkTaskStatus.ToDo or WorkTaskStatus.InProgress or WorkTaskStatus.OnHold;
         var itemsBy = items.GroupBy(i => i.Project).ToDictionary(g => g.Key, g => (Open: g.Count(i => ItemOpen(i.Status)), Overdue: g.Count(i => ItemOpen(i.Status) && i.DueDate is { } d && d < today)));
 
         // Delivery dates that moved.
-        var changes = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.CreatedAt >= since30).OrderByDescending(c => c.CreatedAt).Take(300).ToListAsync(ct);
+        var changes = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.CreatedAt >= since30).OrderByDescending(c => c.CreatedAt).Take(301).ToListAsync(ct);
+        truncated |= changes.Count > 300;
+        changes = changes.Take(300).ToList();
         var visibleTaskIds = tasks.Select(t => t.Id).ToHashSet();
         changes = changes.Where(c => c.TaskId is null || visibleTaskIds.Contains(c.TaskId.Value)).ToList();
         var baseline = ids.Count == 0 ? [] : (await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous, c.Revised }).ToListAsync(ct))
@@ -200,6 +208,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             var original = baseline.GetValueOrDefault(r.Id) ?? r.DueDate;
             var delayed = original is { } o && r.DueDate is { } cur && cur > o ? cur.DayNumber - o.DayNumber : 0;
             var (finish, slip, conf) = Forecast(open, finished, today, r.DueDate);
+            if (truncated) { finish = null; slip = null; conf = "none"; }
 
             var reasons = new List<string>(); var score = 0.0;
             if (health == ProjectHealth.Delayed) { score += 5; reasons.Add($"Past its due date ({Day(r.DueDate)}) with {progress}% done"); }
@@ -241,6 +250,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var onTrack = ranked.Count(x => x.Health == "OnTrack"); var atRisk = ranked.Count(x => x.Health == "AtRisk"); var late = ranked.Count(x => x.Health == "Delayed");
         var totalOverdue = ranked.Sum(x => x.OverdueTasks);
         var headlines = new List<string>();
+        if (truncated) headlines.Add("This review reached its data limit. Counts are partial and delivery forecasts are withheld; review a smaller team or project scope.");
         if (ranked.Count == 0) headlines.Add("There are no active projects you can see.");
         else
         {
@@ -252,7 +262,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (changes.Count(c => c.TaskId is null) is > 0 and var moved) headlines.Add($"{moved} project delivery date{(moved == 1 ? " was" : "s were")} moved in the last 30 days.");
         }
         return new PortfolioBriefDto(today, ranked.Count, onTrack, atRisk, late, rows.Count(r => r.Status == ProjectStatus.OnHold), totalOverdue, ranked.Sum(x => x.BlockedTasks),
-            ranked.Sum(x => x.OpenActionItems), ranked.Sum(x => x.OverdueActionItems), changes.Count(c => c.TaskId is null), headlines, ranked, slips, stretched);
+            ranked.Sum(x => x.OpenActionItems), ranked.Sum(x => x.OverdueActionItems), changes.Count(c => c.TaskId is null), headlines, ranked, slips, stretched, truncated);
     }
 
     /// <summary>The brief as text for the model: the headline numbers, the projects that need attention with their reasons and forecast, slips and who is stretched.</summary>

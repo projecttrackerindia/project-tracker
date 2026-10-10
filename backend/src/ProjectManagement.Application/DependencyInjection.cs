@@ -108,6 +108,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaService>();
+        services.AddScoped<ProjectManagement.Application.Features.Work.SupportResolutionService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkItemService>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkloadService>();
@@ -134,6 +135,12 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiPortfolio>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAgent>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiUsageService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiCreditService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiCreditBudgetService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiKnowledgeService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiForecastService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiOperationsService>();
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.AiOperationsProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AgentTrackerService>();
         services.AddScoped<ProjectManagement.Application.Features.Automation.AutomationScheduler>();
         services.AddScoped<ProjectManagement.Application.Features.Notifications.PushService>();

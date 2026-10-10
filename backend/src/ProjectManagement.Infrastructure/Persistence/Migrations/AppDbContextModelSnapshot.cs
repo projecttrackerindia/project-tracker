@@ -279,6 +279,470 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("AiConversations");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("PeriodStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Reserved")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Spent")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "PeriodStart")
+                        .IsUnique();
+
+                    b.ToTable("AiCreditAccounts");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("MonthlyLimit")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Scope", "SubjectId")
+                        .IsUnique();
+
+                    b.ToTable("AiCreditBudgets");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetHold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BudgetUsageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PolicyVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ReservationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetUsageId");
+
+                    b.HasIndex("ReservationId", "BudgetUsageId")
+                        .IsUnique();
+
+                    b.ToTable("AiCreditBudgetHolds");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BudgetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Reserved")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Spent")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("BudgetId");
+
+                    b.HasIndex("TenantId", "BudgetId", "AccountId")
+                        .IsUnique();
+
+                    b.ToTable("AiCreditBudgetUsages");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("ReservationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("ReservedDelta")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SpentDelta")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("ReservationId");
+
+                    b.HasIndex("TenantId", "AccountId", "CreatedAt");
+
+                    b.ToTable("AiCreditEntries");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Charged")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SettledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("TenantId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Status", "ExpiresAt");
+
+                    b.ToTable("AiCreditReservations");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiForecastSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("AsOf")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("EvidenceAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FinishedLast28Days")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("InputComplete")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MethodologyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("OpenTasks")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ProjectVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("ProjectedFinish")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TotalTasks")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "JobId", "ProjectId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId", "EvidenceAt");
+
+                    b.ToTable("AiForecastSnapshots");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccessFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LeaseOwner")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Progress")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ScheduleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "AvailableAt", "Priority");
+
+                    b.HasIndex("TenantId", "UserId", "CreatedAt");
+
+                    b.HasIndex("TenantId", "UserId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("AiJobs");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -313,6 +777,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("Credits")
                         .HasColumnType("integer");
 
+                    b.Property<decimal?>("EstimatedProviderCostUsd")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
                     b.Property<string>("ExecutionJson")
                         .HasColumnType("text");
 
@@ -337,6 +805,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("OutputTokens")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ProviderCostJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("Reasoning")
                         .HasColumnType("text");
 
@@ -348,6 +819,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("RouteReason")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SourcesJson")
+                        .HasColumnType("text");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -383,6 +857,64 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAt");
 
                     b.ToTable("AiMessages");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiSchedule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("IntervalMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("LastQueuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextRunAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Enabled", "NextRunAt");
+
+                    b.HasIndex("TenantId", "UserId");
+
+                    b.ToTable("AiSchedules");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiUserProfile", b =>
@@ -6304,11 +6836,35 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ReporterId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ResolutionAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ResolutionAcceptedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ResolutionDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResolutionDocumentVersion")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("ResolutionDueAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ResolutionNote")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ResolutionProposedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ResolutionProposedBy")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("ResolutionRiskAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ResolutionWorkVersion")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("RespondedAt")
                         .HasColumnType("timestamp with time zone");
@@ -6672,6 +7228,59 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Actor");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetHold", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditBudgetUsage", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetUsageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditReservation", null)
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetUsage", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditBudget", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditEntry", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditReservation", null)
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditReservation", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiMessage", b =>

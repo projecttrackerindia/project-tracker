@@ -17,6 +17,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Admin/GoLiveService.cs",
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",
         "ProjectManagement.Application/Features/Ai/AiPortfolio.cs",
+        "ProjectManagement.Application/Features/Ai/AiOperationsProcessor.cs", // scheduling metadata and atomic leases; retrieval uses fresh current requester scope
         "ProjectManagement.Application/Features/Ai/AiToolbox.cs",
         "ProjectManagement.Application/Features/Ai/AiUsageService.cs",
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
