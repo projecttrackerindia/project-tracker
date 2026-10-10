@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
@@ -95,13 +96,13 @@ public class AuditChainService(IAppDbContext db, AppClock clock, ILogger<AuditCh
         var s = await db.TenantSecuritySettings.IgnoreQueryFilters().FirstAsync(t => t.TenantId == tenantId, ct);
         var upTo = lastOld.Seq!.Value;
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
         await db.AllowAuditPurgeAsync(ct);   // PostgreSQL: lets this one retention transaction past the no-delete rule
         var n = await db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == tenantId && a.Seq != null && a.Seq <= upTo).ExecuteDeleteAsync(ct);
         s.ChainAnchorSeq = upTo; s.ChainAnchorHash = lastOld.Hash;
         if (s.ChainVerifiedSeq is null || s.ChainVerifiedSeq < upTo) { s.ChainVerifiedSeq = upTo; s.ChainVerifiedHash = lastOld.Hash; }
         await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+        await tx.CommitIfOwnedAsync(ct);
         return n;
     }
 }

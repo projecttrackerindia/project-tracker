@@ -11,6 +11,10 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    private readonly HashSet<Guid> pendingTenantInvalidations = [];
+    private readonly List<ChangeEvent> pendingChanges = [];
+    private bool pendingPlanInvalidation;
+
     // ------------------------------------------------------------------ audit stamping & write guard
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -37,6 +41,13 @@ public partial class AppDbContext
         var changes = changeFeed is null ? null : ChangeTracker.Entries<Activity>().Where(e => e.State == EntityState.Added)
             .Select(e => new ChangeEvent(e.Entity.TenantId, e.Entity.EntityType, e.Entity.EntityId, e.Entity.ProjectId, e.Entity.Action, e.Entity.ActorId)).ToList();
         var saved = await SaveChainedAsync(acceptAllChangesOnSuccess, cancellationToken);
+        if (Database.CurrentTransaction is not null)
+        {
+            pendingPlanInvalidation |= plansChanged;
+            pendingTenantInvalidations.UnionWith(tenants);
+            if (changes is not null) pendingChanges.AddRange(changes);
+            return saved;
+        }
         if (entitlementCache is not null)
         {
             if (plansChanged) entitlementCache.InvalidateAllPlans();
@@ -44,6 +55,27 @@ public partial class AppDbContext
         }
         if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
         return saved;
+    }
+
+    internal async Task PublishCommittedEffectsAsync(CancellationToken ct)
+    {
+        var tenants = pendingTenantInvalidations.ToArray();
+        var plansChanged = pendingPlanInvalidation;
+        var changes = pendingChanges.ToArray();
+        DiscardTransactionEffects();
+        if (entitlementCache is not null)
+        {
+            if (plansChanged) entitlementCache.InvalidateAllPlans();
+            foreach (var tenant in tenants) await entitlementCache.InvalidateTenantAsync(tenant, ct);
+        }
+        if (changes.Length > 0) changeFeed?.Publish(changes);
+    }
+
+    internal void DiscardTransactionEffects()
+    {
+        pendingTenantInvalidations.Clear();
+        pendingChanges.Clear();
+        pendingPlanInvalidation = false;
     }
 
     /// <summary>

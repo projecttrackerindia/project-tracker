@@ -7,6 +7,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Files;
 using ProjectManagement.Application.Features.Reminders;
@@ -674,7 +675,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var identity = AiActionPlan.Identity(ctx.RequireTenantId(), ctx.RequireUserId(), messageId, action);
         var receipt = await runner.VerifyMessageReceiptAsync(action, identity, ct)
             ?? throw new ConflictException("No exact persisted message receipt could be verified. No message was resent. Check chat before creating another proposal.", "AI_RECOVERY_UNVERIFIED");
-        await using var reconciliationTransaction = await db.Database.BeginTransactionAsync(ct);
+        await using var reconciliationTransaction = await db.Database.BeginOwnedTransactionAsync(ct);
         var previous = message.ActionsJson;
         var completed = action with { Status = "done", Link = receipt.Link, ResultId = receipt.RecordId, Error = null,
             Execution = action.Execution is { } metadata ? metadata with { CompletedAt = clock.Now } : null };
@@ -685,7 +686,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             throw new ConflictException("The action state changed while checking its receipt.", "AI_ACTION_HANDLED");
         recorder.Audit("ai.action_reconciled", "AiAssistant", null, null, new { kind = action.Kind, resultId = receipt.RecordId });
         await db.SaveChangesAsync(ct);
-        await reconciliationTransaction.CommitAsync(ct);
+        await reconciliationTransaction.CommitIfOwnedAsync(ct);
         return completed.ToDto();
     }
 
@@ -717,7 +718,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var (msg, all, p) = await ProposalAsync(messageId, actionId, ct);
         if (all.Any(a => a.Status == "running")) throw new ConflictException("Another suggestion in this answer is still running.", "AI_ACTION_HANDLED");
         if (p.Status != "proposed") throw new ConflictException("That suggestion has already been handled.", "AI_ACTION_HANDLED");
-        await using var dismissalTransaction = await db.Database.BeginTransactionAsync(ct);
+        await using var dismissalTransaction = await db.Database.BeginOwnedTransactionAsync(ct);
         var previous = msg.ActionsJson;
         var done = p with { Status = "dismissed", Execution = p.Execution is { } e ? e with { CompletedAt = clock.Now } : null };
         Replace(all, done, msg);
@@ -728,7 +729,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             throw new ConflictException("That suggestion is already being handled.", "AI_ACTION_HANDLED");
         UpdateActionTrace(msg, all);
         await db.SaveChangesAsync(ct);
-        await dismissalTransaction.CommitAsync(ct);
+        await dismissalTransaction.CommitIfOwnedAsync(ct);
         await LearnAsync(p.Kind, false, ct);
         return done.ToDto();
     }

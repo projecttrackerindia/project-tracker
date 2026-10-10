@@ -18,7 +18,9 @@ public static class ErrorWriter
     public static async Task WriteAsync(HttpContext http, int status, string message, IReadOnlyList<ApiError> errors)
     {
         if (http.Response.HasStarted) return;
+        var retryAfter = http.Response.Headers.RetryAfter;
         http.Response.Clear();
+        if (retryAfter.Count > 0) http.Response.Headers.RetryAfter = retryAfter;
         http.Response.StatusCode = status;
         var options = http.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
         await http.Response.WriteAsJsonAsync(ApiResponse.Fail(message, errors, Activity.Current?.Id ?? http.TraceIdentifier), options);
