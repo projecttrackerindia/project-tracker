@@ -32,6 +32,8 @@ public sealed partial class AiMessageSendingTests
         var reply = await Ask(sender, "What is the status of project releasetracker?");
         Assert.Equal("builtin-project_status", reply["model"]!.GetValue<string>());
         Assert.Contains("Release Tracker", reply["content"]!.GetValue<string>());
+        Assert.Contains("Status:", reply["content"]!.GetValue<string>());
+        Assert.DoesNotContain("\"project\":", reply["content"]!.GetValue<string>());
         Assert.Empty(reply["actions"]!.AsArray());
         Assert.Empty(factory.Chat.Requests);
     });

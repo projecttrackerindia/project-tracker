@@ -42,6 +42,11 @@ public sealed class AiCommandPlanner(IAppDbContext db, AppClock clock, AiToolbox
         if (ParseSimple(run.Text) is { } simple)
         {
             if (simple.Write) return new(simple.Intent, true, new(simple.Tool, simple.Input, null));
+            if (simple.Intent == "project_status")
+            {
+                using var input = JsonDocument.Parse(simple.Input);
+                return Read(simple.Intent, await tools.ProjectStatusAsync(input.RootElement.GetProperty("project").GetString()!, ct));
+            }
             return Read(simple.Intent, await tools.ExecuteAsync(simple.Tool, simple.Input, run.TimeZone, run.Plan.Actions, ct, run.Conversation.Id, run.Text));
         }
         var reminder = await AiFastReminder.TryAsync(run, db, clock, ct);

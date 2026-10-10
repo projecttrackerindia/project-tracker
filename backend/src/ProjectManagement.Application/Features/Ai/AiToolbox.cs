@@ -393,6 +393,25 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             : new AiToolOutcome($"{rows.Count} projects{scopeNote} (key | name | status | health | progress | group):\n" + string.Join("\n", rows.Take(80)), $"Read the portfolio ({rows.Count} project{(rows.Count == 1 ? "" : "s")})", rows.Count);
     }
 
+    public async Task<AiToolOutcome> ProjectStatusAsync(string name, CancellationToken ct)
+    {
+        try
+        {
+            var reference = await ProjectAsync(name, ct);
+            if (reference.IsPending) throw new AiToolException("That project is awaiting confirmation and has not been created yet.");
+            var project = (await projects.GetAsync(reference.Id, ct)).Project;
+            return new AiToolOutcome($"**{project.Name}** ({project.Key})\n\nStatus: {project.Status}\nProgress: {project.Progress}%\nStart date: {Day(project.StartDate)}\nDue date: {Day(project.DueDate)}",
+                $"Read the status of {project.Key}", 1);
+        }
+        catch (AiToolException ex) { return new AiToolOutcome(ex.Message, "A lookup did not work", IsError: true); }
+        catch (AppException ex) { return new AiToolOutcome(ex.Message, "Not allowed", IsError: true); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogWarning(ex, "The AI project-status lookup failed");
+            return new AiToolOutcome("The project status could not be retrieved. Try again shortly.", "A lookup did not work", IsError: true);
+        }
+    }
+
     private async Task<AiToolOutcome> ProjectReportAsync(JsonElement a, CancellationToken ct)
     {
         var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
