@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icon';
 import { useWsQuery } from '../../lib/hooks';
 import { aiWorkspaceApi } from './aiApi';
 import { useAiStatus } from './Assistant';
+import { AiBudgetCard } from './AiBudgetCard';
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const LEVELS = [['quick', 'Quick'], ['standard', 'Standard'], ['deep', 'Deep']] as const;
@@ -18,7 +19,7 @@ export function AiUsageCard() {
   const pct = d && !d.unlimited && d.creditsLimit > 0 ? Math.min(100, Math.round((d.creditsUsed / d.creditsLimit) * 100)) : 0;
 
   return (
-    <div className="card" style={{ marginTop: 18 }}><div className="card-body">
+    <><div className="card" style={{ marginTop: 18 }}><div className="card-body">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div className="setting-info" style={{ flex: 1, minWidth: 240 }}>
           <h4><Icon name="sparkle" size={14} /> AI usage</h4>
@@ -40,6 +41,7 @@ export function AiUsageCard() {
               return <span key={id} className={`ai-route ${id}`}>{label}<em>{t?.answers ?? 0} answers · {(t?.credits ?? 0).toLocaleString()} credits</em></span>;
             })}
           </div>
+          {!!d.features?.length && <p className="muted">Other AI features: {d.features.map(f => `${f.feature.replaceAll('_', ' ')}: ${f.answers} answers, ${f.credits} credits`).join(' · ')}</p>}
           {d.people.length === 0 ? <p className="muted" style={{ margin: '8px 0 0' }}>Nobody used the assistant in this month.</p> : (
             <div className="table-wrap"><table>
               <thead><tr><th>Person</th><th>Answers</th><th>Credits</th>{LEVELS.map(([id, label]) => <th key={id}>{label}</th>)}</tr></thead>
@@ -53,6 +55,6 @@ export function AiUsageCard() {
           )}
         </>
       )}
-    </div></div>
+    </div></div><AiBudgetCard /></>
   );
 }

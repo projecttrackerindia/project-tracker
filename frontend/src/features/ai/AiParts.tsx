@@ -218,6 +218,7 @@ export function MessageView({ m, onConfirm, onDismiss, onReconcile, onCopy, onDo
         {m.reasoning && <Reasoning text={m.reasoning} live={false} />}
         <ToolChips tools={m.tools} />
         {failed ? <div className="ai-error" role="alert"><Icon name="alert" size={15} /><span>{m.content}</span></div> : <Markdown text={withoutTrailer(m.content)} />}
+        {!!m.sources?.length && <details style={{ marginTop: 10 }}><summary>Retrieved sources ({m.sources.length})</summary><ul>{m.sources.map(s => <li key={`${s.kind}:${s.id}:${s.version}`}><Link to={s.link}>{s.key}: {s.title}</Link> · version {s.version} · retrieved {formatDateTime(s.evidenceAt)}</li>)}</ul><p className="muted">These references identify evidence retrieved by the application. They do not verify every claim in the answer.</p></details>}
         {!failed && (m.unverifiedKeys?.length ?? 0) > 0 && (
           <div className="ai-check" role="note"><Icon name="alert" size={14} /><span>Please check <b>{m.unverifiedKeys!.join(', ')}</b>: I mentioned {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} but did not find {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} in your data.</span></div>
         )}

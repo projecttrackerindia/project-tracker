@@ -20,8 +20,11 @@ public class GeminiChatTests
     private sealed class Admission(IOptions<AiOptions> options) : GeminiAdmission(options)
     {
         public int Calls;
-        public override Task ReserveAsync(int inputEstimate, int maxOutput, CancellationToken ct)
-        { ct.ThrowIfCancellationRequested(); Calls++; Assert.True(inputEstimate > 4096); Assert.InRange(maxOutput, 1, 1024); return Task.CompletedTask; }
+        public int Reconciliations;
+        public override Task<GeminiAdmissionReceipt> ReserveAsync(int inputEstimate, int maxOutput, CancellationToken ct)
+        { ct.ThrowIfCancellationRequested(); Calls++; Assert.True(inputEstimate > 4096); Assert.InRange(maxOutput, 1, 1024); return Task.FromResult(new GeminiAdmissionReceipt("", "")); }
+        public override Task ReconcileAsync(GeminiAdmissionReceipt receipt, int actualInput, int actualOutput)
+        { Reconciliations++; Assert.True(actualInput >= 0); Assert.True(actualOutput >= 0); return Task.CompletedTask; }
     }
     private sealed class Stub(string[] events, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler, IHttpClientFactory
     {
@@ -168,6 +171,16 @@ public class GeminiChatTests
         Assert.Equal("end_turn", end.StopReason); Assert.Equal("gemini-3.5-flash-lite", end.Model);
         Assert.Contains(":streamGenerateContent?alt=sse", stub.Url); Assert.DoesNotContain("test-only", stub.Url);
         Assert.Equal("test-only", stub.Key); Assert.Equal(1, admission.Calls); Assert.Equal(1, stub.Calls);
+        Assert.True(end.UsageKnown); Assert.Equal(1, admission.Reconciliations);
+    }
+
+    [Fact]
+    public async Task Missing_usage_keeps_the_conservative_hold_and_is_not_reported_as_zero_usage()
+    {
+        var o = Settings(); var admission = new Admission(o);
+        var stub = new Stub(["""{"candidates":[{"content":{"parts":[{"text":"Answer"}]},"finishReason":"STOP"}]}"""]);
+        var completed = Assert.Single((await Collect(new(stub, o, admission), Ask())).OfType<AiTurnEnd>());
+        Assert.False(completed.UsageKnown); Assert.Equal(0, admission.Reconciliations);
     }
 
     [Fact]
@@ -238,6 +251,46 @@ public class GeminiChatTests
         var services = new ServiceCollection(); services.AddLogging(); services.AddInfrastructure(config);
         using var provider = services.BuildServiceProvider(); var o = provider.GetRequiredService<IOptions<AiOptions>>().Value;
         Assert.Equal("test-only", o.Gemini.ApiKey); Assert.False(o.UsesGemini); Assert.Equal("local", o.PrimaryProvider);
+    }
+
+    [RedisFact]
+    public async Task Completed_usage_reconciles_once_across_instances_without_refunding_request_counts()
+    {
+        var o = Settings();
+        using var redis = await ConnectionMultiplexer.ConnectAsync(Environment.GetEnvironmentVariable("PM_TEST_REDIS")!);
+        var one = new GeminiAdmission(o, redis); var two = new GeminiAdmission(o, redis);
+        var first = await one.ReserveAsync(5000, 1024, default);
+        var second = await two.ReserveAsync(6000, 1024, default);
+        try
+        {
+            await two.ReconcileAsync(first, 20, 10);
+            await one.ReconcileAsync(second, 25, 12);
+            await one.ReconcileAsync(first, 20, 10);
+            var db = redis.GetDatabase();
+            Assert.Equal("45", (await db.HashGetAsync(first.CapacityKey, "pilotIn")).ToString());
+            Assert.Equal("22", (await db.HashGetAsync(first.CapacityKey, "pilotOut")).ToString());
+            Assert.Equal("2", (await db.HashGetAsync(first.CapacityKey, "requests")).ToString());
+            Assert.Equal("2", (await db.HashGetAsync(first.CapacityKey, "daily")).ToString());
+            Assert.Equal("1", (await db.HashGetAsync(first.ReceiptKey, "settled")).ToString());
+        }
+        finally { await redis.GetDatabase().KeyDeleteAsync([first.CapacityKey, first.ReceiptKey, second.ReceiptKey]); }
+    }
+
+    [RedisFact]
+    public async Task Late_reconciliation_preserves_the_new_minutes_token_counter()
+    {
+        var o = Settings();
+        using var redis = await ConnectionMultiplexer.ConnectAsync(Environment.GetEnvironmentVariable("PM_TEST_REDIS")!);
+        var admission = new GeminiAdmission(o, redis); var receipt = await admission.ReserveAsync(5000, 1024, default);
+        try
+        {
+            var db = redis.GetDatabase(); var original = (long)await db.HashGetAsync(receipt.ReceiptKey, "minute");
+            await db.HashSetAsync(receipt.CapacityKey, [new("minute", original + 1), new("tokens", 777)]);
+            await admission.ReconcileAsync(receipt, 30, 10);
+            Assert.Equal("777", (await db.HashGetAsync(receipt.CapacityKey, "tokens")).ToString());
+            Assert.Equal("30", (await db.HashGetAsync(receipt.CapacityKey, "pilotIn")).ToString());
+        }
+        finally { await redis.GetDatabase().KeyDeleteAsync([receipt.CapacityKey, receipt.ReceiptKey]); }
     }
 
     [RedisFact]

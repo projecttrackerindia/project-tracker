@@ -8,6 +8,16 @@ namespace ProjectManagement.Application.Abstractions;
 
 public interface IAppDbContext
 {
+    Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct);
+    Task LockBillingEventsAsync(string provider, CancellationToken ct);
+    Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct);
+    DbSet<AiForecastSnapshot> AiForecastSnapshots { get; }
+    DbSet<AiCreditAccount> AiCreditAccounts { get; }
+    DbSet<AiCreditReservation> AiCreditReservations { get; }
+    DbSet<AiCreditEntry> AiCreditEntries { get; }
+    DbSet<AiCreditBudget> AiCreditBudgets { get; }
+    DbSet<AiCreditBudgetUsage> AiCreditBudgetUsages { get; }
+    DbSet<AiCreditBudgetHold> AiCreditBudgetHolds { get; }
     DbSet<User> Users { get; }
     DbSet<UserSession> UserSessions { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
@@ -104,6 +114,8 @@ public interface IAppDbContext
     DbSet<PasskeyChallenge> PasskeyChallenges { get; }
     DbSet<Reminder> Reminders { get; }
     DbSet<AiConversation> AiConversations { get; }
+    DbSet<AiJob> AiJobs { get; }
+    DbSet<AiSchedule> AiSchedules { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<AiAttachment> AiAttachments { get; }
     DbSet<ChatAttachment> ChatAttachments { get; }

@@ -12,6 +12,7 @@ import { WORK_STATUSES } from '../../lib/workLabels';
 import { useWorkspaceId } from '../../stores/auth';
 import { TimeTracker } from '../time/TimeTracker';
 import { SlaPanel } from './Sla';
+import { SupportResolution } from './SupportResolution';
 import { DevLinks } from '../settings/IntegrationSettings';
 import { Viewers } from '../live/Viewers';
 import { formatMinutes } from '../time/time';
@@ -20,7 +21,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { TriageButton } from '../ai/Assistant';
 import { RemindMeButton } from '../reminders/RemindMe';
 
-type Tab = 'details' | 'time' | 'comments' | 'files' | 'history';
+type Tab = 'details' | 'time' | 'comments' | 'files' | 'history' | 'resolution';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const size = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
@@ -165,6 +166,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
           <Tabs<Tab> value={tab} onChange={setTab} tabs={[
             { id: 'details', label: 'Details', icon: 'note' }, { id: 'time', label: task.loggedMinutes ? `Time · ${formatMinutes(task.loggedMinutes)}` : 'Time', icon: 'clock' },
             { id: 'comments', label: 'Comments', icon: 'message', badge: task.commentCount || undefined },
+            { id: 'resolution', label: 'Resolution', icon: 'note' },
             { id: 'files', label: 'Files', icon: 'paperclip', badge: task.attachmentCount || undefined }, { id: 'history', label: 'History', icon: 'activity' },
           ]} />
         </div>
@@ -174,6 +176,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
       {task && tab === 'comments' && <Comments task={task} members={members.data ?? []} onChanged={refresh} />}
       {task && tab === 'files' && <Files task={task} onChanged={refresh} />}
       {task && tab === 'history' && <History task={task} />}
+      {task && tab === 'resolution' && <SupportResolution taskId={task.id} onChanged={refresh} />}
     </Modal>
   );
 }

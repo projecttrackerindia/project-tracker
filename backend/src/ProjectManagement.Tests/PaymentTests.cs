@@ -112,6 +112,26 @@ public class PaymentTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Failed_webhook_processing_rolls_back_admission_and_can_be_retried()
+    {
+        factory.Payments.Hosted = true;
+        try
+        {
+            var (owner, sub) = await StartPro();
+            var eventId = "retry_" + Guid.NewGuid().ToString("N");
+            var failed = await Webhook("subscription.charged", sub, eventId, new { id = "pay_retry", amount = "invalid", currency = "INR" });
+            Assert.Equal(HttpStatusCode.InternalServerError, failed.Status);
+            Assert.False(factory.WithDb(db => db.BillingEvents.Any(e => e.ProviderEventId == eventId)));
+            Assert.Empty((await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray());
+            var retry = await Webhook("subscription.charged", sub, eventId, Pay("pay_retry"));
+            Assert.Equal(HttpStatusCode.OK, retry.Status);
+            Assert.Single((await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray());
+            Assert.True(factory.WithDb(db => db.BillingEvents.Any(e => e.ProviderEventId == eventId)));
+        }
+        finally { factory.Payments.Hosted = false; }
+    }
+
+    [Fact]
     public async Task A_failed_renewal_puts_the_workspace_past_due_and_tells_the_owner_and_cancelling_keeps_the_paid_period()
     {
         factory.Payments.Hosted = true;

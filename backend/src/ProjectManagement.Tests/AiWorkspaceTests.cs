@@ -89,6 +89,37 @@ public class AiWorkspaceTests(ApiFactory factory)
     // ------------------------------------------------------------------ switches and plans
 
     [Fact]
+    public async Task Retrieved_knowledge_references_are_saved_by_the_server_with_source_versions()
+    {
+        var world = await Setup();
+        try
+        {
+            Chat.Script.Enqueue(_ => FakeAiChat.UseTool("search_knowledge", new { query = "Atlas" }));
+            Chat.Script.Enqueue(_ => FakeAiChat.Say("The current project record is the evidence for this answer."));
+            var stream = await Ask(world.Owner, "Find knowledge evidence about Atlas", "quick");
+            Assert.True(stream.Has("done"));
+            var sources = stream.Done["sources"]!.AsArray();
+            Assert.Contains(sources, source => S(source!["id"]) == world.Project.ToString() && !string.IsNullOrWhiteSpace(S(source["version"])));
+            var saved = factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().AsNoTracking().Single(m => m.Id == Guid.Parse(S(stream.Done["id"]))));
+            Assert.Contains(world.Project.ToString(), saved.SourcesJson!);
+            factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.Id == world.Project).ExecuteUpdate(s => s.SetProperty(p => p.Version, p => p.Version + 1)));
+            Chat.Script.Enqueue(request =>
+            {
+                var history = string.Join(" ", request.Turns.SelectMany(t => t.Blocks).OfType<AiText>().Select(t => t.Text));
+                Assert.DoesNotContain("The current project record is the evidence for this answer.", history);
+                Assert.Contains("Earlier evidence is stale", history);
+                return FakeAiChat.Say("I need current evidence before relying on the earlier answer.");
+            });
+            var followUp = await Ask(world.Owner, "Review the earlier evidence again", "quick", stream.Conversation);
+            Assert.True(followUp.Has("done"));
+            Assert.Equal("I need current evidence before relying on the earlier answer.", S(followUp.Done["content"]));
+            var stranger = await TestClient.RegisterAsync(factory, "Foreign conversation reader"); await stranger.CreateOrgAsync();
+            Assert.Equal(HttpStatusCode.NotFound, (await stranger.Get($"/api/v1/ai/conversations/{stream.Conversation}")).Status);
+        }
+        finally { Chat.Reset(); }
+    }
+
+    [Fact]
     public async Task The_workspace_is_off_without_a_model_connection_and_on_a_plan_without_the_assistant()
     {
         var o = await Setup("FREE");

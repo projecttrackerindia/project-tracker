@@ -1,7 +1,10 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Domain.Entities;
@@ -22,16 +25,20 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
         var type = root.TryGetProperty("event", out var ev) ? ev.GetString() ?? "" : "";
-        eventId = string.IsNullOrWhiteSpace(eventId) ? $"{type}:{Guid.NewGuid():N}" : eventId;
+        eventId = string.IsNullOrWhiteSpace(eventId) ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body))) : eventId;
+        if (eventId.Length > 100) throw new ValidationException("eventId", "The payment event ID is too long.");
+        await using var transaction = await db.Database.BeginOwnedTransactionAsync(ct);
+        await db.LockBillingEventsAsync(payments.Name, ct);
+        if (await db.BillingEvents.AnyAsync(e => e.Provider == payments.Name && e.ProviderEventId == eventId, ct))
+        { await transaction.CommitIfOwnedAsync(ct); return; }
 
-        var seen = db.BillingEvents.Add(new BillingEvent { Provider = payments.Name, ProviderEventId = eventId, Type = type, ReceivedAt = clock.GetUtcNow().UtcDateTime });
-        try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException) { seen.State = EntityState.Detached; return; }   // the same event again: already handled
+        db.BillingEvents.Add(new BillingEvent { Provider = payments.Name, ProviderEventId = eventId, Type = type, ReceivedAt = clock.GetUtcNow().UtcDateTime });
 
-        if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("subscription", out var subWrap) || !subWrap.TryGetProperty("entity", out var subEntity)) return;
+        if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("subscription", out var subWrap) || !subWrap.TryGetProperty("entity", out var subEntity))
+        { await db.SaveChangesAsync(ct); await transaction.CommitIfOwnedAsync(ct); return; }
         var providerSubId = subEntity.GetProperty("id").GetString() ?? "";
         var sub = await db.Subscriptions.Include(s => s.Plan).FirstOrDefaultAsync(s => s.ProviderSubscriptionId == providerSubId || s.PendingProviderSubscriptionId == providerSubId, ct);
-        if (sub is null) { log.LogInformation("Billing event {Type} for an unknown subscription {Id}", type, providerSubId); return; }
+        if (sub is null) { log.LogInformation("Billing event {Type} for an unknown subscription {Id}", type, providerSubId); await db.SaveChangesAsync(ct); await transaction.CommitIfOwnedAsync(ct); return; }
         var pending = sub.PendingProviderSubscriptionId == providerSubId;
         var now = clock.GetUtcNow().UtcDateTime;
         var owner = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == sub.TenantId).Select(t => t.OwnerUserId).FirstOrDefaultAsync(ct);
@@ -69,6 +76,7 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
                 break;
         }
         await db.SaveChangesAsync(ct);
+        await transaction.CommitIfOwnedAsync(ct);
     }
 
     private static DateTime? At(JsonElement e, string name) =>

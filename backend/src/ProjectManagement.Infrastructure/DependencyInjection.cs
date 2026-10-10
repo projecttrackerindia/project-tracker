@@ -99,6 +99,8 @@ public static class DependencyInjection
         services.AddHttpClient("ai-backup-stream", c => c.Timeout = TimeSpan.FromMinutes(5));   // a CPU-only local model can take far longer than a one-shot sizing call
         services.AddSingleton<AnthropicClient>();
         services.AddHostedService<AiTraceRetentionWorker>();
+        services.Configure<AiOperationsOptions>(config.GetSection(AiOperationsOptions.Section));
+        services.AddHostedService<AiOperationsWorker>();
         services.AddSingleton<AiInferenceGate>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiDiagnostics, AiDiagnostics>();
         services.AddSingleton<OpenAiCompatibleClient>();

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { payWithRazorpay, PaymentCancelled } from '../../lib/razorpay';
 import { ApiError } from '../../api/client';
@@ -275,6 +276,11 @@ export function BillingPage() {
       <p className="muted" style={{ fontSize: 12.5, margin: '-8px 0 22px' }}>Prices are per person and exclude GST. Credits and storage are pooled across the team. Yearly billing takes {policy.annualDiscountPercent}% off; larger teams get an automatic volume discount (together at most {policy.maxTotalDiscountPercent}%).</p>
 
       {b.canManage && <BillingDetailsCard />}
+      {b.canManage && <div className="card mb-22"><div className="card-head"><h3>AI credits and budgets</h3></div><div className="card-body">
+        <p>Monthly AI credits reset at the start of each UTC calendar month. Active requests reserve credits; failed answers release their reservation. Quick, Standard and Deep use the charges shown in the AI workspace. User and team caps apply alongside the plan allowance.</p>
+        <p>Additional credit packs are currently unavailable. Pack prices, expiry and payment verification must be configured before purchases are enabled.</p>
+        <Link className="btn" to="/ai">View AI usage and manage budgets</Link>
+      </div></div>}
       {b.canManage && (
         <div className="card">
           <div className="card-head"><h3>Invoices</h3></div>

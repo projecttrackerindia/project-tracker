@@ -24,6 +24,7 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>
 }
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
 const AgentTrackerPage = page(() => import('./features/ai/AgentTrackerPage'), 'AgentTrackerPage');
+const AgentWorkflowsPage = page(() => import('./features/ai/AgentWorkflowsPage'), 'AgentWorkflowsPage');
 const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
 const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
 const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
@@ -313,6 +314,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
         <Route path="agent-tracker" element={<AgentTrackerPage />} />
         <Route path="ai" element={<AiPage />} />
+        <Route path="ai/operations" element={<AgentWorkflowsPage />} />
         <Route path="ai/:id" element={<AiPage />} />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />

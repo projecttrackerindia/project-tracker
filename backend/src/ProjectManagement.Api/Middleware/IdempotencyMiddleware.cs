@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using ProjectManagement.Api.Common;
+using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Domain.Entities;
@@ -38,10 +39,11 @@ public partial class IdempotencyMiddleware(RequestDelegate next)
             return;
         }
         if ((http.Request.ContentType ?? "").StartsWith("multipart/", StringComparison.OrdinalIgnoreCase)
+            || http.GetEndpoint()?.Metadata.GetMetadata<AiRequestLimitAttribute>() is not null
             || http.Request.Headers.Accept.Any(a => a?.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase) == true))
         {
-            await ErrorWriter.WriteAsync(http, 422, "Idempotency-Key is not supported for uploads or streams.",
-                [new ApiError("IDEMPOTENCY_UNSUPPORTED", "Idempotency-Key is not supported for uploads or streams.")]);
+            await ErrorWriter.WriteAsync(http, 422, "Idempotency-Key is not supported for uploads, streams or AI inference. Durable agent jobs and confirmed actions have their own execution keys.",
+                [new ApiError("IDEMPOTENCY_UNSUPPORTED", "Idempotency-Key is not supported for uploads, streams or AI inference.")]);
             return;
         }
 

@@ -13,6 +13,13 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     IChangeFeed? changeFeed = null)
     : DbContext(options), IAppDbContext
 {
+    public DbSet<AiCreditAccount> AiCreditAccounts => Set<AiCreditAccount>();
+    public DbSet<AiCreditReservation> AiCreditReservations => Set<AiCreditReservation>();
+    public DbSet<AiCreditEntry> AiCreditEntries => Set<AiCreditEntry>();
+    public DbSet<AiCreditBudget> AiCreditBudgets => Set<AiCreditBudget>();
+    public DbSet<AiCreditBudgetUsage> AiCreditBudgetUsages => Set<AiCreditBudgetUsage>();
+    public DbSet<AiCreditBudgetHold> AiCreditBudgetHolds => Set<AiCreditBudgetHold>();
+    public DbSet<AiForecastSnapshot> AiForecastSnapshots => Set<AiForecastSnapshot>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
@@ -106,6 +113,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<PasskeyChallenge> PasskeyChallenges => Set<PasskeyChallenge>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiJob> AiJobs => Set<AiJob>();
+    public DbSet<AiSchedule> AiSchedules => Set<AiSchedule>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
@@ -217,6 +226,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureWork(b);
         ConfigureDocuments(b);
         ConfigureBilling(b);
+        ConfigureAiOperations(b);
         ApplyQueryFilters(b);
     }
 }

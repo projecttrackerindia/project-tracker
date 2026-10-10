@@ -23,7 +23,7 @@ export function AiUsageTab() {
             <StatCard icon="building" value={d.organizations} label="Organizations using AI" />
             <StatCard icon="message" value={d.answers.toLocaleString()} label="Answers" />
             <StatCard icon="gauge" value={d.creditsUsed.toLocaleString()} label="Credits used" />
-            <StatCard icon="coin" value={money(d.estimatedCost, d.currency)} label="Estimated provider cost" foot={`${(d.tokensIn / 1000).toFixed(0)}k in · ${(d.tokensOut / 1000).toFixed(0)}k out tokens`} />
+            <StatCard icon="coin" value={money(d.estimatedCost, d.currency)} label="Known token cost estimate" foot={`${(d.tokensIn / 1000).toFixed(0)}k in · ${(d.tokensOut / 1000).toFixed(0)}k out tokens · ${d.unpricedAnswers ?? 0} answers with incomplete pricing`} />
             <StatCard icon="gauge" value={`${d.cacheHitPercent}%`} label="Input served from cache" foot={`about ${money(d.estimatedSavedByCache, d.currency)} saved this month`} />
           </div>
           <div className="card">
@@ -41,7 +41,7 @@ export function AiUsageTab() {
                         {r.creditsLimit > 0 && pct >= 80 && <> <Badge tone={pct >= 100 ? 'danger' : 'warning'}>{pct}%</Badge></>}</td>
                       <td>{(r.tokensIn / 1000).toFixed(1)}k / {(r.tokensOut / 1000).toFixed(1)}k</td>
                       <td>{r.cacheHitPercent}%</td>
-                      <td>{money(r.estimatedCost, d.currency)}</td>
+                      <td>{money(r.estimatedCost, d.currency)}{(r.unpricedAnswers ?? 0) > 0 && <div className="muted">{r.unpricedAnswers} answers excluded</div>}</td>
                       <td>{r.lastUsedAt ? timeAgo(r.lastUsedAt) : <span className="muted">never</span>}</td>
                     </tr>
                   );
@@ -49,7 +49,7 @@ export function AiUsageTab() {
               </table></div>
             )}
           </div>
-          <p className="muted" style={{ fontSize: 12.5 }}>Costs are estimates from the token counts and the per-million-token prices set in <code>Ai:Chat</code>; check them against your provider's invoice. Only counts are shown; what people asked is never visible here.</p>
+          <p className="muted" style={{ fontSize: 12.5 }}>New answers retain the token price version used at execution. Earlier answers use current configured rates. Estimates exclude unpriced or interrupted usage, taxes, grounding, cache storage and local hosting; reconcile them against provider invoices. Customer credits are separate from provider costs. Only counts are shown here.</p>
         </>
       )}
     </>
