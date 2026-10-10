@@ -257,6 +257,19 @@ public class AiWorkspaceTests(ApiFactory factory)
         Assert.Equal("failed", S(history[1]!["status"]));
     }
 
+    [Fact]
+    public async Task Provider_limit_inside_stream_exposes_cooldown_without_charging_application_credits()
+    {
+        var o = await Setup();
+        Chat.Fail = new AiRequestLimitException("AI_PROVIDER_LIMIT", 60, "The shared provider limit was reached.");
+        var res = await Ask(o.Owner, "Which tasks are overdue?");
+        var error = res.Last("error");
+        Assert.Equal("AI_PROVIDER_LIMIT", S(error["code"]));
+        Assert.Equal(60, error["retryAfterSeconds"]!.GetValue<int>());
+        Assert.False(res.Has("done"));
+        Assert.Equal(0, await CreditsUsed(o.Owner));
+    }
+
     // ------------------------------------------------------------------ what it can read
 
     [Fact]

@@ -16,11 +16,13 @@ namespace ProjectManagement.Application.Features.Ai;
 public class AiOptions
 {
     public const string Section = "Ai";
-    /// <summary>local (default) or anthropic. A key alone never enables a paid provider.</summary>
+    /// <summary>local (default), anthropic or gemini. A key alone never enables a paid provider.</summary>
     public string PrimaryProvider { get; set; } = "local";
     public int TraceRetentionDays { get; set; } = 30;
     public bool AllowAnthropic { get; set; }
     public bool UsesAnthropic => AllowAnthropic && PrimaryProvider.Equals("anthropic", StringComparison.OrdinalIgnoreCase);
+    public AiGeminiOptions Gemini { get; set; } = new();
+    public bool UsesGemini => Gemini.Enabled && PrimaryProvider.Equals("gemini", StringComparison.OrdinalIgnoreCase);
     /// <summary>The Anthropic API key. Empty, with no backup either = the assistant is off and nothing is ever sent anywhere.</summary>
     public string? AnthropicApiKey { get; set; }
     public string Model { get; set; } = "claude-sonnet-5-5";
@@ -32,6 +34,24 @@ public class AiOptions
     public AiFallbackOptions Fallback { get; set; } = new();
     /// <summary>The AI workspace page: model levels, routing, attachments (<c>Ai:Chat</c>).</summary>
     public AiChatOptions Chat { get; set; } = new();
+}
+
+/// <summary>Independent cloud configuration; a stored key never enables paid requests on its own.</summary>
+public sealed class AiGeminiOptions
+{
+    public bool Enabled { get; set; }
+    public string? ApiKey { get; set; }
+    public string ProjectId { get; set; } = "gen-lang-client-0699313292";
+    public string Model { get; set; } = "gemini-3.5-flash-lite";
+    public int MaxOutputTokens { get; set; } = 1024;
+    public int TimeoutSeconds { get; set; } = 60;
+    public int MaxPromptBytes { get; set; } = 200000;
+    // Conservative pilot ceilings, not the full provider quota or a measured capacity guarantee.
+    public int RequestsPerMinute { get; set; } = 60;
+    public int InputTokensPerMinute { get; set; } = 120000;
+    public int RequestsPerDay { get; set; } = 100;
+    public int PilotInputTokenAllowance { get; set; } = 2000000;
+    public int PilotOutputTokenAllowance { get; set; } = 100000;
 }
 
 /// <summary>

@@ -27,7 +27,11 @@ public static class DependencyInjection
         services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
         services.AddOptions<ProjectManagement.Application.Features.Ai.AiOptions>()
             .Bind(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section))
-            .Validate(o => o.PrimaryProvider is "local" or "anthropic", "Ai:PrimaryProvider must be local or anthropic.")
+            .PostConfigure(o => { if (string.IsNullOrWhiteSpace(o.Gemini.ApiKey)) o.Gemini.ApiKey = config["AI_gemini_apikey"]; })
+            .Validate(o => o.PrimaryProvider is "local" or "anthropic" or "gemini", "Ai:PrimaryProvider must be local, anthropic or gemini.")
+            .Validate(o => o.PrimaryProvider != "gemini" || o.Gemini.Enabled && !string.IsNullOrWhiteSpace(o.Gemini.ApiKey), "Gemini requires explicit enablement and a backend key.")
+            .Validate(o => !o.Gemini.Enabled || !string.IsNullOrWhiteSpace(o.Gemini.Model) && System.Text.RegularExpressions.Regex.IsMatch(o.Gemini.ProjectId, "^[a-zA-Z0-9-]+$"), "Gemini needs a model and a valid project identifier.")
+            .Validate(o => o.Gemini.MaxOutputTokens is >= 1 and <= 16000 && o.Gemini.TimeoutSeconds is >= 1 and <= 600 && o.Gemini.MaxPromptBytes >= 256 && o.Gemini.RequestsPerMinute > 0 && o.Gemini.InputTokensPerMinute > 0 && o.Gemini.RequestsPerDay > 0 && o.Gemini.PilotInputTokenAllowance > 0 && o.Gemini.PilotOutputTokenAllowance > 0, "Gemini capacity and pilot settings are invalid.")
             .Validate(o => o.PrimaryProvider != "anthropic" || o.AllowAnthropic, "Anthropic requires explicit Ai:AllowAnthropic=true.")
             .Validate(o => string.IsNullOrWhiteSpace(o.Fallback.BaseUrl) || Uri.TryCreate(o.Fallback.BaseUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo), "Ai:Fallback:BaseUrl must be an HTTP(S) address without embedded credentials.")
             .Validate(o => o.Fallback.MaxOutputTokens is >= 1 and <= 16000 && o.Fallback.TimeoutSeconds is >= 1 and <= 600 && o.Fallback.MaxPromptChars >= 256, "AI output, timeout and prompt limits are invalid.")
@@ -101,6 +105,9 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AiRouter>();
         services.AddSingleton<AnthropicChat>();
         services.AddSingleton<OpenAiCompatibleChat>();
+        services.AddSingleton<GeminiAdmission>();
+        services.AddSingleton<GeminiChat>();
+        services.AddHttpClient("ai-gemini", c => c.Timeout = Timeout.InfiniteTimeSpan);
         // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted
         // Ollama/llama.cpp server for a CPU-only deployment, or any other OpenAI-compatible address, used when Claude cannot answer or
         // there is no Anthropic key at all.

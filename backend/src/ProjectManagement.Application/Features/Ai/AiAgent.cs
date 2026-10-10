@@ -471,7 +471,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         await db.SaveChangesAsync(CancellationToken.None);
 
         if (cancelled) yield break;
-        if (failure is not null) { yield return new AiStreamError((failure as AppException)?.Code ?? "AI_FAILED", failureText!); yield break; }
+        if (failure is not null) { yield return new AiStreamError((failure as AppException)?.Code ?? "AI_FAILED", failureText!, (failure as AiRequestLimitException)?.RetryAfterSeconds); yield break; }
         yield return new AiStreamDone(ToDto(reply), run.Plan.UnlimitedCredits ? -1 : Math.Max(0, run.CreditsLeft - credits), run.Plan.UnlimitedCredits);
 
         // The person already has their answer; tidying the memory of a long conversation happens after it, and never costs them credits.

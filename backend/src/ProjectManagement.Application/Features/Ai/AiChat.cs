@@ -4,6 +4,8 @@ namespace ProjectManagement.Application.Features.Ai;
 // works in these types; the one class that talks to Claude (in Infrastructure) turns them into API calls and back.
 
 public abstract record AiBlock;
+/// <summary>Opaque Gemini response part, retained unchanged across tool rounds, including signatures.</summary>
+public sealed record AiGeminiPart(string Json) : AiBlock;
 public sealed record AiText(string Text) : AiBlock;
 /// <summary>The model's reasoning. It must go back unchanged, signature included, when the same answer continues after a tool call.</summary>
 public sealed record AiThinking(string Text, string Signature) : AiBlock;
