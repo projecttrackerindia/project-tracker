@@ -63,6 +63,7 @@ export type AiStreamEvent =
   | { name: 'started'; conversationId: string; questionId: string; title: string }
   | { name: 'route'; tier: AiTier; model: string; reason: string; limited: boolean; wanted: AiTier; credits: number }
   | { name: 'reasoning'; delta: string }
+  | { name: 'inference'; state: 'queued' | 'running'; waitLimitSeconds: number | null }
   | { name: 'text'; delta: string }
   | { name: 'tool'; id: string; tool: string; label: string; state: 'running' | 'done' | 'failed'; count: number | null }
   | { name: 'action'; action: AiAction }

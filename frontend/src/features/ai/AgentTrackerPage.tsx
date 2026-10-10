@@ -23,7 +23,7 @@ interface Tracker {
   slowestPaths?: { intent: string; requests: number; failures: number; p50Ms: number; p95Ms: number; averageQueueMs: number | null; averageModelMs: number; averageToolMs: number }[];
   frequentErrors?: { code: string; count: number }[];
 }
-interface Health { configured: boolean; reachable: boolean; modelAvailable: boolean; provider: string; model: string; queueDepth: number; errorCode: string | null }
+interface Health { configured: boolean; reachable: boolean; modelAvailable: boolean; provider: string; model: string; queueDepth: number; errorCode: string | null; activeRequests?: number | null; maxConcurrentRequests?: number | null; maxQueuedRequests?: number | null; queueTimeoutSeconds?: number | null }
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 export function AgentTrackerPage() {
@@ -68,6 +68,7 @@ export function AgentTrackerPage() {
           {toggle.isError && <ErrorState error={toggle.error} retry={() => toggle.reset()} />}
           {health.isError && <ErrorState error={health.error} retry={() => health.mutate()} />}
           {health.data && <p role="status">{health.data.reachable && health.data.modelAvailable ? 'Model service reachable; configured model installed.' : `Model health: ${health.data.errorCode ?? 'not available'}`} Queue: {health.data.queueDepth}.</p>}
+          {health.data?.maxConcurrentRequests != null && <p>Local inference per API instance: {health.data.activeRequests ?? 0}/{health.data.maxConcurrentRequests} active, {health.data.queueDepth}/{health.data.maxQueuedRequests} waiting; queue wait limit {health.data.queueTimeoutSeconds}s.</p>}
           <p className="muted">{d.agent.maxToolCalls} tool calls maximum · {d.agent.timeoutSeconds}s per model call. Health checks do not run inference.</p>
         </div></div>
         <div className="row" style={{ gap: 24, flexWrap: 'wrap', margin: '20px 0' }}>

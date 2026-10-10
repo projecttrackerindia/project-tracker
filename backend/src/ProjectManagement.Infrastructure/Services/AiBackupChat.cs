@@ -36,25 +36,45 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
 
     public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
-        var queueTimer = Stopwatch.StartNew();
-        using var lease = await oneShot.Gate.EnterAsync(ct);
-        var queueMs = queueTimer.Elapsed.TotalMilliseconds;
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(F.TimeoutSeconds, 1, 600)));
         if (request.Turns.SelectMany(t => t.Blocks).Any(b => b is AiPdf || b is AiImage && !F.SupportsImages))
             throw new AppException(422, "AI_ATTACHMENT_UNSUPPORTED", "This text model cannot read image or PDF attachments. Attach extracted text instead.");
         var body = Native ? BuildOllama(request, new()) : Build(request);
         if (body.ToJsonString().Length > F.MaxPromptChars)
             throw new AppException(422, "AI_CONTEXT_OVERFLOW", "This request exceeds the local model's context budget. Narrow the question or start a new conversation.");
-        await using var events = (Native ? StreamOllamaAsync(request, deadline.Token) : StreamOpenAiAsync(request, deadline.Token)).GetAsyncEnumerator(deadline.Token);
-        while (true)
+        var queueTimer = Stopwatch.StartNew();
+        using var admissionCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var admission = oneShot.Gate.EnterAsync(admissionCancellation.Token);
+        IDisposable? lease = null;
+        try
         {
-            bool more;
-            try { more = await events.MoveNextAsync(); }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            { throw new AppException(504, "AI_TIMEOUT", "The local model exceeded its response deadline. Try a narrower question."); }
-            if (!more) yield break;
-            yield return events.Current is AiTurnEnd end ? end with { Runtime = end.Runtime is { } runtime ? runtime with { QueueMs = queueMs } : new AiRuntimeTiming(null, null, null, null, null, queueMs) } : events.Current;
+            if (!admission.IsCompleted) yield return new AiInferenceState("queued", oneShot.Gate.QueueTimeoutSeconds);
+            lease = await admission;
+            var queueMs = queueTimer.Elapsed.TotalMilliseconds;
+            yield return new AiInferenceState("running");
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(F.TimeoutSeconds, 1, 600)));
+            await using var events = (Native ? StreamOllamaAsync(request, deadline.Token) : StreamOpenAiAsync(request, deadline.Token)).GetAsyncEnumerator(deadline.Token);
+            while (true)
+            {
+                bool more;
+                try { more = await events.MoveNextAsync(); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                { throw new AppException(504, "AI_TIMEOUT", "The local model exceeded its response deadline. Try a narrower question."); }
+                if (!more) yield break;
+                yield return events.Current is AiTurnEnd end ? end with { Runtime = end.Runtime is { } runtime ? runtime with { QueueMs = queueMs } : new AiRuntimeTiming(null, null, null, null, null, queueMs) } : events.Current;
+            }
+        }
+        finally
+        {
+            admissionCancellation.Cancel();
+            if (lease is not null) lease.Dispose();
+            else
+            {
+                // A client can stop immediately after the queued event, including just as a slot becomes available.
+                try { (await admission).Dispose(); }
+                catch (OperationCanceledException) { }
+                catch (AppException) { }
+            }
         }
     }
 

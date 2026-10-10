@@ -16,6 +16,7 @@ public enum ProjectHealth { OnTrack, AtRisk, Delayed, Completed, Cancelled, Arch
 
 public record UserRefDto(Guid Id, string Name);
 public record ProjectStatsDto(int Total, int Done, int InProgress, int Todo, int Cancelled, int Overdue);
+public record ProjectStatusSummaryDto(string Key, string Name, ProjectStatus Status, int Progress, DateOnly? StartDate, DateOnly? DueDate);
 public record ProjectListItemDto(Guid Id, string Key, string Name, string? Description, ProjectStatus Status, Priority Priority,
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
     ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
@@ -190,6 +191,16 @@ public partial class ProjectService(
     {
         var project = await access.GetProjectAsync(id, ct);
         return await BuildDetailAsync(project, ct);
+    }
+
+    /// <summary>The same authorized status and task-derived progress, without loading unrelated project detail.</summary>
+    public async Task<ProjectStatusSummaryDto> GetStatusSummaryAsync(Guid id, CancellationToken ct = default)
+    {
+        var project = await access.VisibleProjects().AsNoTracking().Where(p => p.Id == id)
+            .Select(p => new { p.Key, p.Name, p.Status, p.StartDate, p.DueDate }).FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Project not found.");
+        var stats = (await GetStatsAsync([id], ct))[id];
+        return new(project.Key, project.Name, project.Status, ProjectMetrics.Progress(stats), project.StartDate, project.DueDate);
     }
 
     private async Task<ProjectDetailDto> BuildDetailAsync(Project project, CancellationToken ct)

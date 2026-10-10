@@ -30,6 +30,7 @@ public sealed record AiChatRequest(string Model, string System, string Context, 
     string? Effort, bool ShowReasoning);
 
 public abstract record AiChatEvent;
+public sealed record AiInferenceState(string State, int? WaitLimitSeconds = null) : AiChatEvent;
 public sealed record AiTextDelta(string Text) : AiChatEvent;
 public sealed record AiThinkingDelta(string Text) : AiChatEvent;
 /// <summary>
