@@ -79,11 +79,29 @@ public partial class AppDbContext
     }
 
     /// <summary>
-    /// Saves, first giving each new audit row its place in its workspace's chain (position, the previous row's hash, its own hash). If another request took the
-    /// same position a moment earlier, the unique index refuses and this tries again from the new end of the chain.
+    /// Saves each new audit row with its chain position and hashes. PostgreSQL holds a workspace transaction lock through commit;
+    /// other providers retain optimistic conflict retries.
     /// </summary>
     private async Task<int> SaveChainedAsync(bool acceptAllChangesOnSuccess, CancellationToken ct)
     {
+        var tenants = ChangeTracker.Entries<AuditLog>()
+            .Where(e => e.State == EntityState.Added && e.Entity.TenantId != null)
+            .Select(e => e.Entity.TenantId!.Value).Distinct().Order().ToArray();
+        if (tenants.Length > 0 && Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            // Hold each workspace's chain lock until the rows commit, including when a caller owns the transaction.
+            // PostgreSQL coordinates these locks across API replicas; sorting avoids opposite lock order for multi-workspace saves.
+            await using var transaction = Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(ct) : null;
+            foreach (var tenant in tenants)
+            {
+                var key = "project-tracker:audit:" + tenant;
+                await Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
+            }
+            await ChainAuditAsync(ct);
+            var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            return saved;
+        }
         for (var attempt = 1; ; attempt++)
         {
             var chained = await ChainAuditAsync(ct);

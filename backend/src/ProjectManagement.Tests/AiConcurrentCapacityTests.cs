@@ -5,17 +5,51 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Domain.Entities;
+using ProjectManagement.Domain.Common;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
+using ProjectManagement.Infrastructure.Persistence;
 
 namespace ProjectManagement.Tests;
 
 public sealed partial class AiMessageSendingTests
 {
+    [Fact]
+    public Task Failed_answer_persistence_emits_a_safe_terminal_stream_error() => Run(async (owner, _) =>
+    {
+        using var failing = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddDbContext<AppDbContext>((_, options) => options.AddInterceptors(new AnswerSaveFailure()))));
+        using var client = failing.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/ai/ask")
+        { Content = JsonContent.Create(new { text = "Hello", timeZone = "Asia/Kolkata" }) };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", owner.Token);
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("event: text\n", body);
+        Assert.Contains("event: error\n", body);
+        Assert.Contains("AI_FAILED", body);
+        Assert.DoesNotContain("event: done\n", body);
+        Assert.DoesNotContain("synthetic-database-detail", body);
+    });
+
+    private sealed class AnswerSaveFailure : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<AiMessage>().Any(e => e.State == EntityState.Added && e.Entity.Role == "assistant"))
+                throw new InvalidOperationException("synthetic-database-detail");
+            return ValueTask.FromResult(result);
+        }
+    }
+
     [Fact]
     public Task Lean_project_status_preserves_task_progress_and_workspace_isolation() => Run(async (owner, _) =>
     {
@@ -115,6 +149,18 @@ public sealed partial class AiMessageSendingTests
                 peakProcessMemoryMb = peakMemory / 1024d / 1024, averageDatabaseCommands = traces.Average(t => t.Database!.Commands), modelCalls = traces.Sum(t => t.Models.Count) });
         }
         Assert.Empty(factory.Chat.Requests);
+        var audit = factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.TenantId == owner.WorkspaceId && a.Seq != null).OrderBy(a => a.Seq).ToList());
+        Assert.True(audit.Count >= 200, "Every completed synthetic answer must retain its audit record.");
+        var previous = AuditChain.Genesis;
+        long sequence = 0;
+        foreach (var row in audit)
+        {
+            Assert.Equal(++sequence, row.Seq);
+            Assert.Equal(previous, row.PrevHash);
+            Assert.Equal(AuditChain.Compute(row, previous), row.Hash);
+            previous = row.Hash!;
+        }
         var report = JsonSerializer.Serialize(new { scope = "100 distinct users; in-process API; fixture database; no real inference; host process CPU/RAM includes test infrastructure", reports });
         Console.WriteLine("AGENT_LOAD " + report);
         if (Environment.GetEnvironmentVariable("PM_AGENT_LOAD_REPORT") is { Length: > 0 } path) await File.WriteAllTextAsync(path, report);

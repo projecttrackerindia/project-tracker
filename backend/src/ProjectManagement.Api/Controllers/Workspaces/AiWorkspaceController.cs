@@ -14,7 +14,8 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 /// </summary>
 [Route("api/v1/ai"), RequireWorkspace]
 public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiPortfolio portfolio, AiFileService files, AiUsageService usage,
-    ProjectManagement.Application.Features.Reminders.PortfolioDigestService digest, ProjectManagement.Application.Abstractions.ICurrentContext current, ProjectManagement.Application.Services.AppClock clock) : ApiControllerBase
+    ProjectManagement.Application.Features.Reminders.PortfolioDigestService digest, ProjectManagement.Application.Abstractions.ICurrentContext current, ProjectManagement.Application.Services.AppClock clock,
+    ILogger<AiWorkspaceController> log) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -74,7 +75,14 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
                 await Response.Body.FlushAsync(ct);
             }
         }
-        catch (OperationCanceledException) { /* the person pressed Stop or left; the answer so far is already saved */ }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { /* the person pressed Stop or left */ }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "AI stream ended before its response completed");
+            var error = new AiStreamError("AI_FAILED", "The answer could not finish saving. Check your conversation and saved actions before continuing.");
+            await Response.WriteAsync($"event: error\ndata: {JsonSerializer.Serialize(error, StreamJson)}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
         return new EmptyResult();
     }
 

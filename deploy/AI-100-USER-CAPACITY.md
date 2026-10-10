@@ -64,6 +64,8 @@ Before paying for a large CPU fleet, compare the installed model on larger hardw
 
 ## Validation and rollback
 
+The first 100-user PostgreSQL burst exposed a real persistence race: simultaneous audit writers selected the same sequence and exhausted six optimistic retries. HTTP 200 streams could consequently contain answer text without a terminal completion. PostgreSQL audit saves now acquire a transaction-scoped workspace advisory lock before reading the chain head, held through commit, including caller-owned transactions. Locks coordinate across API replicas, and multiple workspace locks are acquired in sorted order. This serializes the short audited save, not model inference. The load regression verifies every completed answer's audit sequence and hashes. An injected answer-save failure separately verifies a sanitized SSE error instead of an incomplete stream or a false success. PostgreSQL adds one lock command per audited save; the query-count comparison above is the SQLite measurement.
+
 Local focused backend validation passed 15 tests for the initial optimization, then 41 tests including streaming compatibility, queue-cancellation races and deterministic phrasing. Frontend: 70 tests, typecheck/build passed; lint zero errors and 75 existing warnings. The associated PR records full CI, deployment revision and post-deployment checks.
 
 No migrations or infrastructure changes. Roll back API/frontend to `ec39c2a`, or revert the associated merge commit. Preserve pending actions and delivery receipts. Never automatically replay mutations to recover from a busy response.
