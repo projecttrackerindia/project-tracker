@@ -18,6 +18,15 @@ using ProjectManagement.Infrastructure.Persistence;
 
 namespace ProjectManagement.Tests;
 
+public sealed class AiBurstFactAttribute : FactAttribute
+{
+    public AiBurstFactAttribute()
+    {
+        if (!bool.TryParse(Environment.GetEnvironmentVariable("PM_TEST_AI_BURSTS"), out var enabled) || !enabled)
+            Skip = "AI burst benchmarks are opt-in. Normal verification uses focused regressions.";
+    }
+}
+
 public sealed partial class AiMessageSendingTests
 {
     [Fact]
@@ -73,7 +82,7 @@ public sealed partial class AiMessageSendingTests
         Assert.Empty(factory.Chat.Requests);
     });
 
-    [Fact]
+    [AiBurstFact]
     public Task Hundred_distinct_users_can_complete_simultaneous_application_agent_requests() => Run(async (owner, member) =>
     {
         var project = await owner.CreateProjectAsync("Capacity Project");

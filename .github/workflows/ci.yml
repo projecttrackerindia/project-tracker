@@ -6,6 +6,15 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_ai_bursts:
+        description: Run the optional scripted 100-user AI capacity benchmark
+        type: boolean
+        default: false
+
+env:
+  PM_TEST_AI_BURSTS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ai_bursts && 'true' || 'false' }}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -94,9 +103,14 @@ jobs:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
         run: dotnet test --no-build -c Release --filter FullyQualifiedName~IdempotencyTransactionTests
       - name: Agent capacity with 100 users on PostgreSQL
+        if: github.event_name == 'workflow_dispatch' && inputs.run_ai_bursts
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
         run: dotnet test --no-build -c Release --filter FullyQualifiedName~Hundred_distinct_users
+      - name: Focused agent credit and workflow regressions on PostgreSQL
+        env:
+          PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
+        run: dotnet test --no-build -c Release --filter 'FullyQualifiedName~AiCreditLedgerTests|FullyQualifiedName~AiOperationsTests'
       - name: Integration tests against PostgreSQL (the production engine)
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres

@@ -27,7 +27,7 @@ public static class AiProviderCost
         foreach (var turn in turns)
         {
             var price = Price(turn.Model, tier, options);
-            if (price is null || turn.StopReason == "failed") { complete = false; continue; }
+            if (price is null || turn.StopReason == "failed" || !turn.UsageKnown) { complete = false; continue; }
             cost += Cost(price, turn.InputTokens, turn.OutputTokens, turn.CacheReadTokens, turn.CacheWriteTokens);
             if (!prices.Contains(price)) prices.Add(price);
         }

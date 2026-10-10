@@ -349,7 +349,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 }
             }
             finally { await events.DisposeAsync(); }
-            if (!applicationReply) timings.Add(new AiModelTiming(step, elapsed.ElapsedMilliseconds - modelStart, end?.InputTokens ?? 0, end?.OutputTokens ?? 0, end?.StopReason is "end_turn" or "tool_use" or "max_tokens" or "refusal" ? end.StopReason : "failed", end?.Runtime, end?.Model ?? model, end?.CacheReadTokens ?? 0, end?.CacheWriteTokens ?? 0));
+            if (!applicationReply) timings.Add(new AiModelTiming(step, elapsed.ElapsedMilliseconds - modelStart, end?.InputTokens ?? 0, end?.OutputTokens ?? 0, end?.StopReason is "end_turn" or "tool_use" or "max_tokens" or "refusal" ? end.StopReason : "failed", end?.Runtime, end?.Model ?? model, end?.CacheReadTokens ?? 0, end?.CacheWriteTokens ?? 0, end?.UsageKnown ?? false));
             if (failure is not null || cancelled) break;
             if (end is null) { failure = new AppException(502, "AI_INCOMPLETE_RESPONSE", "The model returned no completed turn."); break; }
 
