@@ -4,7 +4,7 @@ namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>What the workspace's plan allows and how much of the month is left, for the AI page's header and its model picker.</summary>
 public record AiUsageDto(string Month, long CreditsUsed, long CreditsLimit, long CreditsLeft, bool Unlimited, string MaxTier, bool Attachments, bool Actions,
-    IReadOnlyList<AiTierInfoDto> Tiers, IReadOnlyList<string> AttachmentTypes, int MaxFiles, int MaxImageMb, int MaxDocumentMb, AiRequestLimitDto? RequestLimits = null);
+    IReadOnlyList<AiTierInfoDto> Tiers, IReadOnlyList<string> AttachmentTypes, int MaxFiles, int MaxImageMb, int MaxDocumentMb, AiRequestLimitDto? RequestLimits = null, long CreditsReserved = 0);
 
 /// <summary>One model level as the page shows it. <see cref="Allowed"/> is whether the plan includes it.</summary>
 public record AiTierInfoDto(string Id, string Label, string Model, int Credits, bool Allowed, string Description);

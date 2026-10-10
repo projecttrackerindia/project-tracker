@@ -18,6 +18,7 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
 
     public async Task<int> ProcessAsync(CancellationToken ct = default)
     {
+        await RecoverCreditsAsync(ct);
         await QueueSchedulesAsync(ct);
         List<Guid> candidates;
         using (var scope = scopes.CreateScope())
@@ -49,6 +50,21 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
             if (await RunAsync(id, ct)) processed++;
         }
         return processed;
+    }
+
+    private async Task RecoverCreditsAsync(CancellationToken ct)
+    {
+        using var scan = scopes.CreateScope(); var db = scan.ServiceProvider.GetRequiredService<IAppDbContext>();
+        var now = Now;
+        var tenants = await db.AiCreditReservations.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.Status == "reserved" && r.ExpiresAt <= now && db.Tenants.Any(t => t.Id == r.TenantId && !t.IsDeleted))
+            .Select(r => r.TenantId).Distinct().OrderBy(id => id).Take(50).ToListAsync(ct);
+        foreach (var tenant in tenants)
+        {
+            using var scope = scopes.CreateScope();
+            scope.ServiceProvider.GetRequiredService<CurrentContext>().TenantId = tenant;
+            await scope.ServiceProvider.GetRequiredService<AiCreditService>().RecoverExpiredAsync(ct);
+        }
     }
 
     private async Task QueueSchedulesAsync(CancellationToken ct)
@@ -89,7 +105,7 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
             await SetRequesterAsync(sp, job, deadline.Token);
             var service = sp.GetRequiredService<AiOperationsService>();
             await service.AuthorizeAsync(job.Kind, deadline.Token);
-            var fingerprint = await service.FingerprintAsync(deadline.Token);
+            var fingerprint = await service.FingerprintAsync(deadline.Token, job.TeamId);
             AiJobResult result;
             var analysis = sp.GetRequiredService<AiAnalysis>();
             if (job.Kind == "portfolio")

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
@@ -155,7 +156,7 @@ public record AiNotesDto(IReadOnlyList<AiActionItemDto> Items);
 /// </summary>
 public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiClient ai, EntitlementService entitlements,
     ProjectStatusService status, WorkItemService workItems,
-    PermissionService permissions, ProjectAccess access)
+    PermissionService permissions, ProjectAccess access, AiCreditService credits, IOptions<AiOptions> options)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -183,6 +184,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     /// </summary>
     private async Task<string> AskAsync(string feature, string prompt, int maxTokens, CancellationToken ct)
     {
+        await using var reservation = await credits.ReserveAsync(Guid.NewGuid(), options.Value.Chat.Quick.Credits, feature, ct);
         AiAnswer answer;
         try { answer = await ai.CompleteAsync(Voice, prompt, maxTokens, ct); }
         catch (AppException ex)
@@ -194,8 +196,10 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
                 throw new AiProviderException(p.StatusCode, p.Code, p.Who, p.Reason, detail, $"{p.Message} ({detail})");
             throw;
         }
-        recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, model = answer.Model });
-        await db.SaveChangesAsync(ct);
+        if (feature != "portfolio_summary" && JsonIn(answer.Text) is null)
+            throw new AppException(502, "AI_FAILED", "The assistant's answer could not be read. Try again.");
+        recorder.Audit("ai.used", "AiAssistant", null, null, new { feature, model = answer.Model, credits = reservation.Amount });
+        await reservation.SettleAsync(reservation.Amount, ct);
         return answer.Text;
     }
 

@@ -11,6 +11,17 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    public async Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (Database.CurrentTransaction is null || current.TenantId != tenantId)
+            throw new InvalidOperationException("A ledger lock requires a transaction and the current tenant.");
+        if (Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var key = "project-tracker:audit:" + tenantId;
+            await Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
+        }
+        return await Tenants.Where(t => t.Id == tenantId).ExecuteUpdateAsync(s => s.SetProperty(t => t.AiDisabled, t => t.AiDisabled), ct);
+    }
     private readonly HashSet<Guid> pendingTenantInvalidations = [];
     private readonly List<ChangeEvent> pendingChanges = [];
     private bool pendingPlanInvalidation;
@@ -158,6 +169,8 @@ public partial class AppDbContext
 
         foreach (var entry in ChangeTracker.Entries())
         {
+            if (entry.Entity is AiCreditEntry && entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("AI credit ledger entries are append-only.");
             if (entry.Entity is AuditableEntity audit)
             {
                 if (entry.State == EntityState.Added)

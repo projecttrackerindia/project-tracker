@@ -8,6 +8,13 @@ namespace ProjectManagement.Application.Abstractions;
 
 public interface IAppDbContext
 {
+    Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct);
+    DbSet<AiCreditAccount> AiCreditAccounts { get; }
+    DbSet<AiCreditReservation> AiCreditReservations { get; }
+    DbSet<AiCreditEntry> AiCreditEntries { get; }
+    DbSet<AiCreditBudget> AiCreditBudgets { get; }
+    DbSet<AiCreditBudgetUsage> AiCreditBudgetUsages { get; }
+    DbSet<AiCreditBudgetHold> AiCreditBudgetHolds { get; }
     DbSet<User> Users { get; }
     DbSet<UserSession> UserSessions { get; }
     DbSet<RefreshToken> RefreshTokens { get; }

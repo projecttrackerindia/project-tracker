@@ -22,7 +22,7 @@ public class AiOperationsService(IAppDbContext db, ICurrentContext ctx, AppClock
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static readonly string[] Kinds = ["portfolio", "workload", "history"];
-    private string? fingerprint;
+    private readonly Dictionary<string, string> fingerprints = [];
 
     internal async Task AuthorizeAsync(string kind, CancellationToken ct)
     {
@@ -31,14 +31,15 @@ public class AiOperationsService(IAppDbContext db, ICurrentContext ctx, AppClock
         await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
     }
 
-    internal async Task<string> FingerprintAsync(CancellationToken ct)
+    internal async Task<string> FingerprintAsync(CancellationToken ct, Guid? teamId = null)
     {
-        if (fingerprint is not null) return fingerprint;
-        var projects = await access.VisibleProjects().AsNoTracking().OrderBy(p => p.Id).Select(p => p.Id).ToListAsync(ct);
+        var key = teamId?.ToString() ?? "all";
+        if (fingerprints.TryGetValue(key, out var cached)) return cached;
+        var projects = await access.VisibleProjects().AsNoTracking().Where(p => teamId == null || p.TeamId == teamId).OrderBy(p => p.Id).Select(p => p.Id).ToListAsync(ct);
         var profile = await permissions.ProfileAsync(ct);
         var overrides = await db.RolePermissionOverrides.AsNoTracking().OrderBy(p => p.Id).Select(p => new { p.Permission, p.Allowed, p.Role }).ToListAsync(ct);
-        var value = JsonSerializer.Serialize(new { ctx.UserId, ctx.TenantId, ctx.Role, ctx.ProjectScope, ctx.TeamLens, projects, profile, overrides }, Json);
-        return fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+        var value = JsonSerializer.Serialize(new { ctx.UserId, ctx.TenantId, ctx.Role, ctx.ProjectScope, TeamLens = teamId, projects, profile, overrides }, Json);
+        return fingerprints[key] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     }
 
     private static string Title(string title) => !string.IsNullOrWhiteSpace(title) && title.Trim().Length <= 120
@@ -96,7 +97,8 @@ public class AiOperationsService(IAppDbContext db, ICurrentContext ctx, AppClock
         if (row.ResultJson is not null)
         {
             await AuthorizeAsync(row.Kind, ct);
-            if (row.AccessFingerprint == await FingerprintAsync(ct)) result = JsonSerializer.Deserialize<AiJobResult>(row.ResultJson, Json);
+            await access.RequireLensAsync(row.TeamId, ct);
+            if (row.AccessFingerprint == await FingerprintAsync(ct, row.TeamId)) result = JsonSerializer.Deserialize<AiJobResult>(row.ResultJson, Json);
             else error = "AI_EVIDENCE_ACCESS_CHANGED";
         }
         return new(row.Id, row.Kind, row.Title, row.Status, row.Progress, row.Attempts, row.CreatedAt, row.StartedAt, row.CompletedAt, error, result, row.ScheduleId);

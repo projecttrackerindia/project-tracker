@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProjectManagement.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ProjectManagement.Infrastructure.Persistence;
 namespace ProjectManagement.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010145303_TransactionalAiCredits")]
+    partial class TransactionalAiCredits
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -317,137 +320,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("AiCreditAccounts");
                 });
 
-            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudget", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<long>("MonthlyLimit")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Scope")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.Property<Guid>("SubjectId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "Scope", "SubjectId")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditBudgets");
-                });
-
-            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetHold", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("BudgetUsageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("PolicyVersion")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("ReservationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BudgetUsageId");
-
-                    b.HasIndex("ReservationId", "BudgetUsageId")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditBudgetHolds");
-                });
-
-            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetUsage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("BudgetId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("Reserved")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("Spent")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("BudgetId");
-
-                    b.HasIndex("TenantId", "BudgetId", "AccountId")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditBudgetUsages");
-                });
-
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -700,10 +572,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("Credits")
                         .HasColumnType("integer");
 
-                    b.Property<decimal?>("EstimatedProviderCostUsd")
-                        .HasPrecision(18, 8)
-                        .HasColumnType("numeric(18,8)");
-
                     b.Property<string>("ExecutionJson")
                         .HasColumnType("text");
 
@@ -727,9 +595,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("OutputTokens")
                         .HasColumnType("integer");
-
-                    b.Property<string>("ProviderCostJson")
-                        .HasColumnType("text");
 
                     b.Property<string>("Reasoning")
                         .HasColumnType("text");
@@ -7124,36 +6989,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Actor");
-                });
-
-            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetHold", b =>
-                {
-                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditBudgetUsage", null)
-                        .WithMany()
-                        .HasForeignKey("BudgetUsageId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditReservation", null)
-                        .WithMany()
-                        .HasForeignKey("ReservationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditBudgetUsage", b =>
-                {
-                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditAccount", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("ProjectManagement.Domain.Entities.AiCreditBudget", null)
-                        .WithMany()
-                        .HasForeignKey("BudgetId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiCreditEntry", b =>

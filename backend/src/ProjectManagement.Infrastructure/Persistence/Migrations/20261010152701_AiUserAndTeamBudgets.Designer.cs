@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProjectManagement.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ProjectManagement.Infrastructure.Persistence;
 namespace ProjectManagement.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010152701_AiUserAndTeamBudgets")]
+    partial class AiUserAndTeamBudgets
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -700,10 +703,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("Credits")
                         .HasColumnType("integer");
 
-                    b.Property<decimal?>("EstimatedProviderCostUsd")
-                        .HasPrecision(18, 8)
-                        .HasColumnType("numeric(18,8)");
-
                     b.Property<string>("ExecutionJson")
                         .HasColumnType("text");
 
@@ -727,9 +726,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("OutputTokens")
                         .HasColumnType("integer");
-
-                    b.Property<string>("ProviderCostJson")
-                        .HasColumnType("text");
 
                     b.Property<string>("Reasoning")
                         .HasColumnType("text");

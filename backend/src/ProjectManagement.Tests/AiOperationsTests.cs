@@ -72,6 +72,22 @@ public class AiOperationsTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Team_review_remains_readable_without_requiring_a_team_header()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Scoped review owner"); await owner.CreateOrgAsync(); await owner.UpgradeAsync("BUSINESS");
+        var projectId = await owner.CreateProjectAsync("Scoped evidence");
+        var team = await owner.Post("/api/v1/teams", new { name = "Scoped review team" }); Assert.True(team.Ok, team.ToString());
+        var teamId = Guid.Parse(team.Data!["team"]!["id"]!.GetValue<string>());
+        factory.WithDb(db => db.Projects.IgnoreQueryFilters().Where(p => p.Id == projectId).ExecuteUpdate(s => s.SetProperty(p => p.TeamId, teamId)));
+        var created = await owner.Post("/api/v1/ai/operations/jobs", new { kind = "portfolio", title = "Team evidence review", teamId, idempotencyKey = Guid.NewGuid().ToString() });
+        Assert.True(created.Ok, created.ToString());
+        var id = created.Data!["id"]!.GetValue<string>();
+        await Process();
+        var result = await owner.Get($"/api/v1/ai/operations/jobs/{id}"); Assert.True(result.Ok, result.ToString());
+        Assert.Equal("succeeded", result.Data!["status"]!.GetValue<string>()); Assert.NotNull(result.Data["result"]);
+    }
+
+    [Fact]
     public async Task Recurring_review_is_saved_and_cannot_queue_duplicate_pending_work()
     {
         var owner = await TestClient.RegisterAsync(factory, "Schedule owner"); await owner.CreateOrgAsync();

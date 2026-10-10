@@ -51,3 +51,10 @@ flowchart TD
 6. Focused permission, restart, idempotency, credit concurrency, date/recipient and outcome regressions; builds and existing CI; merge verified phases into main.
 
 This is autonomy through explicit organization policy, persistent work and evidence. Provider quotas, tenant permissions, approvals and budgets remain enforced. Predictions do not automatically change staffing, dates or permissions. External messaging remains disabled until its configuration and delivery semantics are verified.
+
+## Implementation progress
+
+- Durable private portfolio, workload and history reviews, recurring schedules, atomic leases, cancellation, retry and restart recovery are implemented. Requester permissions are rebuilt before execution; changed access hides saved evidence. The existing UI exposes schedules, progress and sources.
+- Transactional customer credit reservations, append-only settlements, legacy opening balances, abandoned-hold recovery and opt-in user/team budgets are implemented. One-shot features use the same ledger. Built-in greetings and confirmations remain available after the paid credit balance is exhausted.
+- Provider cost snapshots distinguish customer credit charges from recorded token cost. Gemini estimates are priced; unknown/incomplete usage is explicitly reported. See [credit accounting](AI-CREDIT-ACCOUNTING.md) for policies and exclusions.
+- Authorized retrieval consolidation, outcome evaluation, support lifecycle, verified top-up configuration and optional integration contracts remain subsequent phases. Production deployment and merge verification remain pending for this branch.

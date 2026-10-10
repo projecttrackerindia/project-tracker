@@ -122,6 +122,23 @@ public sealed class LocalAiWorkflowTests(ApiFactory factory)
     });
 
     [Fact]
+    public Task Greetings_still_work_when_the_shared_monthly_credits_are_exhausted() => Local(async owner =>
+    {
+        factory.WithDb(db => { db.TenantFeatureOverrides.Add(new TenantFeatureOverride { TenantId = owner.WorkspaceId,
+            FeatureKey = ProjectManagement.Domain.FeatureKeys.AiMonthlyCredits, Value = 1, Reason = "Greeting regression" }); return db.SaveChanges(); });
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Abstractions.CurrentContext>();
+            context.UserId = owner.UserId; context.TenantId = owner.WorkspaceId;
+            await using var lease = await scope.ServiceProvider.GetRequiredService<AiCreditService>().ReserveAsync(Guid.NewGuid(), 1, "workspace");
+            await lease.SettleAsync(1);
+        }
+        factory.Chat.Fail = new InvalidOperationException("A greeting must not invoke a model");
+        var greeting = await Ask(owner, "hey hi");
+        Assert.Equal(0, greeting["credits"]!.GetValue<int>()); Assert.Empty(factory.Chat.Requests);
+    });
+
+    [Fact]
     public Task Exact_reminder_commands_and_greetings_require_no_model_calls() => Local(async owner =>
     {
         factory.Chat.Fail = new InvalidOperationException("The model must not be invoked");

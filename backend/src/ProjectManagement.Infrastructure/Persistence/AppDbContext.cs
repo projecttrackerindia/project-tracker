@@ -13,6 +13,12 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     IChangeFeed? changeFeed = null)
     : DbContext(options), IAppDbContext
 {
+    public DbSet<AiCreditAccount> AiCreditAccounts => Set<AiCreditAccount>();
+    public DbSet<AiCreditReservation> AiCreditReservations => Set<AiCreditReservation>();
+    public DbSet<AiCreditEntry> AiCreditEntries => Set<AiCreditEntry>();
+    public DbSet<AiCreditBudget> AiCreditBudgets => Set<AiCreditBudget>();
+    public DbSet<AiCreditBudgetUsage> AiCreditBudgetUsages => Set<AiCreditBudgetUsage>();
+    public DbSet<AiCreditBudgetHold> AiCreditBudgetHolds => Set<AiCreditBudgetHold>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
