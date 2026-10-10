@@ -83,7 +83,7 @@ public partial class IdempotencyMiddleware(RequestDelegate next)
         var record = new IdempotencyRecord { UserId = userId, Key = key, RequestHash = hash, CreatedAt = now };
         db.IdempotencyRecords.Add(record);
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException ex) when (IsKeyContention(ex))
+        catch (Exception ex) when (IsKeyContention(ex))
         {
             await transaction.RollbackAsync(CancellationToken.None);
             db.IdempotencyRecords.Entry(record).State = EntityState.Detached;
@@ -135,14 +135,19 @@ public partial class IdempotencyMiddleware(RequestDelegate next)
         finally { if (sqlite is not null) sqlite.DefaultTimeout = previousTimeout!.Value; }
     }
 
-    private static bool IsKeyContention(DbUpdateException ex) => ex.InnerException switch
+    private static bool IsKeyContention(Exception exception)
     {
-        PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable } => true,
-        PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_IdempotencyRecords_UserId_Key" } => true,
-        SqliteException { SqliteErrorCode: 5 or 6 } => true,
-        SqliteException { SqliteExtendedErrorCode: 2067 } sqlite when sqlite.Message.Contains("IdempotencyRecords.UserId", StringComparison.Ordinal) => true,
-        _ => false,
-    };
+        // Npgsql's execution strategy wraps transient lock failures in InvalidOperationException, outside DbUpdateException.
+        for (Exception? error = exception; error is not null; error = error.InnerException)
+        {
+            if (error is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable }
+                or PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_IdempotencyRecords_UserId_Key" }
+                or SqliteException { SqliteErrorCode: 5 or 6 }) return true;
+            if (error is SqliteException { SqliteExtendedErrorCode: 2067 } sqlite
+                && sqlite.Message.Contains("IdempotencyRecords.UserId", StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
 
     private static Task InProgress(HttpContext http)
     {

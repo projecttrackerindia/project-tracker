@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using ProjectManagement.Api.Middleware;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
@@ -85,6 +86,29 @@ public class IdempotencyTransactionTests(ApiFactory factory)
                 throw new InvalidOperationException("Receipt persistence failed");
             return ValueTask.FromResult(result);
         }
+    }
+
+    private sealed class LockFailure(bool wrapped) : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var update = new DbUpdateException("Key insert timed out", new PostgresException("Lock timeout", "ERROR", "ERROR", PostgresErrorCodes.LockNotAvailable));
+            throw wrapped ? new InvalidOperationException("Transient provider failure", update) : update;
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Provider_wrapped_lock_timeouts_return_a_retryable_conflict(bool wrapped)
+    {
+        var key = $"lock-timeout-{Guid.NewGuid():N}";
+        var response = await Invoke(Guid.NewGuid(), key, _ => throw new InvalidOperationException("Must not execute"), interceptor: new LockFailure(wrapped));
+        Assert.Equal(409, response.Response.StatusCode);
+        Assert.Equal("2", response.Response.Headers.RetryAfter.ToString());
+        Assert.Contains("IDEMPOTENCY_IN_PROGRESS", Body(response));
+        Assert.False(factory.WithDb(db => db.IdempotencyRecords.Any(r => r.Key == key)));
     }
 
     [Fact]
