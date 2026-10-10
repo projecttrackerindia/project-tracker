@@ -177,7 +177,7 @@ public static class ServiceCollectionExtensions
                 Title = "Project Tracker API", Version = "v1",
                 Description = "Everything the app does is available here. Authenticate with an access token or an API key (Settings, API keys). Every answer is "
                     + "`{ success, data, message, errors, traceId }`. Send an `Idempotency-Key` header with a write to make retries safe: the same key and "
-                    + "request return the same answer without doing the work twice. Lists are paged; rate limits are per key or per person and answered with 429.",
+                    + "request replay the saved response without repeating database writes. External side effects need provider idempotency or an outbox. Lists are paged; rate limits are per key or per person and answered with 429.",
             });
             c.OperationFilter<CommonResponsesFilter>();
             c.CustomSchemaIds(t => t.FullName!.Replace("ProjectManagement.Application.Features.", "").Replace('+', '.'));
@@ -219,12 +219,14 @@ public class CommonResponsesFilter : Swashbuckle.AspNetCore.SwaggerGen.IOperatio
         var method = context.ApiDescription.HttpMethod ?? "";
         if (method is "POST" or "PUT" or "PATCH" or "DELETE")
         {
-            Add("400", "The request is malformed."); Add("422", "A value is not valid; `errors` says which field and why."); Add("409", "A conflict: someone changed it first (VERSION_CONFLICT), or the Idempotency-Key request is still running.");
+            Add("400", "The request is malformed."); Add("413", "The idempotent request body exceeds 1 MB.");
+            Add("422", "A value or idempotency key is not valid, or idempotency was requested for an upload or stream.");
+            Add("409", "A conflict: someone changed it first (VERSION_CONFLICT), the idempotent request is still running, or its completed response is too large to replay (IDEMPOTENCY_RESPONSE_UNAVAILABLE).");
             op.Parameters ??= [];
             op.Parameters.Add(new OpenApiParameter
             {
                 Name = "Idempotency-Key", In = ParameterLocation.Header, Required = false, Schema = new OpenApiSchema { Type = "string", MinLength = 8, MaxLength = 100 },
-                Description = "Optional. A unique value for this write. Sending the same request again with the same key returns the first answer (header `Idempotent-Replayed: true`) instead of repeating the work. Kept for 24 hours.",
+                Description = "Optional for JSON writes up to 1 MB; uploads and streams are unsupported. The same person, workspace, team lens, address and body replay the first response (header `Idempotent-Replayed: true`) without repeating database writes. Completed receipts last 24 hours. Responses over 256 KB keep a receipt but return IDEMPOTENCY_RESPONSE_UNAVAILABLE on retry: read the resource to check the result instead of sending a new key. External side effects need provider idempotency or an outbox.",
             });
         }
         else Add("404", "Not found, or not visible to you.");

@@ -40,10 +40,11 @@ jobs:
           name: test-results
           path: backend/TestResults/*.trx
           if-no-files-found: ignore
-      - name: Known-vulnerable packages
+      - name: Fail on high or critical NuGet vulnerabilities
         run: |
-          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
-          if grep -q "has the following vulnerable packages" vulnerable.txt; then echo "::warning::Vulnerable NuGet packages found (see the log)"; fi
+          python -m unittest discover -s ../scripts -p test_nuget_audit.py
+          dotnet list package --vulnerable --include-transitive --format json --output-version 1 > vulnerable.json
+          python ../scripts/check-nuget-audit.py vulnerable.json
 
   api-postgres:
     name: API tests on PostgreSQL
@@ -102,7 +103,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Known-vulnerable packages (high and above)
-        run: npm audit --audit-level=high --omit=dev || echo "::warning::npm audit reported issues (see the log)"
+        run: npm audit --audit-level=high --omit=dev
 
   deploy-files:
     name: Deployment files

@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
+using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Billing;
 
 namespace ProjectManagement.Infrastructure.Workers;
@@ -30,6 +32,10 @@ public class MaintenanceWorker(IServiceScopeFactory scopes, IOptions<Maintenance
                     // No request context here: the scope has no tenant, so the job queries explicitly across tenants.
                     using var scope = scopes.CreateScope();
                     await scope.ServiceProvider.GetRequiredService<MaintenanceService>().RunAllAsync(stoppingToken);
+                    var cutoff = scope.ServiceProvider.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime.AddHours(-24);
+                    // Unfinished receipts from older releases may have committed side effects; retain them for reconciliation.
+                    await scope.ServiceProvider.GetRequiredService<IAppDbContext>().IdempotencyRecords
+                        .Where(r => r.Completed && r.CreatedAt < cutoff).ExecuteDeleteAsync(stoppingToken);
                     beats.Beat("Maintenance", Math.Max(1, options.Value.IntervalMinutes) * 60);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

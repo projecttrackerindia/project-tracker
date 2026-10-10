@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
@@ -85,10 +86,10 @@ public class DataPolicyService(IAppDbContext db, ICurrentContext ctx, AppClock c
                 var cutoff = now.AddDays(-au);
                 // The tamper-evident chain keeps the last removed row's hash as its new start; rows from before the chain existed have no hash and go by date.
                 if (chain is not null) n += await chain.PurgeAsync(p.TenantId, cutoff, ct);
-                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
                 await db.AllowAuditPurgeAsync(ct);
                 n += await db.AuditLogs.IgnoreQueryFilters().Where(x => x.TenantId == p.TenantId && x.Seq == null && x.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
-                await tx.CommitAsync(ct);
+                await tx.CommitIfOwnedAsync(ct);
             }
             p.LastPurgedAt = now;
             if (n > 0) log.LogInformation("Data policy of workspace {Tenant}: deleted {Count} old record(s)", p.TenantId, n);

@@ -1,26 +1,27 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using ProjectManagement.Application.Exceptions;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using ProjectManagement.Api.Common;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Domain.Entities;
-using ProjectManagement.Infrastructure.Services;
 
 namespace ProjectManagement.Api.Middleware;
 
 /// <summary>
-/// Makes a retried write safe. A client that sends <c>Idempotency-Key: &lt;unique value&gt;</c> with a POST, PUT, PATCH or DELETE gets the very same answer
-/// if it sends the request again (a phone that lost its connection before the reply arrived), and the work is done once. The key belongs to the
-/// signed-in person; reusing it for a different request is refused; a request still running answers 409; keys are forgotten after a day.
-/// Only successful answers are kept, so a request that failed can simply be corrected and sent again. File uploads are not covered.
+/// Commits database writes and their retry receipt together. The unique user/key index owns a request for the entire transaction,
+/// even when execution takes longer than a minute. A crash rolls both back; a completed receipt prevents the write being repeated.
+/// External side effects need their own provider idempotency or outbox. Uploads and streams are not supported.
 /// </summary>
 public partial class IdempotencyMiddleware(RequestDelegate next)
 {
     public const string Header = "Idempotency-Key";
     private const int MaxBody = 1_000_000, MaxKept = 256 * 1024;
-    private static readonly TimeSpan Keep = TimeSpan.FromHours(24), Running = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan Keep = TimeSpan.FromHours(24);
 
     [GeneratedRegex("^[A-Za-z0-9_\\-:.]{8,100}$")] private static partial Regex Valid();
 
@@ -32,81 +33,147 @@ public partial class IdempotencyMiddleware(RequestDelegate next)
         if (!write || key.Length == 0 || ctx.UserId is not { } userId) { await next(http); return; }
         if (!Valid().IsMatch(key))
         {
-            await ErrorWriter.WriteAsync(http, 400, "The Idempotency-Key must be 8 to 100 letters, digits or - _ : . characters.", [new ApiError("INVALID_IDEMPOTENCY_KEY", "The Idempotency-Key must be 8 to 100 letters, digits or - _ : . characters.")]);
+            await ErrorWriter.WriteAsync(http, 400, "The Idempotency-Key must be 8 to 100 letters, digits or - _ : . characters.",
+                [new ApiError("INVALID_IDEMPOTENCY_KEY", "The Idempotency-Key must be 8 to 100 letters, digits or - _ : . characters.")]);
             return;
         }
-        if ((http.Request.ContentType ?? "").StartsWith("multipart/", StringComparison.OrdinalIgnoreCase) || http.Request.ContentLength > MaxBody) { await next(http); return; }
+        if ((http.Request.ContentType ?? "").StartsWith("multipart/", StringComparison.OrdinalIgnoreCase)
+            || http.Request.Headers.Accept.Any(a => a?.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase) == true))
+        {
+            await ErrorWriter.WriteAsync(http, 422, "Idempotency-Key is not supported for uploads or streams.",
+                [new ApiError("IDEMPOTENCY_UNSUPPORTED", "Idempotency-Key is not supported for uploads or streams.")]);
+            return;
+        }
 
-        // What was asked: the method, the address and the exact body.
+        // Bound chunked bodies too: Content-Length alone cannot enforce the limit.
         http.Request.EnableBuffering();
         using var buffer = new MemoryStream();
-        await http.Request.Body.CopyToAsync(buffer, http.RequestAborted);
+        var bytes = new byte[8192];
+        int read;
+        while ((read = await http.Request.Body.ReadAsync(bytes.AsMemory(0, (int)Math.Min(bytes.Length, MaxBody + 1 - buffer.Length)), http.RequestAborted)) > 0)
+        {
+            buffer.Write(bytes, 0, read);
+            if (buffer.Length > MaxBody)
+            {
+                await ErrorWriter.WriteAsync(http, 413, "An idempotent request must be at most 1 MB.",
+                    [new ApiError("IDEMPOTENCY_BODY_TOO_LARGE", "An idempotent request must be at most 1 MB.")]);
+                return;
+            }
+        }
         http.Request.Body.Position = 0;
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{method} {http.Request.Path}{http.Request.QueryString}\n").Concat(buffer.ToArray()).ToArray()));
+        // The same address in another workspace or team lens is a different request.
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{ctx.TenantId} {ctx.TeamLens} {method} {http.Request.Path}{http.Request.QueryString}\n").Concat(buffer.ToArray()).ToArray()));
 
         var now = clock.GetUtcNow().UtcDateTime;
         var ct = http.RequestAborted;
-        var existing = await db.IdempotencyRecords.FirstOrDefaultAsync(r => r.UserId == userId && r.Key == key, ct);
-        if (existing is not null && existing.CreatedAt < now - Keep) { db.IdempotencyRecords.Remove(existing); await db.SaveChangesAsync(ct); existing = null; }
-        if (existing is not null && !existing.Completed && existing.CreatedAt < now - Running) { db.IdempotencyRecords.Remove(existing); await db.SaveChangesAsync(ct); existing = null; }
-        if (existing is not null)
+        // Never expire unfinished legacy receipts: a previous version may have committed their business changes already.
+        var existing = await db.IdempotencyRecords.AsNoTracking().FirstOrDefaultAsync(r => r.UserId == userId && r.Key == key, ct);
+        if (existing is { Completed: true } && existing.CreatedAt < now - Keep)
         {
-            if (existing.RequestHash != hash)
-            {
-                await ErrorWriter.WriteAsync(http, 422, "This Idempotency-Key was already used for a different request.", [new ApiError("IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used for a different request.")]);
-                return;
-            }
-            if (!existing.Completed)
-            {
-                http.Response.Headers.RetryAfter = "2";
-                await ErrorWriter.WriteAsync(http, 409, "The first request with this Idempotency-Key is still being processed.", [new ApiError("IDEMPOTENCY_IN_PROGRESS", "The first request with this Idempotency-Key is still being processed.")]);
-                return;
-            }
-            http.Response.StatusCode = existing.ResponseStatus;
-            http.Response.Headers["Idempotent-Replayed"] = "true";
-            if (existing.ContentType is not null) http.Response.ContentType = existing.ContentType;
-            if (existing.ResponseBody is not null) await http.Response.WriteAsync(existing.ResponseBody, ct);
-            return;
+            await db.IdempotencyRecords.Where(r => r.Id == existing.Id && r.Completed && r.CreatedAt < now - Keep).ExecuteDeleteAsync(ct);
+            existing = await db.IdempotencyRecords.AsNoTracking().FirstOrDefaultAsync(r => r.UserId == userId && r.Key == key, ct);
         }
+        if (existing is not null) { await Replay(http, existing, hash); return; }
 
+        await using var transaction = await BeginTransaction(db, ct);
+        if (transaction is null) { await InProgress(http); return; }
+        // Contention should answer 409 promptly rather than occupy a connection for the duration of a long write.
+        if (db.Database.IsNpgsql()) await db.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '2s'", ct);
         var record = new IdempotencyRecord { UserId = userId, Key = key, RequestHash = hash, CreatedAt = now };
         db.IdempotencyRecords.Add(record);
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
-        {   // someone else registered the same key a moment ago
+        catch (DbUpdateException ex) when (IsKeyContention(ex))
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
             db.IdempotencyRecords.Entry(record).State = EntityState.Detached;
-            http.Response.Headers.RetryAfter = "2";
-            await ErrorWriter.WriteAsync(http, 409, "The first request with this Idempotency-Key is still being processed.", [new ApiError("IDEMPOTENCY_IN_PROGRESS", "The first request with this Idempotency-Key is still being processed.")]);
+            await InProgress(http);
             return;
         }
-        await db.IdempotencyRecords.Where(r => r.CreatedAt < now - Keep).ExecuteDeleteAsync(ct);   // old keys are forgotten as new ones arrive
+        if (db.Database.IsNpgsql()) await db.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '0'", ct);
 
-        // Run the request, keeping a copy of the answer.
+        // Do not send success until its receipt and the business changes have committed.
         var original = http.Response.Body;
         await using var capture = new MemoryStream();
         http.Response.Body = capture;
-        try { await next(http); }
+        try
+        {
+            await next(http);
+            if (http.Response.StatusCode is >= 200 and < 300)
+            {
+                record.Completed = true;
+                // Large responses still retain a receipt: never silently let the operation run again.
+                record.ResponseStatus = capture.Length <= MaxKept ? http.Response.StatusCode : 0;
+                record.ContentType = http.Response.ContentType;
+                record.ResponseBody = capture.Length <= MaxKept ? "base64:" + Convert.ToBase64String(capture.ToArray()) : null;
+                await db.SaveChangesAsync(CancellationToken.None);
+                await transaction.CommitAsync(CancellationToken.None);
+            }
+            else await transaction.RollbackAsync(CancellationToken.None);
+        }
         catch
         {
-            http.Response.Body = original;
-            await Forget(db, record);
+            await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
-        http.Response.Body = original;
+        finally { http.Response.Body = original; }
         capture.Position = 0;
-        var status = http.Response.StatusCode;
-        if (status is >= 200 and < 300 && capture.Length <= MaxKept)
-        {
-            record.Completed = true; record.ResponseStatus = status; record.ContentType = http.Response.ContentType;
-            record.ResponseBody = capture.Length == 0 ? null : Encoding.UTF8.GetString(capture.ToArray());
-            try { await db.SaveChangesAsync(CancellationToken.None); } catch (DbUpdateException) { /* the answer still goes out */ }
-        }
-        else await Forget(db, record);
         await capture.CopyToAsync(original, CancellationToken.None);
     }
 
-    private static async Task Forget(IAppDbContext db, IdempotencyRecord record)
+    private static async Task<IDbContextTransaction?> BeginTransaction(IAppDbContext db, CancellationToken ct)
     {
-        try { db.IdempotencyRecords.Remove(record); await db.SaveChangesAsync(CancellationToken.None); } catch { /* it expires on its own */ }
+        var sqlite = db.Database.GetDbConnection() as SqliteConnection;
+        var previousTimeout = sqlite?.DefaultTimeout;
+        try
+        {
+            // SQLite takes its writer lock when the transaction begins, rather than at the unique-key insert.
+            if (sqlite is not null) sqlite.DefaultTimeout = 2;
+            return await db.Database.BeginTransactionAsync(ct);
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6) { return null; }
+        finally { if (sqlite is not null) sqlite.DefaultTimeout = previousTimeout!.Value; }
+    }
+
+    private static bool IsKeyContention(DbUpdateException ex) => ex.InnerException switch
+    {
+        PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable } => true,
+        PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_IdempotencyRecords_UserId_Key" } => true,
+        SqliteException { SqliteErrorCode: 5 or 6 } => true,
+        SqliteException { SqliteExtendedErrorCode: 2067 } sqlite when sqlite.Message.Contains("IdempotencyRecords.UserId", StringComparison.Ordinal) => true,
+        _ => false,
+    };
+
+    private static Task InProgress(HttpContext http)
+    {
+        http.Response.Headers.RetryAfter = "2";
+        return ErrorWriter.WriteAsync(http, 409, "The first request with this Idempotency-Key is still being processed.",
+            [new ApiError("IDEMPOTENCY_IN_PROGRESS", "The first request with this Idempotency-Key is still being processed.")]);
+    }
+
+    private static async Task Replay(HttpContext http, IdempotencyRecord existing, string hash)
+    {
+        if (existing.RequestHash != hash)
+        {
+            await ErrorWriter.WriteAsync(http, 422, "This Idempotency-Key was already used for a different request.",
+                [new ApiError("IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used for a different request.")]);
+            return;
+        }
+        if (!existing.Completed) { await InProgress(http); return; }
+        if (existing.ResponseStatus == 0)
+        {
+            await ErrorWriter.WriteAsync(http, 409, "The write completed, but its response was too large to replay. Read the resource to check its result.",
+                [new ApiError("IDEMPOTENCY_RESPONSE_UNAVAILABLE", "The write completed. Read the resource to check its result; do not repeat it with a new key.")]);
+            return;
+        }
+        http.Response.StatusCode = existing.ResponseStatus;
+        http.Response.Headers["Idempotent-Replayed"] = "true";
+        if (existing.ContentType is not null) http.Response.ContentType = existing.ContentType;
+        if (existing.ResponseBody is { } body)
+        {
+            if (body.StartsWith("base64:", StringComparison.Ordinal))
+                await http.Response.Body.WriteAsync(Convert.FromBase64String(body[7..]), http.RequestAborted);
+            else await http.Response.WriteAsync(body, http.RequestAborted); // receipts from before this change
+        }
     }
 }
