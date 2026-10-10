@@ -13,7 +13,8 @@ export interface AiUsage {
 export interface AiConversation { id: string; title: string; lastMessageAt: string; isPinned: boolean }
 export interface AiToolUse { name: string; label: string; count: number | null }
 export interface AiAttachment { id: string; name: string; contentType: string; sizeBytes: number; isImage: boolean }
-export interface AiAction { id: string; kind: string; title: string; summary: string; status: 'proposed' | 'running' | 'done' | 'failed' | 'dismissed'; link: string | null; error: string | null; preview: string | null }
+export interface AiAction {
+  lifecycle?: { planId: string; version: number; dependsOn: string[]; expiresAt: string } | null; id: string; kind: string; title: string; summary: string; status: 'proposed' | 'running' | 'done' | 'failed' | 'dismissed'; link: string | null; error: string | null; preview: string | null }
 export interface AiMessage {
   id: string; role: 'user' | 'assistant'; content: string; reasoning: string | null; tier: AiTier | null; model: string | null; routeReason: string | null;
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
@@ -76,6 +77,7 @@ export const aiWorkspaceApi = {
   conversation: (id: string) => get<AiConversationDetail>(`/ai/conversations/${id}`),
   update: (id: string, body: { title?: string; pinned?: boolean }) => patch<AiConversation>(`/ai/conversations/${id}`, body),
   remove: (id: string) => del(`/ai/conversations/${id}`),
+  reconcile: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/reconcile`),
   confirm: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/confirm`),
   dismiss: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/dismiss`),
   upload: (file: File) => uploadFile<AiAttachment>('/ai/files', file),

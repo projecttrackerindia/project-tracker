@@ -11,7 +11,7 @@ namespace ProjectManagement.Application.Features.Ai;
 /// <summary>Recognizes a few exact commands. It never writes data: all resulting calls use the normal tools and confirmation flow.</summary>
 public sealed record AiFastReminder(string? Tool, string? Input, string? Reply)
 {
-    private static readonly Regex Create = new(@"^(?:create|set|add) reminder (?:for|at) (?<time>\d{1,2}:\d{2}) (?:as|called|named) (?<title>[^\r\n]{2,200})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex Create = new(@"^(?:create|set|add) reminder (?:for|at) (?:(?<day>today|tomorrow) (?:at )?)?(?<time>\d{1,2}:\d{2}) (?:as|called|named) (?<title>[^\r\n]{2,200})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     private static readonly Regex Revise = new(@"^(?:change|move|reschedule) (?:it|that) (?:to|at) (?<time>\d{1,2}:\d{2})[.!?]*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -26,6 +26,7 @@ public sealed record AiFastReminder(string? Tool, string? Input, string? Reply)
         string tool; object input;
         if (create.Success)
         {
+            if (create.Groups["day"].Value.Equals("tomorrow", StringComparison.OrdinalIgnoreCase)) day = day.AddDays(1);
             var local = ZoneTime.At(day, time);
             if (ZoneTime.ToUtc(local, zone) <= clock.Now)
                 return new(null, null, $"{time:HH:mm} has already passed today in {zone.Id}. Which date should I use for this reminder?");

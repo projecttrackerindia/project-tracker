@@ -124,9 +124,10 @@ export function AiPage() {
     if (streaming) return;
     const q = raw.trim();
     const approving = /^(yes(?:[,!]?(?:\s+(?:please|send(?:\s+it)?|go ahead|confirm))*)?|confirm(?:\s+(?:it|sending the message|sending|send))?|send it|go ahead(?:\s+and send(?:\s+it)?)?)[.!]*$/i.test(q);
+    const cancelling = /^(?:cancel (?:it|that|sending the message)|not now|dismiss)[.!]*$/i.test(q);
     const latestAnswer = [...messages].reverse().find((m) => m.role === 'assistant');
     const pending = latestAnswer?.actions.filter((a) => a.status === 'proposed') ?? [];
-    const confirmation = approving && latestAnswer && pending.length === 1 && ['send_message', 'send_report'].includes(pending[0].kind)
+    const confirmation = (approving || cancelling) && latestAnswer && pending.length === 1
       ? { messageId: latestAnswer.id, actionId: pending[0].id, kind: pending[0].kind } : undefined;
     const ready = files.filter((f) => f.status === 'ready' && f.attachment);
     if (!q && ready.length === 0) return;
@@ -247,14 +248,14 @@ export function AiPage() {
       return saved ? { ...x, actions: saved.actions } : x;
     }))).catch(() => undefined);
   };
-  const act = async (m: AiMessage, a: AiAction, kind: 'confirm' | 'dismiss') => {
+  const act = async (m: AiMessage, a: AiAction, kind: 'confirm' | 'dismiss' | 'reconcile') => {
     if (actionLock.current) return;
     actionLock.current = true;
     setBusyAction(a.id);
     try {
-      const res = await (kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
+      const res = await (kind === 'reconcile' ? aiWorkspaceApi.reconcile(m.id, a.id) : kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
       setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y) => (y.id === a.id ? res : y)) } : x)));
-      if (kind === 'confirm') {
+      if (kind !== 'dismiss') {
         toast(res.status === 'done' ? 'Done.' : res.error ?? 'That could not be done.', res.status === 'done' ? 'success' : 'error');
         if (res.status === 'done') void invalidateWorkspace(wid);
         refreshActionStates();
@@ -346,7 +347,7 @@ export function AiPage() {
             <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
               {messages.map((m, i) => (
                 <MessageView key={m.id} m={m} busyAction={busyAction} canEmail={canAct && !streaming} canRegenerate={!streaming && i === lastAssistantIndex}
-                  onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
+                  onReconcile={(a) => void act(m, a, 'reconcile')} onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
                   onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')}
                   onFollowUp={(t) => void send(t)} onConfirmAll={() => void confirmAll(m)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
               ))}

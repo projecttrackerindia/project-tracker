@@ -545,7 +545,8 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         var (biz, brd) = await Org("BUSINESS");
         var member = await biz.AddMemberAsync(factory, TenantRole.Member, "Mia Member");
         var doc = await Make(biz, brd, "Audited", null, "Organization");
-        Assert.True((await Write(biz, doc, "secret=1234")).Ok);
+        const string privateContent = "audit-private-content-canary";
+        Assert.True((await Write(biz, doc, "secret=" + privateContent)).Ok);
 
         Assert.Contains((await member.Get($"/api/v1/documents/{doc}/activity")).Data!.AsArray(), a => S(a!["action"]) == "document.created");   // the document's own activity is open to readers
         Assert.Equal(HttpStatusCode.Forbidden, (await member.Get($"/api/v1/documents/{doc}/audit")).Status);                                      // the trail needs the audit permission
@@ -553,7 +554,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         Assert.True(trail.Ok, trail.ToString());
         var actions = trail.Data!["items"]!.AsArray().Select(i => S(i!["action"])).ToList();
         Assert.Contains("document.created", actions); Assert.Contains("document.edited", actions);
-        Assert.DoesNotContain("1234", trail.Data.ToJsonString());                                                                                // content never goes into the trail
+        Assert.DoesNotContain(privateContent, trail.Data.ToJsonString());                                                                                // content never goes into the trail
         Assert.Contains("document.audit_viewed", (await biz.Get($"/api/v1/documents/{doc}/audit")).Data!["items"]!.AsArray().Select(i => S(i!["action"])));
 
         var csv = await biz.Raw($"/api/v1/documents/{doc}/audit/export");

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -35,7 +36,9 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
 
     public async IAsyncEnumerable<AiChatEvent> StreamAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
+        var queueTimer = Stopwatch.StartNew();
         using var lease = await oneShot.Gate.EnterAsync(ct);
+        var queueMs = queueTimer.Elapsed.TotalMilliseconds;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(F.TimeoutSeconds, 1, 600)));
         if (request.Turns.SelectMany(t => t.Blocks).Any(b => b is AiPdf || b is AiImage && !F.SupportsImages))
@@ -51,7 +54,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             { throw new AppException(504, "AI_TIMEOUT", "The local model exceeded its response deadline. Try a narrower question."); }
             if (!more) yield break;
-            yield return events.Current;
+            yield return events.Current is AiTurnEnd end ? end with { Runtime = end.Runtime is { } runtime ? runtime with { QueueMs = queueMs } : new AiRuntimeTiming(null, null, null, null, null, queueMs) } : events.Current;
         }
     }
 
@@ -148,6 +151,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         int input = 0, output = 0;
         var sawAnyChunk = false;
         var finished = false;
+        AiRuntimeTiming? runtime = null;
 
         await using var stream = await res.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
@@ -182,6 +186,9 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
             if (json?["done"]?.GetValue<bool>() == true)
             {
                 finished = true;
+                double? Milliseconds(string key) => json[key] is JsonValue value && value.TryGetValue<long>(out var ns) && ns >= 0 ? ns / 1_000_000d : null;
+                runtime = new AiRuntimeTiming(Milliseconds("load_duration"), Milliseconds("prompt_eval_duration"), Milliseconds("eval_duration"), Milliseconds("total_duration"),
+                    json["prompt_eval_cached_count"] is JsonValue cached && cached.TryGetValue<int>(out var cachedCount) && cachedCount >= 0 ? cachedCount : null);
                 input = json["prompt_eval_count"]?.GetValue<int>() ?? input;
                 output = json["eval_count"]?.GetValue<int>() ?? output;
                 stop = json["done_reason"]?.GetValue<string>() switch { "length" => "max_tokens", _ => "end_turn" };
@@ -193,7 +200,7 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         if (textAcc.Length > 0) assistant.Insert(0, new AiText(textAcc.ToString()));
         if (assistant.OfType<AiToolUse>().Any()) stop = "tool_use";
         log.LogDebug("{Name} turn on {Model} (native): {Stop}, {In} in / {Out} out", oneShot.Name, request.Model, stop, input, output);
-        yield return new AiTurnEnd(assistant, stop, input, output, Model: oneShot.Model, Provider: oneShot.Name);
+        yield return new AiTurnEnd(assistant, stop, input, output, Model: oneShot.Model, Provider: oneShot.Name, Runtime: runtime);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)

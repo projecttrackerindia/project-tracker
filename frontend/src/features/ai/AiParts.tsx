@@ -107,8 +107,15 @@ export function ToolChips({ tools }: { tools: (AiToolUse & { state?: 'running' |
 }
 
 /** A change the assistant proposed. Nothing happens until Confirm. */
-export function ActionCard({ action, onConfirm, onDismiss, busy }: { action: AiAction; onConfirm: () => void; onDismiss: () => void; busy: boolean }) {
+export function ActionCard({ action, onConfirm, onDismiss, onReconcile, busy, blocked = false }: { action: AiAction; onConfirm: () => void; onDismiss: () => void; onReconcile?: () => void; busy: boolean; blocked?: boolean }) {
   const nav = useNavigate();
+  const expiresAt = action.lifecycle?.expiresAt;
+  const [expired, setExpired] = useState(() => !!expiresAt && Date.parse(expiresAt) <= Date.now());
+  useEffect(() => {
+    if (action.status !== 'proposed' || !expiresAt) return;
+    const timeout = window.setTimeout(() => setExpired(true), Math.max(0, Date.parse(expiresAt) - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [action.status, expiresAt]);
   const icon: IconName = action.kind === 'send_report' ? 'mail' : action.kind === 'reminder' ? 'alarm' : 'plus';
   return (
     <div className={`ai-action ${action.status}`}>
@@ -118,7 +125,7 @@ export function ActionCard({ action, onConfirm, onDismiss, busy }: { action: AiA
         <span>{action.summary}</span>
         {action.status === 'failed' && <span className="ai-action-error">{action.error}</span>}
         {action.preview && (
-          <details className="ai-action-preview">
+          <details className="ai-action-preview" open={action.kind === 'send_message'}>
             <summary>{action.kind === 'send_report' ? 'Read the report before it is sent' : 'Details'}</summary>
             <Markdown text={action.preview} />
           </details>
@@ -126,13 +133,15 @@ export function ActionCard({ action, onConfirm, onDismiss, busy }: { action: AiA
       </div>
       <div className="ai-action-side">
         {action.status === 'proposed' && <>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={onConfirm}>Confirm</button>
+          {expired && <span className="ai-action-state">Expired. Request a new proposal.</span>}
+          {!expired && blocked && <span className="ai-action-state">Complete the prerequisite suggestion first.</span>}
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!expired || blocked} onClick={onConfirm}>Confirm</button>
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onDismiss}>Not now</button>
         </>}
-        {action.status === 'running' && <span className="ai-action-state"><span className="spinner" /> Working…</span>}
+        {action.status === 'running' && <><span className="ai-action-state"><span className="spinner" /> Working…</span>{action.kind === 'send_message' && onReconcile && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onReconcile}>Check saved result</button>}</>}
         {action.status === 'done' && <span className="ai-action-state ok"><Icon name="checkCircle" size={14} /> Done{action.link && <button type="button" className="link-btn" onClick={() => nav(action.link!)}>Open</button>}</span>}
         {action.status === 'dismissed' && <span className="ai-action-state">Dismissed</span>}
-        {action.status === 'failed' && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onConfirm}>Try again</button>}
+        {action.status === 'failed' && <><span className="ai-action-state">Check the application before making a new proposal.</span>{action.kind === 'send_message' && onReconcile && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onReconcile}>Check saved result</button>}</>}
       </div>
     </div>
   );
@@ -180,8 +189,8 @@ function Feedback({ m, onFeedback }: { m: AiMessage; onFeedback: (rating: 'up' |
   );
 }
 
-export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, onConfirmAll, busyAction, canEmail, canRegenerate }: {
-  m: AiMessage; onConfirm: (a: AiAction) => void; onDismiss: (a: AiAction) => void; onCopy: () => void; onDownload: () => void;
+export function MessageView({ m, onConfirm, onDismiss, onReconcile, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, onConfirmAll, busyAction, canEmail, canRegenerate }: {
+  m: AiMessage; onReconcile?: (a: AiAction) => void; onConfirm: (a: AiAction) => void; onDismiss: (a: AiAction) => void; onCopy: () => void; onDownload: () => void;
   onRegenerate?: () => void; onEmail?: () => void; onFollowUp?: (text: string) => void; onConfirmAll?: () => void; onFeedback?: (rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => void;
   busyAction: string | null; canEmail: boolean; canRegenerate: boolean;
 }) {
@@ -216,7 +225,7 @@ export function MessageView({ m, onConfirm, onDismiss, onCopy, onDownload, onReg
           <div className="ai-plan"><span>{m.actions.filter((a) => a.status === 'proposed').length} changes are ready</span>
             <button type="button" className="btn btn-primary btn-sm" disabled={busyAction !== null} onClick={onConfirmAll}>{busyAction === 'all' ? 'Working…' : 'Confirm all in order'}</button></div>
         )}
-        {m.actions.map((a) => <ActionCard key={a.id} action={a} busy={busyAction === a.id} onConfirm={() => onConfirm(a)} onDismiss={() => onDismiss(a)} />)}
+        {m.actions.map((a) => <ActionCard key={a.id} action={a} busy={busyAction === a.id} blocked={a.lifecycle?.dependsOn.some((id) => m.actions.find((step) => step.id === id)?.status !== 'done')} onConfirm={() => onConfirm(a)} onDismiss={() => onDismiss(a)} onReconcile={onReconcile ? () => onReconcile(a) : undefined} />)}
         {!failed && m.content && (
           <div className="ai-foot">
             <button type="button" className="ai-foot-btn" onClick={onCopy}><Icon name="copy" size={13} /> Copy</button>

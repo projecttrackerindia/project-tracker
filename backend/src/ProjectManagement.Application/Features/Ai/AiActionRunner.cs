@@ -52,7 +52,19 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             throw new ConflictException("The original reminder is already being handled.", "AI_ACTION_HANDLED");
     }
 
-    public async Task<AiActionResult> RunAsync(AiProposal p, CancellationToken ct, Guid? executionId = null)
+    public async Task<AiActionResult?> VerifyMessageReceiptAsync(AiProposal action, Guid identity, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(action.PayloadJson);
+        var a = payload.RootElement;
+        var recipient = Guid(a, "recipientId"); var body = Str(a, "body");
+        if (recipient is null || body is null) return null;
+        var receipt = await db.ChatMessages.AsNoTracking().Where(m => m.Id == identity && m.SenderId == ctx.UserId && m.Body == body && m.DeletedAt == null
+            && db.ConversationMembers.Any(member => member.ConversationId == m.ConversationId && member.UserId == recipient))
+            .Select(m => new { m.Id, m.ConversationId }).SingleOrDefaultAsync(ct);
+        return receipt is null ? null : new AiActionResult($"/chat/{receipt.ConversationId}", receipt.Id);
+    }
+
+    public async Task<AiActionResult> RunAsync(AiProposal p, CancellationToken ct, Guid? executionId = null, IReadOnlyList<AiProposal>? plan = null)
     {
         using var doc = JsonDocument.Parse(p.PayloadJson);
         var a = doc.RootElement;
@@ -63,7 +75,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 var type = Enum.Parse<ProjectType>(Str(a, "projectType") ?? "NewProject", true);
                 var created = await projects.CreateAsync(new CreateProjectRequest(Str(a, "name")!, null, Str(a, "description"), Prio(a), null, Guid(a, "ownerId"), Guid(a, "teamId"), Date(a, "startDate"), Date(a, "dueDate"), null,
                     null, Guid(a, "projectGroupId"), type), ct);
-                return new AiActionResult($"/projects/{created.Project.Id}");
+                return new AiActionResult($"/projects/{created.Project.Id}", created.Project.Id);
             }
             case "invite_member":
             {
@@ -76,22 +88,22 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 return await UpdateProjectAsync(a, ct);
             case "create_task":
             {
-                var projectId = await ProjectIdAsync(a, ct);
+                var projectId = await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null);
                 decimal? hours = a.TryGetProperty("estimateHours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : null;
                 var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), Date(a, "startDate"), Date(a, "dueDate"), hours, null, null), ct);
                 if (Str(a, "comment") is { } first) await tasks.AddCommentAsync(t.Id, new CreateCommentRequest(first, null, null), ct);
-                return new AiActionResult($"/projects/{projectId}?task={t.Id}");
+                return new AiActionResult($"/projects/{projectId}?task={t.Id}", t.Id);
             }
             case "create_work":
             {
-                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId") ?? (Str(a, "projectName") is null ? null : await ProjectIdAsync(a, ct)), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate")), ct);
-                return new AiActionResult("/operations");
+                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId") ?? (Str(a, "projectName") is null ? null : await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null)), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate")), ct);
+                return new AiActionResult("/operations", w.Id);
             }
             case "create_action_item":
             {
-                var projectId = await ProjectIdAsync(a, ct);
-                await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
-                return new AiActionResult($"/projects/{projectId}");
+                var projectId = await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null);
+                var item = await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
+                return new AiActionResult($"/projects/{projectId}", item.Id);
             }
             case "update_reminder":
             {
@@ -108,9 +120,9 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             {
                 await ClaimOriginalReminderAsync(a, ct);
                 var target = Enum.TryParse<ReminderTarget>(Str(a, "targetType"), true, out var tt) ? tt : ReminderTarget.None;
-                await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, target, target == ReminderTarget.None ? null : Guid(a, "targetId"), Guid(a, "forUserId"),
+                var saved = await reminders.CreateAsync(new SaveReminderRequest(Str(a, "title"), null, target, target == ReminderTarget.None ? null : Guid(a, "targetId"), Guid(a, "forUserId"),
                     new ReminderWhen(Str(a, "at"), Str(a, "timeZone"), null, null, null), null, null), ct);
-                return new AiActionResult("/reminders");
+                return new AiActionResult("/reminders", saved.Id);
             }
             case "send_message":
             {
@@ -134,20 +146,20 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 var tags = a.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array
                     ? tagsEl.EnumerateArray().Select(t => t.GetString()!).ToList() : null;
                 var d = await documents.CreateAsync(new CreateDocumentRequest(Str(a, "title")!, Guid(a, "typeId")!.Value, Guid(a, "projectId"), Guid(a, "teamId"), null, tags, sections), ct);
-                return new AiActionResult($"/documents/{d.Item.Id}");
+                return new AiActionResult($"/documents/{d.Item.Id}", d.Item.Id);
             }
             case "start_meeting":
             {
                 var projectId = Guid(a, "projectId")!.Value;
                 var m = await meetings.StartNowAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.StartMeetingRequest(Str(a, "title"), Guids(a, "participantUserIds")), ct);
-                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}");
+                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
             }
             case "schedule_meeting":
             {
                 var projectId = Guid(a, "projectId")!.Value;
                 var m = await meetings.ScheduleAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.ScheduleMeetingRequest(
                     Str(a, "title")!, Str(a, "description"), DateTimeOffset.Parse(Str(a, "startTime")!), DateTimeOffset.Parse(Str(a, "endTime")!), Str(a, "timeZone") ?? "UTC", Guids(a, "participantUserIds")), ct);
-                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}");
+                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
             }
             default:
                 throw new ValidationException("action", "This kind of suggestion is not supported.");
@@ -155,9 +167,15 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
     }
 
     /// <summary>The project a proposal is for: the one it named, or (when it was proposed together with that project) the one with that name, which exists by now.</summary>
-    private async Task<Guid> ProjectIdAsync(JsonElement a, CancellationToken ct)
+    private async Task<Guid> ProjectIdAsync(JsonElement a, CancellationToken ct, IReadOnlyList<AiProposal>? dependencies = null)
     {
         if (Guid(a, "projectId") is { } id) return id;
+        if (dependencies is { Count: > 0 })
+        {
+            var created = dependencies.Where(step => step.Kind == "create_project" && step.Status == "done" && step.ResultId != null).ToList();
+            if (created.Count != 1) throw new ConflictException("The prerequisite project result could not be verified.", "AI_ACTION_DEPENDENCY");
+            return created[0].ResultId!.Value;
+        }
         var name = Str(a, "projectName") ?? throw new ValidationException("project", "Which project?");
         var found = await db.Projects.AsNoTracking().Where(p => p.Name.ToLower() == name.ToLower()).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
         return found ?? throw new ValidationException("project", $"The project “{name}” does not exist yet. Confirm its creation first.");
@@ -172,7 +190,10 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         await projects.UpdateAsync(id, new UpdateProjectRequest(Str(a, "name") ?? cur.Name, Str(a, "description") ?? cur.Description, priority ?? cur.Priority, status ?? cur.Status,
             Guid(a, "ownerId") ?? cur.Owner?.Id, cur.TeamId, Date(a, "startDate") ?? cur.StartDate, Date(a, "dueDate") ?? cur.DueDate, cur.Version, cur.EnforceDependencies, cur.ProjectGroupId,
             Str(a, "reason")), ct);
-        return new AiActionResult($"/projects/{id}");
+        var verified = await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id && p.Name == (Str(a, "name") ?? cur.Name)
+            && p.Priority == (priority ?? cur.Priority) && p.Status == (status ?? cur.Status), ct);
+        if (!verified) throw new ConflictException("The requested project result could not be verified. Check the project before retrying.", "AI_ACTION_UNVERIFIED");
+        return new AiActionResult($"/projects/{id}", id);
     }
 
     private async Task<AiActionResult> UpdateWorkAsync(JsonElement a, CancellationToken ct)
@@ -188,7 +209,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             var status = statusName is null ? cur.Status : Enum.Parse<ActionItemStatus>(statusName, true);
             await actionItems.UpdateAsync(projectId, id, new UpdateActionItemRequest(Str(a, "newTitle") ?? cur.Title, Str(a, "newDescription") ?? cur.Details,
                 unassign ? null : assigneeId ?? cur.Assignee?.Id, due ?? cur.DueDate, priority ?? cur.Priority, status), ct);
-            return new AiActionResult(ActionItemService.LinkOf(projectId, id));
+            return new AiActionResult(ActionItemService.LinkOf(projectId, id), id);
         }
         if (Str(a, "target") == "work")
         {
@@ -197,7 +218,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             await workTasks.UpdateAsync(id, new UpdateWorkTaskRequest(Str(a, "newTitle") ?? w.Title, Str(a, "newDescription") ?? w.Description, w.WorkTypeId, w.RelatedProject?.Id, unassign ? null : assigneeId ?? w.Assignee?.Id, priority ?? w.Priority,
                 status, Date(a, "startDate") ?? w.StartDate, due ?? w.DueDate, w.Version), ct);
             if (comment is not null) await workTasks.AddCommentAsync(id, new WorkCommentRequest(comment), ct);
-            return new AiActionResult($"/operations?task={id}");
+            return new AiActionResult($"/operations?task={id}", id);
         }
         var t = (await tasks.GetAsync(id, ct)).Task;
         var statusId = t.StatusId;
@@ -208,7 +229,11 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         await tasks.UpdateAsync(id, new UpdateTaskRequest(Str(a, "newTitle") ?? t.Title, Str(a, "newDescription") ?? t.Description, statusId, priority ?? t.Priority, unassign ? null : assigneeId ?? t.Assignee?.Id, Date(a, "startDate") ?? t.StartDate, due ?? t.DueDate,
             newHours ?? t.EstimatedHours, t.ActualHours, t.Labels.Select(l => l.Id).ToList(), t.Version, t.MilestoneId, t.StageId, Str(a, "reason")), ct);
         if (comment is not null) await tasks.AddCommentAsync(id, new CreateCommentRequest(comment, null, null), ct);
-        return new AiActionResult($"/projects/{t.ProjectId}?task={id}");
+        var wantedAssignee = unassign ? null : assigneeId ?? t.Assignee?.Id;
+        var verified = await db.Tasks.AsNoTracking().AnyAsync(saved => saved.Id == id && saved.AssigneeId == wantedAssignee
+            && saved.StatusId == statusId && saved.Title == (Str(a, "newTitle") ?? t.Title) && saved.Priority == (priority ?? t.Priority), ct);
+        if (!verified) throw new ConflictException("The requested task result could not be verified. Check the task before retrying.", "AI_ACTION_UNVERIFIED");
+        return new AiActionResult($"/projects/{t.ProjectId}?task={id}", id);
     }
 
     private async Task SendReportAsync(JsonElement a, CancellationToken ct)

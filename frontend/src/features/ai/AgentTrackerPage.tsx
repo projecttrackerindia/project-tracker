@@ -9,14 +9,17 @@ interface Trace {
   agent: string; version: string; correlationId: string; provider: string; model: string; startedAt: string;
   durationMs: number; contextMs: number; firstTokenMs: number | null; promptChars: number; toolDefinitions: number;
   outcome: string; errorCode: string | null; intent?: string | null; intentConfidence?: number | null; intentMs?: number | null;
-  models: { step: number; durationMs: number; inputTokens: number; outputTokens: number; stopReason: string }[];
+  preparation?: { durationMs: number } | null;
+  database?: { commands: number; durationMs: number; failedCommands: number } | null;
+  actions?: { id: string; kind: string; status: string; durationMs: number | null; confirmationWaitMs: number | null; attempts: number }[] | null;
+  models: { runtime?: { loadMs: number | null; promptEvalMs: number | null; generationMs: number | null; totalMs: number | null; queueMs?: number | null } | null; step: number; durationMs: number; inputTokens: number; outputTokens: number; stopReason: string }[];
   tools: { name: string; durationMs: number; succeeded: boolean; state: string }[];
 }
 interface Run { id: string; createdAt: string; status: string; inputTokens: number; outputTokens: number; feedback: string | null; trace: Trace }
 interface Tracker {
   agent: { id: string; name: string; version: string; enabled: boolean; provider: string; model: string; capabilities: string[]; maxToolCalls: number; timeoutSeconds: number };
   total: number; succeeded: number; failed: number; partial: number; awaitingConfirmation: number; averageMs: number; p95Ms: number;
-  inputTokens: number; outputTokens: number; sampleLimited: boolean; page: number; pageSize: number; runs: Run[];
+  p50Ms: number; modelCalls: number; databaseCommands: number; inputTokens: number; outputTokens: number; sampleLimited: boolean; page: number; pageSize: number; runs: Run[];
 }
 interface Health { configured: boolean; reachable: boolean; modelAvailable: boolean; provider: string; model: string; queueDepth: number; errorCode: string | null }
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -28,10 +31,11 @@ export function AgentTrackerPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [model, setModel] = useState('');
+  const [intent, setIntent] = useState('');
   const [days, setDays] = useState('7');
   const [from, setFrom] = useState(() => new Date(Date.now() - 7 * 86400000).toISOString());
   const [selected, setSelected] = useState<string | null>(null);
-  const q = useWsQuery(['ai', 'tracker', page, status, model, from], () => get<Tracker>('/ai/tracker', { page, status: status || undefined, model: model || undefined, from }), { enabled: authorized, staleTime: 15000 });
+  const q = useWsQuery(['ai', 'tracker', page, status, model, intent, from], () => get<Tracker>('/ai/tracker', { page, status: status || undefined, model: model || undefined, intent: intent || undefined, from }), { enabled: authorized, staleTime: 15000 });
   const toggle = useMutation({ mutationFn: (enabled: boolean) => put('/ai/tracker/agent', { enabled }), onSuccess: () => { q.refetch(); client.invalidateQueries({ predicate: (query) => query.queryKey.includes('ai') }); } });
   const health = useMutation({ mutationFn: () => get<Health>('/ai/tracker/health') });
   const d = q.data;
@@ -43,9 +47,10 @@ export function AgentTrackerPage() {
           <option value="1">Last day</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option>
         </select></label>
         <label>Outcome <select className="input" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          <option value="">All outcomes</option>{['succeeded', 'awaiting_confirmation', 'partial', 'failed', 'timeout', 'cancelled'].map((s) => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
+          <option value="">All outcomes</option>{['succeeded', 'awaiting_confirmation', 'partial', 'failed', 'timeout', 'cancelled', 'executing'].map((s) => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
         </select></label>
         <label>Model <input className="input" value={model} placeholder="Exact model name" onChange={(e) => { setModel(e.target.value); setPage(1); }} /></label>
+        <label>Intent <input className="input" value={intent} placeholder="Exact intent" onChange={(e) => { setIntent(e.target.value); setPage(1); }} /></label>
         <button className="btn" onClick={() => q.refetch()}>Refresh</button>
       </div>
       {q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <>
@@ -64,7 +69,7 @@ export function AgentTrackerPage() {
           <p className="muted">{d.agent.maxToolCalls} tool calls maximum · {d.agent.timeoutSeconds}s per model call. Health checks do not run inference.</p>
         </div></div>
         <div className="row" style={{ gap: 24, flexWrap: 'wrap', margin: '20px 0' }}>
-          {[['Runs', d.total], ['Succeeded', d.succeeded], ['Failed / timed out', d.failed], ['Partial', d.partial], ['Awaiting confirmation', d.awaitingConfirmation], ['Success rate', d.total ? `${Math.round(d.succeeded / d.total * 100)}%` : '—'], ['Average', seconds(d.averageMs)], ['p95', seconds(d.p95Ms)], ['Input tokens', d.inputTokens.toLocaleString()], ['Output tokens', d.outputTokens.toLocaleString()]].map(([label, value]) => <div key={label}><span className="muted">{label}</span><div><strong>{value}</strong></div></div>)}
+          {[['Runs', d.total], ['Succeeded', d.succeeded], ['Failed / timed out', d.failed], ['Partial', d.partial], ['Awaiting confirmation', d.awaitingConfirmation], ['Success rate', d.total ? `${Math.round(d.succeeded / d.total * 100)}%` : '—'], ['Average', seconds(d.averageMs)], ['p50', seconds(d.p50Ms)], ['p95', seconds(d.p95Ms)], ['Model calls', d.modelCalls], ['DB commands', d.databaseCommands], ['Input tokens', d.inputTokens.toLocaleString()], ['Output tokens', d.outputTokens.toLocaleString()]].map(([label, value]) => <div key={label}><span className="muted">{label}</span><div><strong>{value}</strong></div></div>)}
         </div>
         <p className="muted">Timing covers context preparation, model calls and tools. Tokens are reported by the provider; missing usage is recorded as zero. Hosting costs are excluded.</p>
         {d.sampleLimited && <p role="status">Metrics cover the latest 10,000 matching runs. Narrow the period for complete results.</p>}
@@ -88,7 +93,10 @@ function RunRow({ run: r, expanded, select }: { run: Run; expanded: boolean; sel
     {expanded && <tr><td colSpan={8}><div className="card-body">
       <p>{r.trace.intent && <>Intent: {r.trace.intent.replaceAll('_', ' ')} · Routing: {r.trace.intentMs ?? 0}ms · </>}Correlation: {r.trace.correlationId} · {r.trace.provider} · Context: {seconds(r.trace.contextMs)} · Prompt: {r.trace.promptChars.toLocaleString()} characters · {r.trace.toolDefinitions} available tools</p>
       {r.trace.errorCode && <p>Error: {r.trace.errorCode}</p>}
-      {r.trace.models.map((m, i) => <p key={i}>Model call {i + 1}: {seconds(m.durationMs)} · {m.inputTokens} input / {m.outputTokens} output tokens · {m.stopReason}</p>)}
+      {r.trace.preparation && <p>Request checks and setup: {seconds(r.trace.preparation.durationMs)}</p>}
+      {r.trace.database && <p>Database: {r.trace.database.commands} commands · {r.trace.database.durationMs.toFixed(1)}ms execution · {r.trace.database.failedCommands} failed</p>}
+      {r.trace.actions?.map((a) => <p key={a.id}>Action {a.kind}: {a.status} · {a.attempts} attempts · {a.durationMs === null ? '—' : seconds(a.durationMs)} execution · {a.confirmationWaitMs === null ? '—' : seconds(a.confirmationWaitMs)} awaiting approval</p>)}
+      {r.trace.models.map((m, i) => <p key={i}>Model call {i + 1}: {seconds(m.durationMs)} · {m.inputTokens} input / {m.outputTokens} output tokens · {m.stopReason}{m.runtime && <> · Queue {m.runtime.queueMs == null ? '—' : seconds(m.runtime.queueMs)} · Load {m.runtime.loadMs === null ? '—' : seconds(m.runtime.loadMs)} · Prompt {m.runtime.promptEvalMs === null ? '—' : seconds(m.runtime.promptEvalMs)} · Generation {m.runtime.generationMs === null ? '—' : seconds(m.runtime.generationMs)}</>}</p>)}
       {r.trace.tools.map((t, i) => <p key={i}>{t.name}: {seconds(t.durationMs)} · {t.succeeded ? t.state.replaceAll('_', ' ') : 'failed'}</p>)}
       {r.trace.tools.length === 0 && <p className="muted">No tool calls.</p>}
     </div></td></tr>}

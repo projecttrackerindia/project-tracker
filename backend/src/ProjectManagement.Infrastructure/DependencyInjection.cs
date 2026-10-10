@@ -38,8 +38,10 @@ public static class DependencyInjection
         var connection = config.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
 
-        services.AddDbContext<AppDbContext>(o =>
+        services.AddScoped<AiDatabaseCommandInterceptor>();
+        services.AddDbContext<AppDbContext>((sp, o) =>
         {
+            o.AddInterceptors(sp.GetRequiredService<AiDatabaseCommandInterceptor>());
             if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)) o.UseSqlite(connection);
             else o.UseNpgsql(connection);
         });
