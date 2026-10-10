@@ -3,6 +3,17 @@ namespace ProjectManagement.Tests;
 public sealed class AiIntentMatchingTests
 {
     [Theory]
+    [InlineData("hey hi")]
+    [InlineData("Hi, hello!")]
+    [InlineData("hey hi how are you?")]
+    public void Compound_greetings_do_not_require_inference(string text) => Assert.True(AiToolbox.IsGreeting(text));
+
+    [Theory]
+    [InlineData("hi, show overdue tasks")]
+    [InlineData("hey assign this to Siva")]
+    [InlineData("thanks for creating the project")]
+    public void Business_requests_are_not_swallowed_by_greeting_matching(string text) => Assert.False(AiToolbox.IsGreeting(text));
+    [Theory]
     [InlineData("sivareddy")]
     [InlineData("SIVA-REDDY")]
     [InlineData("sivaredy")]

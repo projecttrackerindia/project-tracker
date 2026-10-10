@@ -51,6 +51,19 @@ export function AiPage() {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+      setCooldownSeconds(remaining);
+      if (remaining === 0) setCooldownUntil(0);
+    };
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownUntil]);
   const [railOpen, setRailOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const actionLock = useRef(false);
@@ -83,7 +96,7 @@ export function AiPage() {
   // a different workspace has different conversations
   const lastWid = useRef(wid);
   useEffect(() => {
-    if (lastWid.current !== wid) { lastWid.current = wid; abort.current?.abort(); setMessages([]); setLive(null); setConvId(null); nav('/ai', { replace: true }); }
+    if (lastWid.current !== wid) { lastWid.current = wid; abort.current?.abort(); setMessages([]); setLive(null); setConvId(null); setCooldownUntil(0); setCooldownSeconds(0); nav('/ai', { replace: true }); }
   }, [wid, nav]);
 
   useEffect(() => () => { abort.current?.abort(); filesRef.current.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl)); }, []);
@@ -121,7 +134,7 @@ export function AiPage() {
 
   // ---- asking
   const send = async (raw: string, over?: { mode?: AiMode }) => {
-    if (streaming) return;
+    if (streaming || abort.current || Date.now() < cooldownUntil) return;
     const q = raw.trim();
     const approving = /^(yes(?:[,!]?(?:\s+(?:please|send(?:\s+it)?|go ahead|confirm))*)?|confirm(?:\s+(?:it|sending the message|sending|send))?|send it|go ahead(?:\s+and send(?:\s+it)?)?)[.!]*$/i.test(q);
     const cancelling = /^(?:cancel (?:it|that|sending the message)|not now|dismiss)[.!]*$/i.test(q);
@@ -191,6 +204,10 @@ export function AiPage() {
           setMessages((m) => m.filter((x) => x.id !== localId));
           setText(raw); setFiles(snapshot);
           setError(e.message);
+          if (e.status === 429 && e.retryAfterSeconds) {
+            setCooldownSeconds(e.retryAfterSeconds);
+            setCooldownUntil(Date.now() + e.retryAfterSeconds * 1000);
+          }
           run.finished = true; setLive(null);
         } else run.failure = { code: 'AI_FAILED', message: 'The connection was interrupted. Try again.' };
       }
@@ -339,6 +356,9 @@ export function AiPage() {
           </div>
           <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
           <CreditMeter usage={usage} />
+          {usage?.requestLimits && <span className="muted" style={{ fontSize: 12 }}>
+            Per person: {usage.requestLimits.perMinute}/min · {usage.requestLimits.perHour}/hour · {usage.requestLimits.perDay}/day
+          </span>}
         </header>
 
         <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
@@ -359,7 +379,7 @@ export function AiPage() {
 
         {error && <div className="ai-banner" role="alert"><Icon name="alert" size={15} /><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError(null)}><Icon name="close" size={13} /></button></div>}
         <Composer value={text} onChange={setText} onSend={sendFromBox} onStop={stop} onFiles={addFiles} onRemoveFile={removeFile} files={files} streaming={streaming}
-          canAttach={canAttach} usage={usage} mode={mode} disabledReason={outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null} />
+          canAttach={canAttach} usage={usage} mode={mode} disabledReason={cooldownSeconds > 0 ? `Please wait ${cooldownSeconds} seconds before asking again.` : outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null} />
         {dragging && <DropOverlay />}
       </section>
     </div>

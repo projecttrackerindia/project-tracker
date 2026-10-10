@@ -12,6 +12,7 @@ export class ApiError extends Error {
   code: string;
   errors: ApiErrorItem[];
   traceId?: string;
+  retryAfterSeconds?: number;
   constructor(status: number, message: string, errors: ApiErrorItem[], traceId?: string) {
     super(message);
     this.status = status;
@@ -48,7 +49,10 @@ async function parse(res: Response): Promise<{ data: unknown; error?: ApiError }
   try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
   if (res.ok) return { data: json && 'data' in json ? json.data : json };
   const errors: ApiErrorItem[] = json?.errors?.length ? json.errors : [{ code: `HTTP_${res.status}`, message: json?.message ?? res.statusText }];
-  return { data: null, error: new ApiError(res.status, json?.message ?? errors[0].message, errors, json?.traceId) };
+  const error = new ApiError(res.status, json?.message ?? errors[0].message, errors, json?.traceId);
+  const retry = Number(res.headers.get('Retry-After'));
+  if (Number.isFinite(retry) && retry > 0) error.retryAfterSeconds = retry;
+  return { data: null, error };
 }
 
 // One in-flight refresh shared by every caller (page bootstrap, parallel 401s, React StrictMode double-invoke).

@@ -16,6 +16,17 @@ async function setup() {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.clearAllMocks(); });
 
+describe('AI request limits', () => {
+  it('preserves the retry delay without automatically resubmitting a limited request', async () => {
+    const { client } = await setup();
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ errors: [{ code: 'AI_MINUTE_LIMIT', message: 'Wait before asking again.' }] }),
+      { status: 429, headers: { 'Retry-After': '23' } }));
+    vi.stubGlobal('fetch', fetch);
+    await expect(client.streamPost('/ai/ask', { text: 'hello' })).rejects.toMatchObject({ status: 429, code: 'AI_MINUTE_LIMIT', retryAfterSeconds: 23 });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
 describe('protected downloads', () => {
   it.each(['/billing/invoices/one/pdf', '/reports/exports/one/file', '/attachments/one/download', '/documents/one/files/two/download'])(
     'refreshes and retries an expired session for %s', async (path) => {

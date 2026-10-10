@@ -69,7 +69,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     // ------------------------------------------------------------------ what the model is told it can use
 
-    public static bool IsGreeting(string text) => System.Text.RegularExpressions.Regex.IsMatch(text.Trim(), @"^(hi|hello|hey|thanks|thank you|how are you)[\s.!?]*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    public static bool IsGreeting(string text) => System.Text.RegularExpressions.Regex.IsMatch(text.Trim(),
+        @"^(?:hi|hello|hey|thanks|thank you|how are you)(?:[\s,.!?]+(?:hi|hello|hey|thanks|thank you|how are you))*[\s,.!?]*$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     public IReadOnlyList<AiToolDef> DefinitionsFor(string text, bool actionsAllowed)
     {

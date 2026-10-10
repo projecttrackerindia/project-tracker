@@ -35,6 +35,7 @@ public static class DependencyInjection
 
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiDatabaseTelemetry>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiCommandPlanner>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiRequestLimitService>();
         services.AddScoped<AppClock>();
         services.AddScoped<Recorder>();
         services.AddScoped<PermissionService>();

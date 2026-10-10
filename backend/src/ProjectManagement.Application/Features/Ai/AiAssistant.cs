@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Distributed;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
@@ -27,7 +26,7 @@ public class AiOptions
     public string Model { get; set; } = "claude-sonnet-5-5";
     public string BaseUrl { get; set; } = "https://api.anthropic.com";
     public int MaxTokens { get; set; } = 2000;
-    /// <summary>Requests per person per hour.</summary>
+    /// <summary>Legacy setting retained for configuration compatibility. Use Ai:RateLimits:{Free|Pro|Business|Enterprise}:PerHour.</summary>
     public int HourlyLimit { get; set; } = 60;
     /// <summary>A second model, asked when Claude cannot answer (out of credit, key refused, busy) or on its own without an Anthropic key.</summary>
     public AiFallbackOptions Fallback { get; set; } = new();
@@ -135,7 +134,7 @@ public record AiNotesDto(IReadOnlyList<AiActionItemDto> Items);
 /// is configured, when the plan does not include it, or when the workspace has switched it off. Each person has an hourly allowance.
 /// </summary>
 public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiClient ai, EntitlementService entitlements,
-    IDistributedCache cache, Microsoft.Extensions.Options.IOptions<AiOptions> options, ProjectStatusService status, WorkItemService workItems,
+    ProjectStatusService status, WorkItemService workItems,
     PermissionService permissions, ProjectAccess access)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -155,11 +154,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var tid = ctx.RequireTenantId();
         if (await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct))
             throw new ForbiddenException("The AI assistant is switched off for this workspace.", "AI_DISABLED");
-        var uid = ctx.RequireUserId();
-        var key = $"ai:{uid:N}:{clock.Now:yyyyMMddHH}";
-        var used = int.TryParse(await cache.GetStringAsync(key, ct), out var n) ? n : 0;
-        if (used >= options.Value.HourlyLimit) throw new ConflictException("You have used the assistant a lot in the last hour. Try again later.", "AI_LIMIT");
-        await cache.SetStringAsync(key, (used + 1).ToString(), new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) }, ct);
+        // Atomic plan-based admission is held by AiRequestLimitAttribute for the entire HTTP request.
     }
 
     /// <summary>
