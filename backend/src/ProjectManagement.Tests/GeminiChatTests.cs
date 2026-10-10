@@ -75,7 +75,14 @@ public class GeminiChatTests
         await foreach (var e in Router(o, cloud, local).StreamAsync(Ask(), default)) events.Add(e);
         Assert.Equal("Local answer", string.Concat(events.OfType<AiTextDelta>().Select(t => t.Text)));
         Assert.Equal(1, cloud.Calls); Assert.Equal(1, local.Calls);
-        Assert.Equal("backup-model", Assert.Single(events.OfType<AiTurnEnd>()).Model);
+        var end = Assert.Single(events.OfType<AiTurnEnd>());
+        Assert.Equal("backup-model", end.Model);
+        Assert.Single(end.Assistant.OfType<AiLocalFallback>());
+        // A continuation stays local and does not re-dispatch to the cloud after a fallback tool turn.
+        var continuation = Ask([AiTurn.User("explain"), new("assistant", end.Assistant),
+            new("assistant", [new AiToolUse("one", "read", "{}")]), new("user", [new AiToolResult("one", "[]")])]);
+        await foreach (var e in Router(o, cloud, local).StreamAsync(continuation, default)) { }
+        Assert.Equal(1, cloud.Calls); Assert.Equal(2, local.Calls);
     }
 
     [Theory]

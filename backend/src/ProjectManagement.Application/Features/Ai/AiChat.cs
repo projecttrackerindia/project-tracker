@@ -4,6 +4,8 @@ namespace ProjectManagement.Application.Features.Ai;
 // works in these types; the one class that talks to Claude (in Infrastructure) turns them into API calls and back.
 
 public abstract record AiBlock;
+/// <summary>Internal routing marker: continue a local fallback's tool loop on the same provider. Never sent on the wire.</summary>
+public sealed record AiLocalFallback : AiBlock;
 /// <summary>Opaque Gemini response part, retained unchanged across tool rounds, including signatures.</summary>
 public sealed record AiGeminiPart(string Json) : AiBlock;
 public sealed record AiText(string Text) : AiBlock;

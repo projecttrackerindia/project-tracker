@@ -398,6 +398,12 @@ public sealed class AiChatRouter(AnthropicChat claude, OpenAiCompatibleChat back
         if (!Configured) throw new ConflictException("The AI assistant is not set up on this installation.", "AI_NOT_CONFIGURED");
         if (backup.Settings.UsesGemini)
         {
+            if (request.Turns.SelectMany(t => t.Blocks).Any(b => b is AiLocalFallback))
+            {
+                await foreach (var e in backup.StreamAsync(request, ct))
+                    yield return e is AiTurnEnd end ? end with { Assistant = [.. end.Assistant, new AiLocalFallback()] } : e;
+                yield break;
+            }
             // Switching after any provider output or tool history could lose signatures or replay actions.
             var safe = !request.Turns.SelectMany(t => t.Blocks).Any(b => b is AiGeminiPart or AiToolUse or AiToolResult);
             await using var events = gemini!.StreamAsync(request, ct).GetAsyncEnumerator(ct);
@@ -409,7 +415,8 @@ public sealed class AiChatRouter(AnthropicChat claude, OpenAiCompatibleChat back
             if (failed)
             {
                 log.LogWarning("Gemini unavailable before response; attempting bounded local backup");
-                await foreach (var e in backup.StreamAsync(request, ct)) yield return e;
+                await foreach (var e in backup.StreamAsync(request, ct))
+                    yield return e is AiTurnEnd end ? end with { Assistant = [.. end.Assistant, new AiLocalFallback()] } : e;
             }
             else
                 while (more) { yield return events.Current; more = await events.MoveNextAsync(); }
