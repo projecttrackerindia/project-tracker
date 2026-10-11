@@ -55,3 +55,13 @@ Support ticket customFields are a staff-only string map (up to 20 entries, non-e
 
 ## Google connection safety
 Google connect still returns {url}, and now sets a Secure, HttpOnly, SameSite=Lax ten-minute browser-proof cookie scoped to its callback. Callback requires both this cookie and an unexpired, unconsumed state; only one concurrent callback can redeem an attempt. The current active workspace membership is rechecked before token exchange and before connection persistence. Google status includes calendarAccess; partial grants cannot be used for Calendar writes. Reconnect updates the existing tenant/user connection.
+
+## Personal email
+All routes below require the authenticated owner in the active workspace; another member, administrator or tenant receives 404 for a draft ID.
+- GET /api/v1/me/email-drafts/options: AI availability, centrally configured Quick credit cost and 6,000-character AI input bound.
+- GET /api/v1/me/email-drafts: at most 100 metadata summaries; body is omitted as an empty string. GET /{id} retrieves one saved message.
+- POST /api/v1/me/email-drafts and PUT /{id}: recipient, subject, body; updates require the exact version. One bare recipient only, subject 1-200 characters without controls, body 1-20,000 characters.
+- POST /{id}/improve: operationId, version, style (concise/formal/friendly), confirmed=true. Reserves shared credits, validates the response, atomically saves an unsent draft and settles credits. Invalid results release the reservation; replay does not invoke the model again.
+- POST /{id}/send: exact version, confirmed=true, senderEmail matching the connected identity. Requires deployment gate and granted gmail.send permission. Returns accepted with providerMessageId, or unknown without one; accepted means provider acceptance, not recipient delivery.
+- DELETE /{id}: removes an unsent draft or erases accepted message content. Sending/unknown receipts cannot be removed through this endpoint.
+- GET /api/v1/integrations/google/connect?mail=true requests optional send-only consent plus sender identity. Existing calendar-only connection requests do not request mail permission. Provider cumulative grants are reported separately.

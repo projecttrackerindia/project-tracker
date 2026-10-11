@@ -24,10 +24,11 @@ public class GoogleCalendarOptions
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
+    public bool MailEnabled {get;set;} // Explicit deployment gate; default off.
     public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret) && !string.IsNullOrWhiteSpace(RedirectUri);
 }
 
-public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false);
+public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false,bool MailEnabled=false,bool MailSendAccess=false);
 
 /// <summary>
 /// Connecting a person's own Google account (Settings &gt; Integrations &gt; Google Workspace), and keeping a usable access token for it.
@@ -46,7 +47,8 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     /// <summary>calendar.events: create/update/cancel events and invite attendees. meetings.space.created: give the event a Meet conference.
     /// userinfo.email: the one thing shown back to the person in Settings ("Connected account: name@work.com") - without it, the userinfo
     /// endpoint FetchEmailAsync calls returns no email field at all, and the connection would show no address, not an error. Deliberately
-    /// not the broader "calendar" scope (full read/write of every calendar), "profile", or anything touching Drive/Gmail.</summary>
+    /// not the broader "calendar" scope (full read/write of every calendar), "profile", or anything touching Drive. Optional Gmail sending is requested separately.</summary>
+    public const string MailScope="https://www.googleapis.com/auth/gmail.send";
     public const string Scopes = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created https://www.googleapis.com/auth/userinfo.email";
 
     private static string Hash(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
@@ -58,13 +60,14 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     {
         var uid = ctx.RequireUserId();
         var c = await db.GoogleConnections.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == uid, ct);
-        return c is null ? new GoogleConnectionStatusDto(false, null, null, null) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes));
+        return c is null ? new GoogleConnectionStatusDto(false, null, null, null,false,_o.MailEnabled&&Configured,false) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes),_o.MailEnabled&&Configured,c.Scopes.Split((char)32).Contains(MailScope));
     }
 
     /// <summary>Where to send the browser so the person can grant Project Tracker Calendar/Meet access.</summary>
-    public async Task<string> StartConnectAsync(string? returnUrl, string browserProof, CancellationToken ct = default)
+    public async Task<string> StartConnectAsync(string? returnUrl, string browserProof, CancellationToken ct = default,bool mail=false)
     {
         if (!Configured) throw new ConflictException("Google Calendar is not set up for this installation.", "GOOGLE_NOT_CONFIGURED");
+        if(mail&&!_o.MailEnabled)throw new ConflictException("Gmail sending is not enabled for this installation.","GMAIL_DISABLED");
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         if(string.IsNullOrWhiteSpace(browserProof)||browserProof.Length>100)throw new UnauthorizedException("Start the connection from this browser.","GOOGLE_BROWSER_INVALID");
         var id=Random(32);
@@ -81,7 +84,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
 
         return Query("https://accounts.google.com/o/oauth2/v2/auth", new Dictionary<string, string?>
         {
-            ["client_id"] = _o.ClientId, ["redirect_uri"] = _o.RedirectUri, ["response_type"] = "code", ["scope"] = Scopes,
+            ["client_id"] = _o.ClientId, ["redirect_uri"] = _o.RedirectUri, ["response_type"] = "code", ["scope"] = mail?MailScope+" https://www.googleapis.com/auth/userinfo.email":Scopes,
             // offline + consent: Google only hands back a refresh token when consent is actually (re-)shown, which this guarantees every time.
             ["access_type"] = "offline", ["prompt"] = "consent", ["include_granted_scopes"] = "true", ["state"] = id,
         });
@@ -124,6 +127,8 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         // Google returns a refresh token only the first time a person consents - prompt=consent above forces that every time we ask.
         var refreshToken = doc.TryGetProperty("refresh_token", out var r) ? r.GetString() : null;
         var email = await FetchEmailAsync(accessToken, ct);
+        // Never attach a new mail grant to an identity retained from an older connection.
+        if(grantedScopes.Split((char)32,StringSplitOptions.RemoveEmptyEntries).Contains(MailScope)&&(string.IsNullOrWhiteSpace(email)||string.IsNullOrWhiteSpace(refreshToken))) return Landing(p.ReturnPath,"error");
 
         await WorkspaceExecutionPrincipal.ConfigureAsync(services,p.UserId,p.TenantId,null,ct);
         await using var connectionTx=await db.Database.BeginOwnedTransactionAsync(ct);
@@ -172,11 +177,11 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
 
     /// <summary>A valid access token for this user's Google account, refreshing it first when it has expired or is about to. Used by
     /// <see cref="GoogleMeetingClient"/>; never returned to the browser.</summary>
-    public async Task<string> GetAccessTokenAsync(Guid userId, CancellationToken ct = default)
+    public async Task<string> GetAccessTokenAsync(Guid userId, CancellationToken ct = default,string? requiredScope=null)
     {
         var c = await db.GoogleConnections.FirstOrDefaultAsync(x => x.UserId == userId, ct)
             ?? throw new ConflictException("Connect your Google account to schedule Google Meet meetings.", "GOOGLE_NOT_CONNECTED");
-        if(!HasCalendarScope(c.Scopes))throw new ConflictException("Reconnect Google and grant Calendar permission before scheduling meetings.","GOOGLE_SCOPE_REQUIRED");
+        if(!c.Scopes.Split((char)32,StringSplitOptions.RemoveEmptyEntries).Contains(requiredScope??"https://www.googleapis.com/auth/calendar.events"))throw new ConflictException("Reconnect Google and grant the permission required for this action.","GOOGLE_SCOPE_REQUIRED");
         if (c.AccessTokenProtected is not null && c.AccessTokenExpiresAt > clock.Now) return secrets.Unprotect(c.AccessTokenProtected);
 
         var form = new Dictionary<string, string>

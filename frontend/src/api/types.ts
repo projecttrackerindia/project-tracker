@@ -364,7 +364,7 @@ export interface InboundMailbox {
 export type GitProvider = 'GitHub' | 'AzureDevOps';
 export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
 export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
-export interface GoogleConnectionStatus { calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
+export interface GoogleConnectionStatus { mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
@@ -698,3 +698,5 @@ export interface GroupMapping { id: string; group: string; teamId: string; teamN
 export interface GroupMappings { items: GroupMapping[] }
 
 export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height: number | null }
+
+export interface PersonalEmailDraft { id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { PersonalEmailDrafts } from './PersonalEmailDrafts';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { integrationsApi } from '../../api/endpoints';
@@ -64,8 +65,9 @@ export function GoogleIntegrationSection() {
             )}
           </Field>
         )}
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Only Calendar event creation and Google Meet conference creation are requested - never Gmail, Drive or your full calendar.</p>
+        <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Calendar and Meet permissions are requested for meetings. Gmail sending requires a separate, optional consent. Drive and inbox access are not requested.</p>
       </div>
+      <PersonalEmailDrafts key={wid} google={q.data} />
     </>
   );
 }

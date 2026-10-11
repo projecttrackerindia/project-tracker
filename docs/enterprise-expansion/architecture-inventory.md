@@ -21,3 +21,5 @@ Tests use mocked providers and SQLite/PostgreSQL CI. No live AI bulk tests or ac
 ## Risks and gaps
 
 Resumes contain personal information. Original user-entered facts and selected organization evidence stay separate; assigned work alone is not accomplishment evidence. Only completed and verified outcomes qualify. Authorization must be rechecked before using stored evidence. Paid artifacts must be immutable and retry-safe. Tax treatment and external provider activation remain configuration decisions. Secrets must remain server-side.
+
+Private email extension reuses the existing Google OAuth/token protection, IAiClient provider routing, shared AI credit ledger, Recorder audit chain and workspace-scoped React queries. Draft metadata is queried separately from content; a committed send-state claim precedes bounded network I/O. No new hosted service or inbox permission is introduced.

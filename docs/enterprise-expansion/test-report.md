@@ -47,3 +47,11 @@ Remaining verification: workflow lease-contention tests; remaining backend tests
 - New migration applied through fresh SQLite test databases. Frontend production build passed, including the reconnect/permission status UI.
 - The initial new removal test used a Free workspace with only one seat; the fixture now explicitly upgrades before adding the member.
 - No live Google requests, customer invitations, paid calls or bulk AI tests. PostgreSQL deployment/upgrade verification remains pending.
+
+## Private email and optional Gmail continuation
+- 32 passed, 0 failed, 0 skipped: personal-email-final.trx (private email, OAuth safety, Calendar integration, project meetings and tenant/query-filter tests).
+- New scenarios cover owner/workspace isolation, metadata-only listing with private detail retrieval, header injection, version conflicts, disabled mail, exact scope, sender mismatch, explicit confirmation, concurrent single dispatch, Unicode MIME folding, accepted replay, erased content retaining receipts/rate history, unknown outcome blocking retry, missing sender/refresh token preserving the old grant, AI credit settlement/replay and invalid suggestion release.
+- Frontend production build passed. Existing frontend suite: 72 passed across 10 files.
+- A headless Edge check with blocked external requests verified private draft saving, full sender/recipient/message review, cancellation without dispatch, one confirmed request, readable immutable receipt retrieval and no horizontal overflow at 1440px and 390px. Fixed missing accessible input names and preserved newlines/long-address wrapping in confirmation dialogs.
+- EF reports no model changes since the new migration; fresh SQLite tests apply the migration. PostgreSQL upgrade/contention and production OAuth/provider readiness remain unverified.
+- All provider/model responses in these checks are fake. No bulk AI testing, live email, customer messages or production configuration changes.

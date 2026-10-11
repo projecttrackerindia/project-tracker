@@ -23,6 +23,10 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public ConcurrentBag<string> RevokedTokens { get; } = new();
     /// <summary>When set, every token-endpoint call fails (simulates an expired/revoked grant, for GOOGLE_TOKEN_EXPIRED tests).</summary>
     public bool RefreshFails { get; set; }
+    public ConcurrentBag<string> SentMail { get; } = new();
+    public bool MailOutcomeUnknown { get; set; }
+    public bool UserInfoFails { get; set; }
+    public bool OmitRefreshToken { get; set; }
 
     public string IssueCode(string email = "owner@example.com", string scope = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created")
     {
@@ -49,7 +53,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
                 var access = "at_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
                 _accessTokens[access] = grant;
                 AccessTokensIssued.Add(access);
-                return Json(new { access_token = access, refresh_token = refresh, expires_in = 3600, scope = grant.Scope, token_type = "Bearer" });
+                return Json(new { access_token = access, refresh_token = OmitRefreshToken?null:refresh, expires_in = 3600, scope = grant.Scope, token_type = "Bearer" });
             }
             if (form.GetValueOrDefault("grant_type") == "refresh_token")
             {
@@ -69,9 +73,20 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         }
         if (path == "/oauth2/v2/userinfo")
         {
+            if(UserInfoFails)return Json(new{error="unavailable"},HttpStatusCode.ServiceUnavailable);
             var auth = request.Headers.Authorization?.Parameter ?? "";
             _accessTokens.TryGetValue(auth, out var grant);
             return Json(new { email = grant?.Email ?? "owner@example.com" });
+        }
+        if(path=="/gmail/v1/users/me/messages/send"&&request.Method==HttpMethod.Post){
+            var auth=request.Headers.Authorization?.Parameter??"";
+            if(!_accessTokens.TryGetValue(auth,out var mailGrant)||!mailGrant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/gmail.send"))
+                return Json(new{error="missing_scope"},HttpStatusCode.Forbidden);
+            using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            var raw=payload.RootElement.GetProperty("raw").GetString()!.Replace('-','+').Replace('_','/');
+            SentMail.Add(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(raw.PadRight((raw.Length+3)/4*4,'='))));
+            if(MailOutcomeUnknown)throw new HttpRequestException("Simulated response lost after provider acceptance");
+            return Json(new{id="mail_"+Convert.ToHexString(RandomNumberGenerator.GetBytes(6))});
         }
         if (path.StartsWith("/calendar/v3/calendars/primary/events") && request.Method == HttpMethod.Post)
         {

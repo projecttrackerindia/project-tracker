@@ -27,10 +27,10 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
     /// no header from us at all.
     /// </summary>
     [HttpGet("integrations/google/connect")]
-    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct)
+    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct,[FromQuery] bool mail=false)
     {
         var proof=Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-        var url=await google.StartConnectAsync(returnUrl,proof,ct);
+        var url=await google.StartConnectAsync(returnUrl,proof,ct,mail);
         Response.Headers.CacheControl="no-store";
         Response.Cookies.Append(GoogleProofCookie,proof,new CookieOptions{HttpOnly=true,Secure=true,SameSite=SameSiteMode.Lax,Path="/api/v1/integrations/google/callback",MaxAge=TimeSpan.FromMinutes(10)});
         return Ok(new{url});

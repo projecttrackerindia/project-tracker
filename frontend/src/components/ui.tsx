@@ -420,7 +420,7 @@ export function ConfirmRoot() {
         <button className="btn btn-ghost" onClick={() => c.resolve(false)}>Cancel</button>
         <button className={`btn ${c.danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => c.resolve(true)} autoFocus>{c.confirmText}</button>
       </>}>
-      <p style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>{c.message}</p>
+      <p style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{c.message}</p>
     </Modal>
   );
 }

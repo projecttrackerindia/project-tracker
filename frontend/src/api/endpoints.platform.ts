@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, post, put, uploadFile } from './client';
-import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,GoogleConnectionStatus,Meeting,MeetingParticipant,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
+import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -99,10 +99,20 @@ export const integrationsApi = {
   googleStatus: () => get<GoogleConnectionStatus>('/integrations/google/status'),
   /** Returns Google's consent screen address; the caller navigates the whole page there itself (window.location.assign) - this call cannot
    * redirect there itself because only an ordinary authenticated fetch, not a bare page navigation, can carry the Authorization header. */
-  googleConnectUrl: (returnUrl?: string) => get<{ url: string }>('/integrations/google/connect', returnUrl ? { returnUrl } : undefined),
-  googleDisconnect: () => del('/integrations/google/disconnect'),
+  googleConnectUrl: (returnUrl?: string, mail = false) => get<{ url: string }>('/integrations/google/connect', { returnUrl, mail: mail || undefined }),
+  googleDisconnect: () => post('/integrations/google/disconnect'),
 };
 
+export const personalEmailApi = {
+  options: () => get<{ available: boolean; credits: number; maxBodyCharacters: number }>('/me/email-drafts/options'),
+  improve: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/improve', b),
+  list: () => get<PersonalEmailDraft[]>('/me/email-drafts'),
+  get: (id: string) => get<PersonalEmailDraft>('/me/email-drafts/' + id),
+  create: (b: { recipient: string; subject: string; body: string }) => post<PersonalEmailDraft>('/me/email-drafts', b),
+  save: (id: string, b: { recipient: string; subject: string; body: string; version: number }) => put<PersonalEmailDraft>('/me/email-drafts/' + id, b),
+  remove: (id: string) => del('/me/email-drafts/' + id),
+  send: (id: string, b: { version: number; confirmed: boolean; senderEmail: string }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/send', b),
+};
 export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),

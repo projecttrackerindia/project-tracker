@@ -234,6 +234,13 @@ public partial class AppDbContext
             e.Property(x => x.SecretProtected).HasMaxLength(300);
             e.Property(x => x.LastError).HasMaxLength(300);
         });
+        b.Entity<PersonalEmailDraft>(e=>{
+            e.HasIndex(x=>new{x.TenantId,x.UserId,x.CreatedAt});
+            e.Property(x=>x.Recipient).HasMaxLength(254);e.Property(x=>x.Subject).HasMaxLength(200);
+            e.Property(x=>x.Body).HasMaxLength(20000);e.Property(x=>x.Status).HasMaxLength(20);
+            e.Property(x=>x.ProviderMessageId).HasMaxLength(200);e.Property(x=>x.Version).IsConcurrencyToken();
+            e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<ProviderOAuthAttempt>(e=>{
             e.HasIndex(x=>x.StateHash).IsUnique();
             e.HasIndex(x=>x.ExpiresAt);

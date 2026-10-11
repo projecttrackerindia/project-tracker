@@ -21,3 +21,6 @@ Added deterministic authorized routing previews, explicit assignment confirmatio
 
 ## Provider connection foundation
 Before expanding mailbox access, hardened the existing Google callback against browser substitution, replay and stale membership. Fixed reconnection under the correct tenant, added actual Calendar-scope capability reporting and a reconnect action. New provider adapters and mailbox/document workflows still remain implementation work; these callback protections are a prerequisite, not evidence that the adapters are finished.
+
+## Private email continuation
+Implemented private manual drafts, bounded metadata-first retrieval, shared-credit AI rewriting and separately confirmed Gmail dispatch with durable duplicate protection. Added optional send-only OAuth consent; deployment sending remains off by default. Inbox/thread retrieval, attachments, durable calendar operation receipts, Microsoft and WhatsApp adapters, provider recovery and the other coordinated release gates remain work. This checkpoint is not the complete expansion release.

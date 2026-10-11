@@ -24,3 +24,14 @@ Document imports use the bundled document-import/ProjectManagement.DocumentImpor
 Private-file cleanup uses the existing Maintenance worker. Keep Maintenance__Enabled true; pointer removal is immediate and durable deletion retries run at the configured maintenance interval (15 minutes by default). Receipts log only their identifier and error type. No private-file storage key is returned to the frontend.
 ## Google OAuth upgrade
 Apply migration 20261011051417_DurableProviderOAuthAttempts before deploying the updated API. Existing Google connections are preserved, and existing GoogleCalendar client/secret/redirect variables remain valid. Complete new connections in the same browser that started them; HTTPS and cookie preservation are required. Cached connection attempts started before this upgrade must be restarted. No new Gmail, Microsoft or WhatsApp access is enabled. Google OAuth behavior is based on the official web-server authorization guidance: https://developers.google.com/identity/protocols/oauth2/web-server .
+
+## Optional Gmail sending
+Apply migration 20261011053210_PersonalEmailDrafts. GoogleCalendar__MailEnabled defaults false: private manual drafts and entitled AI rewriting remain usable while sending is off. Microsoft and WhatsApp remain disabled.
+
+Before enabling the gate, enable the Gmail API in the Google OAuth client project, configure the consent screen and permitted accounts, add gmail.send to the application's declared scopes, and complete Google's required OAuth verification for the intended audience. Reuse the existing backend GoogleCalendar client/secret/HTTPS redirect variables and protected-token store. Never put OAuth secrets or refresh tokens in React. Verify installation, permission denial, sender display and disconnect against a controlled account.
+
+Users: My account -> Google Workspace -> Private email drafts. Save a draft; optional AI rewriting explains provider sharing and credit cost before generation. Choose Enable Gmail sending to grant send-only access. Review the sender, recipient, complete saved message and version, then Confirm and send. Calendar access remains a separate capability. No inbox permission, attachment sending or thread summaries are introduced here.
+
+A Gmail timeout, malformed receipt or failed response is shown as an unknown outcome and is never retried automatically. The user must check Gmail Sent; automated reconciliation and administrator recovery remain future work. Keep the gate off until that operating procedure is established. The server bounds each dispatch to 20 seconds, receipt reads to 8 KiB, and confirmed sends to ten per person per workspace per rolling hour; erased accepted messages still count.
+
+Primary provider references: https://developers.google.com/workspace/gmail/api/auth/scopes and https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send .
