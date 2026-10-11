@@ -95,7 +95,7 @@ Private resume/certificate uploads persist a cleanup receipt before touching sto
 Local validation: 32 focused backend checks passed, including nine upload-recovery cases and existing resume/certification/cleanup/access review. Frontend lint, unit tests, type/build and twelve synthetic browser checks passed. The browser checks include template keyboard selection, saved workflow-view reload, dark theme and reduced motion. An initial workflow-tab reset was observed before URL persistence; final checks passed with the persisted view. Actual desktop/mobile/light/dark preview images were shown before this checkpoint commit. The new revision still needs full CI verification; no AI bulk tests, real payments/customer messages/calendar writes, provider activation, merge or deployment occurred.
 
 
-## Private inbox checkpoint ? full release remains gated
+## Private inbox checkpoint - full release remains gated
 
 The user requires the full expanded scope before merge. Verified baseline `425b884` passed all six CI jobs in run 38159780430: SQLite 1,284 passed / 2 intentional skips and PostgreSQL 1,281 passed / 5 intentional skips (1,286 cases each). The dedicated actual-main PostgreSQL upgrade and both 12-case transaction/credit checks also passed. AI burst testing remained disabled.
 
@@ -108,3 +108,7 @@ The private inbox UI loads only on explicit request, clears content on account/c
 Frontend lint, type-check/build, all 85 unit tests and fifteen synthetic browser checks passed. Updated desktop/mobile/light/dark inbox previews were shown before commit. EF reports no pending model changes. Sixty focused backend checks passed; the final owner-isolation/migration subset passed all 24 cases (overlapping the same suite). The new commit's full CI results remain pending. No AI bulk tests or live provider/payment calls occurred.
 
 Consent review also confirms that unrequested provider scopes are not promoted into inbox access during callback or refresh; Microsoft reconnection preserves only previously consented reading while its deployment gate remains enabled.
+
+
+### Exhaustive endpoint regression follow-up
+Full CI on 97d6adf found a missing-message query reaching thread validation as null and returning HTTP 500 during the existing exhaustive team-scope crawl. Required message references now reject null/blank values as normal 422 validation errors before any provider request. Direct missing-parameter regressions are included; the exhaustive isolation test remains enabled. The follow-up passed all 27 local inbox/team-scope checks, including the unchanged exhaustive crawl and missing-parameter cases. A labeled technical reference was shown before commit. Follow-up full CI remains pending. The four non-database CI jobs passed on 97d6adf; its SQLite suite had one failure, 1,304 passes and two intentional skips. No coordinated release or deployment is claimed.

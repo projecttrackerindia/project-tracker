@@ -81,9 +81,9 @@ public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         if(!root.TryGetProperty(name,out var value)||value.ValueKind!=JsonValueKind.String)return "";
         var text=value.GetString()??"";return text.Length>limit?text[..limit]:text;
     }
-    private static string Id(string id,string provider)
+    private static string Id(string? id,string provider)
     {
-        if(id.Length is <1 or >500||id.Any(c=>!char.IsAsciiLetterOrDigit(c)&&!"_-+/=".Contains(c))||
+        if(string.IsNullOrWhiteSpace(id)||id.Length>500||id.Any(c=>!char.IsAsciiLetterOrDigit(c)&&!"_-+/=".Contains(c))||
            provider=="google"&&id.Any(c=>!Uri.IsHexDigit(c)))throw new ValidationException("messageId","Invalid mailbox message reference.");
         return Uri.EscapeDataString(id);
     }

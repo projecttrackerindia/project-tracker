@@ -162,6 +162,8 @@ public class PersonalInboxTests(ApiFactory factory)
         var owner=await TestClient.RegisterAsync(factory,"Inbox path");await owner.CreateOrgAsync();Enable();
         try{
             await Connect(owner,provider);Assert.Equal(HttpStatusCode.UnprocessableEntity,(await owner.Get(Thread(provider,"../other-mailbox?token=secret"))).Status);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity,(await owner.Get("/api/v1/me/inbox/thread?provider="+provider)).Status);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity,(await owner.Get("/api/v1/me/inbox/thread")).Status);
             Assert.Empty(Mailbox(provider).Requests);
         }finally{Reset();}
     }
