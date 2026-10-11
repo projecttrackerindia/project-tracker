@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import './PersonalEmailDrafts.css';
 import { ApiError } from '../../api/client';
 import { integrationsApi, personalEmailApi } from '../../api/endpoints.platform';
 import type { GoogleConnectionStatus, PersonalEmailDraft } from '../../api/types';
@@ -86,18 +87,18 @@ export function PersonalEmailDrafts({ google }: { google?: GoogleConnectionStatu
     {!google?.mailEnabled ? <p className="muted">Gmail sending is awaiting administrator setup. You can still write and save drafts.</p> :
       !google.mailSendAccess ? <button className="btn" disabled={busy} onClick={() => void connect()}>Enable Gmail sending</button> :
       <p className="muted">Connected sender: <b>{google.googleEmail || 'Reconnect to verify your sender'}</b></p>}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 20, marginTop: 16 }}>
+    <div className="personal-email-layout">
       <div aria-label="Saved private drafts">
         {q.isLoading ? <PageLoader /> : q.isError ? <p role="alert">Could not load drafts. <button className="btn btn-sm" onClick={() => void q.refetch()}>Reload</button></p> :
           !q.data?.length ? <p className="muted">Your saved drafts will appear here.</p> :
-            <div style={{ display: 'grid', gap: 8 }}>{q.data.map(d => <button key={d.id} className={'btn ' + (selected?.id === d.id ? 'btn-primary' : '')} style={{ textAlign: 'left', display: 'grid', whiteSpace: 'normal', overflowWrap: 'anywhere' }} disabled={busy} onClick={() => void choose(d)}>
+            <div style={{ display: 'grid', gap: 8 }}>{q.data.map(d => <button key={d.id} className={'btn ' + (selected?.id === d.id ? 'btn-primary' : '')} style={{ textAlign: 'left', display: 'grid', justifyItems: 'start', gap: 4, height: 'auto', minHeight: 64, padding: 12, whiteSpace: 'normal', overflowWrap: 'anywhere' }} disabled={busy} onClick={() => void choose(d)}>
               <b>{d.subject}</b><span style={{ fontSize: 12 }}>{d.recipient} · {d.status === 'accepted' ? 'Accepted by Gmail' : d.status === 'sending' || d.status === 'unknown' ? 'Check Gmail Sent' : 'Draft'}</span>
             </button>)}</div>}
       </div>
       <div style={{ minWidth: 0 }}>
         <Field label="Recipient"><input aria-label="Recipient" className="input" type="email" maxLength={254} value={fields.recipient} disabled={readOnly} onChange={e => setFields({ ...fields, recipient: e.target.value })} /></Field>
         <Field label="Subject"><input aria-label="Subject" className="input" maxLength={200} value={fields.subject} disabled={readOnly} onChange={e => setFields({ ...fields, subject: e.target.value })} /></Field>
-        <Field label="Message"><textarea aria-label="Message" className="input" rows={10} maxLength={20000} value={fields.body} disabled={readOnly} onChange={e => setFields({ ...fields, body: e.target.value })} /></Field>
+        <Field label="Message"><textarea aria-label="Message" className="input" style={{ minHeight: 180, resize: 'vertical' }} rows={10} maxLength={20000} value={fields.body} disabled={readOnly} onChange={e => setFields({ ...fields, body: e.target.value })} /></Field>
         {selected && ['sending', 'unknown'].includes(selected.status) && <p role="alert" className="form-error">The email may have reached Gmail. Check your Sent folder. Automatic retry and deletion are blocked to prevent duplicate sending.</p>}
         {selected?.status === 'accepted' && <p className="muted">Accepted by Gmail {selected.acceptedAt ? new Date(selected.acceptedAt).toLocaleString() : ''}. Recipient delivery is not verified.</p>}
         {(!selected || selected.status === 'draft') && ai.data?.available && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>

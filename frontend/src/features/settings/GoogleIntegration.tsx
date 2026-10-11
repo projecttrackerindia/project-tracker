@@ -12,7 +12,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 
 /** My account > Google Workspace (spec section 15): connect once, every Google Meet this person starts or schedules from any project
- * goes through this grant. Minimal scopes only - Calendar events and Meet space creation, nothing else. */
+ * goes through this grant. Calendar/Meet access and optional send-only email consent remain separate capabilities. */
 export function GoogleIntegrationSection() {
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
@@ -41,8 +41,8 @@ export function GoogleIntegrationSection() {
 
   return (
     <>
-      <PageHead title="Google Workspace" sub="Connect your Google account to start or schedule Google Meet meetings from your projects." />
-      <div className="card" style={{ padding: 22, maxWidth: 560 }}>
+      <PageHead title="Google Workspace" sub="Connect Google for project meetings and optional confirmed email sending." />
+      <div className="card" style={{ padding: 22 }}>
         {q.isLoading ? <PageLoader /> : (
           <Field label="Google Calendar & Meet">
             {q.data?.connected ? (
