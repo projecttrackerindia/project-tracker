@@ -71,3 +71,7 @@ All six CI jobs passed on prior revision 98095cb in run 38154219373, including t
 
 
 Consolidated studio/upload checkpoint: shared StudioHero and accessible template cards preserve lazy feature chunks; the workflow view is URL-backed. PersonalFileUpload persists storage-cleanup intent before upload, then consumes it with pointer publication. PersonalFileCleanup now performs globally reviewed key-existence checks under a receipt transaction. The full expanded scope remains the required merge boundary.
+
+
+## Private inbox boundary
+PersonalInboxService and PersonalInboxController add own-mailbox metadata/conversation reads using existing per-person encrypted OAuth connections. Optional read scopes are recorded on durable OAuth attempts. Provider results remain request-local, plain text, bounded and authorization-rechecked; UI content remains component-local rather than a shared query cache. Attachments, source-grounded summaries and calendar expansion remain separate open capabilities.

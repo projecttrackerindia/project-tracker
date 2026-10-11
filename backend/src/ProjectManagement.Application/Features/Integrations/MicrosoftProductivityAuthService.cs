@@ -17,6 +17,7 @@ public class MicrosoftProductivityOptions
 {
     public const string Section = "MicrosoftProductivity";
     public bool Enabled { get; set; }
+    public bool InboxEnabled { get; set; }
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
@@ -26,9 +27,9 @@ public class MicrosoftProductivityOptions
         && uri.AbsolutePath=="/api/v1/integrations/microsoft/callback"
         && (AuthorityTenant is "common" or "organizations" or "consumers" || Guid.TryParse(AuthorityTenant,out _));
 }
-public record MicrosoftStatusDto(bool Enabled,bool Configured,bool Connected,string? Email,bool MailSendAccess);
+public record MicrosoftStatusDto(bool Enabled,bool Configured,bool Connected,string? Email,bool MailSendAccess,bool InboxEnabled=false,bool InboxAccess=false);
 public record MicrosoftConnectStart(string Url,string BrowserProof);
-public record MicrosoftMailGrant(string Email,string AccessToken);
+public record MicrosoftMailGrant(string Email,string AccessToken,Guid ConnectionId=default,string RefreshFingerprint="");
 
 public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext ctx,AppClock clock,
     Recorder recorder,IServiceProvider services,IOptions<MicrosoftProductivityOptions> options,
@@ -36,6 +37,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
 {
     private MicrosoftProductivityOptions Options=>options.Value;
     public const string Scopes="offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Mail.Send";
+    public const string InboxScope="https://graph.microsoft.com/Mail.Read";
     private string Authority=>"https://login.microsoftonline.com/"+Options.AuthorityTenant+"/oauth2/v2.0/";
     private static string Random()=>Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private static string Hash(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
@@ -48,10 +50,14 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
     public async Task<MicrosoftStatusDto> StatusAsync(CancellationToken ct){
         ctx.RequireTenantId();var uid=ctx.RequireUserId();
         var c=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct);
-        return new(Options.Enabled,Options.Configured,c!=null,c?.Email,c!=null&&HasScope(c.Scopes,"Mail.Send"));
+        return new(Options.Enabled,Options.Configured,c!=null,c?.Email,c!=null&&HasScope(c.Scopes,"Mail.Send"),Options.Enabled&&Options.Configured&&Options.InboxEnabled,c!=null&&HasScope(c.Scopes,"Mail.Read"));
     }
-    public async Task<MicrosoftConnectStart> StartAsync(CancellationToken ct){
+    public async Task<MicrosoftConnectStart> StartAsync(CancellationToken ct,bool inbox=false){
         RequireEnabled();var uid=ctx.RequireUserId();var tid=ctx.RequireTenantId();
+        if(inbox&&!Options.InboxEnabled)throw new ConflictException("Microsoft inbox access is not enabled.","INBOX_DISABLED");
+        var existing=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct);
+        var keepInbox=Options.InboxEnabled&&existing!=null&&HasScope(existing.Scopes,"Mail.Read");
+        var requested=Scopes+(inbox||keepInbox?" "+InboxScope:"");
         var state=Random();var proof=Random();var verifier=Random();
         await using(var tx=await db.Database.BeginOwnedTransactionAsync(ct)){
             if(await db.Users.Where(u=>u.Id==uid&&u.IsActive).ExecuteUpdateAsync(s=>s.SetProperty(u=>u.IsActive,u=>u.IsActive),ct)!=1)
@@ -60,13 +66,13 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
             if(await db.ProviderOAuthAttempts.CountAsync(a=>a.Provider=="microsoft"&&a.UserId==uid&&a.ConsumedAt==null&&a.ExpiresAt>clock.Now,ct)>=5)
                 throw new ConflictException("Finish an existing Microsoft connection or wait ten minutes.");
             db.ProviderOAuthAttempts.Add(new(){Provider="microsoft",TenantId=tid,UserId=uid,StateHash=Hash(state),BrowserHash=Hash(proof),
-                VerifierProtected=secrets.Protect(verifier),ReturnPath="/account/integrations",ExpiresAt=clock.Now.AddMinutes(10)});
+                VerifierProtected=secrets.Protect(verifier),RequestedScopes=requested,ReturnPath="/account/integrations",ExpiresAt=clock.Now.AddMinutes(10)});
             await db.SaveChangesAsync(ct);await tx.CommitIfOwnedAsync(ct);
         }
         var challenge=Convert.ToBase64String(SHA256.HashData(Encoding.ASCII.GetBytes(verifier))).TrimEnd('=').Replace('+','-').Replace('/','_');
         var query=new Dictionary<string,string>{
             ["client_id"]=Options.ClientId!,["redirect_uri"]=Options.RedirectUri!,["response_type"]="code",["response_mode"]="query",
-            ["scope"]=Scopes,["state"]=state,["code_challenge"]=challenge,["code_challenge_method"]="S256",["prompt"]="consent"};
+            ["scope"]=requested,["state"]=state,["code_challenge"]=challenge,["code_challenge_method"]="S256",["prompt"]="consent"};
         return new(Authority+"authorize?"+string.Join("&",query.Select(p=>Uri.EscapeDataString(p.Key)+"="+Uri.EscapeDataString(p.Value))),proof);
     }
     // Bounded transport: no token, profile, provider response or email text is logged.
@@ -104,12 +110,15 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
         try{
             using var tokenRequest=new HttpRequestMessage(HttpMethod.Post,Authority+"token"){
                 Content=new FormUrlEncodedContent(new Dictionary<string,string>{["client_id"]=Options.ClientId!,["client_secret"]=Options.ClientSecret!,
-                    ["grant_type"]="authorization_code",["code"]=code,["redirect_uri"]=Options.RedirectUri!,["scope"]=Scopes,
+                    ["grant_type"]="authorization_code",["code"]=code,["redirect_uri"]=Options.RedirectUri!,["scope"]=string.IsNullOrEmpty(attempt.RequestedScopes)?Scopes:attempt.RequestedScopes,
                     ["code_verifier"]=secrets.Unprotect(attempt.VerifierProtected??throw new ConflictException("Restart Microsoft connection."))})};
             using var token=await JsonAsync(tokenRequest,64000,ct);
             var access=Field(token.RootElement,"access_token",10000);var refresh=Field(token.RootElement,"refresh_token",10000);
             var granted=Field(token.RootElement,"scope",2000);var expiry=Expiry(token.RootElement);
+            var requested=string.IsNullOrEmpty(attempt.RequestedScopes)?Scopes:attempt.RequestedScopes;
+            granted=string.Join(' ',granted.Split(' ',StringSplitOptions.RemoveEmptyEntries).Where(s=>HasScope(requested,s.Split('/').Last())));
             if(!HasScope(granted,"Mail.Send")||!HasScope(granted,"User.Read"))return Landing("permission");
+            if(attempt.RequestedScopes.Contains(InboxScope)&&(!Options.InboxEnabled||!HasScope(granted,"Mail.Read")))return Landing("permission");
             using var profileRequest=new HttpRequestMessage(HttpMethod.Get,"https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName");
             profileRequest.Headers.Authorization=new AuthenticationHeaderValue("Bearer",access);
             using var profile=await JsonAsync(profileRequest,8192,ct);
@@ -131,26 +140,32 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
         catch(HttpRequestException){return Landing("error");}
         catch(OperationCanceledException)when(!ct.IsCancellationRequested){return Landing("error");}
     }
-    public async Task<MicrosoftMailGrant> GetMailGrantAsync(CancellationToken ct){
+    public Task<MicrosoftMailGrant> GetMailGrantAsync(CancellationToken ct)=>GetGrantAsync("Mail.Send",ct);
+    public Task<MicrosoftMailGrant> GetInboxGrantAsync(CancellationToken ct){
+        if(!Options.InboxEnabled)throw new ConflictException("Microsoft inbox access is not enabled.","INBOX_DISABLED");
+        return GetGrantAsync("Mail.Read",ct);
+    }
+    private async Task<MicrosoftMailGrant> GetGrantAsync(string requiredScope,CancellationToken ct){
         RequireEnabled();ctx.RequireTenantId();var uid=ctx.RequireUserId();
         var row=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct)
             ??throw new ConflictException("Connect your Microsoft account first.","MICROSOFT_NOT_CONNECTED");
-        if(!HasScope(row.Scopes,"Mail.Send"))throw new ConflictException("Reconnect and grant Microsoft email sending permission.","MICROSOFT_SCOPE_REQUIRED");
-        if(row.AccessTokenExpiresAt>clock.Now)return new(row.Email,secrets.Unprotect(row.AccessTokenProtected));
+        if(!HasScope(row.Scopes,requiredScope))throw new ConflictException("Reconnect and grant the required Microsoft permission.","MICROSOFT_SCOPE_REQUIRED");
+        if(row.AccessTokenExpiresAt>clock.Now)return new(row.Email,secrets.Unprotect(row.AccessTokenProtected),row.Id,Hash(row.RefreshTokenProtected));
         using var request=new HttpRequestMessage(HttpMethod.Post,Authority+"token"){Content=new FormUrlEncodedContent(new Dictionary<string,string>{
             ["client_id"]=Options.ClientId!,["client_secret"]=Options.ClientSecret!,["grant_type"]="refresh_token",
-            ["refresh_token"]=secrets.Unprotect(row.RefreshTokenProtected),["scope"]=Scopes})};
+            ["refresh_token"]=secrets.Unprotect(row.RefreshTokenProtected),["scope"]=row.Scopes+" offline_access"})};
         using var payload=await JsonAsync(request,64000,ct);
         var access=Field(payload.RootElement,"access_token",10000);var expiry=Expiry(payload.RootElement);
         var granted=payload.RootElement.TryGetProperty("scope",out var scope)&&scope.ValueKind==JsonValueKind.String?Field(payload.RootElement,"scope",2000):row.Scopes;
-        if(!HasScope(granted,"Mail.Send"))throw new ConflictException("Reconnect and grant email sending permission.","MICROSOFT_SCOPE_REQUIRED");
+        granted=string.Join(' ',granted.Split(' ',StringSplitOptions.RemoveEmptyEntries).Where(s=>HasScope(row.Scopes,s.Split('/').Last())));
+        if(!HasScope(granted,requiredScope))throw new ConflictException("Reconnect and grant the required Microsoft permission.","MICROSOFT_SCOPE_REQUIRED");
         var refresh=payload.RootElement.TryGetProperty("refresh_token",out var rt)&&rt.ValueKind==JsonValueKind.String?Field(payload.RootElement,"refresh_token",10000):secrets.Unprotect(row.RefreshTokenProtected);
         var encryptedAccess=secrets.Protect(access);var encryptedRefresh=secrets.Protect(refresh);
         var won=await db.MicrosoftConnections.Where(c=>c.Id==row.Id&&c.RefreshTokenProtected==row.RefreshTokenProtected)
             .ExecuteUpdateAsync(s=>s.SetProperty(c=>c.AccessTokenProtected,encryptedAccess).SetProperty(c=>c.RefreshTokenProtected,encryptedRefresh)
                 .SetProperty(c=>c.AccessTokenExpiresAt,expiry).SetProperty(c=>c.Scopes,granted),ct);
         if(won!=1)throw new ConflictException("Your Microsoft connection changed. Reload before sending.","MICROSOFT_CONNECTION_CHANGED");
-        return new(row.Email,access);
+        return new(row.Email,access,row.Id,Hash(encryptedRefresh));
     }
     public async Task DisconnectAsync(CancellationToken ct){
         ctx.RequireTenantId();var uid=ctx.RequireUserId();

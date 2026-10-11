@@ -13,6 +13,31 @@ namespace ProjectManagement.Tests;
 public class MicrosoftMigrationTests(ApiFactory factory)
 {
     [Fact]
+    public async Task Existing_OAuth_attempt_upgrade_preserves_proof_without_inventing_mailbox_consent()
+    {
+        using var scope=factory.Services.CreateScope();
+        await using var connection=new SqliteConnection("Data Source=:memory:");await connection.OpenAsync();
+        await using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options,
+            scope.ServiceProvider.GetRequiredService<ICurrentContext>(),TimeProvider.System);
+        await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        var assembly=db.GetService<IMigrationsAssembly>();var generator=db.GetService<IMigrationsSqlGenerator>();
+        foreach(var id in new[]{"20261011051417_DurableProviderOAuthAttempts","20261011053210_PersonalEmailDrafts","20261011062100_MicrosoftProductivityAndEmailProviders"}){
+            var migration=assembly.CreateMigration(assembly.Migrations[id],db.Database.ProviderName!);
+            foreach(var command in generator.Generate(migration.UpOperations,db.Model))await db.Database.ExecuteSqlRawAsync(command.CommandText);
+        }
+        var uid=Guid.NewGuid();var tid=Guid.NewGuid();var attempt=Guid.NewGuid();var now=DateTime.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""INSERT INTO "Users" ("Id") VALUES ({uid})""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "ProviderOAuthAttempts" ("Id","Provider","UserId","TenantId","StateHash","BrowserHash","VerifierProtected","ReturnPath","ExpiresAt")
+            VALUES ({attempt},{"microsoft"},{uid},{tid},{"existing-state-proof"},{"existing-browser-proof"},{"existing-encrypted-verifier"},{"/account/integrations"},{now.AddMinutes(10)})
+            """);
+        await SqliteEnterpriseUpgrade.ApplyAsync(db);await SqliteEnterpriseUpgrade.ApplyAsync(db);
+        var saved=await db.ProviderOAuthAttempts.SingleAsync();
+        Assert.Equal(attempt,saved.Id);Assert.Equal(uid,saved.UserId);Assert.Equal(tid,saved.TenantId);
+        Assert.Equal("existing-state-proof",saved.StateHash);Assert.Equal("existing-browser-proof",saved.BrowserHash);
+        Assert.Equal("existing-encrypted-verifier",saved.VerifierProtected);Assert.Equal("",saved.RequestedScopes);Assert.Null(saved.ConsumedAt);
+    }
+    [Fact]
     public async Task Existing_Gmail_receipt_upgrades_without_changing_content_or_inventing_sender()
     {
         using var scope=factory.Services.CreateScope();

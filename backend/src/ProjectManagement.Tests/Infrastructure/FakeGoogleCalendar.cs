@@ -28,6 +28,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public bool MailOutcomeUnknown { get; set; }
     public bool UserInfoFails { get; set; }
     public bool OmitRefreshToken { get; set; }
+    public FakeInboxMailbox Inbox {get;}=new();
 
     public bool PersonalCalendarBlocked {get;set;}
     public bool PersonalCalendarPaged {get;set;}
@@ -87,6 +88,11 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
             var auth = request.Headers.Authorization?.Parameter ?? "";
             _accessTokens.TryGetValue(auth, out var grant);
             return Json(new { email = grant?.Email ?? "owner@example.com" });
+        }
+        if(u.Host=="gmail.googleapis.com"&&request.Method==HttpMethod.Get&&path.StartsWith("/gmail/v1/users/me/")){
+            var token=request.Headers.Authorization?.Parameter??"";
+            if(!_accessTokens.TryGetValue(token,out var grant)||!grant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/gmail.readonly"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            return Inbox.Read(request,grant.Email,true);
         }
         if(path=="/calendar/v3/calendars/primary/events"&&request.Method==HttpMethod.Get&&u.Query.Contains("singleEvents=true")){
             BeforePersonalCalendarList?.Invoke();

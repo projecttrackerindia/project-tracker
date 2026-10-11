@@ -9,8 +9,8 @@ public class MicrosoftIntegrationController(MicrosoftProductivityAuthService ser
     public const string ProofCookie="__Secure-pt-microsoft-connect";
     public const string CallbackPath="/api/v1/integrations/microsoft/callback";
     [HttpGet("status")] public async Task<IActionResult> Status(CancellationToken ct)=>Ok(await service.StatusAsync(ct));
-    [HttpGet("connect")] public async Task<IActionResult> Connect(CancellationToken ct){
-        var result=await service.StartAsync(ct);
+    [HttpGet("connect")] public async Task<IActionResult> Connect(CancellationToken ct,[FromQuery]bool inbox=false){
+        var result=await service.StartAsync(ct,inbox);
         Response.Cookies.Append(ProofCookie,result.BrowserProof,new CookieOptions{HttpOnly=true,Secure=true,SameSite=SameSiteMode.Lax,Path=CallbackPath,MaxAge=TimeSpan.FromMinutes(10)});
         return Ok(new{url=result.Url});
     }

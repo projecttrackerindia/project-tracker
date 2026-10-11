@@ -141,3 +141,7 @@ No public endpoint or request/response change is added. Existing private/admin d
 
 
 Personal upload recovery: resume-import and certificate-attachment success shapes are unchanged. Expired late publication returns PERSONAL_UPLOAD_EXPIRED (409) and requires a fresh import. Upload requests retain their existing size/parser/owner/version limits. Storage keys and cleanup receipts remain backend-only.
+
+
+## Private inbox reads
+GET /api/v1/me/inbox?provider=google|microsoft&cursor=<opaque optional cursor> returns provider, account, metadata messages and a protected next cursor. GET /api/v1/me/inbox/thread?provider=...&messageId=... returns a limited plain-text conversation with explicit truncation flags. Both require current workspace membership, owner consent and a stable provider connection, and return Cache-Control: no-store. Missing read grants return a reconnect-required conflict; invalid references/cursors use the application's 422 validation convention; provider failures use sanitized error codes. GET /api/v1/integrations/google/connect?inbox=true and the Microsoft equivalent request optional inbox consent. Sending/reading remain separately initiated; Google rejects simultaneous mail=true/inbox=true. Responses contain no credentials.

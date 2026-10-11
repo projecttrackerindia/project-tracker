@@ -99,14 +99,19 @@ export const integrationsApi = {
   googleStatus: () => get<GoogleConnectionStatus>('/integrations/google/status'),
   /** Returns Google's consent screen address; the caller navigates the whole page there itself (window.location.assign) - this call cannot
    * redirect there itself because only an ordinary authenticated fetch, not a bare page navigation, can carry the Authorization header. */
-  googleConnectUrl: (returnUrl?: string, mail = false) => get<{ url: string }>('/integrations/google/connect', { returnUrl, mail: mail || undefined }),
+  googleConnectUrl: (returnUrl?: string, mail = false, inbox = false) => get<{ url: string }>('/integrations/google/connect', { returnUrl, mail: mail || undefined, inbox: inbox || undefined }),
   googleDisconnect: () => post('/integrations/google/disconnect'),
 };
 
 export const microsoftApi = {
   status: () => get<MicrosoftConnectionStatus>('/integrations/microsoft/status'),
-  connect: () => get<{ url: string }>('/integrations/microsoft/connect'),
+  connect: (inbox = false) => get<{ url: string }>('/integrations/microsoft/connect', { inbox: inbox || undefined }),
   disconnect: () => post('/integrations/microsoft/disconnect'),
+};
+
+export const personalInboxApi = {
+  list: (provider: 'google' | 'microsoft', cursor?: string, signal?: AbortSignal) => get<import('./types').InboxPage>('/me/inbox', { provider, cursor }, { signal }),
+  thread: (provider: 'google' | 'microsoft', messageId: string, signal?: AbortSignal) => get<import('./types').InboxThread>('/me/inbox/thread', { provider, messageId }, { signal }),
 };
 
 export const personalEmailApi = {

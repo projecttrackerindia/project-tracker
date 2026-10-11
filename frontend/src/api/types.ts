@@ -364,7 +364,7 @@ export interface InboundMailbox {
 export type GitProvider = 'GitHub' | 'AzureDevOps';
 export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
 export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
-export interface GoogleConnectionStatus { mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
+export interface GoogleConnectionStatus { inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
@@ -701,7 +701,10 @@ export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height:
 
 export interface PersonalEmailDraft { confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
 
-export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean }
+export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean }
+export interface InboxMessage { id: string; threadId: string; subject: string; sender: string; receivedAt: string | null; unread: boolean; hasAttachments: boolean; body: string | null; bodyTruncated: boolean }
+export interface InboxPage { provider: string; account: string; messages: InboxMessage[]; cursor: string | null }
+export interface InboxThread { provider: string; account: string; threadId: string; messages: InboxMessage[]; truncated: boolean }
 
 export interface PersonalCalendarProposal {
   id:string; title:string; description:string; startUtc:string; endUtc:string; timeZone:string;

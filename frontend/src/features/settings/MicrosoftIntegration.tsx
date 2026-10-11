@@ -35,7 +35,7 @@ export function MicrosoftIntegrationSection() {
   return <section className="card" style={{ padding: 22, marginTop: 20 }}>
     <h2 style={{ marginTop: 0 }}>Microsoft Outlook</h2>
     {q.isLoading ? <PageLoader /> : q.isError ? <p role="alert">Could not load Microsoft status. <button className="btn btn-sm" onClick={() => void q.refetch()}>Reload</button></p> : <>
-      <p className="muted">Connect your own Microsoft account for separately confirmed email sending. Inbox and calendar access are not requested.</p>
+      <p className="muted">Connect your own Microsoft account for separately confirmed email sending. Inbox reading requires the optional consent step in Private inbox below. Calendar access is not requested.</p>
       {!q.data?.enabled || !q.data.configured ? <p className="muted">Awaiting administrator configuration. Microsoft actions are disabled.</p> :
         <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
           <span>{q.data.connected ? q.data.email || 'Connected Microsoft account' : 'Not connected'}</span>

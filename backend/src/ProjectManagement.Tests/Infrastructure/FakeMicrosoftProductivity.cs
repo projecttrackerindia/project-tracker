@@ -16,9 +16,10 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
     public bool InvalidProfile {get;set;}
     public Action? BeforeRefresh {get;set;}
     public bool RefreshFails {get;set;}
-    public string IssueCode(string email="outlook@example.com"){
+    public FakeInboxMailbox Inbox {get;}=new();
+    public string IssueCode(string email="outlook@example.com",string scopes="User.Read Mail.Send"){
         var id=Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
-        codes[id]=new(email,"User.Read Mail.Send");return id;
+        codes[id]=new(email,scopes);return id;
     }
     private static HttpResponseMessage Json(object value,HttpStatusCode code=HttpStatusCode.OK)=>new(code){Content=new StringContent(JsonSerializer.Serialize(value),Encoding.UTF8,"application/json")};
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct){
@@ -40,6 +41,10 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         var token=request.Headers.Authorization?.Parameter??"";
         if(!access.TryGetValue(token,out var known))return Json(new{error="invalid_token"},HttpStatusCode.Unauthorized);
+        if(uri.Host=="graph.microsoft.com"&&request.Method==HttpMethod.Get&&uri.AbsolutePath.StartsWith("/v1.0/me/")&&uri.AbsolutePath.Contains("messages")){
+            if(!known.Scopes.Split(' ').Contains("Mail.Read"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            return Inbox.Read(request,known.Email,false);
+        }
         if(uri.Host=="graph.microsoft.com"&&uri.AbsolutePath=="/v1.0/me"){
             return Json(new{id="provider_"+known.Email,mail=InvalidProfile?"invalid\r\nsender":known.Email,userPrincipalName=known.Email});
         }
@@ -51,5 +56,5 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
-    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;}
+    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;Inbox.Reset();}
 }

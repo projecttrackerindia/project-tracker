@@ -92,8 +92,10 @@ public static class DependencyInjection
 
         // Single sign-on and social sign-in: identity providers are reached through the "oidc" HTTP client.
         services.AddHttpClient("oidc", c => c.Timeout = TimeSpan.FromSeconds(15));
-        services.AddHttpClient("microsoft-productivity",c=>c.Timeout=TimeSpan.FromSeconds(20));
-        services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient("microsoft-productivity",c=>c.Timeout=TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
+        services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
