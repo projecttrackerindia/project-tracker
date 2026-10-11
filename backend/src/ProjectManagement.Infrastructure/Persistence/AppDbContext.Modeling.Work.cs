@@ -234,6 +234,14 @@ public partial class AppDbContext
             e.Property(x => x.SecretProtected).HasMaxLength(300);
             e.Property(x => x.LastError).HasMaxLength(300);
         });
+        b.Entity<PersonalCalendarProposal>(e=>{
+            e.HasIndex(p=>new{p.TenantId,p.UserId,p.CreatedAt});
+            e.Property(p=>p.Title).HasMaxLength(200);e.Property(p=>p.Description).HasMaxLength(6000);
+            e.Property(p=>p.TimeZone).HasMaxLength(100);e.Property(p=>p.Status).HasMaxLength(20);
+            e.Property(p=>p.ConfirmedAccount).HasMaxLength(254);e.Property(p=>p.ProviderEventId).HasMaxLength(200);
+            e.Property(p=>p.Version).IsConcurrencyToken();
+            e.HasOne<User>().WithMany().HasForeignKey(p=>p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<MicrosoftConnection>(e =>
         {
             e.HasIndex(x=>new{x.TenantId,x.UserId}).IsUnique();

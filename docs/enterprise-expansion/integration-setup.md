@@ -53,3 +53,16 @@ Graph 202 means accepted for processing, not confirmed delivery. It returns no m
 Disconnect removes the local protected credentials. It does not revoke the remote Microsoft consent grant. Users can separately remove application consent in Microsoft's account/application access portal; reconnecting is required before further local sends.
 
 Provider references: https://learn.microsoft.com/en-us/graph/auth-v2-user and https://learn.microsoft.com/en-us/graph/api/user-sendmail?view=graph-rest-1.0 .
+
+## Optional private Google Calendar time blocks
+Apply migration 20261011065223_PersonalCalendarProposals before the API upgrade. GoogleCalendar__PersonalCalendarEnabled defaults false and is separate from existing project meetings and Gmail sending. Reuse the existing protected personal Google connection with calendar.events; no additional Microsoft scopes or attendee invitations are enabled.
+
+User steps: My account -> Google Workspace -> Private calendar proposals. Enter a title, private notes and future start/end in the displayed browser time zone. Save the proposal, optionally check availability, then Review calendar block. The confirmation displays the account, full notes, saved version, named zone and exact instants. Confirm calendar block performs a fresh availability check before writing. A saved manual proposal uses no AI credits.
+
+The first implementation creates a personal block with no attendees in the connected account's primary Google calendar. Conflict checks cover only that calendar. It does not check other calendars, colleagues or external participants, and external changes can still race the final check. A verified receipt requires a matching provider read-back, not just a successful write response.
+
+For an unknown outcome, use Check provider status. This only reads the stable saved provider event ID and verifies its ownership markers/content/times; it never resends. Reconnect the original account if the account changed. Missing or altered events remain unverified. Removing a verified local receipt does not delete the Google event; manage that event in Google Calendar.
+
+Keep the deployment gate off until controlled-account read-back/recovery behavior is verified. No real provider writes were used in development verification. Existing project-meeting mutation durability, attendee scheduling and Microsoft calendar operations remain separate release work.
+
+Provider contracts: https://developers.google.com/workspace/calendar/api/v3/reference/events/insert , https://developers.google.com/workspace/calendar/api/v3/reference/events/list and https://developers.google.com/workspace/calendar/api/v3/reference/events/get .

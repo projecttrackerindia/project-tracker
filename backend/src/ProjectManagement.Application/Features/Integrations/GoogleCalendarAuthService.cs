@@ -24,7 +24,8 @@ public class GoogleCalendarOptions
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
-    public bool MailEnabled {get;set;} // Explicit deployment gate; default off.
+    public bool MailEnabled {get;set;}
+    public bool PersonalCalendarEnabled {get;set;} // New personal calendar operations default off.
     public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret) && !string.IsNullOrWhiteSpace(RedirectUri);
 }
 
@@ -177,38 +178,56 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
 
     /// <summary>A valid access token for this user's Google account, refreshing it first when it has expired or is about to. Used by
     /// <see cref="GoogleMeetingClient"/>; never returned to the browser.</summary>
-    public async Task<string> GetAccessTokenAsync(Guid userId, CancellationToken ct = default,string? requiredScope=null)
+    public async Task<string> GetAccessTokenAsync(Guid userId,CancellationToken ct=default,string? requiredScope=null)
     {
-        var c = await db.GoogleConnections.FirstOrDefaultAsync(x => x.UserId == userId, ct)
-            ?? throw new ConflictException("Connect your Google account to schedule Google Meet meetings.", "GOOGLE_NOT_CONNECTED");
-        if(!c.Scopes.Split((char)32,StringSplitOptions.RemoveEmptyEntries).Contains(requiredScope??"https://www.googleapis.com/auth/calendar.events"))throw new ConflictException("Reconnect Google and grant the permission required for this action.","GOOGLE_SCOPE_REQUIRED");
-        if (c.AccessTokenProtected is not null && c.AccessTokenExpiresAt > clock.Now) return secrets.Unprotect(c.AccessTokenProtected);
-
-        var form = new Dictionary<string, string>
-        {
-            ["grant_type"] = "refresh_token", ["refresh_token"] = secrets.Unprotect(c.RefreshTokenProtected),
-            ["client_id"] = _o.ClientId!, ["client_secret"] = _o.ClientSecret!,
+        var c=await db.GoogleConnections.AsNoTracking().FirstOrDefaultAsync(x=>x.UserId==userId,ct)
+            ??throw new ConflictException("Connect your Google account first.","GOOGLE_NOT_CONNECTED");
+        var scope=requiredScope??"https://www.googleapis.com/auth/calendar.events";
+        if(!c.Scopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains(scope))
+            throw new ConflictException("Reconnect Google and grant the permission required for this action.","GOOGLE_SCOPE_REQUIRED");
+        if(c.AccessTokenProtected!=null&&c.AccessTokenExpiresAt>clock.Now)return secrets.Unprotect(c.AccessTokenProtected);
+        using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        using var request=new HttpRequestMessage(HttpMethod.Post,"https://oauth2.googleapis.com/token"){
+            Content=new FormUrlEncodedContent(new Dictionary<string,string>{
+                ["grant_type"]="refresh_token",["refresh_token"]=secrets.Unprotect(c.RefreshTokenProtected),
+                ["client_id"]=_o.ClientId!,["client_secret"]=_o.ClientSecret!
+            })
         };
-        using var tokenResponse = await http.CreateClient("google-calendar").PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(form), ct);
-        var body = await tokenResponse.Content.ReadAsStringAsync(ct);
-        if (!tokenResponse.IsSuccessStatusCode)
-        {
-            c.LastError = "Your Google connection needs to be renewed.";
-            await db.SaveChangesAsync(ct);
-            log.LogWarning("Google token refresh failed for user {User}: {Status}", userId, (int)tokenResponse.StatusCode);
-            throw new ConflictException("Your Google connection needs to be renewed.", "GOOGLE_TOKEN_EXPIRED");
+        using var response=await http.CreateClient("google-calendar").SendAsync(request,HttpCompletionOption.ResponseHeadersRead,deadline.Token);
+        if(!response.IsSuccessStatusCode){
+            await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected)
+                .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.LastError,"Your Google connection needs to be renewed."),ct);
+            log.LogWarning("Google token refresh failed for user {User}: {Status}",userId,(int)response.StatusCode);
+            throw new ConflictException("Your Google connection needs to be renewed.","GOOGLE_TOKEN_EXPIRED");
         }
-        var doc = JsonDocument.Parse(body).RootElement;
-        var accessToken = doc.GetProperty("access_token").GetString()!;
-        var expiresIn = doc.TryGetProperty("expires_in", out var e) ? e.GetInt32() : 3600;
-        c.AccessTokenProtected = secrets.Protect(accessToken);
-        c.AccessTokenExpiresAt = clock.Now.AddSeconds(expiresIn - 60);
-        c.LastSyncAt = clock.Now;
-        c.LastError = null;
-        await db.SaveChangesAsync(ct);
-        return accessToken;
+        await using var stream=await response.Content.ReadAsStreamAsync(deadline.Token);
+        var buffer=new byte[65537];var length=0;int count;
+        while(length<buffer.Length&&(count=await stream.ReadAsync(buffer.AsMemory(length),deadline.Token))>0)length+=count;
+        if(length>65536)throw new ConflictException("Google returned an invalid token response.","GOOGLE_TOKEN_EXPIRED");
+        JsonDocument doc;
+        try{doc=JsonDocument.Parse(buffer.AsMemory(0,length));}catch(JsonException){throw new ConflictException("Google returned an invalid token response.","GOOGLE_TOKEN_EXPIRED");}
+        using(doc){
+            var root=doc.RootElement;
+            string Field(string name,int maximum){
+                if(root.ValueKind==JsonValueKind.Object&&root.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.String&&value.GetString() is {Length:>0} text&&text.Length<=maximum&&!text.Any(char.IsControl))return text;
+                throw new ConflictException("Google returned an invalid token response.","GOOGLE_TOKEN_EXPIRED");
+            }
+            var access=Field("access_token",10000);var seconds=3600;
+            if(root.TryGetProperty("expires_in",out var expires)&&(expires.ValueKind!=JsonValueKind.Number||!expires.TryGetInt32(out seconds)||seconds<120||seconds>86400))
+                throw new ConflictException("Google returned an invalid token lifetime.","GOOGLE_TOKEN_EXPIRED");
+            var scopes=root.TryGetProperty("scope",out _)?Field("scope",2000):c.Scopes;
+            if(!scopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains(scope))
+                throw new ConflictException("Reconnect Google and grant the required permission.","GOOGLE_SCOPE_REQUIRED");
+            var refresh=root.TryGetProperty("refresh_token",out _)?secrets.Protect(Field("refresh_token",10000)):c.RefreshTokenProtected;
+            var protectedAccess=secrets.Protect(access);var expiry=clock.Now.AddSeconds(seconds-60);
+            var won=await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected)
+                .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.AccessTokenProtected,protectedAccess).SetProperty(x=>x.RefreshTokenProtected,refresh)
+                    .SetProperty(x=>x.AccessTokenExpiresAt,expiry).SetProperty(x=>x.Scopes,scopes).SetProperty(x=>x.LastSyncAt,clock.Now)
+                    .SetProperty(x=>x.LastError,(string?)null),ct);
+            if(won!=1)throw new ConflictException("Your Google connection changed. Reload before confirming.","GOOGLE_CONNECTION_CHANGED");
+            return access;
+        }
     }
-
     private async Task<string?> FetchEmailAsync(string accessToken, CancellationToken ct)
     {
         try

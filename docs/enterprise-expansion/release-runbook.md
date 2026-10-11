@@ -21,3 +21,6 @@ Apply 20261011062100_MicrosoftProductivityAndEmailProviders after the private em
 
 ## SQLite expansion startup upgrades
 SQLite development databases do not run the historic PostgreSQL migration chain. SqliteEnterpriseUpgrade now applies an explicit list of the nine additive expansion migrations in a transaction, skipping existing tables, columns and indexes. It refuses raw SQL, destructive operations, table rebuilds and unreviewed migration types. Startup is repeatable and keeps existing private content. This does not upgrade arbitrary historic core-schema differences or replace PostgreSQL migration validation.
+
+## Private calendar checkpoint
+Deploy schema 20261011065223_PersonalCalendarProposals before the API. Keep GoogleCalendar__PersonalCalendarEnabled=false until controlled-account readiness checks pass. SQLite development startup adds the tenth reviewed expansion migration idempotently. Check original-account reconnect and read-only reconciliation; never reset sending/unknown records to force a second provider write. Local receipt removal is separate from provider-event deletion. No production configuration was changed in this checkpoint.

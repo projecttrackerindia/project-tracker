@@ -98,6 +98,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<InboundMailbox> InboundMailboxes => Set<InboundMailbox>();
     public DbSet<GitConnection> GitConnections => Set<GitConnection>();
     public DbSet<MicrosoftConnection> MicrosoftConnections => Set<MicrosoftConnection>();
+    public DbSet<PersonalCalendarProposal> PersonalCalendarProposals => Set<PersonalCalendarProposal>();
     public DbSet<PersonalEmailDraft> PersonalEmailDrafts => Set<PersonalEmailDraft>();
     public DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts => Set<ProviderOAuthAttempt>();
     public DbSet<GoogleConnection> GoogleConnections => Set<GoogleConnection>();

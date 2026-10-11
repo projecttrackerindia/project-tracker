@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { PersonalCalendarProposals } from './PersonalCalendarProposals';
 import { PersonalEmailDrafts } from './PersonalEmailDrafts';
 import { MicrosoftIntegrationSection } from './MicrosoftIntegration';
 import { useSearchParams } from 'react-router-dom';
@@ -70,6 +71,7 @@ export function GoogleIntegrationSection() {
       </div>
       <MicrosoftIntegrationSection key={'microsoft-' + wid} />
       <PersonalEmailDrafts key={wid} google={q.data} />
+      <PersonalCalendarProposals key={"calendar-"+wid} />
     </>
   );
 }

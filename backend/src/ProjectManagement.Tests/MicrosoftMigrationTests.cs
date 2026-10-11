@@ -47,5 +47,6 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Empty(await db.MicrosoftConnections.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.SupportWorkflows.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.PersonalResumes.IgnoreQueryFilters().ToArrayAsync());
+        Assert.Empty(await db.PersonalCalendarProposals.IgnoreQueryFilters().ToArrayAsync());
     }
 }

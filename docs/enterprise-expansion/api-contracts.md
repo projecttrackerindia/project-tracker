@@ -71,3 +71,13 @@ All routes below require the authenticated owner in the active workspace; anothe
 - GET .../callback: anonymous provider return; hashed state plus matching browser proof, expiry, atomic consumption and current membership are mandatory.
 - POST .../disconnect: erase this user's local connection and audit metadata; no claim of remote consent revocation.
 - Private email metadata/detail include provider, optional providerRequestId and confirmedSenderEmail. Legacy receipts keep sender null rather than infer a historical identity from the current connection.
+
+## Private calendar proposals
+Authenticated user and active workspace ownership apply to every route; another member/administrator/workspace receives 404 for private proposal IDs. Responses are not cached.
+- GET /api/v1/me/calendar-proposals/options: enabled, account and actual Calendar access; no credentials.
+- GET base: at most 100 metadata summaries; notes are omitted. GET /{id}: full private proposal.
+- POST base: title (1-200), description (up to 6,000), start/end with offsets, valid IANA timeZone. Start is at least one minute ahead and within a year; duration is positive and no more than 24 hours. Saved proposals are immutable; save a new proposal to change details.
+- GET /{id}/availability?version=N: read-only blocking-event count for the primary connected calendar; incomplete pagination or invalid responses fail closed.
+- POST /{id}/confirm: version, confirmed=true, account matching the reviewed connection. Fresh conflict/membership checks precede an atomic durable claim. At most ten confirmations per person/workspace/hour. No attendees, automatic retries or model calls.
+- POST /{id}/reconcile: read-only recovery of unknown or stale sending receipts. Verifies ID, tenant/owner/proposal markers, title/notes and exact times. It cannot resend or infer success from a missing/changed event.
+- DELETE /{id}: removes draft content or erases verified receipt text/account/times, preserving rate history. Sending/unknown deletion is blocked; this does not delete a provider event.

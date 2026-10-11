@@ -52,3 +52,12 @@ No live Microsoft credentials were configured or activated in this phase. Inbox/
 
 ## SQLite expansion startup upgrades
 SQLite development databases do not run the historic PostgreSQL migration chain. SqliteEnterpriseUpgrade now applies an explicit list of the nine additive expansion migrations in a transaction, skipping existing tables, columns and indexes. It refuses raw SQL, destructive operations, table rebuilds and unreviewed migration types. Startup is repeatable and keeps existing private content. This does not upgrade arbitrary historic core-schema differences or replace PostgreSQL migration validation.
+
+## Private calendar confirmation and recovery
+Private metadata retrieval omits notes; owner/tenant filters prevent administrator or peer access. Saved content is immutable. Explicit account/version confirmation, fresh primary-calendar conflict checks and current membership revalidation precede a committed claim. Active-user row serialization and saved overlap checks prevent concurrent overlapping proposals by the same person within the workspace.
+
+Provider requests use fixed hosts, combined per-request 20-second deadlines, bounded 64 KiB JSON bodies and no raw-response logging. Stable event IDs and private proposal/owner/workspace markers support read-back verification. No retry is sent after an uncertain write, including a lost response. Only exact matching event content/times marks success. No invitation recipients or AI provider access are introduced.
+
+Google token refresh now reads untracked state, bounds response size/lifetime and uses comparison against the prior protected refresh grant before updating. A reconnect/disconnect winning during refresh prevents credential overwrite and blocks the subsequent action. A provider permission downgrade is rejected. Calendar instants use explicit UTC offsets; zone validation uses the existing bundled NodaTime data and works with invariant globalization.
+
+Limitations: primary calendar only; conservative busy-event counting; no guarantee against a simultaneous event written outside this flow; unresolved missing/changed events need an administrator recovery design; project meeting mutations and Microsoft calendar actions remain pending.

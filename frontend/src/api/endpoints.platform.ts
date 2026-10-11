@@ -183,3 +183,14 @@ export const workApi = {
   download: (fileId: string, fileName: string) => download(`/work-attachments/${fileId}/download`, fileName),
   removeFile: (fileId: string) => del<void>(`/work-attachments/${fileId}`),
 };
+
+export const personalCalendarApi = {
+  options: () => get<{enabled:boolean; account:string|null; calendarAccess:boolean}>('/me/calendar-proposals/options'),
+  list: () => get<import('./types').PersonalCalendarProposal[]>('/me/calendar-proposals'),
+  get: (id:string) => get<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id),
+  save: (body:{title:string;description:string;start:string;end:string;timeZone:string}) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals',body),
+  availability: (id:string,version:number) => get<{version:number;blockingEvents:number;scope:string}>('/me/calendar-proposals/'+id+'/availability',{version}),
+  confirm: (id:string,body:{version:number;confirmed:boolean;account:string}) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id+'/confirm',body),
+  reconcile: (id:string) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id+'/reconcile'),
+  remove: (id:string) => del('/me/calendar-proposals/'+id),
+};
