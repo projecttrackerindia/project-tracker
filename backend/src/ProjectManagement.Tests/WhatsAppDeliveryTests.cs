@@ -96,6 +96,30 @@ public class WhatsAppDeliveryTests(ApiFactory factory)
         }finally{Reset();}
     }
     [Fact]
+    public async Task Never_polled_organization_is_not_starved_by_a_full_batch_of_previously_polled_organizations()
+    {
+        try
+        {
+            Configure();var organizations=new List<TestClient>();
+            for(var i=0;i<11;i++){var organization=await Org();organizations.Add(organization);await Notify(organization);}
+            var previouslyPolled=DateTime.UtcNow.Date.AddDays(-1);var newcomer=organizations[^1];
+            factory.WithDb(db=>
+            {
+                db.WhatsAppConnections.IgnoreQueryFilters().Where(x=>ownedTenants.Contains(x.TenantId))
+                    .ExecuteUpdate(s=>s.SetProperty(x=>x.DeliveryPolledAt,previouslyPolled));
+                db.WhatsAppConnections.IgnoreQueryFilters().Where(x=>x.TenantId==newcomer.WorkspaceId)
+                    .ExecuteUpdate(s=>s.SetProperty(x=>x.DeliveryPolledAt,(DateTime?)null));return 0;
+            });
+            await Processor.ProcessAsync();
+            Assert.NotNull(Connection(newcomer).DeliveryPolledAt);Assert.Equal("accepted",Assert.Single(Rows(newcomer)).State);
+            Assert.Equal(10,factory.WhatsApp.Sends.Count);
+            Assert.Single(organizations.Take(10),x=>Connection(x).DeliveryPolledAt==previouslyPolled);
+            await Processor.ProcessAsync();Assert.Equal(11,factory.WhatsApp.Sends.Count);
+            Assert.All(organizations,x=>Assert.Equal("accepted",Assert.Single(Rows(x)).State));
+        }
+        finally{Reset();}
+    }
+    [Fact]
     public async Task Persisted_notifications_send_once_through_exact_tenant_token_and_generic_template()
     {
         try{Configure();var a=await Org();var n=await Notify(a);await Queue(a,n);await Queue(a,n);

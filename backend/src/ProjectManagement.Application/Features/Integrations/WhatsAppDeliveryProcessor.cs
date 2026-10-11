@@ -31,7 +31,8 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
                         &&!db.WhatsAppDeliveries.IgnoreQueryFilters().Any(d=>d.TenantId==n.TenantId&&d.NotificationId==n.Id)
                         &&db.WhatsAppContactLinks.IgnoreQueryFilters().Any(r=>r.TenantId==n.TenantId&&r.UserId==n.UserId
                             &&r.NotificationConsentAt<=n.CreatedAt&&r.NotificationConsentExpiresAt>now))))
-                .OrderBy(x => x.DeliveryPolledAt).ThenBy(x => x.TenantId).Select(x => x.TenantId).Take(10).ToListAsync(ct);
+                // Explicitly put never-polled organizations first on both PostgreSQL and SQLite.
+                .OrderBy(x => x.DeliveryPolledAt != null).ThenBy(x => x.DeliveryPolledAt).ThenBy(x => x.TenantId).Select(x => x.TenantId).Take(10).ToListAsync(ct);
         }
         var decisions = 0;
         await Parallel.ForEachAsync(tenants, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct }, async (tenant, cancellation) =>

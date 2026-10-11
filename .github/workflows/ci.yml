@@ -98,6 +98,10 @@ jobs:
         run: dotnet restore
       - name: Build
         run: dotnet build --no-restore -c Release
+      - name: Enterprise expansion upgrade from main on a disposable PostgreSQL database
+        env:
+          PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
+        run: dotnet test --no-build -c Release --filter FullyQualifiedName~PostgresExpansionUpgradeTests
       - name: Retry transaction regressions on PostgreSQL
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres

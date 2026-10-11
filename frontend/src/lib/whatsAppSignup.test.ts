@@ -32,6 +32,13 @@ describe('WhatsApp signup boundary', () => {
     expect(await promise).toEqual({ code: 'one-use-code', businessAccountId: '1234', phoneNumberId: '5678' });
     message('https://www.facebook.com'); // Settled listener has been removed.
   });
+  it.each(['\u0000code', 'code\u001f', 'code\u007f', 'x'.repeat(2001)])('rejects invalid SDK authorization codes', async (code) => {
+    const events = new EventTarget(); let callback: (response: { authResponse?: { code?: string } }) => void = () => {};
+    vi.stubGlobal('window', { FB: { login: (cb: typeof callback) => { callback = cb; } },
+      addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) });
+    const result = launchWhatsAppSignup(start, new AbortController().signal);
+    const rejection = expect(result).rejects.toThrow('not completed'); callback({ authResponse: { code } }); await rejection;
+  });
   it('aborts stale workspace flows without producing an installation result', async () => {
     const events = new EventTarget();
     vi.stubGlobal('window', { FB: { login: () => {} }, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) });

@@ -120,16 +120,50 @@ public static class ResumeFiles
         using var ms=new MemoryStream();using(var doc=WordprocessingDocument.Create(ms,WordprocessingDocumentType.Document,true))
         {
             var main=doc.AddMainDocumentPart();var body=new W.Body();main.Document=new W.Document(body);
-            void Para(string text,int size=22,bool bold=false,bool centered=false,string? color=null){var p=new W.Paragraph();var pp=new W.ParagraphProperties(new W.SpacingBetweenLines{After="100"});if(centered)pp.Append(new W.Justification{Val=W.JustificationValues.Center});p.Append(pp);var rp=new W.RunProperties(new W.RunFonts{Ascii="Calibri",HighAnsi="Calibri"});if(bold)rp.Append(new W.Bold());if(color!=null)rp.Append(new W.Color{Val=color});rp.Append(new W.FontSize{Val=size.ToString()});var run=new W.Run(rp);var lines=text.Replace("\r","").Split('\n');for(var i=0;i<lines.Length;i++){if(i>0)run.Append(new W.Break());run.Append(new W.Text(lines[i]){Space=SpaceProcessingModeValues.Preserve});}p.Append(run);body.Append(p);}
+            void Para(string text,int size=22,bool bold=false,bool centered=false,string? color=null,bool heading=false)
+            {
+                var p=new W.Paragraph();var pp=new W.ParagraphProperties();
+                if(heading)pp.Append(new W.KeepNext());
+                pp.Append(new W.WidowControl());
+                if(heading&&t.Rule)pp.Append(new W.ParagraphBorders(new W.BottomBorder{Val=W.BorderValues.Single,Color=t.Accent,Size=4,Space=4}));
+                pp.Append(new W.SpacingBetweenLines{Before=heading?"180":"0",After="100"});
+                if(centered)pp.Append(new W.Justification{Val=W.JustificationValues.Center});
+                p.Append(pp);var rp=new W.RunProperties(new W.RunFonts{Ascii="Calibri",HighAnsi="Calibri"});
+                if(bold)rp.Append(new W.Bold());if(color!=null)rp.Append(new W.Color{Val=color});rp.Append(new W.FontSize{Val=size.ToString()});
+                var run=new W.Run(rp);var lines=text.Replace("\r","").Split('\n');
+                for(var i=0;i<lines.Length;i++){if(i>0)run.Append(new W.Break());run.Append(new W.Text(lines[i]){Space=SpaceProcessingModeValues.Preserve});}
+                p.Append(run);body.Append(p);
+            }
             Para(c.Name,48,true,t.Centered,t.Accent);Para(c.Headline);Para(c.Contact);
-            if(c.Summary.Length>0){Para("Profile",t.HeadingSize*2,true,false,t.Accent);Para(c.Summary);}
-            foreach(var s in c.Sections){Para(s.Heading,t.HeadingSize*2,true,false,t.Accent);Para(s.Text);}
+            if(c.Summary.Length>0){Para("Profile",t.HeadingSize*2,true,false,t.Accent,true);Para(c.Summary);}
+            foreach(var s in c.Sections){Para(s.Heading,t.HeadingSize*2,true,false,t.Accent,true);Para(s.Text);}
             var props=new W.SectionProperties(new W.PageSize{Width=11906,Height=16838},new W.PageMargin{Top=(int)(t.Margin*20),Bottom=(int)(t.Margin*20),Left=(uint)(t.Margin*20),Right=(uint)(t.Margin*20),Header=400,Footer=400});
             if(watermark)
             {
                 var header=main.AddNewPart<HeaderPart>();header.Header=new W.Header();
                 // Standard Word VML text watermark, positioned behind the page text, editable by Word like other document watermarks.
-                var mark=new W.Paragraph();mark.InnerXml="<w:r xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:pict><v:shape xmlns:v=\"urn:schemas-microsoft-com:vml\" id=\"ProjectTrackerWatermark\" type=\"#_x0000_t136\" style=\"position:absolute;width:450pt;height:65pt;z-index:-251654144;mso-position-horizontal:center;mso-position-horizontal-relative:page;mso-position-vertical:center;mso-position-vertical-relative:page\" fillcolor=\"#F2EDFF\" stroked=\"f\"><v:path textpathok=\"t\"/><v:textpath on=\"t\" fitshape=\"t\" style=\"font-family:Calibri;font-size:1pt\" string=\"Project Tracker\"/></v:shape></w:pict></w:r>";
+                // The shape references a self-contained WordArt definition; an unresolved type can disappear in Word/PDF conversion.
+                var mark=new W.Paragraph();mark.InnerXml="""
+                    <w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+                      <w:pict>
+                        <v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" adj="10800" path="m@7,l@8,m@5,21600l@6,21600e">
+                          <v:formulas>
+                            <v:f eqn="sum #0 0 10800"/><v:f eqn="prod #0 2 1"/><v:f eqn="sum 21600 0 @1"/><v:f eqn="sum 0 0 @2"/>
+                            <v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 0"/><v:f eqn="if @0 21600 @1"/><v:f eqn="if @0 0 @2"/>
+                            <v:f eqn="if @0 @4 21600"/><v:f eqn="mid @5 @6"/><v:f eqn="mid @8 @5"/><v:f eqn="mid @7 @8"/>
+                            <v:f eqn="mid @6 @7"/><v:f eqn="sum @6 0 @5"/>
+                          </v:formulas>
+                          <v:path textpathok="t" o:connecttype="custom" o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800" o:connectangles="270,180,90,0"/>
+                          <v:textpath on="t" fitshape="t"/>
+                          <v:handles><v:h position="#0,bottomRight" xrange="6629,14971"/></v:handles>
+                          <o:lock v:ext="edit" text="t" shapetype="t"/>
+                        </v:shapetype>
+                        <v:shape id="ProjectTrackerWatermark" type="#_x0000_t136" style="position:absolute;width:450pt;height:65pt;z-index:-251654144;mso-position-horizontal:center;mso-position-horizontal-relative:page;mso-position-vertical:center;mso-position-vertical-relative:page" fillcolor="#F2EDFF" stroked="f">
+                          <v:path textpathok="t"/><v:textpath on="t" fitshape="t" style="font-family:Calibri;font-size:1pt" string="Project Tracker"/>
+                        </v:shape>
+                      </w:pict>
+                    </w:r>
+                    """;
                 header.Header.Append(mark);header.Header.Save();props.PrependChild(new W.HeaderReference{Type=W.HeaderFooterValues.Default,Id=main.GetIdOfPart(header)});
             }
             body.Append(props);main.Document.Save();

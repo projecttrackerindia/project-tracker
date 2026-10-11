@@ -72,7 +72,7 @@ export function launchWhatsAppSignup(start: WhatsAppSignupStart, signal: AbortSi
     try {
       window.FB!.login((response) => {
         const value = response.authResponse?.code;
-        if (typeof value !== 'string' || !value.length || value.length > 2000 || /[\u0000-\u001f\u007f]/.test(value)) {
+        if (typeof value !== 'string' || !value.length || value.length > 2000 || Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
           fail('WhatsApp installation was not completed.'); return;
         }
         code = value; finish();
