@@ -52,7 +52,7 @@ export function WhatsAppContactSection() {
         <p>Linking proves that you control this number. It does not enable notifications or expand your project permissions.</p>
         {!s.eligible&&<p>This organization's active plan does not currently include WhatsApp integration.</p>}
         {!s.enabled&&<p>Phone linking is awaiting a configured business connection and platform activation.</p>}
-        {s.status==='verified'&&<p role="status">Verified number: {s.maskedPhone}. Notification delivery remains disabled.</p>}
+        {s.status==='verified'&&<p role="status">Verified number: {s.maskedPhone}. Manage notification consent and quiet hours below.</p>}
         {s.status==='pending'&&<p role="status">Waiting for your message from {s.maskedPhone}. Code expires {s.expiresAt?new Date(s.expiresAt).toLocaleString():''}.</p>}
         {challenge&&s.status==='pending'&&<div><p>From the number you entered, send this exact message to {s.businessName||'your organization'}'s WhatsApp business number. Ask your administrator for that number.</p>
           <p><code style={{overflowWrap:'anywhere',wordBreak:'break-word'}}>{challenge.message}</code></p>

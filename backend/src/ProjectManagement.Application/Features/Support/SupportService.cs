@@ -18,7 +18,7 @@ public record SupportTicketDto(Guid Id,WorkTaskDto Work,string Category,string R
 public record SupportSummary(int Backlog,int Unassigned,int Handoffs,int OpenBreached,int ResolutionMet,int ResolutionMissed,int ResponseMet,int ResponseMissed);
 public record SupportMessagePage(int Version,int Offset,int? NextOffset,IReadOnlyList<SupportInteraction> Items);
 public record SupportQueueItem(Guid Id,string Key,string Title,Priority Priority,WorkTaskStatus WorkStatus,string State,string Category,Guid? AssigneeId,Guid? TeamId,DateTime? ResponseDueAt,DateTime? ResolutionDueAt,int Version);
-public class SupportService(IAppDbContext db,ICurrentContext ctx,WorkTaskService work,PermissionService permissions,Recorder recorder,AppClock clock,ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowEmitter workflows)
+public class SupportService(IAppDbContext db,ICurrentContext ctx,WorkTaskService work,PermissionService permissions,Recorder recorder,AppClock clock,ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowEmitter workflows,ProjectManagement.Application.Features.Notifications.NotificationService notifications)
 {
     private async Task GateAsync(CancellationToken ct){ctx.RequireTenantId();await permissions.RequireModuleAsync(Modules.Work,AccessLevel.View,ct);}
     private async Task<(SupportTicket Ticket,WorkTaskDto Work,bool Staff)> FindAsync(Guid id,CancellationToken ct)
@@ -113,7 +113,13 @@ public class SupportService(IAppDbContext db,ICurrentContext ctx,WorkTaskService
         if(await db.SupportInteractions.CountAsync(m=>m.TicketId==id,ct)>=2000)throw new ConflictException("This ticket has two thousand messages. Create a linked follow-up ticket.");
         var interaction=new SupportInteraction{TenantId=t.TenantId,TicketId=id,AuthorId=ctx.RequireUserId(),Body=text,Visibility=req.Visibility,RequestKey=key};
         db.SupportInteractions.Add(interaction);t.Version++;
-        if(req.Visibility=="public")await workflows.EmitAsync(id,"message_received",interaction.Id.ToString("N"),ct);
+        if(req.Visibility=="public")
+        {
+            await workflows.EmitAsync(id,"message_received",interaction.Id.ToString("N"),ct);
+            foreach(var recipient in new Guid?[]{w.Reporter?.Id,w.Assignee?.Id}.Where(x=>x!=null).Select(x=>x!.Value).Distinct())
+                await notifications.AddAsync(recipient,NotificationType.TaskUpdated,"Support ticket updated",null,$"/support?ticket={id}",
+                    $"support:{interaction.Id:N}:{recipient:N}",ct:ct);
+        }
         // Public staff response meets the existing first-response SLA, not a requester's own message or a private note.
         if(staff&&w.Reporter?.Id!=ctx.UserId&&req.Visibility=="public"){var task=await db.WorkTasks.SingleAsync(x=>x.Id==t.WorkTaskId,ct);task.RespondedAt??=clock.Now;}
         recorder.Audit("support.message_added","SupportTicket",id,null,new{visibility=req.Visibility});await db.SaveChangesAsync(ct);return await GetAsync(id,ct);
@@ -146,6 +152,9 @@ public class SupportService(IAppDbContext db,ICurrentContext ctx,WorkTaskService
         paused.Dispose();
         if(req.State!="linked")await workflows.EmitAsync(id,"state_changed",id.ToString("N")+":"+t.Version,ct);
         db.SupportInteractions.Add(new(){TenantId=t.TenantId,TicketId=id,AuthorId=ctx.RequireUserId(),Kind="state",Visibility="internal",Body=$"State: {req.State}. {Clean(req.Reason,1000,"reason")}",RequestKey=Guid.NewGuid().ToString("N")});
+        if(req.State!="linked")foreach(var recipient in new Guid?[]{w.Reporter?.Id,w.Assignee?.Id}.Where(x=>x!=null).Select(x=>x!.Value).Distinct())
+            await notifications.AddAsync(recipient,NotificationType.TaskUpdated,"Support ticket updated",null,$"/support?ticket={id}",
+                $"support-state:{id:N}:{t.Version}:{recipient:N}",ct:ct);
         recorder.Audit("support.state_changed","SupportTicket",id,null,new{state=req.State,t.Version,req.RelatedTicketId});await db.SaveChangesAsync(ct);await tx.CommitIfOwnedAsync(ct);return await GetAsync(id,ct);
     }
 }

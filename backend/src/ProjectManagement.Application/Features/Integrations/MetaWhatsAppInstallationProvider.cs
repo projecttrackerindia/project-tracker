@@ -9,7 +9,7 @@ namespace ProjectManagement.Application.Features.Integrations;
 
 /// <summary>Read-only asset verification after an app-bound authorization-code exchange; fixed HTTPS origin, no redirects/retries.</summary>
 public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<WhatsAppOptions> options, AppClock clock)
-    : IWhatsAppInstallationProvider, IWhatsAppHealthProvider, IWhatsAppTemplateProvider
+    : IWhatsAppInstallationProvider, IWhatsAppHealthProvider, IWhatsAppTemplateProvider, IWhatsAppDeliveryProvider
 {
     private static ConflictException Invalid() => new("Meta did not verify this business installation. Start again or review app setup.", "WHATSAPP_PROVIDER_ERROR");
     private async Task<JsonDocument> ReadAsync(HttpRequestMessage request, CancellationToken ct)
@@ -189,6 +189,47 @@ public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Invalid(); }
         catch (InvalidOperationException) { throw Invalid(); }
+    }
+
+    public async Task<WhatsAppSendResult> SendTemplateAsync(string token, string phoneNumberId, string recipient,
+        string category, string callbackTag, CancellationToken ct)
+    {
+        var o = options.Value;
+        if (!WhatsAppDeliveryService.Enabled(o) || !WhatsAppGatewayService.ProviderId(phoneNumberId)
+            || !WhatsAppContactService.PhoneDigits(recipient) || token is not { Length: > 0 and <= 10000 } || token.Any(char.IsControl)
+            || callbackTag is not { Length: > 0 and <= 100 } || callbackTag.Any(char.IsControl)) return new("rejected");
+        var definition = WhatsAppTemplateService.Definitions.SingleOrDefault(x => x.Key == category);
+        if (definition == null) return new("rejected");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        var proof = Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(o.AppSecret!), System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://graph.facebook.com/" + o.ApiVersion + "/"
+            + phoneNumberId + "/messages?appsecret_proof=" + proof);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = System.Net.Http.Json.JsonContent.Create(new { messaging_product = "whatsapp", recipient_type = "individual", to = recipient,
+            type = "template", template = new { name = definition.Name, language = new { code = definition.Language } }, biz_opaque_callback_data = callbackTag });
+        try
+        {
+            using var response = await http.CreateClient("whatsapp-installation").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            var bytes = new byte[65537];var count=0;int read;
+            while(count<bytes.Length&&(read=await stream.ReadAsync(bytes.AsMemory(count),deadline.Token))>0)count+=read;
+            if(count>65536)return new("unknown");
+            using var payload=JsonDocument.Parse(bytes.AsMemory(0,count),new JsonDocumentOptions{MaxDepth=20});var root=payload.RootElement;
+            if(root.ValueKind!=JsonValueKind.Object)return new("unknown");
+            // Definitive structured 4xx rejection is terminal. Redirects, 5xx and uncertain payloads are never retried.
+            if(!response.IsSuccessStatusCode)
+                return (int)response.StatusCode is >=400 and <500 && root.TryGetProperty("error",out var error)
+                    && error.ValueKind==JsonValueKind.Object && error.TryGetProperty("code",out var code)&&code.TryGetInt32(out _)
+                    ? new("rejected") : new("unknown");
+            if(root.TryGetProperty("error",out _)||Field(root,"messaging_product",20)!="whatsapp"
+                ||!root.TryGetProperty("messages",out var messages)||messages.ValueKind!=JsonValueKind.Array||messages.GetArrayLength()!=1
+                ||!root.TryGetProperty("contacts",out var contacts)||contacts.ValueKind!=JsonValueKind.Array||contacts.GetArrayLength()!=1
+                ||Field(contacts[0],"input",20)!=recipient||Field(contacts[0],"wa_id",20)!=recipient)return new("unknown");
+            var id=Field(messages[0],"id",200);return id.StartsWith("wamid.",StringComparison.Ordinal)?new("accepted",id):new("unknown");
+        }
+        catch(Exception ex)when(ex is HttpRequestException or JsonException or OperationCanceledException or ConflictException or InvalidOperationException)
+        {return new("unknown");}
     }
 
 }

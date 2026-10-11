@@ -68,7 +68,7 @@ public class NotificationRouter(IAppDbContext db)
     }
 }
 
-public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock clock, NotificationRouter router)
+public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock clock, NotificationRouter router, ProjectManagement.Application.Features.Integrations.WhatsAppDeliveryService whatsapp)
 {
     /// <summary>
     /// Queues a notification in the current unit of work (caller saves), honouring the recipient's channel preferences.
@@ -83,7 +83,7 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
             TenantId = ctx.RequireTenantId(), UserId = userId, Type = type, Title = Text.Truncate(title, 200)!,
             Body = Text.Truncate(body, 500), Link = link, DedupeKey = dedupeKey, CreatedAt = clock.Now,
         };
-        if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
+        if (await router.ApplyAsync(n, ct) || await whatsapp.HasIntentAsync(n, ct)) db.Notifications.Add(n);
     }
 
     /// <summary>Whether this person wants this kind of notice in the bell (their own choice, or the default).</summary>

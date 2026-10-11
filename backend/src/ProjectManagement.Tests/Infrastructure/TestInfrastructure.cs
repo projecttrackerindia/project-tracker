@@ -61,6 +61,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
         Environment.SetEnvironmentVariable("GoogleMeetSync__WorkerEnabled", "false"); // tests run the RSVP sync engine explicitly
         Environment.SetEnvironmentVariable("Support__Workflows__WorkerEnabled", "false");
+        Environment.SetEnvironmentVariable("WhatsApp__DeliveryEnabled", "false");
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
         Environment.SetEnvironmentVariable("Ai__Operations__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly

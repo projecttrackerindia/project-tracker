@@ -7,7 +7,7 @@ using ProjectManagement.Application.Features.Integrations;
 namespace ProjectManagement.Api.Controllers.Integrations;
 
 [Route("api/v1/integrations/whatsapp"), RequireWorkspace]
-public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstallationService installation, WhatsAppHealthService health, WhatsAppTemplateService templates) : ApiControllerBase
+public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstallationService installation, WhatsAppHealthService health, WhatsAppTemplateService templates, WhatsAppDeliveryService delivery) : ApiControllerBase
 {
     public const string ProofCookie = "__Secure-pt-whatsapp-install";
     private static CookieOptions ProofOptions => new() { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict,
@@ -43,6 +43,8 @@ public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstalla
     public async Task<IActionResult> Templates(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await templates.StatusAsync(ct)); }
     [HttpPost("templates/check")]
     public async Task<IActionResult> CheckTemplates(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await templates.CheckAsync(ct)); }
+    [HttpGet("deliveries")]
+    public async Task<IActionResult> Deliveries(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await delivery.ListAsync(true,ct)); }
     [HttpGet("receipts")]
     public async Task<IActionResult> Receipts(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await service.ReceiptsAsync(ct)); }
     [HttpPost("disconnect")]

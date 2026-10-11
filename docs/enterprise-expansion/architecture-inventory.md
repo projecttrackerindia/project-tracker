@@ -49,3 +49,8 @@ WhatsAppHealthService reuses the existing tenant ledger, central entitlement ser
 
 ## Template contract checkpoint
 WhatsAppTemplateService owns three versioned English-US plain-body notification contracts. MetaWhatsAppInstallationProvider implements IWhatsAppTemplateProvider using three exact-name GET reads on the organization's verified WABA; settings GET itself performs none. The settings component remains in the existing lazy-loaded settings chunk. Template approval cannot activate reception or sending. A durable sender/outbox and authorized external support actions are still absent and remain phase-1 implementation work.
+
+## Durable WhatsApp delivery worker
+The existing API hosted-worker pattern now polls bounded organization IDs with relevant queued work or recent opted-in notifications. Payload reads occur within the selected tenant. Up to four organizations run in parallel; per-tenant ledger locks protect claims and budgets across replicas. Preparation leases recover after restart; a committed outbound attempt becomes unknown if its acknowledgement is lost and is not resubmitted.
+
+Read-only token/asset/subscription/template readiness is cached for at most five minutes under configuration and connection fencing, avoiding seven repeated provider reads for each recipient. Every outbound attempt still checks current member access, plan, resource assignment/status, phone proof, consent/version, quiet hours and budgets. Provider revocation after a cached observation can reject delivery; readiness is not a guarantee. Support public replies/status changes create generic recipient notifications; private notes do not.

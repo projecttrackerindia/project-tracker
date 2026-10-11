@@ -36,7 +36,7 @@ export function WhatsAppTemplateSettings() {
     {status.isLoading && <p role="status">Loading template setup...</p>}
     {status.error && <p role="alert">{status.error.message}</p>}
     {status.data && <>
-      <p role="status">{status.data.state === 'verified' ? 'All template checks passed. Notification delivery remains disabled.'
+      <p role="status">{status.data.state === 'verified' ? status.data.messagingEnabled ? 'All template checks passed. Notifications are enabled for eligible recipients.' : 'All template checks passed. Notification delivery remains disabled.'
         : status.data.state === 'attention' ? 'Some templates need attention. Review their status below.'
         : status.data.state === 'checking' ? 'Checking templates with Meta...'
         : status.data.state === 'stale' ? 'The previous checks are out of date. Check provider health and templates again.'

@@ -20,6 +20,10 @@ public class WhatsAppOptions
     public bool InstallationEnabled { get; set; }
     public bool HealthChecksEnabled { get; set; } // Read-only, administrator-initiated checks; default off.
     public bool TemplateChecksEnabled { get; set; } // Read-only, administrator-initiated checks; default off.
+    public bool DeliveryEnabled { get; set; } // Default off; controlled registration/webhook/delivery checks precede activation.
+    public int DeliveryUserDailyCap { get; set; } = 10;
+    public int DeliveryOrganizationDailyCap { get; set; } = 1000;
+    public int DeliveryIntervalSeconds { get; set; } = 10;
     public bool ContactLinkingEnabled { get; set; }
     public string? EmbeddedSignupConfigId { get; set; }
     public string? ApiVersion { get; set; }
@@ -64,8 +68,10 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
         await RequireAdminAsync(ct);
         var tenant = ctx.RequireTenantId();
         var connection = await db.WhatsAppConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
-        return new(_o.Configured, _o.Configured && _o.WebhookReceptionEnabled, await EligibleAsync(tenant, ct),
-            connection?.Active == true && (connection.TokenExpiresAt == null || connection.TokenExpiresAt > clock.Now), connection?.DisplayName, connection is null ? null : Utc(connection.ConnectedAt), _o.InstallationEnabled && _o.InstallationConfigured);
+        var eligible=await EligibleAsync(tenant,ct);
+        return new(_o.Configured, _o.Configured && _o.WebhookReceptionEnabled, eligible,
+            connection?.Active == true && (connection.TokenExpiresAt == null || connection.TokenExpiresAt > clock.Now), connection?.DisplayName, connection is null ? null : Utc(connection.ConnectedAt), _o.InstallationEnabled && _o.InstallationConfigured,
+            WhatsAppDeliveryService.Enabled(_o)&&eligible&&connection?.Active==true&&connection.AppId==_o.AppId&&(connection.TokenExpiresAt==null||connection.TokenExpiresAt>clock.Now));
     }
     public async Task<IReadOnlyList<WhatsAppReceiptDto>> ReceiptsAsync(CancellationToken ct)
     {
@@ -82,6 +88,11 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
         await RequireAdminAsync(ct); var tenant = ctx.RequireTenantId();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.LockTenantLedgerAsync(tenant, ct);
+        await db.WhatsAppDeliveries.Where(x=>x.State=="queued"||x.State=="preparing").ExecuteUpdateAsync(u=>u
+            .SetProperty(x=>x.State,"suppressed").SetProperty(x=>x.Reason,"CONNECTION_DISCONNECTED")
+            .SetProperty(x=>x.LeaseId,(Guid?)null).SetProperty(x=>x.LeaseUntil,(DateTime?)null),ct);
+        await db.WhatsAppDeliveries.Where(x=>x.State=="sending").ExecuteUpdateAsync(u=>u
+            .SetProperty(x=>x.State,"unknown").SetProperty(x=>x.Reason,"CONNECTION_DISCONNECTED"),ct);
         await db.ProviderOAuthAttempts.Where(x => x.Provider == "whatsapp" && x.TenantId == tenant).ExecuteDeleteAsync(ct);
         await db.WhatsAppContactLinks.Where(x => x.TenantId == tenant).ExecuteUpdateAsync(s => s
             .SetProperty(x => x.PhoneProtected, "").SetProperty(x => x.PhoneHash, (string?)null)
@@ -139,7 +150,8 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
             throw new ValidationException("body", "Invalid or oversized WhatsApp webhook envelope.");
         return value;
     }
-    private static List<Incoming> Parse(ReadOnlyMemory<byte> body)
+    private sealed record DeliveryStatus(string BusinessId,string PhoneId,string MessageId,string State,DateTime Timestamp,string? CallbackTag,string? Recipient);
+    private static (List<Incoming> Messages,List<DeliveryStatus> Statuses) Parse(ReadOnlyMemory<byte> body)
     {
         try
         {
@@ -147,7 +159,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
             var root = json.RootElement;
             if (String(root, "object") != "whatsapp_business_account")
                 throw new ValidationException("body", "Expected a WhatsApp business webhook.");
-            var messages = new List<Incoming>();
+            var messages = new List<Incoming>();var statuses=new List<DeliveryStatus>();
             foreach (var entry in Array(root, "entry", 20).EnumerateArray())
             {
                 var business = String(entry, "id");
@@ -159,7 +171,23 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
                         || String(value, "messaging_product") != "whatsapp"
                         || !value.TryGetProperty("metadata", out var metadata) || !ProviderId(String(metadata, "phone_number_id")))
                         throw new ValidationException("body", "Invalid WhatsApp message metadata.");
-                    // Statuses and other callbacks cannot fabricate an outbound receipt.
+                    // Status callbacks may only reconcile an already persisted, independently authorized send attempt.
+                    if(value.TryGetProperty("statuses",out _))
+                    {
+                        foreach(var status in Array(value,"statuses",100).EnumerateArray())
+                        {
+                            var id=String(status,"id");var state=String(status,"status");
+                            var timestamp=String(status,"timestamp");
+                            if(timestamp==null&&status.TryGetProperty("timestamp",out var number)&&number.ValueKind==JsonValueKind.Number&&number.TryGetInt64(out var numeric))timestamp=numeric.ToString(CultureInfo.InvariantCulture);
+                            if(id is not {Length:>0 and <=200}||id.Any(char.IsControl)||state is not ("sent" or "delivered" or "read" or "failed" or "deleted")
+                                ||!long.TryParse(timestamp,NumberStyles.None,CultureInfo.InvariantCulture,out var unix)||unix<0||unix>253402300799)
+                                throw new ValidationException("body","Invalid WhatsApp delivery status.");
+                            var tag=String(status,"biz_opaque_callback_data");var recipient=String(status,"recipient_id");
+                            if(tag is {Length:>100}||tag?.Any(char.IsControl)==true)throw new ValidationException("body","Invalid WhatsApp correlation metadata.");
+                            statuses.Add(new(business!,String(metadata,"phone_number_id")!,id,state,DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime,tag,recipient));
+                            if(statuses.Count+messages.Count>100)throw new ValidationException("body","Too many WhatsApp events.");
+                        }
+                    }
                     if (!value.TryGetProperty("messages", out _)) continue;
                     foreach (var message in Array(value, "messages", 100).EnumerateArray())
                     {
@@ -179,11 +207,11 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
                         }
                         messages.Add(new(business!, String(metadata, "phone_number_id")!, id, type,
                             DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime, sender, proof));
-                        if (messages.Count > 100) throw new ValidationException("body", "Too many WhatsApp messages.");
+                        if (messages.Count + statuses.Count > 100) throw new ValidationException("body", "Too many WhatsApp messages.");
                     }
                 }
             }
-            return messages;
+            return (messages,statuses);
         }
         catch (JsonException) { throw new ValidationException("body", "Invalid WhatsApp JSON."); }
     }
@@ -191,31 +219,36 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
     {
         if (body.Length > 64 * 1024) throw new ValidationException("body", "WhatsApp payload is too large.");
         VerifySignature(signature, body.Span);
-        var messages = Parse(body); // Validate the entire batch before persisting any receipts.
+        var (messages,statuses) = Parse(body); // Validate the entire batch before persisting any receipts.
         var originalTenant = ctx.TenantId; var originalUser = ctx.UserId;
         try
         {
-            foreach (var group in messages.GroupBy(x => new { x.BusinessId, x.PhoneId }))
+            foreach (var group in messages.Select(x => new { x.BusinessId, x.PhoneId }).Concat(statuses.Select(x => new { x.BusinessId, x.PhoneId })).Distinct())
             {
                 // Only installation metadata is read globally, after provider signature validation.
                 // Identity can only be linked by a separate owner-initiated challenge; no business action is executed.
                 var c = await db.WhatsAppConnections.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(
-                    x => x.AppId == _o.AppId && x.BusinessAccountId == group.Key.BusinessId
-                        && x.PhoneNumberId == group.Key.PhoneId && x.Active, ct);
+                    x => x.AppId == _o.AppId && x.BusinessAccountId == group.BusinessId
+                        && x.PhoneNumberId == group.PhoneId && x.Active, ct);
                 if (c is null) continue;
                 ctx.TenantId = c.TenantId; ctx.UserId = null;
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 await db.LockTenantLedgerAsync(c.TenantId, ct);
-                if (!await db.WhatsAppConnections.AnyAsync(x => x.Id == c.Id && x.ConnectedAt == c.ConnectedAt && x.Active && (x.TokenExpiresAt == null || x.TokenExpiresAt > clock.Now)
-                        && x.AppId == _o.AppId && x.BusinessAccountId == group.Key.BusinessId
-                        && x.PhoneNumberId == group.Key.PhoneId, ct)
-                    || !await db.Tenants.AnyAsync(x => x.Id == c.TenantId && x.Type == WorkspaceType.Organization, ct)
-                    || !await EligibleAsync(c.TenantId, ct)) continue;
+                if (!await db.WhatsAppConnections.AnyAsync(x => x.Id == c.Id && x.ConnectedAt == c.ConnectedAt && x.Active
+                        && x.AppId == _o.AppId && x.BusinessAccountId == group.BusinessId
+                        && x.PhoneNumberId == group.PhoneId, ct)
+                    || !await db.Tenants.AnyAsync(x => x.Id == c.TenantId && x.Type == WorkspaceType.Organization && x.Status == TenantStatus.Active, ct)) continue;
+                // Delivery evidence is metadata-only and may reconcile an existing attempt after its plan/token expires.
+                foreach(var status in statuses.Where(x=>x.BusinessId==group.BusinessId&&x.PhoneId==group.PhoneId))
+                    await ReconcileAsync(c,status,ct);
+                if(messages.Any(x=>x.BusinessId==group.BusinessId&&x.PhoneId==group.PhoneId)
+                    &&(c.TokenExpiresAt==null||c.TokenExpiresAt>clock.Now)&&await EligibleAsync(c.TenantId,ct))
+                {
                 // Expired receipts cannot be reintroduced: old provider timestamps are discarded first.
                 await db.WhatsAppInboundReceipts.Where(x => x.TenantId == c.TenantId && x.ReceivedAt < clock.Now.AddDays(-30))
                     .Take(100).ExecuteDeleteAsync(ct);
                 var remaining = Math.Max(0, 10000 - await db.WhatsAppInboundReceipts.CountAsync(x => x.TenantId == c.TenantId, ct));
-                foreach (var incoming in group.DistinctBy(x => x.MessageId))
+                foreach (var incoming in messages.Where(x=>x.BusinessId==group.BusinessId&&x.PhoneId==group.PhoneId).DistinctBy(x => x.MessageId))
                 {
                     if (incoming.Timestamp < clock.Now.AddDays(-30) || incoming.Timestamp > clock.Now.AddMinutes(5)
                         || incoming.Timestamp < new DateTime(c.ConnectedAt.Ticks - c.ConnectedAt.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc)) continue;
@@ -231,10 +264,37 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
                         ProviderCreatedAt = incoming.Timestamp, ReceivedAt = clock.Now
                     });
                 }
+                }
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             }
         }
         finally { ctx.TenantId = originalTenant; ctx.UserId = originalUser; }
     }
+    private async Task ReconcileAsync(WhatsAppConnection connection,DeliveryStatus status,CancellationToken ct)
+    {
+        if(status.State=="deleted"||status.CallbackTag is not {Length:74}||!status.CallbackTag.StartsWith("pt-wa-v1:",StringComparison.Ordinal)
+            ||!WhatsAppContactService.PhoneDigits(status.Recipient)||status.Timestamp>clock.Now.AddMinutes(5)||status.Timestamp<clock.Now.AddDays(-30))return;
+        var row=await db.WhatsAppDeliveries.SingleOrDefaultAsync(x=>x.ConnectionId==connection.Id&&x.ConnectionConnectedAt==connection.ConnectedAt
+            &&x.CallbackTag==status.CallbackTag&&x.AttemptedAt!=null,ct);
+        if(row==null||row.ConfigurationHash!=WhatsAppDeliveryService.Fingerprint(_o)
+            ||row.RecipientHash!=WhatsAppDeliveryService.RecipientHash(_o,connection.TenantId,status.Recipient!)
+            ||status.Timestamp<row.AttemptedAt!.Value.AddSeconds(-30)
+            ||row.ProviderMessageId!=null&&row.ProviderMessageId!=status.MessageId||!status.MessageId.StartsWith("wamid.",StringComparison.Ordinal))return;
+        if(await db.WhatsAppDeliveries.AnyAsync(x=>x.Id!=row.Id&&x.ConnectionId==connection.Id&&x.ProviderMessageId==status.MessageId,ct))return;
+        static int Rank(string state)=>state switch {"read"=>4,"delivered"=>3,"sent"=>2,"accepted"=>1,_=>0};
+        if(status.State=="failed")
+        {
+            if(Rank(row.State)>=3||row.ProviderStatusAt>status.Timestamp)return;
+            row.State="failed";row.Reason="PROVIDER_DELIVERY_FAILED";
+        }
+        else
+        {
+            if(Rank(status.State)<Rank(row.State)||row.State=="failed"&&row.ProviderStatusAt>=status.Timestamp&&Rank(status.State)<3)return;
+            row.State=status.State;row.Reason=null;
+        }
+        row.ProviderMessageId??=status.MessageId;row.AcceptedAt??=clock.Now;row.LeaseUntil=null;
+        if(row.ProviderStatusAt==null||status.Timestamp>row.ProviderStatusAt)row.ProviderStatusAt=status.Timestamp;
+    }
+
 }

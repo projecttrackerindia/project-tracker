@@ -33,8 +33,9 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
     });
     private WhatsAppOptions O => options.Value;
     private bool Enabled => O.TemplateChecksEnabled && O.HealthChecksEnabled && O.InstallationConfigured;
-    private string ConfigurationHash => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-        WhatsAppHealthService.ConfigurationFingerprint(O) + "|" + string.Join("|", Definitions.Select(x => string.Join("|", x.Key, x.Name, x.Language, x.Category, x.Body))))));
+    internal static string ConfigurationFingerprint(WhatsAppOptions o) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+        WhatsAppHealthService.ConfigurationFingerprint(o) + "|" + string.Join("|", Definitions.Select(x => string.Join("|", x.Key, x.Name, x.Language, x.Category, x.Body))))));
+    private string ConfigurationHash => ConfigurationFingerprint(O);
     private bool Current(WhatsAppConnection? row) => row is { Active: true, AccessTokenProtected.Length: > 0 }
         && row.AppId == O.AppId && (row.TokenExpiresAt == null || row.TokenExpiresAt > clock.Now);
     private bool Healthy(WhatsAppConnection? row) => Current(row) && row!.HealthState == "verified"
@@ -60,7 +61,8 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
         return new(Enabled && eligible && Healthy(row), state,
             row?.TemplatesCheckedAt is { } at ? new DateTimeOffset(DateTime.SpecifyKind(at, DateTimeKind.Utc)) : null,
             Definitions.Select((d, i) => new WhatsAppTemplateItem(d.Key, d.Name, d.Language, d.Category, d.Body,
-                show ? observations[i] ?? "unavailable" : state)).ToArray());
+                show ? observations[i] ?? "unavailable" : state)).ToArray(),
+            MessagingEnabled: WhatsAppDeliveryService.Enabled(O)&&eligible&&Current(row));
     }
     public async Task<WhatsAppTemplateStatus> StatusAsync(CancellationToken ct)
     {

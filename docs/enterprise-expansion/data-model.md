@@ -71,3 +71,8 @@ Migration 20261011104645_WhatsAppProviderHealth adds nullable attempt/check time
 
 ## Template observations
 20261011111118_WhatsAppNotificationTemplates adds nine columns to WhatsAppConnections: attempt/check timestamps, lease ID/deadline, configuration/contract hash, aggregate state and three individual template states. Previous installations default to unchecked; no approvals are invented. Tenant filtering and existing unique mapping remain intact. No raw template payload or personal/project data is stored. Disconnect/reconnect clears observations/claims and preserves the attempt cooldown. SQLite's reviewed additive allowlist now contains sixteen migrations; full PostgreSQL upgrades remain a release gate.
+
+## Durable WhatsApp outbox
+Migration 20261011114854_DurableWhatsAppNotificationDelivery adds WhatsAppDeliveries and WhatsAppConnection.DeliveryPolledAt. Rows bind tenant/user, original notification and resource reference, installation epoch, contact/consent version, configuration fingerprint, lease, attempt/acceptance/status timestamps, provider message ID, random callback tag and recipient HMAC. Message content, plaintext phone and credentials are not stored in delivery rows.
+
+Unique tenant/notification and tenant/callback indices prevent duplicate preparation. Connection/provider-message identity is unique when present. Terminal metadata has bounded thirty-day retention during polling. New columns/table are additive; existing installations and notifications are not granted consent or readiness. The reviewed SQLite expansion allowlist now contains seventeen migrations; full PostgreSQL upgrades remain a release gate.

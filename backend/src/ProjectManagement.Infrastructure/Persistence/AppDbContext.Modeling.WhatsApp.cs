@@ -5,12 +5,26 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    public DbSet<WhatsAppDelivery> WhatsAppDeliveries => Set<WhatsAppDelivery>();
     public DbSet<WhatsAppContactLink> WhatsAppContactLinks => Set<WhatsAppContactLink>();
     public DbSet<WhatsAppConnection> WhatsAppConnections => Set<WhatsAppConnection>();
     public DbSet<WhatsAppInboundReceipt> WhatsAppInboundReceipts => Set<WhatsAppInboundReceipt>();
 
     private static void ConfigureWhatsApp(ModelBuilder b)
     {
+        b.Entity<WhatsAppDelivery>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.NotificationId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.State, x.AvailableAt });
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.AttemptedAt });
+            e.HasIndex(x => new { x.TenantId, x.AttemptedAt });
+            e.HasIndex(x => new { x.TenantId, x.CallbackTag }).IsUnique();
+            e.HasIndex(x => new { x.ConnectionId, x.ProviderMessageId }).IsUnique();
+            e.Property(x => x.Category).HasMaxLength(30); e.Property(x => x.ResourceKind).HasMaxLength(20);
+            e.Property(x => x.State).HasMaxLength(20); e.Property(x => x.Reason).HasMaxLength(60);
+            e.Property(x => x.ConfigurationHash).HasMaxLength(64); e.Property(x => x.RecipientHash).HasMaxLength(64);
+            e.Property(x => x.CallbackTag).HasMaxLength(100); e.Property(x => x.ProviderMessageId).HasMaxLength(200);
+        });
         b.Entity<WhatsAppContactLink>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();

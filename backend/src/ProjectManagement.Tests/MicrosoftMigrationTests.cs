@@ -51,6 +51,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Empty(await db.WhatsAppConnections.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.WhatsAppInboundReceipts.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.WhatsAppContactLinks.IgnoreQueryFilters().ToArrayAsync());
+        Assert.Empty(await db.WhatsAppDeliveries.IgnoreQueryFilters().ToArrayAsync());
     }
     [Fact]
     public async Task Prior_WhatsApp_mapping_upgrades_twice_without_inventing_token_expiry_or_changing_ownership()
@@ -71,7 +72,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         await SqliteEnterpriseUpgrade.ApplyAsync(db); await SqliteEnterpriseUpgrade.ApplyAsync(db);
         var row = await db.WhatsAppConnections.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(tenant, row.TenantId); Assert.Equal("789", row.PhoneNumberId); Assert.Equal("protected-fixture", row.AccessTokenProtected);
-        Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);
+        Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);Assert.Null(row.DeliveryPolledAt);
         Assert.Equal("unchecked",row.HealthState);Assert.Null(row.HealthAttemptedAt);Assert.Null(row.HealthCheckedAt);
         Assert.Null(row.HealthLeaseId);Assert.Null(row.HealthTokenValid);Assert.Null(row.HealthScopesPresent);
         Assert.Null(row.HealthAssetsVerified);Assert.Null(row.HealthAppSubscribed);Assert.Null(row.HealthPhoneVerified);
@@ -79,6 +80,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Null(row.TemplatesLeaseId);Assert.Null(row.TemplatesLeaseUntil);Assert.Null(row.TemplatesConfigurationHash);
         Assert.Equal("unchecked",row.TaskAssignmentTemplateState);Assert.Equal("unchecked",row.OverdueTemplateState);Assert.Equal("unchecked",row.SupportUpdateTemplateState);
         Assert.Empty(await db.WhatsAppContactLinks.IgnoreQueryFilters().ToArrayAsync());
+        Assert.Empty(await db.WhatsAppDeliveries.IgnoreQueryFilters().ToArrayAsync());
     }
     [Fact]
     public async Task Prior_verified_phone_upgrade_preserves_identity_without_inventing_notification_consent()

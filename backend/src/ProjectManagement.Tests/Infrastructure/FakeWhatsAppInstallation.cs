@@ -11,6 +11,10 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
     private readonly ConcurrentDictionary<string, Grant> codes = new(), tokens = new();
     public ConcurrentBag<string> RequestPaths { get; } = new();
     public string? HealthProblem { get; set; }
+    public record Sent(string Business,string Phone,string Recipient,string CallbackTag,string MessageId);
+    public ConcurrentBag<Sent> Sends { get; } = new();
+    public string? SendProblem { get; set; }
+    public Func<Sent,Task>? BeforeSendResponse { get; set; }
     public string? TemplateProblem { get; set; }
     public Func<Task>? BeforeTemplateResponse { get; set; }
     public Func<Task>? BeforeHealthResponse { get; set; }
@@ -29,7 +33,7 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var uri = request.RequestUri!;
-        if (uri.Scheme != "https" || uri.Host != "graph.facebook.com" || request.Method != HttpMethod.Get) throw new InvalidOperationException("Unexpected provider target.");
+        if (uri.Scheme != "https" || uri.Host != "graph.facebook.com" || request.Method != HttpMethod.Get && !(request.Method == HttpMethod.Post && uri.AbsolutePath.EndsWith("/messages"))) throw new InvalidOperationException("Unexpected provider target.");
         RequestPaths.Add(uri.AbsolutePath); // Never retain the app-secret query.
         if (uri.AbsolutePath.EndsWith("/oauth/access_token"))
         {
@@ -44,6 +48,25 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
         }
         if (!tokens.TryGetValue(request.Headers.Authorization?.Parameter ?? "", out var known))
             return (Json(new { error = "invalid_token" }, HttpStatusCode.Unauthorized));
+        if (request.Method == HttpMethod.Post && uri.AbsolutePath.EndsWith("/messages"))
+        {
+            var fields=uri.Query.TrimStart('?').Split('&').Select(x=>x.Split('=',2)).ToDictionary(x=>Uri.UnescapeDataString(x[0]),x=>Uri.UnescapeDataString(x[1]));
+            var token=request.Headers.Authorization!.Parameter!;
+            if(uri.AbsolutePath!="/v24.0/"+known.Phone+"/messages"||fields["appsecret_proof"]!=Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+                Encoding.UTF8.GetBytes("fake-whatsapp-app-secret-only"),Encoding.UTF8.GetBytes(token))).ToLowerInvariant())throw new InvalidOperationException("Wrong tenant sender.");
+            using var body=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));var root=body.RootElement;
+            if(root.GetProperty("type").GetString()!="template"||root.GetProperty("messaging_product").GetString()!="whatsapp"
+                ||root.GetProperty("recipient_type").GetString()!="individual"||root.GetProperty("template").GetProperty("language").GetProperty("code").GetString()!="en_US"
+                ||!ProjectManagement.Application.Features.Integrations.WhatsAppTemplateService.Definitions.Any(x=>x.Name==root.GetProperty("template").GetProperty("name").GetString())
+                ||root.GetProperty("template").TryGetProperty("components",out _))throw new InvalidOperationException("Unapproved send contract.");
+            var sent=new Sent(known.Business,known.Phone,root.GetProperty("to").GetString()!,root.GetProperty("biz_opaque_callback_data").GetString()!,"wamid.fake."+Guid.NewGuid().ToString("N"));
+            Sends.Add(sent);if(BeforeSendResponse!=null)await BeforeSendResponse(sent);
+            if(SendProblem=="lost")throw new HttpRequestException("synthetic ack lost with fake token");
+            if(SendProblem=="rejected")return Json(new{error=new{code=100,message="synthetic rejection with private provider data"}},HttpStatusCode.BadRequest);
+            if(SendProblem=="malformed")return Json(new{messaging_product="whatsapp",messages=new object[0]});
+            return Json(new{messaging_product="whatsapp",contacts=new[]{new{input=sent.Recipient,wa_id=SendProblem=="recipient"?"919999999999":sent.Recipient}},
+                messages=new[]{new{id=sent.MessageId,message_status=SendProblem=="held"?"held_for_quality_assessment":"accepted"}}});
+        }
         if (uri.AbsolutePath.EndsWith("/debug_token"))
         {
             var fields = uri.Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).ToDictionary(x => Uri.UnescapeDataString(x[0]), x => Uri.UnescapeDataString(x[1]));
@@ -105,5 +128,5 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
         return (Json(new { id = WrongBusiness ? "999999" : known.Business, name = "Verified business" }));
     }
     public void Reset()
-    { WrongBusiness = false; WrongPhone = false; UnverifiedPhone = false; Paginated = false; LostResponse = false; Oversized = false; InvalidLifetime = false; BeforePhoneResponse = null; BeforeHealthResponse = null; HealthProblem = null; TemplateProblem = null; BeforeTemplateResponse = null; RequestPaths.Clear(); }
+    { WrongBusiness = false; WrongPhone = false; UnverifiedPhone = false; Paginated = false; LostResponse = false; Oversized = false; InvalidLifetime = false; BeforePhoneResponse = null; BeforeHealthResponse = null; HealthProblem = null; TemplateProblem = null; BeforeTemplateResponse = null; SendProblem = null; BeforeSendResponse = null; Sends.Clear(); RequestPaths.Clear(); }
 }

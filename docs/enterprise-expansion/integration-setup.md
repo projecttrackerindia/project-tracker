@@ -132,3 +132,16 @@ In Workspace settings -> Integrations -> WhatsApp Business, expand Set up approv
 Submit each to Meta. Meta decides approval/category; this code does not promise these submissions will be approved. After controlled setup, check provider health, then Check templates. A missing, pending, paused/rejected, wrong-locale, recategorized or changed-content result cannot establish template readiness. Read checks expire after five minutes and cannot enable messaging. No project/task/ticket content, customer identity or recipient phone is part of these bodies. Linking is separate from notification opt-in.
 
 Current official policy permits free-form replies within the user-message-triggered 24-hour customer-service window and requires approved templates outside it. Our initial notification design conservatively uses approved templates in either case; it does not infer support intent from contact-proof messages or implement free-form chat replies. [WhatsApp Business Messaging Policy](https://whatsappbusiness.com/policy/), checked 11 October 2026. The GET-by-name shape follows [Meta's maintained template collection](https://www.postman.com/meta/whatsapp-business-platform/request/7whkjje/get-template-by-name-default-fields). Verify that the configured Graph version supplies the strict fields/components with an approved controlled account before activation.
+
+## Delivery activation and history
+Workspace Settings > Integrations > WhatsApp Business now includes delivery history; members can see their own history in the private phone/notification settings. Accepted means the provider acknowledged a send, while delivered/read require signed receipts. Unknown outcomes are explained and do not offer a duplicate-send button. Quiet hours defer delivery; withdrawal stops newly admitted attempts and cannot recall a send already committed to the provider.
+
+Additional API configuration:
+- WhatsApp__DeliveryEnabled=false (keep off until controlled rollout verification).
+- WhatsApp__DeliveryUserDailyCap=10 (rolling 24-hour send attempts per member).
+- WhatsApp__DeliveryOrganizationDailyCap=1000 (rolling 24-hour send attempts per organization).
+- WhatsApp__DeliveryIntervalSeconds=10 (worker interval; bounded internally).
+
+These notification safeguards are separate from subscription-based AI credits/rate limits. Rejected/unknown attempts count toward budgets; one attempt per recipient per minute avoids bursts. Delivery also requires configured installation, contact, reception, health and template gates plus the existing active-plan entitlement. Use each organization's installation, never shared customer credentials. No gate has been enabled in production.
+
+Before activation, verify actual Graph-version send/opaque-callback contracts, exact approved templates, phone registration, signed webhook receipt, current permissions, controlled delivery outcomes and organization notification budgets. No app subscription/registration or real message is performed automatically by this checkpoint. Existing templates and consent setup steps above remain prerequisites.

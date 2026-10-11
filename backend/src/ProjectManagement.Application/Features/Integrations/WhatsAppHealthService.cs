@@ -47,7 +47,8 @@ public class WhatsAppHealthService(IAppDbContext db, CurrentContext ctx, AppCloc
         return new(Enabled && eligible && Current(row), state,
             row?.HealthCheckedAt is { } at ? new DateTimeOffset(DateTime.SpecifyKind(at, DateTimeKind.Utc)) : null,
             show ? row?.HealthTokenValid : null, show ? row?.HealthScopesPresent : null,
-            show ? row?.HealthAssetsVerified : null, show ? row?.HealthAppSubscribed : null, show ? row?.HealthPhoneVerified : null);
+            show ? row?.HealthAssetsVerified : null, show ? row?.HealthAppSubscribed : null, show ? row?.HealthPhoneVerified : null,
+            WhatsAppDeliveryService.Enabled(O)&&eligible&&Current(row));
     }
     public async Task<WhatsAppHealthStatus> StatusAsync(CancellationToken ct)
     {

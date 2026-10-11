@@ -60,7 +60,8 @@ public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClo
         canEnable, r?.NotifyTaskAssignments ?? false, r?.NotifyOverdue ?? false, r?.NotifySupportUpdates ?? false,
         r?.NotificationTimeZone ?? "UTC", r?.NotificationQuietStartMinutes ?? 1320, r?.NotificationQuietEndMinutes ?? 480,
         NotificationConsent, r?.NotificationConsentAt is { } at ? Utc(at) : null,
-        r?.NotificationConsentExpiresAt is { } expiry ? Utc(expiry) : null);
+        r?.NotificationConsentExpiresAt is { } expiry ? Utc(expiry) : null,
+        WhatsAppDeliveryService.Enabled(O)&&canEnable&&r?.NotificationConsentVersion==NotificationConsent&&r.NotificationConsentExpiresAt>clock.Now);
     public async Task<WhatsAppNotificationPreferences> NotificationPreferencesAsync(CancellationToken ct)
     {
         if (!await db.Tenants.AnyAsync(x => x.Id == ctx.TenantId && x.Type == WorkspaceType.Organization, ct))

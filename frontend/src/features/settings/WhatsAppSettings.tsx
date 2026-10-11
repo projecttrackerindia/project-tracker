@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { WhatsAppDeliveryHistory } from './WhatsAppDeliveryHistory';
 import { WhatsAppTemplateSettings } from './WhatsAppTemplateSettings';
 import { useMutation } from '@tanstack/react-query';
 import { get, post } from '../../api/client';
@@ -79,7 +80,7 @@ export function WhatsAppSettings() {
         <p role="status">{s.connected ? (s.displayName || 'Business account') + ' connected.'
           : s.installationEnabled ? 'Ready to connect your business through Meta.' : 'WhatsApp setup is being prepared. Customer installations are not available yet.'}</p>
         {!s.configured && <p>Platform provider configuration is pending.</p>}
-        <p>Chat replies, notifications and task actions remain disabled. A business connection will not give WhatsApp contacts access to project data.</p>
+        <p>{s.messagingEnabled ? "Notifications are available to opted-in members after permission and provider checks. Chat replies and task actions are awaiting rollout." : "Chat replies, notifications and task actions remain disabled. A business connection will not give WhatsApp contacts access to project data."}</p>
         {!s.connected && s.installationEnabled && <>
           {prepared ? <div><p>Meta is ready. Review its account and phone selection before allowing access.</p>
             <button className="btn btn-primary" disabled={busy} onClick={continueWithMeta}>Continue with Meta</button>
@@ -107,7 +108,7 @@ export function WhatsAppSettings() {
         {health.isLoading && <p role="status">Loading provider health...</p>}
         {health.error && <p role="alert">{health.error.message}</p>}
         {health.data && <>
-          <p role="status">{({unchecked:'Not checked yet.',checking:'Provider check in progress.',verified:'Read checks passed. Delivery remains disabled.',
+          <p role="status">{({unchecked:'Not checked yet.',checking:'Provider check in progress.',verified:health.data.messagingEnabled?'Read checks passed. Notification delivery is enabled for eligible recipients.':'Read checks passed. Delivery remains disabled.',
             attention:'Setup needs attention. Review the checks below.',unavailable:'Provider checks could not be completed. Try again after a minute.',
             stale:'The previous result is out of date. Run a fresh check.'} as Record<string,string>)[health.data.state] || 'Status is unavailable.'}</p>
           {health.data.checkedAt && <p className="muted">Last check: {new Date(health.data.checkedAt).toLocaleString()}</p>}
@@ -118,9 +119,9 @@ export function WhatsAppSettings() {
           <button className="btn" disabled={!health.data.checkEnabled || healthCheck.isPending || health.data.state === 'checking'} onClick={() => healthCheck.mutate()}>
             {healthCheck.isPending ? 'Checking provider...' : 'Check provider health'}</button>
         </>}
-        <p className="muted">Phone registration, webhook delivery and messaging rules still need validation before sending is available.</p>
+        <p className="muted">{s.messagingEnabled ? "Notifications use verified member links, consent and current provider checks." : "Phone registration, webhook delivery and messaging rules still need validation before sending is available."}</p>
       </section>}
-      {s?.connected && <WhatsAppTemplateSettings />}
+      {s?.connected && <><WhatsAppTemplateSettings /><WhatsAppDeliveryHistory administrator /></>}
       {s?.eligible && s.connected && <section aria-labelledby="whatsapp-receipts-title">
         <h4 id="whatsapp-receipts-title">Recent inbound receipts</h4>
         <p>Metadata only. Message contents and sender phone numbers are not stored. This is a bounded diagnostic sample, not a conversation history.</p>
