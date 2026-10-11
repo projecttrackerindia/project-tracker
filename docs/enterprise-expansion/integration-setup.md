@@ -106,3 +106,14 @@ This notice is not marketing or notification consent. Sending, notifications, te
 5. Use Revoke WhatsApp notifications to withdraw just messaging consent, or Remove my link to erase the phone and withdraw its notification consent for that organization.
 
 These preferences are private to the member and organization. Administrators cannot opt in users. New phone proof cannot inherit previous consent. Plan/gate disablement blocks new grants but does not prevent an active member withdrawing consent. There are no new environment variables, outbound calls, voice consent or live provider setup actions in this checkpoint.
+
+## Administrator provider health: user steps
+1. Open Organization settings -> Integrations -> WhatsApp after connecting your organization's own business account.
+2. When the platform enables read checks for a controlled rollout, select Check provider health. A successful installation alone does not establish current provider readiness.
+3. Review token validity, scoped permissions, selected assets, app subscription and phone ownership checks. Correct setup or reconnect through Meta when indicated; never paste provider tokens into the frontend.
+4. Recheck after setup changes. Results expire after five minutes; requests have a one-minute organization cooldown. Settings poll every five seconds only while a check is running so abandoned claims can recover.
+5. Even if every read check passes, delivery stays disabled. Phone registration, signed webhook delivery, recipient permissions/consent, messaging rules and durable delivery/recovery remain separate rollout gates.
+
+New variable: WhatsApp__HealthChecksEnabled=false (default). Existing app/secret/verification and explicit version/signup configuration are still required. Read checks perform no automatic app subscription or phone registration. Verify the strict provider response/granular-grant contract with a controlled account before enabling this gate.
+
+The implementation uses Meta's published read endpoint shapes, with conservative response validation. [Meta token inspection collection](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api?entity=folder-066d0881-3f31-4f0c-accc-d0fa2e4b2ed9), [Meta app subscription reads](https://www.postman.com/meta/whatsapp-business-platform/request/tl2wk2j/get-all-subscriptions-for-a-waba). App-secret proof follows the official SDK HMAC pattern. [Meta SDK session source](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/session.py)

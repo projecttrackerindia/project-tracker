@@ -9,7 +9,7 @@ namespace ProjectManagement.Application.Features.Integrations;
 
 /// <summary>Read-only asset verification after an app-bound authorization-code exchange; fixed HTTPS origin, no redirects/retries.</summary>
 public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<WhatsAppOptions> options, AppClock clock)
-    : IWhatsAppInstallationProvider
+    : IWhatsAppInstallationProvider, IWhatsAppHealthProvider
 {
     private static ConflictException Invalid() => new("Meta did not verify this business installation. Start again or review app setup.", "WHATSAPP_PROVIDER_ERROR");
     private async Task<JsonDocument> ReadAsync(HttpRequestMessage request, CancellationToken ct)
@@ -78,4 +78,71 @@ public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Invalid(); }
     }
+    public async Task<WhatsAppProviderHealth> InspectAsync(string token, string businessAccountId, string phoneNumberId, CancellationToken ct)
+    {
+        var o = options.Value;
+        if (!o.HealthChecksEnabled || !o.InstallationConfigured || token is not { Length: > 0 and <= 10000 } || token.Any(char.IsControl)
+            || !WhatsAppGatewayService.ProviderId(businessAccountId) || !WhatsAppGatewayService.ProviderId(phoneNumberId)) throw Invalid();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        var origin = "https://graph.facebook.com/" + o.ApiVersion;
+        var proof = Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(o.AppSecret!), System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+        async Task<JsonDocument> Get(string path)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, origin + path + (path.Contains('?') ? "&" : "?") + "appsecret_proof=" + proof);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await ReadAsync(request, deadline.Token);
+        }
+        static JsonElement Rows(JsonElement root)
+        {
+            if (!root.TryGetProperty("data", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > 100
+                || root.TryGetProperty("paging", out var paging) && paging.ValueKind == JsonValueKind.Object && paging.TryGetProperty("next", out _)) throw Invalid();
+            return rows;
+        }
+        try
+        {
+            using var debug = await Get("/debug_token?input_token=" + Uri.EscapeDataString(token));
+            if (!debug.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+                || !data.TryGetProperty("is_valid", out var valid) || valid.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw Invalid();
+            if (!valid.GetBoolean()) return new(false, null, null, null, null, null);
+            if (Field(data, "app_id", 40) != o.AppId) return new(false, null, null, null, null, null);
+            DateTime? expires = null;
+            foreach (var field in new[] { "expires_at", "data_access_expires_at" })
+            {
+                if (!data.TryGetProperty(field, out var value)) { if (field == "expires_at") throw Invalid(); else continue; }
+                if (!value.TryGetInt64(out var unix) || unix < 0 || unix > 253402300799) throw Invalid();
+                if (unix == 0) continue; // Zero denotes no scheduled expiry, not irrevocable permission.
+                var expiry = DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime.AddSeconds(-60);
+                if (expires == null || expiry < expires) expires = expiry;
+            }
+            if (expires <= clock.Now) return new(false, null, null, null, null, expires);
+            if (!data.TryGetProperty("scopes", out var scopes) || scopes.ValueKind != JsonValueKind.Array || scopes.GetArrayLength() > 100) throw Invalid();
+            var required = new[] { "whatsapp_business_management", "whatsapp_business_messaging" };
+            var granted = scopes.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() : throw Invalid()).ToHashSet();
+            // Require explicit WABA-scoped grants. An absent/ambiguous asset grant cannot establish readiness.
+            if (!data.TryGetProperty("granular_scopes", out var granular) || granular.ValueKind != JsonValueKind.Array || granular.GetArrayLength() > 100)
+                return new(true, false, null, null, null, expires);
+            foreach (var scope in required)
+            {
+                var matching = granular.EnumerateArray().Where(x => Field(x, "scope", 100) == scope).ToArray();
+                if (!granted.Contains(scope) || matching.Length != 1 || !matching[0].TryGetProperty("target_ids", out var ids)
+                    || ids.ValueKind != JsonValueKind.Array || ids.GetArrayLength() > 100
+                    || !ids.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String && x.GetString() == businessAccountId))
+                    return new(true, false, null, null, null, expires);
+            }
+            using var business = await Get("/" + businessAccountId + "?fields=id");
+            if (Field(business.RootElement, "id", 40) != businessAccountId) return new(true, true, false, null, null, expires);
+            using var phones = await Get("/" + businessAccountId + "/phone_numbers?fields=id,code_verification_status&limit=100");
+            var selected = Rows(phones.RootElement).EnumerateArray().Where(x => Field(x, "id", 40) == phoneNumberId).ToArray();
+            if (selected.Length != 1) return new(true, true, false, null, null, expires);
+            var phoneVerified = Field(selected[0], "code_verification_status", 30) == "VERIFIED";
+            using var subscriptions = await Get("/" + businessAccountId + "/subscribed_apps?limit=100");
+            var subscribed = Rows(subscriptions.RootElement).EnumerateArray().Any(x => x.ValueKind == JsonValueKind.Object
+                && x.TryGetProperty("whatsapp_business_api_data", out var app) && Field(app, "id", 40) == o.AppId);
+            return new(true, true, true, subscribed, phoneVerified, expires);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Invalid(); }
+        catch (InvalidOperationException) { throw Invalid(); }
+    }
+
 }

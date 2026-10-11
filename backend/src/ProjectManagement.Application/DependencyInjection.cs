@@ -93,6 +93,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppGatewayService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppContactService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppInstallationService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppHealthService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.IWhatsAppHealthProvider, ProjectManagement.Application.Features.Integrations.MetaWhatsAppInstallationProvider>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.IWhatsAppInstallationProvider, ProjectManagement.Application.Features.Integrations.MetaWhatsAppInstallationProvider>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GoogleMeetingClient>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingService>();

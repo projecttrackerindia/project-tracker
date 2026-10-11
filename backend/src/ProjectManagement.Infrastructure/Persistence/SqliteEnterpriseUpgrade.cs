@@ -24,7 +24,8 @@ public static class SqliteEnterpriseUpgrade
         "20261011073057_WhatsAppInboundFoundation",
         "20261011091248_WhatsAppInstallationExpiry",
         "20261011093926_WhatsAppPrivateContactLinks",
-        "20261011102347_WhatsAppNotificationConsent"
+        "20261011102347_WhatsAppNotificationConsent",
+        "20261011104645_WhatsAppProviderHealth"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

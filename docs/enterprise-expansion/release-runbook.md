@@ -50,3 +50,10 @@ Apply 20261011102347_WhatsAppNotificationConsent after private contact links. It
 Keep installation/contact/reception default-off as previously specified. There is no outbound activation switch or sender. Confirm owner-only grant/revoke, stale-version conflicts, midnight-crossing quiet hours and installation/phone expiry invalidation using fake providers first. Complete provider health/readiness, current messaging policy, recipient permissions and durable outbox/status recovery before any real delivery. No production variables or customer data were changed here.
 
 Voice agents follow the current six workstreams per the user's release preference. The [voice design](voice-agent-follow-on.md) is a proposal, not a deployed service or reason to delay the current release for live calling.
+
+## Provider health checkpoint gates
+Apply 20261011104645_WhatsAppProviderHealth after notification consent. Up operations only add columns; previous installations remain unchecked. Representative historical SQLite installation upgrades run twice and preserve tenant/token ownership without inventing health. Full PostgreSQL migration/contention verification remains required for the coordinated release.
+
+Keep WhatsApp__HealthChecksEnabled=false until approved controlled-account configuration and strict provider response/granular-scope validation pass. Preserve protected-token keys and confirm application HTTP logging/telemetry excludes secret-bearing Graph URLs; configured OpenTelemetry already filters graph.facebook.com traces and the named client removes request loggers. Do not use a shared customer token. Read health is independent of installation/reception flags and cannot enable sending.
+
+Verify token expiry/data-access expiry, app identity, WABA grants, exact assets, subscribed app, stale-result hiding, disconnect and lease recovery. Then validate actual phone registration and webhook delivery separately. No production changes or provider mutation were performed at this checkpoint. Finish policy/templates, durable outbound delivery/reconciliation, authorized support actions and the other five workstreams before the coordinated merge/deployment.

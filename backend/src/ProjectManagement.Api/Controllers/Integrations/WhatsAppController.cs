@@ -7,7 +7,7 @@ using ProjectManagement.Application.Features.Integrations;
 namespace ProjectManagement.Api.Controllers.Integrations;
 
 [Route("api/v1/integrations/whatsapp"), RequireWorkspace]
-public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstallationService installation) : ApiControllerBase
+public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstallationService installation, WhatsAppHealthService health) : ApiControllerBase
 {
     public const string ProofCookie = "__Secure-pt-whatsapp-install";
     private static CookieOptions ProofOptions => new() { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict,
@@ -35,6 +35,10 @@ public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstalla
     public record WhatsAppCancelRequest(string State);
     [HttpGet("status")]
     public async Task<IActionResult> Status(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await service.StatusAsync(ct)); }
+    [HttpGet("health")]
+    public async Task<IActionResult> Health(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await health.StatusAsync(ct)); }
+    [HttpPost("health/check")]
+    public async Task<IActionResult> CheckHealth(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await health.CheckAsync(ct)); }
     [HttpGet("receipts")]
     public async Task<IActionResult> Receipts(CancellationToken ct) { Response.Headers.CacheControl = "no-store"; return Ok(await service.ReceiptsAsync(ct)); }
     [HttpPost("disconnect")]

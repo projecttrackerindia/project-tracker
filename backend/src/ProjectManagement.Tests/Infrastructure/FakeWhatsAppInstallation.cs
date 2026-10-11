@@ -10,6 +10,8 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
     private record Grant(string Business, string Phone);
     private readonly ConcurrentDictionary<string, Grant> codes = new(), tokens = new();
     public ConcurrentBag<string> RequestPaths { get; } = new();
+    public string? HealthProblem { get; set; }
+    public Func<Task>? BeforeHealthResponse { get; set; }
     public bool WrongBusiness { get; set; }
     public bool WrongPhone { get; set; }
     public bool UnverifiedPhone { get; set; }
@@ -40,6 +42,33 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
         }
         if (!tokens.TryGetValue(request.Headers.Authorization?.Parameter ?? "", out var known))
             return (Json(new { error = "invalid_token" }, HttpStatusCode.Unauthorized));
+        if (uri.AbsolutePath.EndsWith("/debug_token"))
+        {
+            var fields = uri.Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).ToDictionary(x => Uri.UnescapeDataString(x[0]), x => Uri.UnescapeDataString(x[1]));
+            if (!fields.TryGetValue("input_token",out var input) || input != request.Headers.Authorization?.Parameter
+                || !fields.TryGetValue("appsecret_proof",out var signedProof)
+                || signedProof != Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+                    Encoding.UTF8.GetBytes("fake-whatsapp-app-secret-only"),Encoding.UTF8.GetBytes(input!))).ToLowerInvariant()) throw new InvalidOperationException("Token inspection was not authenticated.");
+            if (HealthProblem == "unavailable") throw new HttpRequestException("synthetic unavailable query with a fake secret");
+            if (HealthProblem == "redirect") return new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("https://attacker.example/token") } };
+            if (HealthProblem == "oversized") return new(HttpStatusCode.OK) { Content = new StringContent(new string('x',65537)) };
+            if (HealthProblem == "malformed") return Json(new { data = new { is_valid = "yes" } });
+            return Json(new { data = new { is_valid = HealthProblem != "revoked", app_id = HealthProblem == "app" ? "99999" : "123456789",
+                expires_at = HealthProblem == "expired" ? DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds() : HealthProblem == "nonexpiring" ? 0 : DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds(),
+                data_access_expires_at = HealthProblem == "data_expired" ? DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds() : 0,
+                scopes = HealthProblem == "scope" ? new[] { "whatsapp_business_management" } : new[] { "whatsapp_business_management", "whatsapp_business_messaging" },
+                granular_scopes = new[] {
+                    new { scope = "whatsapp_business_management", target_ids = new[] { known.Business } },
+                    new { scope = "whatsapp_business_messaging", target_ids = new[] { HealthProblem == "asset_scope" ? "999999" : known.Business } }
+                }
+            }});
+        }
+        if (uri.AbsolutePath.EndsWith("/subscribed_apps"))
+        {
+            if (BeforeHealthResponse != null) await BeforeHealthResponse();
+            if (HealthProblem == "paging") return Json(new { data = new object[0], paging = new { next = "https://attacker.example/token" } });
+            return Json(new { data = HealthProblem == "unsubscribed" ? Array.Empty<object>() : new object[] { new { whatsapp_business_api_data = new { id = "123456789" } } } });
+        }
         if (uri.AbsolutePath.EndsWith("/phone_numbers"))
         {
             if (BeforePhoneResponse is not null) await BeforePhoneResponse();
@@ -50,5 +79,5 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
         return (Json(new { id = WrongBusiness ? "999999" : known.Business, name = "Verified business" }));
     }
     public void Reset()
-    { WrongBusiness = false; WrongPhone = false; UnverifiedPhone = false; Paginated = false; LostResponse = false; Oversized = false; InvalidLifetime = false; BeforePhoneResponse = null; RequestPaths.Clear(); }
+    { WrongBusiness = false; WrongPhone = false; UnverifiedPhone = false; Paginated = false; LostResponse = false; Oversized = false; InvalidLifetime = false; BeforePhoneResponse = null; BeforeHealthResponse = null; HealthProblem = null; RequestPaths.Clear(); }
 }

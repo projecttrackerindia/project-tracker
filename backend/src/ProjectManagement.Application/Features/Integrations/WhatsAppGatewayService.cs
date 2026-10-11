@@ -18,6 +18,7 @@ public class WhatsAppOptions
 {
     public const string Section = "WhatsApp";
     public bool InstallationEnabled { get; set; }
+    public bool HealthChecksEnabled { get; set; } // Read-only, administrator-initiated checks; default off.
     public bool ContactLinkingEnabled { get; set; }
     public string? EmbeddedSignupConfigId { get; set; }
     public string? ApiVersion { get; set; }
@@ -95,7 +96,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
         var c = await db.WhatsAppConnections.SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         if (c is not null && (c.Active || c.AccessTokenProtected.Length > 0))
         {
-            c.Active = false; c.AccessTokenProtected = "";
+            c.Active = false; c.AccessTokenProtected = ""; WhatsAppHealthService.Clear(c);
             recorder.Audit("whatsapp.disconnected", "WhatsAppConnection", c.Id);
             await db.SaveChangesAsync(ct);
         }

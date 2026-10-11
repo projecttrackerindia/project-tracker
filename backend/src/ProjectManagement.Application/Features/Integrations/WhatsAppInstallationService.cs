@@ -125,6 +125,7 @@ public class WhatsAppInstallationService(IAppDbContext db, CurrentContext ctx, A
         if (row is null) { row = new WhatsAppConnection { TenantId = tenant }; db.WhatsAppConnections.Add(row); }
         row.AppId = Options.AppId!; row.BusinessAccountId = verified.BusinessAccountId; row.PhoneNumberId = verified.PhoneNumberId;
         row.DisplayName = verified.DisplayName; row.AccessTokenProtected = secrets.Protect(verified.AccessToken);
+        WhatsAppHealthService.Clear(row);
         row.InstalledBy = user; row.ConnectedAt = clock.Now; row.TokenExpiresAt = verified.TokenExpiresAt; row.Active = true;
         recorder.Audit("whatsapp.connected", "WhatsAppConnection", row.Id);
         try { await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); }

@@ -8071,6 +8071,42 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool?>("HealthAppSubscribed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("HealthAssetsVerified")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("HealthAttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HealthCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("HealthConfigurationHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("HealthLeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("HealthLeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("HealthPhoneVerified")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("HealthScopesPresent")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("HealthState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool?>("HealthTokenValid")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("InstalledBy")
                         .HasColumnType("uuid");
 
