@@ -40,3 +40,10 @@ Remaining verification: workflow lease-contention tests; remaining backend tests
 - Verified the first escalation assignment waits for approval; the second stage waits until due, requires fresh approval and does not assign its recipient when rejected.
 - Production frontend build passed with the routing review and staged escalation editor. No AI/provider load or real customer-message tests.
 - No new migration in this phase. PostgreSQL contention and external integration activation remain release gates.
+
+## Durable Google OAuth continuation
+- 26 passed, 0 failed, 0 skipped: google-oauth-durable-final.trx, covering Google OAuth safety, existing Calendar integration, project meetings and tenant/query-filter guards.
+- Browser-proof absence/mismatch, single-use and concurrent callbacks, safe redirects, reconnect updates, removed membership, expiry/caps/hash storage and partial scope handling are tested against a fake Google provider.
+- New migration applied through fresh SQLite test databases. Frontend production build passed, including the reconnect/permission status UI.
+- The initial new removal test used a Free workspace with only one seat; the fixture now explicitly upgrades before adding the member.
+- No live Google requests, customer invitations, paid calls or bulk AI tests. PostgreSQL deployment/upgrade verification remains pending.

@@ -29,3 +29,5 @@ Additive migrations currently scaffolded:
 6. 20261011035406_DurablePersonalFileCleanup
 
 SQLite API integration tests have applied these migrations successfully. PostgreSQL upgrade validation remains a release gate. Additional external identity, channel outbox, productivity connection and delivery reconciliation models are still required; their design must reuse existing encrypted integration storage and authorization conventions.
+## Durable provider OAuth attempts
+Migration 20261011051417_DurableProviderOAuthAttempts adds ProviderOAuthAttempts with provider, owner/tenant identifiers, state/browser hashes, safe local return path, expiry and atomic consumption timestamp. State and browser proof are never stored in clear text. The table is intentionally available to anonymous callbacks only through the paired hashes; the current owner principal is rebuilt before any connection access. A user foreign key cascades account deletion. Existing GoogleConnection rows are unchanged.

@@ -18,3 +18,6 @@ Implemented permission-aware SQL dashboard counts and complete bounded conversat
 
 ## Reviewed routing and staged escalation
 Added deterministic authorized routing previews, explicit assignment confirmation and recorded team-lead/manager contacts. Added an editable two-stage SLA escalation preset using the durable workflow engine, separate approvals, bounded waits and completed-ticket stop conditions. Full configurable expertise/availability routing, custom field conditions and external provider adapters remain release work; current suggestions intentionally rely only on existing records.
+
+## Provider connection foundation
+Before expanding mailbox access, hardened the existing Google callback against browser substitution, replay and stale membership. Fixed reconnection under the correct tenant, added actual Calendar-scope capability reporting and a reconnect action. New provider adapters and mailbox/document workflows still remain implementation work; these callback protections are a prerequisite, not evidence that the adapters are finished.

@@ -234,6 +234,14 @@ public partial class AppDbContext
             e.Property(x => x.SecretProtected).HasMaxLength(300);
             e.Property(x => x.LastError).HasMaxLength(300);
         });
+        b.Entity<ProviderOAuthAttempt>(e=>{
+            e.HasIndex(x=>x.StateHash).IsUnique();
+            e.HasIndex(x=>x.ExpiresAt);
+            e.HasIndex(x=>new{x.TenantId,x.UserId,x.Provider,x.ExpiresAt});
+            e.Property(x=>x.StateHash).HasMaxLength(64);e.Property(x=>x.BrowserHash).HasMaxLength(64);
+            e.Property(x=>x.Provider).HasMaxLength(32);e.Property(x=>x.ReturnPath).HasMaxLength(200);
+            e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<GoogleConnection>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();

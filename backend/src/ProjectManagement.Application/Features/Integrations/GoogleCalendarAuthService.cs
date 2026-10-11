@@ -2,7 +2,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Distributed;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
@@ -27,7 +27,7 @@ public class GoogleCalendarOptions
     public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret) && !string.IsNullOrWhiteSpace(RedirectUri);
 }
 
-public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError);
+public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false);
 
 /// <summary>
 /// Connecting a person's own Google account (Settings &gt; Integrations &gt; Google Workspace), and keeping a usable access token for it.
@@ -36,7 +36,7 @@ public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, Dat
 /// authorization starts with each organizer acting through their own Google identity). The refresh token is the only long-lived secret;
 /// it is encrypted at rest with <see cref="ISecretProtector"/> and is never sent to the browser or logged.
 /// </summary>
-public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IDistributedCache cache,
+public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IServiceProvider services,
     IOptions<GoogleCalendarOptions> options, IHttpClientFactory http, ISecretProtector secrets, ILogger<GoogleCalendarAuthService> log)
 {
     private readonly GoogleCalendarOptions _o = options.Value;
@@ -49,25 +49,36 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     /// not the broader "calendar" scope (full read/write of every calendar), "profile", or anything touching Drive/Gmail.</summary>
     public const string Scopes = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created https://www.googleapis.com/auth/userinfo.email";
 
-    private sealed record Pending(Guid TenantId, Guid UserId, string ReturnUrl);
+    private static string Hash(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
+    private static bool HasCalendarScope(string scopes)=>scopes.Split((char)32,StringSplitOptions.RemoveEmptyEntries).Contains("https://www.googleapis.com/auth/calendar.events");
     public bool Configured => _o.Configured;
 
     public async Task<GoogleConnectionStatusDto> StatusAsync(CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
         var c = await db.GoogleConnections.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == uid, ct);
-        return c is null ? new GoogleConnectionStatusDto(false, null, null, null) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError);
+        return c is null ? new GoogleConnectionStatusDto(false, null, null, null) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes));
     }
 
     /// <summary>Where to send the browser so the person can grant Project Tracker Calendar/Meet access.</summary>
-    public async Task<string> StartConnectAsync(string? returnUrl, CancellationToken ct = default)
+    public async Task<string> StartConnectAsync(string? returnUrl, string browserProof, CancellationToken ct = default)
     {
         if (!Configured) throw new ConflictException("Google Calendar is not set up for this installation.", "GOOGLE_NOT_CONFIGURED");
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
-        var id = Random(24);
-        await cache.SetStringAsync($"google-cal:{id}", JsonSerializer.Serialize(new Pending(tid, uid, SafeReturnUrl(returnUrl)), Json),
-            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = StateLife }, ct);
+        if(string.IsNullOrWhiteSpace(browserProof)||browserProof.Length>100)throw new UnauthorizedException("Start the connection from this browser.","GOOGLE_BROWSER_INVALID");
+        var id=Random(32);
+        await using(var tx=await db.Database.BeginOwnedTransactionAsync(ct)){
+            var locked=await db.Users.Where(u=>u.Id==uid&&u.IsActive).ExecuteUpdateAsync(s=>s.SetProperty(u=>u.IsActive,u=>u.IsActive),ct);
+            if(locked!=1)throw new ForbiddenException("Your account is unavailable.");
+            await db.ProviderOAuthAttempts.Where(x=>x.ExpiresAt<clock.Now).Take(100).ExecuteDeleteAsync(ct);
+            if(await db.ProviderOAuthAttempts.CountAsync(x=>x.UserId==uid&&x.Provider=="google"&&x.ExpiresAt>clock.Now&&x.ConsumedAt==null,ct)>=5)
+                throw new ConflictException("Finish an existing Google connection attempt or wait ten minutes.");
+            db.ProviderOAuthAttempts.Add(new ProviderOAuthAttempt{Provider="google",TenantId=tid,UserId=uid,StateHash=Hash(id),BrowserHash=Hash(browserProof),ReturnPath=SafeReturnUrl(returnUrl),ExpiresAt=clock.Now.Add(StateLife)});
+            await db.SaveChangesAsync(ct);
+            await tx.CommitIfOwnedAsync(ct);
+        }
+
         return Query("https://accounts.google.com/o/oauth2/v2/auth", new Dictionary<string, string?>
         {
             ["client_id"] = _o.ClientId, ["redirect_uri"] = _o.RedirectUri, ["response_type"] = "code", ["scope"] = Scopes,
@@ -77,18 +88,21 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     }
 
     /// <summary>The redirect back from Google: exchanges the code for tokens, stores the connection, and says where the browser should land.</summary>
-    public async Task<string> CompleteConnectAsync(string? code, string? state, string? error, CancellationToken ct = default)
+    public async Task<string> CompleteConnectAsync(string? code, string? state, string? error, string? browserProof, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(state) || state.Length > 100) throw new UnauthorizedException("This connection attempt is not valid. Start again.", "GOOGLE_STATE_INVALID");
-        var key = $"google-cal:{state}";
-        var json = await cache.GetStringAsync(key, ct);
-        if (json is null) throw new UnauthorizedException("This connection attempt has expired. Start again.", "GOOGLE_STATE_EXPIRED");
-        await cache.RemoveAsync(key, ct);
-        var p = JsonSerializer.Deserialize<Pending>(json, Json)!;
+        if(string.IsNullOrWhiteSpace(browserProof)||browserProof.Length>100)throw new UnauthorizedException("Start the connection in this browser.","GOOGLE_BROWSER_INVALID");
+        var hash=Hash(state);var browser=Hash(browserProof);
+        var p=await db.ProviderOAuthAttempts.AsNoTracking().SingleOrDefaultAsync(x=>x.Provider=="google"&&x.StateHash==hash&&x.BrowserHash==browser&&x.ExpiresAt>clock.Now&&x.ConsumedAt==null,ct)
+            ??throw new UnauthorizedException("This connection attempt expired or belongs to another browser.","GOOGLE_STATE_INVALID");
+        var consumed=await db.ProviderOAuthAttempts.Where(x=>x.Id==p.Id&&x.ConsumedAt==null&&x.ExpiresAt>clock.Now)
+            .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.ConsumedAt,clock.Now),ct);
+        if(consumed!=1)throw new UnauthorizedException("This connection attempt was already used.","GOOGLE_STATE_INVALID");
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,p.UserId,p.TenantId,null,ct);
         if (!string.IsNullOrEmpty(error) || string.IsNullOrWhiteSpace(code))
         {
-            log.LogInformation("Google Calendar connection was not completed: {Error}", error ?? "no code returned");
-            return $"{p.ReturnUrl}?google=declined";
+            log.LogInformation("Google Calendar connection was declined.");
+            return Landing(p.ReturnPath,"declined");
         }
 
         var form = new Dictionary<string, string>
@@ -100,8 +114,8 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         var body = await tokenResponse.Content.ReadAsStringAsync(ct);
         if (!tokenResponse.IsSuccessStatusCode)
         {
-            log.LogWarning("Google's token endpoint answered {Status}: {Body}", (int)tokenResponse.StatusCode, body.Length > 300 ? body[..300] : body);
-            return $"{p.ReturnUrl}?google=error";
+            log.LogWarning("Google token endpoint answered {Status}", (int)tokenResponse.StatusCode);
+            return Landing(p.ReturnPath,"error");
         }
         var doc = JsonDocument.Parse(body).RootElement;
         var accessToken = doc.GetProperty("access_token").GetString()!;
@@ -111,13 +125,17 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         var refreshToken = doc.TryGetProperty("refresh_token", out var r) ? r.GetString() : null;
         var email = await FetchEmailAsync(accessToken, ct);
 
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,p.UserId,p.TenantId,null,ct);
+        await using var connectionTx=await db.Database.BeginOwnedTransactionAsync(ct);
+        var accountLocked=await db.Users.Where(u=>u.Id==p.UserId&&u.IsActive).ExecuteUpdateAsync(s=>s.SetProperty(u=>u.IsActive,u=>u.IsActive),ct);
+        if(accountLocked!=1)throw new ForbiddenException("Your account is unavailable.");
         var existing = await db.GoogleConnections.FirstOrDefaultAsync(x => x.TenantId == p.TenantId && x.UserId == p.UserId, ct);
         if (existing is null)
         {
             if (refreshToken is null)
             {
                 log.LogWarning("Google did not return a refresh token on first consent for user {User}", p.UserId);
-                return $"{p.ReturnUrl}?google=error";
+                return Landing(p.ReturnPath,"error");
             }
             existing = new GoogleConnection { TenantId = p.TenantId, UserId = p.UserId, CreatedAt = clock.Now, CreatedBy = p.UserId };
             db.GoogleConnections.Add(existing);
@@ -131,7 +149,8 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         existing.LastError = null;
         recorder.Audit("google_connection.connected", "GoogleConnection", existing.Id, tenantId: p.TenantId, userId: p.UserId);
         await db.SaveChangesAsync(ct);
-        return $"{p.ReturnUrl}?google=connected";
+        await connectionTx.CommitIfOwnedAsync(ct);
+        return Landing(p.ReturnPath,"connected");
     }
 
     public async Task DisconnectAsync(CancellationToken ct = default)
@@ -157,6 +176,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     {
         var c = await db.GoogleConnections.FirstOrDefaultAsync(x => x.UserId == userId, ct)
             ?? throw new ConflictException("Connect your Google account to schedule Google Meet meetings.", "GOOGLE_NOT_CONNECTED");
+        if(!HasCalendarScope(c.Scopes))throw new ConflictException("Reconnect Google and grant Calendar permission before scheduling meetings.","GOOGLE_SCOPE_REQUIRED");
         if (c.AccessTokenProtected is not null && c.AccessTokenExpiresAt > clock.Now) return secrets.Unprotect(c.AccessTokenProtected);
 
         var form = new Dictionary<string, string>
@@ -170,7 +190,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         {
             c.LastError = "Your Google connection needs to be renewed.";
             await db.SaveChangesAsync(ct);
-            log.LogWarning("Google token refresh failed for user {User}: {Status} {Body}", userId, (int)tokenResponse.StatusCode, body.Length > 300 ? body[..300] : body);
+            log.LogWarning("Google token refresh failed for user {User}: {Status}", userId, (int)tokenResponse.StatusCode);
             throw new ConflictException("Your Google connection needs to be renewed.", "GOOGLE_TOKEN_EXPIRED");
         }
         var doc = JsonDocument.Parse(body).RootElement;
@@ -199,8 +219,10 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     }
 
     private static string Random(int bytes) => Convert.ToBase64String(RandomNumberGenerator.GetBytes(bytes)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    private static string Landing(string path,string status)=>path+(path.Contains('?')?"&":"?")+"google="+status;
     private static string SafeReturnUrl(string? url) =>
-        !string.IsNullOrWhiteSpace(url) && url.StartsWith('/') && !url.StartsWith("//") && !url.Contains("://") ? url : "/settings/google-workspace";
+        !string.IsNullOrWhiteSpace(url)&&url.Length<=200&&url.StartsWith('/')&&!url.StartsWith("//")
+        &&!url.Contains((char)92)&&!url.Any(char.IsControl)&&!url.Contains('#')&&!url.Contains("://")?url:"/settings/google-workspace";
     private static string Query(string endpoint, IEnumerable<KeyValuePair<string, string?>> values) =>
         endpoint + (endpoint.Contains('?') ? "&" : "?") + string.Join('&', values.Where(v => v.Value is not null).Select(v => $"{Uri.EscapeDataString(v.Key)}={Uri.EscapeDataString(v.Value!)}"));
 }

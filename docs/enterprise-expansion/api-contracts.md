@@ -52,3 +52,6 @@ Support ticket customFields are a staff-only string map (up to 20 entries, non-e
 - POST .../{id}/routing/assign: ticketVersion, workVersion, assigneeId, confirmed=true. Rebuild eligibility, reject changed versions or missing candidates, lock the ticket and reuse existing work assignment/audit/notification behavior in one owned transaction. No AI credits are consumed.
 - The existing Everyone workload view caps its pool at 1,000 members; the preview exposes scopeMayBeTruncated rather than claiming a full organization ranking.
 - Workflow studio includes a two-stage SLA escalation draft. Recipients and wait are explicitly chosen. Each stage checks resolved/closed/cancelled/merged states, and requires its own fresh approval. A draft does not activate until saved and published under existing automation entitlements.
+
+## Google connection safety
+Google connect still returns {url}, and now sets a Secure, HttpOnly, SameSite=Lax ten-minute browser-proof cookie scoped to its callback. Callback requires both this cookie and an unexpired, unconsumed state; only one concurrent callback can redeem an attempt. The current active workspace membership is rechecked before token exchange and before connection persistence. Google status includes calendarAccess; partial grants cannot be used for Calendar writes. Reconnect updates the existing tenant/user connection.

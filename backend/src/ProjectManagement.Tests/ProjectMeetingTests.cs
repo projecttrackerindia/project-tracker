@@ -33,6 +33,7 @@ public class ProjectMeetingTests(ApiFactory factory)
         var code = factory.GoogleCalendar.IssueCode($"{c.Email}");
 
         using var noRedirect = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        noRedirect.DefaultRequestHeaders.Add("Cookie",start.Headers["Set-Cookie"].Split((char)59)[0]);
         using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?code={code}&state={state}");
         Assert.Equal(HttpStatusCode.Redirect, cb.StatusCode);
     }

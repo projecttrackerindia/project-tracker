@@ -49,12 +49,12 @@ export function GoogleIntegrationSection() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span className="dl-facts" style={{ display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 10, background: 'var(--success-soft, #e9f9ef)', color: 'var(--success, #16a34a)' }}><Icon name="checkCircle" size={18} /></span>
                   <div>
-                    <b>Google connected</b>
+                    <b>{q.data.calendarAccess===false?'Calendar permission needed':'Google connected'}</b>
                     <div className="muted" style={{ fontSize: 13 }}>{q.data.googleEmail || 'Connected account'}</div>
                     {q.data.lastError && <div className="form-error" style={{ marginTop: 4 }}>{q.data.lastError}</div>}
                   </div>
                 </div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>Disconnect</button>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="btn btn-sm" onClick={() => void connect()}>Reconnect</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>Disconnect</button></div>
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
