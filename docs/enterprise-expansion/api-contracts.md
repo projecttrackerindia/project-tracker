@@ -81,3 +81,15 @@ Authenticated user and active workspace ownership apply to every route; another 
 - POST /{id}/confirm: version, confirmed=true, account matching the reviewed connection. Fresh conflict/membership checks precede an atomic durable claim. At most ten confirmations per person/workspace/hour. No attendees, automatic retries or model calls.
 - POST /{id}/reconcile: read-only recovery of unknown or stale sending receipts. Verifies ID, tenant/owner/proposal markers, title/notes and exact times. It cannot resend or infer success from a missing/changed event.
 - DELETE /{id}: removes draft content or erases verified receipt text/account/times, preserving rate history. Sending/unknown deletion is blocked; this does not delete a provider event.
+
+## WhatsApp inbound foundation
+Organization owner/admin routes, all under /api/v1/integrations/whatsapp:
+- GET /status returns configuration, reception, eligibility and connection metadata. installationEnabled and messagingEnabled are always false in this phase.
+- GET /receipts requires active subscription plus WHATSAPP_INTEGRATION, returning up to 50 current-tenant metadata entries. Outcome is identity_verification_required; no sender identity, message ID, message content or token is returned.
+- POST /disconnect disables reception for this mapping and erases local usable credentials. This does not revoke a Meta grant and does not remove the reserved mapping.
+
+Anonymous provider routes:
+- GET /webhook accepts hub.mode=subscribe, exact hub.verify_token and a bounded numeric hub.challenge; returns the plain-text challenge.
+- POST /webhook requires X-Hub-Signature-256 over the exact raw bytes. Payload limit is 64 KiB, JSON depth 20, at most 20 entries, 20 changes per entry and 100 messages across the envelope. Entire envelopes validate before writes. Inactive, unmatched and ineligible connections are acknowledged without receipts.
+- Reception defaults off and returns 503 WHATSAPP_RECEPTION_DISABLED. Invalid verification/signatures return 401. Invalid/oversized envelopes return 422 at the application layer; host/proxy body limits may reject earlier.
+No connect, send, reply, contact-link, ticket-mutation or AI-processing route is implemented here.

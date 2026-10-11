@@ -27,3 +27,8 @@ Private email extension reuses the existing Google OAuth/token protection, IAiCl
 Microsoft personal productivity now reuses ProviderOAuthAttempts, ISecretProtector, WorkspaceExecutionPrincipal, private email drafts and the shared AI credit pipeline. A fixed-host delegated OAuth/send adapter and workspace-scoped settings section add no separate worker or hosted service. Gmail and Microsoft share durable confirmation receipts and send caps. Inbox/thread reading, calendar mutation receipts and WhatsApp remain separate release work.
 
 Private calendar proposals reuse the existing Google token store, NodaTime IANA database, current execution principal and workspace-scoped settings queries. A dedicated personal flow persists its claim before a provider write and supports read-only outcome reconciliation. Existing project-meeting creation/reschedule/attendee/cancel paths are preserved and still need their own durable-operation upgrade; this personal flow does not silently change them.
+
+## WhatsApp inbound foundation checkpoint
+Added a separate organization-owned installation schema and raw-body-signed webhook receiver. This phase has no token-entry or installation endpoint, provider HTTP client, sending path or AI invocation. The settings page explicitly describes installation as unavailable. Fixture installations are used only in isolated tests; no live Meta workspace has been connected.
+
+The central WHATSAPP_INTEGRATION boolean entitlement defaults to absent/zero and uses the existing subscription/override system. No plan is assumed eligible. Exact app/business-account/phone-ID mapping is resolved globally only after signature validation, followed by tenant-scoped writes and active-subscription checks.

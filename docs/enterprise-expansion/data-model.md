@@ -43,3 +43,12 @@ SQLite development databases do not run the historic PostgreSQL migration chain.
 ## Private calendar proposals
 Migration 20261011065223_PersonalCalendarProposals adds owner/tenant-scoped PersonalCalendarProposals, exact UTC times, IANA zone, immutable saved content, concurrency version, reviewed account, confirmation/verification timestamps and stable provider event ID. Lifecycle: draft -> sending -> verified/unknown; recovery can move unknown/stale sending to verified through provider read-back only. Local erasure clears text, account and proposed times while keeping confirmation history. User deletion cascades ownership.
 The explicit SQLite expansion allowlist now includes this tenth additive migration.
+
+## WhatsApp installation and inbound metadata
+Migration 20261011073057_WhatsAppInboundFoundation creates WhatsAppConnections and WhatsAppInboundReceipts. Both are ITenantScoped. One installation per tenant and unique (AppId, PhoneNumberId) enforce organization mapping. Installation tokens have a protected-value field reserved for a future verified OAuth flow; there is no public/manual registration endpoint.
+
+Receipts contain provider message ID, message type, provider timestamp and receipt timestamp; they contain no sender number, text, attachment or inferred Project Tracker user. Unique (AppId, PhoneNumberId, ProviderMessageId) prevents replay across replicas. All public timestamps carry an explicit UTC offset. Disconnect empties the usable token and marks the connection inactive; its mapping remains reserved to prevent silent reassignment. Existing receipts remain metadata only.
+
+The diagnostic list contains at most 50 entries from the last 30 days. Admission caps retained receipt rows at 10,000 per tenant; excess messages are acknowledged without adding metadata. At most 100 expired rows are physically purged per active, eligible webhook group. Idle-tenant/background erasure remains a release item; this is not a guarantee of physical deletion exactly on day 30.
+
+The additive SQLite startup allowlist includes this migration. Existing-table upgrade is tested twice, preserving historical email receipts. PostgreSQL deployment and full upgrade/contention verification remain release gates.

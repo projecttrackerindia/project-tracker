@@ -61,3 +61,12 @@ Provider requests use fixed hosts, combined per-request 20-second deadlines, bou
 Google token refresh now reads untracked state, bounds response size/lifetime and uses comparison against the prior protected refresh grant before updating. A reconnect/disconnect winning during refresh prevents credential overwrite and blocks the subsequent action. A provider permission downgrade is rejected. Calendar instants use explicit UTC offsets; zone validation uses the existing bundled NodaTime data and works with invariant globalization.
 
 Limitations: primary calendar only; conservative busy-event counting; no guarantee against a simultaneous event written outside this flow; unresolved missing/changed events need an administrator recovery design; project meeting mutations and Microsoft calendar actions remain pending.
+
+## WhatsApp foundation review
+A Meta webhook signature proves provider origin, not authorization of a person to access Project Tracker. The gateway never grants identity from a phone number, never sends a reply and never invokes Gemini. Raw bodies are processed in memory and are not persisted or logged by this service.
+
+Global lookup bypass is confined to exact configured app ID plus signed WABA/phone IDs and installation metadata. Current tenant is established before scoped operations and restored in finally. The tenant ledger lock serializes disconnect and receipt admission; mapping and entitlement are checked after acquiring it. Provider message IDs have a unique DB constraint and retries are deduplicated. Provider timestamps before installation, over 30 days old or more than five minutes ahead are discarded.
+
+Both management and receipt reads check current organization admin membership and active user state. Personal workspaces and ordinary members cannot manage the integration. An active subscription with the central entitlement is required for reception and diagnostic reads. Local disconnect remains possible after eligibility expires, erases usable credentials and preserves a reserved mapping. Remote consent revocation is a separate customer step.
+
+Remaining activation gates: approved official Embedded Signup, app/asset ownership and token verification, protected token persistence, contact identity proof, consent, template/24-hour rules, durable outbox and provider recovery, idle retention/account-purge behavior, ingress/proxy logging review, and PostgreSQL contention verification. Do not activate live reception until these checks and controlled-account verification are complete.

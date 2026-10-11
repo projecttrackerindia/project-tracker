@@ -24,3 +24,10 @@ SQLite development databases do not run the historic PostgreSQL migration chain.
 
 ## Private calendar checkpoint
 Deploy schema 20261011065223_PersonalCalendarProposals before the API. Keep GoogleCalendar__PersonalCalendarEnabled=false until controlled-account readiness checks pass. SQLite development startup adds the tenth reviewed expansion migration idempotently. Check original-account reconnect and read-only reconciliation; never reset sending/unknown records to force a second provider write. Local receipt removal is separate from provider-event deletion. No production configuration was changed in this checkpoint.
+
+## WhatsApp receiver checkpoint deployment gates
+Apply 20261011073057_WhatsAppInboundFoundation before upgrading the API; additive SQLite startup support is included. WHATSAPP_INTEGRATION remains zero unless explicitly configured through the existing plan or tenant override system. Leave WhatsApp__WebhookReceptionEnabled=false; current production accounts are not configured.
+
+Do not insert installation rows manually in production or reuse one organization's token across customers. Automated tests insert synthetic rows solely to verify routing. Customer OAuth/signup is not implemented, and there is no live sending or business-action path.
+
+Before activation: complete official signup and verification; preserve token-protection keys across replicas; verify exact app/WABA/phone ownership; check proxy logging and TLS; verify contact authorization/consent and current Meta messaging rules; add durable sending/recovery and idle-data erasure; apply the full PostgreSQL upgrade in a disposable database and test replica contention. Disconnect removes local token access only; customers revoke remote grants separately.

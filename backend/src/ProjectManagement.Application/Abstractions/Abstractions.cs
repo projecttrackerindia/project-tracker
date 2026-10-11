@@ -22,6 +22,8 @@ public interface IAppDbContext
     DbSet<SupportTicketLink> SupportTicketLinks { get; }
     DbSet<ResumeVersion> ResumeVersions { get; }
     DbSet<EmployeeCertification> EmployeeCertifications { get; }
+    DbSet<WhatsAppConnection> WhatsAppConnections { get; }
+    DbSet<WhatsAppInboundReceipt> WhatsAppInboundReceipts { get; }
     DbSet<SlackConnection> SlackConnections { get; }
     DbSet<SlackOAuthAttempt> SlackOAuthAttempts { get; }
     DbSet<SlackEventReceipt> SlackEventReceipts { get; }

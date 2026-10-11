@@ -29,3 +29,8 @@ Implemented disabled-by-default delegated OAuth with PKCE, protected rotating to
 
 ## Durable personal calendar continuation
 Implemented saved private time-block proposals, explicit account/time/content review, fresh conflict checks, persistent claims, read-back verification and read-only reconciliation. The Google deployment gate stays off. This covers personal Google blocks only; AI scheduling, attendees, multi-calendar availability, project-meeting mutation receipts and Microsoft calendars remain implementation/release work. Existing project meeting behavior is preserved.
+
+## WhatsApp inbound continuation
+Implemented disabled reception, tenant-owned installation/receipt models, centralized plan access, raw-body signature verification, replay protection, bounded metadata-only storage, local disconnect and organization settings/preparation instructions. Tests use fixture installations in two isolated organizations; no live provider calls or AI tests run. This is the receiver foundation, not a completed WhatsApp adapter.
+
+Next WhatsApp phase is the verified official Embedded Signup flow and app/asset/token validation, followed by verified contact linking and consent. Only after those pass should templates, the 24-hour policy, outbox delivery/recovery and permission-aware support actions be added. No customer installation/sending action should be enabled in this checkpoint. The coordinated release still requires the previously recorded productivity, payment, support, parser/export and database gates.

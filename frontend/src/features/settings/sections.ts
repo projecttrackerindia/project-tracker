@@ -2,7 +2,7 @@ import type { SectionLink } from '../../components/ui';
 import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 
 export type WorkspaceSection = 'general' | 'access' | 'security' | 'sso' | 'billing' | 'audit' | 'data'
-  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation' | 'reminders' | 'api-keys' | 'webhooks' | 'slack' | 'email' | 'git';
+  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation' | 'reminders' | 'api-keys' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git';
 
 interface SectionDef extends SectionLink { id: WorkspaceSection; group: 'Workspace' | 'Configuration' | 'Integrations' }
 
@@ -34,6 +34,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'api-keys', group: 'Integrations', to: '/settings/api-keys', label: 'API keys', icon: 'lock', show: isAdmin },
     { id: 'webhooks', group: 'Integrations', to: '/settings/webhooks', label: 'Webhooks, Slack & Teams', icon: 'send', show: isAdmin },
     { id: 'slack', group: 'Integrations', to: '/settings/slack', label: 'Slack workspace', icon: 'message', show: !personal && isAdmin },
+    { id: 'whatsapp', group: 'Integrations', to: '/settings/whatsapp', label: 'WhatsApp Business', icon: 'phone', show: !personal && isAdmin },
     { id: 'email', group: 'Integrations', to: '/settings/email', label: 'Email to work', icon: 'mail', show: isAdmin && mWork > 0 },
     { id: 'git', group: 'Integrations', to: '/settings/git', label: 'GitHub & Azure DevOps', icon: 'git', show: isAdmin },
   ];

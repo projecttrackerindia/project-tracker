@@ -66,3 +66,12 @@ For an unknown outcome, use Check provider status. This only reads the stable sa
 Keep the deployment gate off until controlled-account read-back/recovery behavior is verified. No real provider writes were used in development verification. Existing project-meeting mutation durability, attendee scheduling and Microsoft calendar operations remain separate release work.
 
 Provider contracts: https://developers.google.com/workspace/calendar/api/v3/reference/events/insert , https://developers.google.com/workspace/calendar/api/v3/reference/events/list and https://developers.google.com/workspace/calendar/api/v3/reference/events/get .
+
+## WhatsApp foundation: leave live activation off
+Current backend variable names are WhatsApp__AppId, WhatsApp__AppSecret, WhatsApp__VerifyToken and WhatsApp__WebhookReceptionEnabled (default false). App secret and a random verification token remain backend-only. These configure the receiver, not customer installation. No shared organization token is accepted or exposed to React.
+
+The future Meta webhook address is https://projecttracker.in/api/v1/integrations/whatsapp/webhook. GET verification uses hub.mode, hub.verify_token and hub.challenge; POST verification uses the raw-body SHA-256 app-secret signature. Keep the reception gate false until official signup, verified identities and provider readiness are implemented and checked.
+
+Customer UI: Workspace settings -> Integrations -> WhatsApp Business. It shows plan access and pending setup, explains business-account preparation, and never presents a working Connect action in this phase. Eligible fixture connections show bounded metadata diagnostics and explicitly confirmed local disconnect. Disconnect does not revoke Meta consent; remove the app separately in Meta Business Settings.
+
+Reference checked for the raw webhook contract: https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/webhooks/start/ (Meta-owned, archived SDK documentation; not a recommendation to use that SDK). The current Embedded Signup documentation could not be read in this environment; no OAuth contract was guessed or shipped. Official signup/app review and current messaging policy verification remain separate implementation gates.

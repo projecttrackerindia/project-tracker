@@ -44,6 +44,7 @@ import { MobileAppSection } from './MobileAppSection';
 import { GoogleIntegrationSection } from './GoogleIntegration';
 import { AiUsageCard } from '../ai/AiUsageCard';
 import { SlackSettings } from './SlackSettings';
+import { WhatsAppSettings } from './WhatsAppSettings';
 const ResumeBuilderSection = lazy(() => import('./ResumeBuilder').then(m=>({default:m.ResumeBuilderSection})));
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
@@ -284,6 +285,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
       {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
+      {current.id === 'whatsapp' && <><PageHead title="WhatsApp Business" sub="Prepare a secure organization-owned business connection." /><WhatsAppSettings /></>}
       {current.id === 'slack' && <><PageHead title="Slack integration" sub="Connect a Slack workspace to this organization." /><SlackSettings /></>}
       {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
       {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}
