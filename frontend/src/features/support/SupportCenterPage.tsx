@@ -41,6 +41,7 @@ function TicketDetail({id,onClose,onSelect}:{id:string;onClose:()=>void;onSelect
   const t=q.data;
   return <Modal title={t?`${t.work.key} · ${t.work.title}`:'Support ticket'} onClose={onClose} size="xl">{q.isLoading?<PageLoader/>:!t?<ErrorState error={q.error} retry={()=>void q.refetch()}/>:<div className="support-detail">{error&&<p role="alert" className="form-error">{error}</p>}<div className="support-detail-meta"><PriorityBadge priority={t.work.priority}/><span className="badge badge-neutral">{t.state}</span><span>{t.category}</span>{t.work.sla&&<SlaChip sla={t.work.sla}/>}<button className="btn btn-sm" onClick={()=>setEdit(true)}>Work, assignment & files</button></div><p>{t.work.description}</p>{t.handoffReason&&<p className="support-note">Human handoff: {t.handoffReason}</p>}
     {t.staff&&<TicketMetadata key={t.version} ticket={t} onSaved={()=>void q.refetch()}/>}
+    {t.staff&&<TicketRouting key={t.version} ticket={t} onSaved={()=>void q.refetch()}/>}
     <TicketThread key={t.version} ticket={t} onReload={()=>void q.refetch()}/>
     {t.state!=='closed'&&t.state!=='merged'&&t.state!=='cancelled'&&<form className="support-form" onSubmit={e=>{e.preventDefault();void run(async()=>{const visibility=t.staff&&internal?'internal':'public';
       if(!attempt.current||attempt.current.body!==body||attempt.current.visibility!==visibility)attempt.current={body,visibility,key:crypto.randomUUID()};
@@ -109,4 +110,37 @@ function SupportMetrics(){
       ['Response SLA',responded?Math.round(s.responseMet/responded*100)+'%':'No measured responses']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}
     <small>All visible tickets. SLA percentages use recorded outcomes with targets; cancelled work is excluded.</small>
   </section>;
+}
+type RoutingPreview={ticketVersion:number;workVersion:number;workloadScope:string;scopeMayBeTruncated:boolean;
+  candidates:{userId:string;name:string;open:number;overdue:number;weeklyCapacityMinutes:number|null}[];
+  escalationTargets:{userId:string;name:string;basis:string}[];explanation:string};
+function TicketRouting({ticket,onSaved}:{ticket:Ticket;onSaved:()=>void}){
+  const canEdit=useCan('work.edit');
+  const [opened,setOpened]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState<string|null>(null);
+  const preview=useWsQuery(['support','routing',ticket.id,ticket.version],
+    ()=>api<RoutingPreview>('GET','/support/tickets/'+ticket.id+'/routing'),
+    {enabled:canEdit&&opened&&!['resolved','closed','cancelled','merged'].includes(ticket.state)});
+  if(!canEdit||['resolved','closed','cancelled','merged'].includes(ticket.state))return null;
+  return <details className="support-actions" onToggle={e=>setOpened(e.currentTarget.open)}>
+    <summary>Review routing and escalation</summary>
+    {preview.isLoading?<PageLoader/>:preview.error?<ErrorState error={preview.error} retry={()=>void preview.refetch()}/>:preview.data&&<div className="support-form">
+      <p>{preview.data.explanation}</p>
+      <small>Workload scope: {preview.data.workloadScope}.{preview.data.scopeMayBeTruncated?' Candidate search is limited to the existing workload view; it is not an organization-wide ranking.':''}</small>
+      {error&&<p className="form-error" role="alert">{error}</p>}
+      {preview.data.candidates.map(person=><div key={person.userId} className="support-routing-person">
+        <div><b>{person.name}</b><small>{person.open} visible open items · {person.overdue} overdue · {person.weeklyCapacityMinutes==null?'Weekly capacity not configured':(person.weeklyCapacityMinutes/60)+' configured hours/week'}</small></div>
+        <button className="btn btn-sm" disabled={busy||ticket.work.assignee?.id===person.userId} onClick={()=>void (async()=>{
+          const reviewed=preview.data!;
+          if(!await confirmDialog({title:'Assign support ticket?',message:'Assign '+ticket.work.key+' to '+person.name+'? This updates the work owner. Live availability and remaining effort have not been verified.',confirmText:'Confirm assignment'}))return;
+          setBusy(true);setError(null);
+          try{await api('POST','/support/tickets/'+ticket.id+'/routing/assign',{ticketVersion:reviewed.ticketVersion,workVersion:reviewed.workVersion,assigneeId:person.userId,confirmed:true});onSaved();}
+          catch(e){setError(e instanceof Error?e.message:'Could not assign this ticket.');onSaved();}
+          finally{setBusy(false);}
+        })()}>{ticket.work.assignee?.id===person.userId?'Current owner':'Review assignment'}</button>
+      </div>)}
+      <h4>Recorded escalation contacts</h4>
+      {preview.data.escalationTargets.length?preview.data.escalationTargets.map(person=><p key={person.userId}><b>{person.name}</b> · {person.basis}</p>):<p>No eligible lead or manager is recorded in your authorized scope. Use a reviewed human handoff.</p>}
+      <small>These contacts are suggestions. To configure staged SLA escalation, add waits and separate approvals before each assignment in Workflow studio. No contact is notified automatically by this view.</small>
+    </div>}
+  </details>;
 }

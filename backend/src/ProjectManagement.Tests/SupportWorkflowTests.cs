@@ -111,4 +111,42 @@ public class SupportWorkflowTests(ApiFactory factory)
         await Process(3);
         Assert.Equal("cancelled",(await owner.Get($"/api/v1/support/workflows/runs/{run}")).Data!["status"]!.GetValue<string>());
         Assert.Empty((await owner.Get($"/api/v1/support/tickets/{ticket}")).Data!["interactions"]!.AsArray());
+    }    [Fact]
+    public async Task Staged_escalation_waits_and_requires_a_separate_second_approval()
+    {
+        var owner=await TestClient.RegisterAsync(factory,"Escalation owner");await owner.CreateOrgAsync();await owner.UpgradeAsync("BUSINESS");
+        var lead=await owner.AddMemberAsync(factory,TenantRole.Member,"Escalation lead");
+        var manager=await owner.AddMemberAsync(factory,TenantRole.Manager,"Escalation manager");
+        var graph=new SupportWorkflowGraph("manual",[
+            new("start","start","Start","review1"),
+            new("review1","approval","Review lead assignment","assign1","end"),
+            new("assign1","assign","Assign lead","wait",Value:lead.UserId.ToString()),
+            new("wait","wait","Wait before manager","closed",Minutes:60),
+            new("closed","condition","Stop if resolved","end","review2",Field:"state",Value:"resolved"),
+            new("review2","approval","Review manager assignment","assign2","end"),
+            new("assign2","assign","Assign manager","end",Value:manager.UserId.ToString()),
+            new("end","end","Finish")]);
+        var workflow=await Publish(owner,graph);var ticket=await Ticket(owner);
+        var made=await owner.Post($"/api/v1/support/workflows/{workflow}/runs",new{ticketId=ticket,requestKey="staged-escalation"});
+        Assert.True(made.Ok,made.ToString());var id=made.Data!["id"]!.GetValue<Guid>();
+        await Process(2);
+        var paused=await owner.Get($"/api/v1/support/workflows/runs/{id}");
+        Assert.Equal("approval",paused.Data!["status"]!.GetValue<string>());
+        Assert.Null((await owner.Get($"/api/v1/support/tickets/{ticket}")).Data!["work"]!["assignee"]);
+        Assert.True((await owner.Post($"/api/v1/support/workflows/runs/{id}/decide",new{version=paused.Data["version"]!.GetValue<int>(),accepted=true})).Ok);
+        await Process(3);
+        Assert.Equal(lead.UserId,(await owner.Get($"/api/v1/support/tickets/{ticket}")).Data!["work"]!["assignee"]!["id"]!.GetValue<Guid>());
+        Assert.Equal("closed",(await owner.Get($"/api/v1/support/workflows/runs/{id}")).Data!["nodeId"]!.GetValue<string>());
+        factory.WithDb(db=>{
+            var run=db.SupportWorkflowRuns.IgnoreQueryFilters().Single(r=>r.Id==id);run.AvailableAt=DateTime.UtcNow.AddDays(-1);db.SaveChanges();return 0;
+        });
+        await Process(2);
+        var second=await owner.Get($"/api/v1/support/workflows/runs/{id}");
+        Assert.Equal("approval",second.Data!["status"]!.GetValue<string>());
+        Assert.Equal(manager.UserId,second.Data["approval"]!["userId"]!.GetValue<Guid>());
+        Assert.Equal(lead.UserId,(await owner.Get($"/api/v1/support/tickets/{ticket}")).Data!["work"]!["assignee"]!["id"]!.GetValue<Guid>());
+        Assert.True((await owner.Post($"/api/v1/support/workflows/runs/{id}/decide",new{version=second.Data["version"]!.GetValue<int>(),accepted=false})).Ok);
+        await Process(2);
+        Assert.Equal("succeeded",(await owner.Get($"/api/v1/support/workflows/runs/{id}")).Data!["status"]!.GetValue<string>());
+        Assert.Equal(lead.UserId,(await owner.Get($"/api/v1/support/tickets/{ticket}")).Data!["work"]!["assignee"]!["id"]!.GetValue<Guid>());
     }}

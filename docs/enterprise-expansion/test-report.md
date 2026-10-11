@@ -33,3 +33,10 @@ Remaining verification: workflow lease-contention tests; remaining backend tests
 - Metrics verify empty foreign-tenant counts, completed on-time/late outcomes, cancelled work exclusions and resolution clocks paused before deadline.
 - Frontend typecheck and production build passed with the new history and dashboard components. No live AI/provider calls or bulk AI tests were run.
 - This is SQLite verification. PostgreSQL/provider activation and the other coordinated release gates remain pending.
+
+## Reviewed routing and staged escalation
+- 14 passed, 0 failed, 0 skipped: support-routing-escalation.trx (routing, ticket, workflow and query-filter guard scenarios).
+- Verified workload ordering, zero-capacity/guest/inactive exclusions, tenant isolation, project relationships, explicit confirmation, stale versions and no-candidate ownership preservation.
+- Verified the first escalation assignment waits for approval; the second stage waits until due, requires fresh approval and does not assign its recipient when rejected.
+- Production frontend build passed with the routing review and staged escalation editor. No AI/provider load or real customer-message tests.
+- No new migration in this phase. PostgreSQL contention and external integration activation remain release gates.

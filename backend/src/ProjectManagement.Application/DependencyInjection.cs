@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiCommandPlanner>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiRequestLimitService>();
         services.AddScoped<ProjectManagement.Application.Features.Support.SupportService>();
+        services.AddScoped<ProjectManagement.Application.Features.Support.SupportRoutingService>();
         services.AddScoped<ProjectManagement.Application.Features.Support.SupportWorkBridge>();
         services.AddScoped<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowService>();
         services.AddScoped<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowEmitter>();

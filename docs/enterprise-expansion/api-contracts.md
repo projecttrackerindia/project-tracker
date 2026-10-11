@@ -47,3 +47,8 @@ Checkout defaults disabled. A missing reviewed tax configuration is not interpre
 
 Automatic triggers currently cover ticket creation, public replies, ticket state changes, SLA breach and saved schedules. Arbitrary scripts, external sends and provider writes are not node types.
 Support ticket customFields are a staff-only string map (up to 20 entries, non-empty keys up to 80 characters and values up to 1,000). Requesters receive an empty map and no handoff reason. PUT metadata requires the current ticket version; stale edits return conflict.
+## Reviewed support routing
+- GET /api/v1/support/tickets/{id}/routing: staff plus WorkEdit; authorized workload scope, top ten deterministic candidates, recorded lead/manager contacts, exact ticket/work versions. Guests, inactive users and nonpositive configured capacity are excluded. Support-team and project relationships constrain candidates; unknown capacity is explicit.
+- POST .../{id}/routing/assign: ticketVersion, workVersion, assigneeId, confirmed=true. Rebuild eligibility, reject changed versions or missing candidates, lock the ticket and reuse existing work assignment/audit/notification behavior in one owned transaction. No AI credits are consumed.
+- The existing Everyone workload view caps its pool at 1,000 members; the preview exposes scopeMayBeTruncated rather than claiming a full organization ranking.
+- Workflow studio includes a two-stage SLA escalation draft. Recipients and wait are explicitly chosen. Each stage checks resolved/closed/cancelled/merged states, and requires its own fresh approval. A draft does not activate until saved and published under existing automation entitlements.
