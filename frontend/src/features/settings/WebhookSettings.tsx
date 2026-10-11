@@ -10,6 +10,7 @@ import { timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
+import { IntegrationSetupGuides, WebhookSetupSteps } from './IntegrationSetupGuides';
 
 /** Settings → Webhooks: tell another system, with a signed request, when something happens here. Owners and admins only. */
 export function WebhookSettings() {
@@ -19,7 +20,7 @@ export function WebhookSettings() {
   const included = useEntitlement('API_ACCESS') > 0;
   const isAdmin = role === 'Owner' || role === 'Admin';
   const q = useWsQuery(['webhooks'], webhookApi.list, { enabled: isAdmin && included });
-  const [modal, setModal] = useState<{ hook?: Webhook } | null>(null);
+  const [modal, setModal] = useState<{ hook?: Webhook; format?: WebhookFormat } | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [log, setLog] = useState<Webhook | null>(null);
   const hooks = q.data ?? [];
@@ -44,13 +45,15 @@ export function WebhookSettings() {
   };
 
   return (
+    <>
+    <IntegrationSetupGuides included={included} onCreate={(format) => setModal({ format })} />
     <div className="card mb-22">
       <div className="card-head">
         <div><h3>Webhooks, Slack &amp; Teams</h3><p>Post to a Slack or Microsoft Teams channel, stream the audit log to your SIEM, or send a signed HTTPS request to another system whenever something happens.</p></div>
         {included && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> New webhook</button>}
       </div>
       <div className="card-body">
-        {!included && <div className="notice">Webhooks are part of the Business plan and above. <Link className="link" to="/settings/billing">See plans</Link></div>}
+        {!included && <div className="notice">Your current plan does not include webhook access. <Link className="link" to="/settings/billing">See plans</Link></div>}
         {included && hooks.length === 0 && !q.isLoading && <EmptyState icon="bolt" title="No webhooks" text="Add one to be told about new tasks, status changes, sprints and more." />}
         {hooks.length > 0 && (
           <div className="cf-list">
@@ -78,7 +81,7 @@ export function WebhookSettings() {
           </div>
         )}
       </div>
-      {modal && <HookModal hook={modal.hook} onClose={() => setModal(null)} onSaved={(s) => { setModal(null); refresh(); if (s) setSecret(s); }} />}
+      {modal && <HookModal hook={modal.hook} initialFormat={modal.format} onClose={() => setModal(null)} onSaved={(s) => { setModal(null); refresh(); if (s) setSecret(s); }} />}
       {secret && (
         <Modal size="sm" title="Copy the signing secret now" onClose={() => setSecret(null)} footer={<button type="button" className="btn btn-primary" onClick={() => setSecret(null)}>I've stored it</button>}>
           <p className="muted" style={{ marginTop: 0 }}>Your receiver uses this to check that requests really come from here: the <code>X-PM-Signature</code> header is <code>t=&lt;time&gt;,v1=&lt;HMAC-SHA256 of "time.body"&gt;</code>. It is shown only once.</p>
@@ -88,16 +91,17 @@ export function WebhookSettings() {
       )}
       {log && <DeliveriesModal hook={log} onClose={() => setLog(null)} />}
     </div>
+    </>
   );
 }
 
-function HookModal({ hook, onClose, onSaved }: { hook?: Webhook; onClose: () => void; onSaved: (secret?: string) => void }) {
+function HookModal({ hook, initialFormat, onClose, onSaved }: { hook?: Webhook; initialFormat?: WebhookFormat; onClose: () => void; onSaved: (secret?: string) => void }) {
   const catalogue = useWsQuery(['webhook-events'], webhookApi.events);
   const [name, setName] = useState(hook?.name ?? '');
   const [url, setUrl] = useState(hook?.url ?? '');
   const [all, setAll] = useState(!hook || hook.events.includes('*'));
   const [picked, setPicked] = useState<string[]>(hook?.events.filter((e) => e !== '*' && (hook.events.includes('*') ? e !== 'audit.logged' : true)) ?? []);
-  const [format, setFormat] = useState<WebhookFormat>(hook?.format ?? 'Json');
+  const [format, setFormat] = useState<WebhookFormat>(hook?.format ?? initialFormat ?? 'Json');
   const [audit, setAudit] = useState(!!hook?.events.includes('*') && hook.events.includes('audit.logged'));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -140,12 +144,13 @@ function HookModal({ hook, onClose, onSaved }: { hook?: Webhook; onClose: () => 
         </div>
       </div>
       <Field label="Name" required><input className="input" maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={format === 'Json' ? 'Billing system' : format === 'Slack' ? '#delivery in Slack' : 'Delivery channel in Teams'} /></Field>
-      <Field label="Address" required hint={format === 'Slack' ? 'In Slack: Apps → Incoming Webhooks → Add to a channel, then paste the https://hooks.slack.com/... address.'
-        : format === 'Teams' ? 'In the Teams channel: ⋯ → Workflows → “Post to a channel when a webhook request is received”, then paste the address it gives you.'
+      <Field label="Address" required hint={format === 'Slack' ? 'Paste the incoming webhook URL generated for your Slack channel. Expand the setup steps below for help.'
+        : format === 'Teams' ? 'Paste your Teams Workflows URL. Use the Anyone trigger option for this connection; setup steps are below.'
         : 'Must start with https://. Addresses on private or internal networks are refused.'}>
         <input className="input" maxLength={500} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={format === 'Slack' ? 'https://hooks.slack.com/services/…' : format === 'Teams' ? 'https://….logic.azure.com/workflows/…' : 'https://example.com/hooks/project-management'} />
       </Field>
       </div>
+      <details className="integration-inline-guide"><summary>Setup steps for {format === 'Json' ? 'your own system' : format === 'Slack' ? 'Slack' : 'Microsoft Teams'}</summary><WebhookSetupSteps format={format} /></details>
       <label className="check" style={{ display: 'flex', gap: 8, margin: '6px 0 10px' }}><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Send every event</label>
       {all && format === 'Json' && <label className="check" style={{ display: 'flex', gap: 8, margin: '-4px 0 10px' }}><input type="checkbox" checked={audit} onChange={(e) => setAudit(e.target.checked)} /> Also stream the audit log (sign-ins, permission and security changes) to this address</label>}
       {!all && (

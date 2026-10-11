@@ -1,0 +1,31 @@
+.integration-guides { display: grid; gap: 12px; }
+.integration-guide { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.integration-guide > summary { display: flex; align-items: center; gap: 12px; padding: 16px; cursor: pointer; list-style: none; }
+.integration-guide > summary::-webkit-details-marker { display: none; }
+.integration-guide > summary:hover { background: var(--hover-bg); }
+.integration-guide > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; border-radius: 14px; }
+.integration-guide > summary > svg { flex: none; color: var(--text-3); transition: transform .2s; }
+.integration-guide[open] > summary > svg { transform: rotate(180deg); }
+.integration-guide-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; color: var(--primary); background: var(--primary-soft); border-radius: 12px; }
+.integration-guide-title { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.integration-guide-title b { font-size: 14px; }
+.integration-guide-title small { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.integration-guide-body { padding: 4px 18px 18px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.65; }
+.integration-guide-body h4 { margin: 16px 0 10px; font-size: 13px; }
+.integration-steps { display: grid; gap: 12px; list-style: decimal; padding-left: 22px; margin: 12px 0; }
+.integration-steps li { padding-left: 4px; color: var(--text-2); }
+.integration-steps li::marker { color: var(--primary); font-weight: 700; }
+.integration-steps b { color: var(--text); }
+.integration-guide-note { margin: 0; font-size: 12px; color: var(--text-2); line-height: 1.65; overflow-wrap: anywhere; }
+.integration-guide-body > .integration-guide-note { margin: 12px 0; }
+.integration-guide-body a:not(.btn), .integration-steps a, .integration-help-link { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.integration-help-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; margin: 6px 0; }
+.integration-guide-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.integration-slack-install { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 4px; }
+.integration-slack-install > .btn { margin-top: 14px; }
+.integration-troubleshooting > summary { padding-block: 12px; }
+.integration-troubleshooting ul { display: grid; gap: 10px; list-style: disc; padding-left: 20px; margin: 14px 0 0; }
+.integration-inline-guide { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; }
+.integration-inline-guide > summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+@media (max-width: 480px) { .integration-guide > summary { padding: 12px; gap: 10px; } .integration-guide-body { padding-inline: 12px; } .integration-guide-actions .btn { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .integration-guide > summary > svg { transition: none; } }

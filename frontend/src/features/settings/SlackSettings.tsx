@@ -5,6 +5,7 @@ import { useWsQuery, invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast, confirmDialog } from '../../stores/ui';
 import { useMutation } from '@tanstack/react-query';
+import { SlackInstallSteps } from './IntegrationSetupGuides';
 
 interface SlackStatus { configured: boolean; eligible: boolean; connected: boolean; teamId: string | null; teamName: string | null; connectedAt: string | null; lastError: string | null; interactiveEnabled: boolean }
 
@@ -27,6 +28,8 @@ export function SlackSettings() {
   const status = q.data;
   return <div className="card"><div className="card-head"><h3>Slack workspace</h3></div><div className="card-body">
     <p>Connect your organization's Slack workspace. Each organization keeps its own installation and credentials.</p>
+    <details className="integration-inline-guide" open><summary>How to connect Slack</summary><SlackInstallSteps /></details>
+    <p><Link to="/settings/webhooks">Set up Slack channel notifications</Link></p>
     {q.isLoading && <p role="status">Checking connection...</p>}
     {q.error && <p role="alert">{q.error.message}</p>}
     {status && <>
