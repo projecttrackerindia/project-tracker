@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain.Entities;
 
@@ -27,9 +28,26 @@ public class PersonalFileCleanup(IAppDbContext db, IFileStorage storage, AppCloc
             try
             {
                 if(!IsPersonalKey(receipt.StorageKey))throw new InvalidOperationException("Invalid personal-file cleanup key.");
+                await using var tx=await db.Database.BeginOwnedTransactionAsync(ct);
+                // Fence competing maintenance and late upload publication with a database row lock.
+                var claimed=await db.PersonalFileDeletions.Where(d=>d.Id==receipt.Id&&d.AvailableAt<=clock.Now)
+                    .ExecuteUpdateAsync(s=>s.SetProperty(d=>d.Attempts,d=>d.Attempts),ct);
+                if(claimed!=1)continue;
+                // Trusted global existence checks only: never retrieve personal content or assume a missing current-user filter means orphaned.
+                var referenced=await db.ResumeVersions.IgnoreQueryFilters().AnyAsync(v=>v.OriginalStorageKey==receipt.StorageKey,ct)
+                    ||await db.EmployeeCertifications.IgnoreQueryFilters().AnyAsync(c=>c.AttachmentStorageKey==receipt.StorageKey,ct)
+                    ||await db.ResumeExportPurchases.IgnoreQueryFilters().AnyAsync(p=>p.ArtifactKey==receipt.StorageKey,ct);
+                if(referenced)
+                {
+                    await db.PersonalFileDeletions.Where(d=>d.Id==receipt.Id)
+                        .ExecuteUpdateAsync(s=>s.SetProperty(d=>d.AvailableAt,clock.Now.AddDays(1)),ct);
+                    await tx.CommitIfOwnedAsync(ct);
+                    continue;
+                }
                 await storage.DeleteAsync(receipt.StorageKey,ct);
                 // Storage deletion is idempotent; concurrent workers can safely repeat it.
                 deleted+=await db.PersonalFileDeletions.Where(d=>d.Id==receipt.Id).ExecuteDeleteAsync(ct);
+                await tx.CommitIfOwnedAsync(ct);
             }
             catch(Exception ex)when(ex is not OperationCanceledException)
             {
@@ -42,11 +60,10 @@ public class PersonalFileCleanup(IAppDbContext db, IFileStorage storage, AppCloc
         return deleted;
     }
 
-    private static bool IsPersonalKey(string key)
+    internal static bool IsPersonalKey(string key)
     {
         var parts=key.Split('/');
-        if(parts.Length is <3 or >4||parts.Any(p=>p.Length!=32&&!IsPrefix(p)))return false;
-        if(!IsPrefix(parts[0]))return false;
+        if(!IsPrefix(parts[0])||parts.Length!=(parts[0]=="certificates"?4:3))return false;
         return parts.Skip(1).All(p=>Guid.TryParseExact(p,"N",out _));
     }
     private static bool IsPrefix(string value)=>value is "resumes" or "certificates" or "resume-exports";

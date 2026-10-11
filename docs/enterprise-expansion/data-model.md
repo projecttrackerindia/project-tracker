@@ -80,3 +80,6 @@ Unique tenant/notification and tenant/callback indices prevent duplicate prepara
 ## WhatsApp idle-retention schema
 
 20261011161936_WhatsAppMetadataRetention adds nullable RetentionPolledAt to WhatsAppConnections and four indexes: RetentionPolledAt; WhatsAppDeliveries(TenantId, CreatedAt); (TenantId, State, ExpiresAt); and (TenantId, State, LeaseUntil). Prior mappings start with a null marker. No new consent/readiness/token data is introduced. Terminal row deletion now requires all tracked evidence timestamps to exceed thirty days, not just CreatedAt. Inactive installations join bounded background maintenance while their ownership/asset reservation remains intact. The SQLite allowlist contains eighteen additive expansion migrations.
+
+
+PersonalFileDeletion also records pending upload cleanup with a one-day AvailableAt. New resume/certificate keys are immutable and receipt consumption shares the pointer transaction. No additional schema is introduced. Existing referenced files are retained by metadata existence checks across owners.

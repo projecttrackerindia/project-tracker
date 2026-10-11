@@ -15,6 +15,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Api/Realtime/ChatHub.cs",
         "ProjectManagement.Application/Features/Admin/AdminService.cs",
         "ProjectManagement.Application/Features/People/MemberProfile.cs",
+        "ProjectManagement.Application/Features/Resumes/PersonalFileCleanup.cs", // trusted storage-key existence checks only, across owners and deleted records; no content is retrieved
         "ProjectManagement.Application/Features/SupportWorkflows/SupportWorkflowProcessor.cs", // scheduling metadata and lease fencing only; every business action rebuilds the active executor's permissions
         "ProjectManagement.Application/Features/Admin/GoLiveService.cs",
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",

@@ -149,3 +149,6 @@ Before activation, verify actual Graph-version send/opaque-callback contracts, e
 ## Background metadata retention
 
 No new provider variables are required. The existing Maintenance__Enabled switch and Maintenance__IntervalMinutes control housekeeping (defaults true and fifteen minutes). Apply 20261011161936_WhatsAppMetadataRetention first. Maintenance selects ten installations per pass and at most 100 rows per operation, including inactive registrations, without accessing provider credentials or making calls. Keep WhatsApp deployment gates off until controlled provider verification passes. Installation ownership/phone reservation survives cleanup; recent acknowledgement/status evidence and live attempts are retained. Review housekeeping backlog/cadence using measured traffic before claiming capacity for large fleets.
+
+
+The consolidated studios and private upload recovery require no additional credentials or flags. Existing maintenance scheduling handles interrupted uploads after their one-day deadline. Provider and cash-purchase gates remain unchanged, and full expanded functionality remains the prerequisite for merge.

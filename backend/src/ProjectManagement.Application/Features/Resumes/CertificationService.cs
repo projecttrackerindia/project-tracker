@@ -13,7 +13,7 @@ public record CertificationDto(Guid Id, string Name, string Issuer, DateOnly Iss
     string? CredentialId, string? VerificationUrl, bool ShowBadge, bool Archived, int Version,
     string VerificationStatus, bool ExpiryReminders, bool HasAttachment, string? AttachmentFormat);
 
-public class CertificationService(IAppDbContext db, ICurrentContext ctx, Recorder recorder, IFileStorage storage, IResumeDocumentExtractor extractor, AppClock clock, PersonalFileCleanup cleanup)
+public class CertificationService(IAppDbContext db, ICurrentContext ctx, Recorder recorder, IFileStorage storage, IResumeDocumentExtractor extractor, AppClock clock, PersonalFileCleanup cleanup, PersonalFileUpload uploads)
 {
     private IQueryable<EmployeeCertification> Mine => db.EmployeeCertifications.Where(c => c.UserId == ctx.RequireUserId());
     private static CertificationDto Dto(EmployeeCertification c) => new(c.Id, c.Name, c.Issuer, c.IssuedOn, c.ExpiresOn,
@@ -71,6 +71,10 @@ public class CertificationService(IAppDbContext db, ICurrentContext ctx, Recorde
         // Image/PDF parsing has the same process and managed-heap boundary as resume imports.
         var extracted=await extractor.ExtractAsync(fileName,content,ct,requireText:false);
         var bytes=extracted.Bytes;var type=extracted.ContentType;
+        var key=$"certificates/{existing.UserId:N}/{id:N}/{Guid.NewGuid():N}";
+        var uploadReceipt=await uploads.PrepareAsync(key,ct);
+        await using(var stream=new MemoryStream(bytes))await storage.SaveAsync(key,stream,ct);
+
         // Parsing happens before acquiring a database lock. Recheck ownership, version and
         // the personal attachment cap inside the same transaction as the final update.
         await using var tx=await db.Database.BeginOwnedTransactionAsync(ct);
@@ -83,14 +87,12 @@ public class CertificationService(IAppDbContext db, ICurrentContext ctx, Recorde
         if(row.AttachmentStorageKey is null&&await Mine.CountAsync(c=>c.AttachmentStorageKey!=null,ct)>=10)
             throw new ConflictException("Keep up to ten private certificate attachments. Remove an old attachment first.");
         var old = row.AttachmentStorageKey;
-        var key = $"certificates/{row.UserId:N}/{row.Id:N}/{Guid.NewGuid():N}";
-        await using(var stream=new MemoryStream(bytes))await storage.SaveAsync(key,stream,ct);
+        await PersonalFileUpload.CompleteAsync(db,uploadReceipt,key,clock.Now,ct);
         row.AttachmentStorageKey = key; row.AttachmentContentType = type;
         row.AttachmentFileName = "certificate" + ext; row.Version++;
         recorder.Audit("certification.attachment_added", "EmployeeCertification", id, null, new { size = bytes.Length });
         if(old is not null)cleanup.Enqueue(old);
-        try { await db.SaveChangesAsync(ct); await tx.CommitIfOwnedAsync(ct); }
-        catch { await storage.DeleteAsync(key, CancellationToken.None); throw; }
+        await db.SaveChangesAsync(ct); await tx.CommitIfOwnedAsync(ct);
 
     }
 

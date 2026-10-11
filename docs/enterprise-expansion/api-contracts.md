@@ -138,3 +138,6 @@ States distinguish queued/preparing/sending from accepted/delivered/read, reject
 ## Idle WhatsApp maintenance
 
 No public endpoint or request/response change is added. Existing private/admin delivery history still reports accepted/delivered/read/unknown status. Internal maintenance covers idle/inactive installations; stale sending leases remain unknown and cannot be retried. Recent status/acceptance/decision evidence is protected from deletion for thirty days. Provider and AI deployment gates remain unchanged.
+
+
+Personal upload recovery: resume-import and certificate-attachment success shapes are unchanged. Expired late publication returns PERSONAL_UPLOAD_EXPIRED (409) and requires a fresh import. Upload requests retain their existing size/parser/owner/version limits. Storage keys and cleanup receipts remain backend-only.

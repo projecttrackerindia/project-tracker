@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowEmitter>();
         services.AddSingleton<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.PersonalFileCleanup>();
+        services.AddScoped<ProjectManagement.Application.Features.Resumes.PersonalFileUpload>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.ResumeService>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.ResumePurchaseService>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.CertificationService>();

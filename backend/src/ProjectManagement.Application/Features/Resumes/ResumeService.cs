@@ -24,7 +24,7 @@ public record ResumeTemplate(int Id, string Name, string Description, string Acc
 public record ResumeOptionsDto(IReadOnlyList<ResumeTemplate> Templates, int TemplateLimit, bool AiAvailable, int AiCredits, bool CleanCheckoutEnabled, int CleanPricePaise, long CleanTaxPaise = 0, string TaxLabel = "");
 
 public class ResumeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementService entitlements,
-    IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, Recorder recorder, IFileStorage storage, PermissionService permissions, IResumePaymentGateway payments, IOptions<ResumeCheckoutOptions> checkout, IResumeDocumentExtractor extractor, PersonalFileCleanup cleanup)
+    IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, Recorder recorder, IFileStorage storage, PermissionService permissions, IResumePaymentGateway payments, IOptions<ResumeCheckoutOptions> checkout, IResumeDocumentExtractor extractor, PersonalFileCleanup cleanup, PersonalFileUpload uploads)
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static readonly ResumeTemplate[] Templates = [
@@ -152,12 +152,15 @@ public class ResumeService(IAppDbContext db, ICurrentContext ctx, AppClock clock
     {
         var imported=await extractor.ExtractAsync(fileName,stream,ct);
         var name=await db.Users.Where(u=>u.Id==ctx.RequireUserId()).Select(u=>u.DisplayName).SingleAsync(ct);
+        var key=$"resumes/{ctx.RequireUserId():N}/{Guid.NewGuid():N}";
+        var uploadReceipt=await uploads.PrepareAsync(key,ct);
+        await using(var bytes=new MemoryStream(imported.Bytes))await storage.SaveAsync(key,bytes,ct);
         var result=await SaveAsync(null,new("Imported resume",new(name,"","","",Enumerable.Range(0,(imported.Text.Length+5999)/6000).Select(i=>new ResumeSection("Imported content — review and organize",imported.Text.Substring(i*6000,Math.Min(6000,imported.Text.Length-i*6000)))).ToArray()),0),ct);
         var version=await MyVersions.SingleAsync(v=>v.ResumeId==result.Id,ct);
-        var key=$"resumes/{ctx.RequireUserId():N}/{version.Id:N}";
-        await using var bytes=new MemoryStream(imported.Bytes);await storage.SaveAsync(key,bytes,ct);
+        await using var uploadTx=await db.Database.BeginOwnedTransactionAsync(ct);
+        await PersonalFileUpload.CompleteAsync(db,uploadReceipt,key,clock.Now,ct);
         version.OriginalStorageKey=key;version.OriginalFileName=Path.GetFileName(fileName);version.OriginalContentType=imported.ContentType;
-        try{await db.SaveChangesAsync(ct);}catch{await storage.DeleteAsync(key,CancellationToken.None);throw;}
+        await db.SaveChangesAsync(ct);await uploadTx.CommitIfOwnedAsync(ct);
         return Dto(await RequireAsync(result.Id,ct),[version]);
     }
     public async Task<(byte[] Bytes,string ContentType,string FileName)> OpenOriginalAsync(Guid id,int number,CancellationToken ct)
@@ -200,7 +203,7 @@ public class ResumeService(IAppDbContext db, ICurrentContext ctx, AppClock clock
     }    public async Task DeleteAsync(Guid id,CancellationToken ct)
     {
         var row=await RequireAsync(id,ct);var versions=await MyVersions.Where(v=>v.ResumeId==id).ToListAsync(ct);
-        // Files are deleted first: a storage failure preserves the rows for retry.
+        // Pointer removals and cleanup receipts commit together; storage removal is retried independently.
         foreach(var v in versions.Where(v=>v.OriginalStorageKey!=null))cleanup.Enqueue(v.OriginalStorageKey!);
         var versionIds=versions.Select(v=>v.Id).ToArray();
         var purchases=await db.ResumeExportPurchases.Where(p=>p.UserId==ctx.RequireUserId()&&p.ResumeVersionId!=null&&versionIds.Contains(p.ResumeVersionId.Value)).ToListAsync(ct);
