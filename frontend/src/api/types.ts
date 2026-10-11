@@ -699,4 +699,6 @@ export interface GroupMappings { items: GroupMapping[] }
 
 export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height: number | null }
 
-export interface PersonalEmailDraft { id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
+export interface PersonalEmailDraft { confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
+
+export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean }

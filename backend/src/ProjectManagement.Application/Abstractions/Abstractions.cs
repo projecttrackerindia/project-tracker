@@ -115,6 +115,7 @@ public interface IAppDbContext
     DbSet<CalendarFeed> CalendarFeeds { get; }
     DbSet<InboundMailbox> InboundMailboxes { get; }
     DbSet<GitConnection> GitConnections { get; }
+    DbSet<MicrosoftConnection> MicrosoftConnections {get;}
     DbSet<PersonalEmailDraft> PersonalEmailDrafts { get; }
     DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts { get; }
     DbSet<GoogleConnection> GoogleConnections { get; }

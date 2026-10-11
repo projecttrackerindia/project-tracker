@@ -87,6 +87,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeIdentityProvider Idp { get; } = new();
     /// <summary>Stands in for Google's OAuth token endpoint and the Calendar API: every "google-calendar" HTTP call lands here.</summary>
     public FakeGoogleCalendar GoogleCalendar { get; } = new();
+    public FakeMicrosoftProductivity MicrosoftProductivity {get;}=new();
     public FakeSlack Slack { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
@@ -121,6 +122,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Integrations.IWebhookTransport>(Webhooks);
             services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => Idp);
             services.AddHttpClient("google-calendar").ConfigurePrimaryHttpMessageHandler(() => GoogleCalendar);
+            services.AddHttpClient("microsoft-productivity").ConfigurePrimaryHttpMessageHandler(()=>MicrosoftProductivity);
             services.Configure<ProjectManagement.Application.Features.Integrations.SlackOptions>(o =>
             {
                 o.ClientId = "test-client"; o.ClientSecret = "test-client-secret"; o.SigningSecret = "test-signing-secret";

@@ -23,8 +23,8 @@ public class PersonalEmailTests(ApiFactory factory)
         using var callback=await browser.GetAsync("/api/v1/integrations/google/callback?state="+query["state"]+"&code="+code);
         Assert.Equal(HttpStatusCode.Redirect,callback.StatusCode);
     }
-    private static async Task<(Guid Id,int Version)> Draft(TestClient owner,string subject="Private subject"){
-        var created=await owner.Post("/api/v1/me/email-drafts",new{recipient="recipient@example.com",subject,body="Private message."});
+    private static async Task<(Guid Id,int Version)> Draft(TestClient owner,string subject="Private subject",string provider="google"){
+        var created=await owner.Post("/api/v1/me/email-drafts",new{recipient="recipient@example.com",subject,body="Private message.",provider});
         Assert.True(created.Ok,created.ToString());return(created.Data!["id"]!.GetValue<Guid>(),created.Data["version"]!.GetValue<int>());
     }
     [Fact]
@@ -136,13 +136,15 @@ public class PersonalEmailTests(ApiFactory factory)
             var unchanged=factory.WithDb(db=>db.GoogleConnections.IgnoreQueryFilters().Single(g=>g.UserId==owner.UserId));
             Assert.Equal(existing.RefreshTokenProtected,unchanged.RefreshTokenProtected);Assert.Equal(existing.GoogleEmail,unchanged.GoogleEmail);
         }finally{factory.GoogleCalendar.UserInfoFails=false;factory.GoogleCalendar.OmitRefreshToken=false;Options.MailEnabled=previous;}
-    }    [Fact]
-    public async Task AI_rewriting_uses_shared_credits_and_never_sends_or_changes_the_recipient(){
-        var owner=await TestClient.RegisterAsync(factory,"AI email");await owner.CreateOrgAsync();await owner.UpgradeAsync("BUSINESS");var draft=await Draft(owner);
+    }    [Theory]
+    [InlineData("google")]
+    [InlineData("microsoft")]
+    public async Task AI_rewriting_uses_shared_credits_and_never_sends_or_changes_the_recipient(string provider){
+        var owner=await TestClient.RegisterAsync(factory,"AI email");await owner.CreateOrgAsync();await owner.UpgradeAsync("BUSINESS");var draft=await Draft(owner,provider:provider);
         factory.Ai.Configured=true;
         try{
             var opts=await owner.Get("/api/v1/me/email-drafts/options");Assert.True(opts.Data!["available"]!.GetValue<bool>());
-            var cost=opts.Data["credits"]!.GetValue<int>();var operation=Guid.NewGuid();var calls=factory.GoogleCalendar.SentMail.Count;
+            var microsoftCalls=factory.MicrosoftProductivity.SentMessages.Count;var cost=opts.Data["credits"]!.GetValue<int>();var operation=Guid.NewGuid();var calls=factory.GoogleCalendar.SentMail.Count;
             factory.Ai.Answer=(_,_)=>"""{"subject":"Clear subject","body":"Clear private message."}""";
             var route=$"/api/v1/me/email-drafts/{draft.Id}/improve";
             Assert.Equal(HttpStatusCode.UnprocessableEntity,(await owner.Post(route,new{operationId=operation,version=draft.Version,style="formal",confirmed=false})).Status);
@@ -150,7 +152,7 @@ public class PersonalEmailTests(ApiFactory factory)
             var result=await owner.Post(route,new{operationId=operation,version=draft.Version,style="formal",confirmed=true});
             Assert.True(result.Ok,result.ToString());Assert.Equal("draft",result.Data!["status"]!.GetValue<string>());
             Assert.Equal("recipient@example.com",result.Data["recipient"]!.GetValue<string>());Assert.Null(result.Data["providerMessageId"]);
-            Assert.Equal(calls,factory.GoogleCalendar.SentMail.Count);
+            Assert.Equal(calls,factory.GoogleCalendar.SentMail.Count);Assert.Equal(microsoftCalls,factory.MicrosoftProductivity.SentMessages.Count);Assert.Equal(provider,result.Data["provider"]!.GetValue<string>());
             var version=result.Data["version"]!.GetValue<int>();
             var replay=await owner.Post(route,new{operationId=operation,version,style="formal",confirmed=true});
             Assert.Equal("AI_OPERATION_ALREADY_ADMITTED",replay.ErrorCode);Assert.Single(factory.Ai.Prompts);

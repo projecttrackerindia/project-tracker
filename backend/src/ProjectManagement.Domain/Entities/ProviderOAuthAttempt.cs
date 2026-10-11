@@ -9,6 +9,7 @@ public class ProviderOAuthAttempt : Entity
     public Guid UserId {get;set;}
     public string StateHash {get;set;}="";
     public string BrowserHash {get;set;}="";
+    public string? VerifierProtected {get;set;}
     public string ReturnPath {get;set;}="";
     public DateTime ExpiresAt {get;set;}
     public DateTime? ConsumedAt {get;set;}

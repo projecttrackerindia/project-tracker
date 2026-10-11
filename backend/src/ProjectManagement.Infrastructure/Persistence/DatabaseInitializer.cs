@@ -32,6 +32,7 @@ public static class DatabaseInitializer
         if (db.Database.IsSqlite())
         {
             await db.Database.EnsureCreatedAsync(ct);
+            await SqliteEnterpriseUpgrade.ApplyAsync(db,ct);
             // Development databases use EnsureCreated rather than PostgreSQL migrations. Preserve existing data on upgrade.
             var connection = db.Database.GetDbConnection();
             await db.Database.OpenConnectionAsync(ct);

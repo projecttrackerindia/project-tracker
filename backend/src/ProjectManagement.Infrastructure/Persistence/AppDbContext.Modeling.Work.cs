@@ -234,8 +234,21 @@ public partial class AppDbContext
             e.Property(x => x.SecretProtected).HasMaxLength(300);
             e.Property(x => x.LastError).HasMaxLength(300);
         });
+        b.Entity<MicrosoftConnection>(e =>
+        {
+            e.HasIndex(x=>new{x.TenantId,x.UserId}).IsUnique();
+            e.Property(x=>x.ProviderUserId).HasMaxLength(200);
+            e.Property(x=>x.Email).HasMaxLength(254);
+            e.Property(x=>x.Scopes).HasMaxLength(2000);
+            e.Property(x=>x.RefreshTokenProtected).HasMaxLength(16000);
+            e.Property(x=>x.AccessTokenProtected).HasMaxLength(16000);
+            e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<PersonalEmailDraft>(e=>{
             e.HasIndex(x=>new{x.TenantId,x.UserId,x.CreatedAt});
+            e.Property(x=>x.Provider).HasMaxLength(20).HasDefaultValue("google");
+            e.Property(x=>x.ProviderRequestId).HasMaxLength(200);
+            e.Property(x=>x.ConfirmedSenderEmail).HasMaxLength(254);
             e.Property(x=>x.Recipient).HasMaxLength(254);e.Property(x=>x.Subject).HasMaxLength(200);
             e.Property(x=>x.Body).HasMaxLength(20000);e.Property(x=>x.Status).HasMaxLength(20);
             e.Property(x=>x.ProviderMessageId).HasMaxLength(200);e.Property(x=>x.Version).IsConcurrencyToken();
@@ -245,6 +258,7 @@ public partial class AppDbContext
             e.HasIndex(x=>x.StateHash).IsUnique();
             e.HasIndex(x=>x.ExpiresAt);
             e.HasIndex(x=>new{x.TenantId,x.UserId,x.Provider,x.ExpiresAt});
+            e.Property(x=>x.VerifierProtected).HasMaxLength(1000);
             e.Property(x=>x.StateHash).HasMaxLength(64);e.Property(x=>x.BrowserHash).HasMaxLength(64);
             e.Property(x=>x.Provider).HasMaxLength(32);e.Property(x=>x.ReturnPath).HasMaxLength(200);
             e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
