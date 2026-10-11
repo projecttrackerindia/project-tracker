@@ -81,3 +81,7 @@ This advances phase 1 without completing all six workstreams. External customer 
 Corrected the incomplete Word watermark shape definition across ten templates and aligned section rules/heading pagination with the intended export styles. Thirty focused commercial/resume/import tests pass. Visual Microsoft Word rendering and controlled payment verification remain open. Added an explicit actual-main PostgreSQL upgrade check to CI; execution is pending and local missing-provider runs are reported skipped. Draft PR #32 collects the implementation checkpoints for review/CI, with optional AI bursts disabled; it is not a release-complete PR.
 
 Scheduling now orders never-polled organizations explicitly before prior polls on both database providers; an eleven-organization fake-provider regression verifies bounded batches without starving a newcomer. This is notification-worker fairness, not an inference load benchmark.
+
+## Workflow browser continuation
+
+Fixed hidden canvas nodes by retaining measured dimensions as view state, separately from saved workflow graphs. Added desktop/mobile production-build browser coverage for selection, dragging, editing, resizing, save and reload. The real PostgreSQL upgrade from main now passes in Linux CI run 38140326906 on cdd8ee5. The six grouped workstreams remain open; future batch commits follow the requested image-preview step.

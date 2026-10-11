@@ -74,3 +74,7 @@ No real provider messages, AI bulk tests, production variables/records, main mer
 The branded Word watermark now defines its referenced shape and each template has schema coverage. Visual Microsoft Word/export rendering remains a release check; the installed WPS automation is not evidence that this passed. Purchases remain disabled until captured-payment/tax configuration is verified.
 
 CI explicitly runs PostgresExpansionUpgradeTests against a random disposable database, migrating to main baseline 20261010184340_SlackLifecycleReceipts, seeding existing records, then applying the expansion twice. Only that created database is dropped. Read the CI result before treating this gate as passed; local runs without PM_TEST_POSTGRES mark this check skipped. A successful fresh-model PostgreSQL API run is separate evidence from a real upgrade. Draft PR #32 is an implementation checkpoint and must not be merged while the coordinated release requirements remain open.
+
+## CI baseline and preview gate
+
+Run 38140326906 on cdd8ee5 passed all six CI jobs, including the explicit disposable upgrade from main. This satisfies the real PostgreSQL upgrade check at that baseline; multi-replica contention and remaining release gates are still open. Future UI batches run npm run build and npm run test:ui, inspect generated desktop/mobile screenshots, and show previews to the user before committing. CI retains synthetic previews as enterprise-ui-previews. This does not enable payment/provider flags or authorize claiming a complete coordinated release.
