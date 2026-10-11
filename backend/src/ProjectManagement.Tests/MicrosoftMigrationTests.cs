@@ -50,6 +50,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Empty(await db.PersonalCalendarProposals.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.WhatsAppConnections.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.WhatsAppInboundReceipts.IgnoreQueryFilters().ToArrayAsync());
+        Assert.Empty(await db.WhatsAppContactLinks.IgnoreQueryFilters().ToArrayAsync());
     }
     [Fact]
     public async Task Prior_WhatsApp_mapping_upgrades_twice_without_inventing_token_expiry_or_changing_ownership()
@@ -71,5 +72,6 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         var row = await db.WhatsAppConnections.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(tenant, row.TenantId); Assert.Equal("789", row.PhoneNumberId); Assert.Equal("protected-fixture", row.AccessTokenProtected);
         Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);
+        Assert.Empty(await db.WhatsAppContactLinks.IgnoreQueryFilters().ToArrayAsync());
     }
 }

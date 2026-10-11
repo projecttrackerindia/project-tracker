@@ -38,4 +38,21 @@ The receiver-only checkpoint was followed by Embedded Signup, recorded below; ve
 ## Embedded Signup continuation
 Implemented the browser-bound, one-use customer installation flow, server-side code exchange and provider asset verification, protected tokens, known-expiry handling, configuration-change fencing and disconnect race protection. Added two-step settings controls and production CSP support. Both installation and reception remain default-off; sending remains unavailable.
 
-Next WhatsApp work is verified contact linking and consent, token/scope health and provider subscription readiness, followed by templates, the 24-hour policy and durable outbox/recovery. Existing inbox/calendar, payment reconciliation, support, parser/export and database release gates remain open. This is another tested checkpoint, not a complete coordinated release or production deployment.
+At the Embedded Signup checkpoint, contact proof was next; it is now implemented below. Outbound consent, token/scope health, provider subscription readiness, templates, the 24-hour policy and durable outbox/recovery remain. Existing inbox/calendar, payment reconciliation, support, parser/export and database release gates remain open. This is another tested checkpoint, not a complete coordinated release or production deployment.
+
+## Contact proof continuation
+Implemented private member-initiated phone verification, explicit account-link consent, signed exact-sender proof, protected phone storage, replay/expiry/connection-epoch fencing, owner-only settings and removal. Messaging and integration activation remain off. Notification consent, current messaging policy, provider/token health and durable outbound delivery are still implementation gates.
+
+## Remaining release phases as of this checkpoint
+These are six grouped workstreams, not six fixed-size commits. Existing foundations reduce work within each phase; no completion percentage or delivery date is claimed.
+
+| Phase | Remaining work | Current state |
+| --- | --- | --- |
+| 1. WhatsApp delivery | External customer identity and support boundaries; separate outbound consent/preferences; token/scope health; provider subscription readiness; templates/24-hour policy; durable outbox, status reconciliation and authorized support actions | Installation and private contact proof implemented; live activation off |
+| 2. Personal productivity | Inbox/thread retrieval and summaries; attachments; Microsoft calendars; attendee/multi-calendar availability; AI proposals; durable existing project-meeting mutations | OAuth, confirmed email sends and private Google blocks implemented behind gates |
+| 3. Support and agent workflows | Business-hour/skill/availability routing, custom fields, deeper SLA policies, workflow recovery and replica contention; source-grounded recommendations and accuracy checks | Metrics, reviewed routing and two-stage approved escalation implemented |
+| 4. Resume commercial readiness | Visual Word watermark/export quality, Linux parser isolation, verified organization evidence, captured-payment/tax reconciliation for INR49 plus applicable taxes | Private studio, plan caps, imports and branded exports implemented; checkout off |
+| 5. Production hardening | Account purge/orphan cleanup, idle integration retention, disposable PostgreSQL upgrades from main, permission/privacy and concurrency checks | SQLite additive upgrades and focused isolation tests pass; PostgreSQL release validation pending |
+| 6. Release verification | Remaining regression/browser/accessibility checks, final reviewed PR and authorized merge, exact-commit Railway deployment/health verification | Not ready for coordinated merge/deployment |
+
+Continue phase 1 next with separate outbound consent and delivery policy. Phases may overlap locally, but commercial checkout and external activation cannot precede their verification gates. No AI bulk testing or real customer messages/calendar writes are included in the plan.

@@ -18,6 +18,7 @@ public class WhatsAppOptions
 {
     public const string Section = "WhatsApp";
     public bool InstallationEnabled { get; set; }
+    public bool ContactLinkingEnabled { get; set; }
     public string? EmbeddedSignupConfigId { get; set; }
     public string? ApiVersion { get; set; }
     public string? SignupVersion { get; set; }
@@ -36,9 +37,9 @@ public record WhatsAppStatusDto(bool Configured, bool ReceptionEnabled, bool Eli
 public record WhatsAppReceiptDto(Guid Id, string MessageType, DateTimeOffset ProviderCreatedAt, DateTimeOffset ReceivedAt,
     string Outcome = "identity_verification_required");
 
-/// <summary>Fail-closed inbound foundation. Messages never invoke AI, authorize a sender or change business data.</summary>
-public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, EntitlementService entitlements,
-    AppClock clock, Recorder recorder, IOptions<WhatsAppOptions> options)
+/// <summary>Signed inbound receipts and explicit self-service contact proof. Messages never invoke AI or change business data.</summary>
+public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
+    AppClock clock, Recorder recorder, IOptions<WhatsAppOptions> options, WhatsAppContactService contacts)
 {
     private readonly WhatsAppOptions _o = options.Value;
     private static readonly HashSet<string> Types = ["text", "image", "video", "audio", "document", "sticker",
@@ -55,14 +56,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
             || !await db.Tenants.AnyAsync(x => x.Id == tenant && x.Type == WorkspaceType.Organization, ct))
             throw new ForbiddenException("Only an organization owner or administrator can manage WhatsApp.");
     }
-    internal async Task<bool> EligibleAsync(Guid tenant, CancellationToken ct)
-    {
-        entitlements.Forget(tenant);
-        var sub = await db.Subscriptions.AsNoTracking().Include(x => x.Plan).SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
-        return sub is { Status: SubscriptionStatus.Active, Plan.IsActive: true }
-            && (sub.CurrentPeriodEnd == null || sub.CurrentPeriodEnd > clock.Now)
-            && (await entitlements.GetEntitlementsAsync(tenant, ct)).GetValueOrDefault(FeatureKeys.WhatsAppIntegration) > 0;
-    }
+    internal Task<bool> EligibleAsync(Guid tenant, CancellationToken ct) => contacts.EligibleAsync(tenant, ct);
     public async Task<WhatsAppStatusDto> StatusAsync(CancellationToken ct)
     {
         await RequireAdminAsync(ct);
@@ -87,6 +81,11 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.LockTenantLedgerAsync(tenant, ct);
         await db.ProviderOAuthAttempts.Where(x => x.Provider == "whatsapp" && x.TenantId == tenant).ExecuteDeleteAsync(ct);
+        await db.WhatsAppContactLinks.Where(x => x.TenantId == tenant).ExecuteUpdateAsync(s => s
+            .SetProperty(x => x.PhoneProtected, "").SetProperty(x => x.PhoneHash, (string?)null)
+            .SetProperty(x => x.ChallengeHash, (string?)null).SetProperty(x => x.ChallengeIssuedAt, (DateTime?)null)
+            .SetProperty(x => x.ChallengeExpiresAt, (DateTime?)null).SetProperty(x => x.VerifiedAt, (DateTime?)null)
+            .SetProperty(x => x.ConsentVersion, (string?)null).SetProperty(x => x.ConsentAt, (DateTime?)null), ct);
         var c = await db.WhatsAppConnections.SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         if (c is not null && (c.Active || c.AccessTokenProtected.Length > 0))
         {
@@ -121,7 +120,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
         if (!CryptographicOperations.FixedTimeEquals(digest, HMACSHA256.HashData(Encoding.UTF8.GetBytes(_o.AppSecret!), body)))
             throw new UnauthorizedException("WhatsApp signature is invalid.", "WHATSAPP_SIGNATURE_INVALID");
     }
-    private sealed record Incoming(string BusinessId, string PhoneId, string MessageId, string Type, DateTime Timestamp);
+    private sealed record Incoming(string BusinessId, string PhoneId, string MessageId, string Type, DateTime Timestamp, string? Sender, string? Proof);
     private static string? String(JsonElement obj, string key) =>
         obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static JsonElement Array(JsonElement obj, string key, int maximum)
@@ -161,7 +160,16 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
                             || !long.TryParse(String(message, "timestamp"), NumberStyles.None, CultureInfo.InvariantCulture, out var unix)
                             || unix < 0 || unix > 253402300799)
                             throw new ValidationException("body", "Invalid WhatsApp message receipt.");
-                        messages.Add(new(business!, String(metadata, "phone_number_id")!, id, type, DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime));
+                        // Retain only a candidate link proof in memory; general message text is discarded.
+                        string? proof = null; string? sender = null;
+                        if (type == "text" && message.TryGetProperty("text", out var text))
+                        {
+                            var candidate = String(text, "body");
+                            if (candidate is { Length: 40 } && candidate.StartsWith("PT-LINK ", StringComparison.Ordinal))
+                            { proof = candidate; sender = String(message, "from"); }
+                        }
+                        messages.Add(new(business!, String(metadata, "phone_number_id")!, id, type,
+                            DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime, sender, proof));
                         if (messages.Count > 100) throw new ValidationException("body", "Too many WhatsApp messages.");
                     }
                 }
@@ -181,7 +189,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
             foreach (var group in messages.GroupBy(x => new { x.BusinessId, x.PhoneId }))
             {
                 // Only installation metadata is read globally, after provider signature validation.
-                // No phone number or message contents are used to infer a Project Tracker identity.
+                // Identity can only be linked by a separate owner-initiated challenge; no business action is executed.
                 var c = await db.WhatsAppConnections.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(
                     x => x.AppId == _o.AppId && x.BusinessAccountId == group.Key.BusinessId
                         && x.PhoneNumberId == group.Key.PhoneId && x.Active, ct);
@@ -189,7 +197,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
                 ctx.TenantId = c.TenantId; ctx.UserId = null;
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 await db.LockTenantLedgerAsync(c.TenantId, ct);
-                if (!await db.WhatsAppConnections.AnyAsync(x => x.Id == c.Id && x.Active && (x.TokenExpiresAt == null || x.TokenExpiresAt > clock.Now)
+                if (!await db.WhatsAppConnections.AnyAsync(x => x.Id == c.Id && x.ConnectedAt == c.ConnectedAt && x.Active && (x.TokenExpiresAt == null || x.TokenExpiresAt > clock.Now)
                         && x.AppId == _o.AppId && x.BusinessAccountId == group.Key.BusinessId
                         && x.PhoneNumberId == group.Key.PhoneId, ct)
                     || !await db.Tenants.AnyAsync(x => x.Id == c.TenantId && x.Type == WorkspaceType.Organization, ct)
@@ -204,7 +212,8 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
                         || incoming.Timestamp < new DateTime(c.ConnectedAt.Ticks - c.ConnectedAt.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc)) continue;
                     if (await db.WhatsAppInboundReceipts.AnyAsync(x => x.AppId == _o.AppId
                             && x.PhoneNumberId == c.PhoneNumberId && x.ProviderMessageId == incoming.MessageId, ct)) continue;
-                    if (remaining == 0) break;
+                    await contacts.TryVerifyAsync(c, incoming.Sender, incoming.Proof, incoming.Timestamp, ct);
+                    if (remaining == 0) continue;
                     remaining--;
                     db.WhatsAppInboundReceipts.Add(new WhatsAppInboundReceipt
                     {

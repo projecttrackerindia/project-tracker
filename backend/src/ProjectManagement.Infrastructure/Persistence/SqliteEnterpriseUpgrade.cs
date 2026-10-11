@@ -22,7 +22,8 @@ public static class SqliteEnterpriseUpgrade
         "20261011062100_MicrosoftProductivityAndEmailProviders",
         "20261011065223_PersonalCalendarProposals",
         "20261011073057_WhatsAppInboundFoundation",
-        "20261011091248_WhatsAppInstallationExpiry"
+        "20261011091248_WhatsAppInstallationExpiry",
+        "20261011093926_WhatsAppPrivateContactLinks"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

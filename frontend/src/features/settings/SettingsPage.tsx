@@ -1,3 +1,4 @@
+import { WhatsAppContactSection } from './WhatsAppContactSection';
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -80,7 +81,7 @@ export function AccountPage({ section }: { section: AccountSection }) {
   return (
     <SectionLayout title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
-      {section === 'notifications' && <NotificationSettings />}
+      {section === 'notifications' && <><NotificationSettings /><WhatsAppContactSection /></>}
       {section === 'security' && <SecuritySection />}
       {section === 'mobile' && <MobileAppSection />}
       {section === 'integrations' && <GoogleIntegrationSection />}

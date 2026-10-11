@@ -5,11 +5,22 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    public DbSet<WhatsAppContactLink> WhatsAppContactLinks => Set<WhatsAppContactLink>();
     public DbSet<WhatsAppConnection> WhatsAppConnections => Set<WhatsAppConnection>();
     public DbSet<WhatsAppInboundReceipt> WhatsAppInboundReceipts => Set<WhatsAppInboundReceipt>();
 
     private static void ConfigureWhatsApp(ModelBuilder b)
     {
+        b.Entity<WhatsAppContactLink>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.PhoneHash }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.ChallengeHash });
+            e.Property(x => x.PhoneHash).HasMaxLength(64);
+            e.Property(x => x.ConfigurationHash).HasMaxLength(64);
+            e.Property(x => x.ChallengeHash).HasMaxLength(64);
+            e.Property(x => x.ConsentVersion).HasMaxLength(80);
+        });
         b.Entity<WhatsAppConnection>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();

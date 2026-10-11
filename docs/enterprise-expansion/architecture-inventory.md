@@ -35,3 +35,6 @@ The central WHATSAPP_INTEGRATION boolean entitlement defaults to absent/zero and
 
 ## Verified installation checkpoint
 WhatsApp now uses the existing ProviderOAuthAttempts, tenant ledger lock, secret protector and entitlement service for Embedded Signup. React loads Meta's SDK on demand without a new npm dependency; the second user click opens signup. ASP.NET exchanges the code and verifies the business account and selected verified phone against Meta before storing a protected tenant token. This replaces the earlier receiver-only installation limitation. No messaging or AI processing is enabled.
+
+## Private WhatsApp contact proof checkpoint
+The signed receiver now recognizes only bounded PT-LINK challenges initiated by an authenticated organization member. WhatsAppContactService shares the existing central entitlement system and tenant ledger lock with installation handling. Private user-owned link rows store protected phone values and app-secret-keyed, tenant-specific fingerprints. Account notifications contains the self-service controls; no new provider client, background sender or AI call is introduced. Responsive remounts retain a short-lived code only in the existing user/workspace-scoped memory cache, which authentication and workspace changes clear.
