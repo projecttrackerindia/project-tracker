@@ -97,3 +97,12 @@ New backend variable: WhatsApp__ContactLinkingEnabled=false. Linking additionall
 After activation, members open My account -> Notifications in the intended organization, enter their own country-code phone number and accept the account-link notice. Prepare the code, then send the exact message from that number to the organization's WhatsApp business number. Ask the administrator for that business number; the installation currently stores a provider phone ID, not a publicly usable phone number. Select Check verification to refresh the masked result. Codes expire in ten minutes; after a full page reload prepare a new code. Remove my link erases the stored number and consent for this organization. A business disconnect invalidates all linked and pending contacts.
 
 This notice is not marketing or notification consent. Sending, notifications, templates and authorized business actions stay disabled pending their separate implementation and policy checks. A link never expands project/team/role permissions. Signature contract reference remains Meta's [archived webhook documentation](https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/webhooks/start/); no archived SDK is installed. Live provider sender-field and supported phone-format verification are still required.
+
+## Member notification preferences: user steps
+1. Open the intended organization, then My account -> Notifications -> Your WhatsApp link.
+2. When the organization connection and platform phone-link gate are ready, verify your own number using the private one-time message instructions.
+3. In WhatsApp notification preferences, select task assignments, overdue reminders and/or support ticket updates. Enter an IANA time zone and quiet-hour start/end.
+4. Review the separate notification notice, check it explicitly, then Save WhatsApp preferences. Saving records consent; delivery remains unavailable in this checkpoint.
+5. Use Revoke WhatsApp notifications to withdraw just messaging consent, or Remove my link to erase the phone and withdraw its notification consent for that organization.
+
+These preferences are private to the member and organization. Administrators cannot opt in users. New phone proof cannot inherit previous consent. Plan/gate disablement blocks new grants but does not prevent an active member withdrawing consent. There are no new environment variables, outbound calls, voice consent or live provider setup actions in this checkpoint.

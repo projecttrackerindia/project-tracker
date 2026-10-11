@@ -20,6 +20,8 @@ public partial class AppDbContext
             e.Property(x => x.ConfigurationHash).HasMaxLength(64);
             e.Property(x => x.ChallengeHash).HasMaxLength(64);
             e.Property(x => x.ConsentVersion).HasMaxLength(80);
+            e.Property(x => x.NotificationConsentVersion).HasMaxLength(80);
+            e.Property(x => x.NotificationTimeZone).HasMaxLength(100);
         });
         b.Entity<WhatsAppConnection>(e =>
         {

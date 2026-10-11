@@ -38,3 +38,8 @@ WhatsApp now uses the existing ProviderOAuthAttempts, tenant ledger lock, secret
 
 ## Private WhatsApp contact proof checkpoint
 The signed receiver now recognizes only bounded PT-LINK challenges initiated by an authenticated organization member. WhatsAppContactService shares the existing central entitlement system and tenant ledger lock with installation handling. Private user-owned link rows store protected phone values and app-secret-keyed, tenant-specific fingerprints. Account notifications contains the self-service controls; no new provider client, background sender or AI call is introduced. Responsive remounts retain a short-lived code only in the existing user/workspace-scoped memory cache, which authentication and workspace changes clear.
+
+## Notification consent checkpoint and voice boundary
+WhatsAppContactService now stores separate notification-purpose consent and three closed categories on the existing private tenant/user contact row. The service reuses NodaTime, central entitlements and the tenant ledger lock; settings remain workspace-scoped. Grants and revocations use a version fence. Installation/contact resets also revoke notification consent. No sender worker, new external dependency or AI call is introduced.
+
+Current hosted workers still run inside ProjectManagement.Api. The user selected voice agents as a follow-on release; a separate voice worker/gateway entrypoint is proposed before live calling. See [repository audit and decision](voice-agent-follow-on.md), including public Outpero evidence limits and the boundaries for shared identity, permissions and billing.

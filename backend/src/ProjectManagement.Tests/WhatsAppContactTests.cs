@@ -88,8 +88,9 @@ public class WhatsAppContactTests(ApiFactory factory)
     }finally{Reset();}}
     [Fact]public async Task Expired_fingerprint_does_not_block_a_new_verified_owner()
     {try{Configure();var(a,c)=await Org();var b=await a.AddMemberAsync(factory,TenantRole.Member);using var original=await Proof(c,await Start(a));
+      Assert.True((await a.Put(NotificationsUrl,NotificationRequest())).Ok);
       factory.WithDb(db=>{var old=db.WhatsAppContactLinks.IgnoreQueryFilters().Single(x=>x.UserId==a.UserId);old.VerifiedAt=DateTime.UtcNow.AddDays(-31);db.SaveChanges();return 0;});
-      using var fresh=await Proof(c,await Start(b));Assert.Equal(HttpStatusCode.OK,fresh.StatusCode);Assert.Equal("verified",State(b));Assert.Equal("",Row(a).PhoneProtected);Assert.Null(Row(a).ConsentAt);
+      using var fresh=await Proof(c,await Start(b));Assert.Equal(HttpStatusCode.OK,fresh.StatusCode);Assert.Equal("verified",State(b));Assert.Equal("",Row(a).PhoneProtected);Assert.Null(Row(a).ConsentAt);Assert.Null(Row(a).NotificationConsentAt);
     }finally{Reset();}}
     [Fact]public async Task Disconnect_erases_phone_and_consent_and_fences_late_proof()
     {try{Configure();var(a,c)=await Org();var code=await Start(a);Assert.True((await a.Post("/api/v1/integrations/whatsapp/disconnect")).Ok);using var late=await Proof(c,code);Assert.Equal("",Row(a).PhoneProtected);Assert.Null(Row(a).ConsentAt);Assert.Null(Row(a).VerifiedAt);
@@ -113,4 +114,112 @@ public class WhatsAppContactTests(ApiFactory factory)
     {try{Configure();var(a,_)=await Org();for(var i=0;i<5;i++){await Start(a);Assert.True((await a.Delete(Url)).Ok);}
       Assert.Equal(HttpStatusCode.TooManyRequests,(await a.Post(Url,new{phone=Phone,acknowledged=true})).Status);
     }finally{Reset();}}
+    private const string NotificationsUrl = Url + "/notification-preferences";
+    private object NotificationRequest(int version = 0, bool optIn = true, string? consent = WhatsAppContactService.NotificationConsent,
+        bool assignments = true, bool overdue = false, bool support = true, string zone = "Asia/Kolkata", int start = 1320, int end = 480)
+        => new { version, optIn, acceptedConsentVersion = consent, taskAssignments = assignments, overdue, supportUpdates = support,
+            timeZone = zone, quietStartMinutes = start, quietEndMinutes = end };
+    [Fact]
+    public async Task Notification_consent_is_separate_private_and_never_activates_delivery()
+    {
+        try {
+            Configure(); var (a,c) = await Org(); var member = await a.AddMemberAsync(factory,TenantRole.Member);
+            using var proof = await Proof(c, await Start(member));
+            var defaults = await member.Get(NotificationsUrl); Assert.True(defaults.Ok);
+            Assert.False(defaults.Data!["optedIn"]!.GetValue<bool>()); Assert.Null(Row(member).NotificationConsentAt);
+            var granted = await member.Put(NotificationsUrl,NotificationRequest()); Assert.True(granted.Ok,granted.ToString());
+            Assert.True(granted.Data!["optedIn"]!.GetValue<bool>()); Assert.False(granted.Data["deliveryEnabled"]!.GetValue<bool>());
+            Assert.Equal(WhatsAppContactService.Consent,Row(member).ConsentVersion);
+            Assert.Equal(WhatsAppContactService.NotificationConsent,Row(member).NotificationConsentVersion);
+            Assert.Equal(Row(member).VerifiedAt!.Value.AddDays(30),Row(member).NotificationConsentExpiresAt);
+            Assert.False((await a.Get(NotificationsUrl)).Data!["optedIn"]!.GetValue<bool>());
+            var (other,_) = await Org(); Assert.False((await other.Get(NotificationsUrl)).Data!["optedIn"]!.GetValue<bool>());
+            Assert.Equal("Asia/Kolkata",Row(member).NotificationTimeZone);
+        } finally { Reset(); }
+    }
+    [Fact]
+    public async Task Notifications_require_current_proof_and_explicit_current_purpose_notice()
+    {
+        try {
+            Configure(); var (a,c) = await Org();
+            Assert.Equal(HttpStatusCode.Conflict,(await a.Put(NotificationsUrl,NotificationRequest())).Status);
+            var code = await Start(a);
+            Assert.Equal(HttpStatusCode.Conflict,(await a.Put(NotificationsUrl,NotificationRequest())).Status);
+            using var proof = await Proof(c,code);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity,(await a.Put(NotificationsUrl,NotificationRequest(consent:null))).Status);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity,(await a.Put(NotificationsUrl,NotificationRequest(consent:WhatsAppContactService.Consent))).Status);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity,(await a.Put(NotificationsUrl,NotificationRequest(assignments:false,support:false))).Status);
+            Assert.Null(Row(a).NotificationConsentAt);
+        } finally { Reset(); }
+    }
+    [Theory][InlineData("Mars/Olympus",1320,480)][InlineData("Asia/Kolkata",-1,480)]
+    [InlineData("Asia/Kolkata",1320,1440)][InlineData("Asia/Kolkata",480,480)]
+    public async Task Notification_preferences_reject_invalid_zone_and_quiet_hours(string zone,int start,int end)
+    {
+        try { Configure(); var (a,c) = await Org(); using var proof = await Proof(c,await Start(a));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity,(await a.Put(NotificationsUrl,NotificationRequest(zone:zone,start:start,end:end))).Status);
+            Assert.Null(Row(a).NotificationConsentAt);
+        } finally { Reset(); }
+    }
+    [Fact]
+    public async Task Stale_preferences_cannot_overwrite_revocation_and_revoke_works_after_gate_and_plan_disable()
+    {
+        try {
+            Configure(); var (a,c) = await Org(); using var proof = await Proof(c,await Start(a));
+            Assert.True((await a.Put(NotificationsUrl,NotificationRequest())).Ok);
+            Options.ContactLinkingEnabled = false;
+            factory.WithDb(db=> { db.Subscriptions.Single(x=>x.TenantId==a.WorkspaceId).Status=SubscriptionStatus.Cancelled; db.SaveChanges(); return 0; });
+            Assert.False((await a.Get(NotificationsUrl)).Data!["canEnable"]!.GetValue<bool>());
+            var revoked = await a.Put(NotificationsUrl,NotificationRequest(1,false)); Assert.True(revoked.Ok);
+            Assert.Equal(2,revoked.Data!["version"]!.GetValue<int>()); Assert.False(revoked.Data["optedIn"]!.GetValue<bool>());
+            Assert.Equal(HttpStatusCode.Conflict,(await a.Put(NotificationsUrl,NotificationRequest(1))).Status);
+            Assert.Null(Row(a).NotificationConsentAt); Assert.Equal("verified",State(a));
+        } finally { Reset(); }
+    }
+    [Theory][InlineData("unlink")][InlineData("replace")][InlineData("disconnect")][InlineData("rotation")]
+    [InlineData("reconnect")][InlineData("age")][InlineData("token")]
+    public async Task Notification_consent_cannot_survive_phone_or_installation_invalidation(string mode)
+    {
+        try {
+            Configure(); var (a,c) = await Org(); using var proof = await Proof(c,await Start(a));
+            Assert.True((await a.Put(NotificationsUrl,NotificationRequest())).Ok);
+            if(mode=="unlink") Assert.True((await a.Delete(Url)).Ok);
+            if(mode=="replace") await Start(a,"+919999999999");
+            if(mode=="disconnect") Assert.True((await a.Post("/api/v1/integrations/whatsapp/disconnect")).Ok);
+            if(mode=="rotation") Options.AppSecret="fake-rotated-contact-app-secret";
+            factory.WithDb(db=> {
+                if(mode=="reconnect") db.WhatsAppConnections.IgnoreQueryFilters().Single(x=>x.Id==c.Id).ConnectedAt=DateTime.UtcNow;
+                if(mode=="token") db.WhatsAppConnections.IgnoreQueryFilters().Single(x=>x.Id==c.Id).TokenExpiresAt=DateTime.UtcNow.AddSeconds(-1);
+                if(mode=="age") db.WhatsAppContactLinks.IgnoreQueryFilters().Single(x=>x.UserId==a.UserId).VerifiedAt=DateTime.UtcNow.AddDays(-31);
+                db.SaveChanges(); return 0;
+            });
+            var result=await a.Get(NotificationsUrl); Assert.True(result.Ok); Assert.False(result.Data!["optedIn"]!.GetValue<bool>());
+            Assert.Null(Row(a).NotificationConsentAt); Assert.False(Row(a).NotifySupportUpdates);
+            Assert.True(Row(a).NotificationPreferencesVersion>1);
+        } finally { Reset(); }
+    }
+    [Fact]
+    public async Task Plan_revocation_and_membership_removal_block_grants_even_for_verified_numbers()
+    {
+        try {
+            Configure(); var (a,c) = await Org(); var member = await a.AddMemberAsync(factory,TenantRole.Member);
+            using var proof = await Proof(c,await Start(member));
+            factory.WithDb(db=> { db.Subscriptions.Single(x=>x.TenantId==a.WorkspaceId).Status=SubscriptionStatus.Cancelled; db.SaveChanges(); return 0; });
+            Assert.Equal(HttpStatusCode.Forbidden,(await member.Put(NotificationsUrl,NotificationRequest())).Status);
+            factory.WithDb(db=> { db.TenantMembers.Where(x=>x.TenantId==a.WorkspaceId&&x.UserId==member.UserId).ExecuteDelete(); return 0; });
+            Assert.Equal(HttpStatusCode.Forbidden,(await member.Get(NotificationsUrl)).Status);
+            Assert.Equal(HttpStatusCode.Forbidden,(await member.Put(NotificationsUrl,NotificationRequest(0,false))).Status);
+        } finally { Reset(); }
+    }
+    [Fact]
+    public async Task Two_updates_using_one_version_commit_only_one_grant()
+    {
+        try {
+            Configure(); var (a,c) = await Org(); using var proof = await Proof(c,await Start(a));
+            var results = await Task.WhenAll(a.Put(NotificationsUrl,NotificationRequest()),a.Put(NotificationsUrl,NotificationRequest(overdue:true)));
+            Assert.Single(results,x=>x.Ok); Assert.Single(results,x=>x.Status==HttpStatusCode.Conflict);
+            Assert.Equal(1,Row(a).NotificationPreferencesVersion);
+        } finally { Reset(); }
+    }
+
 }

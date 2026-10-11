@@ -1,3 +1,4 @@
+import { WhatsAppNotificationPreferences } from './WhatsAppNotificationPreferences';
 import { useEffect, useRef, useState } from 'react';
 import { get, post, del } from '../../api/client';
 import { useWsQuery, invalidateWorkspace } from '../../lib/hooks';
@@ -35,7 +36,7 @@ export function WhatsAppContactSection() {
     finally{if(current.current===scope)setBusy(false);}
   };
   const unlink=async()=>{
-    if(!await confirmDialog({title:'Remove your WhatsApp link?',message:'Erase your stored phone and cancel any pending code for this organization.',confirmText:'Remove link',danger:true}))return;
+    if(!await confirmDialog({title:'Remove your WhatsApp link?',message:'Erase your stored phone, revoke WhatsApp notification consent, and cancel any pending code for this organization.',confirmText:'Remove link',danger:true}))return;
     setBusy(true);try{await del('/me/whatsapp-contact');if(current.current===scope){remember(null);setAccepted(false);await refresh();}}
     catch(e){if(current.current===scope)toast(e instanceof Error?e.message:'Could not remove the link.','error');}
     finally{if(current.current===scope)setBusy(false);}
@@ -62,6 +63,7 @@ export function WhatsAppContactSection() {
           <label style={{display:'flex',gap:8,alignItems:'flex-start'}}><input type="checkbox" checked={accepted} disabled={busy} onChange={e=>setAccepted(e.target.checked)}/><span>I agree to link my own number to my account in this organization. Project Tracker will securely store it to verify this link. This is not consent to receive notifications.</span></label>
           <button className="btn btn-primary" disabled={busy||!accepted||!phone} type="submit">{busy?'Preparing code...':s.status==='pending'?'Prepare a new code':'Prepare verification code'}</button>
         </form>}
+        {s.status==='verified'&&<WhatsAppNotificationPreferences/>}
         {s.status!=='unlinked'&&<button className="btn" disabled={busy} onClick={()=>void unlink()}>Remove my link</button>}
       </>}
     </div>

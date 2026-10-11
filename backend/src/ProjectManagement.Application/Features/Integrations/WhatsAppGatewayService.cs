@@ -85,7 +85,13 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
             .SetProperty(x => x.PhoneProtected, "").SetProperty(x => x.PhoneHash, (string?)null)
             .SetProperty(x => x.ChallengeHash, (string?)null).SetProperty(x => x.ChallengeIssuedAt, (DateTime?)null)
             .SetProperty(x => x.ChallengeExpiresAt, (DateTime?)null).SetProperty(x => x.VerifiedAt, (DateTime?)null)
-            .SetProperty(x => x.ConsentVersion, (string?)null).SetProperty(x => x.ConsentAt, (DateTime?)null), ct);
+            .SetProperty(x => x.ConsentVersion, (string?)null).SetProperty(x => x.ConsentAt, (DateTime?)null)
+                .SetProperty(x => x.NotificationPreferencesVersion, x => x.NotificationPreferencesVersion + 1)
+                .SetProperty(x => x.NotificationConsentVersion, (string?)null).SetProperty(x => x.NotificationConsentAt, (DateTime?)null)
+                .SetProperty(x => x.NotificationConsentExpiresAt, (DateTime?)null)
+                .SetProperty(x => x.NotifyTaskAssignments, false).SetProperty(x => x.NotifyOverdue, false).SetProperty(x => x.NotifySupportUpdates, false)
+                .SetProperty(x => x.NotificationTimeZone, (string?)null).SetProperty(x => x.NotificationQuietStartMinutes, 1320)
+                .SetProperty(x => x.NotificationQuietEndMinutes, 480), ct);
         var c = await db.WhatsAppConnections.SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         if (c is not null && (c.Active || c.AccessTokenProtected.Length > 0))
         {

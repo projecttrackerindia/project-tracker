@@ -8145,6 +8145,38 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("NotificationConsentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NotificationConsentExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NotificationConsentVersion")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("NotificationPreferencesVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("NotificationQuietEndMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("NotificationQuietStartMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NotificationTimeZone")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("NotifyOverdue")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifySupportUpdates")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifyTaskAssignments")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("PhoneHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

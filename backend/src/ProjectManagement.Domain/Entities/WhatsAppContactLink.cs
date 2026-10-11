@@ -15,6 +15,16 @@ public class WhatsAppContactLink : TenantEntity, ITenantScoped
     public DateTime? VerifiedAt { get; set; }
     public string? ConsentVersion { get; set; }
     public DateTime? ConsentAt { get; set; }
+    public int NotificationPreferencesVersion { get; set; }
+    public string? NotificationConsentVersion { get; set; }
+    public DateTime? NotificationConsentAt { get; set; }
+    public DateTime? NotificationConsentExpiresAt { get; set; }
+    public bool NotifyTaskAssignments { get; set; }
+    public bool NotifyOverdue { get; set; }
+    public bool NotifySupportUpdates { get; set; }
+    public string? NotificationTimeZone { get; set; }
+    public int NotificationQuietStartMinutes { get; set; } = 1320;
+    public int NotificationQuietEndMinutes { get; set; } = 480;
     public DateTime RateWindowAt { get; set; }
     public int ChallengesIssued { get; set; }
 }

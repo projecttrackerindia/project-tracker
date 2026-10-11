@@ -48,11 +48,17 @@ These are six grouped workstreams, not six fixed-size commits. Existing foundati
 
 | Phase | Remaining work | Current state |
 | --- | --- | --- |
-| 1. WhatsApp delivery | External customer identity and support boundaries; separate outbound consent/preferences; token/scope health; provider subscription readiness; templates/24-hour policy; durable outbox, status reconciliation and authorized support actions | Installation and private contact proof implemented; live activation off |
+| 1. WhatsApp delivery | External customer identity and support boundaries; token/scope health; provider subscription readiness; templates/24-hour policy; durable outbox, status reconciliation and authorized support actions | Installation, private contact proof and separate member notification consent implemented; live activation off |
 | 2. Personal productivity | Inbox/thread retrieval and summaries; attachments; Microsoft calendars; attendee/multi-calendar availability; AI proposals; durable existing project-meeting mutations | OAuth, confirmed email sends and private Google blocks implemented behind gates |
 | 3. Support and agent workflows | Business-hour/skill/availability routing, custom fields, deeper SLA policies, workflow recovery and replica contention; source-grounded recommendations and accuracy checks | Metrics, reviewed routing and two-stage approved escalation implemented |
 | 4. Resume commercial readiness | Visual Word watermark/export quality, Linux parser isolation, verified organization evidence, captured-payment/tax reconciliation for INR49 plus applicable taxes | Private studio, plan caps, imports and branded exports implemented; checkout off |
 | 5. Production hardening | Account purge/orphan cleanup, idle integration retention, disposable PostgreSQL upgrades from main, permission/privacy and concurrency checks | SQLite additive upgrades and focused isolation tests pass; PostgreSQL release validation pending |
 | 6. Release verification | Remaining regression/browser/accessibility checks, final reviewed PR and authorized merge, exact-commit Railway deployment/health verification | Not ready for coordinated merge/deployment |
 
-Continue phase 1 next with separate outbound consent and delivery policy. Phases may overlap locally, but commercial checkout and external activation cannot precede their verification gates. No AI bulk testing or real customer messages/calendar writes are included in the plan.
+Continue phase 1 next with provider token/scope health, subscription readiness and current messaging/delivery policy. Separate private notification consent is implemented in the checkpoint below. Phases may overlap locally, but commercial checkout and external activation cannot precede their verification gates. No AI bulk testing or real customer messages/calendar writes are included in the plan.
+
+## Notification consent continuation
+Implemented explicit current-user notification-purpose acceptance, selected categories and IANA quiet hours; purpose lifetime is bound to current phone proof. Versioned saves, independent revocation and phone/installation reset invalidation are covered by focused mocked tests. Delivery remains off. This advances phase 1 but completes none of the six remaining workstreams.
+
+## Voice release preference
+The user selected voice agents as a follow-on release after these six workstreams. [Voice architecture and evidence audit](voice-agent-follow-on.md) recommends one shared product with a separately deployed voice runtime and five follow-on stages. No voice worker, live calls or employee studio is included in this current checkpoint.

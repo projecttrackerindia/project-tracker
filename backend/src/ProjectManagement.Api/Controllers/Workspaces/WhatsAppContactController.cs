@@ -7,5 +7,7 @@ public class WhatsAppContactController(WhatsAppContactService service) : ApiCont
 {
     [HttpGet] public async Task<IActionResult> Status(CancellationToken ct) => Ok(await service.StatusAsync(ct));
     [HttpPost, RequestSizeLimit(1024)] public async Task<IActionResult> Start(StartWhatsAppContact request, CancellationToken ct) => Ok(await service.StartAsync(request, ct));
+    [HttpGet("notification-preferences")] public async Task<IActionResult> Notifications(CancellationToken ct) => Ok(await service.NotificationPreferencesAsync(ct));
+    [HttpPut("notification-preferences"), RequestSizeLimit(2048)] public async Task<IActionResult> Notifications(UpdateWhatsAppNotifications request, CancellationToken ct) => Ok(await service.UpdateNotificationsAsync(request, ct));
     [HttpDelete] public async Task<IActionResult> Unlink(CancellationToken ct) { await service.UnlinkAsync(ct); return NoContent(); }
 }

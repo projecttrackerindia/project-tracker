@@ -74,4 +74,30 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);
         Assert.Empty(await db.WhatsAppContactLinks.IgnoreQueryFilters().ToArrayAsync());
     }
+    [Fact]
+    public async Task Prior_verified_phone_upgrade_preserves_identity_without_inventing_notification_consent()
+    {
+        using var scope = factory.Services.CreateScope();
+        await using var connection = new SqliteConnection("Data Source=:memory:"); await connection.OpenAsync();
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options,
+            scope.ServiceProvider.GetRequiredService<ICurrentContext>(), TimeProvider.System);
+        var assembly = db.GetService<IMigrationsAssembly>(); var generator = db.GetService<IMigrationsSqlGenerator>();
+        await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        var previous = assembly.CreateMigration(assembly.Migrations["20261011093926_WhatsAppPrivateContactLinks"], db.Database.ProviderName!);
+        foreach (var command in generator.Generate(previous.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(command.CommandText);
+        var id=Guid.NewGuid();var user=Guid.NewGuid();var tenant=Guid.NewGuid();var installation=Guid.NewGuid();var now=DateTime.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WhatsAppContactLinks" ("Id","UserId","TenantId","ConnectionId","ConnectionConnectedAt","PhoneProtected","PhoneHash","ConfigurationHash","VerifiedAt","ConsentVersion","ConsentAt","RateWindowAt","ChallengesIssued","CreatedAt")
+            VALUES ({id},{user},{tenant},{installation},{now},{"protected-fixture-phone"},{"fingerprint-fixture"},{"configuration-fixture"},{now},{"whatsapp-account-link-v1"},{now},{now},{4},{now})
+            """);
+        await SqliteEnterpriseUpgrade.ApplyAsync(db); await SqliteEnterpriseUpgrade.ApplyAsync(db);
+        var row = await db.WhatsAppContactLinks.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(user,row.UserId);Assert.Equal(tenant,row.TenantId);Assert.Equal(installation,row.ConnectionId);
+        Assert.Equal("protected-fixture-phone",row.PhoneProtected);Assert.Equal(now,row.VerifiedAt);Assert.Equal(4,row.ChallengesIssued);
+        Assert.Equal("whatsapp-account-link-v1",row.ConsentVersion);Assert.Equal(0,row.NotificationPreferencesVersion);
+        Assert.Null(row.NotificationConsentVersion);Assert.Null(row.NotificationConsentAt);Assert.Null(row.NotificationConsentExpiresAt);
+        Assert.False(row.NotifyTaskAssignments);Assert.False(row.NotifyOverdue);Assert.False(row.NotifySupportUpdates);
+        Assert.Equal(1320,row.NotificationQuietStartMinutes);Assert.Equal(480,row.NotificationQuietEndMinutes);
+    }
+
 }
