@@ -158,3 +158,9 @@ Run npm run build then npm run test:ui from frontend. The pinned development-onl
 The user requires actual desktop/mobile previews before each future batch commit. Local synthetic workflow previews were shown before this batch's commit; they are not deployed application screenshots. cdd8ee5 is the verified CI baseline; the next UI commit needs its own CI result. The expansion remains draft, unmerged and undeployed while the six grouped workstreams remain open.
 
 Final local results for this UI batch: production build and lint pass (no errors; existing 78 warnings), 85 frontend unit tests pass, and the production-CSP browser run passes eight recorded checks including save/reload, with zero page errors or horizontal overflow. The pinned browser dependency is development-only and adds no browser code to the app bundle.
+
+## Browser runtime follow-up
+
+Run 38153383724 on f623e6d passed both API jobs (including the actual-main PostgreSQL upgrade), Docker images, desktop tests and deployment files. The web job passed lint/unit/type/build but its new browser fixture failed when Linux's UTC device timezone triggered the app's normal reminder-timezone PUT. The fixture intentionally rejects unexpected mutations. Pinning the browser timezone to Asia/Kolkata matches the synthetic user; all eight checks now also pass with Playwright's bundled Chromium, not only the locally installed Edge. The subsequent commit still requires its own Linux CI result.
+
+Retention review also found an open production-hardening gap: WhatsApp receipt and outbox cleanup currently occurs during inbound/poll activity, so completely idle or disabled installations need separate bounded metadata maintenance. No retention policy or records were changed in this UI batch; this remains phase 5 work. In-flight and unresolved delivery evidence must be fenced from cleanup, and recently updated receipt evidence must survive for reconciliation.

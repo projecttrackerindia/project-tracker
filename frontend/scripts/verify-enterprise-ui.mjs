@@ -17,7 +17,7 @@ const templates=[{id:1,name:'Essential',description:'Clean, single-column ATS la
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 const errors=[];const checks=[];
 try {
- const ctx=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
+ const ctx=await browser.newContext({viewport:{width:1440,height:1000},timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
  await ctx.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin!==origin){await route.abort();return;}
