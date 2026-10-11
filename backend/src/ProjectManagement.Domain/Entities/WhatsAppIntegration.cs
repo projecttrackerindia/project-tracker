@@ -25,6 +25,15 @@ public class WhatsAppConnection : TenantEntity, ITenantScoped
     public bool? HealthAssetsVerified { get; set; }
     public bool? HealthAppSubscribed { get; set; }
     public bool? HealthPhoneVerified { get; set; }
+    public DateTime? TemplatesAttemptedAt { get; set; }
+    public DateTime? TemplatesCheckedAt { get; set; }
+    public Guid? TemplatesLeaseId { get; set; }
+    public DateTime? TemplatesLeaseUntil { get; set; }
+    public string? TemplatesConfigurationHash { get; set; }
+    public string TemplatesState { get; set; } = "unchecked";
+    public string TaskAssignmentTemplateState { get; set; } = "unchecked";
+    public string OverdueTemplateState { get; set; } = "unchecked";
+    public string SupportUpdateTemplateState { get; set; } = "unchecked";
 }
 
 /// <summary>Inbound message metadata only. No phone numbers, message text, attachments or authorization claims.</summary>

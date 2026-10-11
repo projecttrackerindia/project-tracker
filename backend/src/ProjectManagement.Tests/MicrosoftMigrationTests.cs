@@ -75,6 +75,9 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Equal("unchecked",row.HealthState);Assert.Null(row.HealthAttemptedAt);Assert.Null(row.HealthCheckedAt);
         Assert.Null(row.HealthLeaseId);Assert.Null(row.HealthTokenValid);Assert.Null(row.HealthScopesPresent);
         Assert.Null(row.HealthAssetsVerified);Assert.Null(row.HealthAppSubscribed);Assert.Null(row.HealthPhoneVerified);
+        Assert.Equal("unchecked",row.TemplatesState);Assert.Null(row.TemplatesCheckedAt);Assert.Null(row.TemplatesAttemptedAt);
+        Assert.Null(row.TemplatesLeaseId);Assert.Null(row.TemplatesLeaseUntil);Assert.Null(row.TemplatesConfigurationHash);
+        Assert.Equal("unchecked",row.TaskAssignmentTemplateState);Assert.Equal("unchecked",row.OverdueTemplateState);Assert.Equal("unchecked",row.SupportUpdateTemplateState);
         Assert.Empty(await db.WhatsAppContactLinks.IgnoreQueryFilters().ToArrayAsync());
     }
     [Fact]

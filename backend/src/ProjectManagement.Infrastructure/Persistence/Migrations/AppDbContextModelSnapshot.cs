@@ -8110,10 +8110,46 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("InstalledBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("OverdueTemplateState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("PhoneNumberId")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<string>("SupportUpdateTemplateState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TaskAssignmentTemplateState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("TemplatesAttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("TemplatesCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TemplatesConfigurationHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("TemplatesLeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("TemplatesLeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TemplatesState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");

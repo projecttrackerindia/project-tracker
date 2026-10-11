@@ -68,3 +68,6 @@ Notification consent is independent of account-link consent. Its expiry is bound
 
 ## WhatsApp provider health metadata
 Migration 20261011104645_WhatsAppProviderHealth adds nullable attempt/check times, lease ID/expiry, configuration fingerprint, bounded HealthState and five nullable observation booleans to WhatsAppConnections. Prior installations start unchecked with null observations; no readiness, credentials or new consent is invented. The real additive SQLite upgrader now includes fifteen reviewed migrations. Raw introspection payloads, scope/user lists, tokens and provider error messages are never stored as health data.
+
+## Template observations
+20261011111118_WhatsAppNotificationTemplates adds nine columns to WhatsAppConnections: attempt/check timestamps, lease ID/deadline, configuration/contract hash, aggregate state and three individual template states. Previous installations default to unchecked; no approvals are invented. Tenant filtering and existing unique mapping remain intact. No raw template payload or personal/project data is stored. Disconnect/reconnect clears observations/claims and preserves the attempt cooldown. SQLite's reviewed additive allowlist now contains sixteen migrations; full PostgreSQL upgrades remain a release gate.

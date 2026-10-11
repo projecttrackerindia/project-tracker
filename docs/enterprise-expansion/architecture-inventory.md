@@ -46,3 +46,6 @@ Current hosted workers still run inside ProjectManagement.Api. The user selected
 
 ## Read-only provider health checkpoint
 WhatsAppHealthService reuses the existing tenant ledger, central entitlement service, protected installation token, audit recorder and fixed-host named HTTP client. Claims commit before provider I/O; a fresh tracked connection is retrieved after reads so disconnect/reconnect changes cannot be overwritten by a stale tracked snapshot. The Meta installation adapter additionally implements read-only token, asset and subscription inspection. No sender, background worker, new dependency or automatic provider action is introduced.
+
+## Template contract checkpoint
+WhatsAppTemplateService owns three versioned English-US plain-body notification contracts. MetaWhatsAppInstallationProvider implements IWhatsAppTemplateProvider using three exact-name GET reads on the organization's verified WABA; settings GET itself performs none. The settings component remains in the existing lazy-loaded settings chunk. Template approval cannot activate reception or sending. A durable sender/outbox and authorized external support actions are still absent and remain phase-1 implementation work.

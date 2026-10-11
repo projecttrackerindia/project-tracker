@@ -11,6 +11,8 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
     private readonly ConcurrentDictionary<string, Grant> codes = new(), tokens = new();
     public ConcurrentBag<string> RequestPaths { get; } = new();
     public string? HealthProblem { get; set; }
+    public string? TemplateProblem { get; set; }
+    public Func<Task>? BeforeTemplateResponse { get; set; }
     public Func<Task>? BeforeHealthResponse { get; set; }
     public bool WrongBusiness { get; set; }
     public bool WrongPhone { get; set; }
@@ -63,6 +65,30 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
                 }
             }});
         }
+        if (uri.AbsolutePath.EndsWith("/message_templates"))
+        {
+            var fields = uri.Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).ToDictionary(x => Uri.UnescapeDataString(x[0]), x => Uri.UnescapeDataString(x[1]));
+            var token = request.Headers.Authorization!.Parameter!;
+            if (uri.AbsolutePath != "/v24.0/" + known.Business + "/message_templates"
+                || fields["fields"] != "id,name,language,status,category,components" || fields["limit"] != "20"
+                || fields["appsecret_proof"] != Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+                    Encoding.UTF8.GetBytes("fake-whatsapp-app-secret-only"), Encoding.UTF8.GetBytes(token))).ToLowerInvariant()) throw new InvalidOperationException("Unauthenticated template inspection.");
+            var expected = ProjectManagement.Application.Features.Integrations.WhatsAppTemplateService.Definitions.Single(x => x.Name == fields["name"]);
+            if (BeforeTemplateResponse != null) await BeforeTemplateResponse();
+            if (TemplateProblem == "unavailable") throw new HttpRequestException("synthetic provider error with fake token");
+            if (TemplateProblem == "redirect") return new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("https://attacker.example/token") } };
+            if (TemplateProblem == "oversized") return new(HttpStatusCode.OK) { Content = new StringContent(new string('x',65537)) };
+            if (TemplateProblem == "malformed") return Json(new { data = "invalid" });
+            if (TemplateProblem == "missing") return Json(new { data = Array.Empty<object>() });
+            object Row() => new { id = "1234567890123", name = TemplateProblem == "name" ? "unrelated_template" : expected.Name,
+                language = TemplateProblem == "language" ? "en_GB" : expected.Language,
+                status = TemplateProblem is "pending" ? "PENDING" : TemplateProblem is "paused" ? "PAUSED" : TemplateProblem is "rejected" ? "REJECTED" : "APPROVED",
+                category = TemplateProblem == "marketing" ? "MARKETING" : "UTILITY",
+                components = TemplateProblem == "buttons" ? new object[] { new { type = "BODY", text = expected.Body }, new { type = "BUTTONS", buttons = new object[0] } }
+                    : new object[] { new { type = "BODY", text = TemplateProblem == "text" ? "Changed message" : TemplateProblem == "variable" ? "Task {{1}}" : expected.Body } } };
+            if (TemplateProblem == "paging") return Json(new { data = new[] { Row() }, paging = new { next = "https://attacker.example/token" } });
+            return Json(new { data = TemplateProblem == "duplicate" ? new[] { Row(), Row() } : TemplateProblem == "many" ? Enumerable.Range(0,21).Select(_=>Row()).ToArray() : new[] { Row() } });
+        }
         if (uri.AbsolutePath.EndsWith("/subscribed_apps"))
         {
             if (BeforeHealthResponse != null) await BeforeHealthResponse();
@@ -79,5 +105,5 @@ public sealed class FakeWhatsAppInstallation : HttpMessageHandler
         return (Json(new { id = WrongBusiness ? "999999" : known.Business, name = "Verified business" }));
     }
     public void Reset()
-    { WrongBusiness = false; WrongPhone = false; UnverifiedPhone = false; Paginated = false; LostResponse = false; Oversized = false; InvalidLifetime = false; BeforePhoneResponse = null; BeforeHealthResponse = null; HealthProblem = null; RequestPaths.Clear(); }
+    { WrongBusiness = false; WrongPhone = false; UnverifiedPhone = false; Paginated = false; LostResponse = false; Oversized = false; InvalidLifetime = false; BeforePhoneResponse = null; BeforeHealthResponse = null; HealthProblem = null; TemplateProblem = null; BeforeTemplateResponse = null; RequestPaths.Clear(); }
 }

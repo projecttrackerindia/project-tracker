@@ -9,7 +9,7 @@ namespace ProjectManagement.Application.Features.Integrations;
 
 /// <summary>Read-only asset verification after an app-bound authorization-code exchange; fixed HTTPS origin, no redirects/retries.</summary>
 public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<WhatsAppOptions> options, AppClock clock)
-    : IWhatsAppInstallationProvider, IWhatsAppHealthProvider
+    : IWhatsAppInstallationProvider, IWhatsAppHealthProvider, IWhatsAppTemplateProvider
 {
     private static ConflictException Invalid() => new("Meta did not verify this business installation. Start again or review app setup.", "WHATSAPP_PROVIDER_ERROR");
     private async Task<JsonDocument> ReadAsync(HttpRequestMessage request, CancellationToken ct)
@@ -140,6 +140,52 @@ public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<
             var subscribed = Rows(subscriptions.RootElement).EnumerateArray().Any(x => x.ValueKind == JsonValueKind.Object
                 && x.TryGetProperty("whatsapp_business_api_data", out var app) && Field(app, "id", 40) == o.AppId);
             return new(true, true, true, subscribed, phoneVerified, expires);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Invalid(); }
+        catch (InvalidOperationException) { throw Invalid(); }
+    }
+
+    public async Task<WhatsAppProviderTemplates> InspectTemplatesAsync(string token, string businessAccountId, CancellationToken ct)
+    {
+        var o = options.Value;
+        if (!o.TemplateChecksEnabled || !o.HealthChecksEnabled || !o.InstallationConfigured
+            || token is not { Length: > 0 and <= 10000 } || token.Any(char.IsControl)
+            || !WhatsAppGatewayService.ProviderId(businessAccountId)) throw Invalid();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        var proof = Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(o.AppSecret!), System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+        var states = new List<string>();
+        try
+        {
+            foreach (var expected in WhatsAppTemplateService.Definitions)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "https://graph.facebook.com/" + o.ApiVersion + "/"
+                    + businessAccountId + "/message_templates?name=" + Uri.EscapeDataString(expected.Name)
+                    + "&fields=id,name,language,status,category,components&limit=20&appsecret_proof=" + proof);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var document = await ReadAsync(request, deadline.Token);
+                var root = document.RootElement;
+                if (!root.TryGetProperty("data", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > 20
+                    || root.TryGetProperty("paging", out var paging) && paging.ValueKind == JsonValueKind.Object && paging.TryGetProperty("next", out _)) throw Invalid();
+                // Select one exact name and locale; no fallback translation, prefix match or pagination URL.
+                var matches = rows.EnumerateArray().Where(x => Field(x, "name", 100) == expected.Name
+                    && Field(x, "language", 20) == expected.Language).ToArray();
+                if (matches.Length > 1) throw Invalid();
+                if (matches.Length == 0) { states.Add("missing"); continue; }
+                var row = matches[0];
+                if (!WhatsAppGatewayService.ProviderId(Field(row, "id", 40))) throw Invalid();
+                var status = Field(row, "status", 40);
+                if (status != "APPROVED") { states.Add(status == "PENDING" ? "pending" : "unapproved"); continue; }
+                var compatible = Field(row, "category", 40) == expected.Category
+                    && row.TryGetProperty("components", out var components) && components.ValueKind == JsonValueKind.Array
+                    && components.GetArrayLength() == 1
+                    && Field(components[0], "type", 40) == "BODY"
+                    && Field(components[0], "text", 1024) == expected.Body
+                    && !components[0].TryGetProperty("parameters", out _);
+                // Reject headers, buttons, media and variable bodies. Notifications carry no private project contents.
+                states.Add(compatible ? "approved" : "incompatible");
+            }
+            return new(states[0], states[1], states[2]);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Invalid(); }
         catch (InvalidOperationException) { throw Invalid(); }

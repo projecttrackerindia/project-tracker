@@ -117,3 +117,18 @@ These preferences are private to the member and organization. Administrators can
 New variable: WhatsApp__HealthChecksEnabled=false (default). Existing app/secret/verification and explicit version/signup configuration are still required. Read checks perform no automatic app subscription or phone registration. Verify the strict provider response/granular-grant contract with a controlled account before enabling this gate.
 
 The implementation uses Meta's published read endpoint shapes, with conservative response validation. [Meta token inspection collection](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api?entity=folder-066d0881-3f31-4f0c-accc-d0fa2e4b2ed9), [Meta app subscription reads](https://www.postman.com/meta/whatsapp-business-platform/request/tl2wk2j/get-all-subscriptions-for-a-waba). App-secret proof follows the official SDK HMAC pattern. [Meta SDK session source](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/session.py)
+
+## Notification template preparation: administrator steps
+New variable: WhatsApp__TemplateChecksEnabled=false. Keep this and all outbound/reception rollout gates disabled until controlled-account validation. Template checks also require WhatsApp__HealthChecksEnabled, current successful health and active WHATSAPP_INTEGRATION entitlement. They do not require or perform outbound activation.
+
+In Workspace settings -> Integrations -> WhatsApp Business, expand Set up approved templates. In Meta WhatsApp Manager for this organization's connected WABA, create the following exact English (US)/en_US Utility templates with a single plain text BODY; omit headers, buttons, media and variables:
+
+| Name | Exact body |
+| --- | --- |
+| project_tracker_task_assignment_v1 | You have a new task assignment in Project Tracker. Open your Project Tracker workspace to review it. |
+| project_tracker_overdue_v1 | A task assigned to you is overdue in Project Tracker. Open your Project Tracker workspace to review it. |
+| project_tracker_support_update_v1 | A support ticket you follow has an update in Project Tracker. Open your Project Tracker workspace to review it. |
+
+Submit each to Meta. Meta decides approval/category; this code does not promise these submissions will be approved. After controlled setup, check provider health, then Check templates. A missing, pending, paused/rejected, wrong-locale, recategorized or changed-content result cannot establish template readiness. Read checks expire after five minutes and cannot enable messaging. No project/task/ticket content, customer identity or recipient phone is part of these bodies. Linking is separate from notification opt-in.
+
+Current official policy permits free-form replies within the user-message-triggered 24-hour customer-service window and requires approved templates outside it. Our initial notification design conservatively uses approved templates in either case; it does not infer support intent from contact-proof messages or implement free-form chat replies. [WhatsApp Business Messaging Policy](https://whatsappbusiness.com/policy/), checked 11 October 2026. The GET-by-name shape follows [Meta's maintained template collection](https://www.postman.com/meta/whatsapp-business-platform/request/7whkjje/get-template-by-name-default-fields). Verify that the configured Graph version supplies the strict fields/components with an approved controlled account before activation.

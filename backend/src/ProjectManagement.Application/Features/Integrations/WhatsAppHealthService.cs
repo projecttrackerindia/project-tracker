@@ -25,8 +25,9 @@ public class WhatsAppHealthService(IAppDbContext db, CurrentContext ctx, AppCloc
 {
     private WhatsAppOptions O => options.Value;
     private bool Enabled => O.HealthChecksEnabled && O.InstallationConfigured;
-    private string ConfigurationHash => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-        string.Join("|", O.AppId, O.AppSecret, O.ApiVersion, O.EmbeddedSignupConfigId, O.SignupVersion))));
+    internal static string ConfigurationFingerprint(WhatsAppOptions o) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+        string.Join("|", o.AppId, o.AppSecret, o.ApiVersion, o.EmbeddedSignupConfigId, o.SignupVersion))));
+    private string ConfigurationHash => ConfigurationFingerprint(O);
     private bool Current(WhatsAppConnection? row) => row is { Active: true, AccessTokenProtected.Length: > 0 }
         && row.AppId == O.AppId && (row.TokenExpiresAt == null || row.TokenExpiresAt > clock.Now);
     public static void Clear(WhatsAppConnection row)

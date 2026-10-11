@@ -28,6 +28,11 @@ public partial class AppDbContext
             e.HasIndex(x => x.TenantId).IsUnique();
             // Retained inactive mappings cannot be silently reassigned to a different customer.
             e.HasIndex(x => new { x.AppId, x.PhoneNumberId }).IsUnique();
+            e.Property(x => x.TemplatesConfigurationHash).HasMaxLength(64);
+            e.Property(x => x.TemplatesState).HasMaxLength(20);
+            e.Property(x => x.TaskAssignmentTemplateState).HasMaxLength(20);
+            e.Property(x => x.OverdueTemplateState).HasMaxLength(20);
+            e.Property(x => x.SupportUpdateTemplateState).HasMaxLength(20);
             e.Property(x => x.HealthState).HasMaxLength(20);
             e.Property(x => x.HealthConfigurationHash).HasMaxLength(64);
             e.Property(x => x.AppId).HasMaxLength(40);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { WhatsAppTemplateSettings } from './WhatsAppTemplateSettings';
 import { useMutation } from '@tanstack/react-query';
 import { get, post } from '../../api/client';
 import { useWsQuery, invalidateWorkspace } from '../../lib/hooks';
@@ -119,6 +120,7 @@ export function WhatsAppSettings() {
         </>}
         <p className="muted">Phone registration, webhook delivery and messaging rules still need validation before sending is available.</p>
       </section>}
+      {s?.connected && <WhatsAppTemplateSettings />}
       {s?.eligible && s.connected && <section aria-labelledby="whatsapp-receipts-title">
         <h4 id="whatsapp-receipts-title">Recent inbound receipts</h4>
         <p>Metadata only. Message contents and sender phone numbers are not stored. This is a bounded diagnostic sample, not a conversation history.</p>
