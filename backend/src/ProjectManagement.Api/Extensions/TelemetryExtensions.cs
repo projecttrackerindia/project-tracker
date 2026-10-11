@@ -36,15 +36,18 @@ public static class TelemetryExtensions
                 .AddAspNetCoreInstrumentation(o =>
                 {
                     // Health probes and static files would drown the interesting requests.
-                    o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health") && ctx.Request.Path.StartsWithSegments("/api");
+                    o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health") && ctx.Request.Path.StartsWithSegments("/api")
+                        && !ctx.Request.Path.StartsWithSegments("/api/v1/integrations/whatsapp");
                     o.RecordException = true;
                 })
-                .AddHttpClientInstrumentation()
+                .AddHttpClientInstrumentation(o => o.FilterHttpRequestMessage = request => request.RequestUri?.Host != "graph.facebook.com")
                 .AddSource("Npgsql")           // database calls (PostgreSQL)
                 .AddSource(AppTelemetry.Name)) // background jobs
             .WithMetrics(m => m
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
+                .AddView("http.client.request.duration", new ExplicitBucketHistogramConfiguration
+                { TagKeys = ["http.request.method", "server.address", "server.port", "url.scheme", "http.response.status_code", "error.type"] })
                 .AddRuntimeInstrumentation()
                 .AddMeter(AppTelemetry.Name))
             .UseOtlpExporter();

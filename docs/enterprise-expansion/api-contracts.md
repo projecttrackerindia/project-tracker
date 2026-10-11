@@ -84,7 +84,7 @@ Authenticated user and active workspace ownership apply to every route; another 
 
 ## WhatsApp inbound foundation
 Organization owner/admin routes, all under /api/v1/integrations/whatsapp:
-- GET /status returns configuration, reception, eligibility and connection metadata. installationEnabled and messagingEnabled are always false in this phase.
+- GET /status returns configuration, reception, eligibility and connection metadata. installationEnabled reflects its configuration and default-off gate; messagingEnabled remains false.
 - GET /receipts requires active subscription plus WHATSAPP_INTEGRATION, returning up to 50 current-tenant metadata entries. Outcome is identity_verification_required; no sender identity, message ID, message content or token is returned.
 - POST /disconnect disables reception for this mapping and erases local usable credentials. This does not revoke a Meta grant and does not remove the reserved mapping.
 
@@ -92,4 +92,11 @@ Anonymous provider routes:
 - GET /webhook accepts hub.mode=subscribe, exact hub.verify_token and a bounded numeric hub.challenge; returns the plain-text challenge.
 - POST /webhook requires X-Hub-Signature-256 over the exact raw bytes. Payload limit is 64 KiB, JSON depth 20, at most 20 entries, 20 changes per entry and 100 messages across the envelope. Entire envelopes validate before writes. Inactive, unmatched and ineligible connections are acknowledged without receipts.
 - Reception defaults off and returns 503 WHATSAPP_RECEPTION_DISABLED. Invalid verification/signatures return 401. Invalid/oversized envelopes return 422 at the application layer; host/proxy body limits may reject earlier.
-No connect, send, reply, contact-link, ticket-mutation or AI-processing route is implemented here.
+Connect/complete/cancel are described below. No send, reply, contact-link, ticket-mutation or AI-processing route is implemented.
+
+## WhatsApp Embedded Signup installation
+Authenticated organization owner/admin routes under /api/v1/integrations/whatsapp:
+- POST /connect: requires an active entitled subscription, complete configuration and InstallationEnabled. Returns state, appId, configId, apiVersion and signupVersion. Sets a ten-minute Secure, HttpOnly, SameSite=Strict browser-proof cookie scoped to these routes; proof is never returned in JSON. At most five pending attempts per organization.
+- POST /complete: body {state, code, businessAccountId, phoneNumberId}; maximum 8 KiB. Requires the same authenticated user, organization, browser and configuration. Consumes state before code exchange, then verifies provider assets and rechecks permission, entitlement and disconnect fencing before saving. Returns 204 and clears proof cookie. Tokens remain backend-only.
+- POST /cancel: body {state}; consumes a matching unconsumed attempt and clears proof cookie.
+Installation and webhook reception have separate default-off gates. messagingEnabled remains false. A conflicting reserved phone mapping cannot be transferred to another organization; original-owner reconnection requires the same app/business/phone mapping. Configuration rotation invalidates unfinished attempts.

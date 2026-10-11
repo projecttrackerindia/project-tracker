@@ -95,6 +95,8 @@ public static class DependencyInjection
         services.AddHttpClient("microsoft-productivity",c=>c.Timeout=TimeSpan.FromSeconds(20));
         services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IOidcProtocol, OidcProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IGitHubOAuth, GitHubOAuth>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IAppleClientSecret, AppleClientSecret>();

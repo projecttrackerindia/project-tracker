@@ -12,7 +12,7 @@ AiFileService bounds and validates uploads and uses OpenXML for DOCX extraction;
 
 WorkTaskService, WorkTasks, types, comments, attachments, assignments and history provide operational support. SlaService has first-response/resolution clocks, pause and risk/breach reporting. SupportResolutionService provides version-bound reporter acknowledgement. Existing AutomationService runs project rules/scheduled triggers, not a full branching durable workflow studio. AiOperations has durable jobs and lease recovery.
 
-GoogleCalendarAuthService/GoogleMeetingClient provide user-owned Calendar/Meet. Slack uses tenant-owned OAuth with encrypted tokens, validated state/signatures and deduplicated lifecycle events; interactive actions remain disabled. No verified WhatsApp or Microsoft productivity integration exists. External activation needs credentials, scopes, consent, verified identities and current provider requirements.
+GoogleCalendarAuthService/GoogleMeetingClient provide user-owned Calendar/Meet. Slack uses tenant-owned OAuth with encrypted tokens, validated state/signatures and deduplicated lifecycle events; interactive actions remain disabled. At the initial audit, no verified WhatsApp or Microsoft productivity integration existed; gated adapter checkpoints are recorded below. External activation needs credentials, scopes, consent, verified identities and current provider requirements.
 
 RazorpayPaymentProvider implements subscriptions, not one-time Orders. Resume purchases need immutable owner/version/template/format binding, Orders-specific signature validation, captured-payment lookup, reconciliation and refund handling. Browser assertions never grant clean exports.
 
@@ -29,6 +29,9 @@ Microsoft personal productivity now reuses ProviderOAuthAttempts, ISecretProtect
 Private calendar proposals reuse the existing Google token store, NodaTime IANA database, current execution principal and workspace-scoped settings queries. A dedicated personal flow persists its claim before a provider write and supports read-only outcome reconciliation. Existing project-meeting creation/reschedule/attendee/cancel paths are preserved and still need their own durable-operation upgrade; this personal flow does not silently change them.
 
 ## WhatsApp inbound foundation checkpoint
-Added a separate organization-owned installation schema and raw-body-signed webhook receiver. This phase has no token-entry or installation endpoint, provider HTTP client, sending path or AI invocation. The settings page explicitly describes installation as unavailable. Fixture installations are used only in isolated tests; no live Meta workspace has been connected.
+Added a separate organization-owned installation schema and raw-body-signed webhook receiver. At this historical receiver-only checkpoint there was no installation endpoint or provider HTTP client. The verified installation checkpoint below supersedes that limitation; sending and AI invocation remain unavailable. Fixture installations are used only in isolated tests; no live Meta workspace has been connected.
 
 The central WHATSAPP_INTEGRATION boolean entitlement defaults to absent/zero and uses the existing subscription/override system. No plan is assumed eligible. Exact app/business-account/phone-ID mapping is resolved globally only after signature validation, followed by tenant-scoped writes and active-subscription checks.
+
+## Verified installation checkpoint
+WhatsApp now uses the existing ProviderOAuthAttempts, tenant ledger lock, secret protector and entitlement service for Embedded Signup. React loads Meta's SDK on demand without a new npm dependency; the second user click opens signup. ASP.NET exchanges the code and verifies the business account and selected verified phone against Meta before storing a protected tenant token. This replaces the earlier receiver-only installation limitation. No messaging or AI processing is enabled.

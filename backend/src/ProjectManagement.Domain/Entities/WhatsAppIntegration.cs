@@ -12,6 +12,7 @@ public class WhatsAppConnection : TenantEntity, ITenantScoped
     public string AccessTokenProtected { get; set; } = "";
     public Guid InstalledBy { get; set; }
     public DateTime ConnectedAt { get; set; }
+    public DateTime? TokenExpiresAt { get; set; }
     public bool Active { get; set; }
 }
 

@@ -51,4 +51,25 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Empty(await db.WhatsAppConnections.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.WhatsAppInboundReceipts.IgnoreQueryFilters().ToArrayAsync());
     }
+    [Fact]
+    public async Task Prior_WhatsApp_mapping_upgrades_twice_without_inventing_token_expiry_or_changing_ownership()
+    {
+        using var scope = factory.Services.CreateScope();
+        await using var connection = new SqliteConnection("Data Source=:memory:"); await connection.OpenAsync();
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options,
+            scope.ServiceProvider.GetRequiredService<ICurrentContext>(), TimeProvider.System);
+        var assembly = db.GetService<IMigrationsAssembly>(); var generator = db.GetService<IMigrationsSqlGenerator>();
+        var previous = assembly.CreateMigration(assembly.Migrations["20261011073057_WhatsAppInboundFoundation"], db.Database.ProviderName!);
+        await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        foreach (var command in generator.Generate(previous.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(command.CommandText);
+        var id = Guid.NewGuid(); var tenant = Guid.NewGuid(); var user = Guid.NewGuid(); var now = DateTime.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WhatsAppConnections" ("Id","TenantId","AppId","BusinessAccountId","PhoneNumberId","DisplayName","AccessTokenProtected","InstalledBy","ConnectedAt","Active","CreatedAt")
+            VALUES ({id},{tenant},{"123"},{"456"},{"789"},{"Existing business"},{"protected-fixture"},{user},{now},{true},{now})
+            """);
+        await SqliteEnterpriseUpgrade.ApplyAsync(db); await SqliteEnterpriseUpgrade.ApplyAsync(db);
+        var row = await db.WhatsAppConnections.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(tenant, row.TenantId); Assert.Equal("789", row.PhoneNumberId); Assert.Equal("protected-fixture", row.AccessTokenProtected);
+        Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);
+    }
 }

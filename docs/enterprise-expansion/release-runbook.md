@@ -28,6 +28,13 @@ Deploy schema 20261011065223_PersonalCalendarProposals before the API. Keep Goog
 ## WhatsApp receiver checkpoint deployment gates
 Apply 20261011073057_WhatsAppInboundFoundation before upgrading the API; additive SQLite startup support is included. WHATSAPP_INTEGRATION remains zero unless explicitly configured through the existing plan or tenant override system. Leave WhatsApp__WebhookReceptionEnabled=false; current production accounts are not configured.
 
-Do not insert installation rows manually in production or reuse one organization's token across customers. Automated tests insert synthetic rows solely to verify routing. Customer OAuth/signup is not implemented, and there is no live sending or business-action path.
+Do not insert installation rows manually in production or reuse one organization's token across customers. Automated tests insert synthetic rows solely to verify routing. Customer signup is now implemented behind its default-off gate, as described below; there is no live sending or business-action path.
 
 Before activation: complete official signup and verification; preserve token-protection keys across replicas; verify exact app/WABA/phone ownership; check proxy logging and TLS; verify contact authorization/consent and current Meta messaging rules; add durable sending/recovery and idle-data erasure; apply the full PostgreSQL upgrade in a disposable database and test replica contention. Disconnect removes local token access only; customers revoke remote grants separately.
+
+## Embedded Signup checkpoint deployment gates
+Apply 20261011091248_WhatsAppInstallationExpiry after the foundation migration before deploying the API. SQLite startup includes twelve reviewed additive expansion migrations. Preserve token-protection keys across replicas. Leave both WhatsApp__InstallationEnabled and WhatsApp__WebhookReceptionEnabled false until controlled-account readiness checks pass; never create production installation rows manually.
+
+Review configured Meta app, business verification/review, Embedded Signup config, allowed HTTPS domains, exact API/signup version and delegated scopes. Test the real SDK against deployed CSP and verify provider code exchange and token lifetime/introspection with a controlled account. No provider subscription/phone registration is automated here. Audit proxy/collector logging, validate account ownership, then finish contact proof/consent, messaging policy and durable outbox/recovery before any outbound activation.
+
+Run disposable PostgreSQL upgrades from main and replica contention checks before the coordinated merge. The full requested release still has productivity, accounting/payment, support, retention, parser and export gates. This checkpoint does not authorize declaring the whole release ready or deployed.

@@ -89,6 +89,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeGoogleCalendar GoogleCalendar { get; } = new();
     public FakeMicrosoftProductivity MicrosoftProductivity {get;}=new();
     public FakeSlack Slack { get; } = new();
+    public FakeWhatsAppInstallation WhatsApp { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -140,6 +141,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway>();
             services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway>(ResumePayments);
             services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
+            services.AddHttpClient("whatsapp-installation").ConfigurePrimaryHttpMessageHandler(() => WhatsApp);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);
         });

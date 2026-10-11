@@ -45,10 +45,13 @@ Migration 20261011065223_PersonalCalendarProposals adds owner/tenant-scoped Pers
 The explicit SQLite expansion allowlist now includes this tenth additive migration.
 
 ## WhatsApp installation and inbound metadata
-Migration 20261011073057_WhatsAppInboundFoundation creates WhatsAppConnections and WhatsAppInboundReceipts. Both are ITenantScoped. One installation per tenant and unique (AppId, PhoneNumberId) enforce organization mapping. Installation tokens have a protected-value field reserved for a future verified OAuth flow; there is no public/manual registration endpoint.
+Migration 20261011073057_WhatsAppInboundFoundation creates WhatsAppConnections and WhatsAppInboundReceipts. Both are ITenantScoped. One installation per tenant and unique (AppId, PhoneNumberId) enforce organization mapping. Installation tokens use a protected-value field populated only by the verified signup flow described below; there is no manual registration endpoint.
 
 Receipts contain provider message ID, message type, provider timestamp and receipt timestamp; they contain no sender number, text, attachment or inferred Project Tracker user. Unique (AppId, PhoneNumberId, ProviderMessageId) prevents replay across replicas. All public timestamps carry an explicit UTC offset. Disconnect empties the usable token and marks the connection inactive; its mapping remains reserved to prevent silent reassignment. Existing receipts remain metadata only.
 
 The diagnostic list contains at most 50 entries from the last 30 days. Admission caps retained receipt rows at 10,000 per tenant; excess messages are acknowledged without adding metadata. At most 100 expired rows are physically purged per active, eligible webhook group. Idle-tenant/background erasure remains a release item; this is not a guarantee of physical deletion exactly on day 30.
 
 The additive SQLite startup allowlist includes this migration. Existing-table upgrade is tested twice, preserving historical email receipts. PostgreSQL deployment and full upgrade/contention verification remain release gates.
+
+## WhatsApp installation expiry
+The twelfth reviewed additive expansion migration, 20261011091248_WhatsAppInstallationExpiry, adds nullable TokenExpiresAt to WhatsAppConnections. Historical tokens retain null (unknown lifetime); no expiry or permanent validity is invented. Explicit positive provider lifetimes are bounded and saved with a safety margin. Known expired connections are reported disconnected and cannot receive messages. Signup attempts reuse ProviderOAuthAttempts with provider=whatsapp, hashed state/browser proof and a protected configuration fingerprint. Disconnect removes even consumed attempts, fencing a late completion. Tests upgrade the actual previous WhatsApp schema twice while preserving its tenant mapping and protected token.

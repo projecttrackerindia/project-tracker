@@ -91,6 +91,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.MicrosoftProductivityAuthService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.SlackConnectionService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppGatewayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppInstallationService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.IWhatsAppInstallationProvider, ProjectManagement.Application.Features.Integrations.MetaWhatsAppInstallationProvider>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GoogleMeetingClient>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingService>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingSyncEngine>();

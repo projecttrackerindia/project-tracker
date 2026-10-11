@@ -44,6 +44,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/GitLinkService.cs",
         "ProjectManagement.Application/Features/Integrations/InboundEmailService.cs",
         "ProjectManagement.Application/Features/Integrations/SlackConnectionService.cs", // global workspace uniqueness and signed lifecycle routing only; no business-data reads; exact team/app mapping establishes tenant before writes
+        "ProjectManagement.Application/Features/Integrations/WhatsAppInstallationService.cs", // exact app/phone uniqueness metadata only; current authenticated tenant/user checked before persistence
         "ProjectManagement.Application/Features/Integrations/WhatsAppGatewayService.cs", // signed provider callbacks resolve exact app/WABA/phone installation metadata only; tenant scope restored and no business reads/actions
         "ProjectManagement.Application/Features/Integrations/WebhookService.cs",
         "ProjectManagement.Application/Features/Issues/IssueService.cs",

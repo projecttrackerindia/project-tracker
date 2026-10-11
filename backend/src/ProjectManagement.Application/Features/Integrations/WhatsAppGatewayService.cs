@@ -17,6 +17,13 @@ namespace ProjectManagement.Application.Features.Integrations;
 public class WhatsAppOptions
 {
     public const string Section = "WhatsApp";
+    public bool InstallationEnabled { get; set; }
+    public string? EmbeddedSignupConfigId { get; set; }
+    public string? ApiVersion { get; set; }
+    public string? SignupVersion { get; set; }
+    public bool InstallationConfigured => Configured && WhatsAppGatewayService.ProviderId(EmbeddedSignupConfigId)
+        && ApiVersion is { Length: <= 10 } && System.Text.RegularExpressions.Regex.IsMatch(ApiVersion, @"^v[0-9]{1,3}\.[0-9]{1,2}$")
+        && SignupVersion is "v3" or "v4";
     public bool WebhookReceptionEnabled { get; set; } // Default off; sending has no implementation or activation switch.
     public string? AppId { get; set; }
     public string? AppSecret { get; set; }
@@ -39,7 +46,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
     internal static bool ProviderId(string? value) => value is { Length: > 0 and <= 40 } && value.All(c => c is >= '0' and <= '9');
 
     private static DateTimeOffset Utc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-    private async Task RequireAdminAsync(CancellationToken ct)
+    internal async Task RequireAdminAsync(CancellationToken ct)
     {
         var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
         if (!await db.TenantMembers.AnyAsync(x => x.TenantId == tenant && x.UserId == user
@@ -48,8 +55,9 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
             || !await db.Tenants.AnyAsync(x => x.Id == tenant && x.Type == WorkspaceType.Organization, ct))
             throw new ForbiddenException("Only an organization owner or administrator can manage WhatsApp.");
     }
-    private async Task<bool> EligibleAsync(Guid tenant, CancellationToken ct)
+    internal async Task<bool> EligibleAsync(Guid tenant, CancellationToken ct)
     {
+        entitlements.Forget(tenant);
         var sub = await db.Subscriptions.AsNoTracking().Include(x => x.Plan).SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         return sub is { Status: SubscriptionStatus.Active, Plan.IsActive: true }
             && (sub.CurrentPeriodEnd == null || sub.CurrentPeriodEnd > clock.Now)
@@ -61,7 +69,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
         var tenant = ctx.RequireTenantId();
         var connection = await db.WhatsAppConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         return new(_o.Configured, _o.Configured && _o.WebhookReceptionEnabled, await EligibleAsync(tenant, ct),
-            connection?.Active == true, connection?.DisplayName, connection is null ? null : Utc(connection.ConnectedAt));
+            connection?.Active == true && (connection.TokenExpiresAt == null || connection.TokenExpiresAt > clock.Now), connection?.DisplayName, connection is null ? null : Utc(connection.ConnectedAt), _o.InstallationEnabled && _o.InstallationConfigured);
     }
     public async Task<IReadOnlyList<WhatsAppReceiptDto>> ReceiptsAsync(CancellationToken ct)
     {
@@ -78,6 +86,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
         await RequireAdminAsync(ct); var tenant = ctx.RequireTenantId();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.LockTenantLedgerAsync(tenant, ct);
+        await db.ProviderOAuthAttempts.Where(x => x.Provider == "whatsapp" && x.TenantId == tenant).ExecuteDeleteAsync(ct);
         var c = await db.WhatsAppConnections.SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         if (c is not null && (c.Active || c.AccessTokenProtected.Length > 0))
         {
@@ -180,7 +189,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
                 ctx.TenantId = c.TenantId; ctx.UserId = null;
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 await db.LockTenantLedgerAsync(c.TenantId, ct);
-                if (!await db.WhatsAppConnections.AnyAsync(x => x.Id == c.Id && x.Active
+                if (!await db.WhatsAppConnections.AnyAsync(x => x.Id == c.Id && x.Active && (x.TokenExpiresAt == null || x.TokenExpiresAt > clock.Now)
                         && x.AppId == _o.AppId && x.BusinessAccountId == group.Key.BusinessId
                         && x.PhoneNumberId == group.Key.PhoneId, ct)
                     || !await db.Tenants.AnyAsync(x => x.Id == c.TenantId && x.Type == WorkspaceType.Organization, ct)
@@ -192,7 +201,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx, Entitl
                 foreach (var incoming in group.DistinctBy(x => x.MessageId))
                 {
                     if (incoming.Timestamp < clock.Now.AddDays(-30) || incoming.Timestamp > clock.Now.AddMinutes(5)
-                        || incoming.Timestamp < c.ConnectedAt) continue;
+                        || incoming.Timestamp < new DateTime(c.ConnectedAt.Ticks - c.ConnectedAt.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc)) continue;
                     if (await db.WhatsAppInboundReceipts.AnyAsync(x => x.AppId == _o.AppId
                             && x.PhoneNumberId == c.PhoneNumberId && x.ProviderMessageId == incoming.MessageId, ct)) continue;
                     if (remaining == 0) break;
