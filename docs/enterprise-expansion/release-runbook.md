@@ -78,3 +78,7 @@ CI explicitly runs PostgresExpansionUpgradeTests against a random disposable dat
 ## CI baseline and preview gate
 
 Run 38140326906 on cdd8ee5 passed all six CI jobs, including the explicit disposable upgrade from main. This satisfies the real PostgreSQL upgrade check at that baseline; multi-replica contention and remaining release gates are still open. Future UI batches run npm run build and npm run test:ui, inspect generated desktop/mobile screenshots, and show previews to the user before committing. CI retains synthetic previews as enterprise-ui-previews. This does not enable payment/provider flags or authorize claiming a complete coordinated release.
+
+## Idle installation recovery and retention
+
+Apply 20261011161936_WhatsAppMetadataRetention after durable delivery; it adds one nullable marker and four indexes, with no content rewrite or consent activation. Verify the latest real PostgreSQL upgrade and new maintenance tests in CI before release. The existing maintenance worker handles idle/inactive installations even with provider gates off. Live/unrecognized states and recent evidence survive; lost send acknowledgements never become retryable. Housekeeping is bounded and tenant-locked. Monitor backlog and preserve existing provider/payment gates; orphan cleanup, broader restart/replica coverage and the other release workstreams are still open. Prior 98095cb passed all six CI jobs in run 38154219373. A backend technical-reference image was shown to the user before this batch commit.

@@ -134,3 +134,7 @@ GET /api/v1/integrations/whatsapp/templates is organization-admin-only and no-st
 GET /api/v1/integrations/whatsapp/deliveries requires a current organization administrator; GET /api/v1/me/whatsapp-contact/deliveries returns only the current member's rows. Both are no-store and return at most fifty entries from the last thirty days: category, state, sanitized reason and timestamps. No phone, protected token, callback tag, resource identifier or notification body is exposed.
 
 States distinguish queued/preparing/sending from accepted/delivered/read, rejected/failed, suppressed and unknown. Provider acceptance is not proof of delivery. There is no send/resend endpoint: approved generic templates originate from existing authorized assignment, overdue and public support notifications, with independently verified phone/notification consent and fresh resource access. Signed status callbacks may resolve an unknown attempt; uncertain attempts are never blindly retried.
+
+## Idle WhatsApp maintenance
+
+No public endpoint or request/response change is added. Existing private/admin delivery history still reports accepted/delivered/read/unknown status. Internal maintenance covers idle/inactive installations; stale sending leases remain unknown and cannot be retried. Recent status/acceptance/decision evidence is protected from deletion for thirty days. Provider and AI deployment gates remain unchanged.

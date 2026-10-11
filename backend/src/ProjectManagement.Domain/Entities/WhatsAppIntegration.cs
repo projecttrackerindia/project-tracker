@@ -26,6 +26,7 @@ public class WhatsAppConnection : TenantEntity, ITenantScoped
     public bool? HealthAppSubscribed { get; set; }
     public bool? HealthPhoneVerified { get; set; }
     public DateTime? DeliveryPolledAt { get; set; }
+    public DateTime? RetentionPolledAt { get; set; }
     public DateTime? TemplatesAttemptedAt { get; set; }
     public DateTime? TemplatesCheckedAt { get; set; }
     public Guid? TemplatesLeaseId { get; set; }

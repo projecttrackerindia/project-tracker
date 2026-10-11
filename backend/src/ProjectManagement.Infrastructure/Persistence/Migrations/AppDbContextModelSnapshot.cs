@@ -8123,6 +8123,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<DateTime?>("RetentionPolledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("SupportUpdateTemplateState")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -8167,6 +8170,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RetentionPolledAt");
 
                     b.HasIndex("TenantId")
                         .IsUnique();
@@ -8407,10 +8412,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CallbackTag")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedAt");
+
                     b.HasIndex("TenantId", "NotificationId")
                         .IsUnique();
 
                     b.HasIndex("TenantId", "State", "AvailableAt");
+
+                    b.HasIndex("TenantId", "State", "ExpiresAt");
+
+                    b.HasIndex("TenantId", "State", "LeaseUntil");
 
                     b.HasIndex("TenantId", "UserId", "AttemptedAt");
 

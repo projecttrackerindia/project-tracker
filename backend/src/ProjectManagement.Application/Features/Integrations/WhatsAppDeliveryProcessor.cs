@@ -50,17 +50,7 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
         {
             await db.LockTenantLedgerAsync(tenant, ct);
             await db.WhatsAppConnections.Where(x => x.TenantId == tenant).ExecuteUpdateAsync(s => s.SetProperty(x => x.DeliveryPolledAt, now), ct);
-            await db.WhatsAppDeliveries.Where(x => x.State == "preparing" && x.LeaseUntil <= now && x.AttemptedAt == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, "queued").SetProperty(x => x.AvailableAt, now)
-                    .SetProperty(x => x.LeaseId, (Guid?)null).SetProperty(x => x.LeaseUntil, (DateTime?)null), ct);
-            await db.WhatsAppDeliveries.Where(x => x.State == "sending" && x.LeaseUntil <= now)
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, "unknown").SetProperty(x => x.Reason, "PROVIDER_OUTCOME_UNKNOWN")
-                    .SetProperty(x => x.LeaseUntil, (DateTime?)null), ct);
-            await db.WhatsAppDeliveries.Where(x => x.State == "queued" && x.ExpiresAt <= now)
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, "suppressed").SetProperty(x => x.Reason, "NOTIFICATION_EXPIRED"), ct);
-            // Bounded retention; unresolved recent attempts survive restarts and are never replayed.
-            await db.WhatsAppDeliveries.Where(x => x.CreatedAt < now.AddDays(-30) && x.State != "sending" && x.State != "preparing")
-                .OrderBy(x => x.CreatedAt).Take(100).ExecuteDeleteAsync(ct);
+            await WhatsAppMetadataMaintenance.MaintainTenantAsync(db, tenant, now, ct);
             await tx.CommitAsync(ct);
         }
         var notifications = await (from n in db.Notifications.AsNoTracking()

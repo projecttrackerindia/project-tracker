@@ -279,7 +279,7 @@ public class BillingService(
 }
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
-public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
+public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks, ProjectManagement.Application.Features.Integrations.WhatsAppMetadataMaintenance whatsAppMetadata)
 {
     private const int PastDueGraceDays = 7;
 
@@ -289,6 +289,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await RunSubscriptionLifecycleAsync(ct);
         await CleanupAsync(ct);
         await personalFiles.PurgeAsync(ct);
+        await whatsAppMetadata.RunAsync(ct);
         await exports.PurgeExpiredAsync(ct: ct);
         await webhooks.PurgeAsync(ct);
         await files.PurgeOrphansAsync(TimeSpan.FromDays(7), ct: ct); // files of projects / tasks deleted more than a week ago

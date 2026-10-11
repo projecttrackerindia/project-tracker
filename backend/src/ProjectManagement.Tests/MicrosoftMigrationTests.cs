@@ -72,7 +72,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         await SqliteEnterpriseUpgrade.ApplyAsync(db); await SqliteEnterpriseUpgrade.ApplyAsync(db);
         var row = await db.WhatsAppConnections.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(tenant, row.TenantId); Assert.Equal("789", row.PhoneNumberId); Assert.Equal("protected-fixture", row.AccessTokenProtected);
-        Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);Assert.Null(row.DeliveryPolledAt);
+        Assert.True(row.Active); Assert.Null(row.TokenExpiresAt);Assert.Null(row.DeliveryPolledAt);Assert.Null(row.RetentionPolledAt);
         Assert.Equal("unchecked",row.HealthState);Assert.Null(row.HealthAttemptedAt);Assert.Null(row.HealthCheckedAt);
         Assert.Null(row.HealthLeaseId);Assert.Null(row.HealthTokenValid);Assert.Null(row.HealthScopesPresent);
         Assert.Null(row.HealthAssetsVerified);Assert.Null(row.HealthAppSubscribed);Assert.Null(row.HealthPhoneVerified);

@@ -16,6 +16,9 @@ public partial class AppDbContext
         {
             e.HasIndex(x => new { x.TenantId, x.NotificationId }).IsUnique();
             e.HasIndex(x => new { x.TenantId, x.State, x.AvailableAt });
+            e.HasIndex(x => new { x.TenantId, x.State, x.LeaseUntil });
+            e.HasIndex(x => new { x.TenantId, x.State, x.ExpiresAt });
+            e.HasIndex(x => new { x.TenantId, x.CreatedAt });
             e.HasIndex(x => new { x.TenantId, x.UserId, x.AttemptedAt });
             e.HasIndex(x => new { x.TenantId, x.AttemptedAt });
             e.HasIndex(x => new { x.TenantId, x.CallbackTag }).IsUnique();
@@ -40,6 +43,7 @@ public partial class AppDbContext
         b.Entity<WhatsAppConnection>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();
+            e.HasIndex(x => x.RetentionPolledAt);
             // Retained inactive mappings cannot be silently reassigned to a different customer.
             e.HasIndex(x => new { x.AppId, x.PhoneNumberId }).IsUnique();
             e.Property(x => x.TemplatesConfigurationHash).HasMaxLength(64);
