@@ -279,14 +279,16 @@ public class BillingService(
 }
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
-public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
+public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks)
 {
     private const int PastDueGraceDays = 7;
 
     public async Task RunAllAsync(CancellationToken ct = default)
     {
+        await SendCertificationExpiryAsync(ct);
         await RunSubscriptionLifecycleAsync(ct);
         await CleanupAsync(ct);
+        await personalFiles.PurgeAsync(ct);
         await exports.PurgeExpiredAsync(ct: ct);
         await webhooks.PurgeAsync(ct);
         await files.PurgeOrphansAsync(TimeSpan.FromDays(7), ct: ct); // files of projects / tasks deleted more than a week ago
@@ -298,6 +300,28 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await documentWorkflows.SendRemindersAsync(ct);   // Business: approvers of overdue review steps are reminded once   // deleted documents after 30 days; old document versions after the plan's history period
     }
 
+    public async Task<int> SendCertificationExpiryAsync(CancellationToken ct = default)
+    {
+        // Trusted maintenance boundary: select active owners, deliver only into their own personal workspace, never the employer's workspace.
+        var today=clock.Today;
+        var due=await db.EmployeeCertifications.IgnoreQueryFilters().Where(c=>!c.Archived&&c.ExpiryReminders&&c.ExpiresOn!=null&&c.ExpiresOn<=today.AddDays(30)
+            && c.ExpiresOn>=today.AddDays(-7)&&(c.ReminderExpiry!=c.ExpiresOn||c.ReminderStage==null||c.ExpiresOn<=today&&c.ReminderStage>0||c.ExpiresOn<=today.AddDays(7)&&c.ReminderStage>7)&&db.Users.Any(u=>u.Id==c.UserId&&u.IsActive)).OrderBy(c=>c.ExpiresOn).Take(200).ToListAsync(ct);
+        var sent=0;
+        foreach(var c in due)
+        {
+            var days=c.ExpiresOn!.Value.DayNumber-today.DayNumber;var stage=days<=0?0:days<=7?7:30;
+            if(c.ReminderExpiry==c.ExpiresOn&&c.ReminderStage is {} previous&&previous<=stage)continue;
+            var tid=await db.Tenants.Where(t=>t.Type==WorkspaceType.Personal&&t.OwnerUserId==c.UserId).Select(t=>(Guid?)t.Id).FirstOrDefaultAsync(ct);if(tid==null)continue;
+            var key=$"cert-expiry:{c.Id:N}:{c.ExpiresOn:yyyyMMdd}:{stage}";
+            if(!await db.Notifications.IgnoreQueryFilters().AnyAsync(n=>n.TenantId==tid&&n.UserId==c.UserId&&n.DedupeKey==key,ct))
+            {
+                var n=new Notification{TenantId=tid.Value,UserId=c.UserId,Type=NotificationType.CertificationExpiry,Title=stage==0?"A certification has expired":"A certification expires soon",Body=$"{c.Name} expires on {c.ExpiresOn:yyyy-MM-dd}.",Link="/account/resumes",DedupeKey=key,CreatedAt=clock.Now};
+                if(await router.ApplyAsync(n,ct)){db.Notifications.Add(n);sent++;}
+            }
+            c.ReminderExpiry=c.ExpiresOn;c.ReminderStage=stage;c.Version++;
+        }
+        await db.SaveChangesAsync(ct);return sent;
+    }
     public async Task RunSubscriptionLifecycleAsync(CancellationToken ct = default)
     {
         var now = clock.Now;

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <ProjectReference Include="..\ProjectManagement.Application\ProjectManagement.Application.csproj" />
+    <ProjectReference Include="..\ProjectManagement.DocumentImport\ProjectManagement.DocumentImport.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\ProjectManagement.Infrastructure\ProjectManagement.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
@@ -18,4 +19,12 @@
     <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
   </ItemGroup>
+  <Target Name="CopyResumeImportWorker" AfterTargets="Build">
+    <ItemGroup><ResumeImportFiles Include="../ProjectManagement.DocumentImport/bin/$(Configuration)/$(TargetFramework)/**/*" /></ItemGroup>
+    <Copy SourceFiles="@(ResumeImportFiles)" DestinationFiles="@(ResumeImportFiles->'$(TargetDir)document-import/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishResumeImportWorker" AfterTargets="Publish">
+    <ItemGroup><PublishedResumeImportFiles Include="$(TargetDir)document-import/**/*" /></ItemGroup>
+    <Copy SourceFiles="@(PublishedResumeImportFiles)" DestinationFiles="@(PublishedResumeImportFiles->'$(PublishDir)document-import/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

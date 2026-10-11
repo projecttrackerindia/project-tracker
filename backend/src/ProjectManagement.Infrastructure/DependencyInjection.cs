@@ -14,6 +14,8 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
+        services.Configure<ResumeImportOptions>(config.GetSection(ResumeImportOptions.Section));
+        services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumeDocumentExtractor,IsolatedResumeDocumentExtractor>();
         services.Configure<ProjectManagement.Application.Features.Billing.PricingOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.PricingOptions.Section));
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
@@ -79,6 +81,8 @@ public static class DependencyInjection
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         // Payments: simulated unless Billing:Provider=Razorpay (keys in Billing:Razorpay:*).
         services.Configure<RazorpayOptions>(config.GetSection(RazorpayOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Resumes.ResumeCheckoutOptions>(config.GetSection(ProjectManagement.Application.Features.Resumes.ResumeCheckoutOptions.Section));
+        services.AddHttpClient<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway, RazorpayResumeGateway>(c=>c.Timeout=TimeSpan.FromSeconds(20));
         if ((config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
             services.AddHttpClient<IPaymentProvider, RazorpayPaymentProvider>(c => c.Timeout = TimeSpan.FromSeconds(20));
         else
@@ -147,6 +151,8 @@ public static class DependencyInjection
         services.AddHostedService<GoogleMeetSyncWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
+        services.Configure<SupportWorkflowOptions>(config.GetSection(SupportWorkflowOptions.Section));
+        services.AddHostedService<SupportWorkflowWorker>();
         services.Configure<ReminderOptions>(config.GetSection(ReminderOptions.Section));
         services.AddHostedService<ReminderWorker>();
         // Push notifications to devices (Web Push with VAPID; keys are made on first use).

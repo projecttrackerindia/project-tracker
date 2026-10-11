@@ -11,6 +11,7 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.People;
 
+public record CertificationBadgeDto(string Name,string Issuer,DateOnly? ExpiresOn,string VerificationStatus);
 public record TeamRefDto(Guid Id, string Name, bool IsLead);
 
 /// <summary>
@@ -20,7 +21,7 @@ public record TeamRefDto(Guid Id, string Name, bool IsLead);
 /// </summary>
 public record MemberProfileDto(Guid UserId, string DisplayName, string Email, bool HasAvatar, TenantRole Role,
     string? JobRole, string? JobRoleColor, IReadOnlyList<TeamRefDto> Teams, UserRefDto? ReportsTo, DateTime JoinedAt,
-    int Open, int Overdue, int DoneLast30Days, int DoneTotal, bool IsMe, bool CanMessage);
+    int Open, int Overdue, int DoneLast30Days, int DoneTotal, bool IsMe, bool CanMessage, IReadOnlyList<CertificationBadgeDto>? CertificationBadges = null);
 
 /// <summary>Reads a profile the caller may see: the target must be a member of the caller's current workspace.</summary>
 public class MemberProfileService(IAppDbContext db, ICurrentContext ctx, WorkItemService workItems)
@@ -45,12 +46,17 @@ public class MemberProfileService(IAppDbContext db, ICurrentContext ctx, WorkIte
                            select new TeamRefDto(t.Id, t.Name, tm.IsLead)).ToListAsync(ct);
         var counts = (await workItems.CountsAsync([userId], WorkItemScope.Caller, ct)).GetValueOrDefault(userId);
 
+        // Reviewed personal-owner filter bypass: target membership above is mandatory; only explicitly shared badges are projected.
+        // Credential IDs, links, attachments and private certifications are never included.
+        var badges = ctx.Role == TenantRole.Guest ? [] : await db.EmployeeCertifications.IgnoreQueryFilters().AsNoTracking()
+            .Where(c=>c.UserId==userId&&c.ShowBadge&&!c.Archived)
+            .OrderBy(c=>c.Name).Take(10).Select(c=>new CertificationBadgeDto(c.Name,c.Issuer,c.ExpiresOn,c.VerificationStatus)).ToListAsync(ct);
         var hideEmail = ctx.Role == TenantRole.Guest && userId != ctx.UserId;
         var me = ctx.UserId == userId;
         return new MemberProfileDto(row.User.Id, row.User.DisplayName, hideEmail ? "" : row.User.Email, row.User.AvatarKey is not null,
             row.Member.Role, jobRole?.Name, jobRole?.Color, teams, reportsTo is null ? null : new UserRefDto(reportsTo.Id, reportsTo.DisplayName),
             row.Member.CreatedAt, counts?.Open ?? 0, counts?.Overdue ?? 0, counts?.DoneLast30Days ?? 0, counts?.DoneTotal ?? 0,
-            me, !me && ctx.Role != TenantRole.Guest);
+            me, !me && ctx.Role != TenantRole.Guest, badges);
     }
 }
 

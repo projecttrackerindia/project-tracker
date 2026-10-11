@@ -84,7 +84,7 @@ public static class DatabaseInitializer
     [
         ("FREE", "Free", "For one person getting started.", 0m, false, 0, new()
         {
-            [FeatureKeys.ProjectLimit] = 5, [FeatureKeys.TaskLimit] = 500, [FeatureKeys.MaxMembers] = 1, [FeatureKeys.MaxTeams] = 1,
+            [FeatureKeys.ResumeTemplates] = 2, [FeatureKeys.ProjectLimit] = 5, [FeatureKeys.TaskLimit] = 500, [FeatureKeys.MaxMembers] = 1, [FeatureKeys.MaxTeams] = 1,
             [FeatureKeys.ActivityRetentionDays] = 30, [FeatureKeys.AdvancedReports] = 0, [FeatureKeys.CustomWorkflows] = 0,
             [FeatureKeys.ApiAccess] = 0, [FeatureKeys.CustomFields] = 0, [FeatureKeys.Automation] = 0, [FeatureKeys.AdvancedPermissions] = 0, [FeatureKeys.AuditLog] = 0,
             [FeatureKeys.StorageLimitMb] = 500, [FeatureKeys.MaxFileSizeMb] = 10, [FeatureKeys.AdvancedSecurity] = 0,
@@ -97,7 +97,7 @@ public static class DatabaseInitializer
         }),
         ("PRO", "Pro", "For teams that plan and deliver together.", 349m, true, 1, new()
         {
-            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
+            [FeatureKeys.ResumeTemplates] = 5, [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = 365, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 0, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 0, [FeatureKeys.AuditLog] = 0,
             [FeatureKeys.StorageLimitMb] = 5120, [FeatureKeys.MaxFileSizeMb] = 100, [FeatureKeys.AdvancedSecurity] = 0,    // 5 GB per person
@@ -109,7 +109,7 @@ public static class DatabaseInitializer
         }),
         ("BUSINESS", "Business", "For growing teams and departments.", 699m, true, 2, new()
         {
-            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
+            [FeatureKeys.ResumeTemplates] = 8, [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = 730, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 1, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 1, [FeatureKeys.AuditLog] = 1,
             [FeatureKeys.StorageLimitMb] = 25600, [FeatureKeys.MaxFileSizeMb] = 250, [FeatureKeys.AdvancedSecurity] = 1,   // 25 GB per person
@@ -121,7 +121,7 @@ public static class DatabaseInitializer
         }),
         ("ENTERPRISE", "Enterprise", "Custom pricing, unlimited scale and advanced governance.", null, false, 3, new()
         {
-            [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
+            [FeatureKeys.ResumeTemplates] = 10, [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = -1, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
             [FeatureKeys.ApiAccess] = 1, [FeatureKeys.CustomFields] = 1, [FeatureKeys.Automation] = 1, [FeatureKeys.AdvancedPermissions] = 1, [FeatureKeys.AuditLog] = 1,
             [FeatureKeys.StorageLimitMb] = -1, [FeatureKeys.MaxFileSizeMb] = 512, [FeatureKeys.AdvancedSecurity] = 1,

@@ -8,6 +8,7 @@ COPY src/ProjectManagement.Domain/*.csproj src/ProjectManagement.Domain/
 COPY src/ProjectManagement.Application/*.csproj src/ProjectManagement.Application/
 COPY src/ProjectManagement.Infrastructure/*.csproj src/ProjectManagement.Infrastructure/
 COPY src/ProjectManagement.Api/*.csproj src/ProjectManagement.Api/
+COPY src/ProjectManagement.DocumentImport/*.csproj src/ProjectManagement.DocumentImport/
 RUN dotnet restore src/ProjectManagement.Api/ProjectManagement.Api.csproj
 
 COPY src/ src/

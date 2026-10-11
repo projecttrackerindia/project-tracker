@@ -228,6 +228,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureBilling(b);
         ConfigureAiOperations(b);
         ConfigureSlack(b);
+        ConfigureResumes(b);
+        ConfigureSupport(b);
+        ConfigureSupportWorkflows(b);
         ApplyQueryFilters(b);
     }
 }

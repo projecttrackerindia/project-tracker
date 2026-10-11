@@ -184,32 +184,6 @@ public class AiOperationsProcessor(IServiceScopeFactory scopes, TimeProvider tim
         return true;
     }
 
-    private static async Task SetRequesterAsync(IServiceProvider sp, AiJob job, CancellationToken ct)
-    {
-        var db = sp.GetRequiredService<IAppDbContext>(); var cc = sp.GetRequiredService<CurrentContext>();
-        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == job.UserId && u.IsActive, ct))
-            throw new ForbiddenException("The requester account is inactive.", "ACCOUNT_INACTIVE");
-        var member = await db.TenantMembers.AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == job.TenantId && m.UserId == job.UserId, ct)
-            ?? throw new ForbiddenException("The requester is no longer a workspace member.", "NOT_A_MEMBER");
-        var tenant = await db.Tenants.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(t => t.Id == job.TenantId && !t.IsDeleted && t.Status == TenantStatus.Active, ct)
-            ?? throw new ForbiddenException("This workspace is unavailable.", "WORKSPACE_UNAVAILABLE");
-        cc.UserId = job.UserId; cc.TenantId = job.TenantId; cc.Role = member.Role; cc.WorkspaceType = tenant.Type; cc.IsPlatformAdmin = false;
-        var permissions = sp.GetRequiredService<PermissionService>();
-        cc.ProjectScope = member.Role == TenantRole.Guest ? ProjectScope.Members
-            : tenant.ProjectVisibility == ProjectVisibility.Teams && !await permissions.HasAsync(Permissions.ProjectsViewAll, ct) ? ProjectScope.Teams : ProjectScope.None;
-        cc.TeamLens = job.TeamId;
-        cc.RestrictsProjects = cc.ProjectScope != ProjectScope.None || cc.TeamLens is not null;
-        cc.ProjectIds = [];
-        if (cc.RestrictsProjects)
-        {
-            var projects = db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.TenantId == job.TenantId && !p.IsDeleted);
-            if (job.TeamId is { } team) projects = projects.Where(p => p.TeamId == team);
-            if (cc.ProjectScope == ProjectScope.Members) projects = projects.Where(p => db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == job.UserId));
-            else if (cc.ProjectScope == ProjectScope.Teams) projects = projects.Where(p => p.OwnerId == job.UserId
-                || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == job.UserId)
-                || p.TeamId != null && db.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == job.UserId));
-            cc.ProjectIds = await projects.Select(p => p.Id).ToArrayAsync(ct);
-        }
-        await sp.GetRequiredService<ProjectAccess>().RequireLensAsync(job.TeamId, ct);
-    }
+    private static Task SetRequesterAsync(IServiceProvider sp, AiJob job, CancellationToken ct) =>
+        WorkspaceExecutionPrincipal.ConfigureAsync(sp,job.UserId,job.TenantId,job.TeamId,ct);
 }

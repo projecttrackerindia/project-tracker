@@ -1,6 +1,6 @@
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -44,6 +44,7 @@ import { MobileAppSection } from './MobileAppSection';
 import { GoogleIntegrationSection } from './GoogleIntegration';
 import { AiUsageCard } from '../ai/AiUsageCard';
 import { SlackSettings } from './SlackSettings';
+const ResumeBuilderSection = lazy(() => import('./ResumeBuilder').then(m=>({default:m.ResumeBuilderSection})));
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -62,7 +63,7 @@ function browserOf(ua: string | null) {
 
 // ================================================================== My account (personal, from the avatar menu)
 
-export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile' | 'integrations';
+export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile' | 'integrations' | 'resumes';
 
 /** My account: everything about me, whatever workspace I am in. Workspace administration lives in Workspace settings. */
 export function AccountPage({ section }: { section: AccountSection }) {
@@ -73,6 +74,7 @@ export function AccountPage({ section }: { section: AccountSection }) {
     { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
     ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'bell' as const }] : []),
     ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Google Workspace', icon: 'video' as const }] : []),
+    { to: '/account/resumes', label: 'Resume studio', icon: 'note' },
   ] }];
   return (
     <SectionLayout title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
@@ -81,6 +83,7 @@ export function AccountPage({ section }: { section: AccountSection }) {
       {section === 'security' && <SecuritySection />}
       {section === 'mobile' && <MobileAppSection />}
       {section === 'integrations' && <GoogleIntegrationSection />}
+      {section === 'resumes' && <Suspense fallback={<PageLoader />}><ResumeBuilderSection /></Suspense>}
     </SectionLayout>
   );
 }

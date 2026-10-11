@@ -8,6 +8,20 @@ namespace ProjectManagement.Application.Abstractions;
 
 public interface IAppDbContext
 {
+    DbSet<PersonalFileDeletion> PersonalFileDeletions { get; }
+    DbSet<PersonalResume> PersonalResumes { get; }
+    DbSet<ResumeExportPurchase> ResumeExportPurchases { get; }
+    DbSet<SupportWorkflowSchedule> SupportWorkflowSchedules { get; }
+    DbSet<SupportWorkflow> SupportWorkflows { get; }
+    DbSet<SupportWorkflowRevision> SupportWorkflowRevisions { get; }
+    DbSet<SupportWorkflowEvent> SupportWorkflowEvents { get; }
+    DbSet<SupportWorkflowRun> SupportWorkflowRuns { get; }
+    DbSet<SupportWorkflowStep> SupportWorkflowSteps { get; }
+    DbSet<SupportTicket> SupportTickets { get; }
+    DbSet<SupportInteraction> SupportInteractions { get; }
+    DbSet<SupportTicketLink> SupportTicketLinks { get; }
+    DbSet<ResumeVersion> ResumeVersions { get; }
+    DbSet<EmployeeCertification> EmployeeCertifications { get; }
     DbSet<SlackConnection> SlackConnections { get; }
     DbSet<SlackOAuthAttempt> SlackOAuthAttempts { get; }
     DbSet<SlackEventReceipt> SlackEventReceipts { get; }
