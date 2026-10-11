@@ -27,3 +27,9 @@ The focused tests run the real API on disposable SQLite databases and apply addi
 Covered behaviors include owner isolation, approval/version conflicts, template caps, corrupt/compressed document rejection, separate original provenance, AI-credit release/replay, captured-payment recovery/refunds/identical artifacts, requester/staff separation, ticket idempotency, badge opt-in, personal reminder destination/deduplication, stale organizational outcomes, acyclic workflow validation, paused approvals, removed publisher membership, foreign-tenant run denial, stale confirmation rejection and SLA event deduplication.
 
 Remaining verification: workflow lease-contention tests; remaining backend tests and PostgreSQL upgrade/transaction checks; deeper component accessibility and browser interaction coverage; Linux isolated-parser execution; exact font/watermark rendering; external OAuth/signature/identity/outbox adapters and mocked confirmed productivity operations. No bulk AI tests or real external sends/calendar writes have been run.
+## Support history and dashboard continuation
+- Final focused run: 10 passed, 0 failed, 0 skipped (support-history-metrics-final.trx), including existing durable workflow regressions.
+- New scenarios cover 60 public replies interleaved with 60 private notes, disjoint complete pages, staff visibility, foreign-tenant rejection, invalid offsets and changed-version rejection.
+- Metrics verify empty foreign-tenant counts, completed on-time/late outcomes, cancelled work exclusions and resolution clocks paused before deadline.
+- Frontend typecheck and production build passed with the new history and dashboard components. No live AI/provider calls or bulk AI tests were run.
+- This is SQLite verification. PostgreSQL/provider activation and the other coordinated release gates remain pending.

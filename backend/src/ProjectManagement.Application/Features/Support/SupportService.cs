@@ -15,6 +15,8 @@ public record SupportInteractionRequest(string Body,string Visibility,string Req
 public record SupportStateRequest(int Version,string State,string? Reason=null,Guid? RelatedTicketId=null);
 public record SupportTicketDto(Guid Id,WorkTaskDto Work,string Category,string Region,string Language,Guid? TeamId,string State,int Version,bool Staff,
     IReadOnlyList<SupportInteraction> Interactions,IReadOnlyList<Guid> Links,string HandoffReason,IReadOnlyDictionary<string,string> CustomFields);
+public record SupportSummary(int Backlog,int Unassigned,int Handoffs,int OpenBreached,int ResolutionMet,int ResolutionMissed,int ResponseMet,int ResponseMissed);
+public record SupportMessagePage(int Version,int Offset,int? NextOffset,IReadOnlyList<SupportInteraction> Items);
 public record SupportQueueItem(Guid Id,string Key,string Title,Priority Priority,WorkTaskStatus WorkStatus,string State,string Category,Guid? AssigneeId,Guid? TeamId,DateTime? ResponseDueAt,DateTime? ResolutionDueAt,int Version);
 public class SupportService(IAppDbContext db,ICurrentContext ctx,WorkTaskService work,PermissionService permissions,Recorder recorder,AppClock clock,ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowEmitter workflows)
 {
@@ -27,22 +29,63 @@ public class SupportService(IAppDbContext db,ICurrentContext ctx,WorkTaskService
     }
     public async Task<IReadOnlyList<SupportQueueItem>> ListAsync(string? state,string? query,int page,CancellationToken ct)
     {
-        await GateAsync(ct);var staff=await permissions.HasAsync(Permissions.WorkEdit,ct);var uid=ctx.RequireUserId();
+        await GateAsync(ct);var permissionsLevel=await permissions.LevelAsync(Modules.Work,ct);var staff=permissionsLevel>=AccessLevel.Edit&&await permissions.HasAsync(Permissions.WorkEdit,ct);var uid=ctx.RequireUserId();
         var q=from t in db.SupportTickets.AsNoTracking() join w in db.WorkTasks.AsNoTracking() on t.WorkTaskId equals w.Id
-              where staff||w.AssigneeId==uid||w.ReporterId==uid select new{Ticket=t,Work=w};
+              where staff||w.ReporterId==uid||(w.AssigneeId==uid&&permissionsLevel>=AccessLevel.Edit) select new{Ticket=t,Work=w};
         if(!string.IsNullOrWhiteSpace(state))q=q.Where(x=>x.Ticket.State==state);
         if(!string.IsNullOrWhiteSpace(query)){var term=query.Trim();if(term.Length>200)throw new ValidationException("query","Use a shorter search.");q=q.Where(x=>x.Work.Title.Contains(term)||x.Ticket.Category.Contains(term));}
         return await q.OrderByDescending(x=>x.Ticket.CreatedAt).Skip((Math.Clamp(page,1,10000)-1)*25).Take(25)
             .Select(x=>new SupportQueueItem(x.Ticket.Id,"WT-"+x.Work.Number,x.Work.Title,x.Work.Priority,x.Work.Status,x.Ticket.State,x.Ticket.Category,x.Work.AssigneeId,x.Ticket.TeamId,x.Work.ResponseDueAt,x.Work.ResolutionDueAt,x.Ticket.Version)).ToListAsync(ct);
     }
+    public async Task<SupportSummary> SummaryAsync(CancellationToken ct)
+    {
+        await GateAsync(ct);await permissions.RequireAsync(Permissions.ReportsView,ct);
+        var level=await permissions.LevelAsync(Modules.Work,ct);
+        var staff=level>=AccessLevel.Edit&&await permissions.HasAsync(Permissions.WorkEdit,ct);
+        var uid=ctx.RequireUserId();var now=clock.Now;
+        // WorkTasks retains its tenant and project query filters. Never aggregate unrestricted tickets.
+        var visible=from t in db.SupportTickets.AsNoTracking()
+                    join w in db.WorkTasks.AsNoTracking() on t.WorkTaskId equals w.Id
+                    where staff||w.ReporterId==uid||(w.AssigneeId==uid&&level>=AccessLevel.Edit)
+                    select new{Ticket=t,Work=w};
+        var result=await visible.GroupBy(x=>1).Select(g=>new SupportSummary(
+            g.Count(x=>x.Work.Status!=WorkTaskStatus.Completed&&x.Work.Status!=WorkTaskStatus.Cancelled),
+            g.Count(x=>x.Work.Status!=WorkTaskStatus.Completed&&x.Work.Status!=WorkTaskStatus.Cancelled&&x.Work.AssigneeId==null),
+            g.Count(x=>x.Ticket.State=="handoff"&&x.Work.Status!=WorkTaskStatus.Completed&&x.Work.Status!=WorkTaskStatus.Cancelled),
+            g.Count(x=>x.Work.Status!=WorkTaskStatus.Completed&&x.Work.Status!=WorkTaskStatus.Cancelled&&
+                ((x.Work.ResponseDueAt!=null&&x.Work.RespondedAt==null&&x.Work.ResponseDueAt<now)||
+                 (x.Work.ResolutionDueAt!=null&&((x.Work.SlaPausedAt==null&&x.Work.ResolutionDueAt<now)||
+                    (x.Work.SlaPausedAt!=null&&x.Work.SlaPausedAt>x.Work.ResolutionDueAt))))),
+            g.Count(x=>x.Work.Status==WorkTaskStatus.Completed&&x.Work.CompletedAt!=null&&x.Work.ResolutionDueAt!=null&&x.Work.CompletedAt<=x.Work.ResolutionDueAt),
+            g.Count(x=>x.Work.Status==WorkTaskStatus.Completed&&x.Work.CompletedAt!=null&&x.Work.ResolutionDueAt!=null&&x.Work.CompletedAt>x.Work.ResolutionDueAt),
+            g.Count(x=>x.Work.Status!=WorkTaskStatus.Cancelled&&x.Work.RespondedAt!=null&&x.Work.ResponseDueAt!=null&&x.Work.RespondedAt<=x.Work.ResponseDueAt),
+            g.Count(x=>x.Work.Status!=WorkTaskStatus.Cancelled&&x.Work.RespondedAt!=null&&x.Work.ResponseDueAt!=null&&x.Work.RespondedAt>x.Work.ResponseDueAt)
+        )).SingleOrDefaultAsync(ct);
+        return result??new(0,0,0,0,0,0,0,0);
+    }
+    public async Task<SupportMessagePage> MessagesAsync(Guid id,int version,int offset,CancellationToken ct)
+    {
+        var(t,_,staff)=await FindAsync(id,ct);
+        if(offset<0||offset>2000)throw new ValidationException("offset","Choose a valid conversation page.");
+        if(version!=t.Version)throw new ConflictException("This conversation changed. Reload the ticket before paging.");
+        // Filter private notes before paging; hidden identifiers and counts never reach requesters.
+        var rows=await db.SupportInteractions.AsNoTracking()
+            .Where(m=>m.TicketId==id&&(staff||m.Visibility=="public"))
+            .OrderByDescending(m=>m.CreatedAt).ThenByDescending(m=>m.Id)
+            .Skip(offset).Take(51).ToListAsync(ct);
+        // A concurrent writer must not shift offsets silently.
+        var current=await db.SupportTickets.AsNoTracking().Where(x=>x.Id==id).Select(x=>(int?)x.Version).SingleOrDefaultAsync(ct);
+        if(current!=version)throw new ConflictException("This conversation changed. Reload the ticket before paging.");
+        return new(version,offset,rows.Count>50?offset+50:null,rows.Take(50).Reverse().ToArray());
+    }
     public async Task<SupportTicketDto> GetAsync(Guid id,CancellationToken ct)
     {
         var (t,w,staff)=await FindAsync(id,ct);
-        var messages=await db.SupportInteractions.AsNoTracking().Where(m=>m.TicketId==id&&(staff||m.Visibility=="public")).OrderByDescending(m=>m.CreatedAt).Take(200).ToListAsync(ct);
+        var messages=await db.SupportInteractions.AsNoTracking().Where(m=>m.TicketId==id&&(staff||m.Visibility=="public")).OrderByDescending(m=>m.CreatedAt).ThenByDescending(m=>m.Id).Take(50).ToListAsync(ct);
         var links=await db.SupportTicketLinks.Where(l=>l.TicketId==id).Select(l=>l.RelatedTicketId).ToListAsync(ct);
         // Link identifiers are only returned when the caller can open both sides.
         var safe=new List<Guid>();foreach(var link in links){try{await FindAsync(link,ct);safe.Add(link);}catch(NotFoundException){}}
-        return new(t.Id,w,t.Category,t.Region,t.Language,t.TeamId,t.State,t.Version,staff,messages.OrderBy(m=>m.CreatedAt).ToArray(),safe,staff?t.HandoffReason:"",staff?JsonSerializer.Deserialize<Dictionary<string,string>>(t.CustomFieldsJson)??new():new());
+        return new(t.Id,w,t.Category,t.Region,t.Language,t.TeamId,t.State,t.Version,staff,messages.AsEnumerable().Reverse().ToArray(),safe,staff?t.HandoffReason:"",staff?JsonSerializer.Deserialize<Dictionary<string,string>>(t.CustomFieldsJson)??new():new());
     }
     public async Task<SupportTicketDto> CreateAsync(CreateSupportTicketRequest req,CancellationToken ct)
     {

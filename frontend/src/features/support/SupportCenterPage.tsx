@@ -19,12 +19,12 @@ type Interaction={id:string;authorId:string;body:string;visibility:string;kind:s
 type Ticket={id:string;work:WorkTask;state:string;category:string;region:string;language:string;teamId:string|null;version:number;staff:boolean;interactions:Interaction[];links:string[];handoffReason:string;customFields:Record<string,string>};
 export function SupportCenterPage(){const workspace=useWorkspaceId();return <SupportWorkspacePage key={workspace}/>;}
 function SupportWorkspacePage(){
-  const canWorkflow=useCan('workflow.manage');const [tab,setTab]=useState<'tickets'|'workflows'>('tickets');
+  const canReports=useCan('reports.view');const canWorkflow=useCan('workflow.manage');const [tab,setTab]=useState<'tickets'|'workflows'>('tickets');
   const canCreate=useCan('work.create');const qc=useQueryClient();const [query,setQuery]=useState('');const term=useDebounced(query);const [state,setState]=useState('');const [page,setPage]=useState(1);const [selected,setSelected]=useState<string|null>(null);const [create,setCreate]=useState(false);
   const list=useWsQuery(['support','tickets',term,state,page],()=>api<QueueItem[]>('GET','/support/tickets'+qs({query:term,state,page})));
   const refresh=()=>qc.invalidateQueries({predicate:q=>q.queryKey.includes('support')||q.queryKey.includes('work')});
   return <div className="support-center"><PageHead title="Support center" sub="A clear queue, accountable ownership and verified resolution." >{canCreate&&tab==='tickets'?<button className="btn btn-primary" onClick={()=>setCreate(true)}><Icon name="plus"/>New ticket</button>:undefined}</PageHead><nav className="support-tabs" aria-label="Support views"><button className="btn" aria-pressed={tab==='tickets'} onClick={()=>setTab('tickets')}><Icon name="inbox"/>Tickets</button>{canWorkflow&&<button className="btn" aria-pressed={tab==='workflows'} onClick={()=>setTab('workflows')}><Icon name="workflow"/>Workflow studio</button>}</nav><div hidden={tab!=='tickets'}><div className="support-tools"><input aria-label="Search support tickets" value={query} placeholder="Search tickets or categories" maxLength={200} onChange={e=>{setQuery(e.target.value);setPage(1);}}/><select aria-label="Ticket state" value={state} onChange={e=>{setState(e.target.value);setPage(1);}}><option value="">All states</option>{['open','waiting','handoff','resolved','closed','merged','cancelled'].map(s=><option key={s}>{s}</option>)}</select></div>
-    <p className="support-note">Assignments, attachments, work history and SLA settings use the existing Operations tools. External messaging is disabled until provider accounts and verified customer identity are configured.</p>
+    {canReports&&<SupportMetrics/>}<p className="support-note">Assignments, attachments, work history and SLA settings use the existing Operations tools. External messaging is disabled until provider accounts and verified customer identity are configured.</p>
     {list.isLoading?<PageLoader/>:list.error?<ErrorState error={list.error} retry={()=>void list.refetch()}/>:!list.data?.length?<div className="support-empty"><Icon name="inbox"/><h3>No tickets in this queue</h3><p>Create a ticket or adjust the filters.</p></div>:<div className="support-queue" role="list">{list.data.map(t=><button key={t.id} role="listitem" className="support-ticket-row" onClick={()=>setSelected(t.id)}><span className="support-ticket-key">{t.key}</span><div><b>{t.title}</b><small>{t.category}{t.resolutionDueAt?` · Resolution due ${new Date(t.resolutionDueAt).toLocaleString()}`:''}</small></div><PriorityBadge priority={t.priority}/><span className="badge badge-neutral">{t.state}</span></button>)}</div>}
     <div className="support-pagination"><button className="btn" disabled={page<=1} onClick={()=>setPage(page-1)}>Previous</button><span>Page {page}</span><button className="btn" disabled={(list.data?.length??0)<25} onClick={()=>setPage(page+1)}>Next</button></div>
     </div>{tab==='workflows'&&<Suspense fallback={<PageLoader/>}><WorkflowStudio/></Suspense>}
@@ -41,7 +41,7 @@ function TicketDetail({id,onClose,onSelect}:{id:string;onClose:()=>void;onSelect
   const t=q.data;
   return <Modal title={t?`${t.work.key} · ${t.work.title}`:'Support ticket'} onClose={onClose} size="xl">{q.isLoading?<PageLoader/>:!t?<ErrorState error={q.error} retry={()=>void q.refetch()}/>:<div className="support-detail">{error&&<p role="alert" className="form-error">{error}</p>}<div className="support-detail-meta"><PriorityBadge priority={t.work.priority}/><span className="badge badge-neutral">{t.state}</span><span>{t.category}</span>{t.work.sla&&<SlaChip sla={t.work.sla}/>}<button className="btn btn-sm" onClick={()=>setEdit(true)}>Work, assignment & files</button></div><p>{t.work.description}</p>{t.handoffReason&&<p className="support-note">Human handoff: {t.handoffReason}</p>}
     {t.staff&&<TicketMetadata key={t.version} ticket={t} onSaved={()=>void q.refetch()}/>}
-    <div className="support-thread" aria-label="Ticket interactions">{!t.interactions.length&&<p>No replies yet.</p>}{t.interactions.map(m=><article key={m.id} className={m.visibility==='internal'?'internal':''}><header><b>{m.visibility==='internal'?'Staff note':'Reply'}</b><time>{new Date(m.createdAt).toLocaleString()}</time></header><p>{m.body}</p></article>)}</div>
+    <TicketThread key={t.version} ticket={t} onReload={()=>void q.refetch()}/>
     {t.state!=='closed'&&t.state!=='merged'&&t.state!=='cancelled'&&<form className="support-form" onSubmit={e=>{e.preventDefault();void run(async()=>{const visibility=t.staff&&internal?'internal':'public';
       if(!attempt.current||attempt.current.body!==body||attempt.current.visibility!==visibility)attempt.current={body,visibility,key:crypto.randomUUID()};
       await api('POST',`/support/tickets/${id}/messages`,{body,visibility,requestKey:attempt.current.key});attempt.current=null;setBody('');});}}><label>{t.staff&&internal?'Internal note':'Reply to requester'}<textarea required maxLength={8000} rows={4} value={body} onChange={e=>setBody(e.target.value)}/></label>{t.staff&&<label className="support-checkbox"><input type="checkbox" checked={internal} onChange={e=>setInternal(e.target.checked)}/>Private staff note</label>}<button className="btn btn-primary" disabled={busy}>{busy?'Saving…':'Save reply'}</button><small>Replies are saved in Project Tracker. No external message is sent.</small></form>}
@@ -80,4 +80,33 @@ function TicketMetadata({ticket,onSaved}:{ticket:Ticket;onSaved:()=>void}){
     <small>Custom fields are staff-only. These details support workflow conditions; assignment is managed separately.</small>
     <button className="btn" disabled={busy}>{busy?'Saving…':'Save routing details'}</button>
   </form></details>;
+}
+function TicketThread({ticket,onReload}:{ticket:Ticket;onReload:()=>void}){
+  const [offset,setOffset]=useState(0);
+  const history=useWsQuery(['support','messages',ticket.id,ticket.version,offset],
+    ()=>api<{items:Interaction[];nextOffset:number|null}>('GET','/support/tickets/'+ticket.id+'/messages'+qs({version:ticket.version,offset})));
+  return <section aria-label="Ticket interactions">
+    {history.isLoading?<PageLoader/>:history.error?<ErrorState error={history.error} retry={onReload}/>:
+      <div className="support-thread">{!history.data?.items.length&&<p>No replies yet.</p>}{history.data?.items.map(m=>
+        <article key={m.id} className={m.visibility==='internal'?'internal':''}><header><b>{m.visibility==='internal'?'Staff note':'Reply'}</b><time>{new Date(m.createdAt).toLocaleString()}</time></header><p>{m.body}</p></article>)}</div>}
+    <nav className="support-pagination" aria-label="Conversation history">
+      <button className="btn" disabled={history.isLoading||history.data?.nextOffset==null} onClick={()=>setOffset(history.data!.nextOffset!)}>Older replies</button>
+      <span aria-live="polite">{offset===0?'Latest replies':'Earlier replies'}</span>
+      <button className="btn" disabled={history.isLoading||offset===0} onClick={()=>setOffset(Math.max(0,offset-50))}>Newer replies</button>
+    </nav>
+  </section>;
+}
+function SupportMetrics(){
+  const summary=useWsQuery(['support','summary'],()=>api<{backlog:number;unassigned:number;handoffs:number;openBreached:number;resolutionMet:number;resolutionMissed:number;responseMet:number;responseMissed:number}>('GET','/support/tickets/summary'));
+  if(summary.isLoading)return <p role="status">Loading support metrics…</p>;
+  if(summary.error)return <ErrorState error={summary.error} retry={()=>void summary.refetch()}/>;
+  const s=summary.data;if(!s)return null;
+  const resolved=s.resolutionMet+s.resolutionMissed;
+  const responded=s.responseMet+s.responseMissed;
+  return <section className="support-metrics" aria-label="Authorized support metrics">
+    {[['Backlog',s.backlog],['Unassigned',s.unassigned],['Human handoffs',s.handoffs],['Open SLA breaches',s.openBreached],
+      ['Resolution SLA',resolved?Math.round(s.resolutionMet/resolved*100)+'%':'No measured completions'],
+      ['Response SLA',responded?Math.round(s.responseMet/responded*100)+'%':'No measured responses']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+    <small>All visible tickets. SLA percentages use recorded outcomes with targets; cancelled work is excluded.</small>
+  </section>;
 }

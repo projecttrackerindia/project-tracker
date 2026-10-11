@@ -30,7 +30,9 @@ Checkout defaults disabled. A missing reviewed tax configuration is not interpre
 ## Support and workflows
 
 - GET/POST /api/v1/support/tickets: authorized queue (25 per page) or creation using an existing work type.
-- GET /api/v1/support/tickets/{id}: current work, safe related IDs and last 200 permitted interactions.
+- GET /api/v1/support/tickets/{id}: current work, safe related IDs and last 50 permitted interactions.
+- GET /api/v1/support/tickets/{id}/messages?version=N&offset=N: latest-first pages of 50 visible entries, returned chronologically within the page. nextOffset is null at the end. Hidden notes are filtered before paging. Changes invalidate the version (409); reload the ticket.
+- GET /api/v1/support/tickets/summary: requires ReportsView and Work access; exact SQL aggregates for visible backlog, unassigned work, handoffs, open breaches and recorded response/resolution outcomes. Cancelled work is excluded from outcomes and open clocks; pre-deadline resolution pauses are respected.
 - PUT .../{id}/metadata: versioned bounded category/region/language/team/custom fields.
 - POST .../{id}/messages: body, visibility, stable requestKey; only staff can write private notes.
 - POST .../{id}/state: version, state, reason, relatedTicketId; close requires accepted completed resolution; merges preserve original history.

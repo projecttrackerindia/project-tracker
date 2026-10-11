@@ -28,3 +28,5 @@ MemberProfile.cs projects explicitly shared badge fields after workspace members
 - External verified identity, WhatsApp signatures/delivery outbox, Microsoft OAuth and confirmed productivity operations are not implemented at this checkpoint. They remain disabled.
 
 No credentials, private document bodies, raw provider replies or payment secrets should be added to audit metadata or release reports.
+## Support history and metrics continuation
+Queue staff access now requires both Work module Edit and WorkEdit, matching detail access; an assignee with only module View does not become staff. History authorizes the ticket on every page and filters internal notes before OFFSET/LIMIT. Version checks reject changed conversations, including changes during the query. Stable timestamp/ID ordering resolves timestamp ties. Metrics reuse filtered operational work and ReportsView; no unbounded message materialization or cross-tenant counts.

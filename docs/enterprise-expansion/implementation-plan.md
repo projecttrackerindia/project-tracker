@@ -12,3 +12,6 @@ Initial architecture inspection is recorded before code changes. Work proceeds o
 8. Maintain data-model/API/security/integration/test/release docs. Use mocked regression tests, builds and SQLite/PostgreSQL migration checks. No bulk AI tests, real customer messages or calendar writes. Merge/deploy only after applicable release gates pass.
 
 One coordinated release is requested. Interim commits are review checkpoints, not claims that unfinished modules are complete. The attachment's acceptance criteria remain release gates; blockers and disabled adapters must be reported accurately.
+
+## Support continuation after checkpoint f1889ab
+Implemented permission-aware SQL dashboard counts and complete bounded conversation paging, with stale-version protection and private-note filtering before pagination. Initial ticket detail now carries at most 50 messages. Remaining support release gates still include routing policies, multilevel escalation configuration, external verified identities and provider adapters; metrics do not claim predictive accuracy or live availability.
