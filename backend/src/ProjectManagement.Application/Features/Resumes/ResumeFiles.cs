@@ -72,7 +72,7 @@ public static class ResumeFiles
                 throw new ValidationException("content","Some characters are not supported by the PDF font. Download Word to preserve this text.");
         };
         XGraphics? g=null;double y=0;double width=595-t.Margin*2;int pages=0;
-        var normal=new XFont("PT Noto",10.5,XFontStyleEx.Regular);var bold=new XFont("PT Noto",t.HeadingSize,XFontStyleEx.Bold);var title=new XFont("PT Noto",25,XFontStyleEx.Bold);var accent=new XSolidBrush(XColor.FromArgb(Convert.ToInt32(t.Accent[..2],16),Convert.ToInt32(t.Accent.Substring(2,2),16),Convert.ToInt32(t.Accent.Substring(4,2),16)));
+        var normal=new XFont("PT Noto",11,XFontStyleEx.Regular);var bold=new XFont("PT Noto",t.HeadingSize,XFontStyleEx.Bold);var title=new XFont("PT Noto",28,XFontStyleEx.Bold);var accent=new XSolidBrush(XColor.FromArgb(Convert.ToInt32(t.Accent[..2],16),Convert.ToInt32(t.Accent.Substring(2,2),16),Convert.ToInt32(t.Accent.Substring(4,2),16)));
         void Page(){g?.Dispose();if(++pages>30)throw new ValidationException("content","This resume is too long to export.");var p=doc.AddPage();p.Width=XUnit.FromPoint(595);p.Height=XUnit.FromPoint(842);g=XGraphics.FromPdfPage(p);y=t.Margin;
             if(watermark){var mark=new XFont("PT Noto",62,XFontStyleEx.Bold);g.DrawString("Project Tracker",mark,new XSolidBrush(XColor.FromArgb(242,237,255)),new XRect(0,370,595,100),XStringFormats.Center);}
             g.DrawString($"{pages}",new XFont("PT Noto",8),XBrushes.Gray,new XRect(t.Margin,810,width,12),XStringFormats.TopRight);
@@ -100,9 +100,11 @@ public static class ResumeFiles
                 Line(line,font,brush,centered);
             }
         }
-        Page();Text(c.Name,title,accent,t.Centered);
-        if(c.Headline.Length>0)Text(c.Headline);
-        if(c.Contact.Length>0)Text(c.Contact);
+        Page();
+        if(t.Rule){g!.DrawLine(new XPen(((XSolidBrush)accent).Color,2),t.Margin,y,595-t.Margin,y);y+=12;}
+        Text(c.Name,title,accent,t.Centered);
+        if(c.Headline.Length>0)Text(c.Headline,new XFont("PT Noto",12,XFontStyleEx.Bold),new XSolidBrush(XColor.FromArgb(78,94,119)),t.Centered);
+        if(c.Contact.Length>0)Text(c.Contact,normal,new XSolidBrush(XColor.FromArgb(78,94,119)),t.Centered);
         y+=12;
         void Section(string name,string body)
         {
@@ -120,21 +122,22 @@ public static class ResumeFiles
         using var ms=new MemoryStream();using(var doc=WordprocessingDocument.Create(ms,WordprocessingDocumentType.Document,true))
         {
             var main=doc.AddMainDocumentPart();var body=new W.Body();main.Document=new W.Document(body);
-            void Para(string text,int size=22,bool bold=false,bool centered=false,string? color=null,bool heading=false)
+            void Para(string text,int size=22,bool bold=false,bool centered=false,string? color=null,bool heading=false,bool identity=false)
             {
                 var p=new W.Paragraph();var pp=new W.ParagraphProperties();
                 if(heading)pp.Append(new W.KeepNext());
                 pp.Append(new W.WidowControl());
+                if(identity&&t.Rule)pp.Append(new W.ParagraphBorders(new W.TopBorder{Val=W.BorderValues.Single,Color=t.Accent,Size=12,Space=10}));
                 if(heading&&t.Rule)pp.Append(new W.ParagraphBorders(new W.BottomBorder{Val=W.BorderValues.Single,Color=t.Accent,Size=4,Space=4}));
                 pp.Append(new W.SpacingBetweenLines{Before=heading?"180":"0",After="100"});
                 if(centered)pp.Append(new W.Justification{Val=W.JustificationValues.Center});
-                p.Append(pp);var rp=new W.RunProperties(new W.RunFonts{Ascii="Calibri",HighAnsi="Calibri"});
+                p.Append(pp);var rp=new W.RunProperties(new W.RunFonts{Ascii="Aptos",HighAnsi="Aptos"});
                 if(bold)rp.Append(new W.Bold());if(color!=null)rp.Append(new W.Color{Val=color});rp.Append(new W.FontSize{Val=size.ToString()});
                 var run=new W.Run(rp);var lines=text.Replace("\r","").Split('\n');
                 for(var i=0;i<lines.Length;i++){if(i>0)run.Append(new W.Break());run.Append(new W.Text(lines[i]){Space=SpaceProcessingModeValues.Preserve});}
                 p.Append(run);body.Append(p);
             }
-            Para(c.Name,48,true,t.Centered,t.Accent);Para(c.Headline);Para(c.Contact);
+            Para(c.Name,56,true,t.Centered,t.Accent,identity:true);Para(c.Headline,24,true,t.Centered,"4E5E77");Para(c.Contact,22,false,t.Centered,"4E5E77");
             if(c.Summary.Length>0){Para("Profile",t.HeadingSize*2,true,false,t.Accent,true);Para(c.Summary);}
             foreach(var s in c.Sections){Para(s.Heading,t.HeadingSize*2,true,false,t.Accent,true);Para(s.Text);}
             var props=new W.SectionProperties(new W.PageSize{Width=11906,Height=16838},new W.PageMargin{Top=(int)(t.Margin*20),Bottom=(int)(t.Margin*20),Left=(uint)(t.Margin*20),Right=(uint)(t.Margin*20),Header=400,Footer=400});

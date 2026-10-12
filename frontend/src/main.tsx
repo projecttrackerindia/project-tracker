@@ -22,6 +22,7 @@ import './styles/alerts.css';
 import './styles/mobile.css';
 import './styles/phone.css';
 import './styles/desktop.css';
+import './styles/professional.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';

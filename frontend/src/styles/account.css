@@ -130,27 +130,5 @@
 }
 
 /* laptop widths: the same ~20% step down as the rest of the app */
-@media (min-width: 769px) and (max-width: 1600px) {
-  .sidebar-foot { padding: 8px; }
-  .account-dock { gap: 8px; padding: 6.4px 8px 6.4px 6.4px; border-radius: 11.2px; }
-  .ad-avatar { width: 28px; height: 28px; font-size: 10px; }
-  .ad-avatar.lg { width: 36px; height: 36px; font-size: 12px; }
-  .ad-avatar::before { inset: -3px; }
-  .ad-presence { width: 9px; height: 9px; }
-  .ad-avatar.lg .ad-presence { width: 11px; height: 11px; }
-  .ad-name { font-size: 10.8px; }
-  .ad-sub { font-size: 9px; gap: 5px; }
-  .plan-pill { height: 14px; padding: 0 5.6px; font-size: 7.8px; }
-  .ad-menu { left: 8px; width: 240px; padding: 6.4px; border-radius: 12.8px; }
-  .ad-head { gap: 9.6px; padding: 6.4px 6.4px 9.6px; }
-  .ad-who b { font-size: 11.2px; }
-  .ad-who > span { font-size: 9.6px; }
-  .ad-badges em { font-size: 9.2px; }
-  .ad-plan { padding: 9.6px; border-radius: 10.4px; margin-bottom: 6.4px; }
-  .ad-plan-name { font-size: 10.8px; gap: 4.8px; }
-  .ad-plan-status { font-size: 8.4px; padding: 1.6px 6.4px; }
-  .ad-plan-ws { font-size: 9.2px; }
-  .ad-plan-cta { height: 24px; font-size: 9.6px; border-radius: 7.2px; margin-top: 8px; }
-  .sidebar.collapsed .sidebar-foot { padding: 8px 4.8px; }
-}
+
 @media (prefers-reduced-motion: reduce) { .ad-avatar::before, .ad-plan::after, .ad-menu { animation: none !important; } }

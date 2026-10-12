@@ -1,3 +1,4 @@
+import { providerConnectionUrl } from './providerConnection';
 import { del, download, fetchBlobUrl, get, post, put, uploadFile } from './client';
 import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
 export const platformApi = {
@@ -99,13 +100,13 @@ export const integrationsApi = {
   googleStatus: () => get<GoogleConnectionStatus>('/integrations/google/status'),
   /** Returns Google's consent screen address; the caller navigates the whole page there itself (window.location.assign) - this call cannot
    * redirect there itself because only an ordinary authenticated fetch, not a bare page navigation, can carry the Authorization header. */
-  googleConnectUrl: (returnUrl?: string, mail = false, inbox = false) => get<{ url: string }>('/integrations/google/connect', { returnUrl, mail: mail || undefined, inbox: inbox || undefined }),
+  googleConnectUrl: (returnUrl?: string, mail = false, inbox = false) => providerConnectionUrl('google', { returnUrl, mail: mail || undefined, inbox: inbox || undefined }),
   googleDisconnect: () => post('/integrations/google/disconnect'),
 };
 
 export const microsoftApi = {
   status: () => get<MicrosoftConnectionStatus>('/integrations/microsoft/status'),
-  connect: (inbox = false, calendars = false) => get<{ url: string }>('/integrations/microsoft/connect', { inbox: inbox || undefined, calendars: calendars || undefined }),
+  connect: (inbox = false, calendars = false) => providerConnectionUrl('microsoft', { inbox: inbox || undefined, calendars: calendars || undefined }),
   disconnect: () => post('/integrations/microsoft/disconnect'),
 };
 

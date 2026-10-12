@@ -200,108 +200,8 @@
 @media (prefers-reduced-motion: reduce) { .dots b, .msg.flash .bubble { animation: none; } }
 
 
-/* ---- laptop-width override: the app's base sizing (above) was tuned for a large monitor, so on
-   a viewport in the ordinary laptop range these come back down ~20%, matching what was confirmed
-   against a real laptop screen. Excludes phone widths, which already have their own tuning above. ---- */
-@media (min-width: 769px) and (max-width: 1600px) {
-  .link-btn { font-size: 10px; gap: 3.2px; padding: 1.6px 0; }
-  .btn-danger-ghost { padding: 7.2px 11.2px; font-size: 10.4px; gap: 6.4px; }
-  .search-box { gap: 6.4px; padding: 0 8.8px; height: 30.4px; border-radius: 8.8px; }
-  .search-box input { font-size: 10.8px; }
-  .nav-count { min-width: 16px; height: 16px; padding: 0 4.8px; border-radius: 79.2px; font-size: 8.8px; }
-  .presence-dot { width: 8px; height: 8px; }
-  .chat-shell { height: calc(100vh - var(--topbar-h) - 38.4px); min-height: 368px; }
-  .chat-link { gap: 6.4px; padding: 4.8px 9.6px; font-size: 10px; }
-  .chat-list { padding: 12.8px 9.6px 6.4px; gap: 9.6px; }
-  .chat-list-head { padding: 0 3.2px; }
-  .chat-list-head h2 { font-size: 14.4px; }
-  .chat-list-scroll { margin: 0 -4.8px; padding: 0 4.8px 6.4px; }
-  .chat-list-scroll ul { gap: 1.6px; }
-  .conv-row { gap: 8.8px; padding: 8px; border-radius: 9.6px; }
-  .conv-text { gap: 2.4px; }
-  .conv-top, .conv-bottom { gap: 4.8px; }
-  .conv-top b { font-size: 10.8px; }
-  .conv-top time { font-size: 8.8px; }
-  .conv-preview { font-size: 10px; }
-  .unread-badge { min-width: 16px; height: 16px; padding: 0 4.8px; border-radius: 79.2px; font-size: 8.8px; }
-  .hit-section { margin-top: 9.6px; }
-  .hit-row { gap: 1.6px 6.4px; padding: 7.2px 8px; border-radius: 8px; }
-  .hit-row b { font-size: 10px; }
-  .hit-row span { font-size: 9.6px; }
-  .hit-row time { font-size: 8.8px; }
-  .chat-note { font-size: 10px; padding: 11.2px 6.4px; }
-  .chat-head { gap: 9.6px; padding: 9.6px 12.8px; min-height: 51.2px; }
-  .chat-head h2 { font-size: 12px; }
-  .chat-sub { font-size: 9.6px; min-height: 12.8px; }
-  .chat-placeholder { gap: 6.4px; padding: 19.2px; }
-  .chat-placeholder h3 { font-size: 12.8px; }
-  .chat-placeholder p { max-width: 240px; font-size: 10.4px; margin-bottom: 6.4px; }
-  .chat-messages { padding: 11.2px 14.4px 6.4px; }
-  .chat-older { padding: 3.2px 0 8px; }
-  .chat-empty { gap: 3.2px; padding: 48px 16px; }
-  .chat-empty p { margin-top: 4.8px; }
-  .day-sep { margin: 12.8px 0 4.8px; }
-  .day-sep span { font-size: 9.2px; padding: 2.4px 9.6px; border-radius: 79.2px; }
-  .sys-line { font-size: 9.6px; margin: 8px 0; padding: 0 16px; }
-  .msg-status { margin: 2.4px 3.2px 0; }
-  .msg { gap: 6.4px; margin-top: 9.6px; }
-  .msg.grouped { margin-top: 1.6px; }
-  .avatar-gap { width: 17.6px; }
-  .msg-col { max-width: min(512px, 78%); }
-  .msg-meta { gap: 6.4px; margin: 0 3.2px 2.4px; font-size: 9.2px; }
-  .msg-meta strong { font-size: 9.6px; }
-  .bubble { padding: 6.4px 9.6px; border-radius: 11.2px 11.2px 11.2px 3.2px; font-size: 11.2px; }
-  .msg.mine .bubble { border-radius: 11.2px 11.2px 3.2px 11.2px; }
-  .edited { font-size: 8.8px; }
-  .deleted { font-size: 10.4px; }
-  .reply-quote { margin-bottom: 4.8px; padding: 4px 7.2px; border-radius: 6.4px; font-size: 9.6px; }
-  .reply-quote b { font-size: 9.2px; }
-  .msg-actions { top: -11.2px; gap: 1.6px; padding: 1.6px; border-radius: 8px; }
-  .msg:not(.mine) .msg-actions { left: 6.4px; }
-  .msg.mine .msg-actions { right: 6.4px; }
-  .new-below { bottom: 76.8px; gap: 4.8px; padding: 4.8px 11.2px; border-radius: 79.2px; font-size: 10px; }
-  .typing-text { gap: 4.8px; }
-  .dots { gap: 2.4px; }
-  .dots b { width: 3.2px; height: 3.2px; }
-  .composer { padding: 6.4px 12.8px 9.6px; }
-  .composer-tools { margin-bottom: 3.2px; }
-  .btn-icon.sm { width: 20.8px; height: 20.8px; }
-  .btn-icon.sm svg { width: 11.2px; height: 11.2px; }
-  .emoji-popover { bottom: calc(100% + 6.4px); width: 211.2px; max-height: 172.8px; padding: 6.4px; border-radius: 11.2px; }
-  .emoji-item { font-size: 15.2px; padding: 4.8px 0; border-radius: 6.4px; }
-  .composer-ctx { gap: 8px; padding: 5.6px 8px; margin-bottom: 6.4px; border-radius: 8px; font-size: 10px; }
-  .composer-ctx b { font-size: 9.6px; }
-  .composer-row { gap: 8px; }
-  .composer-editable { max-height: 128px; padding: 8px 11.2px; border-radius: 11.2px; font-size: 11.2px; }
-  .send-btn { width: 33.6px; height: 33.6px; }
-  .composer-hint { gap: 9.6px; margin-top: 4px; font-size: 8.8px; }
-  .chat-info { width: 240px; }
-  .chat-info-head { padding: 11.2px 12.8px; min-height: 51.2px; }
-  .chat-info-head h3 { font-size: 11.6px; }
-  .chat-info-body { padding: 12.8px; gap: 14.4px; }
-  .info-hero { gap: 6.4px; }
-  .info-hero h4 { font-size: 12.8px; }
-  .info-hero .avatar.lg { width: 44.8px; height: 44.8px; font-size: 14.4px; }
-  .rename { gap: 6.4px; }
-  .switch-row { gap: 9.6px; padding: 8px 9.6px; border-radius: 9.6px; }
-  .switch-row b { font-size: 10.4px; }
-  .switch-row small { font-size: 9.2px; }
-  .info-title { font-size: 9.2px; margin: 0 3.2px 6.4px; }
-  .member-list { gap: 1.6px; }
-  .member-list li { gap: 8px; padding: 5.6px 4.8px; border-radius: 8px; }
-  .member-text b { font-size: 10.4px; }
-  .member-text small { font-size: 9.2px; }
-  .picker { gap: 8px; }
-  .picker-list { max-height: 240px; gap: 1.6px; }
-  .picker-row { gap: 8.8px; padding: 6.4px 8px; border-radius: 8px; }
-  .picker-text b { font-size: 10.8px; }
-  .picker-text small { font-size: 9.6px; }
-  .picker-empty { padding: 16px 8px; font-size: 10.4px; }
-  .check { width: 16px; height: 16px; border-radius: 4.8px; }
-  .chat-chips { gap: 4.8px; margin: 3.2px 0 8px; }
-  .chat-chip { gap: 4.8px; padding: 2.4px 3.2px 2.4px 8px; border-radius: 79.2px; font-size: 9.6px; }
-  .chat-chip button { width: 14.4px; height: 14.4px; }
-}
+
+
 
 
 /* ---- Project team chat: a panel that slides in from the right, and @mentions ---- */
@@ -338,17 +238,7 @@
 @media (max-width: 520px) { .pchat-panel { width: 100vw; } }
 @media (prefers-reduced-motion: reduce) { .pchat-panel, .pchat-backdrop { transition: none; } }
 
-@media (min-width: 769px) and (max-width: 1600px) {
-  .pchat-panel { width: min(368px, 100vw); }
-  .pchat-panel .chat-head { min-height: 48px; }
-  .pchat-state { gap: 8px; padding: 22.4px; }
-  .pchat-state h3 { font-size: 12.8px; }
-  .pchat-state p { font-size: 10.4px; max-width: 256px; }
-  .pchat-badge { top: -5px; right: -5px; min-width: 14.4px; height: 14.4px; padding: 0 4px; font-size: 8.4px; }
-  .mention-flag { font-size: 8.4px; }
-  .mention-list { left: 12.8px; width: min(256px, calc(100% - 25.6px)); max-height: 211px; padding: 4.8px; border-radius: 11px; }
-  .mention-list li { gap: 8px; padding: 5.6px 7.2px; border-radius: 7.2px; font-size: 10.4px; }
-}
+
 
 /* ---- files, pictures and reactions in chat */
 .chat-files { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }

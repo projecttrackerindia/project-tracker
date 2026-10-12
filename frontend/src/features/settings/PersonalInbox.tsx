@@ -1,3 +1,4 @@
+import { continueConnectionInBrowser } from '../../lib/personalConnection';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { integrationsApi, microsoftApi, personalInboxApi } from '../../api/endpoints.platform';
@@ -57,6 +58,7 @@ export function PersonalInbox({ google, googleState = 'ready' }: { google?: Goog
     finally { if (current === sequence.current) setBusy(false); }
   };
   const connect = async () => {
+    if (continueConnectionInBrowser()) return;
     const current = sequence.current;
     if (!await confirmDialog({ title: 'Allow private inbox reading?', message: provider === 'google' ? 'Google will ask for read-only Gmail access. Project Tracker reads your own mailbox when you load it or open a thread. This does not grant automatic sending or share email with AI.' : 'Microsoft will ask for Mail.Read alongside the existing profile and sending permissions. Project Tracker reads your own mailbox when you load it or open a thread. Every send still requires confirmation; emails are not automatically shared with AI.', confirmText: 'Continue to consent' }) || current !== sequence.current) return;
     setBusy(true);

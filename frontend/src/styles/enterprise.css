@@ -30,18 +30,7 @@
 .linked-item .linked-main span { font-size: 12px; color: var(--text-3); }
 .linked-connect { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
-@media (min-width: 769px) and (max-width: 1600px) {
-  .copy-row { grid-template-columns: 152px minmax(0, 1fr); gap: 8px; padding: 4.8px 0; }
-  .copy-label { font-size: 10px; }
-  .copy-value code { font-size: 9.6px; padding: 4.8px 7.2px; }
-  .sso-domain, .sso-provider-values { padding: 9.6px 11.2px; border-radius: 9.6px; }
-  .secret-box { font-size: 10px; padding: 9.6px; }
-  .sso-note { font-size: 10px; }
-  .linked-item { gap: 9.6px; padding: 8px 9.6px; border-radius: 9.6px; }
-  .linked-item .linked-mark { width: 24px; height: 24px; border-radius: 7.2px; }
-  .linked-item .linked-main b { font-size: 10.4px; }
-  .linked-item .linked-main span { font-size: 9.6px; }
-}
+
 
 /* ============================================================
    RESOURCING — timesheet approval, billable time, capacity, budgets
@@ -198,41 +187,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sla-fact-link { transition: border-color .15s, transform .15s; }
 .sla-fact-link:hover { border-color: var(--primary); transform: translateY(-1px); }
 
-@media (min-width: 769px) and (max-width: 1600px) {
-  .callout { font-size: 10.4px; padding: 9.6px 11.2px; border-radius: 9.6px; }
-  .ts-chip { font-size: 9.2px; padding: 2.4px 7.2px; }
-  .ts-week { padding: 11.2px 12.8px; gap: 11.2px; border-radius: 12.8px; margin-bottom: 14.4px; }
-  .ts-week-icon { width: 30.4px; height: 30.4px; border-radius: 9.6px; }
-  .ts-week-title { font-size: 11.2px; }
-  .ts-week-sub, .ts-week-note { font-size: 10px; }
-  .ts-week-lock, .ts-hint { font-size: 9.6px; }
-  .ts-weeknav-label { font-size: 11.2px; min-width: 176px; }
-  .time-billable { height: 27.2px; font-size: 10px; padding: 0 8px; border-radius: 8px; }
-  .time-bill-toggle, .time-lock { width: 20.8px; height: 20.8px; border-radius: 6.4px; }
-  .util-row { gap: 12.8px; padding: 9.6px 14.4px; grid-template-columns: minmax(128px, 176px) minmax(0, 1fr) 52px minmax(160px, 224px) auto; }
-  .util-who > div b { font-size: 10.4px; }
-  .util-who > div span, .util-meta { font-size: 9.2px; }
-  .util-pct { font-size: 12px; }
-  .util-bar { height: 11.2px; }
-  .util-bar .util-billable { height: 4.8px; top: 3.2px; left: 3.2px; }
-  .rates-table .rate-input, .sla-input { height: 27.2px; }
-  .burn-head { font-size: 10.4px; }
-  .burn-track { height: 8px; }
-  .burn-foot, .budget-facts { font-size: 9.6px; }
-  .sla-chip { font-size: 9.2px; padding: 2.4px 6.4px; }
-  .sla-chip i { font-size: 8.4px; }
-  .sla-clock { padding: 8.8px 9.6px; border-radius: 9.6px; }
-  .sla-clock-icon { width: 24px; height: 24px; border-radius: 7.2px; }
-  .sla-clock-title { font-size: 10.4px; }
-  .sla-clock-sub { font-size: 10px; }
-  .sla-clock-hint { font-size: 9.2px; }
-  .sla-gauge { width: 102px; height: 102px; }
-  .sla-gauge b { font-size: 20.8px; }
-  .sla-gauge span { font-size: 8.8px; }
-  .sla-facts b { font-size: 17.6px; }
-  .sla-facts span { font-size: 9.6px; }
-  .sla-facts > * { padding: 9.6px 11.2px; border-radius: 9.6px; }
-}
+
 
 /* ============================================================
    INTEGRATIONS — webhooks to chat, work mailbox, repositories, data
@@ -280,16 +235,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sec-foot { max-width: 1100px; margin: 18px auto 0; font-size: 12.5px; color: var(--text-3); text-align: center; }
 .sec-foot a { color: var(--primary); }
 
-@media (min-width: 769px) and (max-width: 1600px) {
-  .mailbox-stats, .how-to code { font-size: 10px; }
-  .how-to p { font-size: 10.4px; }
-  .dev-links h4 { font-size: 10.4px; }
-  .dev-title { font-size: 10.4px; }
-  .dev-meta, .dev-kind { font-size: 9.2px; }
-  .retention-row b { font-size: 10.8px; }
-  .retention-row span { font-size: 10px; }
-  .retention-row input { width: 96px; }
-}
+
 
 /* Automation: several actions per rule */
 .rule-action { position: relative; }

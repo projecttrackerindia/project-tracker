@@ -1,4 +1,6 @@
-﻿import { useEffect, useState } from 'react';
+import { ConnectionCapabilities } from './ConnectionCapabilities';
+import { continueConnectionInBrowser } from '../../lib/personalConnection';
+import { useEffect, useState } from 'react';
 import { useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -27,6 +29,7 @@ export function MicrosoftIntegrationSection() {
   }, [outcome]);
   const error = (e: unknown) => toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Microsoft request could not be completed.', 'error');
   const connect = async () => {
+    if (continueConnectionInBrowser()) return;
     if (!active()) return;
     setBusy(true);
     try { const { url } = await microsoftApi.connect(); if (active()) window.location.assign(url); }
@@ -50,5 +53,10 @@ export function MicrosoftIntegrationSection() {
         </div>}
       {q.data?.connected && <button className="btn btn-ghost" disabled={busy} style={{ marginTop: 10 }} onClick={() => void disconnect()}>Disconnect Microsoft</button>}
     </>}
+    <ConnectionCapabilities items={[
+      {name:'Outlook sending',description:'Review recipients and content before confirming each send.',granted:!!q.data?.mailSendAccess,available:q.data?.enabled && q.data?.configured},
+      {name:'Private inbox',description:'Enable below for reading your own Outlook messages.',granted:!!q.data?.inboxAccess,available:q.data?.inboxEnabled},
+      {name:'Calendar availability',description:'Enable below to check selected calendars that you own.',granted:!!q.data?.calendarAccess,available:q.data?.calendarsEnabled}
+    ]}/><div className="connection-card-footer"><small>You can disconnect at any time.</small><button type="button" className="btn btn-sm" disabled={q.isFetching} onClick={()=>void q.refetch()}><Icon name="refresh" size={14}/>Refresh status</button></div>
   </section>;
 }

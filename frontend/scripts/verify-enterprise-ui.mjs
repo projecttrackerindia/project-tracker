@@ -16,7 +16,7 @@ let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Organization',type:'Organization',role:'Owner',planCode:'BUSINESS',description:null,memberCount:2};
 const context={user,workspaces:[workspace],fingerprint:'preview',pendingConsent:[],current:{...workspace,permissions:['work.view','work.create','work.edit','workflow.manage','reports.view'],modules:{work:3,projects:3,reports:3,ai:0,chat:0,time:0,people:3,documents:3},plan:{code:'BUSINESS',name:'Business',status:'Active',trialEnd:null,periodEnd:null,cancelAtPeriodEnd:false,downgraded:false},entitlements:{AUTOMATION:1,RESUME_TEMPLATES:8}}};
-const templates=[{id:1,name:'Essential',description:'Clean, single-column ATS layout',accent:'243247',centered:false},{id:2,name:'Executive',description:'Centered heading and navy accents',accent:'1E3A5F',centered:true}];
+const templates=[{id:1,name:'Essential',description:'Clean, single-column ATS layout',accent:'243247',centered:false,margin:46,rule:false,headingSize:12},{id:2,name:'Executive',description:'Centered heading and navy accents',accent:'1E3A5F',centered:true,margin:50,rule:true,headingSize:13}];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 const errors=[];const checks=[];
 try {
@@ -275,6 +275,49 @@ try {
  const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.outlook-status').waitFor({state:'visible'});
  assert.equal(await page.locator('.outlook-result').count(),0);assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(calendarReads,beforeCalendarDisabled);
  checks.push({name:'outlook-calendar-disabled-gate-clears-private-state-without-reads',passed:true});
+ // Regression checks for spacious writing, adaptive layout and same-browser native connection starts.
+ for (const width of [320,390,820,1280,1440,1920]) {
+  await capture(`resume-responsive-${width}`,'/account/resumes','.resume-builder',width,1000);
+  const before=await page.locator('.resume-editor').evaluate(el=>el.getBoundingClientRect().width);
+  await page.getByRole('group',{name:'Resume workspace view'}).getByRole('button',{name:'Edit',exact:true}).click();
+  assert.equal(await page.locator('.resume-preview-panel').isVisible(),false);
+  const after=await page.locator('.resume-editor').evaluate(el=>el.getBoundingClientRect().width);
+  if(width>=1440)assert.ok(after>before+200,'Edit mode should give substantially more writing room');
+  const summary=page.getByLabel('Profile summary');
+  assert.ok(await summary.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))>=(width<600?16:15));
+  await page.getByLabel('Full name').fill('Asha Patel');
+  await page.getByLabel('Professional headline').fill('Senior Product & Delivery Manager');
+  await page.getByLabel('Contact details').fill('Bengaluru, India · asha@example.test');
+  await summary.fill('I turn complex ideas into useful products. Over eight years, I have led cross-functional teams and helped ambitious businesses grow with clarity.');
+  await page.locator('.resume-section-editor textarea').first().fill('Senior Product Manager · Northstar Studio\n2022 – Present\n\nLed a team of 12 across design, engineering and customer success.\nReduced release lead time by 30% through clearer discovery and planning.');
+  if([390,1440].includes(width)) {
+   await summary.scrollIntoViewIfNeeded();await page.screenshot({path:artifact(`resume-writing-${width}.png`),animations:'disabled'});
+  }
+  await page.getByRole('group',{name:'Resume workspace view'}).getByRole('button',{name:'Preview',exact:true}).click();
+  assert.equal(await page.locator('.resume-editor').isVisible(),false);
+  await page.getByLabel(/Template/).selectOption('2');
+  assert.equal(await page.locator('.resume-paper.centered.ruled').count(),1);
+  assert.match(await page.locator('.resume-paper').innerText(),/cross-functional teams/);
+  if([390,1440].includes(width)) {
+   await page.locator('.resume-paper').scrollIntoViewIfNeeded();await page.screenshot({path:artifact(`resume-preview-${width}.png`),animations:'disabled'});
+  }
+  checks.push({name:`resume-full-size-edit-preview-${width}`,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});
+ }
+ await capture('connected-accounts-desktop','/account/integrations','.personal-account-grid',1440,1000);
+ assert.equal(await page.locator('.connection-capabilities li').count(),6);
+ await capture('connected-accounts-mobile','/account/integrations','.personal-account-grid',390,844);
+ await page.close();page=await ctx.newPage();attachErrors();
+ await page.addInitScript(()=>{
+  Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 ProjectTrackerDesktop/1.0.0'});
+  window.browserConnectionOpens=0;window.browserConnectionSlugs=[];
+  window.ptDesktop={openConnectedAccounts:(slug)=>{window.browserConnectionOpens++;window.browserConnectionSlugs.push(slug);}};
+ });
+ await page.goto(origin+'/account/integrations');
+ await page.getByRole('button',{name:'Reconnect',exact:true}).click();
+ await page.getByRole('button',{name:'Reconnect Microsoft',exact:true}).click();
+ assert.equal(await page.evaluate(()=>window.browserConnectionOpens),2);
+ assert.deepEqual(await page.evaluate(()=>window.browserConnectionSlugs),['preview-org','preview-org']);
+ checks.push({name:'electron-starts-google-and-microsoft-in-system-browser',passed:true});
  const result={fixture:'Synthetic browser responses only; no live APIs, model calls, payments or external sends',checks,pageErrors:errors};
  await fs.writeFile(artifact('results.json'),JSON.stringify(result,null,2));
  console.log(JSON.stringify(result));

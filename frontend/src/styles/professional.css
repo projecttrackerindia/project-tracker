@@ -1,0 +1,39 @@
+/* Shared visual foundation. Adapt layouts to the space available while retaining readable controls. */
+:root { --sidebar-w: 248px; --sidebar-w-collapsed: 72px; --topbar-h: 68px; }
+body { font-size: 14px; }
+.sidebar { background: var(--panel-solid); box-shadow: none; }
+.topbar { background: color-mix(in srgb, var(--panel-solid) 94%, transparent); box-shadow: none; }
+.brand-mark { background: linear-gradient(135deg, #4f46e5, #0ea5e9); box-shadow: 0 4px 12px #4f46e522; }
+.nav-item { min-height: 42px; border-radius: 10px; }
+.nav-item.active, .section-nav-item.active { background: var(--primary-soft); box-shadow: none; }
+.nav-item.active::before { left: 0; background: var(--primary); }
+.content { padding: clamp(18px, 2.2vw, 36px); }
+.page-title { font-size: clamp(23px, 2vw, 30px); letter-spacing: -.04em; line-height: 1.2; }
+.page-sub { font-size: 14px; line-height: 1.65; max-width: 80ch; margin-top: 8px; }
+.page-head { margin-bottom: 26px; }
+.card, .stat-card, .project-card { box-shadow: var(--shadow-sm); border-color: var(--border); }
+.btn { min-height: 40px; border-radius: 10px; box-shadow: none; font-size: 13px; }
+.btn-primary { background: var(--primary-fill, var(--primary)); color: #fff; box-shadow: 0 4px 10px #4f46e51a; }
+.btn-primary:hover { background: var(--primary-fill, var(--primary-hover)); filter: brightness(1.06); }
+.input, .select, .textarea { font-size: 14px; min-height: 42px; border-radius: 10px; }
+.icon-btn { min-width: 38px; min-height: 38px; }
+.section-nav-item { min-height: 42px; }
+/* Studios need the entire canvas: account navigation becomes a horizontal, scrollable rail. */
+.section-layout-wide { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.section-layout-wide > .section-nav { position: static; display: flex; overflow-x: auto; gap: 6px; padding: 6px; box-shadow: none; }
+.section-layout-wide .section-nav-group { display: contents; }
+.section-layout-wide .section-nav-title { display: none; }
+.section-layout-wide .section-nav-item { flex-shrink: 0; white-space: nowrap; }
+.studio-hero { box-shadow: none; }
+@media (min-width: 1025px) and (max-width: 1280px) { :root { --sidebar-w: 220px; } .topbar { gap: 10px; padding-inline: 18px; } }
+@media (max-width: 768px) {
+  .content { padding: 18px 16px; }
+  .page-title { font-size: 24px; }
+  .page-head { gap: 14px; margin-bottom: 22px; }
+  .page-actions { width: 100%; }
+  .btn, .icon-btn { min-height: 44px; }
+  .input, .select, .textarea { font-size: 16px; min-height: 46px; }
+  .section-layout-wide { gap: 18px; }
+  .m-topbar { background: var(--panel-solid); }
+  .m-pill { background: var(--panel-solid); border-color: var(--border); box-shadow: 0 8px 30px #0f172a18; }
+}

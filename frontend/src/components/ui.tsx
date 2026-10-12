@@ -221,13 +221,13 @@ export function RouteTabs({ tabs, label }: { tabs: SectionLink[]; label: string 
 }
 
 /** A settings-style page: a title, a list of sections down the left (grouped), and the chosen section on the right. */
-export function SectionLayout({ title, sub, groups, children }: { title: string; sub?: string; groups: { title?: string; items: SectionLink[]; collapsed?: boolean }[]; children: ReactNode }) {
+export function SectionLayout({ title, sub, groups, children, wide = false }: { title: string; sub?: string; wide?: boolean; groups: { title?: string; items: SectionLink[]; collapsed?: boolean }[]; children: ReactNode }) {
   const { pathname } = useLocation();
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   return (
     <>
       <PageHead title={title} sub={sub} />
-      <div className="section-layout">
+      <div className={`section-layout ${wide ? 'section-layout-wide' : ''}`}>
         <nav className="section-nav" aria-label={`${title} sections`}>
           {groups.filter((g) => g.items.length).map((g, i) => {
             // Advanced groups stay folded until they are needed: opened by a click, or because the page being shown is inside one.

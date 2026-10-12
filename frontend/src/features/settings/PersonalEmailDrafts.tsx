@@ -1,4 +1,5 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { continueConnectionInBrowser } from '../../lib/personalConnection';
+import { useEffect, useRef, useState } from 'react';
 import './PersonalEmailDrafts.css';
 import { ApiError } from '../../api/client';
 import { integrationsApi, microsoftApi, personalEmailApi } from '../../api/endpoints.platform';
@@ -182,6 +183,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
     finally { finish(); }
   };
   const connect = async () => {
+    if (continueConnectionInBrowser()) return;
     if (!start()) return;
     try { const { url } = isMicrosoft ? await microsoftApi.connect() : await integrationsApi.googleConnectUrl('/account/integrations', true); if (active()) window.location.assign(url); }
     catch (e) { failure(e); finish(); }

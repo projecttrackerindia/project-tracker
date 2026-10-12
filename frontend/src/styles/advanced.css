@@ -117,14 +117,3 @@
 .offline-due { font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .offline-list li.late .offline-due { color: var(--danger-text); font-weight: 600; }
 .offline-empty, .offline-foot { color: var(--text-3); font-size: 13px; text-align: center; margin: 20px 0; }
-
-@media (min-width: 769px) and (max-width: 1600px) {
-  .cmdk-input input { font-size: 14px; }
-  .cmdk-item { font-size: 12.5px; padding: 8px 9px; }
-  .cmdk-hint, .cmdk-foot { font-size: 10.5px; }
-  .asst-top-btn { height: 30.4px; font-size: 10.4px; padding: 0 10px; gap: 5px; }
-  .asst-prose, .asst-risk-main ul { font-size: 12px; }
-  .asst-chip, .asst-understood, .asst-thinking { font-size: 11px; }
-  .asst-action b, .asst-proposal b { font-size: 11.5px; }
-  .asst-action i, .asst-proposal i, .asst-privacy, .asst-foot-note, .viewers { font-size: 10px; }
-}
