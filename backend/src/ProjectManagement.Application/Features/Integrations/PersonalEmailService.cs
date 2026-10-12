@@ -101,11 +101,20 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         await db.SaveChangesAsync(ct);await tx.CommitIfOwnedAsync(ct);return Dto(row);
     }
     public async Task DeleteAsync(Guid id,CancellationToken ct){
+        await using var tx=await db.Database.BeginOwnedTransactionAsync(ct);
         var row=await RequireAsync(id,ct);
         if(row.Status is "sending" or "unknown")throw new ConflictException("Check your mail provider for the delivery outcome before removing this receipt.");
-        if(row.Status=="draft")db.PersonalEmailDrafts.Remove(row);
-        else{row.Status="deleted";row.Recipient="";row.Subject="";row.Body="";row.ConfirmedSenderEmail=null;row.Version++;}
+        var unchanged=Mine.Where(d=>d.Id==id&&d.Version==row.Version&&d.Status==row.Status);
+        var removed=row.Status=="draft"
+            ?await unchanged.ExecuteDeleteAsync(ct)
+            :await unchanged.ExecuteUpdateAsync(s=>s.SetProperty(d=>d.Status,"deleted")
+                .SetProperty(d=>d.Recipient,"").SetProperty(d=>d.Subject,"").SetProperty(d=>d.Body,"")
+                .SetProperty(d=>d.ConfirmedSenderEmail,(string?)null).SetProperty(d=>d.Version,d=>d.Version+1),ct);
+        if(removed!=1)throw new ConflictException("This draft changed. Reload before removing it.");
+        // Accepted receipts retain send evidence; their private AI results must disappear immediately.
+        await db.PersonalEmailRewrites.Where(r=>r.DraftId==id&&r.UserId==row.UserId).ExecuteDeleteAsync(ct);
         recorder.Audit("personal_email.deleted","PersonalEmailDraft",id);await db.SaveChangesAsync(ct);
+        await tx.CommitIfOwnedAsync(ct);
     }
     public async Task<EmailAiOptions> AiOptionsAsync(CancellationToken ct){
         ctx.RequireTenantId();

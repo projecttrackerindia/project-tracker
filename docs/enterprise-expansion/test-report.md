@@ -283,6 +283,12 @@ Frontend: 87 unit tests passed; production build/TypeScript passed; lint zero er
 
 Final images/results: .enterprise-browser/module-two-recovery-final/email. Transient toasts leave naturally before screenshot capture; no product UI is hidden. Desktop/light/dark/mobile views were shown before commit. Previous checkpoint 35b5eae passed all six CI jobs in run 38208931110; new revision CI remains required. Provider headers/time/consent contracts, semantic quality, broader retention and expanded release readiness remain open. No live email, paid inference, calendar write, payment, main merge or deployment occurred.
 
+## Module 2 - private email cleanup regression
+
+Deleting an accepted receipt previously retained its encrypted AI rewrite until expiry. The new accepted-receipt regression failed before the fix; unsent-draft deletion passed. After the transactional removal fix, all 65 focused email recovery, email authorization, personal-email and Microsoft productivity cases passed locally, including five new cleanup cases. They verify immediate rewrite erasure, unchanged other-owner/other-tenant results and financial evidence, blocked sending/unknown removal, and deletion during a held synthetic inference with no late publication and full reservation refund.
+
+No live provider calls, paid inference, customer messages or AI burst tests were used. The existing actual built-app accepted-receipt screenshot with synthetic data was shown before commit; the UI is unchanged in this backend batch. No migration, runtime dependency or environment variable changes. The prior candidate's six green CI jobs do not verify this revision; new exact-head CI is required. Controlled provider/semantic checks, global account-erasure acceptance and coordinated rollout remain open; main has not been merged.
+
 ## Module 2 - late-response privacy and CI follow-up
 
 Run 38212291982 on 1d0210b completed with four successful jobs and two failures. API/SQLite: 1,412 passed, two intentional skips. PostgreSQL: the main-schema upgrade and focused transaction/credit stages passed; the full suite had 1,408 passes, five intentional skips and one failed assertion comparing CLR timestamp precision with PostgreSQL microseconds. Only createdAt/expiresAt now permit a difference of at most nine 100-nanosecond ticks; the rest of the replay JSON remains exact. Web's denial fixture was switched while the preceding successful operation still refreshed history; it now waits for aria-busy=false before changing access.

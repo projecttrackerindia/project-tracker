@@ -185,3 +185,9 @@ Frontend recovery retires results/confirmations on identity or grant/read-scope 
 ## Email late-response retirement follow-up
 
 A background denial now advances the personal email studio's access generation. All running operations retain the generation under which they began. A successful saved-library reload can restore access but cannot revive a prior rewrite/send/save response or its follow-up private reads. The editor and saved result remain cleared until a fresh authorized selection. A controlled synthetic browser regression reproduced content restoration before this fix and verifies retirement after denial and recovery; durable backend receipts and credit settlement are unchanged.
+
+## Email removal and private-result erasure
+
+Removing an accepted receipt now deletes its encrypted rewrite results in the same database transaction as scrubbing the recipient, subject, body and confirmed sender. A version/status predicate prevents removal from overwriting a concurrently confirmed or changed draft. Removing an unsent draft physically deletes it and its rewrite records. Sending and unknown receipts remain protected until their delivery outcome is checked; send correlation, provider acceptance evidence and financial admission records survive accepted-receipt removal.
+
+Regressions cover another organization using the same operation ID, another owner in the same organization, blocked uncertain-send removal and deletion while inference is pending. A late suggestion cannot restore a deleted draft or publish private output, and its unused credit reservation is refunded. This is per-draft removal, not an end-to-end global account-erasure implementation.

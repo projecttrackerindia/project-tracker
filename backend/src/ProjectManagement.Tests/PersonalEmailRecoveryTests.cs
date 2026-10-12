@@ -40,6 +40,71 @@ public class PersonalEmailRecoveryTests(ApiFactory factory)
         await Install(false);if(read)await Install(true);
     }
     private void Balance(TestClient owner,int cost){var a=factory.WithDb(db=>db.AiCreditAccounts.IgnoreQueryFilters().Single(a=>a.TenantId==owner.WorkspaceId));Assert.Equal(cost,a.Spent);Assert.Equal(0,a.Reserved);}
+    [Theory][InlineData("draft")][InlineData("accepted")]
+    public async Task Removing_email_erases_saved_private_rewrites_but_preserves_ledger_and_other_owners(string status){
+        try{
+            var (owner,id,version,cost)=await Setup();var op=Guid.NewGuid();
+            var generated=await owner.Post(Path+id+"/rewrites",new EmailAiRequest(op,version,"formal",true,cost));Assert.True(generated.Ok,generated.ToString());
+            var (other,otherId,otherVersion,otherCost)=await Setup();
+            Assert.True((await other.Post(Path+otherId+"/rewrites",new EmailAiRequest(op,otherVersion,"formal",true,otherCost))).Ok);
+            var peer=await owner.AddMemberAsync(factory,TenantRole.Member,"Cleanup peer");
+            var peerDraft=await peer.Post(Path.TrimEnd('/'),new{recipient="peer@example.test",subject="Peer subject",body="Peer private message."});Assert.True(peerDraft.Ok,peerDraft.ToString());
+            var peerId=peerDraft.Data!["id"]!.GetValue<Guid>();var peerOp=Guid.NewGuid();
+            Assert.True((await peer.Post(Path+peerId+"/rewrites",new EmailAiRequest(peerOp,peerDraft.Data["version"]!.GetValue<int>(),"formal",true,cost))).Ok);
+            if(status=="accepted"){
+                await Connect(owner,"google",false);
+                var sent=await owner.Post(Path+id+"/send",new{version=generated.Data!["draft"]!["version"]!.GetValue<int>(),confirmed=true,senderEmail=owner.UserId.ToString("N")+"@example.test"});
+                Assert.True(sent.Ok,sent.ToString());Assert.Equal("accepted",sent.Data!["status"]!.GetValue<string>());
+            }
+            var original=factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Single(d=>d.Id==id));
+            Assert.Equal(HttpStatusCode.NotFound,(await peer.Delete(Path+id)).Status);
+            Assert.Equal(HttpStatusCode.NotFound,(await other.Delete(Path+id)).Status);
+            Assert.True((await owner.Delete(Path+id)).Ok);
+            Assert.False(factory.WithDb(db=>db.PersonalEmailRewrites.IgnoreQueryFilters().Any(r=>r.DraftId==id)));
+            Assert.True(factory.WithDb(db=>db.AiCreditReservations.IgnoreQueryFilters().Any(r=>r.TenantId==owner.WorkspaceId&&r.OperationId==op)));
+            Assert.True((await other.Get(Path+otherId+"/rewrites/"+op)).Ok);
+            Assert.True((await peer.Get(Path+peerId+"/rewrites/"+peerOp)).Ok);
+            Assert.Equal(HttpStatusCode.NotFound,(await owner.Get(Path+id+"/rewrites/"+op)).Status);
+            Assert.Equal(HttpStatusCode.NotFound,(await owner.Post(Path+id+"/rewrites",new EmailAiRequest(op,version,"formal",true,cost))).Status);
+            if(status=="draft")Assert.False(factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Any(d=>d.Id==id)));
+            else{
+                var erased=factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Single(d=>d.Id==id));
+                Assert.Equal("deleted",erased.Status);Assert.Equal("",erased.Recipient);Assert.Equal("",erased.Subject);Assert.Equal("",erased.Body);Assert.Null(erased.ConfirmedSenderEmail);
+                Assert.Equal(original.DispatchKey,erased.DispatchKey);Assert.Equal(original.ProviderMessageId,erased.ProviderMessageId);Assert.Equal(original.AcceptedAt,erased.AcceptedAt);
+            }
+            Assert.Equal(3,factory.Ai.Prompts.Count);Balance(owner,cost*2);Balance(other,otherCost);
+        }finally{Reset();}
+    }
+    [Theory][InlineData("sending")][InlineData("unknown")]
+    public async Task Removing_uncertain_send_cannot_erase_its_message_or_rewrite_evidence(string status){
+        try{
+            var (owner,id,version,cost)=await Setup();var op=Guid.NewGuid();
+            Assert.True((await owner.Post(Path+id+"/rewrites",new EmailAiRequest(op,version,"formal",true,cost))).Ok);
+            var marker=Guid.NewGuid();
+            factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Where(d=>d.Id==id).ExecuteUpdate(s=>s.SetProperty(d=>d.Status,status).SetProperty(d=>d.DispatchKey,marker)));
+            var protectedResult=factory.WithDb(db=>db.PersonalEmailRewrites.IgnoreQueryFilters().Single(r=>r.DraftId==id).ResultProtected);
+            Assert.Equal(HttpStatusCode.Conflict,(await owner.Delete(Path+id)).Status);
+            var row=factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Single(d=>d.Id==id));
+            Assert.Equal(status,row.Status);Assert.Equal(marker,row.DispatchKey);Assert.Equal("Clear private message.",row.Body);
+            Assert.Equal(protectedResult,factory.WithDb(db=>db.PersonalEmailRewrites.IgnoreQueryFilters().Single(r=>r.DraftId==id).ResultProtected));Balance(owner,cost);
+        }finally{Reset();}
+    }
+    [Fact]
+    public async Task Removing_draft_during_rewrite_prevents_late_publication_and_refunds(){
+        using var release=new ManualResetEventSlim();var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try{
+            var (owner,id,version,cost)=await Setup();var op=Guid.NewGuid();
+            factory.Ai.Answer=(_,_)=>{entered.SetResult();if(!release.Wait(TimeSpan.FromSeconds(20)))throw new TimeoutException();return """{"subject":"Clear subject","body":"Clear private message."}""";};
+            var pending=owner.Post(Path+id+"/rewrites",new EmailAiRequest(op,version,"formal",true,cost));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Assert.True((await owner.Delete(Path+id)).Ok);
+            release.Set();var result=await pending;Assert.Equal(HttpStatusCode.NotFound,result.Status);
+            Assert.False(factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Any(d=>d.Id==id)));
+            Assert.False(factory.WithDb(db=>db.PersonalEmailRewrites.IgnoreQueryFilters().Any(r=>r.DraftId==id)));
+            Assert.True(factory.WithDb(db=>db.AiCreditReservations.IgnoreQueryFilters().Any(r=>r.TenantId==owner.WorkspaceId&&r.OperationId==op)));
+            Assert.Single(factory.Ai.Prompts);Balance(owner,0);
+        }finally{release.Set();Reset();}
+    }
     [Theory][InlineData("copied")][InlineData("malformed")]
     public async Task Invalid_or_substituted_encrypted_result_cannot_be_read_or_regenerated(string corruption){
         try{
