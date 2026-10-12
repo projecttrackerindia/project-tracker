@@ -6,6 +6,8 @@ public class PersonalEmailDraft : TenantEntity, ITenantScoped
     public string Provider {get;set;}="google";
     public string? ConfirmedSenderEmail {get;set;}
     public string? ProviderRequestId {get;set;}
+    public Guid? DispatchKey {get;set;}
+    public DateTime? ReconciledAt {get;set;}
     public string Recipient {get;set;}="";
     public string Subject {get;set;}="";
     public string Body {get;set;}="";

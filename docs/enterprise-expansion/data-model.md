@@ -91,3 +91,10 @@ PersonalFileDeletion also records pending upload cleanup with a one-day Availabl
 
 ## Grounded inbox summary migration
 `20261011184438_GroundedInboxSummaryReceipts` adds ConsentEpoch (GUID, legacy default empty) to GoogleConnections and MicrosoftConnections, plus PersonalInboxSummaries. Successful OAuth connection sets a new epoch; refresh retains it. Existing scope grants are preserved, never expanded by migration. The summary table contains tenant/user/operation IDs, provider/message reference, SHA-256 source/access fingerprints, cost/state/deadline/expiry and an encrypted result envelope bound to its owner, tenant, operation and fingerprints. There is a unique tenant-operation index plus expiry and owner-expiry indexes. Raw source email is not persisted in this table; quoted generated result text is encrypted. Existing shared credit reservations/ledger remain authoritative. The SQLite additive allowlist includes twenty reviewed expansion migrations.
+
+
+## Durable email recovery schema
+
+20261012060025_DurablePersonalEmailRecovery adds PersonalEmailRewrites (ITenantScoped): tenant/user/draft/operation IDs, reviewed source version/hash/style/cost, status/model/deadline/expiry and encrypted result. The result envelope binds owner, tenant, operation, draft and source hash. Unique tenant-operation, owner/draft/expiry and expiry indexes support admission/recovery and bounded maintenance. User/draft deletion cascades private receipts; credit reservations/ledger remain independent admission evidence.
+
+PersonalEmailDrafts gain nullable DispatchKey (unique) and ReconciledAt. Existing rows retain nulls; migration does not invent provider acceptance, markers or permission. New send claims write the random marker before dispatch. APIs expose only canReconcile, not the marker. ReconciledAt/AcceptedAt record the local verification time, not a delivery time. The reviewed SQLite allowlist now includes twenty-one additive expansion migrations.

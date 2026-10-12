@@ -30,6 +30,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public bool UserInfoFails { get; set; }
     public bool OmitRefreshToken { get; set; }
     public FakeInboxMailbox Inbox {get;}=new();
+    public FakeSentMailbox Sent {get;}=new();
 
     public bool PersonalCalendarBlocked {get;set;}
     public bool PersonalCalendarPaged {get;set;}
@@ -95,6 +96,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         if(u.Host=="gmail.googleapis.com"&&request.Method==HttpMethod.Get&&path.StartsWith("/gmail/v1/users/me/")){
             var token=request.Headers.Authorization?.Parameter??"";
             if(!_accessTokens.TryGetValue(token,out var grant)||!grant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/gmail.readonly"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            if(u.Query.Contains("rfc822msgid")||path.Contains("/messages/sent_"))return Sent.Read(request,grant.Email,true);
             return Inbox.Read(request,grant.Email,true);
         }
         if(path=="/calendar/v3/calendars/primary/events"&&request.Method==HttpMethod.Get&&u.Query.Contains("singleEvents=true")){
@@ -132,7 +134,8 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
                 return Json(new{error="missing_scope"},HttpStatusCode.Forbidden);
             using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             var raw=payload.RootElement.GetProperty("raw").GetString()!.Replace('-','+').Replace('_','/');
-            SentMail.Add(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(raw.PadRight((raw.Length+3)/4*4,'='))));
+            var mime=System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(raw.PadRight((raw.Length+3)/4*4,'=')));
+            SentMail.Add(mime);Sent.Google(mailGrant.Email,mime);
             BeforeMailSendResponse?.Invoke();
             if(MailOutcomeUnknown)throw new HttpRequestException("Simulated response lost after provider acceptance");
             return Json(new{id="mail_"+Convert.ToHexString(RandomNumberGenerator.GetBytes(6))});

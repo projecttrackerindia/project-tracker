@@ -17,7 +17,8 @@ const microsoft = { enabled: true, configured: true, connected: true, email: 'al
 const initial = { id: '00000000-0000-0000-0000-000000000010', recipient: 'morgan@example.test', subject: 'Delivery review · next steps', body: 'Hi Morgan,\n\nThe integration review is scheduled for Friday, 16 October. Please share the outstanding blockers before the review.\n\nThank you,\nAlex', provider: 'google', status: 'draft', version: 1, providerMessageId: null, acceptedAt: null };
 const initialMicrosoft = { ...initial, id: '00000000-0000-0000-0000-000000000011', subject: 'Outlook delivery review', provider: 'microsoft' };
 let drafts = new Map([initial, initialMicrosoft].map(d => [d.id, structuredClone(d)]));
-let sends = 0; let rewrites = 0; let writes = 0;
+let sends = 0; let rewrites = 0; let writes = 0; let reconciliations = 0; let rewriteMode = 'success'; let historyDenied = false;
+const receipts = new Map();
 let sendMode = 'accepted'; let threadDenied = false; let googleError = false; let draftListDenied = false;
 let heldRead; let holdNextRead = false;
 let notifyHeldRead;
@@ -42,6 +43,19 @@ try {
     const fail = (status, message) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ message, errors: [{ code: 'SYNTHETIC_ERROR', message }] }) });
     if (endpoint.includes('/email-drafts/') && !endpoint.endsWith('/options')) {
       const id = endpoint.split('/')[5]; let d = drafts.get(id); assert.ok(d, 'Unknown synthetic draft');
+      const receiptPath = endpoint.split('/')[6] === 'rewrites';
+      const receiptResult = r => ({ ...r, draftChanged: r.draft ? r.draft.version !== d.version || d.status !== 'draft' : false });
+      if (receiptPath && method === 'GET') {
+        if (historyDenied) { await fail(403, 'Private rewrite access was revoked.'); return; }
+        const operation = endpoint.split('/')[7];
+        if (operation) { assert.ok(receipts.has(operation), 'Unknown rewrite operation'); await reply(receiptResult(receipts.get(operation))); }
+        else await reply([...receipts.values()].filter(r => r.draftId === id).map(r => ({ ...receiptResult(r), draft: null })));
+        return;
+      }
+      if (endpoint.endsWith('/reconcile')) {
+        assert.equal(method, 'POST'); assert.equal(d.status, 'unknown'); assert.ok(d.canReconcile); reconciliations++; writes++;
+        d = { ...d, status: 'accepted', reconciledAt: '2026-10-12T09:00:00Z', acceptedAt: '2026-10-12T09:00:00Z', providerMessageId: 'synthetic-sent-id', version: d.version + 1 }; drafts.set(id, d); await reply(d); return;
+      }
       if (method === 'GET') {
         if (holdNextRead) { holdNextRead = false; heldRead = { release: () => reply(structuredClone(d)) }; notifyHeldRead(); return; }
         await reply(d); return;
@@ -51,12 +65,16 @@ try {
       assert.ok(d.status === 'draft', 'Receipts must never be sent or rewritten'); assert.equal(body.version, d.version);
       if (endpoint.endsWith('/send')) {
         assert.equal(method, 'POST'); assert.equal(body.confirmed, true); assert.equal(body.senderEmail, d.provider === 'google' ? google.googleEmail : microsoft.email);
-        sends++; d = { ...d, status: sendMode === 'accepted' ? 'accepted' : 'unknown', version: d.version + 2, confirmedSenderEmail: body.senderEmail, acceptedAt: sendMode === 'accepted' ? '2026-10-12T08:00:00Z' : null };
+        sends++; d = { ...d, status: sendMode === 'accepted' ? 'accepted' : 'unknown', version: d.version + 2, confirmedSenderEmail: body.senderEmail, canReconcile: true, acceptedAt: sendMode === 'accepted' ? '2026-10-12T08:00:00Z' : null };
         drafts.set(id, d);
         if (sendMode === 'lost') { await route.abort('failed'); return; }
-      } else if (endpoint.endsWith('/improve')) {
+      } else if (receiptPath) {
         assert.equal(method, 'POST'); assert.equal(body.confirmed, true); assert.equal(body.credits, 2); assert.match(body.operationId, /^[0-9a-f-]{36}$/);
         rewrites++; d = { ...d, body: 'Hi Morgan,\n\nPlease share the outstanding blockers before our review on Friday, 16 October.\n\nThank you,\nAlex', version: d.version + 1 }; drafts.set(id, d);
+        const receipt = { operationId: body.operationId, draftId: id, sourceVersion: body.version, style: body.style, status: 'completed', credits: 2, model: 'synthetic-model', createdAt: '2026-10-12T08:00:00Z', expiresAt: '2026-10-13T08:00:00Z', draft: structuredClone(d), draftChanged: false };
+        receipts.set(body.operationId, receipt);
+        if (rewriteMode === 'lost') await route.abort('failed'); else await reply(receipt);
+        return;
       } else { assert.equal(method, 'PUT'); d = { ...d, ...body, version: d.version + 1 }; drafts.set(id, d); }
       await reply(d); return;
     }
@@ -95,6 +113,8 @@ try {
   const studio = () => page.locator('.personal-email-studio');
   async function choose(id = initial.id) { const d = drafts.get(id); await studio().getByRole('button', { name: new RegExp(d.subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).click(); await page.waitForFunction(value => document.querySelector('[aria-label="Message"]')?.value === value, d.body); }
   async function capture(name) {
+    // Let transient notifications leave naturally so they do not obscure review images.
+    await page.locator('.toast-root .toast').first().waitFor({ state: 'detached', timeout: 15000 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, name + ' must fit its viewport');
     if (page.viewportSize().width <= 600) {
       await studio().locator('.email-compose').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -126,13 +146,32 @@ try {
   await studio().getByRole('button', { name: 'Review and send', exact: true }).click(); await dialog().getByRole('button', { name: 'Confirm and send', exact: true }).click();
   await studio().getByRole('heading', { name: 'Send receipt', exact: true }).waitFor(); assert.equal(sends, 1); assert.equal(await studio().getByLabel('Message', { exact: true }).isDisabled(), true);
   assert.equal(await studio().getByRole('button', { name: 'Review and send', exact: true }).count(), 0); assert.match(await studio().innerText(), /Recipient delivery is not verified/); assert.match(await studio().innerText(), /Asia\/Kolkata/); await capture('email-accepted-receipt'); checks.push('accepted-receipt-readonly-no-duplicate-send');
+  // A lost AI response recovers the saved result through GET, never a second generation.
+  drafts.set(initial.id, structuredClone(initial)); rewriteMode = 'lost'; await open(); await choose();
+  await studio().getByRole('button', { name: /Rewrite with AI/ }).click(); await dialog().getByRole('button', { name: 'Generate draft', exact: true }).click();
+  await studio().getByRole('alert').waitFor(); assert.equal(rewrites, 2); assert.equal(await studio().getByRole('button', { name: /Rewrite with AI/ }).isDisabled(), true);
+  const rewriteWrites = writes;
+  await studio().getByRole('button', { name: 'Check rewrite result', exact: true }).click();
+  await studio().getByText('Rewrite receipt verified', { exact: true }).waitFor();
+  assert.equal(writes, rewriteWrites); assert.equal(rewrites, 2); assert.equal(sends, 1); await capture('email-rewrite-recovered'); checks.push('lost-rewrite-response-recovers-without-new-inference-or-charge');
+  await studio().getByLabel('Message', { exact: true }).fill('Newer unsaved wording that must remain.');
+  await studio().getByRole('button', { name: 'Check rewrite result', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.personal-email-studio')?.getAttribute('aria-busy') === 'false');
+  assert.equal(await studio().getByLabel('Message', { exact: true }).inputValue(), 'Newer unsaved wording that must remain.');
+  await studio().getByText(/Review earlier wording/).click(); assert.match(await studio().innerText(), /will not replace them/); checks.push('saved-rewrite-never-replaces-unsaved-edits');
+  await open(); await choose();
+  await studio().locator('.email-rewrite-item').last().click(); await studio().getByText('Rewrite receipt verified', { exact: true }).waitFor(); assert.equal(rewrites, 2); checks.push('rewrite-history-recovers-across-page-reload');
+  historyDenied = true; await studio().getByRole('button', { name: 'Check rewrite result', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Message"]')?.value === ''); assert.equal(await studio().getByText('Rewrite receipt verified', { exact: true }).count(), 0); checks.push('denied-rewrite-retires-private-draft-and-result'); historyDenied = false; rewriteMode = 'success';
   // Unknown provider outcomes survive reload and cannot be sent or deleted.
-  drafts.set(initial.id, { ...initial, status: 'unknown', version: 2, confirmedSenderEmail: google.googleEmail });
+  drafts.set(initial.id, { ...initial, status: 'unknown', canReconcile: true, version: 2, confirmedSenderEmail: google.googleEmail });
   await open(); await choose(); assert.equal(await studio().getByRole('button', { name: 'Remove', exact: true }).count(), 0); assert.equal(await studio().getByRole('button', { name: 'Review and send', exact: true }).count(), 0);
   const beforeReload = writes; await studio().getByRole('button', { name: 'Reload saved record', exact: true }).click(); await page.waitForFunction(() => document.querySelector('.personal-email-studio')?.getAttribute('aria-busy') === 'false'); assert.equal(writes, beforeReload); await capture('email-unknown-recovery'); checks.push('unknown-receipt-readonly-recovery-never-replays');
   drafts.set(initial.id, structuredClone(initial)); sendMode = 'lost'; await open(); await choose();
   await studio().getByRole('button', { name: 'Review and send', exact: true }).click(); await dialog().getByRole('button', { name: 'Confirm and send', exact: true }).click();
   await studio().getByRole('heading', { name: 'Send status', exact: true }).waitFor(); assert.equal(sends, 2); assert.match(await studio().innerText(), /Automatic retry and deletion are blocked/); checks.push('lost-send-response-recovers-durable-status-without-retry');
+  await studio().getByRole('button', { name: 'Check provider Sent', exact: true }).click();
+  await studio().getByText('Sent copy verified', { exact: true }).waitFor(); assert.equal(reconciliations, 1); assert.equal(sends, 2); assert.match(await studio().innerText(), /Recipient delivery is not verified/); await capture('email-sent-copy-verified'); checks.push('unknown-send-reconciles-without-dispatch-or-delivery-claim');
   // A confirmation retired by SPA navigation must not initiate its old write.
   drafts.set(initial.id, structuredClone(initial)); sendMode = 'accepted'; await open(); await choose();
   await studio().getByRole('button', { name: 'Review and send', exact: true }).click(); await dialog().waitFor({ state: 'visible' });
@@ -174,7 +213,7 @@ try {
   await open(1440, 'dark'); await choose(); await capture('email-compose-dark');
   await page.emulateMedia({ reducedMotion: 'reduce' }); assert.ok(await studio().locator('.email-draft-item').first().evaluate(el => parseFloat(getComputedStyle(el).transitionDuration) <= .001)); checks.push('email-reduced-motion');
   assert.deepEqual(errors, []); checks.push('no-browser-runtime-errors');
-  await fs.writeFile(path.join(artifacts, 'results.json'), JSON.stringify({ checks, sends, rewrites, externalCalls: 0, pageErrors: errors }, null, 2));
+  await fs.writeFile(path.join(artifacts, 'results.json'), JSON.stringify({ checks, sends, rewrites, reconciliations, externalCalls: 0, pageErrors: errors }, null, 2));
   console.log(JSON.stringify({ checks: checks.length, syntheticSends: sends, syntheticRewrites: rewrites, pageErrors: errors, artifacts }, null, 2));
 } catch (e) {
   await fs.writeFile(path.join(artifacts, 'failure.json'), JSON.stringify({ message: e.message, checks, pageErrors: errors }, null, 2));

@@ -256,6 +256,7 @@ public partial class AppDbContext
             e.HasIndex(x=>new{x.TenantId,x.UserId,x.CreatedAt});
             e.Property(x=>x.Provider).HasMaxLength(20).HasDefaultValue("google");
             e.Property(x=>x.ProviderRequestId).HasMaxLength(200);
+            e.HasIndex(x=>x.DispatchKey).IsUnique();
             e.Property(x=>x.ConfirmedSenderEmail).HasMaxLength(254);
             e.Property(x=>x.Recipient).HasMaxLength(254);e.Property(x=>x.Subject).HasMaxLength(200);
             e.Property(x=>x.Body).HasMaxLength(20000);e.Property(x=>x.Status).HasMaxLength(20);
@@ -280,6 +281,15 @@ public partial class AppDbContext
             e.Property(x=>x.Status).HasMaxLength(16);e.Property(x=>x.ResultProtected).HasMaxLength(128000);
             e.Property(x=>x.Model).HasMaxLength(200);
             e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<PersonalEmailRewrite>(e=>{
+            e.HasIndex(x=>new{x.TenantId,x.OperationId}).IsUnique();
+            e.HasIndex(x=>new{x.TenantId,x.UserId,x.DraftId,x.ExpiresAt});e.HasIndex(x=>x.ExpiresAt);
+            e.Property(x=>x.SourceHash).HasMaxLength(64);e.Property(x=>x.Style).HasMaxLength(16);
+            e.Property(x=>x.Status).HasMaxLength(16);e.Property(x=>x.ResultProtected).HasMaxLength(128000);
+            e.Property(x=>x.Model).HasMaxLength(200);
+            e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<PersonalEmailDraft>().WithMany().HasForeignKey(x=>x.DraftId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<GoogleConnection>(e =>
         {

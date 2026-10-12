@@ -18,6 +18,7 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
     public Action? BeforeRefresh {get;set;}
     public bool RefreshFails {get;set;}
     public FakeInboxMailbox Inbox {get;}=new();
+    public FakeSentMailbox Sent {get;}=new();
     public Action<string>? BeforeCalendarRead {get;set;}
     public bool CalendarPaged {get;set;}
     public bool CalendarOversized {get;set;}
@@ -67,6 +68,7 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         if(uri.Host=="graph.microsoft.com"&&request.Method==HttpMethod.Get&&uri.AbsolutePath.StartsWith("/v1.0/me/")&&uri.AbsolutePath.Contains("messages")){
             if(!known.Scopes.Split(' ').Contains("Mail.Read"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            if(uri.AbsolutePath.Contains("/mailFolders/sentitems/messages"))return Sent.Read(request,known.Email,false);
             return Inbox.Read(request,known.Email,false);
         }
         if(uri.Host=="graph.microsoft.com"&&uri.AbsolutePath=="/v1.0/me"){
@@ -74,7 +76,7 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         if(uri.Host=="graph.microsoft.com"&&uri.AbsolutePath=="/v1.0/me/sendMail"){
             if(!known.Scopes.Contains("Mail.Send"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
-            SentMessages.Add(await request.Content!.ReadAsStringAsync(ct));
+            var json=await request.Content!.ReadAsStringAsync(ct);SentMessages.Add(json);Sent.Microsoft(known.Email,json);
             BeforeMailSendResponse?.Invoke();
             if(ResponseLost)throw new HttpRequestException("Fake response lost after processing");
             var response=new HttpResponseMessage(HttpStatusCode.Accepted);response.Headers.Add("request-id",Guid.NewGuid().ToString());return response;

@@ -699,7 +699,8 @@ export interface GroupMappings { items: GroupMapping[] }
 
 export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height: number | null }
 
-export interface PersonalEmailDraft { confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
+export interface PersonalEmailDraft { reconciledAt?: string | null; canReconcile?: boolean; confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
+export interface EmailRewriteReceipt { operationId: string; draftId: string; sourceVersion: number; style: string; status: string; credits: number; model: string | null; createdAt: string; expiresAt: string; draft?: PersonalEmailDraft | null; draftChanged?: boolean }
 
 export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; calendarsEnabled?: boolean; calendarAccess?: boolean; connectedAt?: string | null }
 export interface InboxMessage { id: string; threadId: string; subject: string; sender: string; receivedAt: string | null; unread: boolean; hasAttachments: boolean; body: string | null; bodyTruncated: boolean }

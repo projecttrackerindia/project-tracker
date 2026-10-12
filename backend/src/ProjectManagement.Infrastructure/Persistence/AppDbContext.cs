@@ -101,6 +101,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<PersonalCalendarProposal> PersonalCalendarProposals => Set<PersonalCalendarProposal>();
     public DbSet<PersonalEmailDraft> PersonalEmailDrafts => Set<PersonalEmailDraft>();
     public DbSet<PersonalInboxSummary> PersonalInboxSummaries => Set<PersonalInboxSummary>();
+    public DbSet<PersonalEmailRewrite> PersonalEmailRewrites => Set<PersonalEmailRewrite>();
     public DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts => Set<ProviderOAuthAttempt>();
     public DbSet<GoogleConnection> GoogleConnections => Set<GoogleConnection>();
     public DbSet<ProjectMeeting> ProjectMeetings => Set<ProjectMeeting>();

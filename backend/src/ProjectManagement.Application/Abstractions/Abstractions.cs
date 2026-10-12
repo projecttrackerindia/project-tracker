@@ -123,6 +123,7 @@ public interface IAppDbContext
     DbSet<PersonalCalendarProposal> PersonalCalendarProposals {get;}
     DbSet<PersonalEmailDraft> PersonalEmailDrafts { get; }
     DbSet<PersonalInboxSummary> PersonalInboxSummaries {get;}
+    DbSet<PersonalEmailRewrite> PersonalEmailRewrites {get;}
     DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts { get; }
     DbSet<GoogleConnection> GoogleConnections { get; }
     DbSet<ProjectMeeting> ProjectMeetings { get; }

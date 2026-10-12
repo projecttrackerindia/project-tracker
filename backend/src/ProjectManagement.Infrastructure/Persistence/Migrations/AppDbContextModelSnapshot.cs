@@ -4175,6 +4175,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DispatchKey")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Provider")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -4194,6 +4197,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
+
+                    b.Property<DateTime?>("ReconciledAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -4223,11 +4229,95 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DispatchKey")
+                        .IsUnique();
+
                     b.HasIndex("UserId");
 
                     b.HasIndex("TenantId", "UserId", "CreatedAt");
 
                     b.ToTable("PersonalEmailDrafts");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalEmailRewrite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Credits")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Deadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DraftId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResultProtected")
+                        .HasMaxLength(128000)
+                        .HasColumnType("character varying(128000)");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("SourceVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Style")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DraftId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TenantId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId", "DraftId", "ExpiresAt");
+
+                    b.ToTable("PersonalEmailRewrites");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalFileDeletion", b =>
@@ -9477,6 +9567,21 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalEmailDraft", b =>
                 {
+                    b.HasOne("ProjectManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalEmailRewrite", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.PersonalEmailDraft", null)
+                        .WithMany()
+                        .HasForeignKey("DraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("ProjectManagement.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")

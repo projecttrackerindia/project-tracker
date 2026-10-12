@@ -154,8 +154,9 @@ public class PersonalEmailTests(ApiFactory factory)
             Assert.Equal("recipient@example.com",result.Data["recipient"]!.GetValue<string>());Assert.Null(result.Data["providerMessageId"]);
             Assert.Equal(calls,factory.GoogleCalendar.SentMail.Count);Assert.Equal(microsoftCalls,factory.MicrosoftProductivity.SentMessages.Count);Assert.Equal(provider,result.Data["provider"]!.GetValue<string>());
             var version=result.Data["version"]!.GetValue<int>();
-            var replay=await owner.Post(route,new{operationId=operation,version,style="formal",confirmed=true,credits=cost});
-            Assert.Equal("AI_OPERATION_ALREADY_ADMITTED",replay.ErrorCode);Assert.Single(factory.Ai.Prompts);
+            var replay=await owner.Post(route,new{operationId=operation,version=draft.Version,style="formal",confirmed=true,credits=cost});
+            Assert.True(replay.Ok,replay.ToString());Assert.Equal(version,replay.Data!["version"]!.GetValue<int>());Assert.Single(factory.Ai.Prompts);
+            Assert.Equal("AI_EMAIL_KEY_MISMATCH",(await owner.Post(route,new{operationId=operation,version,style="formal",confirmed=true,credits=cost})).ErrorCode);
             var account=factory.WithDb(db=>db.AiCreditAccounts.IgnoreQueryFilters().Single(a=>a.TenantId==owner.WorkspaceId));
             Assert.Equal(cost,account.Spent);Assert.Equal(0,account.Reserved);
         }finally{factory.Ai.Reset();}

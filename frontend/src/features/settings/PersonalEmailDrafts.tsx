@@ -2,7 +2,7 @@
 import './PersonalEmailDrafts.css';
 import { ApiError } from '../../api/client';
 import { integrationsApi, microsoftApi, personalEmailApi } from '../../api/endpoints.platform';
-import type { GoogleConnectionStatus, MicrosoftConnectionStatus, PersonalEmailDraft } from '../../api/types';
+import type { EmailRewriteReceipt, GoogleConnectionStatus, MicrosoftConnectionStatus, PersonalEmailDraft } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Field, PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -11,7 +11,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 
 const blank = { recipient: '', subject: '', body: '', provider: 'google' as 'google' | 'microsoft' };
 const errorText = (e: unknown) => e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'The request could not be completed. Reload the saved record to check its status.';
-const connectionKey = (s?: GoogleConnectionStatus | MicrosoftConnectionStatus) => s ? JSON.stringify([s.connected, s.connectedAt, 'googleEmail' in s ? s.googleEmail : 'email' in s ? s.email : null, s.mailSendAccess, 'mailEnabled' in s ? s.mailEnabled : null, 'enabled' in s ? s.enabled : null, 'configured' in s ? s.configured : null]) : '';
+const connectionKey = (s?: GoogleConnectionStatus | MicrosoftConnectionStatus) => s ? JSON.stringify([s.connected, s.connectedAt, 'googleEmail' in s ? s.googleEmail : 'email' in s ? s.email : null, s.mailSendAccess, s.inboxEnabled, s.inboxAccess, 'mailEnabled' in s ? s.mailEnabled : null, 'enabled' in s ? s.enabled : null, 'configured' in s ? s.configured : null]) : '';
 const label = (draft: PersonalEmailDraft) => draft.status === 'accepted' ? 'Provider accepted' : ['sending', 'unknown'].includes(draft.status) ? 'Check provider Sent' : 'Draft';
 
 export function PersonalEmailDrafts({ google, googleState = 'ready' }: { google?: GoogleConnectionStatus; googleState?: 'loading' | 'error' | 'ready' }) {
@@ -39,16 +39,20 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
   const [error, setError] = useState('');
   const [recovery, setRecovery] = useState(false);
   const [accessLost, setAccessLost] = useState(false);
+  const [rewriteReceipt, setRewriteReceipt] = useState<EmailRewriteReceipt | null>(null);
+  const [lastOperation, setLastOperation] = useState<string | null>(null);
+  const history = useWsQuery(['account', 'email-rewrites', uid, selected?.id], () => personalEmailApi.rewrites(selected!.id), { enabled: !!selected && !accessLost });
   const alive = useRef(true);
   const blocked = useRef(false);
   const running = useRef(false);
   const read = useRef<AbortController | null>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; read.current?.abort(); }; }, []);
   useEffect(() => {
-    if (q.error instanceof ApiError && [401, 403].includes(q.error.status)) {
-      blocked.current = true; read.current?.abort(); setSelected(null); setFields(blank); setRecovery(false); setAccessLost(true); setError(errorText(q.error));
+    const denied = q.error instanceof ApiError && [401, 403].includes(q.error.status) ? q.error : history.error instanceof ApiError && [401, 403, 404].includes(history.error.status) ? history.error : null;
+    if (denied) {
+      blocked.current = true; read.current?.abort(); setSelected(null); setFields(blank); setRewriteReceipt(null); setLastOperation(null); setRecovery(false); setAccessLost(true); setError(errorText(denied));
     }
-  }, [q.error]);
+  }, [q.error, history.error]);
   const active = () => alive.current && useAuth.getState().ctx?.user.id === uid && useAuth.getState().ctx?.current?.id === wid;
   const start = () => { if (running.current || blocked.current || !active()) return false; running.current = true; setBusy(true); setError(''); return true; };
   const finish = () => { if (active()) { running.current = false; setBusy(false); } };
@@ -58,6 +62,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
   const statusState = isMicrosoft ? microsoftState : googleState;
   const enabled = isMicrosoft ? !!(microsoft?.enabled && microsoft.configured) : !!google?.mailEnabled;
   const ready = statusState === 'ready' && enabled && !!(isMicrosoft ? microsoft?.connected && microsoft.mailSendAccess : google?.connected && google.mailSendAccess);
+  const readReady = statusState === 'ready' && !!(isMicrosoft ? microsoft?.enabled && microsoft.configured && microsoft.connected && microsoft.inboxEnabled && microsoft.inboxAccess : google?.connected && google.inboxEnabled && google.inboxAccess);
   const dirty = !selected || Object.entries(fields).some(([k, v]) => v !== selected[k as keyof typeof fields]);
   const readOnly = busy || accessLost || (!!selected && selected.status !== 'draft');
   const refresh = () => active() ? invalidateWorkspace(wid, 'account', 'email-drafts') : Promise.resolve();
@@ -66,6 +71,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
     setSelected(draft ? { ...draft, provider: draft.provider ?? 'google' } : null);
     setFields(draft ? { recipient: draft.recipient, subject: draft.subject, body: draft.body, provider: draft.provider ?? 'google' } : blank);
     setRecovery(false);
+    setRewriteReceipt(null); setLastOperation(null);
   };
   const failure = (e: unknown, uncertain = false) => {
     if (!active()) return;
@@ -126,9 +132,39 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
     const snapshot = selected; const credits = ai.data.credits;
     try {
       if (!(await confirmDialog({ title: 'Rewrite this draft with AI?', message: 'Your saved subject and message will be shared with your organization\'s configured AI provider. This uses ' + ai.data.credits + ' AI credits. Review the resulting wording and facts before sending. No email will be sent.', confirmText: 'Generate draft' })) || !active()) return;
-      pick(await personalEmailApi.improve(snapshot.id, { operationId: crypto.randomUUID(), version: snapshot.version, style, confirmed: true, credits }));
-      await refresh(); if (active()) toast('AI draft saved. Review the wording and facts before sending.');
+      const operationId = crypto.randomUUID(); setLastOperation(operationId);
+      const result = await personalEmailApi.rewrite(snapshot.id, { operationId, version: snapshot.version, style, confirmed: true, credits });
+      if (!active()) return;
+      if (result.status === 'completed' && result.draft && !result.draftChanged) pick(result.draft);
+      else { setRecovery(true); setError('Check the saved rewrite result before starting another operation.'); }
+      setLastOperation(operationId); setRewriteReceipt(result); await history.refetch();
+      await refresh(); if (active()) toast(result.status === 'completed' ? 'AI draft saved. Review the wording and facts before sending.' : 'Rewrite receipt recorded. Check its saved result before continuing.');
     } catch (e) { failure(e, true); await refresh(); }
+    finally { finish(); }
+  };
+  const checkRewrite = async (operation: string) => {
+    if (!selected || !start()) return;
+    try {
+      read.current = new AbortController();
+      const receipt = await personalEmailApi.rewriteReceipt(selected.id, operation, read.current.signal);
+      if (!active()) return;
+      if (receipt.status === 'completed' && receipt.draft && !receipt.draftChanged && !dirty && selected.status === 'draft') pick(receipt.draft);
+      setRewriteReceipt(receipt); setLastOperation(operation);
+      if (receipt.status === 'pending') { setRecovery(true); setError('This rewrite is still pending. Check its saved result later; a temporary credit hold may remain until recovery.'); }
+      else if (recovery && !dirty) { read.current = new AbortController(); const current = await personalEmailApi.get(selected.id, read.current.signal); if (!active()) return; pick(current); setRewriteReceipt(receipt); setLastOperation(operation); }
+      await refresh(); await history.refetch();
+      if (active()) toast('Saved rewrite checked. No new AI request or charge was started.');
+    } catch (e) { failure(e); }
+    finally { finish(); }
+  };
+  const reconcile = async () => {
+    if (!selected || !readReady || !selected.canReconcile || !start()) return;
+    try {
+      const result = await personalEmailApi.reconcile(selected.id);
+      if (!active()) return;
+      pick(result); await refresh();
+      if (active()) toast(result.reconciledAt ? 'Matching Sent copy verified. Recipient delivery is not verified.' : 'No conclusive matching Sent copy found. The send remains uncertain; do not resend.', result.reconciledAt ? 'success' : 'warning');
+    } catch (e) { failure(e); }
     finally { finish(); }
   };
   const remove = async () => {
@@ -166,14 +202,15 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
             <div className="email-connection" role="status">{statusState === 'loading' ? 'Checking your connection…' : statusState === 'error' ? <><span>Could not verify the sending account. Sending is disabled.</span><button className="btn btn-sm" onClick={() => isMicrosoft ? retryMicrosoft() : void invalidateWorkspace(wid, 'account', 'google-status')}>Retry connection check</button></> : !enabled ? <span>{providerName} sending is awaiting administrator setup. You can still save drafts.</span> : !ready ? <button className="btn btn-sm" disabled={busy} onClick={() => void connect()}>Enable {providerName} sending</button> : <><span className="email-connected-dot" aria-hidden="true" /><span>{senderEmail || 'Reconnect to verify your sender'}</span></>}</div>
           </div>
           {error && <div className="email-recovery" role="alert"><Icon name="info" size={17} /><div><strong>Check before continuing</strong><p>{error}</p>{recovery && <p>Refresh saved drafts and inspect the saved record before repeating an interrupted action. Reloading never sends an email or starts AI.</p>}</div></div>}
-          {selected && ['sending', 'unknown'].includes(selected.status) && <div className="email-recovery" role="alert"><Icon name="clock" size={18} /><div><strong>Check your provider Sent folder</strong><p>The email may have reached your mail provider. Automatic retry and deletion are blocked to prevent duplicate sending.</p></div></div>}
-          {selected && selected.status !== 'draft' && <div className="email-receipt"><Icon name={selected.status === 'accepted' ? 'checkCircle' : 'clock'} size={18} /><div><strong>{selected.status === 'accepted' ? `Accepted by ${providerName}` : 'Recorded send attempt'}</strong><p>Sender at confirmation: {selected.confirmedSenderEmail || 'Not recorded on this older receipt'}</p>{selected.status === 'accepted' && <p>{acceptedDate()} · {timeZone}. Recipient delivery is not verified.</p>}</div></div>}
+          {selected && ['sending', 'unknown'].includes(selected.status) && <div className="email-recovery" role="alert"><Icon name="clock" size={18} /><div><strong>Check your provider Sent folder</strong><p>The email may have reached your mail provider. Automatic retry and deletion are blocked to prevent duplicate sending.</p>{selected.canReconcile ? readReady ? <button className="btn btn-sm email-check-sent" disabled={busy} onClick={() => void reconcile()}>Check provider Sent</button> : <p>Enable optional inbox read access in your connected account to check Sent here. You can also inspect Sent directly in {providerName}.</p> : <p>This older receipt requires a manual check in your provider.</p>}<p>A matching Sent copy confirms provider acceptance. It does not confirm recipient delivery.</p></div></div>}
+          {selected && selected.status !== 'draft' && <div className="email-receipt"><Icon name={selected.status === 'accepted' ? 'checkCircle' : 'clock'} size={18} /><div><strong>{selected.reconciledAt ? 'Sent copy verified' : selected.status === 'accepted' ? `Accepted by ${providerName}` : 'Recorded send attempt'}</strong><p>Sender at confirmation: {selected.confirmedSenderEmail || 'Not recorded on this older receipt'}</p>{selected.status === 'accepted' && <p>{acceptedDate()} · {timeZone}. Recipient delivery is not verified.</p>}</div></div>}
           <Field label="Recipient"><input aria-label="Recipient" className="input" type="email" maxLength={254} value={fields.recipient} disabled={readOnly} onChange={e => setFields({ ...fields, recipient: e.target.value })} /></Field>
           <Field label="Subject"><input aria-label="Subject" className="input" maxLength={200} value={fields.subject} disabled={readOnly} onChange={e => setFields({ ...fields, subject: e.target.value })} /></Field>
           <Field label="Message"><textarea aria-label="Message" className="input email-message" rows={10} maxLength={20000} value={fields.body} disabled={readOnly} onChange={e => setFields({ ...fields, body: e.target.value })} /></Field>
           <div className="email-message-meta"><span>Plain text · one recipient</span><span>{fields.body.length.toLocaleString()} / 20,000</span></div>
           {(!selected || selected.status === 'draft') && <div className="email-ai-tools"><span><Icon name="orbit" size={17} /><b>Refine with Orbit</b></span>{ai.isLoading ? <small>Checking AI availability…</small> : ai.isError ? <><small>AI availability could not be checked.</small><button className="btn btn-sm" disabled={busy} onClick={() => void ai.refetch()}>Retry AI check</button></> : ai.data?.available ? <><select className="input" aria-label="AI writing style" value={style} disabled={busy} onChange={e => setStyle(e.target.value)}><option value="concise">Concise</option><option value="formal">Formal</option><option value="friendly">Friendly</option></select><button className="btn btn-sm" disabled={busy || recovery || dirty || !selected || fields.body.length > ai.data.maxBodyCharacters} onClick={() => void improve()}>Rewrite with AI · {ai.data.credits} credits</button></> : <small>Manual editing is available. AI awaits administrator setup.</small>}</div>}
           {ai.data?.available && fields.body.length > ai.data.maxBodyCharacters && <p className="email-editor-note">Shorten the message to {ai.data.maxBodyCharacters.toLocaleString()} characters to use AI editing.</p>}
+          {selected && !accessLost && <div className="email-rewrite-history" aria-label="Saved AI rewrites"><div className="email-rewrite-heading"><span><Icon name="orbit" size={15} /><b>Saved rewrites</b></span><small>Private · retained for 24 hours</small></div><p>Check an interrupted rewrite without starting AI again.</p>{lastOperation && <button className="btn btn-sm" disabled={busy} onClick={() => void checkRewrite(lastOperation)}>Check rewrite result</button>}{history.isLoading ? <small>Loading saved rewrite receipts…</small> : history.isError ? <div role="alert">Rewrite receipts could not be loaded.<button className="btn btn-sm" disabled={busy} onClick={() => void history.refetch()}>Retry receipts</button></div> : history.data?.length ? <div className="email-rewrite-list">{history.data.map(r => <button className="email-rewrite-item" key={r.operationId} disabled={busy} onClick={() => void checkRewrite(r.operationId)}><span>{r.style} · source v{r.sourceVersion}</span><span>{r.status === 'completed' ? `${r.credits} credits · saved` : r.status}</span><Icon name="chevronR" size={13} /></button>)}</div> : <small>No saved rewrites for this draft yet.</small>}{rewriteReceipt && <div className="email-rewrite-result" role="status"><b>{rewriteReceipt.status === 'completed' ? 'Rewrite receipt verified' : `Rewrite ${rewriteReceipt.status}`}</b><p>{rewriteReceipt.status === 'completed' ? `${rewriteReceipt.credits} credits recorded. Opening this receipt does not charge again.` : 'No completed rewrite charge is recorded. Pending holds are recovered after expiry.'}</p>{rewriteReceipt.draft && (rewriteReceipt.draftChanged || dirty || selected.status !== 'draft') && <details><summary>Review earlier wording · source v{rewriteReceipt.sourceVersion}</summary><p>The saved draft has newer changes. This earlier result will not replace them.</p><strong>{rewriteReceipt.draft.subject}</strong><pre>{rewriteReceipt.draft.body}</pre></details>}</div>}</div>}
           <div className="email-compose-actions">
             {(!selected || selected.status === 'draft') && <button className="btn" disabled={busy || recovery || !dirty || !fields.recipient.trim() || !fields.subject.trim() || !fields.body.trim()} onClick={() => void save()}>Save draft</button>}
             {selected?.status === 'draft' && <button className="btn btn-primary" disabled={busy || recovery || dirty || !ready || !senderEmail} onClick={() => void send()}>Review and send</button>}

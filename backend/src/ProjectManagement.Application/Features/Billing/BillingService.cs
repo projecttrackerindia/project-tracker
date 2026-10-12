@@ -290,6 +290,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await CleanupAsync(ct);
         await personalFiles.PurgeAsync(ct);
         await PurgeInboxSummariesAsync(ct);
+        await PurgeEmailRewritesAsync(ct);
         await whatsAppMetadata.RunAsync(ct);
         await exports.PurgeExpiredAsync(ct: ct);
         await webhooks.PurgeAsync(ct);
@@ -308,6 +309,13 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         var expiredSummaries=await db.PersonalInboxSummaries.IgnoreQueryFilters().Where(s=>s.ExpiresAt<=clock.Now)
             .OrderBy(s=>s.ExpiresAt).Select(s=>s.Id).Take(1000).ToArrayAsync(ct);
         return await db.PersonalInboxSummaries.IgnoreQueryFilters().Where(s=>expiredSummaries.Contains(s.Id)&&s.ExpiresAt<=clock.Now).ExecuteDeleteAsync(ct);
+    }
+
+    public async Task<int> PurgeEmailRewritesAsync(CancellationToken ct=default)
+    {
+        var ids=await db.PersonalEmailRewrites.IgnoreQueryFilters().Where(r=>r.ExpiresAt<=clock.Now)
+            .OrderBy(r=>r.ExpiresAt).Select(r=>r.Id).Take(1000).ToArrayAsync(ct);
+        return await db.PersonalEmailRewrites.IgnoreQueryFilters().Where(r=>ids.Contains(r.Id)&&r.ExpiresAt<=clock.Now).ExecuteDeleteAsync(ct);
     }
 
     public async Task<int> SendCertificationExpiryAsync(CancellationToken ct = default)

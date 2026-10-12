@@ -55,6 +55,7 @@ public class PostgresExpansionUpgradeTests
             Assert.Empty(await db.PersonalCalendarProposals.ToListAsync());Assert.Empty(await db.SupportWorkflows.ToListAsync());
             Assert.Empty(await db.WhatsAppConnections.ToListAsync());Assert.Empty(await db.WhatsAppContactLinks.ToListAsync());
             Assert.Empty(await db.WhatsAppDeliveries.ToListAsync());
+            Assert.Empty(await db.PersonalEmailRewrites.ToListAsync());
         }
         finally
         {

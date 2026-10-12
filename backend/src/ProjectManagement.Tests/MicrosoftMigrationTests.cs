@@ -86,6 +86,8 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Equal("google",receipt.Provider);Assert.Equal("Existing body",receipt.Body);
         Assert.Equal("existing-gmail-id",receipt.ProviderMessageId);Assert.Equal("accepted",receipt.Status);
         Assert.Equal(3,receipt.Version);Assert.Null(receipt.ConfirmedSenderEmail);Assert.Null(receipt.ProviderRequestId);
+        Assert.Null(receipt.DispatchKey);Assert.Null(receipt.ReconciledAt);
+        Assert.Empty(await db.PersonalEmailRewrites.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.MicrosoftConnections.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.SupportWorkflows.IgnoreQueryFilters().ToArrayAsync());
         Assert.Empty(await db.PersonalResumes.IgnoreQueryFilters().ToArrayAsync());

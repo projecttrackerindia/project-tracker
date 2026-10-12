@@ -123,6 +123,10 @@ export const inboxSummaryApi = {
 };
 
 export const personalEmailApi = {
+  rewrite: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean; credits: number }) => post<import('./types').EmailRewriteReceipt>('/me/email-drafts/' + id + '/rewrites', b),
+  rewrites: (id: string) => get<import('./types').EmailRewriteReceipt[]>('/me/email-drafts/' + id + '/rewrites'),
+  rewriteReceipt: (id: string, operation: string, signal?: AbortSignal) => get<import('./types').EmailRewriteReceipt>('/me/email-drafts/' + id + '/rewrites/' + operation, undefined, { signal }),
+  reconcile: (id: string) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/reconcile', {}),
   options: () => get<{ available: boolean; credits: number; maxBodyCharacters: number }>('/me/email-drafts/options'),
   improve: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean; credits: number }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/improve', b),
   list: () => get<PersonalEmailDraft[]>('/me/email-drafts'),
