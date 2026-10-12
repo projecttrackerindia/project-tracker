@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="..\ProjectManagement.Application\ProjectManagement.Application.csproj" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.2.0" /><ProjectReference Include="..\ProjectManagement.Application\ProjectManagement.Application.csproj" /></ItemGroup>
 </Project>
