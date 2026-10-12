@@ -7,4 +7,9 @@ public class PersonalInboxController(PersonalInboxService service):ApiController
 {
     [HttpGet] public async Task<IActionResult> List([FromQuery]string provider,[FromQuery]string? cursor,CancellationToken ct)=>Ok(await service.ListAsync(provider,cursor,ct));
     [HttpGet("thread")] public async Task<IActionResult> Thread([FromQuery]string provider,[FromQuery]string messageId,CancellationToken ct)=>Ok(await service.ThreadAsync(provider,messageId,ct));
+    [HttpGet("attachments")] public async Task<IActionResult> Attachments([FromQuery]string provider,[FromQuery]string messageId,CancellationToken ct)=>Ok(await service.AttachmentsAsync(provider,messageId,ct));
+    [HttpGet("attachments/download")] public async Task<IActionResult> Download([FromQuery]string token,CancellationToken ct){
+        var file=await service.DownloadAttachmentAsync(token,ct);Response.Headers["X-Content-Type-Options"]="nosniff";
+        return File(file.Bytes,"application/octet-stream",file.Name);
+    }
 }

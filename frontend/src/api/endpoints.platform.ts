@@ -112,6 +112,7 @@ export const microsoftApi = {
 export const personalInboxApi = {
   list: (provider: 'google' | 'microsoft', cursor?: string, signal?: AbortSignal) => get<import('./types').InboxPage>('/me/inbox', { provider, cursor }, { signal }),
   thread: (provider: 'google' | 'microsoft', messageId: string, signal?: AbortSignal) => get<import('./types').InboxThread>('/me/inbox/thread', { provider, messageId }, { signal }),
+  attachments: (provider: 'google' | 'microsoft', messageId: string, signal?: AbortSignal) => get<import('./types').InboxAttachments>('/me/inbox/attachments', { provider, messageId }, { signal }),
 };
 export const inboxSummaryApi = {
   options: (signal?: AbortSignal) => get<import('./types').InboxSummaryOptions>('/me/inbox/summaries/options', undefined, { signal }),

@@ -17,10 +17,10 @@ public record InboxPageDto(string Provider,string Account,IReadOnlyList<InboxMes
 public record InboxThreadDto(string Provider,string Account,string ThreadId,IReadOnlyList<InboxMessageDto> Messages,bool Truncated,string SourceHash="",string AccessContext="");
 
 // Own-mailbox reads only. Mail content stays in the request, never in logs, audit payloads or shared caches.
-public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCalendarAuthService google,
+public partial class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCalendarAuthService google,
     MicrosoftProductivityAuthService microsoft,IOptions<GoogleCalendarOptions> googleOptions,
     IOptions<MicrosoftProductivityOptions> microsoftOptions,IHttpClientFactory http,ISecretProtector secrets,
-    IServiceProvider services,AppClock clock)
+    IServiceProvider services,AppClock clock,IOptions<PersonalInboxAttachmentOptions> attachmentOptions)
 {
     private const string Graph="https://graph.microsoft.com/v1.0/me";
     private const string Gmail="https://gmail.googleapis.com/gmail/v1/users/me";

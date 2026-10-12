@@ -709,6 +709,8 @@ export interface InboxSummaryOptions { available: boolean; credits: number; maxS
 export interface InboxSummaryRequest { operationId: string; provider: string; messageId: string; sourceHash: string; credits: number; confirmed: boolean }
 export interface InboxSummaryReceipt { operationId: string; provider: string; messageId: string; status: string; credits: number; createdAt: string; expiresAt: string }
 export interface InboxSummary extends InboxSummaryReceipt { sourceHash: string; model: string | null; points: { text: string; messageId: string; quote: string }[]; sourceChanged: boolean }
+export interface InboxAttachment { name: string; size: number; mediaType: string; inline: boolean; downloadToken: string | null; unavailableReason: string | null }
+export interface InboxAttachments { files: InboxAttachment[]; truncated: boolean; maxDownloadBytes: number }
 
 export interface PersonalCalendarProposal {
   id:string; title:string; description:string; startUtc:string; endUtc:string; timeZone:string;

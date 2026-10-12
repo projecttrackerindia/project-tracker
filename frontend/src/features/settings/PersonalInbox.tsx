@@ -8,6 +8,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import './PersonalInbox.css';
 import { InboxSummary } from './InboxSummary';
+import { InboxAttachments } from './InboxAttachments';
 
 export function PersonalInbox({ google }: { google?: GoogleConnectionStatus }) {
   const wid = useWorkspaceId();
@@ -70,7 +71,7 @@ export function PersonalInbox({ google }: { google?: GoogleConnectionStatus }) {
         {!thread ? <div className="inbox-empty"><Icon name="mail" size={28} /><p>{busy && selected ? 'Reading this conversation…' : 'Select a message to open its conversation.'}</p></div> : <>
           {thread.truncated && <p className="inbox-truncated" role="status">This is a limited view. Some messages or body content are omitted. Review the complete conversation in your mail provider.</p>}
           {selected && <InboxSummary key={`${wid}:${provider}:${thread.accessContext}:${thread.sourceHash}`} thread={thread} messageId={selected} />}
-          {thread.messages.map(message => <article className="inbox-thread-message" key={message.id} id={`inbox-source-${message.id}`} tabIndex={-1}><h4>{message.subject || '(No subject)'}</h4><div className="inbox-thread-meta"><span>{message.sender || 'Unknown sender'}</span><time dateTime={message.receivedAt || undefined}>{date(message.receivedAt)}</time></div><p className="inbox-body">{message.body}</p>{message.hasAttachments && <small className="muted">This message includes attachments. Open your mail provider to view them.</small>}{message.bodyTruncated && <small className="muted">Body content is limited.</small>}</article>)}
+          {thread.messages.map(message => <article className="inbox-thread-message" key={message.id} id={`inbox-source-${message.id}`} tabIndex={-1}><h4>{message.subject || '(No subject)'}</h4><div className="inbox-thread-meta"><span>{message.sender || 'Unknown sender'}</span><time dateTime={message.receivedAt || undefined}>{date(message.receivedAt)}</time></div><p className="inbox-body">{message.body}</p>{message.hasAttachments && <InboxAttachments key={`${wid}:${provider}:${thread.accessContext}:${message.id}`} provider={provider} messageId={message.id} />}{message.bodyTruncated && <small className="muted">Body content is limited.</small>}</article>)}
         </>}
       </div>
     </div>}

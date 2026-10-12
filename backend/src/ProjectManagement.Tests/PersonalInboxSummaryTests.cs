@@ -58,6 +58,7 @@ public class PersonalInboxSummaryTests(ApiFactory factory)
     public async Task Summaries_are_explicit_private_encrypted_cited_and_replay_without_another_call_or_charge(string provider){
         try{
             var owner=await Setup(provider);var req=await Request(owner,provider);
+            var googleSends=factory.GoogleCalendar.SentMail.Count;var microsoftSends=factory.MicrosoftProductivity.SentMessages.Count;
             Assert.Equal(HttpStatusCode.UnprocessableEntity,(await owner.Post(Route,req with{Confirmed=false})).Status);Assert.Empty(factory.Ai.Prompts);
             Assert.Equal("INBOX_SUMMARY_PRICE_CHANGED",(await owner.Post(Route,req with{Credits=req.Credits+1})).ErrorCode);Assert.Empty(factory.Ai.Prompts);
             var result=await owner.Post(Route,req);Assert.True(result.Ok,result.ToString());Assert.Equal("completed",result.Data!["status"]!.GetValue<string>());
@@ -70,7 +71,7 @@ public class PersonalInboxSummaryTests(ApiFactory factory)
                 Assert.Equal(HttpStatusCode.NotFound,(await stranger.Get(Route+"/"+req.OperationId)).Status);
                 Assert.Empty((await stranger.Get(Route)).Data!.AsArray());Assert.True((await stranger.Delete(Route+"/"+req.OperationId)).Ok);
             }
-            Assert.True((await owner.Get(Route+"/"+req.OperationId)).Ok);Assert.Empty(factory.GoogleCalendar.SentMail);Assert.Empty(factory.MicrosoftProductivity.SentMessages);
+            Assert.True((await owner.Get(Route+"/"+req.OperationId)).Ok);Assert.Equal(googleSends,factory.GoogleCalendar.SentMail.Count);Assert.Equal(microsoftSends,factory.MicrosoftProductivity.SentMessages.Count);
             await owner.Delete(Route+"/"+req.OperationId);Assert.Equal("AI_OPERATION_ALREADY_ADMITTED",(await owner.Post(Route,req)).ErrorCode);Assert.Single(factory.Ai.Prompts);Balance(owner,req.Credits);
         }finally{Reset();}
     }

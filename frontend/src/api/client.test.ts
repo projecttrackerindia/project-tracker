@@ -28,6 +28,27 @@ describe('AI request limits', () => {
 });
 
 describe('protected downloads', () => {
+  it('passes the view cancellation signal through to the protected file request', async () => {
+    const { client, saveFile } = await setup();
+    const controller = new AbortController();
+    const fetch = vi.fn().mockResolvedValue(new Response('private file'));
+    vi.stubGlobal('fetch', fetch);
+    await client.download('/me/inbox/attachments/download?token=opaque', 'review.txt', controller.signal);
+    expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+    expect(saveFile).toHaveBeenCalledOnce();
+  });
+
+  it('does not save a private file if its view is retired after the response arrives', async () => {
+    const { client, saveFile } = await setup();
+    const controller = new AbortController();
+    const response = new Response('private file');
+    const original = response.blob.bind(response);
+    response.blob = async () => { const blob = await original(); controller.abort(); return blob; };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    await expect(client.download('/me/inbox/attachments/download?token=opaque', 'review.txt', controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(saveFile).not.toHaveBeenCalled();
+  });
+
   it.each(['/billing/invoices/one/pdf', '/reports/exports/one/file', '/attachments/one/download', '/documents/one/files/two/download'])(
     'refreshes and retries an expired session for %s', async (path) => {
       const { client, saveFile } = await setup();

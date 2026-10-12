@@ -10,7 +10,7 @@ const artifacts=path.resolve(process.env.PM_UI_ARTIFACTS||'test-results/enterpri
 await fs.mkdir(artifacts,{recursive:true});
 const artifact=name=>path.join(artifacts,name);
 let workflow=null;const saves=[];
-let inboxReads=0;let inboxEnabled=true;let summaryCalls=0;const summaryReceipts=new Map();const inboxSourceHash="a".repeat(64);
+let attachmentReads=0;let attachmentDownloads=0;let inboxReads=0;let inboxEnabled=true;let summaryCalls=0;const summaryReceipts=new Map();const inboxSourceHash="a".repeat(64);
 let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe=true</script>';
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Organization',type:'Organization',role:'Owner',planCode:'BUSINESS',description:null,memberCount:2};
@@ -29,6 +29,10 @@ try {
    const ext=path.extname(filename);
    const type={'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2','.svg':'image/svg+xml'}[ext]||'application/octet-stream';
    await route.fulfill({status:200,contentType:type,body:await fs.readFile(filename),headers:ext==='.html'?{'content-security-policy':csp}:{}});return;
+  }
+  if(url.pathname==='/api/v1/me/inbox/attachments/download'){
+   assert.equal(route.request().method(),'GET');assert.equal(url.searchParams.get('token'),'synthetic-private-file-token');attachmentDownloads++;
+   await route.fulfill({status:200,contentType:'application/octet-stream',headers:{'content-disposition':'attachment; filename="review-notes.txt"','x-content-type-options':'nosniff'},body:'Synthetic private attachment content'});return;
   }
   let data=[];
   if(url.pathname.includes('/support/workflows')&&route.request().method()!=='GET'){
@@ -56,6 +60,7 @@ try {
   else if(url.pathname.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
   else if(url.pathname.endsWith('/integrations/google/status'))data={connected:true,googleEmail:'preview@gmail.example.test',connectedAt:'2026-10-11T08:00:00Z',lastError:null,calendarAccess:true,mailEnabled:false,mailSendAccess:false,inboxEnabled,inboxAccess:true};
   else if(url.pathname.endsWith('/integrations/microsoft/status'))data={enabled:true,configured:true,connected:true,email:'preview@outlook.example.test',mailSendAccess:true,inboxEnabled,inboxAccess:true};
+  else if(url.pathname==='/api/v1/me/inbox/attachments'){attachmentReads++;data={files:[{name:'review-notes.txt',size:36,mediaType:'text/plain',inline:false,downloadToken:'synthetic-private-file-token',unavailableReason:null}],truncated:false,maxDownloadBytes:2097152};}
   else if(url.pathname==='/api/v1/me/inbox/summaries/options')data={available:true,credits:1,maxSourceCharacters:18000,retentionHours:24};
   else if(url.pathname==='/api/v1/me/inbox/summaries')data=[...summaryReceipts.values()];
   else if(url.pathname.startsWith('/api/v1/me/inbox/summaries/'))data=summaryReceipts.get(url.pathname.split('/').at(-1));
@@ -63,7 +68,7 @@ try {
    inboxReads++;
    const provider=url.searchParams.get('provider');
    const account=provider==='google'?'preview@gmail.example.test':'preview@outlook.example.test';
-   const message={id:provider==='google'?'1001':'message1',threadId:'conversation1',subject:'Project delivery review',sender:'reviewer@example.test',receivedAt:'2026-10-11T08:00:00Z',unread:true,hasAttachments:false,body:url.pathname.endsWith('/thread')?inboxBody:null,bodyTruncated:false};
+   const message={id:provider==='google'?'1001':'message1',threadId:'conversation1',subject:'Project delivery review',sender:'reviewer@example.test',receivedAt:'2026-10-11T08:00:00Z',unread:true,hasAttachments:true,body:url.pathname.endsWith('/thread')?inboxBody:null,bodyTruncated:false};
    data=url.pathname.endsWith('/thread')?{provider,account,threadId:'conversation1',messages:[message],truncated:false,sourceHash:inboxSourceHash,accessContext:inboxSourceHash}:{provider,account,messages:[message],cursor:null};
   }
   else if(url.pathname.endsWith('/resumes/options'))data={templates,templateLimit:2,aiAvailable:false,aiCredits:0,cleanCheckoutEnabled:false,cleanPricePaise:4900,cleanTaxPaise:0,taxLabel:''};
@@ -180,6 +185,13 @@ try {
  assert.equal(await page.evaluate(()=>window.inboxUnsafe),undefined,'Mail text must never execute HTML');
  inboxBody='Please review the delivery milestones for the customer portal.\n\nThe integration review is scheduled for Friday, 16 October. Could you share the outstanding blockers before the review?\n\nThank you,\nThe project team';
  await inboxMessage.click();await page.waitForFunction(()=>document.querySelector('.inbox-body')?.textContent?.includes('customer portal'));
+ assert.equal(attachmentReads,0,'Attachment metadata is loaded only by an explicit user action');assert.equal(attachmentDownloads,0);
+ await page.getByRole('button',{name:'Show attachment list',exact:true}).click();
+ await page.getByRole('button',{name:'Download review-notes.txt',exact:true}).waitFor({state:'visible'});assert.equal(attachmentReads,1);assert.equal(attachmentDownloads,0);
+ const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Download review-notes.txt',exact:true}).click();const file=await downloaded;
+ assert.equal(file.suggestedFilename(),'review-notes.txt');assert.equal(await fs.readFile(await file.path(),'utf8'),'Synthetic private attachment content');assert.equal(attachmentDownloads,1);
+ await page.locator('.inbox-attachments').screenshot({path:artifact('inbox-attachments-dark-desktop.png'),animations:'disabled'});
+ checks.push({name:'inbox-attachments-explicit-metadata-loading-authenticated-binary-download-no-ai',passed:true});
  assert.equal(summaryCalls,0,'Inbox reading must never automatically call AI');
  await page.getByRole('button',{name:'Summarize conversation',exact:true}).click();
  await page.getByRole('dialog').waitFor({state:'visible'});assert.equal(summaryCalls,0,'Consent must precede generation');
@@ -197,10 +209,12 @@ try {
  await page.evaluate(()=>{localStorage.setItem('pm_theme','light');document.documentElement.setAttribute('data-theme','light');});
  await page.locator('.personal-inbox').screenshot({path:artifact('inbox-light-desktop.png'),animations:'disabled'});
  await page.locator('.personal-inbox').screenshot({path:artifact('inbox-summary-light-desktop.png'),animations:'disabled'});
+ await page.locator('.inbox-attachments').screenshot({path:artifact('inbox-attachments-light-desktop.png'),animations:'disabled'});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  await page.getByLabel('Inbox provider').selectOption('microsoft');
  assert.equal(await page.locator('.inbox-body').count(),0,'Switching accounts must immediately clear prior mail content');
  assert.equal(await page.locator('.inbox-summary-points').count(),0,'Account changes must retire private summary text');
+ assert.equal(await page.locator('.inbox-attachment-file').count(),0,'Account changes must retire attachment names and download tokens');
  await page.getByRole('button',{name:'Load inbox',exact:true}).click();
  await inboxMessage.waitFor({state:'visible'});await inboxMessage.click();await page.locator('.inbox-body').waitFor({state:'visible'});
  assert.equal(await page.getByRole('button',{name:'Project delivery review',exact:false}).getAttribute('aria-pressed'),'true');
@@ -216,7 +230,11 @@ try {
  await page.locator('.inbox-summary-points li').first().waitFor({state:'visible'});
  // Retain the phone width, with enough capture height to keep the fixed account dock outside the card.
  await page.setViewportSize({width:390,height:1100});
- await page.locator('.inbox-summary').screenshot({path:artifact('inbox-summary-light-mobile.png'),animations:'disabled'});
+ await page.locator('.inbox-summary').screenshot({path:artifact('inbox-summary-light-mobile.png'),animations:'disabled',style:'.m-tabs{visibility:hidden}'});
+ await page.getByRole('button',{name:'Show attachment list',exact:true}).click();
+ await page.locator('.inbox-attachment-file').waitFor({state:'visible'});
+ // Component reference only: omit unrelated fixed navigation from the cutout; full-page checks retain it.
+ await page.locator('.inbox-attachments').screenshot({path:artifact('inbox-attachments-light-mobile.png'),animations:'disabled',style:'.m-tabs{visibility:hidden}'});
  await page.locator('.personal-inbox').scrollIntoViewIfNeeded();
  await page.screenshot({path:artifact('inbox-light-mobile.png'),fullPage:true,animations:'disabled'});
  checks.push({name:'private-inbox-manual-load-keyboard-reading-literal-html-account-switch-mobile',passed:true,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});
