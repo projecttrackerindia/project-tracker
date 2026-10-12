@@ -75,3 +75,7 @@ Consolidated studio/upload checkpoint: shared StudioHero and accessible template
 
 ## Private inbox boundary
 PersonalInboxService and PersonalInboxController add own-mailbox metadata/conversation reads using existing per-person encrypted OAuth connections. Optional read scopes are recorded on durable OAuth attempts. Provider results remain request-local, plain text, bounded and authorization-rechecked; UI content remains component-local rather than a shared query cache. Attachments, source-grounded summaries and calendar expansion remain separate open capabilities.
+
+
+## Private summary execution
+PersonalInboxSummaryService reuses PersonalInboxService, the shared AI router/client, AiCreditService, entitlement resolution, secret protection and audit infrastructure. AiRequestLimit admission is enforced on the POST controller, while GET receipt retrieval performs no inference. No new queue, vector database or provider service is introduced. Consent epochs separate stable review identity from rotating OAuth access/refresh credentials. Private frontend text remains local component state and is retired on account/thread/workspace changes; source navigation uses literal rendered message content. Housekeeping reuses MaintenanceService, and credit recovery reuses the existing operations processor's expired-reservation scan.

@@ -26,7 +26,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
-        "ProjectManagement.Application/Features/Billing/BillingService.cs", // owner-only certification expiry maintenance: personal destinations, no employer reads
+        "ProjectManagement.Application/Features/Billing/BillingService.cs", // personal certification destinations and bounded expired-summary ID deletion only; no employer reads or decrypted email retrieval
         "ProjectManagement.Application/Features/Billing/BillingWebhookService.cs",
         "ProjectManagement.Application/Features/Billing/SubscriptionActivator.cs",
         "ProjectManagement.Application/Features/Compliance/Compliance.cs",

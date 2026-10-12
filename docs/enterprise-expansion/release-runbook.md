@@ -112,3 +112,9 @@ Consent review also confirms that unrequested provider scopes are not promoted i
 
 ### Exhaustive endpoint regression follow-up
 Full CI on 97d6adf found a missing-message query reaching thread validation as null and returning HTTP 500 during the existing exhaustive team-scope crawl. Required message references now reject null/blank values as normal 422 validation errors before any provider request. Direct missing-parameter regressions are included; the exhaustive isolation test remains enabled. The follow-up passed all 27 local inbox/team-scope checks, including the unchanged exhaustive crawl and missing-parameter cases. A labeled technical reference was shown before commit. Follow-up full CI remains pending. The four non-database CI jobs passed on 97d6adf; its SQLite suite had one failure, 1,304 passes and two intentional skips. No coordinated release or deployment is claimed.
+
+
+## Summary activation and release gate
+Review the additive GroundedInboxSummaryReceipts migration and exact-head PostgreSQL/main-upgrade CI before deployment. Do not enable PersonalInboxSummaries, Microsoft or WhatsApp until their controlled verification gates pass. A generation reserves credits in a short committed transaction before calling AI. Completion writes the encrypted owner receipt and settles credits atomically. Recover interrupted work by reading its operation receipt; never retry with a new operation ID merely because a response was lost. Shared credit recovery expires abandoned twenty-minute holds without repeating inference. Confirm maintenance removes expired results while preserving billing records.
+
+The user's full expanded scope is still the merge condition. Successful checks for this batch are not proof of production access, semantic accuracy, full expanded implementation or a Railway deployment.

@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.InboundEmailOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.InboundEmailOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.MicrosoftProductivityOptions>(config.GetSection("MicrosoftProductivity"));
+        services.Configure<ProjectManagement.Application.Features.Integrations.PersonalInboxSummaryOptions>(config.GetSection("PersonalInboxSummaries"));
         services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.WhatsAppOptions>(config.GetSection("WhatsApp"));
         services.Configure<ProjectManagement.Application.Features.Integrations.SlackOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.SlackOptions.Section));

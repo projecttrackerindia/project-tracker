@@ -87,3 +87,7 @@ PersonalFileDeletion also records pending upload cleanup with a one-day Availabl
 
 ## Explicit inbox consent
 20261011173857_ExplicitInboxConsent adds ProviderOAuthAttempts.RequestedScopes (maximum 2,000 characters, required, default empty). The server records the scopes it requested and validates the returned grant for read consent. Existing attempts retain their state/browser proof, encrypted verifier, ownership and expiry; no inbox permission is inferred from the new column. The reviewed SQLite additive upgrader includes this migration and can run twice without replacing prior attempts. Inbox message bodies are not added to the database.
+
+
+## Grounded inbox summary migration
+`20261011184438_GroundedInboxSummaryReceipts` adds ConsentEpoch (GUID, legacy default empty) to GoogleConnections and MicrosoftConnections, plus PersonalInboxSummaries. Successful OAuth connection sets a new epoch; refresh retains it. Existing scope grants are preserved, never expanded by migration. The summary table contains tenant/user/operation IDs, provider/message reference, SHA-256 source/access fingerprints, cost/state/deadline/expiry and an encrypted result envelope bound to its owner, tenant, operation and fingerprints. There is a unique tenant-operation index plus expiry and owner-expiry indexes. Raw source email is not persisted in this table; quoted generated result text is encrypted. Existing shared credit reservations/ledger remain authoritative. The SQLite additive allowlist includes twenty reviewed expansion migrations.

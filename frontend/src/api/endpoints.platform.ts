@@ -113,6 +113,13 @@ export const personalInboxApi = {
   list: (provider: 'google' | 'microsoft', cursor?: string, signal?: AbortSignal) => get<import('./types').InboxPage>('/me/inbox', { provider, cursor }, { signal }),
   thread: (provider: 'google' | 'microsoft', messageId: string, signal?: AbortSignal) => get<import('./types').InboxThread>('/me/inbox/thread', { provider, messageId }, { signal }),
 };
+export const inboxSummaryApi = {
+  options: (signal?: AbortSignal) => get<import('./types').InboxSummaryOptions>('/me/inbox/summaries/options', undefined, { signal }),
+  list: (signal?: AbortSignal) => get<import('./types').InboxSummaryReceipt[]>('/me/inbox/summaries', undefined, { signal }),
+  get: (operation: string, signal?: AbortSignal) => get<import('./types').InboxSummary>('/me/inbox/summaries/' + operation, undefined, { signal }),
+  create: (body: import('./types').InboxSummaryRequest, signal?: AbortSignal) => post<import('./types').InboxSummary>('/me/inbox/summaries', body, { signal }),
+  remove: (operation: string) => del('/me/inbox/summaries/' + operation),
+};
 
 export const personalEmailApi = {
   options: () => get<{ available: boolean; credits: number; maxBodyCharacters: number }>('/me/email-drafts/options'),

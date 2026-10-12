@@ -10,7 +10,7 @@ const artifacts=path.resolve(process.env.PM_UI_ARTIFACTS||'test-results/enterpri
 await fs.mkdir(artifacts,{recursive:true});
 const artifact=name=>path.join(artifacts,name);
 let workflow=null;const saves=[];
-let inboxReads=0;let inboxEnabled=true;
+let inboxReads=0;let inboxEnabled=true;let summaryCalls=0;const summaryReceipts=new Map();const inboxSourceHash="a".repeat(64);
 let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe=true</script>';
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Organization',type:'Organization',role:'Owner',planCode:'BUSINESS',description:null,memberCount:2};
@@ -41,18 +41,30 @@ try {
    workflow={id:'00000000-0000-0000-0000-000000000005',...body,enabled:false,publishedRevisionId:null,version:(workflow?.version??0)+1,revisions:[]};
    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data:workflow})});return;
   }
+  if(url.pathname==='/api/v1/me/inbox/summaries'&&route.request().method()==='POST'){
+   const b=route.request().postDataJSON();assert.equal(b.confirmed,true);assert.equal(b.sourceHash,inboxSourceHash);assert.equal(b.credits,1);assert.match(b.operationId,/^[0-9a-f-]{36}$/);
+   const id=b.provider==='google'?'1001':'message1';assert.equal(b.messageId,id);
+   if(!summaryReceipts.has(b.operationId)){
+    summaryCalls++;
+    summaryReceipts.set(b.operationId,{...b,status:'completed',createdAt:'2026-10-11T08:00:00Z',expiresAt:'2026-10-12T08:00:00Z',model:'synthetic-preview',sourceChanged:false,points:[{text:'The integration review is scheduled for Friday, 16 October.',messageId:id,quote:'The integration review is scheduled for Friday, 16 October.'},{text:'Outstanding blockers are requested before the review.',messageId:id,quote:'Could you share the outstanding blockers before the review?'}]});
+   }
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data:summaryReceipts.get(b.operationId)})});return;
+  }
   if(!url.pathname.endsWith('/auth/refresh'))assert.equal(route.request().method(),'GET', 'Unexpected mutation in synthetic UI check');
   if(url.pathname.endsWith('/auth/refresh'))data={accessToken:'synthetic-preview-token',expiresAt:'2099-01-01T00:00:00Z',user,refreshToken:null};
   else if(url.pathname==='/api/v1/me')data=context;
   else if(url.pathname.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
   else if(url.pathname.endsWith('/integrations/google/status'))data={connected:true,googleEmail:'preview@gmail.example.test',connectedAt:'2026-10-11T08:00:00Z',lastError:null,calendarAccess:true,mailEnabled:false,mailSendAccess:false,inboxEnabled,inboxAccess:true};
   else if(url.pathname.endsWith('/integrations/microsoft/status'))data={enabled:true,configured:true,connected:true,email:'preview@outlook.example.test',mailSendAccess:true,inboxEnabled,inboxAccess:true};
+  else if(url.pathname==='/api/v1/me/inbox/summaries/options')data={available:true,credits:1,maxSourceCharacters:18000,retentionHours:24};
+  else if(url.pathname==='/api/v1/me/inbox/summaries')data=[...summaryReceipts.values()];
+  else if(url.pathname.startsWith('/api/v1/me/inbox/summaries/'))data=summaryReceipts.get(url.pathname.split('/').at(-1));
   else if(url.pathname==='/api/v1/me/inbox'||url.pathname==='/api/v1/me/inbox/thread'){
    inboxReads++;
    const provider=url.searchParams.get('provider');
    const account=provider==='google'?'preview@gmail.example.test':'preview@outlook.example.test';
    const message={id:provider==='google'?'1001':'message1',threadId:'conversation1',subject:'Project delivery review',sender:'reviewer@example.test',receivedAt:'2026-10-11T08:00:00Z',unread:true,hasAttachments:false,body:url.pathname.endsWith('/thread')?inboxBody:null,bodyTruncated:false};
-   data=url.pathname.endsWith('/thread')?{provider,account,threadId:'conversation1',messages:[message],truncated:false}:{provider,account,messages:[message],cursor:null};
+   data=url.pathname.endsWith('/thread')?{provider,account,threadId:'conversation1',messages:[message],truncated:false,sourceHash:inboxSourceHash,accessContext:inboxSourceHash}:{provider,account,messages:[message],cursor:null};
   }
   else if(url.pathname.endsWith('/resumes/options'))data={templates,templateLimit:2,aiAvailable:false,aiCredits:0,cleanCheckoutEnabled:false,cleanPricePaise:4900,cleanTaxPaise:0,taxLabel:''};
   else if(url.pathname.endsWith('/me/certifications'))data=[{id:'00000000-0000-0000-0000-000000000003',name:'Project Management Certification',issuer:'Preview Institute',issuedOn:'2025-01-01',expiresOn:'2027-01-01',credentialId:null,verificationUrl:null,showBadge:false,archived:false,version:1,verificationStatus:'self-reported',expiryReminders:true,hasAttachment:false,attachmentFormat:null}];
@@ -73,7 +85,8 @@ try {
   await page.close();page=await ctx.newPage();attachErrors();
   await page.setViewportSize({width,height});
   await page.goto(origin+path);
-  await page.locator(selector).waitFor({state:'visible',timeout:15000});
+  try { await page.locator(selector).waitFor({state:'visible',timeout:15000}); }
+  catch(e) { await fs.writeFile(artifact('browser-failure.json'),JSON.stringify({path,pageErrors:errors,body:await page.locator('body').innerText()},null,2));await page.screenshot({path:artifact('browser-failure.png'),fullPage:true});throw e; }
   await page.evaluate(()=>document.fonts.ready);
   await page.screenshot({path:artifact(name+'.png'),fullPage:true,animations:"disabled"});
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
@@ -167,12 +180,27 @@ try {
  assert.equal(await page.evaluate(()=>window.inboxUnsafe),undefined,'Mail text must never execute HTML');
  inboxBody='Please review the delivery milestones for the customer portal.\n\nThe integration review is scheduled for Friday, 16 October. Could you share the outstanding blockers before the review?\n\nThank you,\nThe project team';
  await inboxMessage.click();await page.waitForFunction(()=>document.querySelector('.inbox-body')?.textContent?.includes('customer portal'));
+ assert.equal(summaryCalls,0,'Inbox reading must never automatically call AI');
+ await page.getByRole('button',{name:'Summarize conversation',exact:true}).click();
+ await page.getByRole('dialog').waitFor({state:'visible'});assert.equal(summaryCalls,0,'Consent must precede generation');
+ await page.getByRole('button',{name:'Summarize for 1 credit',exact:true}).click();
+ await page.locator('.inbox-summary-points li').first().waitFor({state:'visible'});assert.equal(summaryCalls,1);
+ assert.equal(await page.locator('.inbox-summary-points blockquote').count(),2);
+ await page.getByRole('button',{name:'View cited message',exact:true}).first().click();
+ assert.equal(await page.evaluate(()=>document.activeElement?.id),'inbox-source-1001');
+ await page.getByRole('button',{name:'Saved summaries',exact:true}).click();
+ await page.locator('.inbox-summary-history button').click();assert.equal(summaryCalls,1,'Recovering a receipt must not generate again');
+ await page.setViewportSize({width:1440,height:1600});
+ await page.locator('.personal-inbox').screenshot({path:artifact('inbox-summary-dark-desktop.png'),animations:'disabled'});
+ checks.push({name:'inbox-summary-explicit-credit-consent-exact-citations-keyboard-source-navigation-receipt-recovery',passed:true});
  await page.locator('.personal-inbox').screenshot({path:artifact('inbox-dark-desktop.png'),animations:'disabled'});
  await page.evaluate(()=>{localStorage.setItem('pm_theme','light');document.documentElement.setAttribute('data-theme','light');});
  await page.locator('.personal-inbox').screenshot({path:artifact('inbox-light-desktop.png'),animations:'disabled'});
+ await page.locator('.personal-inbox').screenshot({path:artifact('inbox-summary-light-desktop.png'),animations:'disabled'});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  await page.getByLabel('Inbox provider').selectOption('microsoft');
  assert.equal(await page.locator('.inbox-body').count(),0,'Switching accounts must immediately clear prior mail content');
+ assert.equal(await page.locator('.inbox-summary-points').count(),0,'Account changes must retire private summary text');
  await page.getByRole('button',{name:'Load inbox',exact:true}).click();
  await inboxMessage.waitFor({state:'visible'});await inboxMessage.click();await page.locator('.inbox-body').waitFor({state:'visible'});
  assert.equal(await page.getByRole('button',{name:'Project delivery review',exact:false}).getAttribute('aria-pressed'),'true');
@@ -183,6 +211,12 @@ try {
  await page.getByRole('button',{name:'Load inbox',exact:true}).click();
  await inboxMessage.waitFor({state:'visible'});await inboxMessage.click();await page.locator('.inbox-body').waitFor({state:'visible'});
  assert.match(await page.locator('.inbox-account').textContent(),/outlook/);
+ await page.getByRole('button',{name:'Summarize conversation',exact:true}).click();
+ await page.getByRole('button',{name:'Summarize for 1 credit',exact:true}).click();
+ await page.locator('.inbox-summary-points li').first().waitFor({state:'visible'});
+ // Retain the phone width, with enough capture height to keep the fixed account dock outside the card.
+ await page.setViewportSize({width:390,height:1100});
+ await page.locator('.inbox-summary').screenshot({path:artifact('inbox-summary-light-mobile.png'),animations:'disabled'});
  await page.locator('.personal-inbox').scrollIntoViewIfNeeded();
  await page.screenshot({path:artifact('inbox-light-mobile.png'),fullPage:true,animations:'disabled'});
  checks.push({name:'private-inbox-manual-load-keyboard-reading-literal-html-account-switch-mobile',passed:true,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});

@@ -3320,6 +3320,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ConnectedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("ConsentEpoch")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3685,6 +3688,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("ConnectedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConsentEpoch")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -4249,6 +4255,89 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("AvailableAt");
 
                     b.ToTable("PersonalFileDeletions");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalInboxSummary", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccessContext")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Credits")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Deadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MessageId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ResultProtected")
+                        .HasMaxLength(128000)
+                        .HasColumnType("character varying(128000)");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TenantId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId", "ExpiresAt");
+
+                    b.ToTable("PersonalInboxSummaries");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalResume", b =>
@@ -9387,6 +9476,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalEmailDraft", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.PersonalInboxSummary", b =>
                 {
                     b.HasOne("ProjectManagement.Domain.Entities.User", null)
                         .WithMany()

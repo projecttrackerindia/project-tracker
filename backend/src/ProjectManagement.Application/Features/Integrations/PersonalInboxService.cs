@@ -14,7 +14,7 @@ namespace ProjectManagement.Application.Features.Integrations;
 
 public record InboxMessageDto(string Id,string ThreadId,string Subject,string Sender,DateTimeOffset? ReceivedAt,bool Unread,bool HasAttachments,string? Body=null,bool BodyTruncated=false);
 public record InboxPageDto(string Provider,string Account,IReadOnlyList<InboxMessageDto> Messages,string? Cursor);
-public record InboxThreadDto(string Provider,string Account,string ThreadId,IReadOnlyList<InboxMessageDto> Messages,bool Truncated);
+public record InboxThreadDto(string Provider,string Account,string ThreadId,IReadOnlyList<InboxMessageDto> Messages,bool Truncated,string SourceHash="",string AccessContext="");
 
 // Own-mailbox reads only. Mail content stays in the request, never in logs, audit payloads or shared caches.
 public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCalendarAuthService google,
@@ -25,7 +25,7 @@ public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCal
     private const string Graph="https://graph.microsoft.com/v1.0/me";
     private const string Gmail="https://gmail.googleapis.com/gmail/v1/users/me";
     private const string Metadata="id,conversationId,subject,from,receivedDateTime,isRead,hasAttachments";
-    private record Grant(string Provider,Guid User,Guid Tenant,Guid Connection,string Fingerprint,string Account,string Token);
+    private record Grant(string Provider,Guid User,Guid Tenant,Guid Connection,string Fingerprint,string Account,string Token,Guid ConsentEpoch);
     private record PageToken(string Purpose,string Provider,Guid User,Guid Tenant,Guid Connection,string Fingerprint,string Next,DateTime ExpiresAt);
     private static ConflictException Changed()=>new("Your mailbox connection changed. Reload the inbox.","INBOX_CONNECTION_CHANGED");
     private static ConflictException Invalid()=>new("The mail provider returned an invalid response.","INBOX_PROVIDER_ERROR");
@@ -37,13 +37,13 @@ public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         if(provider=="google"){
             if(!googleOptions.Value.InboxEnabled||!google.Configured)throw new ConflictException("Gmail inbox access is awaiting administrator setup.","INBOX_DISABLED");
             var access=await google.GetAccessGrantAsync(uid,ct,GoogleCalendarAuthService.InboxScope);
-            var grant=new Grant(provider,uid,tid,access.ConnectionId,access.RefreshFingerprint,access.Account,access.AccessToken);
+            var grant=new Grant(provider,uid,tid,access.ConnectionId,access.RefreshFingerprint,access.Account,access.AccessToken,access.ConsentEpoch);
             await RecheckAsync(grant,ct);return grant;
         }
         if(provider=="microsoft"){
             if(!microsoftOptions.Value.InboxEnabled)throw new ConflictException("Microsoft inbox access is awaiting administrator setup.","INBOX_DISABLED");
             var access=await microsoft.GetInboxGrantAsync(ct);
-            var grant=new Grant(provider,uid,tid,access.ConnectionId,access.RefreshFingerprint,access.Email,access.AccessToken);
+            var grant=new Grant(provider,uid,tid,access.ConnectionId,access.RefreshFingerprint,access.Email,access.AccessToken,access.ConsentEpoch);
             await RecheckAsync(grant,ct);return grant;
         }
         throw new ValidationException("provider","Choose Google or Microsoft.");
@@ -53,10 +53,10 @@ public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         await WorkspaceExecutionPrincipal.ConfigureAsync(services,grant.User,grant.Tenant,null,ct);
         if(grant.Provider=="google"){
             var row=await db.GoogleConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==grant.User,ct);
-            if(!googleOptions.Value.InboxEnabled||row==null||row.Id!=grant.Connection||Fingerprint(row.RefreshTokenProtected)!=grant.Fingerprint||row.GoogleEmail!=grant.Account||!row.Scopes.Split(' ').Contains(GoogleCalendarAuthService.InboxScope))throw Changed();
+            if(!googleOptions.Value.InboxEnabled||row==null||row.Id!=grant.Connection||row.ConsentEpoch!=grant.ConsentEpoch||Fingerprint(row.RefreshTokenProtected)!=grant.Fingerprint||row.GoogleEmail!=grant.Account||!row.Scopes.Split(' ').Contains(GoogleCalendarAuthService.InboxScope))throw Changed();
         }else{
             var row=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==grant.User,ct);
-            if(!microsoftOptions.Value.Enabled||!microsoftOptions.Value.InboxEnabled||row==null||row.Id!=grant.Connection||Fingerprint(row.RefreshTokenProtected)!=grant.Fingerprint||row.Email!=grant.Account||!row.Scopes.Split(' ').Any(s=>s.Split('/').Last()=="Mail.Read"))throw Changed();
+            if(!microsoftOptions.Value.Enabled||!microsoftOptions.Value.InboxEnabled||row==null||row.Id!=grant.Connection||row.ConsentEpoch!=grant.ConsentEpoch||Fingerprint(row.RefreshTokenProtected)!=grant.Fingerprint||row.Email!=grant.Account||!row.Scopes.Split(' ').Any(s=>s.Split('/').Last().Equals("Mail.Read",StringComparison.OrdinalIgnoreCase)))throw Changed();
         }
     }
     private async Task<JsonDocument> ReadAsync(Grant grant,string url,CancellationToken ct,int maximum=65536)
@@ -225,7 +225,10 @@ public class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,GoogleCal
                 var b=m.Body??"";var cut=b.Length>remaining;var result=m with{Body=cut?b[..remaining]:b,BodyTruncated=m.BodyTruncated||cut};remaining-=result.Body!.Length;return result;
             }).ToArray();
             await RecheckAsync(grant,deadline.Token);
-            return new(provider,grant.Account,thread,messages,truncated||messages.Any(m=>m.BodyTruncated));
+            var limited=truncated||messages.Any(m=>m.BodyTruncated);
+            var accessContext=Fingerprint(JsonSerializer.Serialize(new{grant.Provider,grant.User,grant.Tenant,grant.Connection,grant.ConsentEpoch,grant.Account}));
+            var sourceHash=Fingerprint(JsonSerializer.Serialize(new{accessContext,thread,limited,messages=messages.Select(m=>new{m.Id,m.Subject,m.Sender,m.ReceivedAt,m.Body,m.BodyTruncated,m.HasAttachments})}));
+            return new(provider,grant.Account,thread,messages,limited,sourceHash,accessContext);
         }catch(OperationCanceledException)when(!ct.IsCancellationRequested){throw new AppException(504,"INBOX_TIMEOUT","The mailbox took too long to respond. Try again.");}
         catch(HttpRequestException){throw new AppException(502,"INBOX_PROVIDER_ERROR","The mailbox could not be reached. Try again.");}
     }

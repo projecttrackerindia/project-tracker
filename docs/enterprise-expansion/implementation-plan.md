@@ -129,3 +129,9 @@ Consent review also confirms that unrequested provider scopes are not promoted i
 
 ### Exhaustive endpoint regression follow-up
 Full CI on 97d6adf found a missing-message query reaching thread validation as null and returning HTTP 500 during the existing exhaustive team-scope crawl. Required message references now reject null/blank values as normal 422 validation errors before any provider request. Direct missing-parameter regressions are included; the exhaustive isolation test remains enabled. The follow-up passed all 27 local inbox/team-scope checks, including the unchanged exhaustive crawl and missing-parameter cases. A labeled technical reference was shown before commit. Follow-up full CI remains pending. The four non-database CI jobs passed on 97d6adf; its SQLite suite had one failure, 1,304 passes and two intentional skips. No coordinated release or deployment is claimed.
+
+
+## Private inbox summaries checkpoint
+Adds explicit, plan-limited summaries of an opened complete conversation. A reviewed source fingerprint and credit-cost confirmation precede generation. Durable operation receipts make recovery/replay possible without another model call; publication and credit settlement share a transaction. Consent epochs invalidate reviewed access on reconnection while allowing normal token refresh.
+
+The full expanded scope remains required before merging. This checkpoint does not close inbox attachment access, Microsoft calendars, multi-calendar/attendee availability, advanced support routing, controlled provider/payment verification, broader account/file retention or remaining release checks. No live AI or bulk AI testing is performed.

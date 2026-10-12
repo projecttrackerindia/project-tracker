@@ -272,6 +272,15 @@ public partial class AppDbContext
             e.Property(x=>x.Provider).HasMaxLength(32);e.Property(x=>x.ReturnPath).HasMaxLength(200);
             e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<PersonalInboxSummary>(e=>{
+            e.HasIndex(x=>new{x.TenantId,x.OperationId}).IsUnique();
+            e.HasIndex(x=>new{x.TenantId,x.UserId,x.ExpiresAt});e.HasIndex(x=>x.ExpiresAt);
+            e.Property(x=>x.Provider).HasMaxLength(20);e.Property(x=>x.MessageId).HasMaxLength(500);
+            e.Property(x=>x.SourceHash).HasMaxLength(64);e.Property(x=>x.AccessContext).HasMaxLength(64);
+            e.Property(x=>x.Status).HasMaxLength(16);e.Property(x=>x.ResultProtected).HasMaxLength(128000);
+            e.Property(x=>x.Model).HasMaxLength(200);
+            e.HasOne<User>().WithMany().HasForeignKey(x=>x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<GoogleConnection>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();

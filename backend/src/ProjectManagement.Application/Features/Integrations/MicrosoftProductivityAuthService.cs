@@ -29,7 +29,7 @@ public class MicrosoftProductivityOptions
 }
 public record MicrosoftStatusDto(bool Enabled,bool Configured,bool Connected,string? Email,bool MailSendAccess,bool InboxEnabled=false,bool InboxAccess=false);
 public record MicrosoftConnectStart(string Url,string BrowserProof);
-public record MicrosoftMailGrant(string Email,string AccessToken,Guid ConnectionId=default,string RefreshFingerprint="");
+public record MicrosoftMailGrant(string Email,string AccessToken,Guid ConnectionId=default,string RefreshFingerprint="",Guid ConsentEpoch=default);
 
 public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext ctx,AppClock clock,
     Recorder recorder,IServiceProvider services,IOptions<MicrosoftProductivityOptions> options,
@@ -133,6 +133,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
             var row=await db.MicrosoftConnections.SingleOrDefaultAsync(c=>c.UserId==attempt.UserId,ct);
             if(row==null){row=new(){TenantId=attempt.TenantId,UserId=attempt.UserId};db.MicrosoftConnections.Add(row);}
             row.ProviderUserId=providerUser;row.Email=email;row.Scopes=granted;row.ConnectedAt=clock.Now;
+            row.ConsentEpoch=Guid.NewGuid();
             row.AccessTokenProtected=secrets.Protect(access);row.RefreshTokenProtected=secrets.Protect(refresh);row.AccessTokenExpiresAt=expiry;
             recorder.Audit("microsoft_connection.connected","MicrosoftConnection",row.Id);
             await db.SaveChangesAsync(ct);await tx.CommitIfOwnedAsync(ct);return Landing("connected");
@@ -150,7 +151,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
         var row=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct)
             ??throw new ConflictException("Connect your Microsoft account first.","MICROSOFT_NOT_CONNECTED");
         if(!HasScope(row.Scopes,requiredScope))throw new ConflictException("Reconnect and grant the required Microsoft permission.","MICROSOFT_SCOPE_REQUIRED");
-        if(row.AccessTokenExpiresAt>clock.Now)return new(row.Email,secrets.Unprotect(row.AccessTokenProtected),row.Id,Hash(row.RefreshTokenProtected));
+        if(row.AccessTokenExpiresAt>clock.Now)return new(row.Email,secrets.Unprotect(row.AccessTokenProtected),row.Id,Hash(row.RefreshTokenProtected),row.ConsentEpoch);
         using var request=new HttpRequestMessage(HttpMethod.Post,Authority+"token"){Content=new FormUrlEncodedContent(new Dictionary<string,string>{
             ["client_id"]=Options.ClientId!,["client_secret"]=Options.ClientSecret!,["grant_type"]="refresh_token",
             ["refresh_token"]=secrets.Unprotect(row.RefreshTokenProtected),["scope"]=row.Scopes+" offline_access"})};
@@ -165,7 +166,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
             .ExecuteUpdateAsync(s=>s.SetProperty(c=>c.AccessTokenProtected,encryptedAccess).SetProperty(c=>c.RefreshTokenProtected,encryptedRefresh)
                 .SetProperty(c=>c.AccessTokenExpiresAt,expiry).SetProperty(c=>c.Scopes,granted),ct);
         if(won!=1)throw new ConflictException("Your Microsoft connection changed. Reload before sending.","MICROSOFT_CONNECTION_CHANGED");
-        return new(row.Email,access,row.Id,Hash(encryptedRefresh));
+        return new(row.Email,access,row.Id,Hash(encryptedRefresh),row.ConsentEpoch);
     }
     public async Task DisconnectAsync(CancellationToken ct){
         ctx.RequireTenantId();var uid=ctx.RequireUserId();

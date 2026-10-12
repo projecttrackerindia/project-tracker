@@ -122,6 +122,7 @@ public interface IAppDbContext
     DbSet<MicrosoftConnection> MicrosoftConnections {get;}
     DbSet<PersonalCalendarProposal> PersonalCalendarProposals {get;}
     DbSet<PersonalEmailDraft> PersonalEmailDrafts { get; }
+    DbSet<PersonalInboxSummary> PersonalInboxSummaries {get;}
     DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts { get; }
     DbSet<GoogleConnection> GoogleConnections { get; }
     DbSet<ProjectMeeting> ProjectMeetings { get; }

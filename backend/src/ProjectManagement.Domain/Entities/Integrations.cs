@@ -54,6 +54,7 @@ namespace ProjectManagement.Domain.Entities
     /// </summary>
     public class GoogleConnection : TenantEntity, ITenantScoped
     {
+        public Guid ConsentEpoch { get; set; }
         public Guid UserId { get; set; }
         public string GoogleEmail { get; set; } = "";
         public string RefreshTokenProtected { get; set; } = "";

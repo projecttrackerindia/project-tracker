@@ -12,6 +12,14 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class MicrosoftMigrationTests(ApiFactory factory)
 {
+    private static async Task LegacyGoogleAsync(AppDbContext db)
+    {
+        // These fixtures reconstruct a subset of the legacy schema; inbox consent extends its existing Google table.
+        var assembly=db.GetService<IMigrationsAssembly>();var generator=db.GetService<IMigrationsSqlGenerator>();
+        var old=assembly.CreateMigration(assembly.Migrations["20261008035158_ProjectMeetingsAndGoogleConnection"],db.Database.ProviderName!);
+        var table=old.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.CreateTableOperation>().Single(t=>t.Name=="GoogleConnections");
+        foreach(var command in generator.Generate([table],db.Model))await db.Database.ExecuteSqlRawAsync(command.CommandText);
+    }
     [Fact]
     public async Task Existing_OAuth_attempt_upgrade_preserves_proof_without_inventing_mailbox_consent()
     {
@@ -20,6 +28,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         await using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options,
             scope.ServiceProvider.GetRequiredService<ICurrentContext>(),TimeProvider.System);
         await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        await LegacyGoogleAsync(db);
         var assembly=db.GetService<IMigrationsAssembly>();var generator=db.GetService<IMigrationsSqlGenerator>();
         foreach(var id in new[]{"20261011051417_DurableProviderOAuthAttempts","20261011053210_PersonalEmailDrafts","20261011062100_MicrosoftProductivityAndEmailProviders"}){
             var migration=assembly.CreateMigration(assembly.Migrations[id],db.Database.ProviderName!);
@@ -27,6 +36,10 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         }
         var uid=Guid.NewGuid();var tid=Guid.NewGuid();var attempt=Guid.NewGuid();var now=DateTime.UtcNow;
         await db.Database.ExecuteSqlInterpolatedAsync($"""INSERT INTO "Users" ("Id") VALUES ({uid})""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "GoogleConnections" ("Id","UserId","GoogleEmail","RefreshTokenProtected","Scopes","ConnectedAt","CreatedAt","TenantId")
+            VALUES ({Guid.NewGuid()},{uid},{"legacy@example.test"},{"legacy-protected-token"},{"legacy-calendar-scope"},{now},{now},{tid})
+            """);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "ProviderOAuthAttempts" ("Id","Provider","UserId","TenantId","StateHash","BrowserHash","VerifierProtected","ReturnPath","ExpiresAt")
             VALUES ({attempt},{"microsoft"},{uid},{tid},{"existing-state-proof"},{"existing-browser-proof"},{"existing-encrypted-verifier"},{"/account/integrations"},{now.AddMinutes(10)})
@@ -36,6 +49,9 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         Assert.Equal(attempt,saved.Id);Assert.Equal(uid,saved.UserId);Assert.Equal(tid,saved.TenantId);
         Assert.Equal("existing-state-proof",saved.StateHash);Assert.Equal("existing-browser-proof",saved.BrowserHash);
         Assert.Equal("existing-encrypted-verifier",saved.VerifierProtected);Assert.Equal("",saved.RequestedScopes);Assert.Null(saved.ConsumedAt);
+        var google=await db.GoogleConnections.IgnoreQueryFilters().SingleAsync();Assert.Equal(Guid.Empty,google.ConsentEpoch);
+        Assert.Equal("legacy-protected-token",google.RefreshTokenProtected);Assert.Equal("legacy-calendar-scope",google.Scopes);
+        Assert.Empty(await db.PersonalInboxSummaries.IgnoreQueryFilters().ToArrayAsync());
     }
     [Fact]
     public async Task Existing_Gmail_receipt_upgrades_without_changing_content_or_inventing_sender()
@@ -55,6 +71,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         // Reconstruct only the prior integration tables from their actual migrations.
         // Historical PostgreSQL-only migrations are not SQLite-compatible; this verifies the additive delta.
         await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        await LegacyGoogleAsync(db);
         await Apply("20261011051417_DurableProviderOAuthAttempts");
         await Apply("20261011053210_PersonalEmailDrafts");
         var uid=Guid.NewGuid();var tid=Guid.NewGuid();var id=Guid.NewGuid();var now=DateTime.UtcNow;
@@ -88,6 +105,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         var assembly = db.GetService<IMigrationsAssembly>(); var generator = db.GetService<IMigrationsSqlGenerator>();
         var previous = assembly.CreateMigration(assembly.Migrations["20261011073057_WhatsAppInboundFoundation"], db.Database.ProviderName!);
         await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        await LegacyGoogleAsync(db);
         foreach (var command in generator.Generate(previous.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(command.CommandText);
         var id = Guid.NewGuid(); var tenant = Guid.NewGuid(); var user = Guid.NewGuid(); var now = DateTime.UtcNow;
         await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -116,6 +134,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
             scope.ServiceProvider.GetRequiredService<ICurrentContext>(), TimeProvider.System);
         var assembly = db.GetService<IMigrationsAssembly>(); var generator = db.GetService<IMigrationsSqlGenerator>();
         await db.Database.ExecuteSqlRawAsync("""CREATE TABLE "Users" ("Id" TEXT NOT NULL PRIMARY KEY)""");
+        await LegacyGoogleAsync(db);
         var previous = assembly.CreateMigration(assembly.Migrations["20261011093926_WhatsAppPrivateContactLinks"], db.Database.ProviderName!);
         foreach (var command in generator.Generate(previous.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(command.CommandText);
         var id=Guid.NewGuid();var user=Guid.NewGuid();var tenant=Guid.NewGuid();var installation=Guid.NewGuid();var now=DateTime.UtcNow;

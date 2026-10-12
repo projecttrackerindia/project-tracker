@@ -704,7 +704,11 @@ export interface PersonalEmailDraft { confirmedSenderEmail?: string | null; prov
 export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean }
 export interface InboxMessage { id: string; threadId: string; subject: string; sender: string; receivedAt: string | null; unread: boolean; hasAttachments: boolean; body: string | null; bodyTruncated: boolean }
 export interface InboxPage { provider: string; account: string; messages: InboxMessage[]; cursor: string | null }
-export interface InboxThread { provider: string; account: string; threadId: string; messages: InboxMessage[]; truncated: boolean }
+export interface InboxThread { provider: string; account: string; threadId: string; messages: InboxMessage[]; truncated: boolean; sourceHash: string; accessContext: string }
+export interface InboxSummaryOptions { available: boolean; credits: number; maxSourceCharacters: number; retentionHours: number }
+export interface InboxSummaryRequest { operationId: string; provider: string; messageId: string; sourceHash: string; credits: number; confirmed: boolean }
+export interface InboxSummaryReceipt { operationId: string; provider: string; messageId: string; status: string; credits: number; createdAt: string; expiresAt: string }
+export interface InboxSummary extends InboxSummaryReceipt { sourceHash: string; model: string | null; points: { text: string; messageId: string; quote: string }[]; sourceChanged: boolean }
 
 export interface PersonalCalendarProposal {
   id:string; title:string; description:string; startUtc:string; endUtc:string; timeZone:string;

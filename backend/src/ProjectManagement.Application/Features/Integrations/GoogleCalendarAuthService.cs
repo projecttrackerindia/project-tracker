@@ -31,7 +31,7 @@ public class GoogleCalendarOptions
 }
 
 public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false,bool MailEnabled=false,bool MailSendAccess=false,bool InboxEnabled=false,bool InboxAccess=false);
-public record GoogleAccessGrant(Guid ConnectionId,string RefreshFingerprint,string Account,string AccessToken);
+public record GoogleAccessGrant(Guid ConnectionId,string RefreshFingerprint,string Account,string AccessToken,Guid ConsentEpoch=default);
 
 /// <summary>
 /// Connecting a person's own Google account (Settings &gt; Integrations &gt; Google Workspace), and keeping a usable access token for it.
@@ -158,6 +158,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         existing.AccessTokenExpiresAt = clock.Now.AddSeconds(expiresIn - 60);
         existing.Scopes = grantedScopes;
         existing.ConnectedAt = clock.Now;
+        existing.ConsentEpoch=Guid.NewGuid();
         existing.LastError = null;
         recorder.Audit("google_connection.connected", "GoogleConnection", existing.Id, tenantId: p.TenantId, userId: p.UserId);
         await db.SaveChangesAsync(ct);
@@ -193,7 +194,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         var scope=requiredScope??"https://www.googleapis.com/auth/calendar.events";
         if(!c.Scopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains(scope))
             throw new ConflictException("Reconnect Google and grant the permission required for this action.","GOOGLE_SCOPE_REQUIRED");
-        if(c.AccessTokenProtected!=null&&c.AccessTokenExpiresAt>clock.Now)return new(c.Id,Hash(c.RefreshTokenProtected),c.GoogleEmail??"",secrets.Unprotect(c.AccessTokenProtected));
+        if(c.AccessTokenProtected!=null&&c.AccessTokenExpiresAt>clock.Now)return new(c.Id,Hash(c.RefreshTokenProtected),c.GoogleEmail??"",secrets.Unprotect(c.AccessTokenProtected),c.ConsentEpoch);
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(20));
         using var request=new HttpRequestMessage(HttpMethod.Post,"https://oauth2.googleapis.com/token"){
             Content=new FormUrlEncodedContent(new Dictionary<string,string>{
@@ -234,7 +235,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
                     .SetProperty(x=>x.AccessTokenExpiresAt,expiry).SetProperty(x=>x.Scopes,scopes).SetProperty(x=>x.LastSyncAt,clock.Now)
                     .SetProperty(x=>x.LastError,(string?)null),ct);
             if(won!=1)throw new ConflictException("Your Google connection changed. Reload before confirming.","GOOGLE_CONNECTION_CHANGED");
-            return new(c.Id,Hash(refresh),c.GoogleEmail??"",access);
+            return new(c.Id,Hash(refresh),c.GoogleEmail??"",access,c.ConsentEpoch);
         }
     }
     private async Task<string?> FetchEmailAsync(string accessToken, CancellationToken ct)

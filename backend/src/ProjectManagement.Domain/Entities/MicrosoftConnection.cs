@@ -10,4 +10,5 @@ public class MicrosoftConnection : TenantEntity, ITenantScoped
     public string AccessTokenProtected { get; set; } = "";
     public DateTime AccessTokenExpiresAt { get; set; }
     public DateTime ConnectedAt { get; set; }
+    public Guid ConsentEpoch { get; set; }
 }

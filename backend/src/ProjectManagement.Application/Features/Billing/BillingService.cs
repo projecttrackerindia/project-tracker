@@ -289,6 +289,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await RunSubscriptionLifecycleAsync(ct);
         await CleanupAsync(ct);
         await personalFiles.PurgeAsync(ct);
+        await PurgeInboxSummariesAsync(ct);
         await whatsAppMetadata.RunAsync(ct);
         await exports.PurgeExpiredAsync(ct: ct);
         await webhooks.PurgeAsync(ct);
@@ -299,6 +300,14 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await documentRetention.PurgeAsync(ct);
         await searchIndex.SweepAsync(ct);   // documents not yet in (or changed since) the search index
         await documentWorkflows.SendRemindersAsync(ct);   // Business: approvers of overdue review steps are reminded once   // deleted documents after 30 days; old document versions after the plan's history period
+    }
+
+    public async Task<int> PurgeInboxSummariesAsync(CancellationToken ct=default)
+    {
+        // Trusted expiry-only housekeeping: select IDs, never decrypted personal email content.
+        var expiredSummaries=await db.PersonalInboxSummaries.IgnoreQueryFilters().Where(s=>s.ExpiresAt<=clock.Now)
+            .OrderBy(s=>s.ExpiresAt).Select(s=>s.Id).Take(1000).ToArrayAsync(ct);
+        return await db.PersonalInboxSummaries.IgnoreQueryFilters().Where(s=>expiredSummaries.Contains(s.Id)&&s.ExpiresAt<=clock.Now).ExecuteDeleteAsync(ct);
     }
 
     public async Task<int> SendCertificationExpiryAsync(CancellationToken ct = default)
