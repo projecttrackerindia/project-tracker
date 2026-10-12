@@ -149,12 +149,12 @@ public class PersonalEmailTests(ApiFactory factory)
             var route=$"/api/v1/me/email-drafts/{draft.Id}/improve";
             Assert.Equal(HttpStatusCode.UnprocessableEntity,(await owner.Post(route,new{operationId=operation,version=draft.Version,style="formal",confirmed=false})).Status);
             Assert.Empty(factory.Ai.Prompts);
-            var result=await owner.Post(route,new{operationId=operation,version=draft.Version,style="formal",confirmed=true});
+            var result=await owner.Post(route,new{operationId=operation,version=draft.Version,style="formal",confirmed=true,credits=cost});
             Assert.True(result.Ok,result.ToString());Assert.Equal("draft",result.Data!["status"]!.GetValue<string>());
             Assert.Equal("recipient@example.com",result.Data["recipient"]!.GetValue<string>());Assert.Null(result.Data["providerMessageId"]);
             Assert.Equal(calls,factory.GoogleCalendar.SentMail.Count);Assert.Equal(microsoftCalls,factory.MicrosoftProductivity.SentMessages.Count);Assert.Equal(provider,result.Data["provider"]!.GetValue<string>());
             var version=result.Data["version"]!.GetValue<int>();
-            var replay=await owner.Post(route,new{operationId=operation,version,style="formal",confirmed=true});
+            var replay=await owner.Post(route,new{operationId=operation,version,style="formal",confirmed=true,credits=cost});
             Assert.Equal("AI_OPERATION_ALREADY_ADMITTED",replay.ErrorCode);Assert.Single(factory.Ai.Prompts);
             var account=factory.WithDb(db=>db.AiCreditAccounts.IgnoreQueryFilters().Single(a=>a.TenantId==owner.WorkspaceId));
             Assert.Equal(cost,account.Spent);Assert.Equal(0,account.Reserved);
@@ -166,10 +166,26 @@ public class PersonalEmailTests(ApiFactory factory)
         factory.Ai.Configured=true;
         try{
             factory.Ai.Answer=(_,_)=>"""{"subject":"Invented results","body":"Earned 999 rupees."}""";
-            var result=await owner.Post($"/api/v1/me/email-drafts/{draft.Id}/improve",new{operationId=Guid.NewGuid(),version=draft.Version,style="concise",confirmed=true});
+            var cost=(await owner.Get("/api/v1/me/email-drafts/options")).Data!["credits"]!.GetValue<int>();
+            var result=await owner.Post($"/api/v1/me/email-drafts/{draft.Id}/improve",new{operationId=Guid.NewGuid(),version=draft.Version,style="concise",confirmed=true,credits=cost});
             Assert.Equal("AI_EMAIL_INVALID",result.ErrorCode);
             var row=factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Single(d=>d.Id==draft.Id));Assert.Equal(draft.Version,row.Version);Assert.Equal("Private message.",row.Body);
             var account=factory.WithDb(db=>db.AiCreditAccounts.IgnoreQueryFilters().Single(a=>a.TenantId==owner.WorkspaceId));
             Assert.Equal(0,account.Spent);Assert.Equal(0,account.Reserved);
         }finally{factory.Ai.Reset();}
-    }}
+    }
+    [Theory]
+    [InlineData(0)] [InlineData(-1)] [InlineData(10001)]
+    public async Task Rewriting_rejects_unreviewed_or_changed_prices_before_AI_and_credit_reservation(int reviewedCredits){
+        var owner=await TestClient.RegisterAsync(factory,"AI price consent");await owner.CreateOrgAsync();await owner.UpgradeAsync("BUSINESS");var draft=await Draft(owner);
+        factory.Ai.Configured=true;
+        try{
+            var result=await owner.Post($"/api/v1/me/email-drafts/{draft.Id}/improve",new{operationId=Guid.NewGuid(),version=draft.Version,style="concise",confirmed=true,credits=reviewedCredits});
+            Assert.Equal(reviewedCredits<=0?HttpStatusCode.UnprocessableEntity:HttpStatusCode.Conflict,result.Status);
+            if(reviewedCredits>0)Assert.Equal("AI_EMAIL_CHANGED",result.ErrorCode);
+            Assert.Empty(factory.Ai.Prompts);
+            Assert.False(factory.WithDb(db=>db.AiCreditReservations.IgnoreQueryFilters().Any(r=>r.TenantId==owner.WorkspaceId)));
+            Assert.Equal(draft.Version,factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Single(d=>d.Id==draft.Id).Version));
+        }finally{factory.Ai.Reset();}
+    }
+}

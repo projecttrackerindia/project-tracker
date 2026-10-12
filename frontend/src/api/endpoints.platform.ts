@@ -124,9 +124,9 @@ export const inboxSummaryApi = {
 
 export const personalEmailApi = {
   options: () => get<{ available: boolean; credits: number; maxBodyCharacters: number }>('/me/email-drafts/options'),
-  improve: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/improve', b),
+  improve: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean; credits: number }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/improve', b),
   list: () => get<PersonalEmailDraft[]>('/me/email-drafts'),
-  get: (id: string) => get<PersonalEmailDraft>('/me/email-drafts/' + id),
+  get: (id: string, signal?: AbortSignal) => get<PersonalEmailDraft>('/me/email-drafts/' + id, undefined, { signal }),
   create: (b: { recipient: string; subject: string; body: string; provider?: 'google' | 'microsoft' }) => post<PersonalEmailDraft>('/me/email-drafts', b),
   save: (id: string, b: { recipient: string; subject: string; body: string; version: number; provider?: 'google' | 'microsoft' }) => put<PersonalEmailDraft>('/me/email-drafts/' + id, b),
   remove: (id: string) => del('/me/email-drafts/' + id),

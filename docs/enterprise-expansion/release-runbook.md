@@ -122,3 +122,9 @@ The user's full expanded scope is still the merge condition. Successful checks f
 
 ## Attachment gate
 Keep the attachment gate off until the controlled own-mailbox metadata/raw-file contracts are verified for configured Gmail and Microsoft accounts. Review observed memory and provider latency before setting deployment capacity; the per-file 2 MiB bound is not a measured concurrency guarantee. Verify reconnect/revocation, exact-size mismatch, unsupported reference/item kinds and interrupted browser navigation using controlled data. No new migration or background file storage is introduced. Account, calendar, commercial and final deployment gates remain open; the user's full expanded scope still applies before main merge.
+
+## Private email review batch rollout
+
+Deploy the API and web bundle together. Email rewrite requests must include the positive credit price shown at consent; the backend rejects missing prices with validation errors and changed prices with AI_EMAIL_CHANGED before model calls or credit holds. Older web clients that omit the price must reload the current frontend. No migration, new environment variable or provider gate change is required.
+
+Verify draft refresh removes private content after denied access, same-address account reconnection retires inbox content and open confirmations, and read-only reload recovers accepted/unknown send receipts without dispatching. Never reset sending/unknown rows to retry. Automated provider reconciliation and durable standalone email-rewrite operation receipts are still separate release work; a failed rewrite currently requires checking the saved draft. Keep controlled Google/Microsoft provider activation and semantic-quality evaluation gates intact. All previews use synthetic data; no live provider readiness is implied.

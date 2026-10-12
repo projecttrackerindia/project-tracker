@@ -16,7 +16,7 @@ using ProjectManagement.Domain.Entities;
 namespace ProjectManagement.Application.Features.Integrations;
 public record SavePersonalEmailRequest(string Recipient,string Subject,string Body,int Version=0,string Provider="google");
 public record SendPersonalEmailRequest(int Version,bool Confirmed,string SenderEmail);
-public record EmailAiRequest(Guid OperationId,int Version,string Style,bool Confirmed);
+public record EmailAiRequest(Guid OperationId,int Version,string Style,bool Confirmed,int Credits=0);
 public record EmailAiOptions(bool Available,int Credits,int MaxBodyCharacters=6000);
 public record PersonalEmailDto(Guid Id,string Recipient,string Subject,string Body,string Status,int Version,string? ProviderMessageId,DateTime? AcceptedAt,string Provider="google",string? ProviderRequestId=null,string? ConfirmedSenderEmail=null);
 public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCalendarAuthService google,
@@ -121,6 +121,8 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         if(row.Status!="draft"||row.Version!=req.Version)throw new ConflictException("Reload this unsent draft before generating.");
         var opts=await AiOptionsAsync(ct);
         if(!opts.Available)throw new ForbiddenException("AI editing is unavailable. You can still edit manually.","AI_DISABLED");
+        if(req.Credits<=0)throw new ValidationException("credits","Confirm the displayed AI credit price before generating.");
+        if(req.Credits!=opts.Credits)throw new ConflictException("The AI credit price changed. Review the current price before generating.","AI_EMAIL_CHANGED");
         if(row.Body.Length>opts.MaxBodyCharacters)throw new ValidationException("body","AI editing supports messages of up to 6,000 characters.");
         await WorkspaceExecutionPrincipal.ConfigureAsync(services,ctx.RequireUserId(),ctx.RequireTenantId(),null,ct);
         var source=row.Subject+"\n"+row.Body;

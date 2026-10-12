@@ -85,7 +85,8 @@ public class PersonalEmailAuthorizationTests(ApiFactory factory)
         try{
             var draft=await Draft(owner,"google");var before=Sends("google");factory.Ai.Configured=true;
             factory.Ai.Answer=(_,_)=>{factory.WithDb(db=>{db.TenantMembers.Remove(db.TenantMembers.Single(m=>m.UserId==owner.UserId&&m.TenantId==owner.WorkspaceId));db.SaveChanges();return 0;});return "{\"subject\":\"Clear subject\",\"body\":\"Clear private message.\"}";};
-            var result=await owner.Post($"/api/v1/me/email-drafts/{draft.Id}/improve",new{operationId=Guid.NewGuid(),version=draft.Version,style="formal",confirmed=true});Assert.Equal(HttpStatusCode.Forbidden,result.Status);
+            var cost=(await owner.Get("/api/v1/me/email-drafts/options")).Data!["credits"]!.GetValue<int>();
+            var result=await owner.Post($"/api/v1/me/email-drafts/{draft.Id}/improve",new{operationId=Guid.NewGuid(),version=draft.Version,style="formal",confirmed=true,credits=cost});Assert.Equal(HttpStatusCode.Forbidden,result.Status);
             var row=factory.WithDb(db=>db.PersonalEmailDrafts.IgnoreQueryFilters().Single(d=>d.Id==draft.Id));Assert.Equal("Reviewed private text.",row.Body);Assert.Equal(draft.Version,row.Version);Assert.Equal(before,Sends("google"));
             var credits=factory.WithDb(db=>db.AiCreditAccounts.IgnoreQueryFilters().Single(a=>a.TenantId==owner.WorkspaceId));Assert.Equal(0,credits.Spent);Assert.Equal(0,credits.Reserved);
         }finally{Reset();}
