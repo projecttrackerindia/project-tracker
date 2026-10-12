@@ -35,9 +35,11 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public bool PersonalCalendarResponseLost {get;set;}
     public bool PersonalCalendarReadMismatch {get;set;}
     public Action? BeforePersonalCalendarList {get;set;}
+    public Action? BeforePersonalCalendarCreateResponse {get;set;}
+    public Action? BeforePersonalCalendarVerify {get;set;}
     public ConcurrentBag<string> PersonalCalendarCreates {get;}=new();
     private readonly ConcurrentDictionary<string,JsonElement> _personalCalendarEvents=new();
-    public void ResetPersonalCalendar(){PersonalCalendarBlocked=false;PersonalCalendarPaged=false;PersonalCalendarResponseLost=false;PersonalCalendarReadMismatch=false;BeforePersonalCalendarList=null;BeforeRefresh=null;}
+    public void ResetPersonalCalendar(){PersonalCalendarBlocked=false;PersonalCalendarPaged=false;PersonalCalendarResponseLost=false;PersonalCalendarReadMismatch=false;BeforePersonalCalendarList=null;BeforePersonalCalendarCreateResponse=null;BeforePersonalCalendarVerify=null;BeforeRefresh=null;}
     public string IssueCode(string email = "owner@example.com", string scope = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created")
     {
         var code = Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
@@ -109,11 +111,13 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
                 var result=JsonSerializer.SerializeToElement(fields);
                 if(!_personalCalendarEvents.TryAdd(grant.Email+":"+id,result))return Json(new{error="duplicate"},HttpStatusCode.Conflict);
                 PersonalCalendarCreates.Add(id);
+                BeforePersonalCalendarCreateResponse?.Invoke();
                 if(PersonalCalendarResponseLost)throw new HttpRequestException("Fake Calendar response lost");
                 return Json(result);
             }
         }
         if(path.StartsWith("/calendar/v3/calendars/primary/events/pt")&&request.Method==HttpMethod.Get){
+            BeforePersonalCalendarVerify?.Invoke();
             var token=request.Headers.Authorization?.Parameter??"";
             if(!_accessTokens.TryGetValue(token,out var grant))return Json(new{error="invalid_grant"},HttpStatusCode.Unauthorized);
             var id=path.Split('/').Last();

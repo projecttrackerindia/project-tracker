@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -53,13 +54,26 @@ public class PersonalCalendarService(IAppDbContext db,ICurrentContext ctx,AppClo
         db.PersonalCalendarProposals.Add(row);recorder.Audit("personal_calendar.saved","PersonalCalendarProposal",row.Id);
         await db.SaveChangesAsync(ct);await tx.CommitIfOwnedAsync(ct);return Dto(row);
     }
-    private async Task<(string Account,string Token)> Grant(CancellationToken ct){
-        Enabled();var uid=ctx.RequireUserId();
-        var connection=await db.GoogleConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct)??throw new ConflictException("Connect Google Calendar first.","GOOGLE_NOT_CONNECTED");
-        if(string.IsNullOrWhiteSpace(connection.GoogleEmail))throw new ConflictException("Reconnect Google to verify the calendar account.","CALENDAR_ACCOUNT_MISSING");
-        var token=await auth.GetAccessTokenAsync(uid,ct,CalendarScope);
-        await WorkspaceExecutionPrincipal.ConfigureAsync(services,uid,ctx.RequireTenantId(),null,ct);
-        return(connection.GoogleEmail,token);
+    private record CalendarGrant(Guid User,Guid Tenant,GoogleAccessGrant Access){
+        public string Account=>Access.Account;
+        public string Token=>Access.AccessToken;
+    }
+    private async Task<CalendarGrant> Grant(CancellationToken ct){
+        Enabled();var uid=ctx.RequireUserId();var tid=ctx.RequireTenantId();
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,uid,tid,null,ct);
+        var access=await auth.GetAccessGrantAsync(uid,ct,CalendarScope);
+        if(string.IsNullOrWhiteSpace(access.Account))throw new ConflictException("Reconnect Google to verify the calendar account.","CALENDAR_ACCOUNT_MISSING");
+        var grant=new CalendarGrant(uid,tid,access);await Recheck(grant,ct);return grant;
+    }
+    private async Task Recheck(CalendarGrant grant,CancellationToken ct){
+        Enabled();await WorkspaceExecutionPrincipal.ConfigureAsync(services,grant.User,grant.Tenant,null,ct);
+        var row=await db.GoogleConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==grant.User,ct);
+        if(row==null||row.Id!=grant.Access.ConnectionId||row.ConsentEpoch!=grant.Access.ConsentEpoch||row.GoogleEmail!=grant.Account||
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(row.RefreshTokenProtected)))!=grant.Access.RefreshFingerprint||!row.Scopes.Split(' ').Contains(CalendarScope))
+            throw new ConflictException("Your calendar connection changed. Reload before continuing.","CALENDAR_CONNECTION_CHANGED");
+    }
+    private void SeparateOperation(){
+        if(db.Database.CurrentTransaction!=null)throw new ConflictException("Confirm or check this calendar receipt separately from a data update.","CALENDAR_TRANSACTION");
     }
     private async Task<JsonDocument?> Read(HttpRequestMessage request,CancellationToken ct,bool allowMissing=false){
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(20));
@@ -86,7 +100,7 @@ public class PersonalCalendarService(IAppDbContext db,ICurrentContext ctx,AppClo
     }
     public async Task<CalendarAvailability> AvailabilityAsync(Guid id,int version,CancellationToken ct){
         var row=await Require(id,ct);if(row.Version!=version||row.Status!="draft")throw new ConflictException("Reload the saved proposal before checking.");
-        var grant=await Grant(ct);return new(row.Version,await Conflicts(row,grant.Token,ct),"Connected account's primary Google calendar only; other attendees and calendars are not checked.");
+        var grant=await Grant(ct);var conflicts=await Conflicts(row,grant.Token,ct);await Recheck(grant,ct);return new(row.Version,conflicts,"Connected account's primary Google calendar only; other attendees and calendars are not checked.");
     }
     private static bool Instant(JsonElement root,string field,DateTime expected)=>root.TryGetProperty(field,out var value)&&value.ValueKind==JsonValueKind.Object&&DateTimeOffset.TryParse(Text(value,"dateTime"),CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out var instant)&&instant.UtcDateTime==expected;
     private static bool Matches(JsonElement root,PersonalCalendarProposal row){
@@ -99,7 +113,7 @@ public class PersonalCalendarService(IAppDbContext db,ICurrentContext ctx,AppClo
         using var req=Request(HttpMethod.Get,Events+"/"+row.ProviderEventId,token);using var doc=await Read(req,ct,true);return doc!=null&&Matches(doc.RootElement,row);
     }
     public async Task<CalendarProposalDto> ConfirmAsync(Guid id,ConfirmCalendarProposal req,CancellationToken ct){
-        var row=await Require(id,ct);
+        SeparateOperation();var row=await Require(id,ct);
         if(!req.Confirmed)throw new ValidationException("confirmed","Review the account, saved title, notes and exact times before confirming.");
         if(row.Status=="verified")return Dto(row);
         if(row.Status!="draft")throw new ConflictException("Check the provider status; this proposal cannot be sent again.","CALENDAR_OUTCOME_UNKNOWN");
@@ -108,7 +122,7 @@ public class PersonalCalendarService(IAppDbContext db,ICurrentContext ctx,AppClo
         var grant=await Grant(ct);
         if(!string.Equals(grant.Account,req.Account,StringComparison.OrdinalIgnoreCase))throw new ConflictException("The connected calendar account changed. Review again.","CALENDAR_ACCOUNT_CHANGED");
         if(await Conflicts(row,grant.Token,ct)>0)throw new ConflictException("The primary calendar now has a conflicting event. Choose a different time.","CALENDAR_CONFLICT");
-        await WorkspaceExecutionPrincipal.ConfigureAsync(services,row.UserId,row.TenantId,null,ct);
+        await Recheck(grant,ct);
         var providerId="pt"+row.Id.ToString("N");
         await using(var tx=await db.Database.BeginOwnedTransactionAsync(ct)){
             if(await db.Users.Where(u=>u.Id==row.UserId&&u.IsActive).ExecuteUpdateAsync(s=>s.SetProperty(u=>u.IsActive,u=>u.IsActive),ct)!=1)throw new ForbiddenException("Your account is unavailable.");
@@ -119,6 +133,7 @@ public class PersonalCalendarService(IAppDbContext db,ICurrentContext ctx,AppClo
         }
         row.ProviderEventId=providerId;var verified=false;
         try{
+            await Recheck(grant,ct);
             using var dispatch=Request(HttpMethod.Post,Events+"?sendUpdates=none",grant.Token,new{
                 id=providerId,summary=row.Title,description=row.Description,
                 start=new{dateTime=row.StartUtc.ToString("o"),timeZone=row.TimeZone},end=new{dateTime=row.EndUtc.ToString("o"),timeZone=row.TimeZone},
@@ -126,21 +141,23 @@ public class PersonalCalendarService(IAppDbContext db,ICurrentContext ctx,AppClo
             });
             using var response=await Read(dispatch,ct);
             verified=await Verify(row,grant.Token,ct); // A write response alone does not mark the proposal verified.
-        }catch(Exception e)when(e is HttpRequestException or IOException or OperationCanceledException or ConflictException){}
+            await Recheck(grant,ct);
+        }catch(Exception e)when(e is HttpRequestException or IOException or OperationCanceledException or ConflictException or ForbiddenException){verified=false;}
         var status=verified?"verified":"unknown";var verifiedAt=verified?(DateTime?)clock.Now:null;
         await Mine.Where(p=>p.Id==id&&p.Status=="sending").ExecuteUpdateAsync(s=>s.SetProperty(p=>p.Status,status).SetProperty(p=>p.VerifiedAt,verifiedAt).SetProperty(p=>p.Version,p=>p.Version+1),CancellationToken.None);
         recorder.Audit("personal_calendar.outcome","PersonalCalendarProposal",id,null,new{status});await db.SaveChangesAsync(CancellationToken.None);
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,row.UserId,row.TenantId,null,CancellationToken.None);
         return Dto(await Require(id,CancellationToken.None));
     }
     public async Task<CalendarProposalDto> ReconcileAsync(Guid id,CancellationToken ct){
-        var row=await Require(id,ct);
+        SeparateOperation();var row=await Require(id,ct);
         if(row.Status=="verified")return Dto(row);
         if(row.Status is not ("unknown" or "sending"))throw new ConflictException("Only an uncertain calendar outcome can be checked.");
         if(row.Status=="sending"&&row.ConfirmedAt>clock.Now.AddMinutes(-2))throw new ConflictException("The calendar request is still being processed. Check again shortly.");
         var grant=await Grant(ct);
         if(!string.Equals(grant.Account,row.ConfirmedAccount,StringComparison.OrdinalIgnoreCase))throw new ConflictException("Reconnect the original calendar account before checking.","CALENDAR_ACCOUNT_CHANGED");
-        if(await Verify(row,grant.Token,ct)){
-            await WorkspaceExecutionPrincipal.ConfigureAsync(services,row.UserId,row.TenantId,null,ct);
+        var verified=await Verify(row,grant.Token,ct);await Recheck(grant,ct);
+        if(verified){
             await Mine.Where(p=>p.Id==id&&p.Version==row.Version&&p.Status==row.Status).ExecuteUpdateAsync(s=>s.SetProperty(p=>p.Status,"verified").SetProperty(p=>p.VerifiedAt,clock.Now).SetProperty(p=>p.Version,p=>p.Version+1),ct);
             recorder.Audit("personal_calendar.reconciled","PersonalCalendarProposal",id);await db.SaveChangesAsync(ct);
         }

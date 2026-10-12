@@ -40,10 +40,11 @@ public partial class IdempotencyMiddleware(RequestDelegate next)
         }
         if ((http.Request.ContentType ?? "").StartsWith("multipart/", StringComparison.OrdinalIgnoreCase)
             || http.GetEndpoint()?.Metadata.GetMetadata<AiRequestLimitAttribute>() is not null
+            || http.GetEndpoint()?.Metadata.GetMetadata<ExternalOperationAttribute>() is not null
             || http.Request.Headers.Accept.Any(a => a?.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase) == true))
         {
-            await ErrorWriter.WriteAsync(http, 422, "Idempotency-Key is not supported for uploads, streams or AI inference. Durable agent jobs and confirmed actions have their own execution keys.",
-                [new ApiError("IDEMPOTENCY_UNSUPPORTED", "Idempotency-Key is not supported for uploads, streams or AI inference.")]);
+            await ErrorWriter.WriteAsync(http, 422, "Idempotency-Key is not supported for uploads, streams, AI inference or provider operations. Durable agent jobs and confirmed actions have their own execution keys.",
+                [new ApiError("IDEMPOTENCY_UNSUPPORTED", "Idempotency-Key is not supported for uploads, streams, AI inference or provider operations.")]);
             return;
         }
 

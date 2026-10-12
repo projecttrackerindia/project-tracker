@@ -10,7 +10,7 @@ public class PersonalCalendarController(PersonalCalendarService service):ApiCont
     [HttpGet("{id:guid}")]public async Task<IActionResult> Get(Guid id,CancellationToken ct)=>Ok(await service.GetAsync(id,ct));
     [HttpPost]public async Task<IActionResult> Save(SaveCalendarProposal req,CancellationToken ct)=>Ok(await service.SaveAsync(req,ct));
     [HttpGet("{id:guid}/availability")]public async Task<IActionResult> Availability(Guid id,[FromQuery]int version,CancellationToken ct)=>Ok(await service.AvailabilityAsync(id,version,ct));
-    [HttpPost("{id:guid}/confirm")]public async Task<IActionResult> Confirm(Guid id,ConfirmCalendarProposal req,CancellationToken ct)=>Ok(await service.ConfirmAsync(id,req,ct));
-    [HttpPost("{id:guid}/reconcile")]public async Task<IActionResult> Reconcile(Guid id,CancellationToken ct)=>Ok(await service.ReconcileAsync(id,ct));
+    [HttpPost("{id:guid}/confirm"),ExternalOperation]public async Task<IActionResult> Confirm(Guid id,ConfirmCalendarProposal req,CancellationToken ct)=>Ok(await service.ConfirmAsync(id,req,ct));
+    [HttpPost("{id:guid}/reconcile"),ExternalOperation]public async Task<IActionResult> Reconcile(Guid id,CancellationToken ct)=>Ok(await service.ReconcileAsync(id,ct));
     [HttpDelete("{id:guid}")]public async Task<IActionResult> Delete(Guid id,CancellationToken ct){await service.DeleteAsync(id,ct);return NoContent();}
 }

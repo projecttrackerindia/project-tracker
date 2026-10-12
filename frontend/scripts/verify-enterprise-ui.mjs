@@ -220,8 +220,11 @@ try {
  assert.equal(await page.getByRole('button',{name:'Project delivery review',exact:false}).getAttribute('aria-pressed'),'true');
  assert.match(await page.locator('.inbox-account').textContent(),/outlook/);
  await page.setViewportSize({width:390,height:844});
+ // A breakpoint changes the account shell. Start with the mounted phone view, then select its account.
+ await page.goto(origin+'/account/integrations');
  await page.getByLabel('Inbox provider').waitFor({state:'visible'});
  await page.getByLabel('Inbox provider').selectOption('microsoft');
+ await page.locator('.inbox-account').filter({hasText:'outlook'}).waitFor({state:'visible'});
  await page.getByRole('button',{name:'Load inbox',exact:true}).click();
  await inboxMessage.waitFor({state:'visible'});await inboxMessage.click();await page.locator('.inbox-body').waitFor({state:'visible'});
  assert.match(await page.locator('.inbox-account').textContent(),/outlook/);

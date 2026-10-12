@@ -144,4 +144,81 @@ public class PersonalCalendarTests(ApiFactory factory)
         Assert.False(missingOffset.Ok);Assert.True(missingOffset.Status is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity,missingOffset.ToString());
         Assert.Empty((await owner.Get("/api/v1/me/calendar-proposals")).Data!.AsArray());
     }
+    [Theory]
+    [InlineData("epoch",false)] [InlineData("scope",false)] [InlineData("account",false)] [InlineData("disabled",false)]
+    [InlineData("epoch",true)] [InlineData("scope",true)] [InlineData("account",true)] [InlineData("disabled",true)]
+    public async Task Connection_changes_during_availability_never_release_results_or_dispatch(string change,bool confirm){
+        Reset();var owner=await TestClient.RegisterAsync(factory);await owner.CreateOrgAsync();Options.PersonalCalendarEnabled=true;
+        try{
+            await Connect(owner);var draft=await Draft(owner);var before=factory.GoogleCalendar.PersonalCalendarCreates.Count;
+            factory.GoogleCalendar.BeforePersonalCalendarList=()=>{
+                if(change=="disabled"){Options.PersonalCalendarEnabled=false;return;}
+                factory.WithDb(db=>{var c=db.GoogleConnections.IgnoreQueryFilters().Single(c=>c.UserId==owner.UserId);
+                    if(change=="epoch")c.ConsentEpoch=Guid.NewGuid();
+                    if(change=="scope")c.Scopes="openid email";
+                    if(change=="account")c.GoogleEmail="changed@example.com";
+                    db.SaveChanges();return 0;});
+            };
+            var route=$"/api/v1/me/calendar-proposals/{draft.Id}";
+            var result=confirm?await owner.Post(route+"/confirm",new{version=draft.Version,confirmed=true,account=owner.Email}):await owner.Get(route+"/availability?version="+draft.Version);
+            Assert.Equal(change=="disabled"?"PERSONAL_CALENDAR_DISABLED":"CALENDAR_CONNECTION_CHANGED",result.ErrorCode);
+            Assert.Equal(before,factory.GoogleCalendar.PersonalCalendarCreates.Count);
+            Assert.Equal("draft",factory.WithDb(db=>db.PersonalCalendarProposals.IgnoreQueryFilters().Single(p=>p.Id==draft.Id).Status));
+        }finally{Reset();}
+    }
+    [Fact]
+    public async Task Membership_revocation_during_a_read_never_releases_private_availability(){
+        Reset();var owner=await TestClient.RegisterAsync(factory);await owner.CreateOrgAsync();Options.PersonalCalendarEnabled=true;
+        try{
+            await Connect(owner);var draft=await Draft(owner);
+            factory.GoogleCalendar.BeforePersonalCalendarList=()=>factory.WithDb(db=>{db.TenantMembers.Remove(db.TenantMembers.Single(m=>m.TenantId==owner.WorkspaceId&&m.UserId==owner.UserId));db.SaveChanges();return 0;});
+            Assert.Equal(HttpStatusCode.Forbidden,(await owner.Get($"/api/v1/me/calendar-proposals/{draft.Id}/availability?version={draft.Version}")).Status);
+        }finally{Reset();}
+    }
+    [Fact]
+    public async Task Revocation_after_provider_dispatch_retains_an_uncertain_receipt_without_private_response_or_replay(){
+        Reset();var owner=await TestClient.RegisterAsync(factory);await owner.CreateOrgAsync();Options.PersonalCalendarEnabled=true;
+        try{
+            await Connect(owner);var draft=await Draft(owner);var before=factory.GoogleCalendar.PersonalCalendarCreates.Count;
+            var member=factory.WithDb(db=>db.TenantMembers.AsNoTracking().Single(m=>m.TenantId==owner.WorkspaceId&&m.UserId==owner.UserId));
+            factory.GoogleCalendar.BeforePersonalCalendarCreateResponse=()=>factory.WithDb(db=>{db.TenantMembers.Remove(db.TenantMembers.Single(m=>m.Id==member.Id));db.SaveChanges();return 0;});
+            var route=$"/api/v1/me/calendar-proposals/{draft.Id}";var req=new{version=draft.Version,confirmed=true,account=owner.Email};
+            Assert.Equal(HttpStatusCode.Forbidden,(await owner.Post(route+"/confirm",req)).Status);
+            var receipt=factory.WithDb(db=>db.PersonalCalendarProposals.IgnoreQueryFilters().Single(p=>p.Id==draft.Id));
+            Assert.Equal("unknown",receipt.Status);Assert.Null(receipt.VerifiedAt);Assert.NotNull(receipt.ProviderEventId);
+            factory.GoogleCalendar.BeforePersonalCalendarCreateResponse=null;
+            factory.WithDb(db=>{db.TenantMembers.Add(member);db.SaveChanges();return 0;});
+            Assert.Equal("CALENDAR_OUTCOME_UNKNOWN",(await owner.Post(route+"/confirm",req)).ErrorCode);
+            Assert.Equal("verified",(await owner.Post(route+"/reconcile")).Data!["status"]!.GetValue<string>());
+            Assert.Equal(before+1,factory.GoogleCalendar.PersonalCalendarCreates.Count);
+        }finally{Reset();}
+    }
+    [Fact]
+    public async Task Changed_consent_during_provider_readback_cannot_publish_a_verified_receipt(){
+        Reset();var owner=await TestClient.RegisterAsync(factory);await owner.CreateOrgAsync();Options.PersonalCalendarEnabled=true;
+        try{
+            await Connect(owner);var draft=await Draft(owner);var before=factory.GoogleCalendar.PersonalCalendarCreates.Count;
+            factory.GoogleCalendar.BeforePersonalCalendarVerify=()=>factory.WithDb(db=>{db.GoogleConnections.IgnoreQueryFilters().Single(c=>c.UserId==owner.UserId).ConsentEpoch=Guid.NewGuid();db.SaveChanges();return 0;});
+            var route=$"/api/v1/me/calendar-proposals/{draft.Id}";
+            Assert.Equal("unknown",(await owner.Post(route+"/confirm",new{version=draft.Version,confirmed=true,account=owner.Email})).Data!["status"]!.GetValue<string>());
+            Assert.Equal("CALENDAR_CONNECTION_CHANGED",(await owner.Post(route+"/reconcile")).ErrorCode);
+            Assert.Equal("unknown",factory.WithDb(db=>db.PersonalCalendarProposals.IgnoreQueryFilters().Single(p=>p.Id==draft.Id).Status));
+            factory.GoogleCalendar.BeforePersonalCalendarVerify=null;
+            Assert.Equal("verified",(await owner.Post(route+"/reconcile")).Data!["status"]!.GetValue<string>());
+            Assert.Equal(before+1,factory.GoogleCalendar.PersonalCalendarCreates.Count);
+        }finally{Reset();}
+    }
+    [Theory]
+    [InlineData("calendar-proposals","confirm")] [InlineData("calendar-proposals","reconcile")]
+    [InlineData("email-drafts","send")] [InlineData("email-drafts","improve")]
+    public async Task Generic_retry_headers_cannot_wrap_provider_operations_or_ai_in_database_transactions(string resource,string action){
+        var owner=await TestClient.RegisterAsync(factory);await owner.CreateOrgAsync();
+        owner.Extra["Idempotency-Key"]="private-operation-"+Guid.NewGuid().ToString("N");
+        var before=factory.GoogleCalendar.PersonalCalendarCreates.Count;var mailBefore=factory.GoogleCalendar.SentMail.Count;
+        var result=await owner.Post($"/api/v1/me/{resource}/{Guid.NewGuid()}/{action}",new{});
+        Assert.Equal(HttpStatusCode.UnprocessableEntity,result.Status);Assert.Equal("IDEMPOTENCY_UNSUPPORTED",result.ErrorCode);
+        Assert.Equal(before,factory.GoogleCalendar.PersonalCalendarCreates.Count);Assert.Equal(mailBefore,factory.GoogleCalendar.SentMail.Count);
+        Assert.False(factory.WithDb(db=>db.IdempotencyRecords.Any(r=>r.UserId==owner.UserId)));
+    }
+
 }
