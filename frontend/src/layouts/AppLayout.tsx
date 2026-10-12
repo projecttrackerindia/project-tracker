@@ -23,6 +23,8 @@ import { CreateOrganizationModal, NOTIF_ICON } from './parts';
 import { MobileTopBar, TabBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
+import { useConversationViewport } from '../lib/conversationViewport';
+import { AgentMark } from '../components/AgentMark';
 import { useMainNav } from './navigation';
 import { SignInIsland } from '../components/SignInIsland';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
@@ -88,7 +90,7 @@ function Sidebar() {
                 {items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.end} title={i.label} onClick={closeSidebar}
                     className={({ isActive }) => `nav-item ${(i.match ? i.match(pathname) : isActive) ? 'active' : ''}`}>
-                    <Icon name={i.icon} /><span>{i.label}</span>
+                    {i.to === '/ai' ? <AgentMark size={20} animated /> : <Icon name={i.icon} />}<span>{i.label}</span>
                     {!!i.badge && <em className={`nav-count ${i.to === '/reminders' ? 'nav-count-alarm' : ''}`} aria-label={i.to === '/reminders' ? `${i.badge} need attention` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
                   </NavLink>
                 ))}
@@ -331,12 +333,15 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const loc = useLocation();
   const main = useRef<HTMLElement>(null);
   const phone = useIsMobile();
+  const shell = useRef<HTMLDivElement>(null);
+  const conversation = /(?:^|\/)(?:ai|chat)(?:\/[^/]+)?\/?$/.test(loc.pathname) && !loc.pathname.endsWith('/ai/operations');
+  useConversationViewport(phone && conversation, shell);
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
   const page = <Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense>;
   return (
-    <div className={`app-shell ${phone ? 'm-shell' : ''}`}>
+    <div ref={shell} className={`app-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
       <LensSync />
       {phone ? (
         <div className="main m-main">
@@ -344,7 +349,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <MobileTopBar />
           <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
           <TabBar />
-          <PullToRefresh />
+          {!conversation && <PullToRefresh />}
         </div>
       ) : (
         <>

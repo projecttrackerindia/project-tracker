@@ -16,7 +16,7 @@ let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Organization',type:'Organization',role:'Owner',planCode:'BUSINESS',description:null,memberCount:2};
 const context={user,workspaces:[workspace],fingerprint:'preview',pendingConsent:[],current:{...workspace,permissions:['work.view','work.create','work.edit','workflow.manage','reports.view'],modules:{work:3,projects:3,reports:3,ai:0,chat:0,time:0,people:3,documents:3},plan:{code:'BUSINESS',name:'Business',status:'Active',trialEnd:null,periodEnd:null,cancelAtPeriodEnd:false,downgraded:false},entitlements:{AUTOMATION:1,RESUME_TEMPLATES:8}}};
-const templates=[{id:1,name:'Essential',description:'Clean, single-column ATS layout',accent:'243247',centered:false,margin:46,rule:false,headingSize:12},{id:2,name:'Executive',description:'Centered heading and navy accents',accent:'1E3A5F',centered:true,margin:50,rule:true,headingSize:13}];
+const catalog=JSON.parse(await fs.readFile(new URL('./fixtures/resume-designs.json',import.meta.url),'utf8'));const templates=catalog.slice(0,2);
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 const errors=[];const checks=[];
 try {
@@ -24,6 +24,7 @@ try {
  await ctx.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin!==origin){await route.abort();return;}
+  if(url.pathname.endsWith('/avatar')){await route.fulfill({status:404,contentType:'application/json',body:'{"message":"No synthetic profile photo"}'});return;}
   if(!url.pathname.startsWith('/api/')){
    const filename=path.resolve(dist,url.pathname.startsWith('/assets/')?url.pathname.slice(1):'index.html');
    if(!filename.startsWith(dist+path.sep))throw new Error('Static path escapes');
@@ -79,7 +80,7 @@ try {
    const message={id:provider==='google'?'1001':'message1',threadId:'conversation1',subject:'Project delivery review',sender:'reviewer@example.test',receivedAt:'2026-10-11T08:00:00Z',unread:true,hasAttachments:true,body:url.pathname.endsWith('/thread')?inboxBody:null,bodyTruncated:false};
    data=url.pathname.endsWith('/thread')?{provider,account,threadId:'conversation1',messages:[message],truncated:false,sourceHash:inboxSourceHash,accessContext:inboxSourceHash}:{provider,account,messages:[message],cursor:null};
   }
-  else if(url.pathname.endsWith('/resumes/options'))data={templates,templateLimit:2,aiAvailable:false,aiCredits:0,cleanCheckoutEnabled:false,cleanPricePaise:4900,cleanTaxPaise:0,taxLabel:''};
+  else if(url.pathname.endsWith('/resumes/options'))data={templates,catalog,templateLimit:2,aiAvailable:false,aiCredits:0,cleanCheckoutEnabled:false,cleanPricePaise:4900,cleanTaxPaise:0,taxLabel:''};
   else if(url.pathname.endsWith('/me/certifications'))data=[{id:'00000000-0000-0000-0000-000000000003',name:'Project Management Certification',issuer:'Preview Institute',issuedOn:'2025-01-01',expiresOn:'2027-01-01',credentialId:null,verificationUrl:null,showBadge:false,archived:false,version:1,verificationStatus:'self-reported',expiryReminders:true,hasAttachment:false,attachmentFormat:null}];
   else if(url.pathname.endsWith('/support/workflows'))data=workflow?[workflow]:[];
   else if(url.pathname.endsWith('/support/tickets/summary'))data={backlog:1,unassigned:1,handoffs:0,openBreached:0,resolutionMet:8,resolutionMissed:2,responseMet:9,responseMissed:1};
@@ -105,6 +106,13 @@ try {
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   checks.push({name,overflow});
  }
+ for(const section of ['', '/notifications','/security','/mobile','/integrations','/resumes']) {
+  await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.section-layout-wide',1440,1000);
+  const nav=page.getByRole('navigation',{name:'My account sections'});assert.equal(await nav.getByRole('link').count(),6);
+  const rows=await nav.getByRole('link').evaluateAll(links=>links.map(link=>Math.round(link.getBoundingClientRect().top)));
+  assert.ok(rows.every(top=>Math.abs(top-rows[0])<=1),'All account sections use the same horizontal navigation');
+ }
+ checks.push({name:'six-account-sections-horizontal-navigation',passed:true});
  await capture('resume-current-desktop','/account/resumes','.resume-builder',1440,1000);
  await capture('resume-current-mobile','/account/resumes','.resume-builder',390,844);
  const fileInput=page.locator('.resume-upload input[type=file]').first();
@@ -173,6 +181,17 @@ try {
  assert.equal(await templateButtons.nth(1).getAttribute('aria-pressed'),'true');
  assert.equal(await page.getByLabel(/Template/).inputValue(),'2');
  checks.push({name:'resume-template-keyboard-selection',passed:true});
+ await page.getByRole('button',{name:'Browse 30 designs',exact:true}).click();
+ const library=page.getByRole('dialog');
+ assert.equal(await library.locator('.resume-catalog-card').count(),30);
+ await page.screenshot({path:artifact('resume-library-desktop.png'),fullPage:true,animations:'disabled'});
+ await page.getByRole('textbox',{name:'Search resume designs'}).fill('Orbital');
+ const locked=library.locator('.resume-catalog-card');assert.equal(await locked.count(),1);assert.equal(await locked.getAttribute('aria-disabled'),'true');
+ await locked.evaluate(el=>el.click());assert.equal(await page.getByLabel(/Template/).inputValue(),'2','Locked designs cannot change the active template');
+ await page.getByRole('textbox',{name:'Search resume designs'}).fill('Aurora');
+ await library.locator('.resume-catalog-card').focus();await library.locator('.resume-catalog-card').press('Enter');
+ assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('.resume-paper.supplied .resume-paper-sidebar').count(),1);
+ checks.push({name:'resume-30-design-library-search-and-plan-lock',passed:true});
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.evaluate(()=>{localStorage.setItem('pm_theme','dark');document.documentElement.setAttribute('data-theme','dark');});
  assert.equal(await page.locator('.studio-hero-mark>span').evaluate(el=>getComputedStyle(el).animationName),'none');
@@ -296,7 +315,7 @@ try {
   await page.getByRole('group',{name:'Resume workspace view'}).getByRole('button',{name:'Preview',exact:true}).click();
   assert.equal(await page.locator('.resume-editor').isVisible(),false);
   await page.getByLabel(/Template/).selectOption('2');
-  assert.equal(await page.locator('.resume-paper.centered.ruled').count(),1);
+  assert.equal(await page.locator('.resume-paper.centered.supplied').count(),1);
   assert.match(await page.locator('.resume-paper').innerText(),/cross-functional teams/);
   if([390,1440].includes(width)) {
    await page.locator('.resume-paper').scrollIntoViewIfNeeded();await page.screenshot({path:artifact(`resume-preview-${width}.png`),animations:'disabled'});

@@ -79,7 +79,7 @@ export function AccountPage({ section }: { section: AccountSection }) {
     { to: '/account/resumes', label: 'Resume studio', icon: 'note' },
   ] }];
   return (
-    <SectionLayout wide={section === 'resumes' || section === 'integrations'} title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
+    <SectionLayout wide title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
       {section === 'notifications' && <><NotificationSettings /><WhatsAppContactSection /></>}
       {section === 'security' && <SecuritySection />}

@@ -103,3 +103,44 @@
 .resume-layout[data-view=preview] .resume-paper { width:100%; max-width:794px; margin-inline:auto; }
 
 .resume-document-frame { width:100%; max-width:794px; margin-inline:auto; container-type:inline-size; }
+
+/* Supplied 30-design collection: identity banner, skills/profile column, experience column. */
+.resume-paper.supplied { padding:5cqi; aspect-ratio:auto; min-height:141.4cqi; overflow:visible; }
+.resume-paper.supplied header { background:var(--resume-banner); color:var(--resume-banner-text); padding:18px 16px; border:0; margin-bottom:20px; }
+.resume-paper.supplied h1 { color:var(--resume-banner-text); font-size:clamp(22px,5cqi,34px); }
+.resume-paper.supplied header p { color:var(--resume-banner-accent); font-size:clamp(11px,2cqi,15px); margin:8px 0; }
+.resume-paper.supplied header small { color:var(--resume-banner-text); font-size:clamp(10px,1.8cqi,12px); }
+.resume-paper.supplied header p,.resume-paper.supplied header small { display:block; text-align:left; }
+.resume-paper-columns { display:grid; grid-template-columns:minmax(0,.29fr) minmax(0,.71fr); gap:20px; }
+.resume-paper-sidebar { min-width:0; padding-right:12px; border-right:1px solid var(--resume-accent); }
+.resume-paper-main { min-width:0; }
+.resume-paper.supplied h2 { color:var(--resume-heading); margin:0 0 8px; font-size:clamp(10px,2cqi,13px); text-transform:uppercase; letter-spacing:.025em; }
+.resume-paper.supplied section { margin:0 0 20px; }
+.resume-paper.supplied section p { font-size:clamp(10px,1.8cqi,12px); line-height:1.65; }
+.resume-paper.supplied .resume-watermark { position:absolute; font-size:clamp(18px,5cqi,38px); z-index:0; }
+.resume-design-thumbnail { display:flex; flex-direction:column; width:58px; height:80px; background:white; padding:5px; border:1px solid #dbe3ed; border-radius:3px; box-shadow:0 3px 10px #0f172a0a; }
+.resume-thumbnail-banner { display:grid; gap:3px; background:var(--thumbnail-banner); height:19px; padding:5px 8px; }
+.resume-thumbnail-banner i { display:block; width:100%; height:2px; background:white; }
+.resume-thumbnail-banner i:last-child { width:70%; background:var(--thumbnail-accent); }
+.resume-thumbnail-columns { display:grid; grid-template-columns:1fr 2fr; gap:4px; margin-top:5px; }
+.resume-thumbnail-columns > span { display:grid; gap:4px; align-content:start; }
+.resume-thumbnail-columns > span:first-child { padding-right:4px; border-right:1px solid var(--thumbnail-accent); }
+.resume-thumbnail-columns i { display:block; height:2px; background:#d4dae2; }
+.resume-thumbnail-columns i:first-child { background:var(--thumbnail-accent); }
+.resume-browse { width:100%; justify-content:center; }
+.resume-library-intro { display:grid; gap:16px; margin-bottom:20px; }
+.resume-library-intro p { color:var(--text-2); line-height:1.6; }
+.resume-catalog-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.resume-catalog-card { position:relative; display:flex; flex-direction:column; gap:8px; align-items:center; padding:18px 12px; border:1px solid var(--border); border-radius:14px; background:var(--surface-2); color:var(--text); text-align:center; }
+.resume-catalog-card .resume-design-thumbnail { width:84px; height:112px; }
+.resume-catalog-card .resume-thumbnail-banner { height:28px; }
+.resume-catalog-card b { font-size:14px; margin-top:6px; }
+.resume-catalog-card span:not([class]) { font-size:11px; color:var(--text-2); line-height:1.5; }
+.resume-catalog-card small { font-size:10px; color:var(--text-3); }
+.resume-catalog-card[aria-pressed=true] { background:var(--primary-soft); border-color:var(--primary); }
+.resume-catalog-card:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
+.resume-catalog-card.locked { cursor:default; }
+.resume-catalog-card > svg { position:absolute; right:10px; top:10px; color:var(--text-3); }
+.resume-catalog-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; border-top:1px solid var(--border); padding-top:20px; margin-top:24px; }
+.resume-catalog-footer span,.resume-catalog-empty { color:var(--text-2); font-size:12px; line-height:1.6; }
+@media(max-width:600px) { .resume-catalog-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .resume-paper-columns { gap:12px; } .resume-paper-sidebar { padding-right:8px; } }

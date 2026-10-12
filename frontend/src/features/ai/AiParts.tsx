@@ -6,18 +6,14 @@ import { formatDateTime } from '../../lib/format';
 import type { AiAction, AiAttachment, AiFeedbackReason, AiInsight, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
 import { Markdown } from './Markdown';
 import { AI_NAME } from './aiBrand';
+import { AgentMark } from '../../components/AgentMark';
 import { useAuth } from '../../stores/auth';
 
 // ------------------------------------------------------------------ small marks
 
-/** A direction mark inside an orbit. Transform-only motion keeps the mark inexpensive to render. */
+/** Shared Agent identity, including a reduced-motion alternative. */
 export function Orb({ size = 32, busy = false, animated = false }: { size?: number; busy?: boolean; animated?: boolean }) {
-  return <span className={`ai-orb ${busy ? 'busy' : ''} ${animated ? 'animated' : ''}`} style={{ width: size, height: size }} aria-hidden="true">
-    <svg viewBox="0 0 48 48" fill="none">
-      <g className="ai-orbit-track"><ellipse cx="24" cy="24" rx="20" ry="13" transform="rotate(-35 24 24)" /><circle cx="40" cy="13" r="2.8" /></g>
-      <path className="ai-orbit-core" d="m24 11 9 23-9-5-9 5 9-23Z" />
-    </svg>
-  </span>;
+  return <AgentMark size={size} busy={busy} animated={animated} />;
 }
 
 const TIER_ICON: Record<AiTier, IconName> = { quick: 'bolt', standard: 'sparkle', deep: 'target' };
@@ -104,7 +100,7 @@ export function CreditMeter({ usage }: { usage?: AiUsage }) {
         <span>Usage</span><Icon name="chevronD" size={12} />
       </summary>
       <div className="ai-credit-panel">
-        <div className="ai-credit-panel-heading"><span>Organization credits</span><Icon name="orbit" size={18} /></div>
+        <div className="ai-credit-panel-heading"><span>Organization credits</span><Icon name="agent" size={18} /></div>
         <strong>{unlimited ? 'Unlimited' : usage.creditsLeft.toLocaleString()}<small>{unlimited ? 'on your plan' : 'remaining'}</small></strong>
         {!unlimited && <>
           <div className="ai-credit-bar" role="meter" aria-label="Organization credits remaining" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={`${usage.creditsLeft.toLocaleString()} credits remaining`}><span style={{ width: `${pct}%` }} /></div>

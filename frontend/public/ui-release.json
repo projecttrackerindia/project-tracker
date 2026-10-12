@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
-  "uiRelease": "responsive-ui-resume-oauth-20261012",
-  "uiSourceCommit": "2d17a325159bb3b00efdaa575636d1deb4d423c7"
+  "uiRelease": "agent-mobile-resume-library-20261012",
+  "aiName": "Agent",
+  "resumeDesigns": 30
 }
