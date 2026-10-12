@@ -98,6 +98,10 @@ jobs:
         run: dotnet restore
       - name: Build
         run: dotnet build --no-restore -c Release
+      - name: Enterprise expansion upgrade from main on a disposable PostgreSQL database
+        env:
+          PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
+        run: dotnet test --no-build -c Release --filter FullyQualifiedName~PostgresExpansionUpgradeTests
       - name: Retry transaction regressions on PostgreSQL
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
@@ -139,6 +143,17 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+      - name: Install browser for synthetic UI regression checks
+        run: npx playwright install --with-deps chromium
+      - name: Enterprise UI regression checks (no live APIs or providers)
+        run: npm run test:ui
+      - name: Keep UI previews and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-ui-previews
+          path: frontend/test-results/enterprise-ui/
+          if-no-files-found: ignore
       - name: Known-vulnerable packages (high and above)
         run: npm audit --audit-level=high --omit=dev
 

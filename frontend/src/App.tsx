@@ -39,6 +39,7 @@ const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPa
 const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
 const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
+const SupportCenterPage = page(() => import('./features/support/SupportCenterPage'), 'SupportCenterPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
 const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
@@ -327,6 +328,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="projects/:id" element={<Guard allow={mProjects}><ProjectDetailPage /></Guard>} />
         <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
         <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
+        <Route path="support" element={<Guard allow={mWork}><SupportCenterPage /></Guard>} />
         <Route path="documents" element={<Guard allow={mDocuments}><DocumentsPage /></Guard>} />
         <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
         {/* Insights */}
@@ -348,6 +350,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="account/security" element={<AccountPage section="security" />} />
         <Route path="account/mobile" element={<AccountPage section="mobile" />} />
         <Route path="account/integrations" element={<AccountPage section="integrations" />} />
+        <Route path="account/resumes" element={<AccountPage section="resumes" />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
         {/* Where pages used to be */}

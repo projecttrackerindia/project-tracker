@@ -46,6 +46,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__SigningKey", "test-signing-key-0123456789-0123456789-abcdef");
         Environment.SetEnvironmentVariable("RateLimiting__Enabled", "false");
         Environment.SetEnvironmentVariable("Storage__LocalPath", FilesPath);
+        var runtimeFolder=new DirectoryInfo(AppContext.BaseDirectory);
+        var sourceFolder=runtimeFolder;
+        while(sourceFolder!=null&&sourceFolder.Name!="src")sourceFolder=sourceFolder.Parent;
+        if(sourceFolder is null)throw new InvalidOperationException("Could not locate the document worker source folder.");
+        Environment.SetEnvironmentVariable("Resume__Imports__WorkerPath",Path.Combine(sourceFolder.FullName,"ProjectManagement.DocumentImport","bin",runtimeFolder.Parent!.Name,runtimeFolder.Name,"ProjectManagement.DocumentImport.dll"));
         Directory.CreateDirectory(BackupsPath);
         Environment.SetEnvironmentVariable("Backups__Path", BackupsPath);
         Environment.SetEnvironmentVariable("Maintenance__Enabled", "false");
@@ -55,6 +60,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
         Environment.SetEnvironmentVariable("GoogleMeetSync__WorkerEnabled", "false"); // tests run the RSVP sync engine explicitly
+        Environment.SetEnvironmentVariable("Support__Workflows__WorkerEnabled", "false");
+        Environment.SetEnvironmentVariable("WhatsApp__DeliveryEnabled", "false");
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
         Environment.SetEnvironmentVariable("Ai__Operations__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
@@ -81,7 +88,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeIdentityProvider Idp { get; } = new();
     /// <summary>Stands in for Google's OAuth token endpoint and the Calendar API: every "google-calendar" HTTP call lands here.</summary>
     public FakeGoogleCalendar GoogleCalendar { get; } = new();
+    public FakeMicrosoftProductivity MicrosoftProductivity {get;}=new();
     public FakeSlack Slack { get; } = new();
+    public FakeWhatsAppInstallation WhatsApp { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -98,6 +107,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>Everything the application logged, so a test can prove a secret never reaches a log line.</summary>
     public LogSink Logs { get; } = new();
     public FakePayments Payments { get; } = new();
+    public FakeResumePayments ResumePayments {get;}=new();
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
@@ -114,6 +124,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Integrations.IWebhookTransport>(Webhooks);
             services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => Idp);
             services.AddHttpClient("google-calendar").ConfigurePrimaryHttpMessageHandler(() => GoogleCalendar);
+            services.AddHttpClient("microsoft-productivity").ConfigurePrimaryHttpMessageHandler(()=>MicrosoftProductivity);
             services.Configure<ProjectManagement.Application.Features.Integrations.SlackOptions>(o =>
             {
                 o.ClientId = "test-client"; o.ClientSecret = "test-client-secret"; o.SigningSecret = "test-signing-secret";
@@ -128,7 +139,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(Chat);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IPaymentProvider>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IPaymentProvider>(Payments);
+            services.RemoveAll<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway>();
+            services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway>(ResumePayments);
             services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
+            services.AddHttpClient("whatsapp-installation").ConfigurePrimaryHttpMessageHandler(() => WhatsApp);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);
         });

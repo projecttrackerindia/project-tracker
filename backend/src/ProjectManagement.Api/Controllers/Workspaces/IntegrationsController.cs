@@ -14,6 +14,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 [Route("api/v1"), RequireWorkspace]
 public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data, GoogleCalendarAuthService google) : ApiControllerBase
 {
+    public const string GoogleProofCookie="__Secure-pt-google-connect";
     // ---- Google Workspace (Calendar + Meet): one connection per person, not a shared workspace credential - see GoogleCalendarAuthService.
     [HttpGet("integrations/google/status")]
     public async Task<IActionResult> GoogleStatus(CancellationToken ct) => Ok(await google.StatusAsync(ct));
@@ -26,7 +27,14 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
     /// no header from us at all.
     /// </summary>
     [HttpGet("integrations/google/connect")]
-    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct) => Ok(new { url = await google.StartConnectAsync(returnUrl, ct) });
+    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct,[FromQuery] bool mail=false,[FromQuery] bool inbox=false)
+    {
+        var proof=Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var url=await google.StartConnectAsync(returnUrl,proof,ct,mail,inbox);
+        Response.Headers.CacheControl="no-store";
+        Response.Cookies.Append(GoogleProofCookie,proof,new CookieOptions{HttpOnly=true,Secure=true,SameSite=SameSiteMode.Lax,Path="/api/v1/integrations/google/callback",MaxAge=TimeSpan.FromMinutes(10)});
+        return Ok(new{url});
+    }
 
     [HttpPost("integrations/google/disconnect")]
     public async Task<IActionResult> GoogleDisconnect(CancellationToken ct)
@@ -104,7 +112,12 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
     /// </summary>
     [HttpGet("integrations/google/callback")]
     public async Task<IActionResult> GoogleCallback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct)
-        => Redirect(await google.CompleteConnectAsync(code, state, error, ct));
+    {
+        var proof=Request.Cookies[IntegrationsController.GoogleProofCookie];
+        Response.Headers.CacheControl="no-store";
+        Response.Cookies.Delete(IntegrationsController.GoogleProofCookie,new CookieOptions{HttpOnly=true,Secure=true,SameSite=SameSiteMode.Lax,Path="/api/v1/integrations/google/callback"});
+        return Redirect(await google.CompleteConnectAsync(code,state,error,proof,ct));
+    }
 
     [HttpGet("calendar/feed/{token}.ics")]
     public async Task<IActionResult> CalendarFeed(string token, CancellationToken ct)

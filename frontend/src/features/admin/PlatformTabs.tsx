@@ -129,6 +129,7 @@ const FEATURES: { key: string; label: string; flag: boolean }[] = [
   { key: 'AI_MONTHLY_CREDITS', label: 'AI credits per month', flag: false }, { key: 'AI_ATTACHMENTS', label: 'AI: read images & documents', flag: true }, { key: 'CHAT_ATTACHMENTS', label: 'Chat: send files & pictures', flag: true },
   { key: 'AI_ACTIONS', label: 'AI: take actions & send reports', flag: true },
   { key: 'SLACK_INTEGRATION', label: 'Slack workspace integration', flag: true },
+  { key: 'RESUME_TEMPLATES', label: 'Resume templates (maximum 10)', flag: false },
 ];
 
 function ExceptionsModal({ org, onClose }: { org: AdminUsage; onClose: () => void }) {

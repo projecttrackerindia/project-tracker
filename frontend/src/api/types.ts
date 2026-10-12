@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -77,7 +77,7 @@ export interface TeamRef { id: string; name: string; isLead: boolean }
 export interface MemberProfile {
   userId: string; displayName: string; email: string; hasAvatar: boolean; role: Role;
   jobRole: string | null; jobRoleColor: string | null; teams: TeamRef[]; reportsTo: { id: string; name: string } | null;
-  joinedAt: string; open: number; overdue: number; doneLast30Days: number; doneTotal: number; isMe: boolean; canMessage: boolean;
+  joinedAt: string; open: number; overdue: number; doneLast30Days: number; doneTotal: number; isMe: boolean; canMessage: boolean; certificationBadges?: {name:string;issuer:string;expiresOn:string|null;verificationStatus:string}[];
 }
 export interface Invitation { id: string; email: string; role: Role; status: string; expiresAt: string; createdAt: string; invitedBy: string | null; jobRole: string | null; reportsTo: string | null }
 export interface InvitationLookup { workspaceName: string; email: string; role: Role; invitedBy: string | null; expired: boolean; accepted: boolean; jobRole: string | null }
@@ -364,7 +364,7 @@ export interface InboundMailbox {
 export type GitProvider = 'GitHub' | 'AzureDevOps';
 export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
 export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
-export interface GoogleConnectionStatus { connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
+export interface GoogleConnectionStatus { inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
@@ -698,3 +698,26 @@ export interface GroupMapping { id: string; group: string; teamId: string; teamN
 export interface GroupMappings { items: GroupMapping[] }
 
 export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height: number | null }
+
+export interface PersonalEmailDraft { reconciledAt?: string | null; canReconcile?: boolean; confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
+export interface EmailRewriteReceipt { operationId: string; draftId: string; sourceVersion: number; style: string; status: string; credits: number; model: string | null; createdAt: string; expiresAt: string; draft?: PersonalEmailDraft | null; draftChanged?: boolean }
+
+export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; calendarsEnabled?: boolean; calendarAccess?: boolean; connectedAt?: string | null }
+export interface InboxMessage { id: string; threadId: string; subject: string; sender: string; receivedAt: string | null; unread: boolean; hasAttachments: boolean; body: string | null; bodyTruncated: boolean }
+export interface InboxPage { provider: string; account: string; messages: InboxMessage[]; cursor: string | null }
+export interface InboxThread { provider: string; account: string; threadId: string; messages: InboxMessage[]; truncated: boolean; sourceHash: string; accessContext: string }
+export interface InboxSummaryOptions { available: boolean; credits: number; maxSourceCharacters: number; retentionHours: number }
+export interface InboxSummaryRequest { operationId: string; provider: string; messageId: string; sourceHash: string; credits: number; confirmed: boolean }
+export interface InboxSummaryReceipt { operationId: string; provider: string; messageId: string; status: string; credits: number; createdAt: string; expiresAt: string }
+export interface InboxSummary extends InboxSummaryReceipt { sourceHash: string; model: string | null; points: { text: string; messageId: string; quote: string }[]; sourceChanged: boolean }
+export interface InboxAttachment { name: string; size: number; mediaType: string; inline: boolean; downloadToken: string | null; unavailableReason: string | null }
+export interface InboxAttachments { files: InboxAttachment[]; truncated: boolean; maxDownloadBytes: number }
+
+export interface PersonalCalendarProposal {
+  id:string; title:string; description:string; startUtc:string; endUtc:string; timeZone:string;
+  status:'draft'|'sending'|'unknown'|'verified'; version:number; confirmedAccount:string|null; verifiedAt:string|null;
+}
+
+export interface MicrosoftOwnCalendar { id: string; name: string; isDefault: boolean }
+export interface MicrosoftCalendarInventory { account: string; accessContext: string; calendars: MicrosoftOwnCalendar[]; truncated: boolean }
+export interface MicrosoftCalendarAvailability { account: string; accessContext: string; calendarIds: string[]; startUtc: string; endUtc: string; busy: {startUtc: string; endUtc: string}[]; checkedAt: string; scope: string }

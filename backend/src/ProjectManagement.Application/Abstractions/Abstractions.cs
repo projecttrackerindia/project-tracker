@@ -8,6 +8,24 @@ namespace ProjectManagement.Application.Abstractions;
 
 public interface IAppDbContext
 {
+    DbSet<PersonalFileDeletion> PersonalFileDeletions { get; }
+    DbSet<PersonalResume> PersonalResumes { get; }
+    DbSet<ResumeExportPurchase> ResumeExportPurchases { get; }
+    DbSet<SupportWorkflowSchedule> SupportWorkflowSchedules { get; }
+    DbSet<SupportWorkflow> SupportWorkflows { get; }
+    DbSet<SupportWorkflowRevision> SupportWorkflowRevisions { get; }
+    DbSet<SupportWorkflowEvent> SupportWorkflowEvents { get; }
+    DbSet<SupportWorkflowRun> SupportWorkflowRuns { get; }
+    DbSet<SupportWorkflowStep> SupportWorkflowSteps { get; }
+    DbSet<SupportTicket> SupportTickets { get; }
+    DbSet<SupportInteraction> SupportInteractions { get; }
+    DbSet<SupportTicketLink> SupportTicketLinks { get; }
+    DbSet<ResumeVersion> ResumeVersions { get; }
+    DbSet<EmployeeCertification> EmployeeCertifications { get; }
+    DbSet<WhatsAppDelivery> WhatsAppDeliveries { get; }
+    DbSet<WhatsAppContactLink> WhatsAppContactLinks { get; }
+    DbSet<WhatsAppConnection> WhatsAppConnections { get; }
+    DbSet<WhatsAppInboundReceipt> WhatsAppInboundReceipts { get; }
     DbSet<SlackConnection> SlackConnections { get; }
     DbSet<SlackOAuthAttempt> SlackOAuthAttempts { get; }
     DbSet<SlackEventReceipt> SlackEventReceipts { get; }
@@ -101,6 +119,12 @@ public interface IAppDbContext
     DbSet<CalendarFeed> CalendarFeeds { get; }
     DbSet<InboundMailbox> InboundMailboxes { get; }
     DbSet<GitConnection> GitConnections { get; }
+    DbSet<MicrosoftConnection> MicrosoftConnections {get;}
+    DbSet<PersonalCalendarProposal> PersonalCalendarProposals {get;}
+    DbSet<PersonalEmailDraft> PersonalEmailDrafts { get; }
+    DbSet<PersonalInboxSummary> PersonalInboxSummaries {get;}
+    DbSet<PersonalEmailRewrite> PersonalEmailRewrites {get;}
+    DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts { get; }
     DbSet<GoogleConnection> GoogleConnections { get; }
     DbSet<ProjectMeeting> ProjectMeetings { get; }
     DbSet<MeetingParticipant> MeetingParticipants { get; }

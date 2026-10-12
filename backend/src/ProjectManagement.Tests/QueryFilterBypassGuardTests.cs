@@ -14,6 +14,9 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Api/Middleware/Middleware.cs",
         "ProjectManagement.Api/Realtime/ChatHub.cs",
         "ProjectManagement.Application/Features/Admin/AdminService.cs",
+        "ProjectManagement.Application/Features/People/MemberProfile.cs",
+        "ProjectManagement.Application/Features/Resumes/PersonalFileCleanup.cs", // trusted storage-key existence checks only, across owners and deleted records; no content is retrieved
+        "ProjectManagement.Application/Features/SupportWorkflows/SupportWorkflowProcessor.cs", // scheduling metadata and lease fencing only; every business action rebuilds the active executor's permissions
         "ProjectManagement.Application/Features/Admin/GoLiveService.cs",
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",
         "ProjectManagement.Application/Features/Ai/AiPortfolio.cs",
@@ -23,6 +26,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
+        "ProjectManagement.Application/Features/Billing/BillingService.cs", // personal certification destinations and bounded expired-summary ID deletion only; no employer reads or decrypted email retrieval
         "ProjectManagement.Application/Features/Billing/BillingWebhookService.cs",
         "ProjectManagement.Application/Features/Billing/SubscriptionActivator.cs",
         "ProjectManagement.Application/Features/Compliance/Compliance.cs",
@@ -41,6 +45,10 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/GitLinkService.cs",
         "ProjectManagement.Application/Features/Integrations/InboundEmailService.cs",
         "ProjectManagement.Application/Features/Integrations/SlackConnectionService.cs", // global workspace uniqueness and signed lifecycle routing only; no business-data reads; exact team/app mapping establishes tenant before writes
+        "ProjectManagement.Application/Features/Integrations/WhatsAppInstallationService.cs", // exact app/phone uniqueness metadata only; current authenticated tenant/user checked before persistence
+        "ProjectManagement.Application/Features/Integrations/WhatsAppMetadataMaintenance.cs", // metadata-only global scheduling; bounded cleanup uses explicit tenant scope and its ledger lock, including inactive installations
+        "ProjectManagement.Application/Features/Integrations/WhatsAppDeliveryProcessor.cs", // scheduling returns tenant IDs only using routing/consent/status predicates; all notification/contact contents and delivery execution are tenant-scoped after selection
+        "ProjectManagement.Application/Features/Integrations/WhatsAppGatewayService.cs", // signed provider callbacks resolve exact app/WABA/phone installation metadata only; tenant scope restored and no business reads/actions
         "ProjectManagement.Application/Features/Integrations/WebhookService.cs",
         "ProjectManagement.Application/Features/Issues/IssueService.cs",
         "ProjectManagement.Application/Features/Notifications/NotificationService.cs",
@@ -62,6 +70,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Work/WorkTaskService.cs",
         "ProjectManagement.Application/Features/Workspaces/WorkspaceService.cs",
         "ProjectManagement.Application/Services/EntitlementService.cs",
+        "ProjectManagement.Application/Services/WorkspaceExecutionPrincipal.cs", // reconstructs current membership and project scope for a saved principal; active tenant and exact user checks
         "ProjectManagement.Infrastructure/Workers/AiTraceRetentionWorker.cs", // background cleanup: only expired operational traces; no content or business writes
         "ProjectManagement.Infrastructure/Persistence/AppDbContext.Audit.cs",
         "ProjectManagement.Infrastructure/Persistence/AppDbContext.QueryFilters.cs",

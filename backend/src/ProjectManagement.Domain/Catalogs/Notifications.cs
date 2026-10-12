@@ -10,6 +10,7 @@ public static class NotificationCatalog
 {
     public static readonly NotificationKind[] All =
     [
+        new(NotificationType.CertificationExpiry, "Certification expiry", "Your personal certifications expire soon or have expired. In-app by default; you can opt into other channels.", true, false, false, false),
         new(NotificationType.TaskAssigned, "Task assigned to me", "Someone assigns a task to you.", true, true, true, false),
         new(NotificationType.Mention, "Mentions", "Someone @mentions you in a comment or in a project chat.", true, true, true, false),
         new(NotificationType.Message, "Chat messages", "Someone sends you a direct or group message while you are away from the chat (one notice per conversation, kept up to date). If you switch e-mail on, you only get one when the message is still unread after a few minutes.", true, false, true, false),

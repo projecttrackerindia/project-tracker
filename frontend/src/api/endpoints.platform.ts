@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, post, put, uploadFile } from './client';
-import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,GoogleConnectionStatus,Meeting,MeetingParticipant,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
+import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -99,10 +99,43 @@ export const integrationsApi = {
   googleStatus: () => get<GoogleConnectionStatus>('/integrations/google/status'),
   /** Returns Google's consent screen address; the caller navigates the whole page there itself (window.location.assign) - this call cannot
    * redirect there itself because only an ordinary authenticated fetch, not a bare page navigation, can carry the Authorization header. */
-  googleConnectUrl: (returnUrl?: string) => get<{ url: string }>('/integrations/google/connect', returnUrl ? { returnUrl } : undefined),
-  googleDisconnect: () => del('/integrations/google/disconnect'),
+  googleConnectUrl: (returnUrl?: string, mail = false, inbox = false) => get<{ url: string }>('/integrations/google/connect', { returnUrl, mail: mail || undefined, inbox: inbox || undefined }),
+  googleDisconnect: () => post('/integrations/google/disconnect'),
 };
 
+export const microsoftApi = {
+  status: () => get<MicrosoftConnectionStatus>('/integrations/microsoft/status'),
+  connect: (inbox = false, calendars = false) => get<{ url: string }>('/integrations/microsoft/connect', { inbox: inbox || undefined, calendars: calendars || undefined }),
+  disconnect: () => post('/integrations/microsoft/disconnect'),
+};
+
+export const personalInboxApi = {
+  list: (provider: 'google' | 'microsoft', cursor?: string, signal?: AbortSignal) => get<import('./types').InboxPage>('/me/inbox', { provider, cursor }, { signal }),
+  thread: (provider: 'google' | 'microsoft', messageId: string, signal?: AbortSignal) => get<import('./types').InboxThread>('/me/inbox/thread', { provider, messageId }, { signal }),
+  attachments: (provider: 'google' | 'microsoft', messageId: string, signal?: AbortSignal) => get<import('./types').InboxAttachments>('/me/inbox/attachments', { provider, messageId }, { signal }),
+};
+export const inboxSummaryApi = {
+  options: (signal?: AbortSignal) => get<import('./types').InboxSummaryOptions>('/me/inbox/summaries/options', undefined, { signal }),
+  list: (signal?: AbortSignal) => get<import('./types').InboxSummaryReceipt[]>('/me/inbox/summaries', undefined, { signal }),
+  get: (operation: string, signal?: AbortSignal) => get<import('./types').InboxSummary>('/me/inbox/summaries/' + operation, undefined, { signal }),
+  create: (body: import('./types').InboxSummaryRequest, signal?: AbortSignal) => post<import('./types').InboxSummary>('/me/inbox/summaries', body, { signal }),
+  remove: (operation: string) => del('/me/inbox/summaries/' + operation),
+};
+
+export const personalEmailApi = {
+  rewrite: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean; credits: number }) => post<import('./types').EmailRewriteReceipt>('/me/email-drafts/' + id + '/rewrites', b),
+  rewrites: (id: string) => get<import('./types').EmailRewriteReceipt[]>('/me/email-drafts/' + id + '/rewrites'),
+  rewriteReceipt: (id: string, operation: string, signal?: AbortSignal) => get<import('./types').EmailRewriteReceipt>('/me/email-drafts/' + id + '/rewrites/' + operation, undefined, { signal }),
+  reconcile: (id: string) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/reconcile', {}),
+  options: () => get<{ available: boolean; credits: number; maxBodyCharacters: number }>('/me/email-drafts/options'),
+  improve: (id: string, b: { operationId: string; version: number; style: string; confirmed: boolean; credits: number }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/improve', b),
+  list: () => get<PersonalEmailDraft[]>('/me/email-drafts'),
+  get: (id: string, signal?: AbortSignal) => get<PersonalEmailDraft>('/me/email-drafts/' + id, undefined, { signal }),
+  create: (b: { recipient: string; subject: string; body: string; provider?: 'google' | 'microsoft' }) => post<PersonalEmailDraft>('/me/email-drafts', b),
+  save: (id: string, b: { recipient: string; subject: string; body: string; version: number; provider?: 'google' | 'microsoft' }) => put<PersonalEmailDraft>('/me/email-drafts/' + id, b),
+  remove: (id: string) => del('/me/email-drafts/' + id),
+  send: (id: string, b: { version: number; confirmed: boolean; senderEmail: string }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/send', b),
+};
 export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
@@ -166,4 +199,20 @@ export const workApi = {
   upload: (id: string, file: File) => uploadFile<WorkAttachment>(`/work-tasks/${id}/attachments`, file),
   download: (fileId: string, fileName: string) => download(`/work-attachments/${fileId}/download`, fileName),
   removeFile: (fileId: string) => del<void>(`/work-attachments/${fileId}`),
+};
+
+export const personalCalendarApi = {
+  options: () => get<{enabled:boolean; account:string|null; calendarAccess:boolean}>('/me/calendar-proposals/options'),
+  list: () => get<import('./types').PersonalCalendarProposal[]>('/me/calendar-proposals'),
+  get: (id:string) => get<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id),
+  save: (body:{title:string;description:string;start:string;end:string;timeZone:string}) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals',body),
+  availability: (id:string,version:number) => get<{version:number;blockingEvents:number;scope:string}>('/me/calendar-proposals/'+id+'/availability',{version}),
+  confirm: (id:string,body:{version:number;confirmed:boolean;account:string}) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id+'/confirm',body),
+  reconcile: (id:string) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id+'/reconcile'),
+  remove: (id:string) => del('/me/calendar-proposals/'+id),
+};
+
+export const microsoftCalendarApi = {
+  list: (signal?: AbortSignal) => get<import('./types').MicrosoftCalendarInventory>('/me/microsoft-calendars', undefined, { signal }),
+  availability: (body: {calendarIds: string[]; accessContext: string; start: string; end: string}, signal?: AbortSignal) => post<import('./types').MicrosoftCalendarAvailability>('/me/microsoft-calendars/availability', body, { signal }),
 };

@@ -1,6 +1,7 @@
+import { WhatsAppContactSection } from './WhatsAppContactSection';
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -44,6 +45,8 @@ import { MobileAppSection } from './MobileAppSection';
 import { GoogleIntegrationSection } from './GoogleIntegration';
 import { AiUsageCard } from '../ai/AiUsageCard';
 import { SlackSettings } from './SlackSettings';
+import { WhatsAppSettings } from './WhatsAppSettings';
+const ResumeBuilderSection = lazy(() => import('./ResumeBuilder').then(m=>({default:m.ResumeBuilderSection})));
 
 const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -62,7 +65,7 @@ function browserOf(ua: string | null) {
 
 // ================================================================== My account (personal, from the avatar menu)
 
-export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile' | 'integrations';
+export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile' | 'integrations' | 'resumes';
 
 /** My account: everything about me, whatever workspace I am in. Workspace administration lives in Workspace settings. */
 export function AccountPage({ section }: { section: AccountSection }) {
@@ -73,14 +76,16 @@ export function AccountPage({ section }: { section: AccountSection }) {
     { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
     ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'bell' as const }] : []),
     ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Google Workspace', icon: 'video' as const }] : []),
+    { to: '/account/resumes', label: 'Resume studio', icon: 'note' },
   ] }];
   return (
     <SectionLayout title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
-      {section === 'notifications' && <NotificationSettings />}
+      {section === 'notifications' && <><NotificationSettings /><WhatsAppContactSection /></>}
       {section === 'security' && <SecuritySection />}
       {section === 'mobile' && <MobileAppSection />}
       {section === 'integrations' && <GoogleIntegrationSection />}
+      {section === 'resumes' && <Suspense fallback={<PageLoader />}><ResumeBuilderSection /></Suspense>}
     </SectionLayout>
   );
 }
@@ -281,6 +286,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
       {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
+      {current.id === 'whatsapp' && <><PageHead title="WhatsApp Business" sub="Prepare a secure organization-owned business connection." /><WhatsAppSettings /></>}
       {current.id === 'slack' && <><PageHead title="Slack integration" sub="Connect a Slack workspace to this organization." /><SlackSettings /></>}
       {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
       {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}

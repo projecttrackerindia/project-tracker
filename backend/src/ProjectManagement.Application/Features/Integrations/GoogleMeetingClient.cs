@@ -14,10 +14,10 @@ public record GoogleAttendeeStatus(string Email, string ResponseStatus);
 
 /// <summary>Google's own error response. Never shown to the person as-is - callers turn it into one of the plain-language messages the
 /// product requires (e.g. "We couldn't create the Google Meet right now. Please try again."); the technical detail stays server-side.</summary>
-public class GoogleApiException(string action, HttpStatusCode status, string body) : Exception($"Google Calendar {action} failed: {(int)status}")
+public class GoogleApiException(string action, HttpStatusCode status) : Exception($"Google Calendar {action} failed: {(int)status}")
 {
     public HttpStatusCode Status { get; } = status;
-    public string Body { get; } = body.Length > 500 ? body[..500] : body;
+
 }
 
 /// <summary>
@@ -87,8 +87,8 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
         if (res.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone) return [];
         if (!res.IsSuccessStatusCode)
         {
-            log.LogWarning("Google Calendar attendee read failed for event {EventId}: {Status} {Body}", eventId, (int)res.StatusCode, body.Length > 300 ? body[..300] : body);
-            throw new GoogleApiException("read attendees", res.StatusCode, body);
+            log.LogWarning("Google Calendar attendee read failed: {Status}", (int)res.StatusCode);
+            throw new GoogleApiException("read attendees", res.StatusCode);
         }
         var doc = JsonDocument.Parse(body).RootElement;
         if (!doc.TryGetProperty("attendees", out var list)) return [];
@@ -109,8 +109,8 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
         // Gone means Google already considers the event deleted (e.g. the organizer removed it directly in Calendar) - that is success here, not a failure to surface.
         if (res.IsSuccessStatusCode || res.StatusCode == HttpStatusCode.Gone) return;
         var body = await res.Content.ReadAsStringAsync(ct);
-        log.LogWarning("Google Calendar cancel failed for event {EventId}: {Status} {Body}", eventId, (int)res.StatusCode, body.Length > 300 ? body[..300] : body);
-        throw new GoogleApiException("cancel", res.StatusCode, body);
+        log.LogWarning("Google Calendar cancel failed: {Status}", (int)res.StatusCode);
+        throw new GoogleApiException("cancel", res.StatusCode);
     }
 
     private async Task<JsonElement> SendAsync(HttpMethod method, string url, string token, object payload, string action, CancellationToken ct)
@@ -121,8 +121,8 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
         var body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
-            log.LogWarning("Google Calendar {Action} failed: {Status} {Body}", action, (int)res.StatusCode, body.Length > 300 ? body[..300] : body);
-            throw new GoogleApiException(action, res.StatusCode, body);
+            log.LogWarning("Google Calendar {Action} failed: {Status}", action, (int)res.StatusCode);
+            throw new GoogleApiException(action, res.StatusCode);
         }
         return JsonDocument.Parse(body).RootElement;
     }

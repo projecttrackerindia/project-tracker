@@ -23,7 +23,25 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public ConcurrentBag<string> RevokedTokens { get; } = new();
     /// <summary>When set, every token-endpoint call fails (simulates an expired/revoked grant, for GOOGLE_TOKEN_EXPIRED tests).</summary>
     public bool RefreshFails { get; set; }
+    public Action? BeforeRefresh {get;set;}
+    public ConcurrentBag<string> SentMail { get; } = new();
+    public bool MailOutcomeUnknown { get; set; }
+    public Action? BeforeMailSendResponse {get;set;}
+    public bool UserInfoFails { get; set; }
+    public bool OmitRefreshToken { get; set; }
+    public FakeInboxMailbox Inbox {get;}=new();
+    public FakeSentMailbox Sent {get;}=new();
 
+    public bool PersonalCalendarBlocked {get;set;}
+    public bool PersonalCalendarPaged {get;set;}
+    public bool PersonalCalendarResponseLost {get;set;}
+    public bool PersonalCalendarReadMismatch {get;set;}
+    public Action? BeforePersonalCalendarList {get;set;}
+    public Action? BeforePersonalCalendarCreateResponse {get;set;}
+    public Action? BeforePersonalCalendarVerify {get;set;}
+    public ConcurrentBag<string> PersonalCalendarCreates {get;}=new();
+    private readonly ConcurrentDictionary<string,JsonElement> _personalCalendarEvents=new();
+    public void ResetPersonalCalendar(){PersonalCalendarBlocked=false;PersonalCalendarPaged=false;PersonalCalendarResponseLost=false;PersonalCalendarReadMismatch=false;BeforePersonalCalendarList=null;BeforePersonalCalendarCreateResponse=null;BeforePersonalCalendarVerify=null;BeforeRefresh=null;}
     public string IssueCode(string email = "owner@example.com", string scope = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created")
     {
         var code = Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
@@ -49,10 +67,11 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
                 var access = "at_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
                 _accessTokens[access] = grant;
                 AccessTokensIssued.Add(access);
-                return Json(new { access_token = access, refresh_token = refresh, expires_in = 3600, scope = grant.Scope, token_type = "Bearer" });
+                return Json(new { access_token = access, refresh_token = OmitRefreshToken?null:refresh, expires_in = 3600, scope = grant.Scope, token_type = "Bearer" });
             }
             if (form.GetValueOrDefault("grant_type") == "refresh_token")
             {
+                BeforeRefresh?.Invoke();
                 if (!_refreshTokens.TryGetValue(form.GetValueOrDefault("refresh_token") ?? "", out var grant)) return Json(new { error = "invalid_grant" }, HttpStatusCode.BadRequest);
                 var access = "at_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
                 _accessTokens[access] = grant;
@@ -69,9 +88,57 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         }
         if (path == "/oauth2/v2/userinfo")
         {
+            if(UserInfoFails)return Json(new{error="unavailable"},HttpStatusCode.ServiceUnavailable);
             var auth = request.Headers.Authorization?.Parameter ?? "";
             _accessTokens.TryGetValue(auth, out var grant);
             return Json(new { email = grant?.Email ?? "owner@example.com" });
+        }
+        if(u.Host=="gmail.googleapis.com"&&request.Method==HttpMethod.Get&&path.StartsWith("/gmail/v1/users/me/")){
+            var token=request.Headers.Authorization?.Parameter??"";
+            if(!_accessTokens.TryGetValue(token,out var grant)||!grant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/gmail.readonly"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            if(u.Query.Contains("rfc822msgid")||path.Contains("/messages/sent_"))return Sent.Read(request,grant.Email,true);
+            return Inbox.Read(request,grant.Email,true);
+        }
+        if(path=="/calendar/v3/calendars/primary/events"&&request.Method==HttpMethod.Get&&u.Query.Contains("singleEvents=true")){
+            BeforePersonalCalendarList?.Invoke();
+            if(PersonalCalendarPaged)return Json(new{items=Array.Empty<object>(),nextPageToken="more"});
+            return Json(new{items=PersonalCalendarBlocked?new object[]{new{status="confirmed",transparency="opaque"}}:Array.Empty<object>()});
+        }
+        if(path=="/calendar/v3/calendars/primary/events"&&request.Method==HttpMethod.Post){
+            using var proposed=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            if(proposed.RootElement.TryGetProperty("id",out var given)&&given.GetString() is {} id&&id.StartsWith("pt")){
+                var token=request.Headers.Authorization?.Parameter??"";
+                if(!_accessTokens.TryGetValue(token,out var grant))return Json(new{error="invalid_grant"},HttpStatusCode.Unauthorized);
+                var fields=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(proposed.RootElement.GetRawText())!;
+                fields["status"]=JsonSerializer.SerializeToElement("confirmed");
+                var result=JsonSerializer.SerializeToElement(fields);
+                if(!_personalCalendarEvents.TryAdd(grant.Email+":"+id,result))return Json(new{error="duplicate"},HttpStatusCode.Conflict);
+                PersonalCalendarCreates.Add(id);
+                BeforePersonalCalendarCreateResponse?.Invoke();
+                if(PersonalCalendarResponseLost)throw new HttpRequestException("Fake Calendar response lost");
+                return Json(result);
+            }
+        }
+        if(path.StartsWith("/calendar/v3/calendars/primary/events/pt")&&request.Method==HttpMethod.Get){
+            BeforePersonalCalendarVerify?.Invoke();
+            var token=request.Headers.Authorization?.Parameter??"";
+            if(!_accessTokens.TryGetValue(token,out var grant))return Json(new{error="invalid_grant"},HttpStatusCode.Unauthorized);
+            var id=path.Split('/').Last();
+            if(!_personalCalendarEvents.TryGetValue(grant.Email+":"+id,out var saved))return Json(new{error="missing"},HttpStatusCode.NotFound);
+            if(PersonalCalendarReadMismatch){var fields=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(saved.GetRawText())!;fields["summary"]=JsonSerializer.SerializeToElement("Changed outside the application");return Json(fields);}
+            return Json(saved);
+        }
+        if(path=="/gmail/v1/users/me/messages/send"&&request.Method==HttpMethod.Post){
+            var auth=request.Headers.Authorization?.Parameter??"";
+            if(!_accessTokens.TryGetValue(auth,out var mailGrant)||!mailGrant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/gmail.send"))
+                return Json(new{error="missing_scope"},HttpStatusCode.Forbidden);
+            using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            var raw=payload.RootElement.GetProperty("raw").GetString()!.Replace('-','+').Replace('_','/');
+            var mime=System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(raw.PadRight((raw.Length+3)/4*4,'=')));
+            SentMail.Add(mime);Sent.Google(mailGrant.Email,mime);
+            BeforeMailSendResponse?.Invoke();
+            if(MailOutcomeUnknown)throw new HttpRequestException("Simulated response lost after provider acceptance");
+            return Json(new{id="mail_"+Convert.ToHexString(RandomNumberGenerator.GetBytes(6))});
         }
         if (path.StartsWith("/calendar/v3/calendars/primary/events") && request.Method == HttpMethod.Post)
         {

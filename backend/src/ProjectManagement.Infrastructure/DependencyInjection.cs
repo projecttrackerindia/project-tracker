@@ -14,6 +14,8 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
+        services.Configure<ResumeImportOptions>(config.GetSection(ResumeImportOptions.Section));
+        services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumeDocumentExtractor,IsolatedResumeDocumentExtractor>();
         services.Configure<ProjectManagement.Application.Features.Billing.PricingOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.PricingOptions.Section));
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
@@ -24,7 +26,11 @@ public static class DependencyInjection
         services.Configure<MfaOptions>(config.GetSection(MfaOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Sso.ExternalAuthOptions>(config.GetSection(ProjectManagement.Application.Features.Sso.ExternalAuthOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.InboundEmailOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.InboundEmailOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Integrations.MicrosoftProductivityOptions>(config.GetSection("MicrosoftProductivity"));
+        services.Configure<ProjectManagement.Application.Features.Integrations.PersonalInboxSummaryOptions>(config.GetSection("PersonalInboxSummaries"));
+        services.Configure<ProjectManagement.Application.Features.Integrations.PersonalInboxAttachmentOptions>(config.GetSection("PersonalInboxAttachments"));
         services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Integrations.WhatsAppOptions>(config.GetSection("WhatsApp"));
         services.Configure<ProjectManagement.Application.Features.Integrations.SlackOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.SlackOptions.Section));
         services.AddOptions<ProjectManagement.Application.Features.Ai.AiOptions>()
             .Bind(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section))
@@ -79,6 +85,8 @@ public static class DependencyInjection
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         // Payments: simulated unless Billing:Provider=Razorpay (keys in Billing:Razorpay:*).
         services.Configure<RazorpayOptions>(config.GetSection(RazorpayOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Resumes.ResumeCheckoutOptions>(config.GetSection(ProjectManagement.Application.Features.Resumes.ResumeCheckoutOptions.Section));
+        services.AddHttpClient<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway, RazorpayResumeGateway>(c=>c.Timeout=TimeSpan.FromSeconds(20));
         if ((config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
             services.AddHttpClient<IPaymentProvider, RazorpayPaymentProvider>(c => c.Timeout = TimeSpan.FromSeconds(20));
         else
@@ -86,8 +94,13 @@ public static class DependencyInjection
 
         // Single sign-on and social sign-in: identity providers are reached through the "oidc" HTTP client.
         services.AddHttpClient("oidc", c => c.Timeout = TimeSpan.FromSeconds(15));
-        services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient("microsoft-productivity",c=>c.Timeout=TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
+        services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IOidcProtocol, OidcProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IGitHubOAuth, GitHubOAuth>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IAppleClientSecret, AppleClientSecret>();
@@ -147,6 +160,9 @@ public static class DependencyInjection
         services.AddHostedService<GoogleMeetSyncWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
+        services.Configure<SupportWorkflowOptions>(config.GetSection(SupportWorkflowOptions.Section));
+        services.AddHostedService<SupportWorkflowWorker>();
+        services.AddHostedService<WhatsAppDeliveryWorker>();
         services.Configure<ReminderOptions>(config.GetSection(ReminderOptions.Section));
         services.AddHostedService<ReminderWorker>();
         // Push notifications to devices (Web Push with VAPID; keys are made on first use).

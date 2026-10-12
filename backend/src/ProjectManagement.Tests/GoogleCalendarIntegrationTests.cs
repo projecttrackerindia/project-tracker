@@ -38,6 +38,7 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
 
         using var noRedirect = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         var code = factory.GoogleCalendar.IssueCode(googleEmail);
+        noRedirect.DefaultRequestHeaders.Add("Cookie",c.Extra["Cookie"]);
         using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?code={code}&state={state}");
         Assert.Equal(HttpStatusCode.Redirect, cb.StatusCode);
         return cb.Headers.Location!;
@@ -50,6 +51,7 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
     {
         var res = await c.Get("/api/v1/integrations/google/connect" + (returnUrl is null ? "" : $"?returnUrl={Uri.EscapeDataString(returnUrl)}"));
         Assert.True(res.Ok, res.ToString());
+        c.Extra["Cookie"]=res.Headers["Set-Cookie"].Split((char)59)[0];
         var authorize = new Uri(res.Data!["url"]!.GetValue<string>());
         Assert.StartsWith("https://accounts.google.com/o/oauth2/v2/auth", authorize.ToString());
         Assert.Contains("meetings.space.created", QueryValue(authorize, "scope"));
@@ -103,6 +105,7 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
         var state = QueryValue(authorizeUrl, "state");
 
         using var noRedirect = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        noRedirect.DefaultRequestHeaders.Add("Cookie",c.Extra["Cookie"]);
         using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?state={state}&error=access_denied");
         Assert.Equal("/settings/google-workspace?google=declined", cb.Headers.Location!.ToString());
 

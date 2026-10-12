@@ -36,3 +36,13 @@ export async function payWithRazorpay(c: HostedCheckout, who: { name: string; em
 }
 
 export class PaymentCancelled extends Error { constructor() { super('Payment cancelled'); this.name = 'PaymentCancelled'; } }
+
+/** One-time Orders checkout, separate from subscription signatures and recurring billing. */
+export async function payForResume(c: { keyId:string; orderId:string; totalMinor:number; currency:string }, who:{ name:string; email:string }):Promise<{paymentId:string; signature:string}> {
+  await load();
+  return new Promise((resolve,reject)=>{
+    const w=new window.Razorpay!({key:c.keyId,order_id:c.orderId,amount:c.totalMinor,currency:c.currency,name:'Project Tracker',description:'Watermark-free resume export',prefill:who,theme:{color:'#7c3aed'},
+      handler:(r:{razorpay_payment_id:string;razorpay_signature:string})=>resolve({paymentId:r.razorpay_payment_id,signature:r.razorpay_signature}),modal:{ondismiss:()=>reject(new PaymentCancelled())}});
+    w.on('payment.failed',()=>reject(new Error('The payment was not confirmed. Check payment status before trying again.')));w.open();
+  });
+}

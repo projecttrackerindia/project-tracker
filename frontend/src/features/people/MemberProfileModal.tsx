@@ -51,6 +51,7 @@ export function MemberProfileModal({ userId, onClose }: { userId: string; onClos
           {p.email && <div className="member-card-row"><Icon name="mail" size={14} /><a href={`mailto:${p.email}`}>{p.email}</a></div>}
           {p.reportsTo && <div className="member-card-row"><Icon name="user" size={14} /><span>Reports to {p.reportsTo.name}</span></div>}
           <div className="member-card-row"><Icon name="calendar" size={14} /><span>Joined {formatDate(p.joinedAt)}</span></div>
+          {!!p.certificationBadges?.length && <div className="member-card-row" style={{flexWrap:'wrap'}}>{p.certificationBadges.map((c,i)=><span key={i} className="badge badge-neutral" title={c.issuer + ' · ' + c.verificationStatus + (c.expiresOn ? ' · Expires ' + c.expiresOn : '')}>{c.name}</span>)}</div>}
           <div className="member-card-stats">
             <div><b>{p.open}</b><small>Open</small></div>
             <div><b>{p.overdue}</b><small>Overdue</small></div>
