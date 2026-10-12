@@ -37,12 +37,24 @@ export function ModeSwitch({ mode, onChange, usage, disabled }: { mode: AiMode; 
       return { id: t as AiMode, label: t === 'deep' ? 'Deep' : TIER_NAME[t], icon: TIER_ICON[t], info, hint: `${info?.description ?? ''}${info ? ` · ${info.credits} credit${info.credits === 1 ? '' : 's'} per answer` : ''}` };
     }),
   ];
+  const available = options.filter(o => !o.info || o.info.allowed);
+  const selectedTab = available.some(o => o.id === mode) ? mode : 'auto';
+  const move = (event: KeyboardEvent<HTMLButtonElement>, current: AiMode) => {
+    if (disabled || !['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = available.findIndex(o => o.id === current);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? available.length - 1
+      : (index + (event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1) + available.length) % available.length;
+    onChange(available[next].id);
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-mode="${available[next].id}"]`)?.focus();
+  };
   return (
     <div className="ai-modes" role="radiogroup" aria-label="How much thinking">
       {options.map((o) => {
         const locked = o.info ? !o.info.allowed : false;
         return (
-          <button key={o.id} type="button" role="radio" aria-checked={mode === o.id} disabled={disabled}
+          <button key={o.id} type="button" role="radio" data-mode={o.id} aria-checked={mode === o.id} disabled={disabled}
+            tabIndex={!locked && o.id === selectedTab ? 0 : -1} onKeyDown={event => move(event, o.id)}
             className={`ai-mode ${mode === o.id ? 'on' : ''} ${locked ? 'locked' : ''}`} title={locked ? `${o.label} is not included in your plan` : o.hint}
             onClick={() => onChange(locked ? mode : o.id)} aria-disabled={locked}>
             <Icon name={locked ? 'lock' : o.icon} size={13} /><span>{o.label}</span>
@@ -57,14 +69,12 @@ export function ModeSwitch({ mode, onChange, usage, disabled }: { mode: AiMode; 
 export function CreditMeter({ usage }: { usage?: AiUsage }) {
   const role = useAuth((s) => s.ctx?.current?.role);
   const control = useRef<HTMLDetailsElement>(null);
-  const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (!open) return;
     const closeOutside = (event: PointerEvent) => {
-      if (control.current && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
+      if (control.current?.open && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
     };
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape' && control.current) {
+      if (event.key === 'Escape' && control.current?.open) {
         control.current.open = false;
         control.current.querySelector('summary')?.focus();
       }
@@ -75,14 +85,14 @@ export function CreditMeter({ usage }: { usage?: AiUsage }) {
       document.removeEventListener('pointerdown', closeOutside);
       document.removeEventListener('keydown', closeOnEscape);
     };
-  }, [open]);
+  }, []);
   if (!usage) return null;
   const unlimited = usage.unlimited;
   const pct = unlimited ? 100 : usage.creditsLimit > 0 ? Math.max(0, Math.min(100, (usage.creditsLeft / usage.creditsLimit) * 100)) : 0;
   const low = !unlimited && pct < 15;
   const r = 17, c = 2 * Math.PI * r;
   return (
-    <details ref={control} className={`ai-credit-control ${low ? 'low' : ''}`} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details ref={control} className={`ai-credit-control ${low ? 'low' : ''}`}>
       <summary className="ai-credit-button" aria-label={unlimited ? 'Usage: unlimited organization credits' : `Usage: ${usage.creditsLeft.toLocaleString()} organization credits remaining, ${Math.round(pct)} percent`} title="View organization credit balance">
         <span className="ai-credit-ring">
           <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">

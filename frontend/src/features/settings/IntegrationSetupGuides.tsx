@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { WebhookFormat } from '../../api/types';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { useIsPersonal } from '../../stores/auth';
 import './integrationGuides.css';
 
@@ -49,20 +49,39 @@ export function SlackInstallSteps() {
 
 export function IntegrationSetupGuides({ included, onCreate }: { included: boolean; onCreate: (format: WebhookFormat) => void }) {
   const personal = useIsPersonal();
-  return <section className="card mb-22" aria-labelledby="integration-setup-title">
-    <div className="card-head"><div><h3 id="integration-setup-title">Connect your tools</h3><p>Follow a setup guide, choose which events to share, then verify a delivery.</p></div></div>
-    <div className="card-body integration-guides">
-      <p className="integration-guide-note">Owners and administrators manage connections for the selected workspace. Channel notifications require a plan with webhook access; Slack workspace installation has its own plan eligibility.</p>
-      {(['Json', 'Slack', 'Teams'] as const).map((format) => <details className="integration-guide" key={format}>
-        <summary><span className="integration-guide-icon"><Icon name={format === 'Json' ? 'send' : format === 'Slack' ? 'message' : 'workflow'} size={19} /></span><span className="integration-guide-title"><b>{format === 'Json' ? 'Webhooks' : format === 'Slack' ? 'Slack' : 'Microsoft Teams'}</b><small>{format === 'Json' ? 'Send signed events to your own system' : format === 'Slack' ? 'Channel notifications and workspace setup' : 'Post notifications with Teams Workflows'}</small></span><Icon name="chevronD" size={16} /></summary>
-        <div className="integration-guide-body">
-          <h4>{format === 'Json' ? 'Set up a signed webhook' : 'Set up channel notifications'}</h4>
-          <WebhookSetupSteps format={format} />
-          <div className="integration-guide-actions">{included ? <button type="button" className="btn btn-primary btn-sm" onClick={() => onCreate(format)}><Icon name="plus" size={14} />{format === 'Json' ? 'Create webhook' : format === 'Slack' ? 'Connect Slack channel' : 'Connect Teams channel'}</button> : <Link className="btn btn-sm" to="/settings/billing">Review plans for webhooks</Link>}</div>
-          {format === 'Slack' && !personal && <div className="integration-slack-install"><h4>Connect your organization's Slack workspace</h4><SlackInstallSteps /><Link className="btn btn-sm" to="/settings/slack">Open Slack workspace setup <Icon name="chevronR" size={14} /></Link></div>}
-          {format === 'Slack' && personal && <p className="integration-guide-note">Workspace installation is available in organization workspaces. Your personal workspace can use channel webhooks when included in its plan.</p>}
-        </div>
-      </details>)}
+  const [params, setParams] = useSearchParams();
+  const providers: { format: WebhookFormat; name: string; description: string; icon: IconName }[] = [
+    { format: 'Slack', name: 'Slack', description: 'Keep your channel in the loop', icon: 'message' },
+    { format: 'Teams', name: 'Microsoft Teams', description: 'Deliver updates through Workflows', icon: 'users' },
+    { format: 'Json', name: 'Webhooks', description: 'Connect your own systems', icon: 'code' },
+  ];
+  const selected = providers.find(p => p.format.toLowerCase() === params.get('guide')) ?? providers[0];
+  const choose = (format: WebhookFormat) => {
+    const next = new URLSearchParams(params); next.set('guide', format.toLowerCase()); setParams(next);
+  };
+  return <section className="integration-studio mb-22" aria-labelledby="integration-setup-title">
+    <div className="integration-studio-head">
+      <div><span className="integration-eyebrow">Workspace connections</span><h3 id="integration-setup-title">Connect your tools.</h3><p>Bring project updates to the places your team already works.</p></div>
+      <span className="integration-access"><Icon name={included ? 'shield' : 'lock'} size={15} />{included ? 'Webhook access included' : 'Plan upgrade required'}</span>
+    </div>
+    <div className="integration-studio-grid">
+      <nav className="integration-provider-list" aria-label="Integration setup guides">
+        {providers.map(p => <button type="button" key={p.format} className={`integration-provider ${selected.format === p.format ? 'selected' : ''}`} aria-pressed={selected.format === p.format} aria-controls="integration-selected-guide" onClick={() => choose(p.format)}>
+          <span className={`integration-guide-icon provider-${p.format.toLowerCase()}`}><Icon name={p.icon} size={22} /></span>
+          <span><b>{p.name}</b><small>{p.description}</small></span><Icon name="chevronR" size={16} />
+        </button>)}
+        <div className="integration-boundary"><Icon name="shield" size={17} /><p>Connections belong to this workspace. Share only the events your destination members may see.</p></div>
+      </nav>
+      <div id="integration-selected-guide" className="integration-selected-guide" aria-labelledby="integration-guide-heading">
+        <div className="integration-guide-heading"><div><span className="integration-eyebrow">Setup guide · 4 steps</span><h4 id="integration-guide-heading">{selected.format === 'Json' ? 'Signed event delivery' : `${selected.name} channel notifications`}</h4></div><span className="integration-guide-tag">{selected.format === 'Json' ? 'HTTPS + JSON' : 'Channel webhook'}</span></div>
+        <WebhookSetupSteps format={selected.format} />
+        <div className="integration-guide-actions">{included ? <button type="button" className="btn btn-primary" onClick={() => onCreate(selected.format)}><Icon name="plus" size={15} />{selected.format === 'Json' ? 'Create webhook' : selected.format === 'Slack' ? 'Connect Slack channel' : 'Connect Teams channel'}</button> : <Link className="btn btn-primary" to="/settings/billing">Review plans for webhooks <Icon name="chevronR" size={15} /></Link>}<span>Save your connection, then verify a test delivery.</span></div>
+        {selected.format === 'Slack' && !personal && <details className="integration-slack-install"><summary>Looking for Slack workspace installation? <Icon name="chevronD" size={15} /></summary><div><SlackInstallSteps /><Link className="btn btn-sm" to="/settings/slack">Open Slack workspace setup <Icon name="chevronR" size={14} /></Link></div></details>}
+        {selected.format === 'Slack' && personal && <p className="integration-guide-note">Slack workspace installation requires an organization workspace. Channel webhooks follow your current plan.</p>}
+      </div>
+    </div>
+    <div className="integration-studio-footer">
+      <p><Icon name="key" size={14} /> Keep webhook addresses and signing secrets private.</p>
       <details className="integration-guide integration-troubleshooting"><summary><span className="integration-guide-title"><b>Connection help</b><small>Plan access, failed deliveries and disconnecting</small></span><Icon name="chevronD" size={16} /></summary><div className="integration-guide-body"><ul>
         <li><b>Setup button unavailable:</b> review your plan or ask the workspace owner. If Slack says platform setup is pending, contact Project Tracker support.</li>
         <li><b>Test queued:</b> check Deliveries after a few seconds. A successful HTTP delivery should also be checked in the receiving channel or system.</li>

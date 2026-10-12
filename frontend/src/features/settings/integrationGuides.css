@@ -1,4 +1,52 @@
-.integration-guides { display: grid; gap: 12px; }
+.integration-studio { border: 1px solid var(--border-strong); border-radius: 22px; background: var(--panel-solid); box-shadow: var(--shadow-sm); overflow: hidden; container-type: inline-size; }
+.integration-studio-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 28px; border-bottom: 1px solid var(--border-strong); background: radial-gradient(ellipse at 95% 0, var(--primary-soft), transparent 65%); }
+.integration-eyebrow { display: block; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; font-weight: 750; color: var(--primary); }
+.integration-studio-head h3 { font-size: clamp(22px, 3cqw, 30px); letter-spacing: -.045em; margin: 7px 0 9px; line-height: 1.15; }
+.integration-studio-head p { color: var(--text-2); font-size: 13px; margin: 0; line-height: 1.6; }
+.integration-access { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 8px 11px; font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--surface); }
+.integration-studio-grid { display: grid; grid-template-columns: 235px minmax(0, 1fr); }
+.integration-provider-list { padding: 20px 14px; display: flex; flex-direction: column; gap: 9px; border-right: 1px solid var(--border-strong); background: var(--surface-2); }
+.integration-provider { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 10px; text-align: left; border: 1px solid transparent; border-radius: 14px; transition: background .18s, border-color .18s; }
+.integration-provider:hover { background: var(--hover-bg); }
+.integration-provider.selected { border-color: var(--border-strong); background: var(--primary-soft); }
+.integration-provider:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.integration-provider > span:nth-child(2) { flex: 1; min-width: 0; }
+.integration-provider b { display: block; color: var(--text); font-size: 13px; }
+.integration-provider small { display: block; margin-top: 4px; color: var(--text-2); font-size: 11px; line-height: 1.5; }
+.integration-provider > svg { flex: none; color: var(--text-2); }
+.integration-boundary { display: flex; align-items: flex-start; gap: 8px; padding: 16px 10px 0; margin-top: auto; color: var(--text-2); }
+.integration-boundary svg { flex: none; margin-top: 2px; color: var(--primary); }
+.integration-boundary p { margin: 0; font-size: 11px; line-height: 1.7; }
+.integration-selected-guide { padding: 25px 28px; min-width: 0; font-size: 13px; line-height: 1.65; }
+.integration-guide-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.integration-guide-heading h4 { margin: 6px 0 0; font-size: 17px; letter-spacing: -.025em; }
+.integration-guide-tag { padding: 5px 9px; border-radius: 7px; font-size: 10px; color: var(--text-2); background: var(--surface-3); }
+.integration-selected-guide > .integration-steps { counter-reset: connection-step; list-style: none; padding: 0; gap: 16px; }
+.integration-selected-guide > .integration-steps > li { counter-increment: connection-step; position: relative; padding-left: 39px; min-height: 30px; }
+.integration-selected-guide > .integration-steps > li::before { content: counter(connection-step, decimal-leading-zero); position: absolute; left: 0; top: 0; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--primary-soft); color: var(--primary); font-size: 10px; font-weight: 750; }
+.integration-selected-guide > .integration-guide-note { background: var(--surface-3); padding: 11px 13px; border-radius: 10px; margin-top: 18px; }
+.integration-guide-actions > span { font-size: 11px; color: var(--text-2); align-self: center; }
+.integration-studio-footer { display: grid; gap: 14px; padding: 16px 28px 20px; border-top: 1px solid var(--border-strong); }
+.integration-studio-footer > p { display: flex; gap: 7px; align-items: center; margin: 0; font-size: 11px; color: var(--text-2); }
+.integration-studio-footer > p svg { flex: none; color: var(--primary); }
+.integration-slack-install > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; font-size: 12px; font-weight: 650; color: var(--primary); padding: 14px 0 0; }
+.integration-slack-install > summary::-webkit-details-marker { display: none; }
+.integration-slack-install > summary svg { transition: transform .18s; flex: none; }
+.integration-slack-install[open] > summary svg { transform: rotate(180deg); }
+.integration-slack-install > summary:focus-visible, .integration-inline-guide > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
+.integration-slack-install > div { padding-top: 8px; }
+.slack-setup-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(230px, 1fr); gap: 24px; padding: 26px; }
+.slack-setup-grid > div { min-width: 0; }
+.slack-setup-grid h4 { font-size: 15px; margin: 0 0 12px; }
+.slack-connection-panel { padding: 20px; border: 1px solid var(--border-strong); border-radius: 16px; background: var(--surface-3); align-self: start; }
+.slack-connection-panel > p { margin: 12px 0; color: var(--text-2); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.slack-connection-panel > strong { display: block; font-size: 18px; letter-spacing: -.025em; margin: 16px 0 4px; overflow-wrap: anywhere; }
+.slack-connection-panel .btn { width: 100%; margin-top: 6px; }
+.slack-connection-state { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 650; }
+.slack-connection-state svg { color: var(--primary); }
+@container (max-width: 660px) { .integration-studio-grid, .slack-setup-grid { grid-template-columns: 1fr; } .integration-provider-list { border-right: 0; border-bottom: 1px solid var(--border-strong); padding: 14px; } .integration-provider { padding: 10px; } .integration-boundary { display: none; } .integration-selected-guide { padding: 22px 18px; } .integration-studio-head { padding: 22px 18px; } .integration-studio-footer { padding-inline: 18px; } .slack-setup-grid { padding: 20px 18px; } }
+@container (max-width: 430px) { .integration-provider-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 12px; } .integration-provider { flex-direction: column; gap: 7px; padding: 10px 4px; text-align: center; } .integration-provider small, .integration-provider > svg { display: none; } .integration-provider b { font-size: 11px; line-height: 1.4; } .integration-guide-heading h4 { font-size: 16px; } }
+@media (prefers-reduced-motion: reduce) { .integration-provider, .integration-slack-install > summary svg { transition: none; } }
 .integration-guide { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
 .integration-guide > summary { display: flex; align-items: center; gap: 12px; padding: 16px; cursor: pointer; list-style: none; }
 .integration-guide > summary::-webkit-details-marker { display: none; }

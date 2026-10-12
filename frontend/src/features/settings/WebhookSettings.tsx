@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { webhookApi } from '../../api/endpoints';
 import type { Webhook, WebhookFormat } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Badge, EmptyState, Field, Modal, SubmitButton } from '../../components/ui';
+import { Badge, EmptyState, ErrorState, Field, Modal, SubmitButton } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
@@ -49,13 +49,15 @@ export function WebhookSettings() {
     <IntegrationSetupGuides included={included} onCreate={(format) => setModal({ format })} />
     <div className="card mb-22">
       <div className="card-head">
-        <div><h3>Webhooks, Slack &amp; Teams</h3><p>Post to a Slack or Microsoft Teams channel, stream the audit log to your SIEM, or send a signed HTTPS request to another system whenever something happens.</p></div>
+        <div><h3>Saved connections</h3><p>Manage destinations, choose events and review delivery history.</p></div>
         {included && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> New webhook</button>}
       </div>
       <div className="card-body">
         {!included && <div className="notice">Your current plan does not include webhook access. <Link className="link" to="/settings/billing">See plans</Link></div>}
-        {included && hooks.length === 0 && !q.isLoading && <EmptyState icon="bolt" title="No webhooks" text="Add one to be told about new tasks, status changes, sprints and more." />}
-        {hooks.length > 0 && (
+        {included && q.isLoading && <p className="muted" role="status">Loading saved connections…</p>}
+        {included && q.isError && <ErrorState error={q.error} retry={() => void q.refetch()} />}
+        {included && hooks.length === 0 && !q.isLoading && !q.isError && <EmptyState icon="bolt" title="No webhooks" text="Add one to be told about new tasks, status changes, sprints and more." />}
+        {!q.isError && hooks.length > 0 && (
           <div className="cf-list">
             {hooks.map((h) => (
               <div className="cf-row" key={h.id}>
