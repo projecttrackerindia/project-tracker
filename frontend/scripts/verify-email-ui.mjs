@@ -19,6 +19,10 @@ const initialMicrosoft = { ...initial, id: '00000000-0000-0000-0000-000000000011
 let drafts = new Map([initial, initialMicrosoft].map(d => [d.id, structuredClone(d)]));
 let sends = 0; let rewrites = 0; let writes = 0; let reconciliations = 0; let rewriteMode = 'success'; let historyDenied = false;
 const receipts = new Map();
+let historyReads = 0; let holdNextHistory = false; let holdNextRewrite = false;
+let heldHistory; let heldRewrite; let notifyHistory; let notifyRewrite;
+const historyHeld = new Promise(resolve => { notifyHistory = resolve; });
+const rewriteHeld = new Promise(resolve => { notifyRewrite = resolve; });
 let sendMode = 'accepted'; let threadDenied = false; let googleError = false; let draftListDenied = false;
 let heldRead; let holdNextRead = false;
 let notifyHeldRead;
@@ -46,6 +50,10 @@ try {
       const receiptPath = endpoint.split('/')[6] === 'rewrites';
       const receiptResult = r => ({ ...r, draftChanged: r.draft ? r.draft.version !== d.version || d.status !== 'draft' : false });
       if (receiptPath && method === 'GET') {
+        historyReads++;
+        if (!endpoint.split('/')[7] && holdNextHistory) {
+          holdNextHistory = false; heldHistory = { deny: () => fail(403, 'Private rewrite access was revoked.') }; notifyHistory(); return;
+        }
         if (historyDenied) { await fail(403, 'Private rewrite access was revoked.'); return; }
         const operation = endpoint.split('/')[7];
         if (operation) { assert.ok(receipts.has(operation), 'Unknown rewrite operation'); await reply(receiptResult(receipts.get(operation))); }
@@ -73,6 +81,7 @@ try {
         rewrites++; d = { ...d, body: 'Hi Morgan,\n\nPlease share the outstanding blockers before our review on Friday, 16 October.\n\nThank you,\nAlex', version: d.version + 1 }; drafts.set(id, d);
         const receipt = { operationId: body.operationId, draftId: id, sourceVersion: body.version, style: body.style, status: 'completed', credits: 2, model: 'synthetic-model', createdAt: '2026-10-12T08:00:00Z', expiresAt: '2026-10-13T08:00:00Z', draft: structuredClone(d), draftChanged: false };
         receipts.set(body.operationId, receipt);
+        if (holdNextRewrite) { holdNextRewrite = false; heldRewrite = { release: () => reply(receipt) }; notifyRewrite(); return; }
         if (rewriteMode === 'lost') await route.abort('failed'); else await reply(receipt);
         return;
       } else { assert.equal(method, 'PUT'); d = { ...d, ...body, version: d.version + 1 }; drafts.set(id, d); }
@@ -161,8 +170,26 @@ try {
   await studio().getByText(/Review earlier wording/).click(); assert.match(await studio().innerText(), /will not replace them/); checks.push('saved-rewrite-never-replaces-unsaved-edits');
   await open(); await choose();
   await studio().locator('.email-rewrite-item').last().click(); await studio().getByText('Rewrite receipt verified', { exact: true }).waitFor(); assert.equal(rewrites, 2); checks.push('rewrite-history-recovers-across-page-reload');
+  // The result renders before its follow-up library/history refresh finishes.
+  // Revoke only after that operation settles, so the next explicit check tests denial.
+  await page.waitForFunction(() => document.querySelector('.personal-email-studio')?.getAttribute('aria-busy') === 'false');
   historyDenied = true; await studio().getByRole('button', { name: 'Check rewrite result', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('[aria-label="Message"]')?.value === ''); assert.equal(await studio().getByText('Rewrite receipt verified', { exact: true }).count(), 0); checks.push('denied-rewrite-retires-private-draft-and-result'); historyDenied = false; rewriteMode = 'success';
+  // A non-abortable mutation can finish after a denied background read and a
+  // successful library reload. That old response must remain retired.
+  await open(); holdNextHistory = true; await choose(); await historyHeld;
+  holdNextRewrite = true;
+  await studio().getByRole('button', { name: /Rewrite with AI/ }).click(); await dialog().getByRole('button', { name: 'Generate draft', exact: true }).click(); await rewriteHeld;
+  await heldHistory.deny();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Message"]')?.value === '');
+  await studio().getByRole('button', { name: 'Reload', exact: true }).click(); await studio().locator('.email-draft-item').first().waitFor();
+  const readsBeforeRetiredResult = historyReads;
+  await heldRewrite.release();
+  await page.waitForFunction(() => document.querySelector('.personal-email-studio')?.getAttribute('aria-busy') === 'false');
+  assert.equal(await studio().getByLabel('Message', { exact: true }).inputValue(), '');
+  assert.equal(await studio().getByText('Rewrite receipt verified', { exact: true }).count(), 0);
+  assert.equal(historyReads, readsBeforeRetiredResult, 'A retired mutation must not select private content or refresh its receipts');
+  await choose(); checks.push('late-rewrite-retired-after-denial-and-access-recovery');
   // Unknown provider outcomes survive reload and cannot be sent or deleted.
   drafts.set(initial.id, { ...initial, status: 'unknown', canReconcile: true, version: 2, confirmedSenderEmail: google.googleEmail });
   await open(); await choose(); assert.equal(await studio().getByRole('button', { name: 'Remove', exact: true }).count(), 0); assert.equal(await studio().getByRole('button', { name: 'Review and send', exact: true }).count(), 0);

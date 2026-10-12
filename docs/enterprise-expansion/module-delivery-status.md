@@ -36,7 +36,7 @@ No new migration, runtime dependency or environment variable. Deploy the API and
 Initial planning allowance: 8–16 focused engineering hours for the remaining Module 2 UI/recovery/regression work, not a guaranteed deadline. Provider verification may add elapsed time and depends on authorized configured test accounts. Microsoft remains disabled until configured and verified; no AI bulk testing is permitted.
 
 
-## Module 2 ? durable email recovery batch
+## Module 2 - durable email recovery batch
 
 Rewrite admission now commits an owner-scoped operation receipt and its shared credit hold before inference. Completion publishes the new draft version, encrypted saved result and credit settlement in one short transaction. GET recovery and same-reviewed-operation replay never start inference or another credit reservation. A changed operation payload conflicts; older wording is explicitly identified and cannot overwrite newer saved or unsaved edits. Results expire after 24 hours, and maintenance removes up to 1,000 expired receipts per run while the financial ledger remains authoritative. Abandoned twenty-minute holds use the existing credit recovery worker.
 
@@ -47,3 +47,11 @@ Migration: 20261012060025_DurablePersonalEmailRecovery adds PersonalEmailRewrite
 Validation: 109 combined backend cases passed, followed by two receipt-integrity cases and a final overlapping 42-case email recovery/migration subset. All 87 frontend unit tests, lint (zero errors/79 existing warnings), TypeScript/build and 70 synthetic production-CSP browser checks passed (20 enterprise, 21 workspace, 29 email). No page errors or measured overflow. Final real-app images are in .enterprise-browser/module-two-recovery-final/email and were shown before commit. Previous checkpoint 35b5eae passed all six CI jobs in run 38208931110. The new revision requires its own CI; no deployment or final main merge is claimed.
 
 Module 2 remains open for controlled Google/Microsoft contracts, semantic-quality evaluation and wider retention/readiness. The remaining modules and six grouped expanded-release workstreams stay open. No live emails, paid AI calls, calendar writes, payments or bulk AI tests were run.
+
+## Module 2 - response retirement and CI recovery
+
+CI run 38212291982 on 1d0210b passed the API/SQLite (1,412 passed, two intentional skips), desktop, Docker and deployment-file jobs. PostgreSQL passed its actual-main migration upgrade and transaction/credit stages, then the full suite reported one timestamp-precision assertion failure (1,408 passed, five intentional skips). Web failed when a synthetic access revocation raced the preceding receipt check's unfinished refresh. These failures are recorded rather than treating local success as release readiness.
+
+The receipt test now waits for operation completion before revoking access. Its PostgreSQL timestamp assertions tolerate only sub-microsecond storage precision loss; all other receipt data must remain identical. A separate controlled browser regression reproduced a real late-response issue: a delayed rewrite could restore private content after access denial and successful library recovery. Operation/access generations now retire that response permanently. A fresh explicit selection still works, and durable backend receipts remain recoverable without another inference or charge.
+
+No migration, new environment variable, dependency or provider activation. The follow-up requires its own exact-head CI. Controlled provider/semantic verification and broader retention/readiness still keep Module 2 open; main remains unmerged.

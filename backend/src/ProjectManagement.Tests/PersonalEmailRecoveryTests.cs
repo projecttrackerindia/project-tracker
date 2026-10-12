@@ -58,7 +58,17 @@ public class PersonalEmailRecoveryTests(ApiFactory factory)
             var op=Guid.NewGuid();var req=new EmailAiRequest(op,version,"formal",true,cost);var route=Path+id+"/rewrites";
             var result=await owner.Post(route,req);Assert.True(result.Ok,result.ToString());Assert.Equal("completed",result.Data!["status"]!.GetValue<string>());
             var receipt=factory.WithDb(db=>db.PersonalEmailRewrites.IgnoreQueryFilters().Single(r=>r.OperationId==op));Assert.DoesNotContain("Clear private message.",receipt.ResultProtected!);
-            factory.Ai.Configured=false;var replay=await owner.Post(route,req);Assert.True(replay.Ok,replay.ToString());Assert.Equal(result.Data.ToJsonString(),replay.Data!.ToJsonString());
+            factory.Ai.Configured=false;var replay=await owner.Post(route,req);Assert.True(replay.Ok,replay.ToString());
+            // PostgreSQL persists microseconds, while the initial CLR value has
+            // 100-nanosecond ticks. All content/identity/cost fields must replay
+            // exactly; only persisted timestamps permit sub-microsecond loss.
+            var replayData=replay.Data!.DeepClone();
+            foreach(var field in new[]{"createdAt","expiresAt"}){
+                var original=result.Data[field]!.GetValue<DateTime>();var persisted=replayData[field]!.GetValue<DateTime>();
+                Assert.InRange(Math.Abs((original-persisted).Ticks),0L,9L);
+                replayData[field]=result.Data[field]!.DeepClone();
+            }
+            Assert.Equal(result.Data.ToJsonString(),replayData.ToJsonString());
             Assert.Equal("AI_EMAIL_KEY_MISMATCH",(await owner.Post(route,req with{Style="friendly"})).ErrorCode);
             foreach(var other in new[]{peer,outsider}){Assert.Equal(HttpStatusCode.NotFound,(await other.Get(route+"/"+op)).Status);Assert.Equal(HttpStatusCode.NotFound,(await other.Get(route)).Status);}
             var current=result.Data["draft"]!;Assert.True((await owner.Put(Path+id,new{recipient="recipient@example.test",subject="Newer subject",body="Manual newer content.",version=current["version"]!.GetValue<int>()})).Ok);

@@ -45,17 +45,23 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
   const alive = useRef(true);
   const blocked = useRef(false);
   const running = useRef(false);
+  const accessEpoch = useRef(0);
+  const operationEpoch = useRef(0);
   const read = useRef<AbortController | null>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; read.current?.abort(); }; }, []);
   useEffect(() => {
     const denied = q.error instanceof ApiError && [401, 403].includes(q.error.status) ? q.error : history.error instanceof ApiError && [401, 403, 404].includes(history.error.status) ? history.error : null;
     if (denied) {
+      if (!blocked.current) accessEpoch.current++;
       blocked.current = true; read.current?.abort(); setSelected(null); setFields(blank); setRewriteReceipt(null); setLastOperation(null); setRecovery(false); setAccessLost(true); setError(errorText(denied));
     }
   }, [q.error, history.error]);
-  const active = () => alive.current && useAuth.getState().ctx?.user.id === uid && useAuth.getState().ctx?.current?.id === wid;
-  const start = () => { if (running.current || blocked.current || !active()) return false; running.current = true; setBusy(true); setError(''); return true; };
-  const finish = () => { if (active()) { running.current = false; setBusy(false); } };
+  const inContext = () => alive.current && useAuth.getState().ctx?.user.id === uid && useAuth.getState().ctx?.current?.id === wid;
+  // A successful library reload restores access, but cannot revive an operation
+  // started before a denial. Its durable result must be reopened explicitly.
+  const active = () => inContext() && !blocked.current && (!running.current || operationEpoch.current === accessEpoch.current);
+  const start = () => { if (running.current || blocked.current || !inContext()) return false; operationEpoch.current = accessEpoch.current; running.current = true; setBusy(true); setError(''); return true; };
+  const finish = () => { if (inContext()) { running.current = false; setBusy(false); } };
   const isMicrosoft = fields.provider === 'microsoft';
   const providerName = isMicrosoft ? 'Microsoft' : 'Gmail';
   const senderEmail = isMicrosoft ? microsoft?.email : google?.googleEmail;
@@ -67,7 +73,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
   const readOnly = busy || accessLost || (!!selected && selected.status !== 'draft');
   const refresh = () => active() ? invalidateWorkspace(wid, 'account', 'email-drafts') : Promise.resolve();
   const pick = (draft: PersonalEmailDraft | null) => {
-    if (!active() || (draft && blocked.current)) return;
+    if (!inContext() || (draft && !active())) return;
     setSelected(draft ? { ...draft, provider: draft.provider ?? 'google' } : null);
     setFields(draft ? { recipient: draft.recipient, subject: draft.subject, body: draft.body, provider: draft.provider ?? 'google' } : blank);
     setRecovery(false);
@@ -75,7 +81,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
   };
   const failure = (e: unknown, uncertain = false) => {
     if (!active()) return;
-    if (e instanceof ApiError && [401, 403, 404].includes(e.status)) { blocked.current = true; pick(null); setAccessLost(true); }
+    if (e instanceof ApiError && [401, 403, 404].includes(e.status)) { accessEpoch.current++; blocked.current = true; read.current?.abort(); pick(null); setAccessLost(true); }
     else if (uncertain) setRecovery(true);
     setError(errorText(e));
   };
@@ -121,7 +127,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
     finally {
       if (submitted && active()) {
         await refresh();
-        try { const latest = await personalEmailApi.get(snapshot.id); if (active() && latest.status !== 'draft') pick(latest); }
+        try { if (active()) { const latest = await personalEmailApi.get(snapshot.id); if (active() && latest.status !== 'draft') pick(latest); } }
         catch (e) { failure(e, true); }
       }
       finish();
@@ -152,7 +158,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
       setRewriteReceipt(receipt); setLastOperation(operation);
       if (receipt.status === 'pending') { setRecovery(true); setError('This rewrite is still pending. Check its saved result later; a temporary credit hold may remain until recovery.'); }
       else if (recovery && !dirty) { read.current = new AbortController(); const current = await personalEmailApi.get(selected.id, read.current.signal); if (!active()) return; pick(current); setRewriteReceipt(receipt); setLastOperation(operation); }
-      await refresh(); await history.refetch();
+      await refresh(); if (active()) await history.refetch();
       if (active()) toast('Saved rewrite checked. No new AI request or charge was started.');
     } catch (e) { failure(e); }
     finally { finish(); }
@@ -185,7 +191,7 @@ function EmailStudio({ google, googleState, microsoft, microsoftState, retryMicr
     const date = new Date(selected.acceptedAt); if (!Number.isFinite(date.getTime())) return '';
     try { return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone }); } catch { return date.toISOString(); }
   };
-  const reloadLibrary = async () => { const result = await q.refetch(); if (active() && !result.isError) { blocked.current = false; setAccessLost(false); } };
+  const reloadLibrary = async () => { const epoch = accessEpoch.current; const result = await q.refetch(); if (inContext() && epoch === accessEpoch.current && !result.isError) { blocked.current = false; setAccessLost(false); } };
   return <section className="personal-email-studio" aria-labelledby="private-drafts-title" aria-busy={busy}>
     <header className="email-studio-heading"><span className="email-studio-symbol" aria-hidden="true"><Icon name="edit" size={22} /></span><div><span className="studio-eyebrow">WRITE WITH INTENTION</span><h2 id="private-drafts-title">Private email drafts</h2><p>A focused space to write, refine and review.</p></div><button className="btn btn-sm" disabled={busy} onClick={() => void choose(null)}><Icon name="plus" size={15} /> New draft</button></header>
     <div className="email-studio-trust"><span><Icon name="lock" size={13} /> Private to you</span><span>AI only with consent</span><span>Review every send</span></div>
