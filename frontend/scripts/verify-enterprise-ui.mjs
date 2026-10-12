@@ -184,7 +184,9 @@ try {
  await page.getByRole('button',{name:'Browse 30 designs',exact:true}).click();
  const library=page.getByRole('dialog');
  assert.equal(await library.locator('.resume-catalog-card').count(),30);
- await page.screenshot({path:artifact('resume-library-desktop.png'),fullPage:true,animations:'disabled'});
+ // Capture the dialog without resizing the document viewport used by the responsive app shell.
+ await library.screenshot({path:artifact('resume-library-desktop.png'),animations:'disabled'});
+ assert.equal(await library.locator('.resume-catalog-card').count(),30,'Capturing a preview must keep the library open');
  await page.getByRole('textbox',{name:'Search resume designs'}).fill('Orbital');
  const locked=library.locator('.resume-catalog-card');assert.equal(await locked.count(),1);assert.equal(await locked.getAttribute('aria-disabled'),'true');
  await locked.evaluate(el=>el.click());assert.equal(await page.getByLabel(/Template/).inputValue(),'2','Locked designs cannot change the active template');
