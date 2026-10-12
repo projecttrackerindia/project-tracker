@@ -1,3 +1,4 @@
+import { continueConnectionInBrowser } from '../../lib/personalConnection';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { microsoftApi, microsoftCalendarApi } from '../../api/endpoints.platform';
@@ -41,6 +42,7 @@ export function OutlookAvailability() {
     if (!signal.aborted) { setInventory(value); setSelected(value.calendars.filter(c => c.isDefault).slice(0, 1).map(c => c.id)); }
   });
   const allow = async () => {
+    if (continueConnectionInBrowser()) return;
     if (!await confirmDialog({ title: 'Allow basic calendar reading?', message: 'Microsoft will ask for Calendars.ReadBasic in addition to your existing profile and email permissions. Project Tracker checks only selected calendars owned by your connected account when you request it. It does not read event notes, create events, invite attendees or share availability with AI.', confirmText: 'Continue to consent' })) return;
     await run(async signal => { const { url } = await microsoftApi.connect(false, true); if (!signal.aborted) globalThis.location.assign(url); });
   };

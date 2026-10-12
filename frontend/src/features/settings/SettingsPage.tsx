@@ -75,11 +75,11 @@ export function AccountPage({ section }: { section: AccountSection }) {
     ...(!isPlatformAdmin ? [{ to: '/account/notifications', label: 'Notifications', icon: 'bell' as const }] : []),
     { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
     ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'bell' as const }] : []),
-    ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Google Workspace', icon: 'video' as const }] : []),
+    ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Connected accounts', icon: 'video' as const }] : []),
     { to: '/account/resumes', label: 'Resume studio', icon: 'note' },
   ] }];
   return (
-    <SectionLayout title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
+    <SectionLayout wide={section === 'resumes' || section === 'integrations'} title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
       {section === 'notifications' && <><NotificationSettings /><WhatsAppContactSection /></>}
       {section === 'security' && <SecuritySection />}

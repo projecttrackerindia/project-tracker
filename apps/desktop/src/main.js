@@ -16,7 +16,7 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const WIN = process.platform === 'win32', MAC = process.platform === 'darwin';
 
 /** What the person chose in the tray menu. Kept in a small file next to the window state. */
-const DEFAULT_ZOOM = 0.85;   // the app is drawn for a large monitor; a desktop window reads as neat as the website does at this size
+const DEFAULT_ZOOM = 1; // Keep text and editing controls at their intended size; preserve saved user zoom.
 const defaults = { keepRunning: true, startHidden: false, zoom: DEFAULT_ZOOM };
 function settings() { try { return { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { return { ...defaults }; } }
 function saveSettings(patch) { try { fs.writeFileSync(settingsFile(), JSON.stringify({ ...settings(), ...patch })); } catch { /* not worth stopping for */ } }
@@ -228,6 +228,12 @@ else {
     // The page's own permission prompts (notifications, clipboard) are allowed for the app itself and nobody else.
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(isInternal(wc.getURL(), BASE) && ['notifications', 'clipboard-read', 'clipboard-sanitized-write', 'media'].includes(permission)));
     if (WIN) app.setAppUserModelId('in.projecttracker.desktop');   // so notifications carry the app's name and icon
+    ipcMain.on('open-connected-accounts', (e, workspaceSlug) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE)) return;
+      // Send a fixed local account page, never an OAuth code, state or credential. The browser begins its own attempt.
+      const slug = typeof workspaceSlug === 'string' && workspaceSlug.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(workspaceSlug) ? workspaceSlug : null;
+      shell.openExternal(new URL(`${slug ? '/' + slug : ''}/account/integrations`, BASE).href);
+    });
     ipcMain.on('win-control', (e, action) => {
       if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
       if (action === 'minimize') win.minimize();

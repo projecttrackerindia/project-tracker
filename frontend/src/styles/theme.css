@@ -106,12 +106,8 @@ html.theme-vt::view-transition-new(root) { z-index: 2; }
 .theme-core.to-dark { background: radial-gradient(circle, rgba(255, 255, 255, .95) 0%, rgba(167, 139, 250, .7) 22%, rgba(56, 189, 248, .25) 48%, transparent 70%); }
 .theme-core.to-light { background: radial-gradient(circle, rgba(255, 255, 255, .95) 0%, rgba(253, 224, 71, .75) 22%, rgba(251, 146, 60, .25) 48%, transparent 70%); }
 
-/* Laptop widths: one step smaller again. */
-@media (min-width: 769px) and (max-width: 1600px) {
-  .theme-switch { --ts-w: 36px; --ts-h: 19px; margin: 0 3px; }
-  .ts-clouds i:nth-child(1) { width: 10px; right: 4px; top: 5px; }
-  .ts-clouds i:nth-child(2) { width: 7px; right: 10px; }
-}
+
+
 @media (prefers-reduced-motion: reduce) {
   .ts-stars i, .ts-clouds i, .ts-rays { animation: none !important; }
 }

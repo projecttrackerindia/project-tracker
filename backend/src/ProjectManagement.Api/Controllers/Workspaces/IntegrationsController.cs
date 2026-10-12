@@ -12,7 +12,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>Setting up integrations: the work mailbox, repository connections, my calendar subscription, development links on tasks, and the data policy.</summary>
 [Route("api/v1"), RequireWorkspace]
-public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data, GoogleCalendarAuthService google) : ApiControllerBase
+public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data, GoogleCalendarAuthService google, IWebHostEnvironment environment) : ApiControllerBase
 {
     public const string GoogleProofCookie="__Secure-pt-google-connect";
     // ---- Google Workspace (Calendar + Meet): one connection per person, not a shared workspace credential - see GoogleCalendarAuthService.
@@ -32,8 +32,16 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
         var proof=Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
         var url=await google.StartConnectAsync(returnUrl,proof,ct,mail,inbox);
         Response.Headers.CacheControl="no-store";
-        Response.Cookies.Append(GoogleProofCookie,proof,new CookieOptions{HttpOnly=true,Secure=true,SameSite=SameSiteMode.Lax,Path="/api/v1/integrations/google/callback",MaxAge=TimeSpan.FromMinutes(10)});
+        Response.Cookies.Append(ProviderConnectionBrowser.CookieName("google",Request,environment),proof,ProviderConnectionBrowser.CookieOptions("/api/v1/integrations/google/callback",Request,environment));
         return Ok(new{url});
+    }
+
+    [HttpGet("integrations/google/callback/browser-check")]
+    public IActionResult GoogleBrowserCheck()
+    {
+        Response.Headers.CacheControl="no-store";
+        ProviderConnectionBrowser.Verify("google",Request,environment);
+        return NoContent();
     }
 
     [HttpPost("integrations/google/disconnect")]
@@ -103,7 +111,7 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
 /// Azure DevOps reporting pushes and pull requests. Each is authorised by the secret token in its URL (plus a signature for Git).
 /// </summary>
 [Route("api/v1"), AllowAnonymous]
-public class InboundController(IServiceProvider services, GoogleCalendarAuthService google) : ApiControllerBase
+public class InboundController(IServiceProvider services, GoogleCalendarAuthService google, IWebHostEnvironment environment) : ApiControllerBase
 {
     /// <summary>
     /// Google's redirect back after the person grants (or refuses) Calendar/Meet access. No Project Tracker session reaches this request -
@@ -113,10 +121,13 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
     [HttpGet("integrations/google/callback")]
     public async Task<IActionResult> GoogleCallback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct)
     {
-        var proof=Request.Cookies[IntegrationsController.GoogleProofCookie];
+        var cookieName=ProviderConnectionBrowser.CookieName("google",Request,environment);
+        var proof=Request.Cookies[cookieName];
         Response.Headers.CacheControl="no-store";
-        Response.Cookies.Delete(IntegrationsController.GoogleProofCookie,new CookieOptions{HttpOnly=true,Secure=true,SameSite=SameSiteMode.Lax,Path="/api/v1/integrations/google/callback"});
-        return Redirect(await google.CompleteConnectAsync(code,state,error,proof,ct));
+        Response.Cookies.Delete(cookieName,ProviderConnectionBrowser.CookieOptions("/api/v1/integrations/google/callback",Request,environment));
+        try { return Redirect(await google.CompleteConnectAsync(code,state,error,proof,ct)); }
+        catch (ProjectManagement.Application.Exceptions.UnauthorizedException ex) when (ex.Code is "GOOGLE_BROWSER_INVALID" or "GOOGLE_STATE_INVALID")
+        { return ProviderConnectionBrowser.Recovery(Response); }
     }
 
     [HttpGet("calendar/feed/{token}.ics")]

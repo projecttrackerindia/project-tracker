@@ -28,15 +28,15 @@ public class ResumeService(IAppDbContext db, ICurrentContext ctx, AppClock clock
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static readonly ResumeTemplate[] Templates = [
-        new(1,"Essential","Clean, single-column ATS layout","243247",46,false,false,12),
-        new(2,"Executive","Centered heading and confident navy accents","1E3A5F",50,true,true,13),
+        new(1,"Essential","Clear hierarchy, open spacing and an ATS-friendly single column","243247",46,false,false,12),
+        new(2,"Executive","Centered identity with a navy accent and crisp section dividers","1E3A5F",50,true,true,13),
         new(3,"Modern","Balanced spacing with indigo rules","5B46B2",42,false,true,12),
         new(4,"Minimal","Quiet typography and generous margins","475569",56,false,false,11),
-        new(5,"Professional","Traditional section hierarchy","153E55",48,false,true,13),
+        new(5,"Professional","Contemporary hierarchy with precise blue section dividers","153E55",48,false,true,13),
         new(6,"Studio","Centered identity and restrained violet","7045A0",44,true,false,12),
         new(7,"Technical","Compact, structured engineering profile","16605F",40,false,true,11),
         new(8,"Editorial","Airy heading and strong section labels","854D3B",54,false,false,14),
-        new(9,"Leadership","Formal centered title with slate rules","334155",52,true,true,14),
+        new(9,"Leadership","Confident centered identity with spacious slate dividers","334155",52,true,true,14),
         new(10,"Signature","Distinctive teal details and open spacing","0F766E",48,false,true,14)
     ];
     private IQueryable<PersonalResume> Mine => db.PersonalResumes.Where(r => r.UserId == ctx.RequireUserId());

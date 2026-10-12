@@ -23,7 +23,10 @@ public class GoogleOAuthSafetyTests(ApiFactory factory)
         var state=State(start);var code=factory.GoogleCalendar.IssueCode("first@example.com");
         using var missing=Browser();using var wrong=Browser("__Secure-pt-google-connect=wrong");
         var url=$"/api/v1/integrations/google/callback?state={state}&code={code}";
-        Assert.Equal(HttpStatusCode.Unauthorized,(await missing.GetAsync(url)).StatusCode);
+        using var missingResult=await missing.GetAsync(url);
+        Assert.Equal(HttpStatusCode.Unauthorized,missingResult.StatusCode);
+        Assert.Equal("text/html",missingResult.Content.Headers.ContentType!.MediaType);
+        Assert.Contains("Return to connected accounts",await missingResult.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Unauthorized,(await wrong.GetAsync(url)).StatusCode);
         using var browser=Browser(Cookie(start));
         using var connected=await browser.GetAsync(url);Assert.Equal(HttpStatusCode.Redirect,connected.StatusCode);
@@ -37,6 +40,20 @@ public class GoogleOAuthSafetyTests(ApiFactory factory)
         var saved=factory.WithDb(db=>db.GoogleConnections.IgnoreQueryFilters().Where(g=>g.TenantId==owner.WorkspaceId&&g.UserId==owner.UserId).ToArray());
         Assert.Single(saved);Assert.Equal(oldId,saved[0].Id);Assert.Equal("second@example.com",saved[0].GoogleEmail);
         Assert.False(saved[0].RefreshTokenProtected.StartsWith("rt_"));
+    }
+    [Fact]
+    public async Task Browser_check_requires_authentication_and_cookie_without_consuming_the_attempt()
+    {
+        var owner=await TestClient.RegisterAsync(factory,"OAuth cookie preflight");await owner.CreateOrgAsync();
+        Assert.Equal(HttpStatusCode.Unauthorized,(await Browser().GetAsync("/api/v1/integrations/google/callback/browser-check")).StatusCode);
+        Assert.Equal("OAUTH_BROWSER_COOKIE_BLOCKED",(await owner.Get("/api/v1/integrations/google/callback/browser-check")).ErrorCode);
+        var start=await owner.Get("/api/v1/integrations/google/connect");
+        owner.Extra["Cookie"]=Cookie(start);
+        Assert.Equal(HttpStatusCode.NoContent,(await owner.Get("/api/v1/integrations/google/callback/browser-check")).Status);
+        Assert.Null(factory.WithDb(db=>db.ProviderOAuthAttempts.Single(a=>a.UserId==owner.UserId).ConsumedAt));
+        using var browser=Browser(Cookie(start));
+        using var result=await browser.GetAsync($"/api/v1/integrations/google/callback?state={State(start)}&code={factory.GoogleCalendar.IssueCode()}");
+        Assert.Equal(HttpStatusCode.Redirect,result.StatusCode);
     }
     [Fact]
     public async Task Callback_rechecks_current_membership_and_rejects_expired_attempts()

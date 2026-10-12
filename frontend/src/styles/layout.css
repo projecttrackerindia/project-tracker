@@ -157,37 +157,8 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 [data-theme='dark'] .cal-ev.cyan { color: #7dd3fc; }
 [data-theme='dark'] .cal-ev.orange { color: #fdba74; }
 
-/* Laptop widths: the same ~20% step down the rest of the app takes in this range (see base.css). */
-@media (min-width: 769px) and (max-width: 1600px) {
-  .hub-section-title { font-size: 13.2px; }
-  .section-head { margin-bottom: 12.8px; gap: 11.2px; }
-  .route-tabs { margin-bottom: 14.4px; }
-  .section-layout { grid-template-columns: 184px minmax(0, 1fr); gap: 17.6px; }
-  .section-nav { padding: 8px; top: calc(var(--topbar-h) + 14.4px); }
-  .section-nav-title { font-size: 8.4px; padding: 3.2px 8px 4.8px; }
-  .section-nav-item { gap: 8px; padding: 6.4px 8px; border-radius: 8px; font-size: 10.8px; }
-  .section-nav-item svg { width: 13px; height: 13px; }
-  .explainer { gap: 9.6px; padding: 11.2px 12.8px; font-size: 10.4px; margin-bottom: 14.4px; }
-  .wi-row { grid-template-columns: 20.8px minmax(0, 1fr) auto; gap: 9.6px; padding: 8.8px 11.2px; }
-  .wi-kind { width: 20.8px; height: 20.8px; border-radius: 6.4px; }
-  .wi-kind svg { width: 11.2px; height: 11.2px; }
-  .wi-title { font-size: 10.8px; }
-  .wi-sub { font-size: 9.6px; }
-  .wi-meta { gap: 6.4px; font-size: 9.6px; }
-  .kind-chip { height: 25.6px; padding: 0 9.6px; gap: 5.6px; font-size: 10px; }
-  .kind-chip svg { width: 11.2px; height: 11.2px; }
-  .kind-chip b { font-size: 8.8px; line-height: 14.4px; padding: 0 5.6px; }
-  .wi-group-title { padding: 8px 11.2px 4.8px; font-size: 8.8px; }
-  .kind-key { font-size: 9.6px; gap: 11.2px; }
-  .kind-bar { height: 6.4px; }
-  .access-cell { font-size: 9.2px; min-width: 43px; padding: 1.6px 6.4px; }
-  .menu-pop { min-width: 184px; padding: 4.8px; border-radius: 9.6px; }
-  .menu-pop button, .menu-pop a { gap: 7.2px; padding: 6.4px 8px; font-size: 10.4px; border-radius: 6.4px; }
-  .method-option { padding: 8px 9.6px; border-radius: 8.8px; }
-  .method-option b { font-size: 10.4px; }
-  .method-option span { font-size: 9.2px; }
-  .label-row { padding: 8px 0; }
-}
+
+
 
 /* Calendar: an event never spills into the next day. Older Chrome sizes the contents of a <button> day by their text, so the
    widths are pinned here instead of left to stretching: equal columns, a full-width event list, and clipped titles with "…". */
