@@ -174,3 +174,6 @@ Contracts: [Gmail attachment retrieval](https://developers.google.com/workspace/
 
 ## Personal calendar authorization hardening
 No new environment variables or migrations. Calendar activation remains disabled until controlled provider verification. Confirm/reconcile commit their own receipt before calling Google; do not send Idempotency-Key on these endpoints or personal email send/improve. Account and token are obtained from one connection snapshot, with current membership and connection rechecked around provider work. If access changes after dispatch, restore appropriate access and inspect the existing receipt; never resend an uncertain action. Microsoft calendars, multiple calendars/attendees, AI scheduling and project-meeting recovery remain separate open release work.
+
+
+Email sender and access token are read from one connection snapshot for both Gmail and Outlook. Refresh responses cannot overwrite changed consent/account/scopes. If access changes after dispatch, keep the unknown receipt and inspect the provider Sent folder using appropriate authorized access; do not resend automatically. Provider acceptance is not proof of delivery. AI draft improvement retains manual review, never sends, and discards/refunds work when current access or AI configuration/price changes before publication. No new configuration or migration is required.

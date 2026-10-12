@@ -12,6 +12,7 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
     public ConcurrentBag<string> CodeVerifiers {get;}=new();
     public bool MissingScope {get;set;}
     public bool ResponseLost {get;set;}
+    public Action? BeforeMailSendResponse {get;set;}
     public bool MissingRefresh {get;set;}
     public bool InvalidProfile {get;set;}
     public Action? BeforeRefresh {get;set;}
@@ -51,10 +52,11 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         if(uri.Host=="graph.microsoft.com"&&uri.AbsolutePath=="/v1.0/me/sendMail"){
             if(!known.Scopes.Contains("Mail.Send"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
             SentMessages.Add(await request.Content!.ReadAsStringAsync(ct));
+            BeforeMailSendResponse?.Invoke();
             if(ResponseLost)throw new HttpRequestException("Fake response lost after processing");
             var response=new HttpResponseMessage(HttpStatusCode.Accepted);response.Headers.Add("request-id",Guid.NewGuid().ToString());return response;
         }
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
-    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;Inbox.Reset();}
+    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;BeforeMailSendResponse=null;Inbox.Reset();}
 }

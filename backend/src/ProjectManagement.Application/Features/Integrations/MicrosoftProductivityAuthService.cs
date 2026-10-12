@@ -162,7 +162,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
         if(!HasScope(granted,requiredScope))throw new ConflictException("Reconnect and grant the required Microsoft permission.","MICROSOFT_SCOPE_REQUIRED");
         var refresh=payload.RootElement.TryGetProperty("refresh_token",out var rt)&&rt.ValueKind==JsonValueKind.String?Field(payload.RootElement,"refresh_token",10000):secrets.Unprotect(row.RefreshTokenProtected);
         var encryptedAccess=secrets.Protect(access);var encryptedRefresh=secrets.Protect(refresh);
-        var won=await db.MicrosoftConnections.Where(c=>c.Id==row.Id&&c.RefreshTokenProtected==row.RefreshTokenProtected)
+        var won=await db.MicrosoftConnections.Where(c=>c.Id==row.Id&&c.RefreshTokenProtected==row.RefreshTokenProtected&&c.ConsentEpoch==row.ConsentEpoch&&c.Email==row.Email&&c.ProviderUserId==row.ProviderUserId&&c.Scopes==row.Scopes)
             .ExecuteUpdateAsync(s=>s.SetProperty(c=>c.AccessTokenProtected,encryptedAccess).SetProperty(c=>c.RefreshTokenProtected,encryptedRefresh)
                 .SetProperty(c=>c.AccessTokenExpiresAt,expiry).SetProperty(c=>c.Scopes,granted),ct);
         if(won!=1)throw new ConflictException("Your Microsoft connection changed. Reload before sending.","MICROSOFT_CONNECTION_CHANGED");

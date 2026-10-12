@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Mail;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -20,12 +21,43 @@ public record EmailAiOptions(bool Available,int Credits,int MaxBodyCharacters=60
 public record PersonalEmailDto(Guid Id,string Recipient,string Subject,string Body,string Status,int Version,string? ProviderMessageId,DateTime? AcceptedAt,string Provider="google",string? ProviderRequestId=null,string? ConfirmedSenderEmail=null);
 public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCalendarAuthService google,
     IOptions<GoogleCalendarOptions> options,IHttpClientFactory http,AppClock clock,Recorder recorder,
-    IAiClient ai,AiCreditService credits,EntitlementService entitlements,IOptions<AiOptions> aiOptions,MicrosoftProductivityAuthService microsoft,IServiceProvider services)
+    IAiClient ai,AiCreditService credits,EntitlementService entitlements,IOptions<AiOptions> aiOptions,MicrosoftProductivityAuthService microsoft,IServiceProvider services,IOptions<MicrosoftProductivityOptions> microsoftOptions)
 {
     private IQueryable<PersonalEmailDraft> Mine=>db.PersonalEmailDrafts.Where(d=>d.UserId==ctx.RequireUserId()&&d.Status!="deleted");
     private static PersonalEmailDto Dto(PersonalEmailDraft d)=>new(d.Id,d.Recipient,d.Subject,d.Body,d.Status,d.Version,d.ProviderMessageId,d.AcceptedAt,d.Provider,d.ProviderRequestId,d.ConfirmedSenderEmail);
     private async Task<PersonalEmailDraft> RequireAsync(Guid id,CancellationToken ct){
         ctx.RequireTenantId();return await Mine.FirstOrDefaultAsync(d=>d.Id==id,ct)??throw new NotFoundException("Email draft not found.");
+    }
+    private record SendGrant(string Provider,Guid User,Guid Tenant,Guid Connection,Guid ConsentEpoch,string Fingerprint,string Account,string Token);
+    private void SeparateOperation(){
+        if(db.Database.CurrentTransaction!=null)throw new ConflictException("Send or improve this draft separately from a data update.","EMAIL_TRANSACTION");
+    }
+    private async Task<SendGrant> Grant(string provider,CancellationToken ct){
+        var uid=ctx.RequireUserId();var tid=ctx.RequireTenantId();
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,uid,tid,null,ct);
+        SendGrant grant;
+        if(provider=="microsoft"){
+            var access=await microsoft.GetMailGrantAsync(ct);
+            grant=new(provider,uid,tid,access.ConnectionId,access.ConsentEpoch,access.RefreshFingerprint,access.Email,access.AccessToken);
+        }else{
+            var access=await google.GetAccessGrantAsync(uid,ct,GoogleCalendarAuthService.MailScope);
+            grant=new(provider,uid,tid,access.ConnectionId,access.ConsentEpoch,access.RefreshFingerprint,access.Account,access.AccessToken);
+        }
+        await Recheck(grant,ct);return grant;
+    }
+    private async Task Recheck(SendGrant grant,CancellationToken ct){
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,grant.User,grant.Tenant,null,ct);
+        bool valid;
+        if(grant.Provider=="microsoft"){
+            var row=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==grant.User,ct);
+            valid=microsoftOptions.Value.Enabled&&microsoftOptions.Value.Configured&&row!=null&&row.Id==grant.Connection&&row.ConsentEpoch==grant.ConsentEpoch&&row.Email==grant.Account&&
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(row.RefreshTokenProtected)))==grant.Fingerprint&&row.Scopes.Split(' ').Any(s=>s.Split('/').Last().Equals("Mail.Send",StringComparison.OrdinalIgnoreCase));
+        }else{
+            var row=await db.GoogleConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==grant.User,ct);
+            valid=options.Value.MailEnabled&&google.Configured&&row!=null&&row.Id==grant.Connection&&row.ConsentEpoch==grant.ConsentEpoch&&row.GoogleEmail==grant.Account&&
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(row.RefreshTokenProtected)))==grant.Fingerprint&&row.Scopes.Split(' ').Contains(GoogleCalendarAuthService.MailScope);
+        }
+        if(!valid)throw new ConflictException("Your email connection changed. Reload before continuing.","EMAIL_CONNECTION_CHANGED");
     }
     private static (string Recipient,string Subject,string Body) Validate(SavePersonalEmailRequest req){
         if(req.Provider is not ("google" or "microsoft"))throw new ValidationException("provider","Choose Google or Microsoft.");
@@ -82,6 +114,7 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         return new(available,Math.Clamp(aiOptions.Value.Chat.Quick.Credits,1,10000));
     }
     public async Task<PersonalEmailDto> ImproveAsync(Guid id,EmailAiRequest req,CancellationToken ct){
+        SeparateOperation();
         if(!req.Confirmed||req.OperationId==Guid.Empty)throw new ValidationException("confirmed","Confirm sharing this draft with your configured AI provider and supply an operation ID.");
         if(req.Style is not ("concise" or "formal" or "friendly"))throw new ValidationException("style","Choose concise, formal or friendly.");
         var row=await RequireAsync(id,ct);
@@ -89,6 +122,7 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         var opts=await AiOptionsAsync(ct);
         if(!opts.Available)throw new ForbiddenException("AI editing is unavailable. You can still edit manually.","AI_DISABLED");
         if(row.Body.Length>opts.MaxBodyCharacters)throw new ValidationException("body","AI editing supports messages of up to 6,000 characters.");
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,ctx.RequireUserId(),ctx.RequireTenantId(),null,ct);
         var source=row.Subject+"\n"+row.Body;
         await using var lease=await credits.ReserveAsync(req.OperationId,opts.Credits,"email-rewrite",ct);
         var answer=await ai.CompleteAsync(
@@ -107,6 +141,9 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         }catch(Exception e)when(e is JsonException or ValidationException or InvalidOperationException){
             throw new AppException(502,"AI_EMAIL_INVALID","The AI suggestion could not be validated. No credits were charged.");
         }
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,ctx.RequireUserId(),ctx.RequireTenantId(),null,ct);
+        var current=await AiOptionsAsync(ct);
+        if(!current.Available||current.Credits!=opts.Credits)throw new ConflictException("AI availability or the credit price changed. Review again.","AI_EMAIL_CHANGED");
         await using var tx=await db.Database.BeginOwnedTransactionAsync(ct);
         var result=await SaveAsync(id,suggestion,ct);
         recorder.Audit("ai.used","PersonalEmailDraft",id,null,new{feature="email-rewrite",model=answer.Model,credits=lease.Amount});
@@ -114,7 +151,7 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         return result; // Still a draft; no provider send is called here.
     }
     public async Task<PersonalEmailDto> SendAsync(Guid id,SendPersonalEmailRequest req,CancellationToken ct){
-        var row=await RequireAsync(id,ct);
+        SeparateOperation();var row=await RequireAsync(id,ct);
         if(row.Provider is not ("google" or "microsoft"))throw new ConflictException("The saved provider is unavailable.","EMAIL_PROVIDER_INVALID");
         if(row.Provider=="google"&&(!options.Value.MailEnabled||!google.Configured))throw new ConflictException("Gmail sending is not enabled. Your private draft can still be edited.","GMAIL_DISABLED");
         if(!req.Confirmed)throw new ValidationException("confirmed","Review the sender, recipient and saved message before confirming.");
@@ -122,14 +159,7 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         if(row.Status!="draft")throw new ConflictException("The previous send may have reached your provider. Check your Sent folder; do not resend.","EMAIL_OUTCOME_UNKNOWN");
         if(row.Version!=req.Version)throw new ConflictException("This draft changed. Reload before confirming.");
         var uid=ctx.RequireUserId();
-        string senderEmail;string token;
-        if(row.Provider=="microsoft"){
-            var grant=await microsoft.GetMailGrantAsync(ct);senderEmail=grant.Email;token=grant.AccessToken;
-        }else{
-            var connection=await db.GoogleConnections.FirstOrDefaultAsync(c=>c.UserId==uid,ct)??throw new ConflictException("Connect Google with email permission first.","GOOGLE_NOT_CONNECTED");
-            senderEmail=connection.GoogleEmail??"";
-            token=await google.GetAccessTokenAsync(uid,ct,GoogleCalendarAuthService.MailScope);
-        }
+        var grant=await Grant(row.Provider,ct);var senderEmail=grant.Account;var token=grant.Token;
         if(!MailAddress.TryCreate(senderEmail,out var sender)||sender.Address!=senderEmail||!string.Equals(senderEmail,req.SenderEmail,StringComparison.OrdinalIgnoreCase))
             throw new ConflictException("The connected sender changed or is unavailable. Reconnect and review again.","EMAIL_SENDER_CHANGED");
         // Provider identity and permission resolve before claiming: no email has been dispatched yet.
@@ -149,6 +179,7 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
         // There is no automatic HTTP retry. Gmail send has no documented idempotency key.
         string? providerId=null;string? providerRequestId=null;var accepted=false;
         try{
+            await Recheck(grant,ct);
             using var dispatch=CancellationTokenSource.CreateLinkedTokenSource(ct);dispatch.CancelAfter(TimeSpan.FromSeconds(20));
             var isMicrosoft=row.Provider=="microsoft";
             using var request=new HttpRequestMessage(HttpMethod.Post,isMicrosoft?"https://graph.microsoft.com/v1.0/me/sendMail":"https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
@@ -182,7 +213,8 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
                     providerId=returned;accepted=true;
                 }
             }
-        }catch(HttpRequestException){}catch(OperationCanceledException){}catch(JsonException){}catch(IOException){}
+            await Recheck(grant,ct);
+        }catch(Exception e)when(e is HttpRequestException or OperationCanceledException or JsonException or IOException or ConflictException or ForbiddenException){accepted=false;providerId=null;providerRequestId=null;}
         // Persist independently of a closed browser. A process crash leaves "sending", which also blocks retries.
         var finalStatus=accepted?"accepted":"unknown";var acceptedAt=accepted?(DateTime?)clock.Now:null;
         await Mine.Where(d=>d.Id==id&&d.Status=="sending")
@@ -190,6 +222,7 @@ public class PersonalEmailService(IAppDbContext db,ICurrentContext ctx,GoogleCal
                 .SetProperty(d=>d.ProviderRequestId,providerRequestId).SetProperty(d=>d.AcceptedAt,acceptedAt).SetProperty(d=>d.Version,d=>d.Version+1),CancellationToken.None);
         recorder.Audit("personal_email.send_outcome","PersonalEmailDraft",id,null,new{status=finalStatus});
         await db.SaveChangesAsync(CancellationToken.None);
+        await WorkspaceExecutionPrincipal.ConfigureAsync(services,row.UserId,row.TenantId,null,CancellationToken.None);
         var final=await Mine.AsNoTracking().SingleAsync(d=>d.Id==id,CancellationToken.None);
         return Dto(final);
     }

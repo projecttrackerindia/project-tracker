@@ -204,7 +204,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         };
         using var response=await http.CreateClient("google-calendar").SendAsync(request,HttpCompletionOption.ResponseHeadersRead,deadline.Token);
         if(!response.IsSuccessStatusCode){
-            await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected)
+            await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected&&x.ConsentEpoch==c.ConsentEpoch&&x.GoogleEmail==c.GoogleEmail&&x.Scopes==c.Scopes)
                 .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.LastError,"Your Google connection needs to be renewed."),ct);
             log.LogWarning("Google token refresh failed for user {User}: {Status}",userId,(int)response.StatusCode);
             throw new ConflictException("Your Google connection needs to be renewed.","GOOGLE_TOKEN_EXPIRED");
@@ -230,7 +230,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
                 throw new ConflictException("Reconnect Google and grant the required permission.","GOOGLE_SCOPE_REQUIRED");
             var refresh=root.TryGetProperty("refresh_token",out _)?secrets.Protect(Field("refresh_token",10000)):c.RefreshTokenProtected;
             var protectedAccess=secrets.Protect(access);var expiry=clock.Now.AddSeconds(seconds-60);
-            var won=await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected)
+            var won=await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected&&x.ConsentEpoch==c.ConsentEpoch&&x.GoogleEmail==c.GoogleEmail&&x.Scopes==c.Scopes)
                 .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.AccessTokenProtected,protectedAccess).SetProperty(x=>x.RefreshTokenProtected,refresh)
                     .SetProperty(x=>x.AccessTokenExpiresAt,expiry).SetProperty(x=>x.Scopes,scopes).SetProperty(x=>x.LastSyncAt,clock.Now)
                     .SetProperty(x=>x.LastError,(string?)null),ct);

@@ -26,6 +26,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public Action? BeforeRefresh {get;set;}
     public ConcurrentBag<string> SentMail { get; } = new();
     public bool MailOutcomeUnknown { get; set; }
+    public Action? BeforeMailSendResponse {get;set;}
     public bool UserInfoFails { get; set; }
     public bool OmitRefreshToken { get; set; }
     public FakeInboxMailbox Inbox {get;}=new();
@@ -132,6 +133,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
             using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             var raw=payload.RootElement.GetProperty("raw").GetString()!.Replace('-','+').Replace('_','/');
             SentMail.Add(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(raw.PadRight((raw.Length+3)/4*4,'='))));
+            BeforeMailSendResponse?.Invoke();
             if(MailOutcomeUnknown)throw new HttpRequestException("Simulated response lost after provider acceptance");
             return Json(new{id="mail_"+Convert.ToHexString(RandomNumberGenerator.GetBytes(6))});
         }
