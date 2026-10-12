@@ -18,6 +18,12 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
     public Action? BeforeRefresh {get;set;}
     public bool RefreshFails {get;set;}
     public FakeInboxMailbox Inbox {get;}=new();
+    public Action<string>? BeforeCalendarRead {get;set;}
+    public bool CalendarPaged {get;set;}
+    public bool CalendarOversized {get;set;}
+    public bool CalendarTransportFailure {get;set;}
+    public Func<DateTimeOffset,DateTimeOffset,object[]>? CalendarEvents {get;set;}
+    public ConcurrentBag<string> CalendarReads {get;}=new();
     public string IssueCode(string email="outlook@example.com",string scopes="User.Read Mail.Send"){
         var id=Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
         codes[id]=new(email,scopes);return id;
@@ -42,6 +48,23 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         var token=request.Headers.Authorization?.Parameter??"";
         if(!access.TryGetValue(token,out var known))return Json(new{error="invalid_token"},HttpStatusCode.Unauthorized);
+        if(uri.Host=="graph.microsoft.com"&&request.Method==HttpMethod.Get&&uri.AbsolutePath.StartsWith("/v1.0/me/calendars")){
+            if(!known.Scopes.Split(' ').Any(s=>s.Split('/').Last()=="Calendars.ReadBasic"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            CalendarReads.Add(uri.PathAndQuery);BeforeCalendarRead?.Invoke(uri.AbsolutePath);
+            if(CalendarTransportFailure)throw new HttpRequestException("Synthetic calendar transport failed");
+            if(CalendarOversized)return Json(new{value=new string('x',140000)});
+            if(uri.AbsolutePath=="/v1.0/me/calendars")return Json(new{value=new object[]{
+                new{id="own1",name=known.Email+" primary",isDefaultCalendar=true,owner=new{address=known.Email}},
+                new{id="own2",name=known.Email+" secondary",isDefaultCalendar=false,owner=new{address=known.Email}},
+                new{id="shared",name="Another person's calendar",isDefaultCalendar=false,owner=new{address="other-owner@example.com"}}
+            }});
+            if(uri.AbsolutePath.EndsWith("/calendarView")){
+                var q=uri.Query.TrimStart('?').Split('&').Select(p=>p.Split('=',2)).ToDictionary(p=>Uri.UnescapeDataString(p[0]),p=>Uri.UnescapeDataString(p[1]));
+                var start=DateTimeOffset.Parse(q["startDateTime"]);var end=DateTimeOffset.Parse(q["endDateTime"]);var events=CalendarEvents?.Invoke(start,end)??Array.Empty<object>();
+                if(CalendarPaged)return Json(new Dictionary<string,object>{{"value",events},{"@odata.nextLink","https://untrusted.invalid/next"}});
+                return Json(new{value=events});
+            }
+        }
         if(uri.Host=="graph.microsoft.com"&&request.Method==HttpMethod.Get&&uri.AbsolutePath.StartsWith("/v1.0/me/")&&uri.AbsolutePath.Contains("messages")){
             if(!known.Scopes.Split(' ').Contains("Mail.Read"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
             return Inbox.Read(request,known.Email,false);
@@ -58,5 +81,5 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
-    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;BeforeMailSendResponse=null;Inbox.Reset();}
+    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;BeforeMailSendResponse=null;BeforeCalendarRead=null;CalendarEvents=null;CalendarPaged=false;CalendarOversized=false;CalendarTransportFailure=false;Inbox.Reset();}
 }

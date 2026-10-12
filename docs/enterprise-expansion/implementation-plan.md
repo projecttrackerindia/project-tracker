@@ -139,3 +139,9 @@ The full expanded scope remains required before merging. This checkpoint does no
 
 ## Explicit private attachment downloads
 Added own-mailbox attachment metadata loading and individual file downloads. Metadata is requested only when the user opens the attachment list; file bytes are fetched only after a download click. Current coverage includes external Gmail file attachments and Graph fileAttachment objects up to 2 MiB. Oversized files, Gmail inline parts without an external attachment ID, Graph cloud references and attached Outlook items remain accessible through the mail provider. The UI states these bounds; no cloud URL is followed, embedded item is expanded, file is opened, indexed or supplied to AI. Controlled real-provider contract verification and capacity measurement remain open, alongside Microsoft calendar/scheduling and the other expanded release workstreams.
+
+
+## Outlook basic availability phase
+Adds explicit per-user own-calendar inventory and bounded multiple-calendar busy-window reads to My account. The phase reuses Microsoft OAuth/PKCE, protected per-user tokens, workspace principals and existing rate limiting; it requests Calendars.ReadBasic only for the new read permission. No event titles/bodies/attendees, AI calls, credits or provider writes. Feature remains off pending controlled verification. Read consent/context changes invalidate reviewed selections; current own inventory is reread before checking.
+
+This closes the implementation of own Outlook calendar inventory and selected own-calendar busy-period reading, not the entire calendar/scheduling workstream. Outlook writes, attendee/multi-provider availability, AI scheduling, durable project-meeting recovery, provider/payment checks and the other full expanded scope remain required before merge. No scope reduction or foundations-only release is authorized.

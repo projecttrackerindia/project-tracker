@@ -701,7 +701,7 @@ export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height:
 
 export interface PersonalEmailDraft { confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
 
-export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean }
+export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; calendarsEnabled?: boolean; calendarAccess?: boolean; connectedAt?: string | null }
 export interface InboxMessage { id: string; threadId: string; subject: string; sender: string; receivedAt: string | null; unread: boolean; hasAttachments: boolean; body: string | null; bodyTruncated: boolean }
 export interface InboxPage { provider: string; account: string; messages: InboxMessage[]; cursor: string | null }
 export interface InboxThread { provider: string; account: string; threadId: string; messages: InboxMessage[]; truncated: boolean; sourceHash: string; accessContext: string }
@@ -716,3 +716,7 @@ export interface PersonalCalendarProposal {
   id:string; title:string; description:string; startUtc:string; endUtc:string; timeZone:string;
   status:'draft'|'sending'|'unknown'|'verified'; version:number; confirmedAccount:string|null; verifiedAt:string|null;
 }
+
+export interface MicrosoftOwnCalendar { id: string; name: string; isDefault: boolean }
+export interface MicrosoftCalendarInventory { account: string; accessContext: string; calendars: MicrosoftOwnCalendar[]; truncated: boolean }
+export interface MicrosoftCalendarAvailability { account: string; accessContext: string; calendarIds: string[]; startUtc: string; endUtc: string; busy: {startUtc: string; endUtc: string}[]; checkedAt: string; scope: string }

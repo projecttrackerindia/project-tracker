@@ -14,7 +14,7 @@ export function MicrosoftIntegrationSection() {
   const outcome = params.get('microsoft');
   useEffect(() => {
     if (!outcome) return;
-    toast(outcome === 'connected' ? 'Microsoft account connected.' : outcome === 'permission' ? 'Microsoft email permission was not granted.' : outcome === 'declined' ? 'Microsoft connection was cancelled.' : 'Microsoft connection could not be completed.', outcome === 'connected' ? 'success' : 'info');
+    toast(outcome === 'connected' ? 'Microsoft account connected.' : outcome === 'permission' ? 'The requested Microsoft permissions were not granted.' : outcome === 'declined' ? 'Microsoft connection was cancelled.' : 'Microsoft connection could not be completed.', outcome === 'connected' ? 'success' : 'info');
     void invalidateWorkspace(wid, 'account', 'microsoft-status');
     const next = new URLSearchParams(params); next.delete('microsoft'); setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps

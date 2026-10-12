@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { OutlookAvailability } from './OutlookAvailability';
 import { PersonalCalendarProposals } from './PersonalCalendarProposals';
 import { PersonalEmailDrafts } from './PersonalEmailDrafts';
 import { MicrosoftIntegrationSection } from './MicrosoftIntegration';
@@ -73,6 +74,7 @@ export function GoogleIntegrationSection() {
       <MicrosoftIntegrationSection key={'microsoft-' + wid} />
       <PersonalInbox key={'inbox-' + wid} google={q.data} />
       <PersonalEmailDrafts key={wid} google={q.data} />
+      <OutlookAvailability key={"outlook-availability-"+wid} />
       <PersonalCalendarProposals key={"calendar-"+wid} />
     </>
   );

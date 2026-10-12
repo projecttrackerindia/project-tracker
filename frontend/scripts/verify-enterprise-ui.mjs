@@ -10,6 +10,7 @@ const artifacts=path.resolve(process.env.PM_UI_ARTIFACTS||'test-results/enterpri
 await fs.mkdir(artifacts,{recursive:true});
 const artifact=name=>path.join(artifacts,name);
 let workflow=null;const saves=[];
+let calendarDenied=false;let calendarReads=0;let calendarChecks=0;let calendarsEnabled=true;const calendarContext='c'.repeat(64);
 let attachmentReads=0;let attachmentDownloads=0;let inboxReads=0;let inboxEnabled=true;let summaryCalls=0;const summaryReceipts=new Map();const inboxSourceHash="a".repeat(64);
 let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe=true</script>';
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
@@ -54,12 +55,19 @@ try {
    }
    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data:summaryReceipts.get(b.operationId)})});return;
   }
+  if(url.pathname==='/api/v1/me/microsoft-calendars/availability'){
+   assert.equal(route.request().method(),'POST');
+   if(calendarDenied){await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({message:'Calendar access was revoked.',errors:[{code:'NOT_A_MEMBER',message:'Calendar access was revoked.'}]})});return;}
+   const b=route.request().postDataJSON();assert.equal(b.accessContext,calendarContext);assert.deepEqual(b.calendarIds,['own1','own2']);calendarChecks++;
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data:{account:'preview@outlook.example.test',accessContext:calendarContext,calendarIds:b.calendarIds,startUtc:b.start,endUtc:b.end,busy:[{startUtc:b.start,endUtc:new Date(new Date(b.start).getTime()+1800000).toISOString()}],checkedAt:'2026-10-12T08:00:00Z',scope:'Selected own Outlook calendars only. Other calendars and attendees are not checked. Availability can change after this read.'}})});return;
+  }
   if(!url.pathname.endsWith('/auth/refresh'))assert.equal(route.request().method(),'GET', 'Unexpected mutation in synthetic UI check');
   if(url.pathname.endsWith('/auth/refresh'))data={accessToken:'synthetic-preview-token',expiresAt:'2099-01-01T00:00:00Z',user,refreshToken:null};
   else if(url.pathname==='/api/v1/me')data=context;
   else if(url.pathname.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
   else if(url.pathname.endsWith('/integrations/google/status'))data={connected:true,googleEmail:'preview@gmail.example.test',connectedAt:'2026-10-11T08:00:00Z',lastError:null,calendarAccess:true,mailEnabled:false,mailSendAccess:false,inboxEnabled,inboxAccess:true};
-  else if(url.pathname.endsWith('/integrations/microsoft/status'))data={enabled:true,configured:true,connected:true,email:'preview@outlook.example.test',mailSendAccess:true,inboxEnabled,inboxAccess:true};
+  else if(url.pathname.endsWith('/integrations/microsoft/status'))data={enabled:true,configured:true,connected:true,email:'preview@outlook.example.test',mailSendAccess:true,inboxEnabled,inboxAccess:true,calendarsEnabled,calendarAccess:true,connectedAt:'2026-10-11T08:00:00Z'};
+  else if(url.pathname==='/api/v1/me/microsoft-calendars'){calendarReads++;data={account:'preview@outlook.example.test',accessContext:calendarContext,calendars:[{id:'own1',name:'Primary schedule',isDefault:true},{id:'own2',name:'Focus time',isDefault:false}],truncated:false};}
   else if(url.pathname==='/api/v1/me/inbox/attachments'){attachmentReads++;data={files:[{name:'review-notes.txt',size:36,mediaType:'text/plain',inline:false,downloadToken:'synthetic-private-file-token',unavailableReason:null}],truncated:false,maxDownloadBytes:2097152};}
   else if(url.pathname==='/api/v1/me/inbox/summaries/options')data={available:true,credits:1,maxSourceCharacters:18000,retentionHours:24};
   else if(url.pathname==='/api/v1/me/inbox/summaries')data=[...summaryReceipts.values()];
@@ -246,6 +254,27 @@ try {
  await page.reload();await page.locator('.inbox-status').waitFor({state:'visible'});
  assert.equal(await page.locator('.inbox-body').count(),0);assert.equal(inboxReads,beforeDisabled,'Disabled inbox cannot read provider content');
  checks.push({name:'private-inbox-disabled-gate-clears-content-without-provider-reads',passed:true});
+ assert.equal(calendarReads,0,'Outlook calendar inventory must not load automatically');assert.equal(calendarChecks,0);
+ await page.getByRole('button',{name:'Load my Outlook calendars',exact:true}).click();
+ await page.getByRole('checkbox',{name:'Focus time',exact:true}).waitFor({state:'visible'});assert.equal(calendarReads,1);assert.equal(calendarChecks,0);
+ await page.getByRole('checkbox',{name:'Focus time',exact:true}).check();
+ await page.getByLabel('Outlook window start').fill('2026-10-14T10:00');await page.getByLabel('Outlook window end').fill('2026-10-14T12:00');
+ await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-result').waitFor({state:'visible'});
+ assert.equal(calendarChecks,1);assert.equal(await page.locator('.outlook-result li').count(),1);assert.match(await page.locator('.outlook-result').textContent(),/Other calendars and attendees are not checked/);
+ assert.match(await page.locator('.outlook-result').textContent(),/10:00/);assert.equal(calendarReads,1);
+ await page.setViewportSize({width:390,height:1200});await page.locator('.outlook-availability').screenshot({path:artifact('outlook-availability-light-mobile.png'),animations:'disabled',style:'.m-tabs{visibility:hidden}'});
+ checks.push({name:'outlook-calendar-explicit-load-multiple-selection-local-time-read-only-check-mobile',passed:true,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});
+ await page.setViewportSize({width:1440,height:1400});await page.goto(origin+'/account/integrations');await page.locator('.outlook-availability').waitFor({state:'visible'});
+ await page.getByRole('button',{name:'Load my Outlook calendars',exact:true}).click();await page.getByRole('checkbox',{name:'Focus time',exact:true}).waitFor({state:'visible'});await page.getByRole('checkbox',{name:'Focus time',exact:true}).check();
+ await page.getByLabel('Outlook window start').fill('2026-10-14T10:00');await page.getByLabel('Outlook window end').fill('2026-10-14T12:00');await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-result').waitFor({state:'visible'});
+ await page.locator('.outlook-availability').screenshot({path:artifact('outlook-availability-light-desktop.png'),animations:'disabled'});
+ await page.evaluate(()=>{document.documentElement.dataset.theme='dark';document.documentElement.setAttribute('data-theme','dark');});await page.locator('.outlook-availability').screenshot({path:artifact('outlook-availability-dark-desktop.png'),animations:'disabled'});
+ calendarDenied=true;await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-error').waitFor({state:'visible'});
+ assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(await page.locator('.outlook-result').count(),0);
+ checks.push({name:'outlook-revoked-access-clears-calendar-names-and-busy-results',passed:true});
+ const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.outlook-status').waitFor({state:'visible'});
+ assert.equal(await page.locator('.outlook-result').count(),0);assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(calendarReads,beforeCalendarDisabled);
+ checks.push({name:'outlook-calendar-disabled-gate-clears-private-state-without-reads',passed:true});
  const result={fixture:'Synthetic browser responses only; no live APIs, model calls, payments or external sends',checks,pageErrors:errors};
  await fs.writeFile(artifact('results.json'),JSON.stringify(result,null,2));
  console.log(JSON.stringify(result));

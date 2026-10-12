@@ -18,6 +18,7 @@ public class MicrosoftProductivityOptions
     public const string Section = "MicrosoftProductivity";
     public bool Enabled { get; set; }
     public bool InboxEnabled { get; set; }
+    public bool CalendarsEnabled {get;set;}
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
@@ -27,7 +28,7 @@ public class MicrosoftProductivityOptions
         && uri.AbsolutePath=="/api/v1/integrations/microsoft/callback"
         && (AuthorityTenant is "common" or "organizations" or "consumers" || Guid.TryParse(AuthorityTenant,out _));
 }
-public record MicrosoftStatusDto(bool Enabled,bool Configured,bool Connected,string? Email,bool MailSendAccess,bool InboxEnabled=false,bool InboxAccess=false);
+public record MicrosoftStatusDto(bool Enabled,bool Configured,bool Connected,string? Email,bool MailSendAccess,bool InboxEnabled=false,bool InboxAccess=false,bool CalendarsEnabled=false,bool CalendarAccess=false,DateTime? ConnectedAt=null);
 public record MicrosoftConnectStart(string Url,string BrowserProof);
 public record MicrosoftMailGrant(string Email,string AccessToken,Guid ConnectionId=default,string RefreshFingerprint="",Guid ConsentEpoch=default);
 
@@ -37,6 +38,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
 {
     private MicrosoftProductivityOptions Options=>options.Value;
     public const string Scopes="offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Mail.Send";
+    public const string CalendarScope="https://graph.microsoft.com/Calendars.ReadBasic";
     public const string InboxScope="https://graph.microsoft.com/Mail.Read";
     private string Authority=>"https://login.microsoftonline.com/"+Options.AuthorityTenant+"/oauth2/v2.0/";
     private static string Random()=>Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -50,14 +52,16 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
     public async Task<MicrosoftStatusDto> StatusAsync(CancellationToken ct){
         ctx.RequireTenantId();var uid=ctx.RequireUserId();
         var c=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct);
-        return new(Options.Enabled,Options.Configured,c!=null,c?.Email,c!=null&&HasScope(c.Scopes,"Mail.Send"),Options.Enabled&&Options.Configured&&Options.InboxEnabled,c!=null&&HasScope(c.Scopes,"Mail.Read"));
+        return new(Options.Enabled,Options.Configured,c!=null,c?.Email,c!=null&&HasScope(c.Scopes,"Mail.Send"),Options.Enabled&&Options.Configured&&Options.InboxEnabled,c!=null&&HasScope(c.Scopes,"Mail.Read"),Options.Enabled&&Options.Configured&&Options.CalendarsEnabled,c!=null&&HasScope(c.Scopes,"Calendars.ReadBasic"),c?.ConnectedAt);
     }
-    public async Task<MicrosoftConnectStart> StartAsync(CancellationToken ct,bool inbox=false){
+    public async Task<MicrosoftConnectStart> StartAsync(CancellationToken ct,bool inbox=false,bool calendars=false){
         RequireEnabled();var uid=ctx.RequireUserId();var tid=ctx.RequireTenantId();
         if(inbox&&!Options.InboxEnabled)throw new ConflictException("Microsoft inbox access is not enabled.","INBOX_DISABLED");
+        if(calendars&&!Options.CalendarsEnabled)throw new ConflictException("Microsoft calendar reading is not enabled.","MICROSOFT_CALENDARS_DISABLED");
         var existing=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct);
         var keepInbox=Options.InboxEnabled&&existing!=null&&HasScope(existing.Scopes,"Mail.Read");
-        var requested=Scopes+(inbox||keepInbox?" "+InboxScope:"");
+        var keepCalendars=Options.CalendarsEnabled&&existing!=null&&HasScope(existing.Scopes,"Calendars.ReadBasic");
+        var requested=Scopes+(inbox||keepInbox?" "+InboxScope:"")+(calendars||keepCalendars?" "+CalendarScope:"");
         var state=Random();var proof=Random();var verifier=Random();
         await using(var tx=await db.Database.BeginOwnedTransactionAsync(ct)){
             if(await db.Users.Where(u=>u.Id==uid&&u.IsActive).ExecuteUpdateAsync(s=>s.SetProperty(u=>u.IsActive,u=>u.IsActive),ct)!=1)
@@ -119,6 +123,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
             granted=string.Join(' ',granted.Split(' ',StringSplitOptions.RemoveEmptyEntries).Where(s=>HasScope(requested,s.Split('/').Last())));
             if(!HasScope(granted,"Mail.Send")||!HasScope(granted,"User.Read"))return Landing("permission");
             if(attempt.RequestedScopes.Contains(InboxScope)&&(!Options.InboxEnabled||!HasScope(granted,"Mail.Read")))return Landing("permission");
+            if(attempt.RequestedScopes.Contains(CalendarScope)&&(!Options.CalendarsEnabled||!HasScope(granted,"Calendars.ReadBasic")))return Landing("permission");
             using var profileRequest=new HttpRequestMessage(HttpMethod.Get,"https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName");
             profileRequest.Headers.Authorization=new AuthenticationHeaderValue("Bearer",access);
             using var profile=await JsonAsync(profileRequest,8192,ct);
@@ -145,6 +150,10 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
     public Task<MicrosoftMailGrant> GetInboxGrantAsync(CancellationToken ct){
         if(!Options.InboxEnabled)throw new ConflictException("Microsoft inbox access is not enabled.","INBOX_DISABLED");
         return GetGrantAsync("Mail.Read",ct);
+    }
+    public Task<MicrosoftMailGrant> GetCalendarGrantAsync(CancellationToken ct){
+        if(!Options.CalendarsEnabled)throw new ConflictException("Microsoft calendar reading is not enabled.","MICROSOFT_CALENDARS_DISABLED");
+        return GetGrantAsync("Calendars.ReadBasic",ct);
     }
     private async Task<MicrosoftMailGrant> GetGrantAsync(string requiredScope,CancellationToken ct){
         RequireEnabled();ctx.RequireTenantId();var uid=ctx.RequireUserId();

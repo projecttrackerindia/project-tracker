@@ -165,3 +165,14 @@ Calendar availability, dispatch and provider read-back revalidate current member
 
 
 Personal email send now uses one sender/token/connection snapshot for Gmail and Outlook, with fresh membership and connection checks before dispatch and after the provider response. Losing access after dispatch retains an unknown non-replayable receipt, rather than claiming acceptance; revoked members receive no private draft response. This is not a provider delivery guarantee. Direct send/improve calls reject ambient database transactions with EMAIL_TRANSACTION. AI rewriting rechecks current membership, AI availability and the reviewed credit price before modifying the private draft and settling credits.
+
+
+## Own Microsoft calendar reads
+
+GET /api/v1/me/microsoft-calendars returns account, accessContext, own calendars (id/name/isDefault) and truncated. Requires activated Microsoft calendar reading and explicit per-user delegated Calendars.ReadBasic. Inventory has no shared calendars and is loaded only on request.
+
+POST /api/v1/me/microsoft-calendars/availability accepts calendarIds (one to five distinct references from a freshly authorized own list), reviewed accessContext and start/end with explicit offsets. The window is at most twenty-four hours, starting no earlier than a day ago and within the next year. The server rereads the inventory, checks the exact consent-bound connection, queries each selected calendar's bounded calendarView, clips/merges busy periods and rechecks access before response. Returns account/accessContext/checked calendar IDs/window/busy intervals/checkedAt/scope. No source event title, description or attendee data, model call, charge or write. Rejects Idempotency-Key as an external read operation.
+
+403 after revocation, 409 MICROSOFT_CALENDAR_CONNECTION_CHANGED after stale consent/connection, MICROSOFT_CALENDAR_INCOMPLETE for provider errors/paging/invalid or unknown states, and MICROSOFT_CALENDAR_TIMEOUT for internal deadlines. User cancellation propagates. An unlisted or non-owned selected calendar returns 404; invalid references/ranges/offsetless instants return validation errors before provider reads. Availability is a snapshot, not a reservation or attendee/multi-provider guarantee.
+
+Microsoft status adds calendarsEnabled/calendarAccess/connectedAt. GET integrations/microsoft/connect?calendars=true requests optional read consent; disabled or incomplete calendar consent does not replace an existing connection. Reconnection preserves previously consented basic reading only while its feature gate remains enabled.

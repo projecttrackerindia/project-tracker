@@ -91,6 +91,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalInboxService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalInboxSummaryService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalCalendarService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.MicrosoftCalendarReadService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.MicrosoftProductivityAuthService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.SlackConnectionService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.WhatsAppGatewayService>();

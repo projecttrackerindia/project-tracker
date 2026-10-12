@@ -105,7 +105,7 @@ export const integrationsApi = {
 
 export const microsoftApi = {
   status: () => get<MicrosoftConnectionStatus>('/integrations/microsoft/status'),
-  connect: (inbox = false) => get<{ url: string }>('/integrations/microsoft/connect', { inbox: inbox || undefined }),
+  connect: (inbox = false, calendars = false) => get<{ url: string }>('/integrations/microsoft/connect', { inbox: inbox || undefined, calendars: calendars || undefined }),
   disconnect: () => post('/integrations/microsoft/disconnect'),
 };
 
@@ -206,4 +206,9 @@ export const personalCalendarApi = {
   confirm: (id:string,body:{version:number;confirmed:boolean;account:string}) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id+'/confirm',body),
   reconcile: (id:string) => post<import('./types').PersonalCalendarProposal>('/me/calendar-proposals/'+id+'/reconcile'),
   remove: (id:string) => del('/me/calendar-proposals/'+id),
+};
+
+export const microsoftCalendarApi = {
+  list: (signal?: AbortSignal) => get<import('./types').MicrosoftCalendarInventory>('/me/microsoft-calendars', undefined, { signal }),
+  availability: (body: {calendarIds: string[]; accessContext: string; start: string; end: string}, signal?: AbortSignal) => post<import('./types').MicrosoftCalendarAvailability>('/me/microsoft-calendars/availability', body, { signal }),
 };
