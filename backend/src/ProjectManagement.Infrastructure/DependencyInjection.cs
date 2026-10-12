@@ -160,8 +160,6 @@ public static class DependencyInjection
         services.AddHostedService<GoogleMeetSyncWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
-        services.Configure<SupportWorkflowOptions>(config.GetSection(SupportWorkflowOptions.Section));
-        services.AddHostedService<SupportWorkflowWorker>();
         services.AddHostedService<WhatsAppDeliveryWorker>();
         services.Configure<ReminderOptions>(config.GetSection(ReminderOptions.Section));
         services.AddHostedService<ReminderWorker>();

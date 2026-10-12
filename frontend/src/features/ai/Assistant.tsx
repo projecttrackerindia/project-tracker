@@ -5,6 +5,7 @@ import { ApiError, get, post, put } from '../../api/client';
 import { actionItemApi } from '../../api/endpoints';
 import type { Priority, WorkItem } from '../../api/types';
 import { Icon } from '../../components/Icon';
+import { AgentMark } from '../../components/AgentMark';
 import { EmptyState, Modal, PageLoader, PriorityBadge } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -97,7 +98,7 @@ export function AssistantButton() {
   const enabled = useAi();
   const ask = useAssistant((s) => s.ask);
   if (!enabled) return null;
-  return <button type="button" className="asst-top-btn" onClick={() => ask()} title="Ask the AI assistant (Ctrl K, then type)"><Sparkle size={15} /><span>Ask AI</span></button>;
+  return <button type="button" className="asst-top-btn" onClick={() => ask()} title="Ask Agent (Ctrl K, then type)"><AgentMark size={22} animated /><span>Ask Agent</span></button>;
 }
 
 /**

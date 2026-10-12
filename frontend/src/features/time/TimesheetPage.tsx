@@ -8,10 +8,11 @@ import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader, RouteTabs, StatCard } from '../../components/ui';
 import { DOW, dateOffset, formatDate, formatDateShort, toISODate, todayISO } from '../../lib/format';
 import { usePersonPicker, useWsQuery } from '../../lib/hooks';
-import { useAuth, useCan, useIsPersonal } from '../../stores/auth';
+import { useAuth, useCan, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { formatMinutes } from './time';
 import { Select } from '../../components/Select';
 import { ApprovalsPanel, WeekApprovalBar, addDaysIso, mondayOf } from './Approvals';
+import { PlannedLeavePanel } from './PlannedLeavePanel';
 
 type Mode = 'single' | 'range' | 'multiple';
 const TASK_COLORS = ['#8b5cf6', '#38bdf8', '#fb7185', '#34d399', '#f59e0b', '#22d3ee', '#a78bfa', '#f472b6'];
@@ -56,6 +57,7 @@ export function TimesheetPage({ section = 'mine' }: { section?: 'mine' | 'approv
 
 function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | 'checks'; badge?: number }[] }) {
   const me = useAuth((s) => s.ctx!.user);
+  const workspaceId = useWorkspaceId();
   const [params] = useSearchParams();
   const [userId, setUserId] = useState<string>(params.get('user') ?? '');
   const { canPick, choices } = usePersonPicker();
@@ -149,6 +151,7 @@ function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | '
         <>
           {isWeek ? <WeekApprovalBar weekStart={range.from} userId={userId || undefined} />
             : mode === 'range' && !personal && <p className="muted ts-hint"><Icon name="info" size={13} /> Choose a Monday-to-Sunday week (or press This week) to submit it for approval.</p>}
+          <PlannedLeavePanel key={`${workspaceId}:${userId || me.id}:${d.user.id}`} userId={d.user.id} name={d.user.name} from={fetchFrom} to={fetchTo} dates={onlyDates} />
           <div className="stat-grid">
             <StatCard value={formatMinutes(totalMinutes)} label="Total logged" />
             <StatCard value={formatMinutes(billableMinutes)} label="Billable" foot={totalMinutes ? `${Math.round((billableMinutes / totalMinutes) * 100)}% of logged` : undefined} />

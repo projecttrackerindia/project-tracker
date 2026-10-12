@@ -17,3 +17,6 @@ data/files/
 
 # Generated browser previews and synthetic regression results
 frontend/test-results/
+
+# Local regression reports (CI stores these as workflow artifacts)
+**/TestResults/

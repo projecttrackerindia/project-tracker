@@ -165,4 +165,4 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal-day { overflow: hidden; align-items: stretch; }
 .cal-day > .cal-events { width: 100%; min-width: 0; }
-.cal-ev { display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+.cal-events .cal-ev { display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }

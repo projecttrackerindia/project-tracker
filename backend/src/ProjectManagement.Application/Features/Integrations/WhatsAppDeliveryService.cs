@@ -47,8 +47,7 @@ public class WhatsAppDeliveryService(IAppDbContext db, CurrentContext ctx, AppCl
             && Guid.TryParseExact(match.Groups[2].Value,"D",out var task)) return new(category,"task",task,project);
         match = Regex.Match(n.Link, @"^/operations\?task=([0-9a-fA-F-]{36})$", RegexOptions.CultureInvariant);
         if (category != "support_update" && match.Success && Guid.TryParseExact(match.Groups[1].Value,"D",out var work)) return new(category,"work",work,null);
-        match = Regex.Match(n.Link, @"^/support\?ticket=([0-9a-fA-F-]{36})$", RegexOptions.CultureInvariant);
-        if (category == "support_update" && match.Success && Guid.TryParseExact(match.Groups[1].Value,"D",out var ticket)) return new(category,"support",ticket,null);
+
         return null;
     }
     private bool Consent(WhatsAppContactLink? r, WhatsAppConnection? c, string category) => r is { VerifiedAt: not null, PhoneHash: not null, PhoneProtected.Length: > 0 }
@@ -128,13 +127,6 @@ public class WhatsAppDeliveryService(IAppDbContext db, CurrentContext ctx, AppCl
             var w=await db.WorkTasks.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id&&x.Kind==WorkTaskKind.Operational,ct);
             return w!=null&&w.AssigneeId==uid&&w.Status is not (WorkTaskStatus.Completed or WorkTaskStatus.Cancelled)
                 && (category!="overdue"||w.DueDate<today);
-        }
-        if(kind=="support")
-        {
-            var t=await db.SupportTickets.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id,ct);if(t==null)return false;
-            var w=await db.WorkTasks.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==t.WorkTaskId&&x.Kind==WorkTaskKind.Operational,ct);
-            // Only the existing requester/assignee recipients; a connected phone grants no staff access.
-            return w!=null&&(w.ReporterId==uid||(w.AssigneeId==uid&&await permissions.LevelAsync(Modules.Work,ct)>=AccessLevel.Edit));
         }
         return false;
     }

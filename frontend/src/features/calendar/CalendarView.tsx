@@ -127,7 +127,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
           </div>
           <div className="card-body">
             {selectedEvents.length === 0 ? <p className="muted" style={{ fontSize: 13 }}>Nothing scheduled for {mode === 'single' ? 'this date' : 'these dates'}.</p> : (
-              <div className="member-list">
+              <div className="member-list cal-agenda">
                 {selectedEvents.map((e) => (
                   <button key={`${e.date}:${e.type}:${e.id}`} className="member-item" style={{ textAlign: 'left' }} onClick={() => open(e)}>
                     <span className={`cal-ev ${cls(e)}`} style={{ flexShrink: 0 }}>{TYPE_LABEL[e.type]}</span>

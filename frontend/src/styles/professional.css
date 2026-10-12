@@ -42,3 +42,32 @@ body { font-size: 14px; }
   .m-tab .m-tab-label { display:block; font-size:10px; font-weight:650; }
   .m-fab { background:var(--primary); box-shadow:0 6px 16px #4f46e526; }
 }
+
+/* Portfolio adapts to its actual panel width, including split view and a collapsed sidebar. */
+.ps-panel{container-type:inline-size;container-name:portfolio}
+.ps-table{min-width:740px;table-layout:fixed}
+.ps-table th:nth-child(1){width:auto}.ps-table th:nth-child(2){width:180px}.ps-table th:nth-child(3){width:112px}.ps-table th:nth-child(4){width:130px}.ps-table th:nth-child(5){width:112px}
+.ps-scroll{overflow:auto;scrollbar-gutter:stable}
+.ps-table .ps-assignee{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap}
+.ps-assignee>.avatar{flex-shrink:0;margin:0!important}.ps-assignee>span:not(.avatar){display:block;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ps-table .ps-status{white-space:nowrap;overflow-wrap:normal;max-width:100%;line-height:1.5}
+.ps-task-title{overflow-wrap:break-word}.ps-date{overflow-wrap:normal}.ps-rev{flex-wrap:wrap}
+@container portfolio (max-width:1000px){.ps-body.both{grid-template-columns:minmax(0,1fr);overflow:auto}.ps-body.both .ps-scroll{max-height:440px}.ps-head{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.ps-title{flex-basis:auto;min-width:0}.ps-head-right{flex-wrap:wrap;justify-content:flex-start}}
+.cal-agenda .cal-ev{width:auto;max-width:100%;flex:none;align-self:flex-start;margin-top:2px;font-size:11px;height:auto;padding:4px 9px;border-radius:8px}
+.cal-agenda .member-item{width:100%;min-width:0;align-items:flex-start;gap:12px;padding:14px}
+.cal-agenda .member-name,.cal-agenda .member-role{display:block;white-space:normal;overflow-wrap:anywhere;line-height:1.55}
+.cal-agenda .member-role{margin-top:4px}
+/* Restrained depth, consistent targets and clear focus across existing controls. */
+.btn{border-radius:12px;font-weight:650;gap:8px;transition:background .18s,border-color .18s,box-shadow .18s;white-space:nowrap}
+.btn-primary{background:linear-gradient(120deg,#5145df,#7464f3);border-color:#6654e9;box-shadow:inset 0 1px 0 #ffffff30,0 4px 12px #5145df20}
+.btn-ghost,.btn-soft{background:var(--surface-solid,var(--surface));border-color:var(--border)}
+.btn:hover:not(:disabled){box-shadow:0 3px 10px #243b5312;border-color:color-mix(in srgb,var(--primary) 35%,var(--border))}
+.btn:focus-visible,.ps-chips button:focus-visible,.seg button:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.btn:disabled{opacity:.55;box-shadow:none}.ps-viewbar{gap:12px}.ps-seg{padding:4px;border-radius:12px}.ps-seg button{min-height:34px;border-radius:9px}.ps-chips button{min-height:34px}
+.asst-top-btn{min-height:38px;gap:8px;border-radius:12px}
+@media(max-width:768px){.cal-agenda .cal-ev{font-size:10px;background:var(--warning-soft)!important}.btn{min-height:44px}.ps-seg{max-width:100%;overflow-x:auto}.ps-viewbar{align-items:flex-start}.ps-head-right{gap:12px}}
+@media(prefers-reduced-motion:reduce){.btn{transition:none}}
+
+@media(max-width:768px){.ps-table.rt{min-width:0}.ps-table.rt td{white-space:normal}.ps-table.rt .ps-date{white-space:nowrap}.ps-table.rt .ps-assignee{max-width:100%}.ai-budgets table.rt{min-width:0}.cal-agenda .cal-ev.blue{background:var(--primary-soft)!important}.cal-agenda .cal-ev.green{background:var(--success-soft)!important}}
+
+@container portfolio (max-width:620px){.ps-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ps-viewbar{align-items:flex-start}.ps-chips{flex-wrap:wrap}}

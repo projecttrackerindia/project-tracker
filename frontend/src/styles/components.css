@@ -796,18 +796,6 @@ tr.row-deleted .td-title { font-style: italic; }
   .ps-tasks, .ps-changes { max-height: none; }
   .ps-scroll { max-height: 60vh; }
 }
-@media (max-width: 640px) {
-  /* on a phone each task becomes a small card: title, then start / due / status */
-  .ps-table, .ps-table tbody, .ps-table tr, .ps-table td { display: block; }
-  .ps-table thead { display: none; }
-  .ps-date { white-space: normal; }
-  .ps-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto; gap: 4px 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: start; }
-  .ps-table td { padding: 0; border: 0; }
-  .ps-table td:nth-child(1) { grid-column: 1 / -1; }
-  .ps-table td:nth-child(2)::before { content: 'Start '; color: var(--text-3); }
-  .ps-table td:nth-child(3)::before { content: 'Due '; color: var(--text-3); }
-  .ps-table td:nth-child(4) { justify-self: end; }
-}
 @media (max-width: 560px) { .ps-head { flex-direction: column; } .ps-badges { justify-content: flex-start; } .ps-panel { padding: 16px 14px; } .ps-kpi b { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .ps-panel { animation: none; } .ps-group-body, .ps-group-head svg { transition: none; } }
 

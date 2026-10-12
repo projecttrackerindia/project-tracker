@@ -264,7 +264,7 @@ function TaskRow({ t, onOpen }: { t: StatusTask; onOpen?: () => void }) {
         <div className="ps-task-title"><span className="task-key">{t.key}</span> {t.title}</div>
         {t.blockedBy.length > 0 && <div className="ps-task-note wait"><Icon name="lock" size={12} /> Waiting on {t.blockedBy.map((b) => `${b.key} ${b.title}`).join(', ')}</div>}
       </td>
-      <td className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} /> <span>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</td>
+      <td><div className="ps-assignee">{t.assignee ? <><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} /> <span title={t.assignee.name}>{t.assignee.name}</span></> : <span className="muted">Unassigned</span>}</div></td>
       <td className="ps-date">{formatDate(t.startDate)}</td>
       <td className="ps-date">
         <span className={t.overdueDays > 0 ? 'overdue' : ''}>{formatDate(t.dueDate)}</span>

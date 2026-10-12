@@ -40,12 +40,13 @@ public sealed class AiToolException(string message) : Exception(message);
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ReminderService reminders,
-    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge)
+    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
 
     public const string SendMessage = "propose_send_message";
+    public const string PlanLeave = "propose_planned_leave", ListLeave = "list_planned_leave";
     public const string ListReminders = "list_reminders", ReviseReminder = "revise_reminder_proposal", UpdateReminder = "propose_update_reminder";
     public const string SearchDocuments = "search_documents", ReadDocument = "read_document";
     public const string SearchKnowledge = "search_knowledge", ReadKnowledge = "read_knowledge";
@@ -56,7 +57,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         UpdateProject = "propose_update_project", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work",
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
-    public static readonly string[] WriteTools = [SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument, StartMeeting, ScheduleMeeting];
+    public static readonly string[] WriteTools = [PlanLeave, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, CreateDocument, StartMeeting, ScheduleMeeting];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -79,6 +80,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (IsGreeting(text)) return [];
         var all = Definitions(actionsAllowed);
         var lower = text.ToLowerInvariant();
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off)\b")) return all;
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(message|dm|chat)\b") && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
             return all.Where(t => t.Name is SendMessage or ListPeople).ToList();
         if (!System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b")
@@ -106,6 +108,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if ((actionsAllowed ? actionCatalog : readCatalog) is { } cached) return cached;
         var tools = new List<AiToolDef>
         {
+            new(ListLeave, "Read planned leave in Project Tracker timesheets for an authorized person. These are planned absences, not HR approvals or worked/billable time.",
+                """{"type":"object","properties":{"person":{"type":"string"},"from_date":{"type":"string"},"to_date":{"type":"string"}},"required":["from_date","to_date"]}"""),
             new(ListReminders, "Read the caller's saved reminders. Unconfirmed proposals are not saved reminders. Use IDs returned here when proposing an update.",
                 """{"type":"object","properties":{},"required":[]}"""),
             new(SearchDocuments, "Search current documents the caller is allowed to read. Results include document IDs, keys and sources. Use this before read_document.",
@@ -156,6 +160,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
+            new(PlanLeave, "Propose planned leave in the native Project Tracker timesheet. Resolve every named person, use explicit yyyy-MM-dd dates, and require confirmation. Does not approve HR leave, send email or count as worked/billable hours. Do not assume another person's dates or HR approval.",
+                """{"type":"object","properties":{"people":{"type":"array","items":{"type":"string"}},"from_date":{"type":"string"},"to_date":{"type":"string"},"note":{"type":"string","maxLength":1000}},"required":["people","from_date","to_date"]}"""),
             new(UpdateWork, "Propose changing existing work by its key (ATL-12 for a project task, WT-3 operational work, AI-4 an action item): status, assignee (or \"none\"), due date, priority, and/or add a comment. A later due date needs a reason. The person confirms first.",
                 """
                 {"type":"object","properties":{"key":{"type":"string"},"status":{"type":"string","description":"A status name, e.g. In Progress, Done, On Hold."},
@@ -256,6 +262,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             return name switch
             {
                 ListReminders => await ListRemindersAsync(ct),
+                PlanLeave => await ProposeLeaveAsync(a, ct),
+                ListLeave => await ListLeaveAsync(a, ct),
                 ReviseReminder => await ReviseReminderAsync(a, conversationId, timeZone, ct),
                 UpdateReminder => await UpdateReminderAsync(a, timeZone, ct),
                 SearchDocuments => await SearchDocumentsAsync(a, ct),
@@ -700,6 +708,34 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             throw new AiToolException("That person is already a member of this workspace.");
         var payload = new { email = emailText, role = parsed.ToString() };
         return Propose("invite_member", $"Invite {emailText}", $"As {parsed}; they get an e-mail to join this workspace", payload);
+    }
+
+
+    private async Task<AiToolOutcome> ProposeLeaveAsync(JsonElement a, CancellationToken ct)
+    {
+        var names = Strs(a, "people");
+        if (names.Count is < 1 or > 10) throw new AiToolException("Choose one to ten people.");
+        var people = new List<(Guid Id, string Name)>();
+        foreach (var name in names)
+        {
+            var person = await PersonAsync(name, ct);
+            await leave.RequirePersonAsync(person.Id, true, ct);
+            if (people.All(p => p.Id != person.Id)) people.Add((person.Id, person.Name));
+        }
+        var from = Date(a, "from_date") ?? throw new AiToolException("Choose an explicit start date, yyyy-MM-dd.");
+        var to = Date(a, "to_date") ?? throw new AiToolException("Choose an explicit end date, yyyy-MM-dd.");
+        if (to < from || to.DayNumber - from.DayNumber > 30 || from < clock.Today || to > clock.Today.AddYears(2))
+            throw new AiToolException("Choose up to 31 days between today and two years from now. Clarify each person's dates when they differ.");
+        return Propose("planned_leave", "Plan leave in timesheets", $"{string.Join(", ", people.Select(p => p.Name))}: {from:dd MMM yyyy} – {to:dd MMM yyyy}. Planned only; HR approval is separate.",
+            new { userIds = people.Select(p => p.Id).ToArray(), from, to, note = Str(a, "note") }, Str(a, "note"));
+    }
+    private async Task<AiToolOutcome> ListLeaveAsync(JsonElement a, CancellationToken ct)
+    {
+        var person = await PersonAsync(Str(a, "person") ?? "me", ct);
+        var from = Date(a, "from_date") ?? throw new AiToolException("Choose an explicit start date.");
+        var to = Date(a, "to_date") ?? throw new AiToolException("Choose an explicit end date.");
+        var rows = await leave.ListAsync(person.Id, from, to, ct);
+        return new AiToolOutcome(JsonSerializer.Serialize(rows, Json), $"Read planned leave for {person.Name}", rows.Count);
     }
 
     private async Task<AiToolOutcome> ProposeTaskAsync(JsonElement a, CancellationToken ct)

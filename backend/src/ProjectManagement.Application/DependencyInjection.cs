@@ -36,12 +36,6 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiDatabaseTelemetry>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiCommandPlanner>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiRequestLimitService>();
-        services.AddScoped<ProjectManagement.Application.Features.Support.SupportService>();
-        services.AddScoped<ProjectManagement.Application.Features.Support.SupportRoutingService>();
-        services.AddScoped<ProjectManagement.Application.Features.Support.SupportWorkBridge>();
-        services.AddScoped<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowService>();
-        services.AddScoped<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowEmitter>();
-        services.AddSingleton<ProjectManagement.Application.Features.SupportWorkflows.SupportWorkflowProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.PersonalFileCleanup>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.PersonalFileUpload>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.ResumeService>();
@@ -150,6 +144,7 @@ public static class DependencyInjection
         services.AddScoped<TimelineTemplateService>();
         services.AddScoped<PlanningService>();
         services.AddScoped<TimeService>();
+        services.AddScoped<PlannedLeaveService>();
         services.AddScoped<TimesheetApprovalService>();
         services.AddScoped<CapacityService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();

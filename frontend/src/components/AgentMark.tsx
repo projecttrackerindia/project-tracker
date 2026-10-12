@@ -1,13 +1,15 @@
+import { useId } from 'react';
 import './agentMark.css';
 
-/** A circuit-framed A. Decorative motion never conveys status without accompanying text. */
+/** An original gradient ring. Decorative motion never conveys status without accompanying text. */
 export function AgentMark({ size = 32, busy = false, animated = false }: { size?: number; busy?: boolean; animated?: boolean }) {
+  const gradient = useId().replace(/:/g, '');
   return <span className={`agent-mark ai-orb ${busy ? 'busy' : ''} ${animated ? 'animated' : ''}`} style={{ width: size, height: size }} aria-hidden="true">
     <svg viewBox="0 0 48 48" fill="none">
-      <path className="agent-frame" d="M16 8h16l8 8v16l-8 8H16l-8-8V16l8-8Z" />
-      <path className="agent-signal" d="M16 8h16l8 8v16l-8 8H16l-8-8V16l8-8Z" />
-      <path className="agent-core" d="m17 31 7-15 7 15M20 26h8" />
-      <path className="agent-ports" d="M4 24h4m32 0h4M24 4v4m0 32v4" />
+      <defs><linearGradient id={gradient} x1="5" y1="8" x2="43" y2="40" gradientUnits="userSpaceOnUse"><stop stopColor="#14b8f5"/><stop offset=".48" stopColor="#5263ff"/><stop offset="1" stopColor="#ac4bde"/></linearGradient></defs>
+      <circle className="agent-frame" cx="24" cy="24" r="17" />
+      <path className="agent-core" stroke={`url(#${gradient})`} d="M24 6.5C34.1 6.5 42 13.8 42 24c0 8.9-6.2 17.5-17.1 17.5C14.6 41.5 6 34.9 6 24.5c0-9.6 7.2-18 18-18Z" />
+      <circle className="agent-signal" cx="24" cy="24" r="17.5" stroke={`url(#${gradient})`} />
     </svg>
   </span>;
 }
