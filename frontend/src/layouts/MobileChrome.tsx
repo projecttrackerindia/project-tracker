@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, notificationApi } from '../api/endpoints';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
+import { AgentMark } from '../components/AgentMark';
 import { Sheet } from '../components/Sheet';
 import { ThemeSwitch } from '../components/ThemeSwitch';
 import { openPalette } from '../components/CommandPalette';
@@ -219,7 +220,7 @@ export function TabBar() {
         <div className="m-pill">
           {[...left, ...right].map(tab)}
           <button type="button" className={`m-tab ${lastOn ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
-            <span className="m-tab-ico"><span className="m-me">{initials(ctx.user.displayName)}</span>{hidden && <i className="m-dot top" />}</span>
+            <span className="m-tab-ico">{lastOn && here?.to === '/ai' ? <AgentMark size={26} animated /> : lastOn && here ? <Icon name={here.icon} size={22} /> : <Icon name="more" size={22} />}{hidden && <i className="m-dot top" />}</span>
             <span className="m-tab-label">{more || inTabs ? 'More' : hereLabel}</span>
           </button>
         </div>

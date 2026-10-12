@@ -44,7 +44,7 @@ export function useMainNav(): NavGroup[] {
   return [
     { title: 'Home', items: [
       { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
-      { to: '/ai', label: AI_NAME, icon: 'orbit', show: ai, match: (p) => p === '/ai' || p.startsWith('/ai/') },
+      { to: '/ai', label: AI_NAME, icon: 'agent', show: ai, match: (p) => p === '/ai' || p.startsWith('/ai/') },
       { to: '/my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0 },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
       { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },

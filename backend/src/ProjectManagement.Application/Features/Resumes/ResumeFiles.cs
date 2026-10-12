@@ -9,7 +9,7 @@ using PdfSharp.Fonts;
 using ProjectManagement.Application.Exceptions;
 namespace ProjectManagement.Application.Features.Resumes;
 
-public static class ResumeFiles
+public static partial class ResumeFiles
 {
     public const int MaxBytes = 2 * 1024 * 1024;
     public static async Task<(byte[] Bytes,string Text,string ContentType)> ExtractAsync(string name,Stream content,CancellationToken ct,bool requireText=true)
@@ -64,6 +64,7 @@ public static class ResumeFiles
     private static void Fonts(){lock(FontLock){if(GlobalFontSettings.FontResolver is null)GlobalFontSettings.FontResolver=new ResumeFontResolver();}}
     public static byte[] Pdf(ResumeContent c,ResumeTemplate t,bool watermark)
     {
+        if(t.TwoColumn)return ModernPdf(c,t,watermark);
         Fonts();using var doc=new PdfSharp.Pdf.PdfDocument();doc.Info.Title="Resume";doc.Info.Creator="Project Tracker";
         // Fail before producing (or charging for) a PDF with silently missing glyphs.
         doc.RenderEvents.RenderTextEvent+=(_,args)=>{
@@ -119,6 +120,7 @@ public static class ResumeFiles
     }
     public static byte[] Docx(ResumeContent c,ResumeTemplate t,bool watermark)
     {
+        if(t.TwoColumn)return ModernDocx(c,t,watermark);
         using var ms=new MemoryStream();using(var doc=WordprocessingDocument.Create(ms,WordprocessingDocumentType.Document,true))
         {
             var main=doc.AddMainDocumentPart();var body=new W.Body();main.Document=new W.Document(body);

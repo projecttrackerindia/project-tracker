@@ -6,6 +6,23 @@
 .modal-grab { display: none; }
 .ptr { display: none; }
 
+/* Conversations own a bounded viewport. Composer, then navigation, are separate flex rows. */
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
+  .m-shell.m-conversation { position:fixed; inset-inline:0; top:var(--conversation-offset-top,0px); height:var(--conversation-viewport-height,100dvh); min-height:0; overflow:hidden; }
+  .m-shell.m-conversation .m-main { height:100%; min-height:0; display:flex; flex-direction:column; }
+  .m-shell.m-conversation .m-top { position:relative; flex-shrink:0; }
+  .m-shell.m-conversation .content { flex:1; min-height:0; padding:6px 10px 0; overflow:hidden; animation:none; }
+  .m-shell.m-conversation .ai-shell,.m-shell.m-conversation .chat-shell { height:100%; min-height:0; border-radius:18px; }
+  .m-shell.m-conversation .ai-shell.solo { overflow-y:auto; }
+  .m-shell.m-conversation .m-tabs { position:relative; bottom:auto; flex-shrink:0; margin-top:6px; padding:6px 10px calc(var(--safe-b) + 8px); }
+  .m-shell.m-conversation.keyboard-open .m-tabs { display:none; }
+  .m-shell.m-conversation.keyboard-open .content { padding-bottom:4px; }
+  .m-shell.m-conversation .chat-shell { grid-template-columns:minmax(0,1fr); }
+  .m-shell.m-conversation .chat-shell .hide-narrow { display:none; }
+  .m-shell.m-conversation .chat-back { display:grid; }
+  .m-shell.m-conversation .ai-composer { padding:6px 10px 10px; }
+}
+
 @media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
   :root { --m-top: 54px; --m-tab: 62px; --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px); }
   html { -webkit-text-size-adjust: 100%; }

@@ -20,25 +20,15 @@ public record ResumeAiRequest(Guid OperationId, string TargetRole, int ExpectedV
 public record ResumeVersionDto(Guid Id, int Number, ResumeContent Content, IReadOnlyList<ResumeEvidence> Evidence, DateTime? ApprovedAt, DateTime CreatedAt, bool HasOriginal, string? OriginalFormat = null);
 public record ResumeVersionHeader(int Number, DateTime? ApprovedAt, DateTime CreatedAt);
 public record ResumeDto(Guid Id, string Title, int Version, IReadOnlyList<ResumeVersionDto> Versions, IReadOnlyList<ResumeVersionHeader>? History = null);
-public record ResumeTemplate(int Id, string Name, string Description, string Accent, int Margin, bool Centered, bool Rule, int HeadingSize);
-public record ResumeOptionsDto(IReadOnlyList<ResumeTemplate> Templates, int TemplateLimit, bool AiAvailable, int AiCredits, bool CleanCheckoutEnabled, int CleanPricePaise, long CleanTaxPaise = 0, string TaxLabel = "");
+public record ResumeTemplate(int Id, string Name, string Description, string Accent, int Margin, bool Centered, bool Rule, int HeadingSize,
+    bool TwoColumn = false, string HeaderColor = "17243C", string HeaderText = "FFFFFF", string HeadingColor = "17243C", string Role = "", string BannerAccent = "FFFFFF");
+public record ResumeOptionsDto(IReadOnlyList<ResumeTemplate> Templates, int TemplateLimit, bool AiAvailable, int AiCredits, bool CleanCheckoutEnabled, int CleanPricePaise, long CleanTaxPaise = 0, string TaxLabel = "", IReadOnlyList<ResumeTemplate>? Catalog = null);
 
 public class ResumeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementService entitlements,
     IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, Recorder recorder, IFileStorage storage, PermissionService permissions, IResumePaymentGateway payments, IOptions<ResumeCheckoutOptions> checkout, IResumeDocumentExtractor extractor, PersonalFileCleanup cleanup, PersonalFileUpload uploads)
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    public static readonly ResumeTemplate[] Templates = [
-        new(1,"Essential","Clear hierarchy, open spacing and an ATS-friendly single column","243247",46,false,false,12),
-        new(2,"Executive","Centered identity with a navy accent and crisp section dividers","1E3A5F",50,true,true,13),
-        new(3,"Modern","Balanced spacing with indigo rules","5B46B2",42,false,true,12),
-        new(4,"Minimal","Quiet typography and generous margins","475569",56,false,false,11),
-        new(5,"Professional","Contemporary hierarchy with precise blue section dividers","153E55",48,false,true,13),
-        new(6,"Studio","Centered identity and restrained violet","7045A0",44,true,false,12),
-        new(7,"Technical","Compact, structured engineering profile","16605F",40,false,true,11),
-        new(8,"Editorial","Airy heading and strong section labels","854D3B",54,false,false,14),
-        new(9,"Leadership","Confident centered identity with spacious slate dividers","334155",52,true,true,14),
-        new(10,"Signature","Distinctive teal details and open spacing","0F766E",48,false,true,14)
-    ];
+    public static readonly ResumeTemplate[] Templates = ResumeTemplateCatalog.Templates;
     private IQueryable<PersonalResume> Mine => db.PersonalResumes.Where(r => r.UserId == ctx.RequireUserId());
     private IQueryable<ResumeVersion> MyVersions => db.ResumeVersions.Where(r => r.UserId == ctx.RequireUserId());
     private async Task<PersonalResume> RequireAsync(Guid id, CancellationToken ct) => await Mine.FirstOrDefaultAsync(r => r.Id == id, ct) ?? throw new NotFoundException("Resume not found.");
@@ -46,12 +36,12 @@ public class ResumeService(IAppDbContext db, ICurrentContext ctx, AppClock clock
     {
         var cap = ctx.TenantId is null ? 2 : await entitlements.GetValueAsync(FeatureKeys.ResumeTemplates, ct);
         // Manual resume editing is available to every account; unknown/custom plans start with the two basic templates.
-        var n = (int)(cap < 0 ? 10 : Math.Clamp(cap == 0 ? 2 : cap,1,10));
+        var n = (int)(cap < 0 ? Templates.Length : Math.Clamp(cap == 0 ? 2 : cap,1,Templates.Length));
         var enabled = ctx.TenantId is not null && ai.Configured && await entitlements.GetValueAsync(FeatureKeys.AiAssistant,ct) != 0
             && !await db.Tenants.Where(t => t.Id == ctx.TenantId).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct);
         var ready=checkout.Value.Enabled && payments.Configured && checkout.Value.TaxPercent is >=0 and <=100 && !string.IsNullOrWhiteSpace(checkout.Value.TaxLabel);
         var tax=ready?(long)decimal.Round(4900*checkout.Value.TaxPercent!.Value/100,0,MidpointRounding.AwayFromZero):0;
-        return new(Templates.Take(n).ToArray(),n,enabled,Math.Clamp(aiOptions.Value.Chat.Quick.Credits,1,10000),ready,4900,tax,checkout.Value.TaxLabel);
+        return new(Templates.Take(n).ToArray(),n,enabled,Math.Clamp(aiOptions.Value.Chat.Quick.Credits,1,10000),ready,4900,tax,checkout.Value.TaxLabel,Templates);
     }
     public async Task<IReadOnlyList<ResumeDto>> ListAsync(CancellationToken ct)
     {
