@@ -42,7 +42,7 @@ function LiveStatus({ m }: { m: Meeting }) {
 /** Reschedule the time, and add or remove participants - organizer only, on a still-scheduled meeting (spec sections 12 and 14). */
 function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; projectId: string; onClose: () => void; onChanged: () => void }) {
   const inHour = new Date(m.startTime);
-  const [date, setDate] = useState(inHour.toISOString().slice(0, 10));
+  const [date, setDate] = useState(`${inHour.getFullYear()}-${String(inHour.getMonth() + 1).padStart(2, '0')}-${String(inHour.getDate()).padStart(2, '0')}`);
   const [startTime, setStartTime] = useState(inHour.toTimeString().slice(0, 5));
   const durationMin = Math.max(5, Math.round((new Date(m.endTime).getTime() - new Date(m.startTime).getTime()) / 60_000));
   const [duration, setDuration] = useState(durationMin);
@@ -80,7 +80,7 @@ function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; 
   return (
     <Modal title="Manage meeting" subtitle={m.title} onClose={onClose}>
       {error && <div className="form-error" role="alert">{error}</div>}
-      <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+      {!m.recurrenceRule && <div className="gm-time-grid">
         <Field label="Date"><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="Start"><input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
         <Field label="Duration">
@@ -88,8 +88,9 @@ function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; 
             {[15, 30, 45, 60, 90].map((v) => <option key={v} value={v}>{v} minutes</option>)}
           </select>
         </Field>
-      </div>
-      <button type="button" className="btn btn-primary btn-sm" disabled={busy === 'reschedule'} onClick={() => void reschedule()}>{busy === 'reschedule' && <span className="spinner" />}Save new time</button>
+      </div>}
+      {!m.recurrenceRule && <button type="button" className="btn btn-primary btn-sm" disabled={busy === 'reschedule'} onClick={() => void reschedule()}>{busy === 'reschedule' && <span className="spinner" />}Save new time</button>}
+      {m.recurrenceRule && <p className="gm-invite-note">Participant changes affect the whole series. Open Google Calendar to change individual occurrences or the repeat schedule.</p>}
 
       <Field label="Participants" full>
         <div className="gm-picker">
@@ -120,24 +121,26 @@ function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; 
 function MeetingCard({ m, projectId, canManage, onCancelled }: { m: Meeting; projectId: string; canManage: boolean; onCancelled: () => void }) {
   const [managing, setManaging] = useState(false);
   const cancel = async () => {
-    if (!(await confirmDialog({ title: 'Cancel meeting?', message: `This will cancel the Google Calendar event and notify the ${m.participants.length - 1} other ${m.participants.length === 2 ? 'person' : 'people'} invited.`, confirmText: 'Cancel meeting' }))) return;
+    if (!(await confirmDialog({ title: m.recurrenceRule ? 'Cancel entire series?' : 'Cancel meeting?', message: `This will cancel ${m.recurrenceRule ? 'every occurrence in the series' : 'the Google Calendar event'} and notify the ${m.participants.length - 1} other ${m.participants.length === 2 ? 'person' : 'people'} invited.`, confirmText: m.recurrenceRule ? 'Cancel series' : 'Cancel meeting' }))) return;
     try { await meetingApi.cancel(m.id); toast('Meeting cancelled.'); onCancelled(); }
     catch (e) { toast(errText(e, 'Could not cancel the meeting.'), 'error'); }
   };
   return (
     <article className="card gm-card">
       <div className="gm-card-head">
-        <h4>{m.title}</h4>
+        <h4>{m.title}</h4>{m.recurrenceRule && <Badge tone="info">Recurring</Badge>}
         {m.status === 'Cancelled' ? <Badge tone="danger">Cancelled</Badge> : <LiveStatus m={m} />}
       </div>
-      <p className="muted" style={{ fontSize: 13.5 }}>{formatDateTime(m.startTime)} – {formatDateTime(m.endTime)}</p>
+      <p className="muted" style={{ fontSize: 13.5 }}>{m.recurrenceRule && 'First session: '}{formatDateTime(m.startTime)} – {formatDateTime(m.endTime)}</p>
       <p className="muted" style={{ fontSize: 13 }}>Organizer: {m.organizerName} · {m.participants.length} participant{m.participants.length === 1 ? '' : 's'}</p>
+      {m.recurrenceRule && <p className="gm-invite-note">{m.recurrenceRule.includes('BYDAY') ? 'Weekdays' : m.recurrenceRule.includes('DAILY') ? 'Daily' : 'Weekly'} ? {m.recurrenceRule.split('COUNT=')[1]} sessions. View upcoming dates and exceptions in Google Calendar.</p>}
       <RsvpSummary participants={m.participants} />
       {m.description && <p style={{ fontSize: 13.5, marginTop: 8 }}>{m.description}</p>}
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+      <div className="gm-card-actions">
+        {(m.calendarUrl?.startsWith('https://calendar.google.com/') || m.calendarUrl?.startsWith('https://www.google.com/calendar/')) && <a className="btn btn-ghost btn-sm" href={m.calendarUrl} target="_blank" rel="noopener noreferrer"><Icon name="calendar" size={14} /> Open calendar</a>}
         {m.status === 'Scheduled' && <a className="btn btn-primary btn-sm" href={m.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={14} /> Join</a>}
         {m.status === 'Scheduled' && canManage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setManaging(true)}>Manage</button>}
-        {m.status === 'Scheduled' && canManage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void cancel()}>Cancel</button>}
+        {m.status === 'Scheduled' && canManage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void cancel()}>{m.recurrenceRule ? 'Cancel series' : 'Cancel'}</button>}
       </div>
       {managing && <ManageMeetingModal m={m} projectId={projectId} onClose={() => setManaging(false)} onChanged={onCancelled} />}
     </article>
@@ -154,14 +157,16 @@ export function MeetingsTab({ projectId }: { projectId: string }) {
 
   const now = Date.now();
   const meetings = q.data ?? [];
-  const upcoming = meetings.filter((m) => m.status === 'Scheduled' && new Date(m.endTime).getTime() >= now).sort((a, b) => a.startTime.localeCompare(b.startTime));
-  const past = meetings.filter((m) => m.status !== 'Scheduled' || new Date(m.endTime).getTime() < now).sort((a, b) => b.startTime.localeCompare(a.startTime));
+  const series = meetings.filter(m => m.recurrenceRule && m.status === 'Scheduled');
+  const upcoming = meetings.filter((m) => !m.recurrenceRule && m.status === 'Scheduled' && new Date(m.endTime).getTime() >= now).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const past = meetings.filter((m) => m.status !== 'Scheduled' || (!m.recurrenceRule && new Date(m.endTime).getTime() < now)).sort((a, b) => b.startTime.localeCompare(a.startTime));
   const refresh = () => invalidateWorkspace(wid, 'meetings', projectId);
 
   if (meetings.length === 0) return <EmptyState icon="video" title="No meetings yet" text='Start or schedule a Google Meet from the "Google Meet" button above.' />;
 
   return (
     <div className="gm-tab">
+      {series.length > 0 && <><h3 className="section-title">Recurring series</h3><div className="gm-grid">{series.map(m => <MeetingCard key={m.id} m={m} projectId={projectId} canManage={m.organizerUserId === me} onCancelled={refresh} />)}</div></>}
       {upcoming.length > 0 && <><h3 className="section-title">Upcoming</h3><div className="gm-grid">{upcoming.map((m) => <MeetingCard key={m.id} m={m} projectId={projectId} canManage={m.organizerUserId === me} onCancelled={refresh} />)}</div></>}
       {past.length > 0 && <><h3 className="section-title" style={{ marginTop: upcoming.length > 0 ? 28 : 0 }}>Past</h3><div className="gm-grid">{past.map((m) => <MeetingCard key={m.id} m={m} projectId={projectId} canManage={false} onCancelled={refresh} />)}</div></>}
     </div>

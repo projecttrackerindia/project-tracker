@@ -103,4 +103,21 @@ public class AiMeetingToolsTests(ApiFactory factory)
         var text = string.Concat(res.Events.Where(e => e.Name == "text").Select(e => S(e.Data["delta"])));
         Assert.Contains("Daily standup", text);
     }
+
+    [Fact]
+    public async Task Agent_repeating_scrum_keeps_the_series_in_one_explicit_confirmation()
+    {
+        var (owner, project) = await SetupAsync();
+        var at = DateTime.UtcNow.AddDays(2).ToString("yyyy-MM-dd'T'HH:mm");
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_schedule_meeting", new { project="Atlas",title="Scrum",at,duration_minutes=15,repeat_frequency="Daily",occurrences=10 }));
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.Say("Review the series before invitations are sent."));
+        var res = await Ask(owner,"Schedule ten daily scrum calls on Atlas");
+        var card = res.Last("action")["action"]!;
+        Assert.Equal("proposed",S(card["status"]));
+        Assert.Contains("10 sessions",card.ToJsonString());
+        Assert.Empty(factory.WithDb(db=>db.ProjectMeetings.IgnoreQueryFilters().Where(m=>m.ProjectId==project).ToList()));
+        var confirm=await owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
+        Assert.True(confirm.Ok,confirm.ToString());
+        Assert.Equal("RRULE:FREQ=DAILY;COUNT=10",Assert.Single(factory.WithDb(db=>db.ProjectMeetings.IgnoreQueryFilters().Where(m=>m.ProjectId==project).ToList())).RecurrenceRule);
+    }
 }

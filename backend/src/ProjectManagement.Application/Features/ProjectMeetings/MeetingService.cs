@@ -15,12 +15,12 @@ namespace ProjectManagement.Application.Features.ProjectMeetings;
 
 public record MeetingParticipantDto(Guid? UserId, string Name, string Email, string Role, string RsvpStatus);
 public record MeetingDto(Guid Id, Guid ProjectId, string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone,
-    string Status, string MeetUri, Guid OrganizerUserId, string OrganizerName, IReadOnlyList<MeetingParticipantDto> Participants);
+    string Status, string MeetUri, Guid OrganizerUserId, string OrganizerName, IReadOnlyList<MeetingParticipantDto> Participants, string? RecurrenceRule = null, string? CalendarUrl = null);
 
 /// <summary>Start Meeting: participants default to everyone who can see the project (spec section 2) unless the organizer names a specific list.</summary>
 public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? ParticipantUserIds);
 /// <summary>Schedule Meeting: the organizer always names start/end explicitly, in a real instant (not a bare local time) so no timezone is guessed.</summary>
-public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds);
+public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds, MeetingRepeat? Repeat = null);
 public record RescheduleMeetingRequest(DateTimeOffset StartTime, DateTimeOffset EndTime);
 public record AddMeetingParticipantRequest(Guid UserId);
 
@@ -75,11 +75,11 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
-        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct);
+        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone));
     }
 
     private async Task<MeetingDto> CreateAsync(Guid projectId, string? title, string? description, DateTimeOffset start, DateTimeOffset end, string timeZone,
-        IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct)
+        IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct, string? recurrenceRule = null)
     {
         var project = await access.GetProjectAsync(projectId, ct);
         var organizerId = ctx.RequireUserId();
@@ -96,14 +96,14 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
 
         var meetingTitle = string.IsNullOrWhiteSpace(title) ? $"{project.Name} Discussion" : title.Trim();
         CreatedGoogleMeeting created;
-        try { created = await google.CreateEventAsync(organizerId, meetingTitle, description, start.UtcDateTime, end.UtcDateTime, timeZone, attendees, ct); }
+        try { created = await google.CreateEventAsync(organizerId, meetingTitle, description, start.UtcDateTime, end.UtcDateTime, timeZone, attendees, ct, recurrenceRule); }
         catch (GoogleApiException) { throw new ConflictException("We couldn't create the Google Meet right now. Please try again.", "GOOGLE_MEET_CREATE_FAILED"); }
 
         var meeting = new ProjectMeeting
         {
             TenantId = project.TenantId, ProjectId = projectId, OrganizerUserId = organizerId, Title = meetingTitle, Description = description,
             StartTimeUtc = start.UtcDateTime, EndTimeUtc = end.UtcDateTime, TimeZone = timeZone, Status = MeetingStatus.Scheduled,
-            GoogleCalendarEventId = created.EventId, GoogleMeetSpaceName = created.MeetSpaceName, GoogleMeetUri = created.MeetUri,
+            GoogleCalendarEventId = created.EventId, GoogleMeetSpaceName = created.MeetSpaceName, GoogleMeetUri = created.MeetUri, RecurrenceRule = recurrenceRule, CalendarUrl = created.HtmlLink,
             CreatedAt = clock.Now, CreatedBy = organizerId,
         };
         db.ProjectMeetings.Add(meeting);
@@ -137,6 +137,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         await RequireOrganizerOrEditAsync(meeting, ct);
         if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can be rescheduled.", "MEETING_NOT_SCHEDULED");
 
+        if (meeting.RecurrenceRule is not null) throw new ConflictException("Open this series in Google Calendar to move one occurrence or change the series schedule.", "RECURRING_MEETING_EDIT_IN_CALENDAR");
         var oldStart = meeting.StartTimeUtc;
         try { await google.RescheduleEventAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, meeting.TimeZone, ct); }
         catch (GoogleApiException) { throw new ConflictException("We couldn't reschedule the Google Meet right now. Please try again.", "GOOGLE_MEET_RESCHEDULE_FAILED"); }
@@ -294,5 +295,5 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
 
     private static MeetingDto ToDto(ProjectMeeting m, string organizerName) => new(m.Id, m.ProjectId, m.Title, m.Description,
         new DateTimeOffset(m.StartTimeUtc, TimeSpan.Zero), new DateTimeOffset(m.EndTimeUtc, TimeSpan.Zero), m.TimeZone, m.Status.ToString(), m.GoogleMeetUri,
-        m.OrganizerUserId, organizerName, m.Participants.Select(p => new MeetingParticipantDto(p.UserId, p.User?.DisplayName ?? p.Email, p.Email, p.Role.ToString(), p.RsvpStatus.ToString())).ToList());
+        m.OrganizerUserId, organizerName, m.Participants.Select(p => new MeetingParticipantDto(p.UserId, p.User?.DisplayName ?? p.Email, p.Email, p.Role.ToString(), p.RsvpStatus.ToString())).ToList(), m.RecurrenceRule, m.CalendarUrl);
 }

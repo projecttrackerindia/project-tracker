@@ -28,7 +28,7 @@ import { AgentMark } from '../components/AgentMark';
 import { useMainNav } from './navigation';
 import { SignInIsland } from '../components/SignInIsland';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
-import { AssistantButton, AssistantPanel } from '../features/ai/Assistant';
+import { AssistantPanel } from '../features/ai/Assistant';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
@@ -310,7 +310,6 @@ function Topbar() {
       <button className="icon-btn" onClick={toggleSidebar} title="Toggle sidebar" aria-label="Toggle sidebar"><Icon name="menu" /></button>
       {isPlatformAdmin ? null : <GlobalSearch />}
       <div className="topbar-actions">
-        {!isPlatformAdmin && <AssistantButton />}
         {!isPlatformAdmin && <RunningTimer />}
         {!isPlatformAdmin && <TeamLensPicker />}
         {!isPlatformAdmin && <WorkspaceSwitcher />}

@@ -141,7 +141,7 @@ export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
   start: (projectId: string, b: { title?: string; participantUserIds?: string[] }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
-  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[] }) =>
+  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number } }) =>
     post<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),

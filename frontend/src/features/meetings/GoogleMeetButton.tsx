@@ -5,7 +5,9 @@ import { integrationsApi, meetingApi } from '../../api/endpoints';
 import type { MeetingParticipant } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Field, Modal, PageLoader } from '../../components/ui';
-import { useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useWorkspaceId } from '../../stores/auth';
+import './meetings.css';
 import { toast } from '../../stores/ui';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -122,14 +124,17 @@ function StartMeetingModal({ projectId, projectName, organizerUserId, onClose }:
   );
 }
 
-function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose }: { projectId: string; projectName: string; organizerUserId?: string; onClose: () => void }) {
+export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose, scrum = false }: { projectId: string; projectName: string; organizerUserId?: string; onClose: () => void; scrum?: boolean }) {
+  const wid = useWorkspaceId();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const inHour = new Date(Date.now() + 60 * 60 * 1000);
-  const [title, setTitle] = useState('');
-  const [agenda, setAgenda] = useState('');
-  const [date, setDate] = useState(inHour.toISOString().slice(0, 10));
+  const [title, setTitle] = useState(scrum ? `${projectName} Scrum` : '');
+  const [agenda, setAgenda] = useState(scrum ? 'Progress since the last stand-up\nPriorities for today\nBlockers and help needed' : '');
+  const [frequency, setFrequency] = useState<'Once' | 'Daily' | 'Weekdays' | 'Weekly'>('Once');
+  const [occurrences, setOccurrences] = useState(10);
+  const [date, setDate] = useState(`${inHour.getFullYear()}-${String(inHour.getMonth() + 1).padStart(2, '0')}-${String(inHour.getDate()).padStart(2, '0')}`);
   const [startTime, setStartTime] = useState(inHour.toTimeString().slice(0, 5));
-  const [duration, setDuration] = useState(30);
+  const [duration, setDuration] = useState(scrum ? 15 : 30);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +143,7 @@ function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose
 
   const schedule = async () => {
     if (!title.trim()) { setError('Give the meeting a title.'); return; }
+    if (frequency !== 'Once' && (!Number.isInteger(occurrences) || occurrences < 2 || occurrences > 120)) { setError('Choose 2 to 120 sessions, including the first.'); return; }
     const start = new Date(`${date}T${startTime}:00`);
     if (Number.isNaN(start.getTime())) { setError('Choose a date and a start time.'); return; }
     const end = new Date(start.getTime() + duration * 60_000);
@@ -145,9 +151,10 @@ function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose
     try {
       const m = await meetingApi.schedule(projectId, {
         title: title.trim(), description: agenda.trim() || undefined, startTime: start.toISOString(), endTime: end.toISOString(), timeZone: tz,
-        participantUserIds: Array.from(selected),
+        participantUserIds: Array.from(selected), repeat: frequency === 'Once' ? undefined : { frequency, occurrences },
       });
-      toast('Meeting scheduled.');
+      invalidateWorkspace(wid, 'meetings');
+      toast(frequency === 'Once' ? 'Meeting scheduled.' : 'Recurring series scheduled.');
       setReady({ title: m.title, meetUri: m.meetUri });
     } catch (e) {
       if (e instanceof ApiError && e.code === 'GOOGLE_NOT_CONNECTED') setNeedsGoogle(true);
@@ -155,17 +162,17 @@ function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose
     } finally { setBusy(false); }
   };
 
-  if (ready) return <Modal title="Schedule Google Meet" onClose={onClose}><MeetReady title={ready.title} meetUri={ready.meetUri} onClose={onClose} /></Modal>;
-  if (needsGoogle) return <Modal title="Schedule Google Meet" onClose={onClose}><ConnectGooglePrompt onClose={onClose} /></Modal>;
+  if (ready) return <Modal title={scrum ? "Schedule scrum call" : "Schedule meeting"} onClose={onClose}><MeetReady title={ready.title} meetUri={ready.meetUri} onClose={onClose} /></Modal>;
+  if (needsGoogle) return <Modal title={scrum ? "Schedule scrum call" : "Schedule meeting"} onClose={onClose}><ConnectGooglePrompt onClose={onClose} /></Modal>;
   return (
-    <Modal title="Schedule Google Meet" subtitle={projectName} onClose={onClose}
+    <Modal title={scrum ? "Schedule scrum call" : "Schedule meeting"} subtitle={projectName} onClose={onClose}
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void schedule()}>{busy && <span className="spinner" />}Schedule Meeting</button>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void schedule()}>{busy && <span className="spinner" />}{frequency === 'Once' ? 'Send invitation' : 'Create series & invite'}</button>
       </>}>
       {error && <div className="form-error" role="alert">{error}</div>}
       <Field label="Title" required><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. TLS 1.3 UAT Validation Discussion" maxLength={200} /></Field>
-      <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+      <div className="gm-time-grid">
         <Field label="Date"><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="Start"><input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
         <Field label="Duration">
@@ -174,6 +181,10 @@ function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose
           </select>
         </Field>
       </div>
+      <div className="gm-repeat-panel"><div className="gm-repeat-heading"><Icon name="repeat" size={18} /><div><strong>Meeting rhythm</strong><p>One call or a connected series for your team.</p></div></div><div className="gm-repeat-grid">
+        <Field label="Repeat"><select className="select" aria-label="Repeat" value={frequency} onChange={e => setFrequency(e.target.value as typeof frequency)}><option value="Once">Does not repeat</option><option value="Daily">Every day</option><option value="Weekdays">Every weekday (Mon-Fri)</option><option value="Weekly">Every week</option></select></Field>
+        {frequency !== 'Once' && <Field label="Total sessions" hint="Including the first; maximum 120"><input className="input" aria-label="Total sessions" type="number" min={2} max={120} value={occurrences} onChange={e => setOccurrences(Number(e.target.value))} /></Field>}
+      </div><p className="gm-invite-note">{frequency === 'Once' ? 'One Google Calendar invitation.' : `${occurrences} sessions in ${tz}. Google Calendar handles repeat invitations and reminders. Individual occurrences can be changed in Google Calendar.`}</p></div>
       <Field label="Agenda" hint="Optional"><textarea className="input" rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} maxLength={4000} /></Field>
       <ParticipantPicker projectId={projectId} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />
       <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Time zone: {tz}</p>
@@ -189,6 +200,7 @@ export function GoogleMeetButton({ projectId, projectName, organizerUserId, comp
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [scrum, setScrum] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -215,13 +227,14 @@ export function GoogleMeetButton({ projectId, projectName, organizerUserId, comp
         {open && (
           <div className={`menu-pop ${toolbar ? 'up' : ''}`} role="menu">
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setStarting(true); }}><Icon name="bolt" size={15} /> Start meeting now</button>
-            <button type="button" role="menuitem" onClick={() => { setOpen(false); setScheduling(true); }}><Icon name="calendar" size={15} /> Schedule meeting</button>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); setScrum(false); setScheduling(true); }}><Icon name="calendar" size={15} /> Schedule meeting</button>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); setScrum(true); setScheduling(true); }}><Icon name="repeat" size={15} /> Schedule scrum call</button>
             <Link role="menuitem" to={`/projects/${projectId}?tab=meetings`} onClick={() => setOpen(false)}><Icon name="list" size={15} /> Upcoming meetings</Link>
           </div>
         )}
       </div>
       {starting && <StartMeetingModal projectId={projectId} projectName={projectName} organizerUserId={organizerUserId} onClose={() => setStarting(false)} />}
-      {scheduling && <ScheduleMeetingModal projectId={projectId} projectName={projectName} organizerUserId={organizerUserId} onClose={() => setScheduling(false)} />}
+      {scheduling && <ScheduleMeetingModal scrum={scrum} projectId={projectId} projectName={projectName} organizerUserId={organizerUserId} onClose={() => setScheduling(false)} />}
     </>
   );
 }

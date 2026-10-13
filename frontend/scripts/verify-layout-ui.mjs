@@ -76,7 +76,7 @@ try{
  await open('/preview-org/timesheet?week='+plannedDate,'.planned-leave',390);await page.locator('.planned-leave .leave-list').waitFor();await capture('timesheet-leave-390');
  await open('/preview-org/support','.page-title',390);await page.getByRole('heading',{name:'Operations',exact:true}).waitFor();assert.ok(page.url().endsWith('/operations'),'Old support links redirect to Operations');
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
- await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),1);
- await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-mark.animated .agent-star').first().evaluate(el=>getComputedStyle(el).animationName),'none');
+ await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
+ await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-mark.animated .agent-ribbon').first().evaluate(el=>getComputedStyle(el).animationName),'none');
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Production bundle with synthetic APIs only; no customer or paid AI actions.'},null,2));console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}
