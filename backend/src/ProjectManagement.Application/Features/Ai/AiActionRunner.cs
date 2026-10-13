@@ -86,6 +86,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 return await UpdateWorkAsync(a, ct);
             case "update_project":
                 return await UpdateProjectAsync(a, ct);
+            case "update_stage_dates":
+                return await UpdateStageDatesAsync(a, ct);
 
             case "planned_leave":
             {
@@ -195,15 +197,32 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
     {
         var id = Guid(a, "id")!.Value;
         var cur = (await projects.GetAsync(id, ct)).Project;
+        if (a.TryGetProperty("expectedVersion", out var version) && version.GetInt32() != cur.Version)
+            throw new ConflictException("The project changed after this suggestion. Review its latest dates and prepare a new suggestion.", "VERSION_CONFLICT");
         Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
         ProjectStatus? status = Enum.TryParse<ProjectStatus>(Str(a, "status"), true, out var ps) ? ps : null;
-        await projects.UpdateAsync(id, new UpdateProjectRequest(Str(a, "name") ?? cur.Name, Str(a, "description") ?? cur.Description, priority ?? cur.Priority, status ?? cur.Status,
-            Guid(a, "ownerId") ?? cur.Owner?.Id, cur.TeamId, Date(a, "startDate") ?? cur.StartDate, Date(a, "dueDate") ?? cur.DueDate, cur.Version, cur.EnforceDependencies, cur.ProjectGroupId,
+        var start = Date(a, "startDate") ?? cur.StartDate; var due = Date(a, "dueDate") ?? cur.DueDate;
+        var owner = Guid(a, "ownerId") ?? cur.Owner?.Id;
+        var description = Str(a, "description") ?? cur.Description;
+        await projects.UpdateAsync(id, new UpdateProjectRequest(Str(a, "name") ?? cur.Name, description, priority ?? cur.Priority, status ?? cur.Status,
+            owner, cur.TeamId, start, due, cur.Version, cur.EnforceDependencies, cur.ProjectGroupId,
             Str(a, "reason")), ct);
         var verified = await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id && p.Name == (Str(a, "name") ?? cur.Name)
-            && p.Priority == (priority ?? cur.Priority) && p.Status == (status ?? cur.Status), ct);
+            && p.Priority == (priority ?? cur.Priority) && p.Status == (status ?? cur.Status)
+            && p.StartDate == start && p.DueDate == due && p.OwnerId == owner && p.Description == description, ct);
         if (!verified) throw new ConflictException("The requested project result could not be verified. Check the project before retrying.", "AI_ACTION_UNVERIFIED");
         return new AiActionResult($"/projects/{id}", id);
+    }
+
+    private async Task<AiActionResult> UpdateStageDatesAsync(JsonElement a, CancellationToken ct)
+    {
+        var projectId = Guid(a, "projectId")!.Value; var stageId = Guid(a, "stageId")!.Value;
+        var start = Date(a, "plannedStart"); var end = Date(a, "plannedEnd");
+        await projects.UpdateStagePlanAsync(projectId, stageId, start, end, Date(a, "previousStart"), Date(a, "previousEnd"),
+            Enum.Parse<StageStatus>(Str(a, "expectedStatus")!), Str(a, "reason"), ct);
+        if (!await db.ProjectStages.AsNoTracking().AnyAsync(s => s.Id == stageId && s.ProjectId == projectId && s.PlannedStart == start && s.PlannedEnd == end, ct))
+            throw new ConflictException("The stage dates could not be verified. Check the timeline before retrying.", "AI_ACTION_UNVERIFIED");
+        return new AiActionResult($"/projects/{projectId}", stageId);
     }
 
     private async Task<AiActionResult> UpdateWorkAsync(JsonElement a, CancellationToken ct)
