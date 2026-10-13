@@ -20,21 +20,21 @@ public record ProjectStatusSummaryDto(string Key, string Name, ProjectStatus Sta
 public record ProjectListItemDto(Guid Id, string Key, string Name, string? Description, ProjectStatus Status, Priority Priority,
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
     ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
-    DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid);
+    DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual);
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
-    int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0);
+    int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0, int? DurationDays = null);
 public record ProjectMemberDto(Guid UserId, string Name, string Email, TenantRole? Role);
 public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusDto> Statuses, IReadOnlyList<StageDto> Stages, IReadOnlyList<ProjectMemberDto> Members);
 public record LabelDto(Guid Id, string Name, string Color);
 
 public record CreateProjectRequest(string Name, string? Key, string? Description, Priority Priority, ProjectStatus? Status, Guid? OwnerId,
     Guid? TeamId, DateOnly? StartDate, DateOnly? DueDate, IReadOnlyList<Guid>? MemberIds, string? TimelineTemplate = null, Guid? ProjectGroupId = null, ProjectType? ProjectType = null,
-    DeliveryMethod? DeliveryMethod = null);
+    DeliveryMethod? DeliveryMethod = null, StageScheduleMode? StageScheduleMode = null);
 public record UpdateProjectRequest(string Name, string? Description, Priority Priority, ProjectStatus Status, Guid? OwnerId,
     Guid? TeamId, DateOnly? StartDate, DateOnly? DueDate, int Version, bool? EnforceDependencies = null, Guid? ProjectGroupId = null,
-    string? DueDateReason = null, string? DueDateDependency = null, ProjectType? ProjectType = null, DeliveryMethod? DeliveryMethod = null);
+    string? DueDateReason = null, string? DueDateDependency = null, ProjectType? ProjectType = null, DeliveryMethod? DeliveryMethod = null, StageScheduleMode? StageScheduleMode = null);
 public record ProjectQuery(string? Q, ProjectStatus? Status, Priority? Priority, Guid? OwnerId, Guid? TeamId, bool IncludeArchived = false,
     string? Sort = null, int Page = 1, int PageSize = 25, bool MineOnly = false, Guid? ProjectGroupId = null, ProjectType? ProjectType = null);
 public record AddProjectMemberRequest(Guid UserId);
@@ -44,9 +44,9 @@ public record UpsertStatusRequest(string Name, StatusCategory Category, string? 
 /// <summary>The whole workflow in its new order: every status of the project exactly once.</summary>
 public record ReorderStatusesRequest(IReadOnlyList<Guid> StatusIds);
 /// <summary>The whole timeline in its new order: every stage of the project exactly once.</summary>
-public record ReorderStagesRequest(IReadOnlyList<Guid> StageIds);
+public record ReorderStagesRequest(IReadOnlyList<Guid> StageIds, string? ScheduleReason = null, int? ProjectVersion = null);
 public record UpsertStageRequest(string Name, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
-    StageStatus Status, Guid? OwnerId, Guid? AssigneeId, string? Description, int? Order);
+    StageStatus Status, Guid? OwnerId, Guid? AssigneeId, string? Description, int? Order, int? DurationDays = null, string? ScheduleReason = null, int? ProjectVersion = null);
 public record UpsertLabelRequest(string Name, string? Color);
 
 public static partial class ProjectMetrics
@@ -139,7 +139,7 @@ public partial class ProjectService(
         new(p.Id, p.Key, p.Name, p.Description, p.Status, p.Priority,
             ownerName is null ? null : new UserRefDto(p.OwnerId, ownerName), p.TeamId, teamName, p.StartDate, p.DueDate,
             ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType,
-            p.DeliveryMethod);
+            p.DeliveryMethod, p.StageScheduleMode);
 
     // ---------------------------------------------------------------- queries
 
@@ -225,6 +225,8 @@ public partial class ProjectService(
         var activeCount = await db.Projects.CountAsync(p => p.Status != ProjectStatus.Archived, ct);
         await entitlements.EnsureWithinLimitAsync(FeatureKeys.ProjectLimit, activeCount, 1, ct);
         ValidateDates(req.StartDate, req.DueDate);
+        if (req.StageScheduleMode is { } requestedMode && (!Enum.IsDefined(requestedMode) || (requestedMode != StageScheduleMode.Manual && (req.StartDate is null || req.DueDate is null))))
+            throw new ValidationException("stageScheduleMode", "Automatic scheduling needs project start and end dates.");
         var groupId = await RequireGroupAsync(req.ProjectGroupId, null, ct);
         var projectType = req.ProjectType ?? throw new ValidationException("projectType", "Choose a project type.");
 
@@ -241,6 +243,7 @@ public partial class ProjectService(
             TenantId = tid, Name = req.Name.Trim(), Key = key, Description = req.Description?.Trim(), Status = req.Status ?? ProjectStatus.Planning,
             Priority = req.Priority, OwnerId = ownerId, TeamId = req.TeamId, StartDate = req.StartDate, DueDate = req.DueDate, ProjectGroupId = groupId, ProjectType = projectType,
             DeliveryMethod = req.DeliveryMethod ?? DeliveryMethod.Hybrid, Position = await NextPositionAsync(ct), CreatedAt = now, CreatedBy = userId,
+            StageScheduleMode = req.StageScheduleMode ?? (req.StartDate is not null && req.DueDate is not null ? StageScheduleMode.FollowSchedule : StageScheduleMode.Manual),
         };
         db.Projects.Add(project);
         ctx.GrantProject(project.Id);   // a project made in this request is in view, whatever team it is for
@@ -290,7 +293,7 @@ public partial class ProjectService(
             var stage = new ProjectStage
             {
                 TenantId = tid, ProjectId = project.Id, Name = name, Order = i, PlannedStart = start, PlannedEnd = end, CreatedAt = now,
-                Status = StageStatus.Pending,
+                Status = StageStatus.Pending, DurationDays = start is { } ps && end is { } pe ? pe.DayNumber - ps.DayNumber : null,
             };
             // A leading stage with no duration (such as "Project Created") is a marker that is done from the start; the first stage after
             // those is under way as soon as the project is Active.
@@ -343,8 +346,9 @@ public partial class ProjectService(
         await access.RequireProjectEditAsync(project, ct);
         if (project.Version != req.Version)
             throw new ConflictException("This project was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
-        ValidateDates(req.StartDate, req.DueDate);
-        var dueNote = DueDateHistory.Prepare(project.DueDate, req.DueDate, req.DueDateReason, req.DueDateDependency);   // a delay needs a reason
+        if ((req.StageScheduleMode ?? project.StageScheduleMode) != StageScheduleMode.FollowSchedule || req.DueDate != project.DueDate)
+            ValidateDates(req.StartDate, req.DueDate);
+        var oldStart = project.StartDate;
         if (req.ProjectType is { } newType) project.ProjectType = newType;
         if (req.DeliveryMethod is { } method && method != project.DeliveryMethod)
         {
@@ -378,6 +382,18 @@ public partial class ProjectService(
         project.TeamId = req.TeamId;
         project.StartDate = req.StartDate;
         project.DueDate = req.DueDate;
+        if (req.StageScheduleMode is { } scheduleMode)
+        {
+            if (!Enum.IsDefined(scheduleMode)) throw new ValidationException("stageScheduleMode", "Choose a valid scheduling mode.");
+            project.StageScheduleMode = scheduleMode;
+        }
+        if (project.StageScheduleMode != StageScheduleMode.Manual && (oldStart != req.StartDate || oldDue != req.DueDate || req.StageScheduleMode is not null))
+        {
+            var stageRows = await db.ProjectStages.Where(s => s.ProjectId == id).OrderBy(s => s.Order).ToListAsync(ct);
+            ApplyCalculatedSchedule(project, stageRows, originStart: oldStart,
+                alignFinish: project.StageScheduleMode == StageScheduleMode.FollowSchedule && oldDue != req.DueDate && oldStart == req.StartDate);
+        }
+        var dueNote = DueDateHistory.Prepare(oldDue, project.DueDate, req.DueDateReason, req.DueDateDependency);
         if (req.EnforceDependencies is { } enforce) project.EnforceDependencies = enforce;
         SetStatus(project, req.Status);
         project.Version++;
@@ -392,9 +408,9 @@ public partial class ProjectService(
         }
         if (dueNote is not null)
         {
-            dueHistory.Record(project.TenantId, id, null, oldDue, req.DueDate, dueNote);
-            recorder.Activity("project.due_changed", "Project", id, $"\"{project.Name}\": {DueDateHistory.Describe(oldDue, req.DueDate, dueNote.Reason)}", id,
-                oldDue?.ToString("yyyy-MM-dd"), req.DueDate?.ToString("yyyy-MM-dd"));
+            dueHistory.Record(project.TenantId, id, null, oldDue, project.DueDate, dueNote);
+            recorder.Activity("project.due_changed", "Project", id, $"\"{project.Name}\": {DueDateHistory.Describe(oldDue, project.DueDate, dueNote.Reason)}", id,
+                oldDue?.ToString("yyyy-MM-dd"), project.DueDate?.ToString("yyyy-MM-dd"));
         }
         if (oldStatus == req.Status && dueNote is null)
             recorder.Activity("project.updated", "Project", id, $"Updated project \"{project.Name}\"", id);

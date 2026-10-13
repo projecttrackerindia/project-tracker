@@ -16,6 +16,7 @@ public enum ProjectStatus { Planning, Active, OnHold, Completed, Cancelled, Arch
 public enum Priority { Low, Medium, High, Critical }
 public enum StatusCategory { Todo, Active, Done, Cancelled }
 public enum StageStatus { Pending, InProgress, Completed, Delayed }
+public enum StageScheduleMode { Manual, FixedDeadline, FollowSchedule }
 
 /// <summary>How one task depends on another (spec section 18). The names read "predecessor-to-successor".</summary>
 public enum DependencyType

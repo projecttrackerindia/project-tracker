@@ -20,6 +20,7 @@ public class Project : TenantEntity, ITenantScoped, ISoftDelete
     public Guid? ProjectGroupId { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? DueDate { get; set; }
+    public StageScheduleMode StageScheduleMode { get; set; } = StageScheduleMode.Manual;
     /// <summary>Manual order on the projects board.</summary>
     public double Position { get; set; }
     /// <summary>When on, a task cannot start or finish before the tasks it depends on (spec section 18).</summary>
@@ -74,6 +75,8 @@ public class ProjectStage : TenantEntity, ITenantScoped
     public int Order { get; set; }
     public DateOnly? PlannedStart { get; set; }
     public DateOnly? PlannedEnd { get; set; }
+    /// <summary>Elapsed calendar days; zero represents a milestone. Null preserves legacy schedules until reviewed.</summary>
+    public int? DurationDays { get; set; }
     public DateOnly? ActualStart { get; set; }
     public DateOnly? ActualEnd { get; set; }
     public StageStatus Status { get; set; } = StageStatus.Pending;

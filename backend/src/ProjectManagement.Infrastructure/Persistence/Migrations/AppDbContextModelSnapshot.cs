@@ -4775,6 +4775,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("StageScheduleMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Manual");
+
                     b.Property<DateOnly?>("StartDate")
                         .HasColumnType("date");
 
@@ -5005,6 +5012,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<int?>("DurationDays")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -5017,15 +5027,18 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateOnly?>("PlannedEnd")
+                        .IsConcurrencyToken()
                         .HasColumnType("date");
 
                     b.Property<DateOnly?>("PlannedStart")
+                        .IsConcurrencyToken()
                         .HasColumnType("date");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");

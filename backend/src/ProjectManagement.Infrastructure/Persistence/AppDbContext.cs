@@ -178,6 +178,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         builder.Properties<AutomationTarget>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<StatusCategory>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<StageStatus>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<StageScheduleMode>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<IssueStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<ProjectType>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<DeliveryMethod>().HaveConversion<string>().HaveMaxLength(32);

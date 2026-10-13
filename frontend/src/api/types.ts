@@ -102,6 +102,7 @@ export type ProjectType = 'NewProject' | 'ChangeRequest' | 'Enhancement' | 'Migr
 export type DeliveryMethod = 'Hybrid' | 'Phased' | 'Agile';
 export interface ProjectStats { total: number; done: number; inProgress: number; todo: number; cancelled: number; overdue: number }
 export interface Project {
+  stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
   id: string; key: string; name: string; description: string | null; status: ProjectStatus; priority: Priority;
   owner: UserRef | null; teamId: string | null; teamName: string | null; startDate: string | null; dueDate: string | null;
   progress: number; health: ProjectHealth; stats: ProjectStats; memberCount: number; version: number; position: number; enforceDependencies: boolean;
@@ -138,6 +139,7 @@ export interface StatusProject {
 export interface ProjectStatusReport { project: StatusProject; tasks: StatusTask[]; changes: TimelineChange[]; delayedTasks: number; blockedTasks: number }
 export interface WorkflowStatus { id: string; name: string; order: number; category: StatusCategory; color: string }
 export interface Stage {
+  durationDays?: number | null;
   id: string; name: string; order: number; plannedStart: string | null; plannedEnd: string | null; actualStart: string | null; actualEnd: string | null;
   status: StageStatus; effectiveStatus: StageStatus; owner: UserRef | null; assignee: UserRef | null; description: string | null;
   /** Top-level tasks under this stage (cancelled ones excluded) and how many of them are done. */

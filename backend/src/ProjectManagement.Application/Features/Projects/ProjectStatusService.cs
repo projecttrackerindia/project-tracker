@@ -20,7 +20,7 @@ public record StatusTaskDto(Guid Id, string Key, string Title, Guid? ParentTaskI
 public record TimelineChangeDto(Guid Id, string Scope, Guid? TaskId, string? TaskKey, string Title, DateOnly? Previous, DateOnly? Revised, int? DaysShifted,
     string? Reason, string? Dependency, UserRefDto? ChangedBy, DateTime ChangedAt, string CurrentStatus, StatusCategory? CurrentCategory);
 public record StatusProjectDto(Guid Id, string Key, string Name, string? Description, string? GroupName, DateOnly? StartDate, DateOnly? DueDate, DateOnly? OriginalDueDate,
-    int DelayedDays, ProjectStatus Status, ProjectHealth Health, int Progress, UserRefDto? Owner, ProjectStatsDto Stats, ProjectType ProjectType = ProjectType.Other);
+    int DelayedDays, ProjectStatus Status, ProjectHealth Health, int Progress, UserRefDto? Owner, ProjectStatsDto Stats, ProjectType ProjectType = ProjectType.Other, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual);
 public record ProjectStatusReportDto(StatusProjectDto Project, IReadOnlyList<StatusTaskDto> Tasks, IReadOnlyList<TimelineChangeDto> Changes, int DelayedTasks, int BlockedTasks);
 
 /// <summary>
@@ -134,7 +134,7 @@ public class ProjectStatusService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var group = project.ProjectGroupId is { } gid ? await db.ProjectGroups.AsNoTracking().Where(g => g.Id == gid).Select(g => g.Name).FirstOrDefaultAsync(ct) : null;
         var originalDue = Baseline(null) ?? project.DueDate;
         var dto = new StatusProjectDto(project.Id, project.Key, project.Name, project.Description, group, project.StartDate, project.DueDate, originalDue, Late(originalDue, project.DueDate),
-            project.Status, ProjectMetrics.Health(project, stats, today), ProjectMetrics.Progress(stats), owner is null ? null : new UserRefDto(project.OwnerId, owner), stats, project.ProjectType);
+            project.Status, ProjectMetrics.Health(project, stats, today), ProjectMetrics.Progress(stats), owner is null ? null : new UserRefDto(project.OwnerId, owner), stats, project.ProjectType, project.StageScheduleMode);
         return new ProjectStatusReportDto(dto, ordered, changes, ordered.Count(t => t.DelayedDays > 0), ordered.Count(t => t.BlockedBy.Count > 0));
     }
 }

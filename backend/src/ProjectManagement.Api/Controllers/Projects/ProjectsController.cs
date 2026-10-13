@@ -100,6 +100,14 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
         Ok(await projects.DeleteStatusAsync(id, statusId, ct));
 
     // ---- timeline stages
+    [HttpPost("{id:guid}/schedule/preview")]
+    public async Task<IActionResult> PreviewSchedule(Guid id, [FromBody] ProjectScheduleRequest req, CancellationToken ct) =>
+        Ok(await projects.PreviewScheduleAsync(id, req, ct));
+
+    [HttpPut("{id:guid}/schedule")]
+    public async Task<IActionResult> Schedule(Guid id, [FromBody] ProjectScheduleRequest req, CancellationToken ct) =>
+        Ok(await projects.SaveScheduleAsync(id, req, ct));
+
     [HttpGet("{id:guid}/stages")]
     public async Task<IActionResult> Stages(Guid id, CancellationToken ct)
     {
@@ -120,8 +128,8 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
         Ok(await projects.UpdateStageAsync(id, stageId, req, ct));
 
     [HttpDelete("{id:guid}/stages/{stageId:guid}")]
-    public async Task<IActionResult> DeleteStage(Guid id, Guid stageId, CancellationToken ct) =>
-        Ok(await projects.DeleteStageAsync(id, stageId, ct));
+    public async Task<IActionResult> DeleteStage(Guid id, Guid stageId, CancellationToken ct, [FromQuery] int? projectVersion = null) =>
+        Ok(await projects.DeleteStageAsync(id, stageId, ct, projectVersion));
 
     // ---- activity & tasks
     [HttpGet("{id:guid}/activity"), RequireModule(Modules.Activity)]

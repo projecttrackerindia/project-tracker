@@ -253,7 +253,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var readStart = elapsed.ElapsedMilliseconds;
         var fastPlan = !options.Value.UsesAnthropic && !confirming && !fastGreeting ? await commandPlanner.ResolveAsync(run, ct) : null;
         var fastReminder = confirming ? new AiFastReminder(null, null, confirmation!.Reply) : fastPlan?.Command;
-        var intent = cancelling ? "cancel_pending_action" : confirming ? "confirm_pending_action" : fastGreeting ? "greeting" : fastPlan?.Intent ?? "reasoning";
+        var requestIntent = AiExecutionPolicy.Classify(run.Text);
+        var intent = cancelling ? "cancel_pending_action" : confirming ? "confirm_pending_action" : fastGreeting ? "greeting" : fastPlan?.Intent ?? requestIntent.ToString().ToLowerInvariant();
         var directRead = fastPlan?.ReadOutcome;
         var intentMs = elapsed.ElapsedMilliseconds - intentStart;
         if (directRead is not null)
@@ -291,12 +292,11 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         foreach (var t in turns) foreach (var b in t.Blocks) if (b is AiText tx) seen.Append(' ').Append(tx.Text);
         var tools = fastReminder?.Tool is { } knownTool ? toolbox.Definitions(run.Plan.Actions).Where(t => t.Name == knownTool).ToList()
             : options.Value.UsesAnthropic ? toolbox.Definitions(run.Plan.Actions) : toolbox.DefinitionsFor(run.Text, run.Plan.Actions);
+        if (AiExecutionPolicy.IsReadOnlyRequest(run.Text)) tools = tools.Where(t => !AiToolbox.WriteTools.Contains(t.Name)).ToList();
         var guardActionWrite = fastPlan?.RequiresConfirmation == true || !options.Value.UsesAnthropic && ((tools.Count <= 6 && tools.Any(t => t.Name == AiToolbox.ReviseReminder))
             || tools.Any(t => t.Name == AiToolbox.SendMessage) && tools.Count <= 2)
             && System.Text.RegularExpressions.Regex.IsMatch(run.Text, @"\b(create|add|change|move|update|reschedule|remind|set|send)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var explicitLocalWrite = !options.Value.UsesAnthropic && System.Text.RegularExpressions.Regex.IsMatch(run.Text.Trim(),
-            @"^(?:(?:please|can you|could you|I want you to)\s+)?(?:create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|rename|mark)\b",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var explicitLocalWrite = requestIntent is AiRequestIntent.Execute or AiRequestIntent.Combined;
         var extendedWriteGuard = explicitLocalWrite && !guardActionWrite;
         guardActionWrite |= explicitLocalWrite;
         var contextMs = elapsed.ElapsedMilliseconds - contextStart;
@@ -304,6 +304,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
 
         var answer = new StringBuilder(); var thinking = new StringBuilder();
         var used = new List<AiToolUseDto>(); var proposals = new List<AiProposal>();
+        var resolvedActionNotes = new List<string>();
         var retrievedSources = new List<AiKnowledgeReference>();
         void RememberSources(AiToolOutcome outcome)
         {
@@ -401,32 +402,54 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 toolFailed |= outcome.IsError;
                 RememberSources(outcome);
                 if (outcome.IsError) actionErrors.Add(outcome.Content);
+                if (outcome.VerifiedNoChange) resolvedActionNotes.Add(outcome.Content);
                 toolTimings.Add(new AiToolTiming(tools.Any(t => t.Name == use.Name) ? use.Name : "unavailable_tool", elapsed.ElapsedMilliseconds - toolStart, !outcome.IsError, outcome.Proposal is null ? "read" : "awaiting_confirmation"));
                 var tu = new AiToolUseDto(use.Name, outcome.Label, outcome.Count);
                 if (!outcome.IsError) used.Add(tu);
                 yield return new AiStreamTool(use.Id, use.Name, outcome.Label, outcome.IsError ? "failed" : "done", outcome.Count);
                 var content = outcome.Content;
+                var resultError = outcome.IsError;
                 if (outcome.Proposal is { } p)
                 {
                     var final = AiActionPlan.Bind(p, run.Question.Id, ctx.RequireTenantId(), ctx.RequireUserId(), clock.Now, proposals);
-                    if (AiToolbox.AutoExecuteKinds.Contains(p.Kind))
+                    var autoExecute = AiToolbox.AutoExecuteKinds.Contains(p.Kind)
+                        || AiExecutionPolicy.CanAutoExecute(run.Text, use.Name, use.InputJson, p, run.Files.Count > 0);
+                    var existing = !autoExecute && p.Kind is "update_project" or "update_stage_dates" or "schedule_project"
+                        ? await ExistingScheduleProposalAsync(run.Conversation.Id, p, ct) : null;
+                    if (existing is not null)
                     {
+                        content = existing; resolvedActionNotes.Add(existing);
+                    }
+                    else
+                    {
+                    if (autoExecute)
+                    {
+                        var autoStart = elapsed.ElapsedMilliseconds;
                         AiActionResult? result = null; string? error = null;
-                        try { result = await runner.RunAsync(p, ct); }
+                        var identity = AiActionPlan.Identity(ctx.RequireTenantId(), ctx.RequireUserId(), run.Question.Id, final);
+                        try { result = await runner.RunAsync(p, ct, identity); }
                         catch (AppException ex) { error = ex.Message; }
                         catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "An auto-run AI suggestion failed ({Kind})", p.Kind); error = "That could not be done. Try it by hand."; }
                         toolFailed |= error is not null;
-                        final = final with { Status = error is null ? "done" : "failed", Link = result?.Link, ResultId = result?.RecordId, Error = error, Execution = final.Execution is { } metadata ? metadata with { StartedAt = clock.Now, CompletedAt = clock.Now, Attempts = 1 } : null };
-                        content = error is null ? $"Done: {p.Title} ({p.Summary})." : $"That could not be done: {error}";
+                        resultError |= error is not null;
+                        final = final with { Status = error is null ? "done" : "failed", Link = result?.Link, ResultId = result?.RecordId, Error = error, Execution = final.Execution is { } metadata ? metadata with { ApprovedAt = clock.Now, StartedAt = clock.Now, CompletedAt = clock.Now, DurationMs = elapsed.ElapsedMilliseconds - autoStart, ExecutionId = identity, Attempts = 1 } : null };
+                        content = error is null ? (p.Kind is "update_project" or "update_stage_dates" ? "Saved and verified: " : "Done: ") + $"{p.Title} ({p.Summary})." + (p.Preview is null ? "" : "\n" + p.Preview) : $"That could not be done: {error}";
+                        if (error is not null) actionErrors.Add(error);
+                        if (error is not null || p.Kind is "update_project" or "update_stage_dates")
+                            toolTimings[^1] = toolTimings[^1] with { Succeeded = error is null, State = error is null ? "verified" : "failed" };
                         if (error is null) recorder.Audit("ai.action_auto", "AiAssistant", null, null, new { kind = p.Kind, title = p.Title });
                     }
                     proposals.Add(final);
                     yield return new AiStreamAction(final.ToDto());
+                    }
                 }
-                results.Add(new AiToolResult(use.Id, content, outcome.IsError));
+                results.Add(new AiToolResult(use.Id, content, resultError));
                 seen.Append(' ').Append(content);
             }
             turns = [.. turns, new AiTurn("user", results)];
+            // Discard model text produced before it received the saved results. A combined
+            // request may explain those results on its next turn without losing its analysis.
+            if (extendedWriteGuard) answer.Clear();
             if (failure is not null || cancelled) break;
             if (fastReminder is not null && toolFailed)
             {
@@ -451,9 +474,12 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         {
             if (extendedWriteGuard)
             {
+                var analysis = requestIntent == AiRequestIntent.Combined && (proposals.Any(p => p.Status == "done") || resolvedActionNotes.Count > 0) ? answer.ToString().Trim() : "";
                 answer.Clear();
-                answer.Append(proposals.Count == 0 ? "No action was completed. Review and confirm a proposal before changes are saved. Please specify the target and required details."
-                    : string.Join("\n", proposals.Select(p => p.Status == "done" ? $"Completed: {p.Title}." : $"Awaiting confirmation: {p.Title} ({p.Summary}). Use Confirm on the card to save it.")));
+                answer.Append(proposals.Count == 0 && resolvedActionNotes.Count == 0 ? "No action was completed. Please specify the target and required details."
+                    : string.Join("\n", resolvedActionNotes.Concat(proposals.Select(p => p.Status == "done" ? $"Saved and verified: {p.Title} ({p.Summary})." + (p.Preview is null ? "" : "\n" + p.Preview)
+                        : p.Status == "failed" ? $"Failed: {p.Title}. {p.Error}" : $"Awaiting confirmation: {p.Title} ({p.Summary}). Use Confirm on the card to save it."))));
+                if (analysis.Length > 0) answer.Append("\n\n").Append(analysis);
                 if (actionErrors.Count > 0) answer.Append("\nUnsuccessful steps: " + string.Join(" ", actionErrors));
                 if (toolFailed && actionErrors.Count == 0) answer.Append("\nSome steps were incomplete; review the trace before continuing.");
                 if (failure is not null || cancelled) answer.Append("\nThe request was interrupted. Review the saved cards before continuing.");
@@ -511,6 +537,20 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             catch (OperationCanceledException) { /* they left; it is tried again after the next answer */ }
             catch (Exception ex) { log.LogInformation(ex, "Could not summarize a long AI conversation; it is sent in full for now"); }
         }
+    }
+
+    private async Task<string?> ExistingScheduleProposalAsync(Guid conversationId, AiProposal proposed, CancellationToken ct)
+    {
+        var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
+        var earlier = await db.AiMessages.AsNoTracking().Where(m => m.ConversationId == conversationId && m.TenantId == tenant && m.UserId == user && m.Role == "assistant" && m.ActionsJson != null)
+            .OrderByDescending(m => m.CreatedAt).Select(m => new { m.Id, m.ActionsJson }).Take(5).ToListAsync(ct);
+        foreach (var message in earlier)
+        {
+            var existing = (JsonSerializer.Deserialize<List<AiProposal>>(message.ActionsJson!, Json) ?? []).FirstOrDefault(p =>
+                p.Status == "proposed" && p.Kind == proposed.Kind && p.PayloadJson == proposed.PayloadJson && (p.Execution is null || p.Execution.ExpiresAt > clock.Now));
+            if (existing is not null) return $"The same unchanged action already awaits confirmation: {existing.Title} ({existing.Summary}). Use its existing card; no duplicate proposal was created. message_id={message.Id}, proposal_id={existing.Id}.";
+        }
+        return null;
     }
 
     private sealed record ConfirmationReply(string Reply, bool Failed);
@@ -788,6 +828,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         You are the AI assistant inside Project Tracker, a project and work management app. You work for the person you are talking with, inside their organization's workspace.
 
         How you work
+        - Identify the intent: Ask, Analyze, Recommend, Execute, or Combined. Answer a question directly; it is not a request to create work. For analysis retrieve current authorized evidence. For recommendations distinguish evidence from assumptions. For an action call its backend tool; for a combined request execute and answer the analytical question in the same conversation.
         - Answer from the workspace's real data. Use the tools to look things up instead of guessing. Never invent projects, people, dates, numbers or work items; if the data does not show something, say so.
         - You can only see what this person is allowed to see. If a tool says they are not allowed, tell them plainly.
         - Match the effort to the question: a short, direct answer for a simple one. For analysis, lead with the finding, then the evidence, then concrete next steps ranked by impact. Say how sure you are and what you could not check.
@@ -803,9 +844,9 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         - When files are attached, say what you see in them and connect it to the work where that helps.
 
         Changes
-        - Project start/due dates, stage planned dates and task deadlines are separate. propose_update_project changes only the project record. Read project_report to inspect saved project dates and every stage before diagnosing a timeline mismatch. When requested values already match, say they are already saved; do not claim a new update or invent a confirmation card. Use propose_update_stage_dates only for specific stage dates the person requested; do not spread a project date range across stages automatically, modify actual dates, unlock dependencies or complete stages. Ask for a stage schedule if it is missing.
+        - Read project_report to inspect saved project dates, stageScheduleMode, every stage and durationDays before diagnosing a timeline mismatch. In Manual mode project and stage dates are independent. Use propose_schedule_project to connect all stages with recorded or explicitly supplied allocations; its card previews every stage and saves through the scheduling service. Do not invent missing allocations or convert every stage to a zero-day milestone. In FixedDeadline or FollowSchedule mode the backend automatically recalculates downstream plans using allocated calendar-day durations (weekends included; configurable working calendars are not exposed). Use propose_update_project for project boundaries and propose_update_stage_dates for stage dates or duration_days. FollowSchedule moves the project end to the final stage; extensions need a supplied reason. Preserve actual dates, task deadlines, dependency locks and completed work. If requested values already match, report the verified saved values without inventing another card.
         - Planned leave is supported natively: use propose_planned_leave to prepare timesheet absences and list_planned_leave to verify saved entries. Do not claim an external HR integration is required to record planned leave. It does not approve HR leave, send a leave email, or log worked/billable hours. Resolve every named person, clarify missing or different dates, and keep all writes behind confirmation and permission checks.
-        - You never change anything yourself. To create work, set a reminder or email a report, use the matching propose_ tool; the person then sees a card and decides. Do not say something is done until they confirm it. After proposing, say in one line what you proposed.
+        - Use the matching application tool for every write. The backend may execute an explicit routine project/stage date edit directly when its target and values match the current request; saved results are verified. Scheduling-mode changes, ambiguous edits, assignments, leave, creation and external delivery retain required confirmation. create_document returns its saved outcome. Tool names beginning propose_ do not prove the outcome is pending: read the returned status. Distinguish pending, done, failed and verified no-op. Never claim execution without a saved, verified result. Do not ask for another confirmation after it is done or already saved.
         - Only propose what the person asked for or clearly agreed to. When they say yes to something you offered, do it in that same turn by calling the tool; do not ask again.
         - A failed or incomplete project lookup is not evidence that the project does not exist. Ask for the exact project key or clarification. Only propose creating a project when the person explicitly requests a new project; once they confirm, add the work to it. If someone they want to assign is not in the workspace, say so, and offer to invite them by e-mail (propose_invite_member, which needs their address). You cannot create accounts.
         - Never tell the person something cannot be done until you have checked the tools you have.
@@ -845,8 +886,10 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         Resolve names through lookup tools. Validate required information; ask a focused question if ambiguous.
         An incomplete or failed project lookup does not prove absence. Ask for the exact key; propose a new project only when explicitly requested.
         start_date and due_date are distinct ISO dates (yyyy-MM-dd). Do not invent or silently drop an end date; clarify its meaning.
-        Use propose_send_message for in-app chat; send_report is email reports only. Preserve exact requested message text and recipient. No WhatsApp/SMS/Slack/Telegram integration exists.
-        Writes require their confirmation, except create_document which returns its saved outcome. Never claim a change without a successful tool result.
+        Use propose_send_message for in-app chat; send_report is email reports only. Preserve exact requested message text and recipient. The tools offered here cannot deliver WhatsApp/SMS/Slack/Telegram messages; never claim delivery without a corresponding integration result.
+        Classify intent as Ask, Analyze, Recommend, Execute or Combined. Questions and recommendations do not authorize writes. Read current evidence for analysis. For combined requests execute the requested operation and explain its verified result in the same answer.
+        Call the application tool to execute an authorized request. The backend may run explicit routine project/stage date edits directly; ambiguous or consequential actions require confirmation. create_document returns its saved outcome. A propose_ name can return pending, saved, failed or verified no-op: use the returned status. Never claim a change without its saved verified result or ask to reconfirm a completed action.
+        Read project_report before timeline changes: use propose_update_project for project boundaries, propose_update_stage_dates for individual dates/durations, and propose_schedule_project for every stage or enabling automatic scheduling. FollowSchedule derives the final project end; extensions require a supplied reason. Durations are calendar days including weekends. Preserve completed work and actual history; task deadlines remain separate. Do not invent missing allocations or promise working-calendar tools. Report matching saved dates as a verified no-op.
         For pending reminder changes use revise_reminder_proposal; for saved reminders use list_reminders then propose_update_reminder.
         A requested time without a date means today only if still in the future; otherwise ask which date. Never silently move it to tomorrow.
         Default to acting: when a request is clear, prepare the proposals now and state assumptions briefly; do not ask permission and never say you cannot do something before checking your tools. When the person repeats or insists, act instead of refusing again.
@@ -870,7 +913,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         if (options.Value.UsesAnthropic && !AiToolbox.IsGreeting(run.Text)) sb.AppendLine(await toolbox.OrgFactsAsync(ct));
         sb.AppendLine($"You are talking with {person}, access level {ctx.Role}{(string.IsNullOrWhiteSpace(jobRole) ? "" : $", job role {jobRole}")}.");
         if (!string.IsNullOrWhiteSpace(run.TimeZone)) sb.AppendLine($"Their time zone: {run.TimeZone}.");
-        sb.AppendLine(run.Plan.Actions ? "You may propose changes for them to confirm." : "This plan lets you read and advise only; you cannot propose changes. If asked to change something, explain how they can do it themselves.");
+        sb.AppendLine($"Current request intent: {AiExecutionPolicy.Classify(run.Text)}. Questions do not authorize changes; combined requests need both an answer and the requested action.");
+        sb.AppendLine(run.Plan.Actions ? "Application tools enforce execution policy: explicit routine project/stage date edits can execute directly when the backend matches the target and supplied values. Other changes require their approval card. Report the actual returned status; do not repeatedly ask for confirmation of done or unchanged actions." : "This plan lets you read and advise only; you cannot propose changes. If asked to change something, explain how they can do it themselves.");
         // What the assistant itself proposed earlier in this conversation and what became of it: without this it forgets, calls a project it
         // proposed "already existing" or proposes it twice.
         var earlier = await db.AiMessages.AsNoTracking().Where(m => m.ConversationId == run.Conversation.Id && m.Role == "assistant" && m.ActionsJson != null)

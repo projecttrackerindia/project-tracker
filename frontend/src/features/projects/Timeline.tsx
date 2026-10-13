@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { projectApi, workspaceApi } from '../../api/endpoints';
-import type { Stage, StageDisplayStatus, StageStatus } from '../../api/types';
+import type { Project, Stage, StageDisplayStatus, StageStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState, Field, Modal, StageBadge, SubmitButton } from '../../components/ui';
 import { STAGE_STATUSES, formatDate, labelize } from '../../lib/format';
@@ -13,6 +13,8 @@ import { REFUSALS } from '../tasks/actions';
 import { isTestingStage } from '../issues/issueMeta';
 import { TimelineManagerModal } from './TimelineTemplates';
 import { Select } from '../../components/Select';
+import { StageScheduleStudio } from './StageScheduleStudio';
+import { calendarDuration, calendarEnd } from './scheduleDates';
 
 const CLASS: Record<StageDisplayStatus, string> = { Completed: 'done', InProgress: 'active', Pending: 'pending', Delayed: 'delayed', Locked: 'locked' };
 
@@ -32,7 +34,8 @@ const nudgeKey = (projectId: string) => `pm_timeline_nudge_${projectId}`;
 
 /** Horizontal, data-driven project lifecycle (spec 13.3). This is a formal phase sign-off, kept deliberately separate from task
  *  completion: a stage only advances when someone marks it so, whatever share of its tasks (or the project's) is done. */
-export function Timeline({ projectId, projectName, stages, canEdit, canReportIssue, taskProgress, finished, onShowIssues, onReportIssue }: {
+export function Timeline({ projectId, projectName, project, stages, canEdit, canReportIssue, taskProgress, finished, onShowIssues, onReportIssue }: {
+  project?: Project;
   projectId: string; projectName: string; stages: Stage[]; canEdit: boolean;
   /** Issues: whether the person may report one, and the ways into them from a stage. */
   canReportIssue: boolean;
@@ -43,6 +46,7 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
   const wid = useWorkspaceId();
   const [modal, setModal] = useState<{ stage?: Stage } | null>(null);
   const [manager, setManager] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   // The order shown while a change is being saved, so a dropped stage does not jump back before the server has answered.
   const [pending, setPending] = useState<string[] | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -58,7 +62,7 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
     if (ids.every((id, i) => id === ordered[i].id)) return;
     setPending(ids);
     try {
-      await projectApi.reorderStages(projectId, ids);
+      await projectApi.reorderStages(projectId, ids, project?.version);
       await invalidateWorkspace(wid);
       toast('Timeline order saved.');
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save the new order.', 'error'); }
@@ -91,12 +95,14 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
       <div className="card-head">
         <div><h3>Project timeline</h3><p>{stages.length ? `${done} of ${stages.length} stages completed${canReorder ? ' · drag a stage to reorder' : ''}` : 'No stages defined yet'}<span className="htl-sub"> · tracks phase sign-off, separately from task completion above</span></p></div>
         <div className="row">
+          {project && canEdit && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduling(true)}><Icon name="calendar" size={14} /> Schedule studio</button>}
           <div className="legend"><span>✓ Completed</span><span>● In progress</span><span>○ Pending</span><span><Icon name="lock" size={11} /> Locked</span><span>! Delayed</span></div>
           {canEdit && <button className="btn-icon" title="Timeline templates" aria-label="Timeline templates" onClick={() => setManager(true)}><Icon name="layers" /></button>}
           {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" /> Add stage</button>}
         </div>
       </div>
       <div className="card-body">
+        {project && <p className="schedule-mode-label">{project.stageScheduleMode === 'FixedDeadline' ? 'Automatic · fixed project end · allocated calendar days' : project.stageScheduleMode === 'FollowSchedule' ? 'Automatic · project end follows the final stage' : 'Manual stage dates · open Schedule studio to calculate a connected timeline'}</p>}
         {showNudge && (
           <div className="form-info" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Icon name="info" size={14} />
@@ -149,6 +155,7 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
                     </div>
                     <div className="htl-dates">
                       <span>Planned: {formatDate(s.plannedStart)}{s.plannedEnd && s.plannedEnd !== s.plannedStart ? ` → ${formatDate(s.plannedEnd)}` : ''}</span>
+                      {s.durationDays != null && <span>{s.durationDays === 0 ? 'Milestone' : `${s.durationDays} calendar days allocated`}</span>}
                       {(s.actualStart || s.actualEnd) && <span>Actual: {formatDate(s.actualStart)}{s.actualEnd ? ` → ${formatDate(s.actualEnd)}` : ' → …'}</span>}
                       {s.owner && <span>Owner: {s.owner.name}</span>}
                       {s.assignee && <span>Assignee: {s.assignee.name}</span>}
@@ -179,13 +186,14 @@ export function Timeline({ projectId, projectName, stages, canEdit, canReportIss
           </div>
         )}
       </div>
-      {modal && <StageModal projectId={projectId} stage={modal.stage} stages={ordered} onClose={() => setModal(null)} />}
+      {modal && <StageModal projectId={projectId} project={project} stage={modal.stage} stages={ordered} onClose={() => setModal(null)} />}
+      {scheduling && project && <StageScheduleStudio project={project} stages={ordered} onClose={() => setScheduling(false)} />}
       {manager && <TimelineManagerModal project={{ id: projectId, name: projectName }} onClose={() => setManager(false)} />}
     </div>
   );
 }
 
-function StageModal({ projectId, stage, stages, onClose }: { projectId: string; stage?: Stage; stages: Stage[]; onClose: () => void }) {
+function StageModal({ projectId, project, stage, stages, onClose }: { projectId: string; project?: Project; stage?: Stage; stages: Stage[]; onClose: () => void }) {
   const wid = useWorkspaceId();
   const [after, setAfter] = useState('end'); // where a new stage goes: at the end, or right after another stage
   const members = useWsQuery(['members'], workspaceApi.members);
@@ -193,9 +201,14 @@ function StageModal({ projectId, stage, stages, onClose }: { projectId: string; 
     name: stage?.name ?? '', status: (stage?.status ?? 'Pending') as StageStatus, plannedStart: stage?.plannedStart ?? '', plannedEnd: stage?.plannedEnd ?? '',
     actualStart: stage?.actualStart ?? '', actualEnd: stage?.actualEnd ?? '', ownerId: stage?.owner?.id ?? '', assigneeId: stage?.assignee?.id ?? '',
     description: stage?.description ?? '',
+    durationDays: String(stage?.durationDays ?? calendarDuration(stage?.plannedStart ?? '', stage?.plannedEnd ?? '') ?? 1), scheduleReason: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const set = (k: keyof typeof f, v: string) => { setF((p) => ({ ...p, [k]: v })); setErrors((e) => ({ ...e, [k]: '' })); };
+  const automatic = !!project?.stageScheduleMode && project.stageScheduleMode !== 'Manual';
+  const changeStart = (value: string) => { set('plannedStart', value); if (automatic) set('plannedEnd', calendarEnd(value, Number(f.durationDays))); };
+  const changeDuration = (value: string) => { set('durationDays', value); set('plannedEnd', value === '' ? '' : calendarEnd(f.plannedStart, Number(value))); };
+  const changeEnd = (value: string) => { set('plannedEnd', value); const days = calendarDuration(f.plannedStart, value); if (days !== null && days >= 0) set('durationDays', String(days)); };
 
   const save = useMutation({
     mutationFn: () => {
@@ -203,6 +216,7 @@ function StageModal({ projectId, stage, stages, onClose }: { projectId: string; 
         name: f.name.trim(), status: f.status, plannedStart: f.plannedStart || null, plannedEnd: f.plannedEnd || null, actualStart: f.actualStart || null,
         actualEnd: f.actualEnd || null, ownerId: f.ownerId || null, assigneeId: f.assigneeId || null, description: f.description.trim() || null,
         order: stage ? undefined : after === 'end' ? stages.length : stages.findIndex((x) => x.id === after) + 1,
+        durationDays: f.durationDays === '' ? null : Number(f.durationDays), scheduleReason: f.scheduleReason.trim() || null, projectVersion: automatic ? project?.version : undefined,
       };
       return stage ? projectApi.updateStage(projectId, stage.id, body) : projectApi.createStage(projectId, body);
     },
@@ -220,17 +234,20 @@ function StageModal({ projectId, stage, stages, onClose }: { projectId: string; 
 
   const remove = async () => {
     if (!stage || !(await confirmDialog({ title: 'Delete stage?', message: stage.taskTotal > 0 ? `Remove “${stage.name}” from the timeline? Its ${stage.taskTotal} task${stage.taskTotal === 1 ? '' : 's'} stay in the project but no longer belong to a phase.` : `Remove “${stage.name}” from the timeline?` }))) return;
-    try { await projectApi.deleteStage(projectId, stage.id); toast('Stage deleted.', 'warning'); await invalidateWorkspace(wid); onClose(); }
+    try { await projectApi.deleteStage(projectId, stage.id, project?.version); toast('Stage deleted.', 'warning'); await invalidateWorkspace(wid); onClose(); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete the stage.', 'error'); }
   };
 
   return (
     <Modal size="lg" title={stage ? 'Edit stage' : 'Add stage'} subtitle="Stages describe the project lifecycle and appear on the timeline." onClose={onClose}
-      onSubmit={(e) => { e.preventDefault(); if (!f.name.trim()) { setErrors({ name: 'Stage name is required.' }); return; } save.mutate(); }}
+      onSubmit={(e) => { e.preventDefault(); if (!f.name.trim()) { setErrors({ name: 'Stage name is required.' }); return; }
+        if (f.durationDays === '' || !Number.isInteger(Number(f.durationDays)) || Number(f.durationDays) < 0 || Number(f.durationDays) > 36500) { setErrors({ durationDays: 'Use a whole number from 0 to 36500.' }); return; } save.mutate(); }}
       footer={<>
         {stage && <button type="button" className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={remove}><Icon name="trash" /> Delete</button>}
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>Save stage</SubmitButton>
       </>}>
+      {automatic && <div className="schedule-intro"><Icon name="calendar" /><div><strong>Connected stage dates</strong><p>Moving this stage or changing its duration recalculates subsequent stages. Completed history, actual dates and task deadlines are protected. {project?.stageScheduleMode === 'FixedDeadline' ? 'The schedule must fit inside the project end date.' : 'The project end follows the final stage.'}</p></div></div>}
+      {(errors.schedule || errors.plannedStart || errors.reason) && <div className="schedule-error" role="alert">{errors.schedule || errors.plannedStart || errors.reason}</div>}
       <div className="form-grid">
         <Field label="Stage name" required error={errors.name}><input className="input" value={f.name} onChange={(e) => set('name', e.target.value)} maxLength={80} /></Field>
         <Field label="Status" hint={stage?.locked ? `Locked until “${stage.lockedBy}” is completed, so it can only stay pending for now.` : undefined}>
@@ -246,8 +263,10 @@ function StageModal({ projectId, stage, stages, onClose }: { projectId: string; 
             </Select>
           </Field>
         )}
-        <Field label="Planned start"><input className="input" type="date" value={f.plannedStart} onChange={(e) => set('plannedStart', e.target.value)} /></Field>
-        <Field label="Planned end" error={errors.plannedEnd}><input className="input" type="date" value={f.plannedEnd} onChange={(e) => set('plannedEnd', e.target.value)} /></Field>
+        <Field label="Allocated duration" error={errors.durationDays} hint="Calendar days; 0 is a milestone."><input className="input" aria-label="Allocated duration" type="number" min={0} max={36500} step={1} value={f.durationDays} disabled={automatic && stage?.status === 'Completed'} onChange={e => changeDuration(e.target.value)} /></Field>
+        <Field label="Planned start" error={errors.plannedStart}><input className="input" aria-label="Planned start" type="date" value={f.plannedStart} disabled={automatic && stage?.status === 'Completed'} onChange={(e) => changeStart(e.target.value)} /></Field>
+        <Field label="Planned end" error={errors.plannedEnd}><input className="input" aria-label="Planned end" type="date" value={f.plannedEnd} disabled={automatic && stage?.status === 'Completed'} onChange={(e) => changeEnd(e.target.value)} /></Field>
+        {automatic && <Field label="Schedule change reason" error={errors.dueDateReason || errors.scheduleReason} hint="Required if this extends the project end date."><input className="input" aria-label="Schedule change reason" value={f.scheduleReason} onChange={e => set('scheduleReason', e.target.value)} maxLength={500} /></Field>}
         <Field label="Actual start"><input className="input" type="date" value={f.actualStart} onChange={(e) => set('actualStart', e.target.value)} /></Field>
         <Field label="Actual completion"><input className="input" type="date" value={f.actualEnd} onChange={(e) => set('actualEnd', e.target.value)} /></Field>
         <Field label="Owner"><Select className="select" value={f.ownerId} onChange={(e) => set('ownerId', e.target.value)}><option value="">—</option>{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
