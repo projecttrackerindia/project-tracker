@@ -112,6 +112,10 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
           </Select>
         </Field>
         <Field label="Due date" required error={errors.dueDate}><input className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+        <div className="field full"><p className="muted" style={{ fontSize: 12 }}>{isEdit
+          ? project?.stageScheduleMode && project.stageScheduleMode !== 'Manual' ? 'Stage dates recalculate using allocated durations. A fixed-end schedule that cannot fit will show a validation error.' : 'This project uses manual stage dates. Open Schedule studio on the timeline to enable automatic scheduling.'
+          : 'Stage durations are allocated across these dates. Future edits adjust downstream stages and the project end; extensions require a reason.'}</p></div>
+        {errors.schedule && <div className="form-error field full" role="alert">{errors.schedule}</div>}
         {isEdit && (
           <div className="field full" style={{ display: dueChange(project!.dueDate, dueDate) ? undefined : 'none' }}>
             <DueChangeFields previous={project!.dueDate} revised={dueDate} reason={dueReason} dependency={dueDependency} onReason={(v) => { setDueReason(v); setErrors((x) => ({ ...x, dueDateReason: '' })); }} onDependency={setDueDependency} error={errors.dueDateReason} />

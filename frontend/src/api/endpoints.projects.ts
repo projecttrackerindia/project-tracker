@@ -2,6 +2,7 @@ import { del, download, get, patch, post, put } from './client';
 import type { TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer } from './types';
 export interface ProjectFilters { q?: string; status?: string; priority?: string; ownerId?: string; teamId?: string; projectGroupId?: string; projectType?: string; includeArchived?: boolean; sort?: string; page?: number; pageSize?: number; mineOnly?: boolean }
 export interface ProjectInput {
+  stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
   name: string; key?: string; description?: string; priority: string; status?: string; ownerId?: string | null; teamId?: string | null;
   startDate?: string | null; dueDate?: string | null; memberIds?: string[];
   /** The project group (required when creating). */
@@ -17,8 +18,18 @@ export interface ProjectInput {
 }
 export interface TimelineTemplateInput { name: string; description?: string; stages: { name: string; weight: number }[] }
 export interface StageInput {
+  durationDays?: number | null; scheduleReason?: string | null; projectVersion?: number;
   name: string; plannedStart?: string | null; plannedEnd?: string | null; actualStart?: string | null; actualEnd?: string | null; status: string;
   ownerId?: string | null; assigneeId?: string | null; description?: string | null; order?: number;
+}
+export interface ProjectScheduleInput {
+  version: number; mode: 'FixedDeadline' | 'FollowSchedule'; startDate: string; dueDate: string;
+  durations: { id: string; durationDays: number }[]; reason?: string | null; expectedFingerprint?: string | null;
+}
+export interface ProjectSchedulePreview {
+  version: number; mode: 'FixedDeadline' | 'FollowSchedule'; startDate: string; dueDate: string; finishDate: string; bufferDays: number;
+  stages: { id: string; name: string; durationDays: number; start: string | null; end: string | null; completed: boolean; changed: boolean }[];
+  fingerprint?: string | null;
 }
 export const projectApi = {
   list: (f: ProjectFilters = {}) => get<Paged<Project>>('/projects', { pageSize: 25, ...f }),
@@ -30,7 +41,9 @@ export const projectApi = {
   /** Saves a project's stages, in their current order, as a timeline of the workspace. */
   saveTimelineTemplate: (projectId: string, b: { name: string; description?: string }) => post<TimelineTemplate>(`/projects/${projectId}/timeline-templates`, b),
   /** Saves the whole timeline order: every stage id of the project, first to last. */
-  reorderStages: (projectId: string, stageIds: string[]) => put<Stage[]>(`/projects/${projectId}/stages/order`, { stageIds }),
+  reorderStages: (projectId: string, stageIds: string[], projectVersion?: number) => put<Stage[]>(`/projects/${projectId}/stages/order`, { stageIds, projectVersion }),
+  previewSchedule: (id: string, body: ProjectScheduleInput) => post<ProjectSchedulePreview>(`/projects/${id}/schedule/preview`, body),
+  saveSchedule: (id: string, body: ProjectScheduleInput) => put<ProjectDetail>(`/projects/${id}/schedule`, body),
   create: (b: ProjectInput) => post<ProjectDetail>('/projects', b),
   update: (id: string, b: Omit<ProjectInput, 'key' | 'memberIds'> & { status: string; version: number; enforceDependencies?: boolean }) => put<ProjectDetail>(`/projects/${id}`, b),
   remove: (id: string) => del(`/projects/${id}`),
@@ -45,7 +58,7 @@ export const projectApi = {
   deleteStatus: (id: string, statusId: string) => del<WorkflowStatus[]>(`/projects/${id}/statuses/${statusId}`),
   createStage: (id: string, b: StageInput) => post<Stage[]>(`/projects/${id}/stages`, b),
   updateStage: (id: string, stageId: string, b: StageInput) => put<Stage[]>(`/projects/${id}/stages/${stageId}`, b),
-  deleteStage: (id: string, stageId: string) => del<Stage[]>(`/projects/${id}/stages/${stageId}`),
+  deleteStage: (id: string, stageId: string, version?: number) => del<Stage[]>(`/projects/${id}/stages/${stageId}${version === undefined ? '' : `?projectVersion=${version}`}`),
   activity: (id: string, page = 1) => get<Paged<Activity>>(`/projects/${id}/activity`, { page, pageSize: 20 }),
 };
 

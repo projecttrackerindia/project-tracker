@@ -32,7 +32,8 @@ public static class SqliteEnterpriseUpgrade
         "20261011173857_ExplicitInboxConsent",
         "20261011184438_GroundedInboxSummaryReceipts",
         "20261012060025_DurablePersonalEmailRecovery",
-        "20261012171600_PlannedTimesheetLeave"
+        "20261012171600_PlannedTimesheetLeave",
+        "20261013101012_AutomaticStageScheduling"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

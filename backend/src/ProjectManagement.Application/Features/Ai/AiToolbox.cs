@@ -27,7 +27,7 @@ public sealed record AiProposal(string Id, string Kind, string Title, string Sum
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>
-public sealed record AiToolOutcome(string Content, string Label, int? Count = null, AiProposal? Proposal = null, bool IsError = false, IReadOnlyList<AiKnowledgeReference>? Sources = null);
+public sealed record AiToolOutcome(string Content, string Label, int? Count = null, AiProposal? Proposal = null, bool IsError = false, IReadOnlyList<AiKnowledgeReference>? Sources = null, bool VerifiedNoChange = false);
 
 /// <summary>A tool could not do what was asked; the message goes back to the model so it can correct itself or tell the person.</summary>
 public sealed class AiToolException(string message) : Exception(message);
@@ -57,15 +57,15 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         UpdateProject = "propose_update_project", UpdateStagePlan = "propose_update_stage_dates", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work",
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
-    public static readonly string[] WriteTools = [PlanLeave, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, CreateDocument, StartMeeting, ScheduleMeeting];
+    public const string ScheduleProject = "propose_schedule_project";
+    public static readonly string[] WriteTools = [PlanLeave, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
     /// additions that only touch what the asker could already edit by hand. Only <c>create_document</c> is auto-run today - everything else
     /// (create_task, create_work, create_action_item, reminder, update_work, create_project, update_project, invite_member, send_report)
-    /// still waits for a person to confirm it, because the existing test suite (AiWorkspaceTests.cs) encodes that contract in ~25 places and
-    /// flipping it deserves its own deliberate pass, not a drive-by change here. Add a kind's string (from the propose_* method's call to
-    /// <see cref="Propose"/>) to go further once its tests are updated to match.
+    /// still waits for approval. Explicit project/stage date updates are separately authorized
+    /// against the person's current message by <see cref="AiExecutionPolicy"/>.
     /// </summary>
     public static readonly string[] AutoExecuteKinds = ["create_document"];
 
@@ -78,6 +78,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     public IReadOnlyList<AiToolDef> DefinitionsFor(string text, bool actionsAllowed)
     {
         if (IsGreeting(text)) return [];
+        actionsAllowed &= !AiExecutionPolicy.IsReadOnlyRequest(text);
         var all = Definitions(actionsAllowed);
         var lower = text.ToLowerInvariant();
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off)\b")) return all;
@@ -169,9 +170,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "title":{"type":"string"},"description":{"type":"string","description":"The full new description (replaces the old one)."},"estimate_hours":{"type":"number"},
                  "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"comment":{"type":"string"},"reason":{"type":"string","description":"Why the due date moves later."}},"required":["key"]}
                 """),
-            new(UpdateStagePlan, "Propose changing the planned dates of one existing project stage. Read project_report for exact stage IDs/names. Does not change project dates, task dates, actual dates, completion or dependency locks. Specify dates requested by the person; never invent a schedule. Confirmation required; a later planned end needs a reason.",
-                """{"type":"object","properties":{"project":{"type":"string"},"stage":{"type":"string","description":"Exact stage ID or name from project_report."},"planned_start":{"type":"string","description":"yyyy-MM-dd"},"planned_end":{"type":"string","description":"yyyy-MM-dd"},"reason":{"type":"string"}},"required":["project","stage"]}"""),
-            new(UpdateProject, "Propose changing an existing project's name, description, priority, status, owner, start date or due date. These are project dates only: stage planned dates and task deadlines remain separate. If the dates already match, report that fact instead of claiming an update. A later due date needs a reason. Confirmation required.",
+            new(UpdateStagePlan, "Change a stage planned start, end or allocated duration. Read project_report for exact IDs and scheduling mode. Automatic schedules recalculate downstream stages; FollowSchedule aligns the project end. Manual mode changes only that stage. Preserve task deadlines, actual dates and dependency locks. Explicit routine edits may execute directly under the backend policy; otherwise return a confirmation card. Later planned ends and project extensions need a reason.",
+                """{"type":"object","properties":{"project":{"type":"string"},"stage":{"type":"string","description":"Exact stage ID or name from project_report."},"planned_start":{"type":"string","description":"yyyy-MM-dd"},"planned_end":{"type":"string","description":"yyyy-MM-dd"},"duration_days":{"type":"integer","minimum":0,"maximum":36500,"description":"Allocated elapsed calendar days; zero is a milestone."},"reason":{"type":"string"}},"required":["project","stage"]}"""),
+            new(ScheduleProject, "Schedule every stage using the shared backend engine. Read project_report first. Supply explicit durations for every stage, or omit them to preserve the recorded allocations. Do not invent missing durations. FollowSchedule aligns the project end; FixedDeadline validates the deadline. Completed plans and actual history are protected. Mode/allocation changes require one confirmation; the card previews every stage. If everything already matches, report a verified no-op.",
+                """{"type":"object","properties":{"project":{"type":"string"},"start_date":{"type":"string"},"due_date":{"type":"string"},"mode":{"type":"string","enum":["FollowSchedule","FixedDeadline"]},"durations":{"type":"array","items":{"type":"object","properties":{"stage":{"type":"string"},"duration_days":{"type":"integer","minimum":0,"maximum":36500}},"required":["stage","duration_days"]}},"reason":{"type":"string"}},"required":["project"]}"""),
+            new(UpdateProject, "Change an existing project's name, description, priority, status, owner, start date or due date. Automatic schedules recalculate stage plans; FollowSchedule derives the project end. Manual schedules keep independent stage dates; use propose_schedule_project to connect all stages. Task deadlines stay separate. Saved values return a verified no-op. Explicit routine date edits may execute directly under backend policy; other edits require confirmation. A later due date needs a reason.",
                 """
                 {"type":"object","properties":{"project":{"type":"string","description":"A project key or name."},"name":{"type":"string"},
                  "description":{"type":"string","description":"The full new description (replaces the old one)."},
@@ -286,6 +289,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 UpdateWork => await ProposeUpdateAsync(a, ct),
                 UpdateProject => await ProposeUpdateProjectAsync(a, ct),
                 UpdateStagePlan => await ProposeUpdateStagePlanAsync(a, ct),
+                ScheduleProject => await ProposeScheduleProjectAsync(a, ct),
                 CreateProject => await ProposeProjectAsync(a, ct),
                 InviteMember => await ProposeInviteAsync(a, ct),
                 CreateTask => await ProposeTaskAsync(a, ct),
@@ -461,9 +465,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         {
             insight,
             today = clock.Today,
-            project = new { p.Key, p.Name, status = p.Status, health = p.Health, p.Progress, p.StartDate, p.DueDate, p.OriginalDueDate, p.DelayedDays, owner = p.Owner?.Name, p.Stats },
-            scheduleNote = "Project dates, stage planned dates and task deadlines are separate. Updating project dates does not reschedule stages or tasks.",
-            stages = stages.Select(s => new { s.Id, s.Name, s.PlannedStart, s.PlannedEnd, s.ActualStart, s.ActualEnd, s.Status, s.Locked, s.LockedBy }),
+            project = new { p.Key, p.Name, status = p.Status, health = p.Health, p.Progress, p.StartDate, p.DueDate, p.StageScheduleMode, p.OriginalDueDate, p.DelayedDays, owner = p.Owner?.Name, p.Stats },
+            scheduleNote = p.StageScheduleMode == StageScheduleMode.Manual ? "Manual stage dates are independent. Enable automatic scheduling in Schedule studio to connect the timeline." : "Automatic calendar-day schedule: project changes and stage edits recalculate downstream stages while preserving allocated durations. FollowSchedule aligns the project end; extensions need a reason. Task deadlines and actual dates stay separate.",
+            stages = stages.Select(s => new { s.Id, s.Name, s.DurationDays, s.PlannedStart, s.PlannedEnd, s.ActualStart, s.ActualEnd, s.Status, s.Locked, s.LockedBy }),
             report.DelayedTasks, report.BlockedTasks,
             lateOrBlocked = report.Tasks.Where(t => t.OverdueDays > 0 || t.DelayedDays > 0 || t.BlockedBy.Count > 0).Take(25)
                 .Select(t => new { t.Key, title = Clean(t.Title), status = t.StatusName, t.DueDate, t.OverdueDays, t.DelayedDays, t.Revisions, assignee = t.Assignee?.Name, blockedBy = t.BlockedBy.Select(b => b.Key) }),
@@ -636,7 +640,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (!await permissions.HasAsync(Permissions.ProjectsEdit, ct)) throw new AiToolException("The person's role does not allow them to edit projects.");
         var pr = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
         if (pr.IsPending) throw new AiToolException($"“{pr.Name}” has not been created yet. Ask the person to confirm its creation first, then change it.");
-        var cur = (await projects.GetAsync(pr.Id, ct)).Project;
+        var detail = await projects.GetAsync(pr.Id, ct);
+        var cur = detail.Project;
         var name = Str(a, "name"); var description = Str(a, "description"); var due = Date(a, "due_date"); var start = Date(a, "start_date"); var reason = Str(a, "reason");
         Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pp) ? pp : null;
         ProjectStatus? statusValue = null;
@@ -658,10 +663,17 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (statusValue == cur.Status) statusValue = null;
         if (owner?.Id == cur.Owner?.Id) owner = null;
         if (name is null && description is null && due is null && start is null && priority is null && statusValue is null && owner is null)
-            return new AiToolOutcome($"No change needed: project {pr.Key} already has the requested values. Saved project dates: start {Day(cur.StartDate)}, due {Day(cur.DueDate)}. Stage planned dates and task deadlines are separate and have not been changed. Use project_report to inspect the timeline; ask which stage dates should change before proposing a stage schedule.", "Verified the saved project values", 1);
+            return new AiToolOutcome($"No change needed: project {pr.Key} already has the requested values. Saved project dates: start {Day(cur.StartDate)}, due {Day(cur.DueDate)}. " +
+                (cur.StageScheduleMode == StageScheduleMode.Manual ? "Stage planned dates and task deadlines are separate and have not been changed. Enable automatic scheduling in Schedule studio to connect the timeline." : $"Scheduling mode: {cur.StageScheduleMode}. No stage dates or allocations changed. Read project_report before proposing requested stage dates or durations."), "Verified the saved project values", 1, VerifiedNoChange: true);
         var newStart = start ?? cur.StartDate; var newDue = due ?? cur.DueDate;
-        if (newStart is { } s0 && newDue is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
-        if (due is { } nd && cur.DueDate is { } od && nd > od && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Moving a project's due date later needs a reason. Ask the person why, then pass it as 'reason'.");
+        StageSchedulePreview? schedule = null;
+        if (cur.StageScheduleMode != StageScheduleMode.Manual && (start is not null || due is not null))
+            schedule = StageScheduler.Calculate(cur.Version, cur.StageScheduleMode, newStart, newDue, AgentScheduleInputs(detail.Stages),
+                alignFinish: cur.StageScheduleMode == StageScheduleMode.FollowSchedule && due is not null && start is null, originStart: cur.StartDate);
+        else if (newStart is { } s0 && newDue is { } d0 && d0 < s0) throw new AiToolException("The due date is before the start date.");
+        var effectiveDue = schedule?.DueDate ?? newDue;
+        if (effectiveDue is { } nd && cur.DueDate is { } od && nd > od && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Moving a project's due date later needs a reason. Ask the person why, then pass it as 'reason'.");
+        DueDateHistory.Prepare(cur.DueDate, effectiveDue, reason, null);
 
         var changes = new List<string>();
         if (name is not null) changes.Add($"name → “{name}”");
@@ -671,9 +683,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (owner is not null) changes.Add($"owner {cur.Owner?.Name ?? "none"} → {owner.Name}");
         if (start is not null) changes.Add($"start {Day(cur.StartDate)} → {Day(start)}");
         if (due is not null) changes.Add($"due {Day(cur.DueDate)} → {Day(due)}");
-        var payload = new { id = pr.Id, key = pr.Key, projectName = cur.Name, name, description, priority = priority?.ToString(), status = statusValue?.ToString(), ownerId = owner?.Id, ownerName = owner?.Name, startDate = start, dueDate = due, reason, expectedVersion = cur.Version };
-        if (start is not null || due is not null) changes.Add("stage planned dates and task deadlines stay unchanged");
-        return Propose("update_project", $"Update project {pr.Key}: {cur.Name}", string.Join("; ", changes), payload, description);
+        var payload = new { id = pr.Id, key = pr.Key, projectName = cur.Name, name, description, priority = priority?.ToString(), status = statusValue?.ToString(), ownerId = owner?.Id, ownerName = owner?.Name, startDate = start, dueDate = due, reason, expectedVersion = cur.Version, schedule };
+        if (schedule is not null) changes.Add($"{schedule.Stages.Count(s => s.Changed)} stage plans recalculated; project end {Day(cur.DueDate)} to {Day(schedule.DueDate)}");
+        else if (start is not null || due is not null) changes.Add("stage planned dates and task deadlines stay unchanged");
+        return Propose("update_project", $"Update project {pr.Key}: {cur.Name}", string.Join("; ", changes), payload, schedule is null ? description : SchedulePreviewText(schedule));
     }
 
     private async Task<AiToolOutcome> ProposeUpdateStagePlanAsync(JsonElement a, CancellationToken ct)
@@ -682,25 +695,108 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var pr = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
         if (pr.IsPending) throw new AiToolException("Confirm the project's creation first.");
         var wanted = Str(a, "stage") ?? throw new AiToolException("Say which stage.");
-        var stages = await projects.GetStagesAsync(pr.Id, ct);
+        var detail = await projects.GetAsync(pr.Id, ct);
+        var stages = detail.Stages;
         var matches = stages.Where(s => s.Id.ToString().Equals(wanted, StringComparison.OrdinalIgnoreCase) || s.Name.Equals(wanted.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count != 1) throw new AiToolException("Supply the exact stage ID or an unambiguous stage name from project_report.");
         var stage = matches[0];
         if (stage.Status == StageStatus.Completed) throw new AiToolException("This stage is completed. Its historical schedule cannot be changed through this proposal.");
         var start = Date(a, "planned_start"); var end = Date(a, "planned_end"); var reason = Str(a, "reason");
-        if (start is null && end is null) throw new AiToolException("Specify a planned start or planned end date.");
+        int? days = null;
+        if (a.TryGetProperty("duration_days", out var duration))
+        {
+            if (!duration.TryGetInt32(out var value) || value is < 0 or > 36500) throw new AiToolException("Use an allocated duration of 0 to 36500 whole calendar days.");
+            days = value;
+        }
+        if (start is null && end is null && days is null) throw new AiToolException("Specify a planned start, planned end or allocated duration.");
         var newStart = start ?? stage.PlannedStart; var newEnd = end ?? stage.PlannedEnd;
+        if ((days is not null || detail.Project.StageScheduleMode != StageScheduleMode.Manual) && end is null)
+        {
+            days ??= StageScheduler.Duration(stage.DurationDays, stage.PlannedStart, stage.PlannedEnd);
+            if (newStart is { } anchor && days is { } d)
+            {
+                if ((long)anchor.DayNumber + d > DateOnly.MaxValue.DayNumber) throw new AiToolException("The allocated duration exceeds the supported calendar.");
+                newEnd = anchor.AddDays(d);
+            }
+        }
+        if (days is { } allocated && newStart is { } ds && newEnd is { } de && de.DayNumber - ds.DayNumber != allocated)
+            throw new AiToolException("The dates and allocated duration do not match.");
         if (newStart is { } s && newEnd is { } e && e < s) throw new AiToolException("Planned end must not be before planned start.");
         if (newStart == stage.PlannedStart && newEnd == stage.PlannedEnd)
-            return new AiToolOutcome($"No change needed: {stage.Name} already has planned start {Day(newStart)} and planned end {Day(newEnd)}.", "Verified the saved stage dates", 1);
+            return new AiToolOutcome($"No change needed: {stage.Name} already has planned start {Day(newStart)} and planned end {Day(newEnd)}.", "Verified the saved stage dates", 1, VerifiedNoChange: true);
         if (newEnd is { } ne && stage.PlannedEnd is { } oe && ne > oe && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Moving a stage's planned end later needs a reason.");
         var changes = new List<string>();
         if (newStart != stage.PlannedStart) changes.Add($"planned start {Day(stage.PlannedStart)} → {Day(newStart)}");
         if (newEnd != stage.PlannedEnd) changes.Add($"planned end {Day(stage.PlannedEnd)} → {Day(newEnd)}");
-        changes.Add("project dates, task deadlines, actual dates and dependency locks stay unchanged");
+        StageSchedulePreview? schedule = null;
+        if (detail.Project.StageScheduleMode != StageScheduleMode.Manual)
+        {
+            days ??= StageScheduler.Duration(null, newStart, newEnd);
+            var inputs = AgentScheduleInputs(stages).Select(s => s.Id == stage.Id ? s with { DurationDays = days } : s).ToList();
+            schedule = StageScheduler.Calculate(detail.Project.Version, detail.Project.StageScheduleMode, detail.Project.StartDate, detail.Project.DueDate,
+                inputs, inputs.FindIndex(s => s.Id == stage.Id), newStart);
+            if (schedule.DueDate > detail.Project.DueDate && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Extending the project end needs a reason.");
+            DueDateHistory.Prepare(detail.Project.DueDate, schedule.DueDate, reason, null);
+            changes.Add($"{schedule.Stages.Count(s => s.Changed)} stage plans recalculated; project end {Day(detail.Project.DueDate)} to {Day(schedule.DueDate)}");
+        }
+        else changes.Add("project dates, task deadlines, actual dates and dependency locks stay unchanged");
         return Propose("update_stage_dates", $"Update {pr.Key} stage: {stage.Name}", string.Join("; ", changes),
-            new { projectId = pr.Id, stageId = stage.Id, plannedStart = newStart, plannedEnd = newEnd, previousStart = stage.PlannedStart, previousEnd = stage.PlannedEnd, expectedStatus = stage.Status.ToString(), reason });
+            new { projectId = pr.Id, projectKey = pr.Key, projectName = detail.Project.Name, stageId = stage.Id, stageName = stage.Name, plannedStart = newStart, plannedEnd = newEnd, previousStart = stage.PlannedStart, previousEnd = stage.PlannedEnd, expectedStatus = stage.Status.ToString(), reason, expectedProjectVersion = detail.Project.Version, durationDays = days, schedule },
+            schedule is null ? null : SchedulePreviewText(schedule));
     }
+
+    private async Task<AiToolOutcome> ProposeScheduleProjectAsync(JsonElement a, CancellationToken ct)
+    {
+        if (!await permissions.HasAsync(Permissions.ProjectsEdit, ct)) throw new AiToolException("The person's role does not allow them to edit projects.");
+        var pr = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        if (pr.IsPending) throw new AiToolException("Confirm the project's creation first.");
+        var detail = await projects.GetAsync(pr.Id, ct); var project = detail.Project;
+        var modeText = Str(a, "mode") ?? (project.StageScheduleMode == StageScheduleMode.Manual ? "FollowSchedule" : project.StageScheduleMode.ToString());
+        if (!Enum.TryParse<StageScheduleMode>(modeText, true, out var mode) || mode is StageScheduleMode.Manual || !Enum.IsDefined(mode))
+            throw new AiToolException("Choose FollowSchedule or FixedDeadline for automatic scheduling.");
+        var allocations = new List<StageDurationInput>();
+        if (a.TryGetProperty("durations", out var supplied))
+        {
+            if (supplied.ValueKind != JsonValueKind.Array) throw new AiToolException("Supply stage durations as an array.");
+            foreach (var item in supplied.EnumerateArray())
+            {
+                var reference = Str(item, "stage");
+                var matching = detail.Stages.Where(s => s.Id.ToString().Equals(reference, StringComparison.OrdinalIgnoreCase) || s.Name.Equals(reference?.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+                if (matching.Count != 1 || !item.TryGetProperty("duration_days", out var days) || !days.TryGetInt32(out var count) || count is < 0 or > 36500)
+                    throw new AiToolException("Use exact stage names or IDs and a whole allocated duration of 0 to 36500 calendar days.");
+                allocations.Add(new(matching[0].Id, count));
+            }
+        }
+        else
+        {
+            foreach (var stage in detail.Stages)
+            {
+                var days = StageScheduler.Duration(stage.DurationDays, stage.PlannedStart, stage.PlannedEnd);
+                if (days is null) throw new AiToolException($"Stage '{stage.Name}' has no recorded allocation. Ask for its duration, or review every allocation in Schedule studio; do not invent it.");
+                allocations.Add(new(stage.Id, days.Value));
+            }
+            if (project.StageScheduleMode == StageScheduleMode.Manual && detail.Stages.Any(s => s.Status != StageStatus.Completed)
+                && detail.Stages.Where(s => s.Status != StageStatus.Completed).All(s => allocations.Single(d => d.Id == s.Id).DurationDays == 0))
+                throw new AiToolException("The existing stage dates contain no allocated work duration. Supply the stage durations or explicitly distribute the timeline in Schedule studio before enabling automatic scheduling.");
+        }
+        var request = new ProjectScheduleRequest(project.Version, mode, Date(a, "start_date") ?? project.StartDate,
+            Date(a, "due_date") ?? project.DueDate, allocations, Str(a, "reason"));
+        var preview = await projects.PreviewScheduleAsync(pr.Id, request, ct);
+        DueDateHistory.Prepare(project.DueDate, preview.DueDate, request.Reason, null);
+        if (project.StageScheduleMode == mode && project.StartDate == preview.StartDate && project.DueDate == preview.DueDate
+            && preview.Stages.All(row => detail.Stages.Any(s => s.Id == row.Id && s.PlannedStart == row.Start && s.PlannedEnd == row.End && s.DurationDays == row.DurationDays)))
+            return new AiToolOutcome($"No change needed: {pr.Key} and all {preview.Stages.Count} stage plans already match. " + SchedulePreviewText(preview), "Verified the entire saved timeline", preview.Stages.Count, VerifiedNoChange: true);
+        request = request with { ExpectedFingerprint = preview.Fingerprint };
+        return Propose("schedule_project", $"Schedule all stages of {pr.Key}: {project.Name}",
+            $"{preview.Stages.Count} stages; {mode}; start {Day(preview.StartDate)}, project end {Day(preview.DueDate)}",
+            new { projectId = pr.Id, request, schedule = preview }, SchedulePreviewText(preview));
+    }
+
+    private static IReadOnlyList<StageScheduleInput> AgentScheduleInputs(IReadOnlyList<StageDto> stages) => stages.Select(s =>
+        new StageScheduleInput(s.Id, s.Name, s.DurationDays, s.PlannedStart, s.PlannedEnd, s.Status == StageStatus.Completed)).ToList();
+
+    private static string SchedulePreviewText(StageSchedulePreview schedule) => $"Project end: {schedule.DueDate:yyyy-MM-dd}\n" +
+        string.Join("\n", schedule.Stages.Select(s => $"{s.Name}: {s.Start:yyyy-MM-dd} to {s.End:yyyy-MM-dd} ({s.DurationDays} calendar days)"));
 
     private async Task<AiToolOutcome> ProposeProjectAsync(JsonElement a, CancellationToken ct)
     {

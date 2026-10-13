@@ -22,6 +22,7 @@ import { TargetDocuments } from '../documents/LinkedWork';
 import { ActionItemsTab } from './ActionItemsPanel';
 import { ProjectSettingsModal, type ProjectSettingsTab } from './ProjectSettingsModal';
 import { Timeline } from './Timeline';
+import { StageScheduleStudio } from './StageScheduleStudio';
 import { ProjectChatButton, useProjectChat } from '../chat/ProjectChat';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { IssuesPanel } from '../issues/IssuesPanel';
@@ -80,6 +81,7 @@ export function ProjectDetailPage() {
   const [tab, setTab] = useState<Tab>(allowedTabs.includes(wanted) ? wanted : allowedTabs[0]);
   const [settings, setSettings] = useState<ProjectSettingsTab | null>(legacy?.settings ?? null);
   const [editing, setEditing] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [newTask, setNewTask] = useState<{ statusId?: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const [issueStage, setIssueStage] = useState('');                        // the stage the Issues tab is narrowed to
@@ -145,6 +147,7 @@ export function ProjectDetailPage() {
           <RiskButton projectId={p.id} />
           {!archived && <GoogleMeetButton projectId={p.id} projectName={p.name} organizerUserId={me} />}
           <ProjectChatButton projectId={p.id} name={p.name} label />
+          {method === 'Agile' && canEdit && !archived && <button className="btn btn-ghost" onClick={() => setScheduling(true)}><Icon name="calendar" /> Schedule studio</button>}
           {canEdit && <button className="btn btn-ghost" onClick={() => setSettings('members')} title="Members, task workflow and automation"><Icon name="settings" /> Settings</button>}
           <MoreMenu>{(close) => <>
             {canEdit && <button type="button" role="menuitem" onClick={() => { close(); setEditing(true); }}><Icon name="edit" /> Edit details</button>}
@@ -186,7 +189,7 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
-      {method !== 'Agile' && <div style={{ marginBottom: 18 }}><Timeline projectId={p.id} projectName={p.name} stages={detail.stages} canEdit={canEdit && !archived} canReportIssue={reportable}
+      {method !== 'Agile' && <div style={{ marginBottom: 18 }}><Timeline projectId={p.id} projectName={p.name} project={p} stages={detail.stages} canEdit={canEdit && !archived} canReportIssue={reportable}
           taskProgress={p.progress} finished={finished}
           onShowIssues={showIssues} onReportIssue={(stageId) => setReporting({ stageId })} /></div>}
 
@@ -223,6 +226,7 @@ export function ProjectDetailPage() {
       {newDoc && <DocumentWizard projectId={p.id} onClose={() => setNewDoc(false)} onCreated={(docId) => nav(`/documents/${docId}`)} />}
       {importing && <ImportModal projectId={p.id} onClose={() => setImporting(false)} />}
       {editing && <ProjectFormModal project={p} onClose={() => setEditing(false)} />}
+      {scheduling && <StageScheduleStudio project={p} stages={detail.stages} onClose={() => setScheduling(false)} />}
       {settings && <ProjectSettingsModal detail={detail} canEdit={canEdit} initial={settings} onClose={() => {
         setSettings(null);
         if (legacy) { const n = new URLSearchParams(params); n.set('tab', tab); setParams(n, { replace: true }); }

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
@@ -85,9 +86,11 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             case "update_work":
                 return await UpdateWorkAsync(a, ct);
             case "update_project":
-                return await UpdateProjectAsync(a, ct);
+                return await RunScheduleActionAsync(() => UpdateProjectAsync(a, ct), ct);
             case "update_stage_dates":
-                return await UpdateStageDatesAsync(a, ct);
+                return await RunScheduleActionAsync(() => UpdateStageDatesAsync(a, ct), ct);
+            case "schedule_project":
+                return await RunScheduleActionAsync(() => ScheduleProjectAsync(a, ct), ct);
 
             case "planned_leave":
             {
@@ -193,6 +196,38 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         return found ?? throw new ValidationException("project", $"The project “{name}” does not exist yet. Confirm its creation first.");
     }
 
+    private async Task<AiActionResult> RunScheduleActionAsync(Func<Task<AiActionResult>> action, CancellationToken ct)
+    {
+        // Confirmation records failures afterward. Roll back both SQL and tracked mutations so
+        // recording a failed card cannot accidentally save a rejected schedule or its audit rows.
+        var tracker = db.Database.GetService<ICurrentDbContext>().Context.ChangeTracker;
+        tracker.DetectChanges();
+        var before = tracker.Entries().Select(e => (Entry: e, State: e.State, Current: e.CurrentValues.Clone(), Original: e.OriginalValues.Clone())).ToList();
+        await using var owned = await db.Database.BeginOwnedTransactionAsync(ct);
+        var transaction = db.Database.CurrentTransaction!;
+        if (owned is null) await transaction.CreateSavepointAsync("ai_schedule_action", ct);
+        try
+        {
+            var result = await action();
+            if (owned is null) await transaction.ReleaseSavepointAsync("ai_schedule_action", ct);
+            else await owned.CommitAsync(ct);
+            return result;
+        }
+        catch
+        {
+            if (owned is null) await transaction.RollbackToSavepointAsync("ai_schedule_action", CancellationToken.None);
+            else await owned.RollbackAsync(CancellationToken.None);
+            foreach (var entry in tracker.Entries().ToList())
+                if (!before.Any(s => ReferenceEquals(s.Entry.Entity, entry.Entity))) entry.State = EntityState.Detached;
+            foreach (var snapshot in before)
+            {
+                snapshot.Entry.CurrentValues.SetValues(snapshot.Current); snapshot.Entry.OriginalValues.SetValues(snapshot.Original);
+                snapshot.Entry.State = snapshot.State;
+            }
+            throw;
+        }
+    }
+
     private async Task<AiActionResult> UpdateProjectAsync(JsonElement a, CancellationToken ct)
     {
         var id = Guid(a, "id")!.Value;
@@ -207,10 +242,13 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         await projects.UpdateAsync(id, new UpdateProjectRequest(Str(a, "name") ?? cur.Name, description, priority ?? cur.Priority, status ?? cur.Status,
             owner, cur.TeamId, start, due, cur.Version, cur.EnforceDependencies, cur.ProjectGroupId,
             Str(a, "reason")), ct);
+        var schedule = a.TryGetProperty("schedule", out var scheduleJson) && scheduleJson.ValueKind == JsonValueKind.Object ? scheduleJson.Deserialize<StageSchedulePreview>(Json) : null;
+        var expectedDue = schedule?.DueDate ?? due;
         var verified = await db.Projects.AsNoTracking().AnyAsync(p => p.Id == id && p.Name == (Str(a, "name") ?? cur.Name)
             && p.Priority == (priority ?? cur.Priority) && p.Status == (status ?? cur.Status)
-            && p.StartDate == start && p.DueDate == due && p.OwnerId == owner && p.Description == description, ct);
+            && p.StartDate == start && p.DueDate == expectedDue && p.OwnerId == owner && p.Description == description, ct);
         if (!verified) throw new ConflictException("The requested project result could not be verified. Check the project before retrying.", "AI_ACTION_UNVERIFIED");
+        await VerifyScheduleAsync(id, schedule, ct);
         return new AiActionResult($"/projects/{id}", id);
     }
 
@@ -219,10 +257,35 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         var projectId = Guid(a, "projectId")!.Value; var stageId = Guid(a, "stageId")!.Value;
         var start = Date(a, "plannedStart"); var end = Date(a, "plannedEnd");
         await projects.UpdateStagePlanAsync(projectId, stageId, start, end, Date(a, "previousStart"), Date(a, "previousEnd"),
-            Enum.Parse<StageStatus>(Str(a, "expectedStatus")!), Str(a, "reason"), ct);
+            Enum.Parse<StageStatus>(Str(a, "expectedStatus")!), Str(a, "reason"), ct,
+            a.TryGetProperty("expectedProjectVersion", out var version) ? version.GetInt32() : null,
+            a.TryGetProperty("durationDays", out var days) && days.ValueKind == JsonValueKind.Number ? days.GetInt32() : null);
         if (!await db.ProjectStages.AsNoTracking().AnyAsync(s => s.Id == stageId && s.ProjectId == projectId && s.PlannedStart == start && s.PlannedEnd == end, ct))
             throw new ConflictException("The stage dates could not be verified. Check the timeline before retrying.", "AI_ACTION_UNVERIFIED");
+        var schedule = a.TryGetProperty("schedule", out var scheduleJson) && scheduleJson.ValueKind == JsonValueKind.Object ? scheduleJson.Deserialize<StageSchedulePreview>(Json) : null;
+        await VerifyScheduleAsync(projectId, schedule, ct);
         return new AiActionResult($"/projects/{projectId}", stageId);
+    }
+
+    private async Task<AiActionResult> ScheduleProjectAsync(JsonElement a, CancellationToken ct)
+    {
+        var projectId = Guid(a, "projectId")!.Value;
+        var request = a.GetProperty("request").Deserialize<ProjectScheduleRequest>(Json) ?? throw new ValidationException("schedule", "The reviewed schedule is missing.");
+        var expected = a.GetProperty("schedule").Deserialize<StageSchedulePreview>(Json) ?? throw new ValidationException("schedule", "The reviewed preview is missing.");
+        await projects.SaveScheduleAsync(projectId, request, ct);
+        await VerifyScheduleAsync(projectId, expected, ct);
+        if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == projectId && p.StartDate == expected.StartDate, ct))
+            throw new ConflictException("The project start could not be verified.", "AI_ACTION_UNVERIFIED");
+        return new($"/projects/{projectId}", projectId);
+    }
+
+    private async Task VerifyScheduleAsync(Guid projectId, StageSchedulePreview? expected, CancellationToken ct)
+    {
+        if (expected is null) return;
+        var stages = await db.ProjectStages.AsNoTracking().Where(s => s.ProjectId == projectId).ToListAsync(ct);
+        if (stages.Count != expected.Stages.Count || expected.Stages.Any(row => !stages.Any(s => s.Id == row.Id && s.PlannedStart == row.Start && s.PlannedEnd == row.End && s.DurationDays == row.DurationDays)) ||
+            !await db.Projects.AsNoTracking().AnyAsync(p => p.Id == projectId && p.DueDate == expected.DueDate && p.StageScheduleMode == expected.Mode, ct))
+            throw new ConflictException("The recalculated schedule could not be verified. Review the timeline before retrying.", "AI_ACTION_UNVERIFIED");
     }
 
     private async Task<AiActionResult> UpdateWorkAsync(JsonElement a, CancellationToken ct)

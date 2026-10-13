@@ -29,6 +29,7 @@ public partial class AppDbContext
             e.HasMany(x => x.Stages).WithOne().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.Property(x => x.DeliveryMethod).HasDefaultValue(DeliveryMethod.Hybrid).HasSentinel(DeliveryMethod.Hybrid);
+            e.Property(x => x.StageScheduleMode).HasDefaultValue(StageScheduleMode.Manual).HasSentinel(StageScheduleMode.Manual);
             e.Property(x => x.BudgetHours).HasPrecision(10, 2);
             e.Property(x => x.BudgetAmount).HasPrecision(14, 2);
             e.Property(x => x.BillRate).HasPrecision(12, 2);
@@ -40,7 +41,10 @@ public partial class AppDbContext
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<WorkflowStatus>(e => { e.HasIndex(x => new { x.ProjectId, x.Order }); e.Property(x => x.Name).HasMaxLength(40); e.Property(x => x.Color).HasMaxLength(9); });
-        b.Entity<ProjectStage>(e => { e.HasIndex(x => new { x.ProjectId, x.Order }); e.Property(x => x.Name).HasMaxLength(80); });
+        b.Entity<ProjectStage>(e => {
+            e.HasIndex(x => new { x.ProjectId, x.Order }); e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.PlannedStart).IsConcurrencyToken(); e.Property(x => x.PlannedEnd).IsConcurrencyToken(); e.Property(x => x.Status).IsConcurrencyToken();
+        });
         b.Entity<WorkType>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.Order });

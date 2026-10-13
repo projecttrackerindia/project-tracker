@@ -363,7 +363,8 @@ public partial class AiWorkspaceTests(ApiFactory factory)
         Assert.Contains("Asia/Kolkata", request.Context);
         // The fixed instructions never carry anything person-specific (so the provider can cache them).
         Assert.DoesNotContain("Max Manager", request.System);
-        Assert.Contains("You never change anything yourself", request.System);
+        Assert.Contains("backend may execute an explicit routine project/stage date edit", request.System);
+        Assert.Contains("Never claim execution without a saved, verified result", request.System);
     }
 
     // ------------------------------------------------------------------ changes it proposes
@@ -981,8 +982,9 @@ public partial class AiWorkspaceTests(ApiFactory factory)
     // ------------------------------------------------------------------ advising and acting on the organization's own data
 
     private string ToolResult() => Assert.IsType<AiToolResult>(Chat.Requests.Last().Turns[^1].Blocks.Single()).Content;
-    private async Task<string> RunTool(TestClient who, string tool, object input, string question = "Analyze the team workload and recommend how to rebalance it")
+    private async Task<string> RunTool(TestClient who, string tool, object input, string? question = null)
     {
+        question ??= AiToolbox.WriteTools.Contains(tool) ? "Prepare the requested update" : "Analyze the team workload and recommend how to rebalance it";
         Chat.Script.Enqueue(_ => FakeAiChat.UseTool(tool, input));
         Chat.Script.Enqueue(_ => FakeAiChat.Say("Here is the analysis."));
         await Ask(who, question);
