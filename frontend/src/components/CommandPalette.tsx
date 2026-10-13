@@ -101,7 +101,7 @@ export function CommandPalette() {
       list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/account/security') });
     }
     if (canProject) list.push({ id: 'new:project', group: 'Create', label: 'New project', icon: 'folder', keywords: 'create add', run: go('/projects?new=1') });
-    if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New work task', icon: 'bolt', keywords: 'create add operational ticket bug', run: go('/operations?new=1') });
+    if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New support ticket / work task', icon: 'bolt', keywords: 'create add operational ticket bug support helpdesk incident request', run: go('/operations?new=1') });
     if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:reminder', group: 'Create', label: 'New reminder', icon: 'alarm', keywords: 'create add remind me alarm later', run: () => { close(); openReminderComposer(); } });
     list.push({ id: 'ui:theme', group: 'Preferences', label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode', icon: theme === 'dark' ? 'sun' : 'moon', keywords: 'theme dark light', run: () => { close(); toggleTheme(); } });
     list.push({ id: 'ui:sidebar', group: 'Preferences', label: 'Collapse or expand the sidebar', icon: 'menu', keywords: 'sidebar menu', run: () => { close(); toggleSidebar(); } });

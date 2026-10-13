@@ -2,7 +2,7 @@
 
 Portfolio tables retain bounded assignee names and readable dates/statuses. Narrow split panels stack; phones use the shared labeled task cards. Removed the obsolete four-column mobile rules that mislabeled the five-column table. Calendar agenda badges no longer inherit the full-width day-chip rule. Credit budgets use searchable labeled controls, an explicit submit form and separate spend/reserved/available metrics. Existing plan and tenant budget rules remain authoritative.
 
-Ask Agent uses the shared original gradient ring mark, with restrained motion and a reduced-motion alternative. Support Center navigation, pages, services, API controllers and worker are removed. Old links redirect to Operations. Operations retains its existing operational work, SLA and verified support resolution features. Applied migrations and storage mappings remain archival compatibility only; no historical support records are deleted or copied into a new tenant.
+Ask Agent uses the shared gradient ring, glass core and spark from the latest uploaded UI, with a reduced-motion alternative. The futuristic button layer is retained; portfolio sizing and task cards use the verified responsive layout. Support Center navigation, pages, services, API controllers and worker are removed. Old links redirect to Operations. Operations retains its existing operational work, SLA and verified support resolution features. Applied migrations and storage mappings remain archival compatibility only; no historical support records are deleted or copied into a new tenant.
 
 ## Planned leave
 

@@ -327,7 +327,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="projects/:id" element={<Guard allow={mProjects}><ProjectDetailPage /></Guard>} />
         <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
         <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
-        <Route path="support" element={<Navigate to="../operations" replace />} />
+        <Route path="support" element={<Moved to="/operations" />} />
         <Route path="documents" element={<Guard allow={mDocuments}><DocumentsPage /></Guard>} />
         <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
         {/* Insights */}
