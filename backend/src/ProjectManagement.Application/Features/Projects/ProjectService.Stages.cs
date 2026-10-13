@@ -56,6 +56,31 @@ public partial class ProjectService
         }).ToList();
     }
 
+    /// <summary>Change only a confirmed stage plan; preserve actuals, assignments, status and dependency locks.</summary>
+    public async Task UpdateStagePlanAsync(Guid projectId, Guid stageId, DateOnly? start, DateOnly? end,
+        DateOnly? previousStart, DateOnly? previousEnd, StageStatus expectedStatus, string? reason, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(projectId, ct);
+        await access.RequireProjectEditAsync(project, ct);
+        if (start is { } ps && end is { } pe && pe < ps) throw new ValidationException("plannedEnd", "Planned end must not be before planned start.");
+        if (expectedStatus == StageStatus.Completed) throw new ConflictException("Completed stage history cannot be changed through this suggestion.", "STAGE_COMPLETED");
+        if (end is { } ne && previousEnd is { } oe && ne > oe && string.IsNullOrWhiteSpace(reason))
+            throw new ValidationException("reason", "Moving a stage's planned end later needs a reason.");
+        await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
+        var stage = await db.ProjectStages.AsNoTracking().SingleOrDefaultAsync(s => s.Id == stageId && s.ProjectId == projectId, ct)
+            ?? throw new NotFoundException("Stage not found.");
+        // Compare and update atomically: a stale card cannot overwrite a newer schedule or completed stage.
+        var changed = await db.ProjectStages.Where(s => s.Id == stageId && s.ProjectId == projectId && s.PlannedStart == previousStart && s.PlannedEnd == previousEnd && s.Status == expectedStatus)
+            .ExecuteUpdateAsync(set => set.SetProperty(s => s.PlannedStart, start).SetProperty(s => s.PlannedEnd, end).SetProperty(s => s.UpdatedAt, clock.Now), ct);
+        if (changed != 1) throw new ConflictException("The stage changed after this suggestion. Review the timeline and prepare a new suggestion.", "VERSION_CONFLICT");
+        recorder.Activity("project.stage_dates_changed", "Project", projectId,
+            $"Stage \"{stage.Name}\" planned dates: {previousStart:yyyy-MM-dd}–{previousEnd:yyyy-MM-dd} → {start:yyyy-MM-dd}–{end:yyyy-MM-dd}. {reason}".Trim(), projectId);
+        recorder.Audit("project.stage_dates_changed", "ProjectStage", stageId,
+            $"{previousStart:yyyy-MM-dd}/{previousEnd:yyyy-MM-dd}", $"{start:yyyy-MM-dd}/{end:yyyy-MM-dd}");
+        await db.SaveChangesAsync(ct);
+        await tx.CommitIfOwnedAsync(ct);
+    }
+
     private async Task ApplyStageAsync(ProjectStage stage, UpsertStageRequest req, CancellationToken ct)
     {
         if (req.PlannedStart is { } ps && req.PlannedEnd is { } pe && pe < ps)

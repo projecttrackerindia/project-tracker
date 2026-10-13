@@ -16,7 +16,7 @@ namespace ProjectManagement.Tests;
 /// assistant can read (only what the asker can), changes it proposes and the person confirms, attached files, privacy and failures.
 /// </summary>
 [Collection("api")]
-public class AiWorkspaceTests(ApiFactory factory)
+public partial class AiWorkspaceTests(ApiFactory factory)
 {
     private static string S(JsonNode? n) => n!.GetValue<string>();
     private static string Iso(int days) => AppDay.Today.AddDays(days).ToString("yyyy-MM-dd");
