@@ -151,7 +151,7 @@ function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | '
         <>
           {isWeek ? <WeekApprovalBar weekStart={range.from} userId={userId || undefined} />
             : mode === 'range' && !personal && <p className="muted ts-hint"><Icon name="info" size={13} /> Choose a Monday-to-Sunday week (or press This week) to submit it for approval.</p>}
-          <PlannedLeavePanel key={`${workspaceId}:${userId || me.id}:${d.user.id}`} userId={d.user.id} name={d.user.name} from={fetchFrom} to={fetchTo} dates={onlyDates} />
+          <PlannedLeavePanel key={`${workspaceId}:${userId || me.id}:${d.user.id}`} userId={d.user.id} name={d.user.name} from={fetchFrom} to={fetchTo} dates={onlyDates} onSaved={date => { const from = mondayOf(date); setMode('range'); setRange({ from, to: addDaysIso(from, 6) }); }} />
           <div className="stat-grid">
             <StatCard value={formatMinutes(totalMinutes)} label="Total logged" />
             <StatCard value={formatMinutes(billableMinutes)} label="Billable" foot={totalMinutes ? `${Math.round((billableMinutes / totalMinutes) * 100)}% of logged` : undefined} />

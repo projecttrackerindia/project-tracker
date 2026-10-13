@@ -8,7 +8,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import './plannedLeave.css';
 
 interface Leave { id: string; userId: string; date: string; note: string | null; status: string }
-export function PlannedLeavePanel({ userId, name, from, to, dates }: { userId: string; name: string; from: string; to: string; dates: Set<string> | null }) {
+export function PlannedLeavePanel({ userId, name, from, to, dates, onSaved }: { userId: string; name: string; from: string; to: string; dates: Set<string> | null; onSaved?: (date: string) => void }) {
   const wid = useWorkspaceId();
   const me = useAuth(s => s.ctx?.user.id);
   const role = useAuth(s => s.ctx?.current?.role);
@@ -25,7 +25,7 @@ export function PlannedLeavePanel({ userId, name, from, to, dates }: { userId: s
   const save = async () => {
     if (!valid || busy) return;
     setBusy(true); setError(null);
-    try { await post('/time/leave', { userIds: [userId], from: start, to: end, note: note.trim() || null, requestId }); await q.refetch(); setForm(false); setReview(false); }
+    try { await post('/time/leave', { userIds: [userId], from: start, to: end, note: note.trim() || null, requestId }); await q.refetch(); setForm(false); setReview(false); onSaved?.(start); }
     catch (e) { setError(e instanceof Error ? e.message : 'Leave could not be saved.'); }
     finally { setBusy(false); }
   };
