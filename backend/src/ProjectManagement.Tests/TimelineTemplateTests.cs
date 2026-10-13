@@ -157,7 +157,7 @@ public class TimelineTemplateTests(ApiFactory factory)
     public async Task A_projects_stages_can_be_saved_as_a_timeline_keeping_their_order_and_proportions()
     {
         var c = await Owner();
-        var res = await c.Post("/api/v1/projects", new { name = "Source", priority = "Low", status = "Active", startDate = "2027-01-01", dueDate = "2027-04-11", timelineTemplate = "simple" });
+        var res = await c.Post("/api/v1/projects", new { name = "Source", priority = "Low", status = "Active", startDate = "2027-01-01", dueDate = "2027-04-11", timelineTemplate = "simple", stageScheduleMode = "Manual" });
         var project = Guid.Parse(res.Data!["project"]!["id"]!.GetValue<string>());
         // Put an extra stage right after Planning, so the saved order is not the built-in one.
         Assert.True((await c.Post($"/api/v1/projects/{project}/stages", new { name = "Design review", status = "Pending", order = 2 })).Ok);

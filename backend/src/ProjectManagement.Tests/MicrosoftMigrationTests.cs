@@ -14,11 +14,17 @@ public class MicrosoftMigrationTests(ApiFactory factory)
 {
     private static async Task LegacyGoogleAsync(AppDbContext db)
     {
-        // These fixtures reconstruct a subset of the legacy schema; inbox consent extends its existing Google table.
+        // These fixtures reconstruct a subset of the legacy schema. Additive upgrades need
+        // the pre-existing core tables as well as the Google table extended by inbox consent.
         var assembly=db.GetService<IMigrationsAssembly>();var generator=db.GetService<IMigrationsSqlGenerator>();
         var old=assembly.CreateMigration(assembly.Migrations["20261008035158_ProjectMeetingsAndGoogleConnection"],db.Database.ProviderName!);
         var table=old.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.CreateTableOperation>().Single(t=>t.Name=="GoogleConnections");
         foreach(var command in generator.Generate([table],db.Model))await db.Database.ExecuteSqlRawAsync(command.CommandText);
+        var coreTables=assembly.Migrations.Values.SelectMany(type=>assembly.CreateMigration(type,db.Database.ProviderName!).UpOperations)
+            .OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.CreateTableOperation>()
+            .Where(t=>t.Name is "Projects" or "ProjectStages").ToArray();
+        foreach(var core in coreTables)
+            foreach(var command in generator.Generate([core],db.Model))await db.Database.ExecuteSqlRawAsync(command.CommandText);
     }
     [Fact]
     public async Task Existing_OAuth_attempt_upgrade_preserves_proof_without_inventing_mailbox_consent()
