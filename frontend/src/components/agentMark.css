@@ -1,17 +1,40 @@
+/* Agent mark: gradient ring + glass core + spark. Everything scales with the element's own size. */
 .agent-mark.ai-orb {
-  display:inline-grid; place-items:center; flex-shrink:0; border-radius:28%; color:white;
-  background:linear-gradient(145deg,#172b4d,#183f64); box-shadow:inset 0 0 0 1px #8cd4f533,0 3px 10px #142d4d18;
+  --agent-ring: conic-gradient(from 0deg, #2f7bff, #7c5cff 22%, #d946ef 45%, #fb7185 58%, #22d3ee 80%, #2f7bff);
+  position: relative; display: inline-grid; place-items: center; flex-shrink: 0; border-radius: 50%; isolation: isolate;
+  background: none; box-shadow: none; color: #fff;
 }
-.agent-mark > svg { width:92%; height:92%; }
-.agent-frame { stroke:#91d2eb; stroke-width:1.25; opacity:.45; }
-.agent-signal { stroke:#69e5d3; stroke-width:1.75; stroke-dasharray:12 124; stroke-linecap:round; opacity:0; }
-.agent-core { stroke:white; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
-.agent-ports { stroke:#69e5d3; stroke-width:1.5; stroke-linecap:round; }
-.agent-mark.animated .agent-core { animation:agent-breathe 4s ease-in-out infinite; }
-.agent-mark.busy .agent-signal { opacity:1; animation:agent-signal 2.4s linear infinite; }
-@keyframes agent-breathe { 50% { opacity:.68; } }
-@keyframes agent-signal { to { stroke-dashoffset:-136; } }
-@media(prefers-reduced-motion:reduce) {
-  .agent-mark.animated .agent-core,.agent-mark.busy .agent-signal { animation:none; }
-  .agent-mark.busy .agent-signal { stroke-dasharray:none; opacity:.85; }
+.agent-glow { position: absolute; inset: -12%; border-radius: 50%; background: var(--agent-ring); filter: blur(7px); opacity: .32; z-index: -1; }
+.agent-ring {
+  position: absolute; inset: 0; border-radius: 50%; background: var(--agent-ring);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 24%), #000 calc(100% - 24% + 1px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 24%), #000 calc(100% - 24% + 1px));
+}
+.agent-disc {
+  position: absolute; inset: 12%; border-radius: 50%;
+  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .28), transparent 52%), linear-gradient(160deg, #0f1c3d, #1c1757 70%, #2a1a6b);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+.agent-orbit { position: absolute; inset: 0; border-radius: 50%; opacity: 0; }
+.agent-orbit::after { content: ''; position: absolute; top: 2%; left: 50%; width: 15%; height: 15%; margin-left: -7.5%; border-radius: 50%; background: #fff; box-shadow: 0 0 6px 1px rgba(255, 255, 255, .9), 0 0 12px 2px rgba(124, 92, 255, .8); }
+.agent-mark > svg.agent-spark { position: relative; width: 66%; height: 66%; }
+.agent-star { fill: #fff; filter: drop-shadow(0 0 2px rgba(150, 190, 255, .9)); transform-origin: 24px 24px; }
+.agent-dot { fill: #8fe7ff; }
+
+.agent-mark.animated .agent-ring { animation: agent-turn 9s linear infinite; }
+.agent-mark.animated .agent-glow { animation: agent-pulse 4.5s ease-in-out infinite; }
+.agent-mark.animated .agent-star { animation: agent-breathe 4.5s ease-in-out infinite; }
+.agent-mark.busy .agent-ring { animation: agent-turn 2.2s linear infinite; }
+.agent-mark.busy .agent-orbit { opacity: 1; animation: agent-turn 1.6s linear infinite; }
+.agent-mark.busy .agent-star { animation: agent-breathe 1.3s ease-in-out infinite; }
+.agent-mark.busy .agent-glow { opacity: .55; }
+
+@keyframes agent-turn { to { transform: rotate(360deg); } }
+@keyframes agent-pulse { 50% { opacity: .5; transform: scale(1.06); } }
+@keyframes agent-breathe { 50% { transform: scale(.82) rotate(45deg); opacity: .85; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-mark .agent-ring, .agent-mark .agent-glow, .agent-mark .agent-star, .agent-mark .agent-orbit { animation: none !important; }
+  .agent-mark.busy .agent-orbit { opacity: 0; }
+  .agent-mark.busy .agent-glow { opacity: .5; }
 }

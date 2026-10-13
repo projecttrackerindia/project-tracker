@@ -1,13 +1,20 @@
 import './agentMark.css';
 
-/** A circuit-framed A. Decorative motion never conveys status without accompanying text. */
+/**
+ * The Agent's identity: a luminous gradient ring around a dark glass core with a four-point spark.
+ * `animated` slowly turns the ring and lets the spark breathe; `busy` speeds the ring up and sends a light
+ * around it. Motion is decorative only - status is always also given in text - and stops entirely under
+ * prefers-reduced-motion.
+ */
 export function AgentMark({ size = 32, busy = false, animated = false }: { size?: number; busy?: boolean; animated?: boolean }) {
   return <span className={`agent-mark ai-orb ${busy ? 'busy' : ''} ${animated ? 'animated' : ''}`} style={{ width: size, height: size }} aria-hidden="true">
-    <svg viewBox="0 0 48 48" fill="none">
-      <path className="agent-frame" d="M16 8h16l8 8v16l-8 8H16l-8-8V16l8-8Z" />
-      <path className="agent-signal" d="M16 8h16l8 8v16l-8 8H16l-8-8V16l8-8Z" />
-      <path className="agent-core" d="m17 31 7-15 7 15M20 26h8" />
-      <path className="agent-ports" d="M4 24h4m32 0h4M24 4v4m0 32v4" />
+    <span className="agent-glow" />
+    <span className="agent-ring" />
+    <span className="agent-disc" />
+    <span className="agent-orbit" />
+    <svg className="agent-spark" viewBox="0 0 48 48" fill="none">
+      <path className="agent-star" d="M24 9c1.2 8.2 4.8 11.8 13 13-8.2 1.2-11.8 4.8-13 13-1.2-8.2-4.8-11.8-13-13 8.2-1.2 11.8-4.8 13-13Z" />
+      <circle className="agent-dot" cx="35.5" cy="12.5" r="2.1" />
     </svg>
   </span>;
 }
