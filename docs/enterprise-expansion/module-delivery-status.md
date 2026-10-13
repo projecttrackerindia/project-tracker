@@ -56,4 +56,4 @@ The receipt test now waits for operation completion before revoking access. Its 
 
 No migration, new environment variable, dependency or provider activation. The follow-up requires its own exact-head CI. Controlled provider/semantic verification and broader retention/readiness still keep Module 2 open; main remains unmerged.
 
-> **Update (Oct 2026):** the Support Center and workflow studio screens were removed from the web app. Operations is now the support desk. The /api/v1/support/* endpoints, services and tables are still in the backend and are pending a separate removal (it needs a database migration).
+> **Update (Oct 2026):** Support Center screens, active `/api/v1/support/*` endpoints, application services and background worker are removed. Operations is the support desk. Applied migrations and historical storage mappings remain for data compatibility; no historical support data is deleted. Native planned leave has an additive migration and separate review/confirmation flow. Release verification is recorded in `docs/AGENT-OPERATIONS-LAYOUT-LEAVE.md` and the release report.

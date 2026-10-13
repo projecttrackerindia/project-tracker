@@ -13,6 +13,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     IChangeFeed? changeFeed = null)
     : DbContext(options), IAppDbContext
 {
+    public DbSet<PlannedLeave> PlannedLeaves => Set<PlannedLeave>();
     public DbSet<AiCreditAccount> AiCreditAccounts => Set<AiCreditAccount>();
     public DbSet<AiCreditReservation> AiCreditReservations => Set<AiCreditReservation>();
     public DbSet<AiCreditEntry> AiCreditEntries => Set<AiCreditEntry>();
@@ -230,6 +231,11 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     {
         ConfigureIdentity(b);
         ConfigureWork(b);
+        b.Entity<PlannedLeave>(e => {
+            e.HasIndex(l => new { l.TenantId, l.UserId, l.WorkDate }).IsUnique().HasFilter("\"IsDeleted\" = false");
+            e.HasIndex(l => new { l.TenantId, l.RequestId });
+            e.Property(l => l.Note).HasMaxLength(1000);
+        });
         ConfigureDocuments(b);
         ConfigureBilling(b);
         ConfigureAiOperations(b);

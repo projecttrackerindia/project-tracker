@@ -154,7 +154,7 @@ try {
   assert.match((await page.locator('.ai-credit-panel > strong').innerText()).replace(/\s/g, ''), /^Unlimitedonyourplan$/);
   assert.equal(await page.locator('.ai-credit-panel [role=meter]').count(), 0); checks.push('unlimited-balance');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  assert.equal(await page.locator('.agent-mark.animated .agent-core').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+  assert.equal(await page.locator('.agent-mark.animated .agent-star').first().evaluate(el => getComputedStyle(el).animationName), 'none');
   assert.ok(await page.locator('.ai-credit-ring .ring').evaluate(el => getComputedStyle(el).transitionDuration.split(',').every(value => parseFloat(value) <= .001)), 'Reduced motion must suppress visible ring transitions');
   checks.push('reduced-motion');
   usage = { ...usage, unlimited: false, creditsLeft: 777 };

@@ -54,7 +54,7 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// only ever reads and writes operational work.
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
-    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, ProjectManagement.Application.Features.Support.SupportWorkBridge supportBridge)
+    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -349,7 +349,6 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (otherChanges.Count > 0)
             foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
                 await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", otherChanges), LinkOf(id), ct: ct);
-        await supportBridge.SyncAsync(task,was,reassigned,reprioritized,ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -364,7 +363,6 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             ApplyStatus(task, req.Status);
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
-            await supportBridge.SyncAsync(task,was,false,false,ct);
             await db.SaveChangesAsync(ct);
         }
         return await GetAsync(id, ct);

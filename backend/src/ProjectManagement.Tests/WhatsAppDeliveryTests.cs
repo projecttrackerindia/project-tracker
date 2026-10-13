@@ -246,19 +246,6 @@ public class WhatsAppDeliveryTests(ApiFactory factory)
         }finally{Reset();}
     }
     [Fact]
-    public async Task Public_support_replies_notify_requesters_once_and_private_notes_do_not()
-    {
-        try{Configure();var a=await Org();var staff=await a.AddMemberAsync(factory,TenantRole.Admin);
-            var type=(await a.Get("/api/v1/work-types")).Data!.AsArray().First()!["id"]!.GetValue<Guid>();
-            var ticket=await a.Post("/api/v1/support/tickets",new{title="Private support title",workTypeId=type,priority="Medium",category="IT"});Assert.True(ticket.Ok,ticket.ToString());var id=ticket.Data!["id"]!.GetValue<Guid>();
-            Assert.True((await staff.Post($"/api/v1/support/tickets/{id}/messages",new{body="Internal note",visibility="internal",requestKey="internal-fixture"})).Ok);
-            await Processor.ProcessAsync();Assert.Empty(factory.WhatsApp.Sends);
-            var request=new{body="Reviewed public update",visibility="public",requestKey="public-fixture"};
-            Assert.True((await staff.Post($"/api/v1/support/tickets/{id}/messages",request)).Ok);Assert.True((await staff.Post($"/api/v1/support/tickets/{id}/messages",request)).Ok);
-            await Processor.ProcessAsync();Assert.Single(factory.WhatsApp.Sends);Assert.Equal("support_update",Assert.Single(Rows(a)).Category);
-        }finally{Reset();}
-    }
-    [Fact]
     public async Task WhatsApp_opt_in_can_keep_a_notification_when_other_channels_are_disabled()
     {
         try{Configure();var a=await Org();var staff=await a.AddMemberAsync(factory,TenantRole.Admin);

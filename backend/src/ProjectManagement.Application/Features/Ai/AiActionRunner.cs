@@ -30,7 +30,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null);
 /// </summary>
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
-    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log)
+    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -86,6 +86,16 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 return await UpdateWorkAsync(a, ct);
             case "update_project":
                 return await UpdateProjectAsync(a, ct);
+
+            case "planned_leave":
+            {
+                var ids = a.GetProperty("userIds").EnumerateArray().Select(v => v.GetGuid()).ToArray();
+                var from = Date(a, "from") ?? throw new ValidationException("from", "Choose a start date.");
+                var to = Date(a, "to") ?? throw new ValidationException("to", "Choose an end date.");
+                var request = executionId ?? throw new ConflictException("Leave requires a reviewed action identity.", "AI_ACTION_ID_REQUIRED");
+                var saved = await leave.CreateAsync(new(ids, from, to, Str(a, "note"), request), ct);
+                return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(from):yyyy-MM-dd}", saved[0].Id);
+            }
             case "create_task":
             {
                 var projectId = await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null);
