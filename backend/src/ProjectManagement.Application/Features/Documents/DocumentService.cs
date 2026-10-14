@@ -90,6 +90,9 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (f.Status is { } s) q = q.Where(d => d.Status == s);
         if (f.OwnerId is { } o) q = q.Where(d => d.OwnerId == o);
         if (f.Classification is { } cl) q = q.Where(d => d.Classification == cl);
+        // "Restricted documents": both sensitive tiers (Confidential and Restricted), not literally just the Restricted enum value - a
+        // single-classification filter already covers the narrower case, this scope is the nav section's broader "sensitive" meaning.
+        if (string.Equals(f.Scope, "restricted", StringComparison.OrdinalIgnoreCase)) q = q.Where(d => d.Classification == DocumentClassification.Confidential || d.Classification == DocumentClassification.Restricted);
         if (!string.IsNullOrWhiteSpace(f.Tag)) { var tag = f.Tag.Trim().ToLowerInvariant(); q = q.Where(d => db.DocumentTags.Any(x => x.DocumentId == d.Id && x.Tag == tag)); }
         if (!string.IsNullOrWhiteSpace(f.Q)) q = DocumentSearchIndexer.Match(q, db, f.Q);
         int? total = cursor is null ? await q.CountAsync(ct) : null;

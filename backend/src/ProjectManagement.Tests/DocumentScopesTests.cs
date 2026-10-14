@@ -100,6 +100,24 @@ public class DocumentScopesTests
     }
 
     [Fact]
+    public async Task Scope_restricted_covers_both_sensitive_tiers_but_not_public_or_internal()
+    {
+        var (owner, brd) = await Org(_factory);
+        var pub = await Make(owner, brd, "Public one", "Public");
+        var internalDoc = await Make(owner, brd, "Internal one", "Internal");
+        var conf = await Make(owner, brd, "Confidential one", "Confidential");
+        var restricted = await Make(owner, brd, "Restricted one", "Restricted");
+
+        var res = await owner.Get("/api/v1/documents?scope=restricted");
+        Assert.True(res.Ok, res.ToString());
+        var ids = res.Data!["items"]!.AsArray().Select(i => S(i!["id"])).ToList();
+        Assert.Contains(conf.ToString(), ids);
+        Assert.Contains(restricted.ToString(), ids);
+        Assert.DoesNotContain(pub.ToString(), ids);
+        Assert.DoesNotContain(internalDoc.ToString(), ids);
+    }
+
+    [Fact]
     public async Task Scope_trash_lists_what_i_deleted_and_an_admin_sees_everyones()
     {
         var (owner, brd) = await Org(_factory);
