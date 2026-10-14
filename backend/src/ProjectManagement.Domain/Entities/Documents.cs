@@ -179,6 +179,30 @@ public class DocumentFile : TenantEntity, ITenantScoped
     public int KeyVersion { get; set; }
 }
 
+/// <summary>
+/// When a person last opened a document: one row per (document, person) pair, upserted on read and debounced (see
+/// <see cref="Application.Features.Documents.DocumentService.ViewThrottleMinutes"/>) so a refetch within a few minutes never writes again.
+/// Powers the "Recently viewed" list; per-viewer, not a single timestamp on the document, since two people open the same document at different times.
+/// </summary>
+public class DocumentView : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTime ViewedAt { get; set; }
+}
+
+/// <summary>
+/// A comment on a document: a running conversation anyone who may open the document can read and add to. Distinct from an
+/// <see cref="ApprovalDecision"/>'s comment, which belongs to one reviewer's decision on one approval step, not to the document as a whole.
+/// </summary>
+public class DocumentComment : TenantEntity, ITenantScoped
+{
+    public Guid DocumentId { get; set; }
+    public Guid UserId { get; set; }
+    public string Body { get; set; } = "";
+    public DateTime? EditedAt { get; set; }
+}
+
 /// <summary>One entry of a document type's template (what a new document starts with).</summary>
 public sealed record SectionTemplate(string Key, string Title, SectionKind Kind, string? Hint = null, string[]? Columns = null);
 

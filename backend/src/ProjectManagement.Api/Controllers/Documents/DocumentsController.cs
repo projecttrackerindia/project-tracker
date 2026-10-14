@@ -33,14 +33,19 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
 
     [HttpGet("documents")]
     public async Task<IActionResult> List([FromQuery] Guid? projectId, [FromQuery] Guid? teamId, [FromQuery] Guid? typeId, [FromQuery] DocumentStatus? status,
-        [FromQuery] Guid? ownerId, [FromQuery] string? tag, [FromQuery] string? q, [FromQuery] bool? general, [FromQuery] string? cursor, [FromQuery] int? limit, CancellationToken ct) =>
-        Ok(await documents.ListAsync(new DocumentFilter(projectId, teamId, typeId, status, ownerId, tag, q, general), cursor, limit, ct));
+        [FromQuery] Guid? ownerId, [FromQuery] string? tag, [FromQuery] string? q, [FromQuery] bool? general, [FromQuery] string? scope, [FromQuery] string? cursor, [FromQuery] int? limit, CancellationToken ct) =>
+        Ok(await documents.ListAsync(new DocumentFilter(projectId, teamId, typeId, status, ownerId, tag, q, general, scope), cursor, limit, ct));
 
     [HttpPost("documents")]
     public async Task<IActionResult> Create([FromBody] CreateDocumentRequest req, CancellationToken ct) => Created(await documents.CreateAsync(req, ct));
 
     [HttpGet("documents/{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await documents.GetAsync(id, ct));
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+    {
+        var dto = await documents.GetAsync(id, ct);
+        await documents.TouchViewAsync(id, ct);   // after the read succeeds; never allowed to turn a good read into a failed request
+        return Ok(dto);
+    }
 
     [HttpPut("documents/{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateDocumentRequest req, CancellationToken ct) => Ok(await documents.UpdateAsync(id, req, ct));

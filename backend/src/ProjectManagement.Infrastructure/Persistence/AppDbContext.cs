@@ -48,6 +48,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ApiSnapshot> ApiSnapshots => Set<ApiSnapshot>();
     public DbSet<SensitiveValue> SensitiveValues => Set<SensitiveValue>();
     public DbSet<DocumentKey> DocumentKeys => Set<DocumentKey>();
+    public DbSet<DocumentView> DocumentViews => Set<DocumentView>();
+    public DbSet<DocumentComment> DocumentComments => Set<DocumentComment>();
     public DbSet<StepUpGrant> StepUpGrants => Set<StepUpGrant>();
     public DbSet<EndpointRevision> EndpointRevisions => Set<EndpointRevision>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();

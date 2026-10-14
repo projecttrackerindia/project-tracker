@@ -80,6 +80,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAccessRequestService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentTraceService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAuditService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentCommentService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GoogleCalendarAuthService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalEmailService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalEmailRewriteService>();

@@ -2454,6 +2454,50 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("DocumentApprovals");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("TenantId", "DocumentId", "CreatedAt");
+
+                    b.ToTable("DocumentComments");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2951,6 +2995,48 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "DocumentId", "Major", "Minor");
 
                     b.ToTable("DocumentVersions");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ViewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("TenantId", "DocumentId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId", "ViewedAt");
+
+                    b.ToTable("DocumentViews");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DueDateChange", b =>
@@ -9474,6 +9560,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentComment", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentFile", b =>
                 {
                     b.HasOne("ProjectManagement.Domain.Entities.Document", null)
@@ -9529,6 +9624,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentVersion", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentView", b =>
                 {
                     b.HasOne("ProjectManagement.Domain.Entities.Document", null)
                         .WithMany()

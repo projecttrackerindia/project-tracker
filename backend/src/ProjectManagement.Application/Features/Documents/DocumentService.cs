@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
@@ -26,15 +27,20 @@ public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId =
 public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility, IReadOnlyList<string>? Tags, Guid? OwnerId, int Revision, Guid? TeamId = null,
     DocumentClassification? Classification = null);
 public record SaveSectionsRequest(int Revision, IReadOnlyList<SectionInput> Sections);
-public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? TypeId = null, DocumentStatus? Status = null, Guid? OwnerId = null, string? Tag = null, string? Q = null, bool? General = null);
+public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? TypeId = null, DocumentStatus? Status = null, Guid? OwnerId = null, string? Tag = null, string? Q = null, bool? General = null,
+    string? Scope = null);
 
 /// <summary>
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer, ILogger<DocumentService> logger)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
+    /// <summary>A view is touched again only once it is this old: a person re-opening (or merely refetching) the same document seconds apart never writes twice.</summary>
+    public const int ViewThrottleMinutes = 5;
+    /// <summary>How many recently-viewed documents the "Recently viewed" scope looks back over and returns at most.</summary>
+    public const int RecentLimit = 50;
 
     // ------------------------------------------------------------------ types
 
@@ -72,6 +78,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<DocumentPageDto> ListAsync(DocumentFilter f, string? cursor, int? limit, CancellationToken ct = default)
     {
         ctx.RequireTenantId();
+        if (string.Equals(f.Scope, "recent", StringComparison.OrdinalIgnoreCase)) return await ListRecentAsync(limit, ct);
         var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
         var q = Base();
         if (f.ProjectId is { } p) q = q.Where(d => d.ProjectId == p);
@@ -92,6 +99,48 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var items = await ToItemsAsync(rows, ct);
         var next = more ? Cursor.Make(rows[^1].UpdatedAt ?? rows[^1].CreatedAt, rows[^1].Id) : null;
         return new DocumentPageDto(items, next, total);
+    }
+
+    /// <summary>
+    /// The documents this person has recently opened, newest view first, at most <see cref="RecentLimit"/> of them. A document whose access was
+    /// revoked since it was viewed simply does not come back: <see cref="Base"/> carries the same visibility query filter every other list uses.
+    /// </summary>
+    private async Task<DocumentPageDto> ListRecentAsync(int? limit, CancellationToken ct)
+    {
+        var uid = ctx.RequireUserId();
+        var size = Math.Clamp(limit ?? RecentLimit, 1, RecentLimit);
+        var recentIds = await db.DocumentViews.AsNoTracking().Where(v => v.UserId == uid).OrderByDescending(v => v.ViewedAt).Select(v => v.DocumentId).Take(size).ToListAsync(ct);
+        if (recentIds.Count == 0) return new DocumentPageDto([], null, 0);
+        var docs = await Base().Where(d => recentIds.Contains(d.Id)).ToListAsync(ct);
+        var byId = docs.ToDictionary(d => d.Id);
+        var ordered = recentIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        var items = await ToItemsAsync(ordered, ct);
+        return new DocumentPageDto(items, null, items.Count);
+    }
+
+    /// <summary>
+    /// Records that the signed-in person opened this document, for "Recently viewed" - upserted and debounced (see <see cref="ViewThrottleMinutes"/>)
+    /// so a screen that refetches every few seconds does not write on every poll. Called once per GET of the document, after it has already loaded;
+    /// a failure here is swallowed (logged, never thrown) so it can never turn a successful read into a failed request.
+    /// </summary>
+    public async Task TouchViewAsync(Guid documentId, CancellationToken ct = default)
+    {
+        try
+        {
+            if (ctx.UserId is not { } uid) return;
+            var tid = ctx.RequireTenantId();
+            var now = clock.Now;
+            var row = await db.DocumentViews.FirstOrDefaultAsync(v => v.DocumentId == documentId && v.UserId == uid, ct);
+            if (row is null)
+                db.DocumentViews.Add(new DocumentView { TenantId = tid, DocumentId = documentId, UserId = uid, ViewedAt = now, CreatedAt = now, CreatedBy = uid });
+            else if (now - row.ViewedAt > TimeSpan.FromMinutes(ViewThrottleMinutes)) { row.ViewedAt = now; row.UpdatedAt = now; row.UpdatedBy = uid; }
+            else return;   // seen recently enough: nothing to write
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not record a recently-viewed row for document {DocumentId}.", documentId);
+        }
     }
 
     /// <summary>The visible documents among <paramref name="ids"/>, newest first (the ones the person cannot open are simply missing).</summary>
