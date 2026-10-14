@@ -104,7 +104,7 @@ export function DocumentsControlCenter() {
 
       <div className="cc-kpi-grid" aria-label="Key numbers">
         {kpis.map((k) => (
-          <div className={`cc-kpi${k.warn ? ' warn' : ''}`} style={{ '--accent': k.accent } as CSSProperties} key={k.label}>
+          <div className={`cc-kpi doc-accent-card${k.warn ? ' warn' : ''}`} style={{ '--accent': k.accent } as CSSProperties} key={k.label}>
             <span className="cc-kpi-label">{k.label}</span>
             <span className="cc-kpi-value">{k.value.toLocaleString()}</span>
           </div>

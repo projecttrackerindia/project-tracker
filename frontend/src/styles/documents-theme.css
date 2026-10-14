@@ -219,13 +219,20 @@
 .cc-hero-stat b { display: block; font: 700 32px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .cc-hero-stat span { display: block; margin: 2px 0 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
 
-/* ---- KPI card grid: 3px left-accent bar (DocTracker's tile signature), uppercase label, mono value ---- */
+/* ---- the 3px left-accent-bar card: DocTracker's one signature tile/card treatment, shared by the KPI grid
+   (below) AND Stage 3's detail-page right-rail cards (see "DOCUMENT PAGE" section further down) - one base
+   class instead of two copies of the same `::before` rule. `--accent` defaults to `--primary` when a card
+   doesn't set one (e.g. a plain KPI tile); cards that need a specific hue set `--accent` inline (KPI grid,
+   `DocumentsControlCenter.tsx`) or via a `.doc-accent-<name>` modifier class (right rail, see below). */
+.doc-accent-card { position: relative; overflow: hidden; }
+.doc-accent-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent, var(--primary)); z-index: 1; }
+
+/* ---- KPI card grid: uppercase label, mono value, on top of the shared accent-card treatment above ---- */
 .cc-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .cc-kpi {
-  position: relative; padding: 13px 16px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
-  box-shadow: var(--hl), var(--shadow-sm); overflow: hidden;
+  padding: 13px 16px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--hl), var(--shadow-sm);
 }
-.cc-kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent, var(--primary)); }
 .cc-kpi-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
 .cc-kpi-value { display: block; font: 700 23px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .cc-kpi.warn .cc-kpi-value { color: var(--accent); }
@@ -282,3 +289,68 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
   .cc-hero-stat { width: 100%; text-align: left; }
   table.data-table th:nth-child(2), table.data-table td:nth-child(2) { display: none; }  /* Type column: title's own TypeChip already shows it */
 }
+
+/* ============================================================
+   DOCUMENT PAGE — meta-chip header row + accent-card right rail,
+   DocTracker's detail-page pattern (`DocumentPage.tsx` and the
+   RequirementsCard/LinkedWork/DocumentSecrets/DocumentFiles/
+   CommentsCard/ActivityCard components it renders in `.doc-side`).
+   ============================================================ */
+
+/* ---- header meta-chip row: `.doc-head-sub` already lays its children out as a wrapping inline row
+   (documents.css); this just gives the plain-text items (key, type, version) DocTracker's small rounded
+   pill look. `DocStatusBadge`/`ClassificationBadge`/`.doc-dirty` stay as their own existing pill-badge
+   components - they are already "meta chips" in everything but name, just with a status hue instead of a
+   neutral one, so restyling them too would mean forking `.badge`/`.doc-dirty`, not reusing it. */
+.doc-scope .doc-head-sub { gap: 8px; }
+.doc-scope .doc-meta-chip {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 99px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  font-size: 11.5px; font-weight: 600; letter-spacing: .01em;
+}
+/* `.doc-key` (documents.css, NOT scoped) already sets the mono face + `--text-3` colour; stacking
+   `.doc-meta-chip` on the same span just wraps that existing look in the pill without overriding it. */
+.doc-scope .doc-key.doc-meta-chip { color: var(--text-3); }
+
+/* ---- right-rail cards: the shared `.doc-accent-card` bar (defined above, next to `.cc-kpi`) applied to
+   `.doc-side-card`'s existing `.card` box. Six cards, six roles - rather than one flat colour, each gets the
+   hue its OWN content already uses elsewhere in this app, so the bar reads as information, not decoration:
+   Requirements mirrors its own coverage meter (success/green), Secrets mirrors its own danger-toned reveal UI,
+   Files gets info/blue (a neutral "attachment" hue, nothing else in the rail claims it), Comments gets purple
+   (distinct from every status hue so a comment never reads as a state), Activity is neutral text-3 (a log, not
+   a status), and About/Linked work - which have no status colour of their own - get the plain primary accent. */
+.doc-scope .doc-accent-primary { --accent: var(--primary); }
+.doc-scope .doc-accent-success { --accent: var(--success); }
+.doc-scope .doc-accent-danger { --accent: var(--danger); }
+.doc-scope .doc-accent-info { --accent: var(--info); }
+.doc-scope .doc-accent-purple { --accent: var(--purple); }
+.doc-scope .doc-accent-neutral { --accent: var(--text-3); }
+
+/* ---- accordion caret: Activity and Comments cards get a collapse toggle next to their own `<h3>` (a new
+   `.doc-acc-head-left` wrapper inside the existing `.card-head`, so `.card-head`'s own `justify-content:
+   space-between` still only sees two flex children - the label group and the "All" button - exactly as
+   before). Applied ONLY to these two read-only feed cards, per the plan - never to the section editor. */
+.doc-scope .doc-acc-head-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.doc-scope .doc-acc-caret {
+  all: unset; display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-sm);
+  color: var(--text-3); cursor: pointer; flex: none; transition: background .15s, color .15s;
+}
+.doc-scope .doc-acc-caret svg { transition: transform .15s ease; }
+.doc-scope .doc-acc-caret:hover { background: var(--hover-bg); color: var(--text); }
+.doc-scope .doc-acc-caret[aria-expanded="false"] svg { transform: rotate(-90deg); }
+
+/* ---- known gap closure (see the file-header note): `.btn-primary`/`.btn-danger` paint hardcoded violet/rose
+   gradients in components.css, bypassing the token overrides above. The header's Save button is the one new,
+   prominent place Stage 3 renders `.btn-primary` inside `.doc-scope`, but the same literal is read by every
+   other `.btn-primary`/`.btn-danger` already rendered in this scope (Comment, Compare, secret-save buttons,
+   etc.), so this closes the gap for the whole scope at once rather than just the header. */
+.doc-scope .btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: var(--primary-text);
+  box-shadow: 0 8px 22px var(--primary-soft), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.doc-scope .btn-primary:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 12px 28px var(--primary-soft), inset 0 1px 0 rgba(255, 255, 255, .14); }
+.doc-scope .btn-danger {
+  background: linear-gradient(135deg, var(--danger), #fda4af); color: #fff;
+  box-shadow: 0 8px 22px var(--danger-soft), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.doc-scope .btn-danger:hover:not(:disabled) { filter: brightness(1.08); }

@@ -124,6 +124,7 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
   const id = detail.item.id;
   const q = useWsQuery(['documents', id, 'versions'], () => documentApi.versions(id));
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  const [verLimit, setVerLimit] = useState(8);
   const [a, setA] = useState(''); const [b, setB] = useState('');
   const items = q.data?.items ?? [];
   const published = items.find((v) => v.isCurrent);
@@ -149,11 +150,12 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
         <>
           {items.length <= 1 && !q.data?.publishedLabel && <p className="muted">Nothing has been published yet. Publish a version to start the history.</p>}
           <ul className="ver-list">
-            {items.map((v) => (
+            {items.slice(0, verLimit).map((v) => (
               <VersionRow key={v.id} v={v} canRestore={detail.can.edit} onView={() => setMode({ kind: 'view', id: v.id })} onRestore={() => doRestore(v)}
                 onCompare={() => setMode(against(v))} />
             ))}
           </ul>
+          {items.length > verLimit && <button className="btn btn-ghost btn-sm" onClick={() => setVerLimit((n) => n + 8)}>Show more</button>}
           {items.length >= 2 && (
             <div className="ver-pick">
               <b>Compare any two</b>

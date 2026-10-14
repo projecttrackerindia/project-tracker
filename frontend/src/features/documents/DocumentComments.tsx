@@ -60,18 +60,27 @@ export function CommentsModal({ id, title, onClose }: { id: string; title: strin
 
 export function CommentsCard({ id, title }: { id: string; title: string }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const q = useWsQuery(['documents', id, 'comments'], () => documentApi.comments(id));
   const count = q.data?.length ?? 0;
   return (
-    <div className="card doc-side-card">
-      <div className="card-head"><div><h3>Comments{count > 0 && <span className="doc-count">{count}</span>}</h3></div><button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>All</button></div>
-      <div className="card-body">
-        {count === 0 ? <p className="muted">Nothing said yet.</p> : (
-          <ul className="act mini">
-            {(q.data ?? []).slice(-3).reverse().map((c) => <li key={c.id}><div><span>{c.user.name}: {c.body.length > 80 ? `${c.body.slice(0, 80)}…` : c.body}</span><small title={formatDateTime(c.createdAt)}>{timeAgo(c.createdAt)}</small></div></li>)}
-          </ul>
-        )}
+    <div className="card doc-side-card doc-accent-card doc-accent-purple">
+      <div className="card-head">
+        <div className="doc-acc-head-left">
+          <button type="button" className="doc-acc-caret" aria-expanded={!collapsed} aria-label={collapsed ? 'Expand comments' : 'Collapse comments'} onClick={() => setCollapsed((c) => !c)}><Icon name="chevronD" size={14} /></button>
+          <h3>Comments{count > 0 && <span className="doc-count">{count}</span>}</h3>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>All</button>
       </div>
+      {!collapsed && (
+        <div className="card-body">
+          {count === 0 ? <p className="muted">Nothing said yet.</p> : (
+            <ul className="act mini">
+              {(q.data ?? []).slice(-3).reverse().map((c) => <li key={c.id}><div><span>{c.user.name}: {c.body.length > 80 ? `${c.body.slice(0, 80)}…` : c.body}</span><small title={formatDateTime(c.createdAt)}>{timeAgo(c.createdAt)}</small></div></li>)}
+            </ul>
+          )}
+        </div>
+      )}
       {open && <CommentsModal id={id} title={title} onClose={() => setOpen(false)} />}
     </div>
   );

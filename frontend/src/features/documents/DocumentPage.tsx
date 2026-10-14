@@ -169,9 +169,9 @@ export function DocumentPage() {
         <div className="doc-head-main">
           <h1>{d.title}</h1>
           <div className="doc-head-sub">
-            <span className="doc-key">{d.key}</span><span>{d.typeName}</span><DocStatusBadge status={d.status} />
+            <span className="doc-key doc-meta-chip">{d.key}</span><span className="doc-meta-chip">{d.typeName}</span><DocStatusBadge status={d.status} />
             {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
-            <span className="muted">Version {detail.versionLabel}</span>
+            <span className="doc-meta-chip">Version {detail.versionLabel}</span>
             {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="doc-dirty" title="The draft differs from the published version">Not published yet</span>}
             {dirty && <span className="doc-dirty">Unsaved changes</span>}
           </div>
@@ -237,7 +237,7 @@ export function DocumentPage() {
           </DocumentIdContext.Provider>
         </main>
         <aside className="doc-side">
-          <div className="card doc-side-card">
+          <div className="card doc-side-card doc-accent-card doc-accent-primary">
             <div className="card-head"><div><h3>About</h3></div></div>
             <div className="card-body">
               <dl className="doc-facts">

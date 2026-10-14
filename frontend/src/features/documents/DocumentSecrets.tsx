@@ -61,7 +61,7 @@ export function DocumentSecrets({ documentId, canEdit }: { documentId: string; c
   const d = q.data;
   const items = d?.items ?? [];
   return (
-    <div className="card doc-side-card">
+    <div className="card doc-side-card doc-accent-card doc-accent-danger">
       <div className="card-head">
         <div><h3>Secrets</h3><p>Keys and passwords, kept encrypted and hidden.</p></div>
         {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> Add</button>}
