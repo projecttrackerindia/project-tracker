@@ -303,14 +303,39 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
    components - they are already "meta chips" in everything but name, just with a status hue instead of a
    neutral one, so restyling them too would mean forking `.badge`/`.doc-dirty`, not reusing it. */
 .doc-scope .doc-head-sub { gap: 8px; }
+/* Matches `.badge`'s own box model (components.css: padding 3px 9px, line-height 1.6, font-size 11.5px)
+   rather than a fixed height, so `.doc-meta-chip` sits on the exact same baseline as the `DocStatusBadge`/
+   `ClassificationBadge`/`.doc-dirty` pills beside it in `.doc-head-sub` - one pill family, not two. */
 .doc-scope .doc-meta-chip {
-  display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 99px;
+  display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 99px; line-height: 1.6;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
   font-size: 11.5px; font-weight: 600; letter-spacing: .01em;
 }
 /* `.doc-key` (documents.css, NOT scoped) already sets the mono face + `--text-3` colour; stacking
    `.doc-meta-chip` on the same span just wraps that existing look in the pill without overriding it. */
 .doc-scope .doc-key.doc-meta-chip { color: var(--text-3); }
+
+/* ---- the Document / API reference tab strip (`.seg.doc-tabs`): `.seg button.on` (components.css) paints a
+   hardcoded light violet gradient meant for the app's light/lavender surfaces - inside this dark scope it
+   renders as a pale, out-of-place pill instead of a selected tab. Re-pointed at this scope's real tokens,
+   same technique as the `.btn-primary`/`.progress-bar` gap closures below. */
+.doc-scope .seg { background: var(--surface-2); border-color: var(--border); }
+.doc-scope .seg button { color: var(--text-2); }
+.doc-scope .seg button:hover { color: var(--text); background: var(--hover-bg); }
+.doc-scope .seg button.active, .doc-scope .seg button.on {
+  background: var(--primary-soft); color: var(--primary); box-shadow: var(--hl), inset 0 0 0 1px var(--border-strong);
+}
+
+/* ---- the section outline rail (`.doc-outline`, documents.css): a bare bordered list by default, which reads
+   as unstyled next to every other panel here (hero, KPI cards, accent cards) that has its own surface/border/
+   shadow. Giving it the same card treatment folds it into the same visual family instead of looking orphaned. */
+.doc-scope .doc-outline {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--hl), var(--shadow-sm); padding: 10px;
+}
+.doc-scope .doc-outline ul { border-left: none; }
+.doc-scope .doc-outline a { border-radius: var(--radius-sm); }
+.doc-scope .doc-outline a:hover { background: var(--hover-bg); }
 
 /* ---- right-rail cards: the shared `.doc-accent-card` bar (defined above, next to `.cc-kpi`) applied to
    `.doc-side-card`'s existing `.card` box. Six cards, six roles - rather than one flat colour, each gets the
