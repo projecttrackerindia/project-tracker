@@ -59,6 +59,8 @@ public interface IAppDbContext
     DbSet<EndpointRevision> EndpointRevisions { get; }
     DbSet<SensitiveValue> SensitiveValues { get; }
     DbSet<DocumentKey> DocumentKeys { get; }
+    DbSet<DocumentView> DocumentViews { get; }
+    DbSet<DocumentComment> DocumentComments { get; }
     /// <summary>Inside a transaction, lets the retention job delete audit rows (PostgreSQL only; elsewhere nothing to do). Without it the database refuses every update and delete of an audit row.</summary>
     Task AllowAuditPurgeAsync(CancellationToken ct);
     DbSet<StepUpGrant> StepUpGrants { get; }

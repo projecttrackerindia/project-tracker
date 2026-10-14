@@ -568,6 +568,8 @@ export interface InvoiceSeller { legalName: string; address: string; taxId: stri
 // ---- Documents (BRDs, API documentation, test plans ...)
 export type DocumentStatus = 'Draft' | 'InReview' | 'ChangesRequested' | 'Approved' | 'Published' | 'Archived';
 export type DocumentVisibility = 'Project' | 'Team' | 'Organization' | 'Private';
+/** How sensitive a document's own content is, independent of who may see it (DocumentVisibility). Confidential/Restricted documents get their files encrypted at rest. */
+export type DocumentClassification = 'Public' | 'Internal' | 'Confidential' | 'Restricted';
 export type SectionKind = 'RichText' | 'Table';
 export type LinkTarget = 'Project' | 'Task' | 'Issue' | 'WorkItem' | 'Sprint';
 export type LinkRelation = 'Describes' | 'Implements' | 'Verifies' | 'References' | 'DependsOn';
@@ -576,7 +578,8 @@ export interface DocumentType { id: string; code: string; name: string; descript
 export interface DocumentItem {
   id: string; key: string; number: number; title: string; typeId: string; typeCode: string; typeName: string; typeColor: string; typeIcon: string;
   projectId: string | null; projectKey: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
-  owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
+  owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; classification: DocumentClassification; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
+  versionLabel: string; sharedCount: number;
 }
 export interface DocumentPage { items: DocumentItem[]; nextCursor: string | null; total: number | null }
 export interface DocumentSection { key: string; title: string; kind: SectionKind; sortOrder: number; content: string }
@@ -584,7 +587,7 @@ export interface DocumentDetail {
   item: DocumentItem; revision: number; versionLabel: string; sections: DocumentSection[]; can: { edit: boolean; delete: boolean; link: boolean; share: boolean; publish: boolean };
   publishedLabel: string | null; hasUnpublishedChanges: boolean; viewingPublished: boolean;
 }
-export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; cursor?: string; limit?: number }
+export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; scope?: string; cursor?: string; limit?: number }
 export interface LinkedItem {
   linkId: string; targetType: LinkTarget; targetId: string; relation: LinkRelation; restricted: boolean; key: string; title: string; status: string;
   done: boolean; dueDate: string | null; overdue: boolean; projectId: string | null; assignee: string | null; requirementId?: string | null;
@@ -652,6 +655,7 @@ export interface CoverageItem { linkId: string; targetType: LinkTarget; targetId
 export interface CoverageRow { requirement: Requirement; state: 'Covered' | 'NoTask' | 'NoTest' | 'Failing'; implementing: CoverageItem[]; verifying: CoverageItem[] }
 export interface Coverage { rows: CoverageRow[]; requirements: number; covered: number; withoutTask: number; withoutTest: number; failingTests: number; workWithoutTest: number; restricted: number }
 export interface DocActivity { id: string; at: string; action: string; summary: string; by: UserRef | null }
+export interface DocComment { id: string; user: UserRef; body: string; createdAt: string; editedAt: string | null; mine: boolean }
 export interface DocAuditEntry { id: string; at: string; action: string; by: UserRef | null; ip: string | null; device: string | null; oldValue: string | null; newValue: string | null }
 export interface DocAuditPage { items: DocAuditEntry[]; nextCursor: string | null }
 

@@ -17,7 +17,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.20")
+                .HasAnnotation("ProductVersion", "9.0.21")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -2257,6 +2257,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("Classification")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2451,6 +2454,50 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("DocumentApprovals");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("TenantId", "DocumentId", "CreatedAt");
+
+                    b.ToTable("DocumentComments");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2471,10 +2518,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("Encrypted")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<int>("KeyVersion")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
@@ -2942,6 +2995,48 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "DocumentId", "Major", "Minor");
 
                     b.ToTable("DocumentVersions");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ViewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("TenantId", "DocumentId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId", "ViewedAt");
+
+                    b.ToTable("DocumentViews");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DueDateChange", b =>
@@ -9465,6 +9560,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentComment", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentFile", b =>
                 {
                     b.HasOne("ProjectManagement.Domain.Entities.Document", null)
@@ -9520,6 +9624,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentVersion", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentView", b =>
                 {
                     b.HasOne("ProjectManagement.Domain.Entities.Document", null)
                         .WithMany()

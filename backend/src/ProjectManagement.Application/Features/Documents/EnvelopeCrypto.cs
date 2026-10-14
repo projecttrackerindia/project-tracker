@@ -82,4 +82,24 @@ public class EnvelopeCrypto(IAppDbContext db, ISecretProtector protector, AppClo
         gcm.Decrypt(all.AsSpan(0, 12), all.AsSpan(28), all.AsSpan(12, 16), plain, Encoding.UTF8.GetBytes(aad));
         return Encoding.UTF8.GetString(plain);
     }
+
+    /// <summary>Byte-native sibling of <see cref="Encrypt"/>/<see cref="Decrypt"/> for binary content (file bytes) - same AES-256-GCM, fresh nonce
+    /// per call, AAD-bound layout (nonce|tag|cipher), just without the base64/UTF-8 string round-trip a document's file bytes don't need.</summary>
+    public byte[] EncryptBytes(DataKey key, byte[] data, string aad)
+    {
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var cipher = new byte[data.Length]; var tag = new byte[16];
+        using var gcm = new AesGcm(key.Key, 16);
+        gcm.Encrypt(nonce, data, cipher, tag, Encoding.UTF8.GetBytes(aad));
+        return [.. nonce, .. tag, .. cipher];
+    }
+
+    public byte[] DecryptBytes(DataKey key, byte[] all, string aad)
+    {
+        if (all.Length < 28) throw new CryptographicException("Too short.");
+        var plain = new byte[all.Length - 28];
+        using var gcm = new AesGcm(key.Key, 16);
+        gcm.Decrypt(all.AsSpan(0, 12), all.AsSpan(28), all.AsSpan(12, 16), plain, Encoding.UTF8.GetBytes(aad));
+        return plain;
+    }
 }

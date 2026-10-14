@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
@@ -15,25 +16,32 @@ public record DocumentTypeDto(Guid Id, string Code, string Name, string? Descrip
 public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false, bool Publish = false);
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
-    IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount);
+    IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount, DocumentClassification Classification = DocumentClassification.Internal,
+    string VersionLabel = "Draft", int SharedCount = 0);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
 public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false);
 
 public record SectionInput(string Key, string? Content);
 public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId = null, Guid? TeamId = null, DocumentVisibility? Visibility = null,
-    IReadOnlyList<string>? Tags = null, IReadOnlyList<SectionInput>? Sections = null);
-public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility, IReadOnlyList<string>? Tags, Guid? OwnerId, int Revision, Guid? TeamId = null);
+    IReadOnlyList<string>? Tags = null, IReadOnlyList<SectionInput>? Sections = null, DocumentClassification? Classification = null);
+public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility, IReadOnlyList<string>? Tags, Guid? OwnerId, int Revision, Guid? TeamId = null,
+    DocumentClassification? Classification = null);
 public record SaveSectionsRequest(int Revision, IReadOnlyList<SectionInput> Sections);
-public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? TypeId = null, DocumentStatus? Status = null, Guid? OwnerId = null, string? Tag = null, string? Q = null, bool? General = null);
+public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? TypeId = null, DocumentStatus? Status = null, Guid? OwnerId = null, string? Tag = null, string? Q = null, bool? General = null,
+    string? Scope = null, DocumentClassification? Classification = null);
 
 /// <summary>
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer, ILogger<DocumentService> logger)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
+    /// <summary>A view is touched again only once it is this old: a person re-opening (or merely refetching) the same document seconds apart never writes twice.</summary>
+    public const int ViewThrottleMinutes = 5;
+    /// <summary>How many recently-viewed documents the "Recently viewed" scope looks back over and returns at most.</summary>
+    public const int RecentLimit = 50;
 
     // ------------------------------------------------------------------ types
 
@@ -71,6 +79,9 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<DocumentPageDto> ListAsync(DocumentFilter f, string? cursor, int? limit, CancellationToken ct = default)
     {
         ctx.RequireTenantId();
+        if (string.Equals(f.Scope, "recent", StringComparison.OrdinalIgnoreCase)) return await ListRecentAsync(limit, ct);
+        if (string.Equals(f.Scope, "trash", StringComparison.OrdinalIgnoreCase)) return await ListTrashAsync(limit, ct);
+        if (string.Equals(f.Scope, "shared", StringComparison.OrdinalIgnoreCase)) return await ListSharedWithMeAsync(limit, ct);
         var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
         var q = Base();
         if (f.ProjectId is { } p) q = q.Where(d => d.ProjectId == p);
@@ -79,6 +90,10 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (f.TypeId is { } ty) q = q.Where(d => d.TypeId == ty);
         if (f.Status is { } s) q = q.Where(d => d.Status == s);
         if (f.OwnerId is { } o) q = q.Where(d => d.OwnerId == o);
+        if (f.Classification is { } cl) q = q.Where(d => d.Classification == cl);
+        // "Restricted documents": both sensitive tiers (Confidential and Restricted), not literally just the Restricted enum value - a
+        // single-classification filter already covers the narrower case, this scope is the nav section's broader "sensitive" meaning.
+        if (string.Equals(f.Scope, "restricted", StringComparison.OrdinalIgnoreCase)) q = q.Where(d => d.Classification == DocumentClassification.Confidential || d.Classification == DocumentClassification.Restricted);
         if (!string.IsNullOrWhiteSpace(f.Tag)) { var tag = f.Tag.Trim().ToLowerInvariant(); q = q.Where(d => db.DocumentTags.Any(x => x.DocumentId == d.Id && x.Tag == tag)); }
         if (!string.IsNullOrWhiteSpace(f.Q)) q = DocumentSearchIndexer.Match(q, db, f.Q);
         int? total = cursor is null ? await q.CountAsync(ct) : null;
@@ -91,6 +106,89 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var items = await ToItemsAsync(rows, ct);
         var next = more ? Cursor.Make(rows[^1].UpdatedAt ?? rows[^1].CreatedAt, rows[^1].Id) : null;
         return new DocumentPageDto(items, next, total);
+    }
+
+    /// <summary>
+    /// The documents this person has recently opened, newest view first, at most <see cref="RecentLimit"/> of them. A document whose access was
+    /// revoked since it was viewed simply does not come back: <see cref="Base"/> carries the same visibility query filter every other list uses.
+    /// </summary>
+    private async Task<DocumentPageDto> ListRecentAsync(int? limit, CancellationToken ct)
+    {
+        var uid = ctx.RequireUserId();
+        var size = Math.Clamp(limit ?? RecentLimit, 1, RecentLimit);
+        var recentIds = await db.DocumentViews.AsNoTracking().Where(v => v.UserId == uid).OrderByDescending(v => v.ViewedAt).Select(v => v.DocumentId).Take(size).ToListAsync(ct);
+        if (recentIds.Count == 0) return new DocumentPageDto([], null, 0);
+        var docs = await Base().Where(d => recentIds.Contains(d.Id)).ToListAsync(ct);
+        var byId = docs.ToDictionary(d => d.Id);
+        var ordered = recentIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        var items = await ToItemsAsync(ordered, ct);
+        return new DocumentPageDto(items, null, items.Count);
+    }
+
+    /// <summary>
+    /// Documents in the trash this person may actually restore: deleted within the last <see cref="RecoveryDays"/> days, and either deleted by
+    /// them or (for an Owner/Admin) deleted by anyone - the exact same rule <see cref="RestoreAsync"/> itself enforces, so nothing shows up here
+    /// that a Restore click would then be refused for. Bypasses the normal visibility filter on purpose (via IgnoreQueryFilters): a deleted
+    /// document's visibility no longer matters, only who may bring it back does.
+    /// </summary>
+    private async Task<DocumentPageDto> ListTrashAsync(int? limit, CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId();
+        var uid = ctx.RequireUserId();
+        var admin = ctx.Role is TenantRole.Owner or TenantRole.Admin;
+        var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
+        var cutoff = clock.Now.AddDays(-RecoveryDays);
+        var q = db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == tid && d.IsDeleted && d.DeletedAt >= cutoff);
+        if (!admin) q = q.Where(d => d.DeletedBy == uid);
+        var rows = await q.OrderByDescending(d => d.DeletedAt).Take(size).ToListAsync(ct);
+        var items = await ToItemsAsync(rows, ct);
+        return new DocumentPageDto(items, null, items.Count);
+    }
+
+    /// <summary>
+    /// Documents explicitly shared with this person via a <see cref="DocumentGrant"/> (to them directly, or to a team they belong to) -
+    /// excluding ones they own (ownership is not "being shared with"), deny-grants, and expired grants. Still goes through the normal visibility
+    /// filter (<see cref="Base"/>) as a final check, so a grant that is somehow stale relative to the document's current state never leaks it.
+    /// </summary>
+    private async Task<DocumentPageDto> ListSharedWithMeAsync(int? limit, CancellationToken ct)
+    {
+        var uid = ctx.RequireUserId();
+        var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
+        var now = clock.Now;
+        var myTeamIds = await db.TeamMembers.AsNoTracking().Where(m => m.UserId == uid).Select(m => m.TeamId).ToListAsync(ct);
+        var grantedIds = await db.DocumentGrants.AsNoTracking()
+            .Where(g => !g.Deny && (g.ExpiresAt == null || g.ExpiresAt > now)
+                && ((g.PrincipalType == GrantPrincipal.User && g.PrincipalId == uid) || (g.PrincipalType == GrantPrincipal.Team && myTeamIds.Contains(g.PrincipalId))))
+            .Select(g => g.DocumentId).Distinct().ToListAsync(ct);
+        if (grantedIds.Count == 0) return new DocumentPageDto([], null, 0);
+        var rows = await Base().Where(d => grantedIds.Contains(d.Id) && d.OwnerId != uid).OrderByDescending(d => d.UpdatedAt).Take(size).ToListAsync(ct);
+        var items = await ToItemsAsync(rows, ct);
+        return new DocumentPageDto(items, null, items.Count);
+    }
+
+    /// <summary>
+    /// Records that the signed-in person opened this document, for "Recently viewed" - upserted and debounced (see <see cref="ViewThrottleMinutes"/>)
+    /// so a screen that refetches every few seconds does not write on every poll. Called once per GET of the document, after it has already loaded;
+    /// a failure here is swallowed (logged, never thrown) so it can never turn a successful read into a failed request.
+    /// </summary>
+    public async Task TouchViewAsync(Guid documentId, CancellationToken ct = default)
+    {
+        try
+        {
+            if (ctx.UserId is not { } uid) return;
+            var tid = ctx.RequireTenantId();
+            var now = clock.Now;
+            var row = await db.DocumentViews.FirstOrDefaultAsync(v => v.DocumentId == documentId && v.UserId == uid, ct);
+            if (row is null)
+                db.DocumentViews.Add(new DocumentView { TenantId = tid, DocumentId = documentId, UserId = uid, ViewedAt = now, CreatedAt = now, CreatedBy = uid });
+            else if (now - row.ViewedAt > TimeSpan.FromMinutes(ViewThrottleMinutes)) { row.ViewedAt = now; row.UpdatedAt = now; row.UpdatedBy = uid; }
+            else return;   // seen recently enough: nothing to write
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not record a recently-viewed row for document {DocumentId}.", documentId);
+        }
     }
 
     /// <summary>The visible documents among <paramref name="ids"/>, newest first (the ones the person cannot open are simply missing).</summary>
@@ -116,15 +214,25 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             .GroupBy(x => x.DocumentId).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(x => x.Tag).OrderBy(x => x).ToList());
         var linked = await db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId)).GroupBy(l => l.DocumentId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
 
+        // The label a reader would actually see: the PUBLISHED version's "major.minor" if there is one, else literally "Draft" - matching
+        // GetAsync's own rule exactly. The draft version row's own (always 0.0) label is never shown; it isn't a version anyone reads yet.
+        var versionIds = rows.Where(r => r.PublishedVersionId != null).Select(r => r.PublishedVersionId!.Value).Distinct().ToList();
+        var versions = await db.DocumentVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id)).Select(v => new { v.Id, v.Major, v.Minor }).ToDictionaryAsync(v => v.Id, ct);
+        var now = clock.Now;
+        var sharedCounts = await db.DocumentGrants.AsNoTracking().Where(g => ids.Contains(g.DocumentId) && !g.Deny && (g.ExpiresAt == null || g.ExpiresAt > now))
+            .GroupBy(g => g.DocumentId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+
         return rows.Select(r =>
         {
             var ty = types.GetValueOrDefault(r.TypeId);
             projects.TryGetValue(r.ProjectId ?? Guid.Empty, out var pr);
             var teamId = r.TeamId ?? pr?.TeamId;
+            var versionLabel = r.PublishedVersionId is { } v && versions.TryGetValue(v, out var ver) ? DocumentVersionService.Label(ver.Major, ver.Minor) : "Draft";
             return new DocumentItemDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.TypeId, ty?.Code ?? "", ty?.Name ?? "Document", ty?.Color ?? "#8b5cf6", ty?.Icon ?? "file",
                 r.ProjectId, pr?.Key, pr?.Name, teamId, teamId is { } tid ? teams.GetValueOrDefault(tid) : null,
                 new UserRefDto(r.OwnerId, owners.GetValueOrDefault(r.OwnerId) ?? "Former member"), r.Status, r.Visibility,
-                tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id));
+                tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id), r.Classification,
+                versionLabel, sharedCounts.GetValueOrDefault(r.Id));
         }).ToList();
     }
 
@@ -177,12 +285,13 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         Project? project = null; Guid? teamId = req.TeamId;
         if (req.ProjectId is { } pid) { project = await access.GetProjectAsync(pid, ct); teamId = project.TeamId; }
         var visibility = await ResolveVisibilityAsync(req.Visibility, project, teamId, ct);
+        var classification = req.Classification ?? DocumentClassification.Internal;
 
         var now = clock.Now;
         var doc = new Document
         {
             TenantId = tid, Title = title, TypeId = type.Id, ProjectId = project?.Id, TeamId = project is null ? teamId : null, OwnerId = uid,
-            Visibility = visibility, Status = DocumentStatus.Draft, CreatedAt = now, UpdatedAt = now, CreatedBy = uid,
+            Visibility = visibility, Classification = classification, Status = DocumentStatus.Draft, CreatedAt = now, UpdatedAt = now, CreatedBy = uid,
             Number = await NextNumberAsync(tid, ct),
         };
         var version = new DocumentVersion { TenantId = tid, DocumentId = doc.Id, Major = 0, Minor = 0, IsDraft = true, CreatedAt = now, CreatedBy = uid };
@@ -202,7 +311,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         db.DocumentVersions.Add(version);
         foreach (var tag in CleanTags(req.Tags)) db.DocumentTags.Add(new DocumentTag { TenantId = tid, DocumentId = doc.Id, Tag = tag, CreatedAt = now });
         recorder.Activity("document.created", "Document", doc.Id, $"Created {KeyOf(doc.Number)} \"{title}\"", project?.Id);
-        recorder.Audit("document.created", "Document", doc.Id, null, new { doc.Number, title, type = type.Code, project = project?.Key, visibility = visibility.ToString() });
+        recorder.Audit("document.created", "Document", doc.Id, null, new { doc.Number, title, type = type.Code, project = project?.Key, visibility = visibility.ToString(), classification = classification.ToString() });
         try { await db.SaveChangesAsync(ct); await indexer.IndexAsync(doc.Id, ct); }
         catch (DbUpdateException)
         {
@@ -242,10 +351,11 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var doc = await RequireEditableAsync(id, ct);
         if (doc.Revision != req.Revision) throw Changed();
         var title = CleanTitle(req.Title);
-        var before = new { doc.Title, visibility = doc.Visibility.ToString(), doc.OwnerId };
+        var before = new { doc.Title, visibility = doc.Visibility.ToString(), classification = doc.Classification.ToString(), doc.OwnerId };
         Project? project = doc.ProjectId is { } pid ? await db.Projects.FirstOrDefaultAsync(p => p.Id == pid, ct) : null;
         var teamId = project is null ? (req.TeamId ?? doc.TeamId) : null;
         var visibility = await ResolveVisibilityAsync(req.Visibility, project, teamId, ct);
+        var classification = req.Classification ?? doc.Classification;
         if (req.OwnerId is { } owner && owner != doc.OwnerId)
         {
             if (doc.OwnerId != ctx.UserId && !await permissions.HasAsync(Permissions.DocsEdit, ct)) throw new ForbiddenException("Only the owner can hand a document over.", "PERMISSION_DENIED");
@@ -253,11 +363,11 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             doc.OwnerId = owner;
             await notifier.SendAsync([owner], doc, $"owner:{doc.Revision}", $"{KeyOf(doc.Number)} was handed over to you", doc.Title, ct: ct);
         }
-        doc.Title = title; doc.Visibility = visibility; doc.TeamId = teamId;
+        doc.Title = title; doc.Visibility = visibility; doc.Classification = classification; doc.TeamId = teamId;
         await SetTagsAsync(doc.Id, req.Tags, ct);
         Touch(doc);
         recorder.Activity("document.updated", "Document", doc.Id, $"Updated {KeyOf(doc.Number)} \"{title}\"", doc.ProjectId);
-        recorder.Audit("document.updated", "Document", doc.Id, before, new { Title = title, visibility = visibility.ToString(), doc.OwnerId });
+        recorder.Audit("document.updated", "Document", doc.Id, before, new { Title = title, visibility = visibility.ToString(), classification = classification.ToString(), doc.OwnerId });
         await SaveAsync(ct);
         await indexer.IndexAsync(doc.Id, ct);   // the title and tags are part of the search text
         return await GetAsync(id, ct);

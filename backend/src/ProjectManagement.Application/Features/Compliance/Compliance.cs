@@ -103,10 +103,17 @@ public class DataPolicyService(IAppDbContext db, ICurrentContext ctx, AppClock c
 /// <summary>
 /// Everything a workspace holds, as JSON files in one zip (Owners only, built in the background like other exports): members, teams and the
 /// org chart, projects with their stages, tasks, comments, checklists, custom fields and dependencies, operational work, time and approvals,
-/// files (up to a size cap) and the activity and audit history. Secrets - passwords, API keys, webhook and sign-on secrets - are never included,
-/// nor are private chats.
+/// documents (metadata, versions, sections, tags) with their file attachments decrypted if the document was Confidential/Restricted, and the
+/// activity and audit history. Secrets - passwords, API keys, webhook and sign-on secrets, and a document's own secret values - are never
+/// included, nor are private chats.
 /// </summary>
-public class WorkspaceExporter(IAppDbContext db, ICurrentContext ctx, AppClock clock, IFileStorage storage, ILogger<WorkspaceExporter> log)
+/// <summary>One row of the export's unified file listing, whatever feature the file actually belongs to - <see cref="Encrypted"/>/<see cref="KeyVersion"/>
+/// are only ever set for a document's own attachments (see DocumentFileService); every other source leaves them at false/0.</summary>
+public sealed record ExportFileRow(Guid Id, string Owner, Guid? TaskId, Guid? IssueId, Guid? WorkTaskId, Guid? ProjectId, Guid? DocumentId,
+    string FileName, string ContentType, long SizeBytes, string StorageKey, DateTime CreatedAt, bool Encrypted, int KeyVersion);
+
+public class WorkspaceExporter(IAppDbContext db, ICurrentContext ctx, AppClock clock, IFileStorage storage,
+    ProjectManagement.Application.Features.Documents.EnvelopeCrypto crypto, ILogger<WorkspaceExporter> log)
 {
     private const long MaxFileBytes = 250L * 1024 * 1024;
     private const int MaxHistory = 50_000;
@@ -141,7 +148,9 @@ public class WorkspaceExporter(IAppDbContext db, ICurrentContext ctx, AppClock c
                     One JSON file per kind of record; ids link them (for example tasks.json "projectId" -> projects.json "id").
                     Dates are UTC. Files attached to tasks and work tasks are under files/ (up to {MaxFileBytes / 1024 / 1024} MB in total;
                     attachments.json lists every file, with "included": false for any left out).
-                    Not included: passwords, API keys, webhook and sign-on secrets, and private (direct and group) chats.
+                    Not included: passwords, API keys, webhook and sign-on secrets, private (direct and group) chats, and documents'
+                    own secret values (document-secrets - API keys, passwords - kept with a document; document content and files are
+                    included, decrypted if the document was Confidential or Restricted, but a secret value kept inside one never is).
                     History (activity.json, audit-log.json) holds the most recent {MaxHistory:N0} records each.
                     """);
 
@@ -182,19 +191,32 @@ public class WorkspaceExporter(IAppDbContext db, ICurrentContext ctx, AppClock c
             await Add("project-chats.json", db.Conversations.Where(c => c.Type == ConversationType.Project).Select(c => new { c.Id, c.ProjectId, c.Name, c.CreatedAt }));
             await Add("project-chat-messages.json", db.ChatMessages.Where(m => db.Conversations.Any(c => c.Id == m.ConversationId && c.Type == ConversationType.Project))
                 .Select(m => new { m.Id, m.ConversationId, m.SenderId, m.Kind, m.Body, m.CreatedAt, m.EditedAt }));
+            await Add("documents.json", db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == tid).Select(d => new
+            {
+                d.Id, Key = "DOC-" + d.Number, d.Title, d.TypeId, d.ProjectId, d.TeamId, d.OwnerId, d.Status, d.Visibility, d.Classification,
+                d.DraftVersionId, d.PublishedVersionId, d.IsDeleted, d.DeletedAt, d.CreatedAt, d.UpdatedAt,
+            }));
+            await Add("document-versions.json", db.DocumentVersions.Select(v => new { v.Id, v.DocumentId, v.Major, v.Minor, v.IsDraft, v.ChangeSummary, v.ChangeReason, v.ContentHash, v.RestoredFromId, v.PublishedAt, v.PublishedBy, v.CreatedAt }));
+            // Section content is never encrypted (only file attachments are, see DocumentFileService) - it exports as the plain, readable JSON it already is.
+            await Add("document-sections.json", db.DocumentSections.Select(s => new { s.Id, s.VersionId, s.Key, s.Title, s.Kind, s.SortOrder, s.ContentJson, s.CreatedAt, s.UpdatedAt }));
+            await Add("document-tags.json", db.DocumentTags.Select(t => new { t.DocumentId, t.Tag }));
             await Add("activity.json", db.Activities.OrderByDescending(a => a.CreatedAt).Take(MaxHistory)
                 .Select(a => new { a.Id, a.Action, a.EntityType, a.EntityId, a.ProjectId, a.ActorId, a.Summary, a.OldValue, a.NewValue, a.CreatedAt }));
             await Add("audit-log.json", db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == tid).OrderByDescending(a => a.CreatedAt).Take(MaxHistory)
                 .Select(a => new { a.Id, a.Action, a.EntityType, a.EntityId, a.UserId, a.IpAddress, a.OldValue, a.NewValue, a.CreatedAt }));
 
             // Files: as many as fit under the cap, newest first; the list says which are in the zip.
-            var files = await db.Attachments.AsNoTracking().Select(a => new { a.Id, Owner = "task", a.TaskId, IssueId = a.IssueId, WorkTaskId = (Guid?)null, ProjectId = (Guid?)a.ProjectId, a.FileName, a.ContentType, a.SizeBytes, a.StorageKey, a.CreatedAt })
+            var files = await db.Attachments.AsNoTracking().Select(a => new ExportFileRow(a.Id, "task", a.TaskId, a.IssueId, null, a.ProjectId, null, a.FileName, a.ContentType, a.SizeBytes, a.StorageKey, a.CreatedAt, false, 0))
                 .ToListAsync(ct);
-            var workFiles = await db.WorkTaskAttachments.AsNoTracking().Select(a => new { a.Id, Owner = "work-task", TaskId = (Guid?)null, IssueId = (Guid?)null, WorkTaskId = (Guid?)a.WorkTaskId, ProjectId = (Guid?)null, a.FileName, a.ContentType, a.SizeBytes, a.StorageKey, a.CreatedAt })
+            var workFiles = await db.WorkTaskAttachments.AsNoTracking().Select(a => new ExportFileRow(a.Id, "work-task", null, null, a.WorkTaskId, null, null, a.FileName, a.ContentType, a.SizeBytes, a.StorageKey, a.CreatedAt, false, 0))
+                .ToListAsync(ct);
+            // A document's own file attachments: Confidential/Restricted ones are encrypted at rest (see DocumentFileService) - decrypted below
+            // before being written into the zip, since this export is Owner-only and is meant to hand over genuinely readable data, not ciphertext.
+            var docFiles = await db.DocumentFiles.AsNoTracking().Select(a => new ExportFileRow(a.Id, "document", null, null, null, null, a.DocumentId, a.FileName, a.ContentType, a.SizeBytes, a.StorageKey, a.CreatedAt, a.Encrypted, a.KeyVersion))
                 .ToListAsync(ct);
             long used = 0;
             var listed = new List<object>();
-            foreach (var f in files.Concat(workFiles).OrderByDescending(f => f.CreatedAt))
+            foreach (var f in files.Concat(workFiles).Concat(docFiles).OrderByDescending(f => f.CreatedAt))
             {
                 var include = used + f.SizeBytes <= MaxFileBytes;
                 if (include)
@@ -204,13 +226,34 @@ public class WorkspaceExporter(IAppDbContext db, ICurrentContext ctx, AppClock c
                     else
                     {
                         var safe = string.Concat(f.FileName.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
-                        var entry = zip.CreateEntry($"files/{f.Id:N}-{safe}", CompressionLevel.Fastest);
-                        await using var dst = entry.Open();
-                        await src.CopyToAsync(dst, ct);
-                        used += f.SizeBytes;
+                        if (!f.Encrypted)
+                        {
+                            var entry = zip.CreateEntry($"files/{f.Id:N}-{safe}", CompressionLevel.Fastest);
+                            await using var dst = entry.Open();
+                            await src.CopyToAsync(dst, ct);
+                            used += f.SizeBytes;
+                        }
+                        else
+                        {
+                            try
+                            {
+                                using var buffer = new MemoryStream();
+                                await src.CopyToAsync(buffer, ct);
+                                var plain = crypto.DecryptBytes(await crypto.KeyAsync(tid, f.KeyVersion, ct), buffer.ToArray(), $"{tid:N}|{f.DocumentId:N}|{f.Id:N}");
+                                var entry = zip.CreateEntry($"files/{f.Id:N}-{safe}", CompressionLevel.Fastest);
+                                await using var dst = entry.Open();
+                                await dst.WriteAsync(plain, ct);
+                                used += f.SizeBytes;
+                            }
+                            catch (Exception e) when (e is System.Security.Cryptography.CryptographicException or FormatException or InvalidOperationException)
+                            {
+                                log.LogWarning(e, "Export: encrypted document file {Id} could not be decrypted, left out of the zip", f.Id);
+                                include = false;
+                            }
+                        }
                     }
                 }
-                listed.Add(new { f.Id, f.Owner, f.TaskId, f.IssueId, f.WorkTaskId, f.ProjectId, f.FileName, f.ContentType, f.SizeBytes, f.CreatedAt, included = include, path = include ? $"files/{f.Id:N}-{f.FileName}" : null });
+                listed.Add(new { f.Id, f.Owner, f.TaskId, f.IssueId, f.WorkTaskId, f.ProjectId, f.DocumentId, f.FileName, f.ContentType, f.SizeBytes, f.CreatedAt, included = include, path = include ? $"files/{f.Id:N}-{f.FileName}" : null });
             }
             var att = zip.CreateEntry("attachments.json");
             await using (var s = att.Open()) await JsonSerializer.SerializeAsync(s, listed, Json, ct);

@@ -184,5 +184,19 @@ public partial class AppDbContext
             e.Property(x => x.Detail).HasMaxLength(2000);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<DocumentView>(e =>
+        {
+            // One row per (document, person): upserted on read, never duplicated.
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.UserId }).IsUnique();
+            // "This person's most recently viewed documents" is read newest-first for the Recently Viewed list.
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.ViewedAt });
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentComment>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DocumentId, x.CreatedAt });
+            e.Property(x => x.Body).HasMaxLength(4000);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }
