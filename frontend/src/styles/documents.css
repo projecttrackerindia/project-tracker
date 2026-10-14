@@ -371,6 +371,8 @@
 .aud-change { max-width: 320px; word-break: break-word; }
 .aud-pager { display: flex; gap: 8px; justify-content: flex-end; }
 
+.doc-scope-note { margin: 0 0 10px; font-size: 12px; }
+
 /* ---- comments */
 .cmt { display: grid; gap: 16px; margin-top: 14px; }
 .cmt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
