@@ -33,8 +33,9 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
 
     [HttpGet("documents")]
     public async Task<IActionResult> List([FromQuery] Guid? projectId, [FromQuery] Guid? teamId, [FromQuery] Guid? typeId, [FromQuery] DocumentStatus? status,
-        [FromQuery] Guid? ownerId, [FromQuery] string? tag, [FromQuery] string? q, [FromQuery] bool? general, [FromQuery] string? scope, [FromQuery] string? cursor, [FromQuery] int? limit, CancellationToken ct) =>
-        Ok(await documents.ListAsync(new DocumentFilter(projectId, teamId, typeId, status, ownerId, tag, q, general, scope), cursor, limit, ct));
+        [FromQuery] Guid? ownerId, [FromQuery] string? tag, [FromQuery] string? q, [FromQuery] bool? general, [FromQuery] string? scope, [FromQuery] DocumentClassification? classification,
+        [FromQuery] string? cursor, [FromQuery] int? limit, CancellationToken ct) =>
+        Ok(await documents.ListAsync(new DocumentFilter(projectId, teamId, typeId, status, ownerId, tag, q, general, scope, classification), cursor, limit, ct));
 
     [HttpPost("documents")]
     public async Task<IActionResult> Create([FromBody] CreateDocumentRequest req, CancellationToken ct) => Created(await documents.CreateAsync(req, ct));

@@ -28,7 +28,7 @@ public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility,
     DocumentClassification? Classification = null);
 public record SaveSectionsRequest(int Revision, IReadOnlyList<SectionInput> Sections);
 public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? TypeId = null, DocumentStatus? Status = null, Guid? OwnerId = null, string? Tag = null, string? Q = null, bool? General = null,
-    string? Scope = null);
+    string? Scope = null, DocumentClassification? Classification = null);
 
 /// <summary>
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
@@ -79,6 +79,8 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         ctx.RequireTenantId();
         if (string.Equals(f.Scope, "recent", StringComparison.OrdinalIgnoreCase)) return await ListRecentAsync(limit, ct);
+        if (string.Equals(f.Scope, "trash", StringComparison.OrdinalIgnoreCase)) return await ListTrashAsync(limit, ct);
+        if (string.Equals(f.Scope, "shared", StringComparison.OrdinalIgnoreCase)) return await ListSharedWithMeAsync(limit, ct);
         var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
         var q = Base();
         if (f.ProjectId is { } p) q = q.Where(d => d.ProjectId == p);
@@ -87,6 +89,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (f.TypeId is { } ty) q = q.Where(d => d.TypeId == ty);
         if (f.Status is { } s) q = q.Where(d => d.Status == s);
         if (f.OwnerId is { } o) q = q.Where(d => d.OwnerId == o);
+        if (f.Classification is { } cl) q = q.Where(d => d.Classification == cl);
         if (!string.IsNullOrWhiteSpace(f.Tag)) { var tag = f.Tag.Trim().ToLowerInvariant(); q = q.Where(d => db.DocumentTags.Any(x => x.DocumentId == d.Id && x.Tag == tag)); }
         if (!string.IsNullOrWhiteSpace(f.Q)) q = DocumentSearchIndexer.Match(q, db, f.Q);
         int? total = cursor is null ? await q.CountAsync(ct) : null;
@@ -115,6 +118,47 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var byId = docs.ToDictionary(d => d.Id);
         var ordered = recentIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
         var items = await ToItemsAsync(ordered, ct);
+        return new DocumentPageDto(items, null, items.Count);
+    }
+
+    /// <summary>
+    /// Documents in the trash this person may actually restore: deleted within the last <see cref="RecoveryDays"/> days, and either deleted by
+    /// them or (for an Owner/Admin) deleted by anyone - the exact same rule <see cref="RestoreAsync"/> itself enforces, so nothing shows up here
+    /// that a Restore click would then be refused for. Bypasses the normal visibility filter on purpose (via IgnoreQueryFilters): a deleted
+    /// document's visibility no longer matters, only who may bring it back does.
+    /// </summary>
+    private async Task<DocumentPageDto> ListTrashAsync(int? limit, CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId();
+        var uid = ctx.RequireUserId();
+        var admin = ctx.Role is TenantRole.Owner or TenantRole.Admin;
+        var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
+        var cutoff = clock.Now.AddDays(-RecoveryDays);
+        var q = db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == tid && d.IsDeleted && d.DeletedAt >= cutoff);
+        if (!admin) q = q.Where(d => d.DeletedBy == uid);
+        var rows = await q.OrderByDescending(d => d.DeletedAt).Take(size).ToListAsync(ct);
+        var items = await ToItemsAsync(rows, ct);
+        return new DocumentPageDto(items, null, items.Count);
+    }
+
+    /// <summary>
+    /// Documents explicitly shared with this person via a <see cref="DocumentGrant"/> (to them directly, or to a team they belong to) -
+    /// excluding ones they own (ownership is not "being shared with"), deny-grants, and expired grants. Still goes through the normal visibility
+    /// filter (<see cref="Base"/>) as a final check, so a grant that is somehow stale relative to the document's current state never leaks it.
+    /// </summary>
+    private async Task<DocumentPageDto> ListSharedWithMeAsync(int? limit, CancellationToken ct)
+    {
+        var uid = ctx.RequireUserId();
+        var size = Math.Clamp(limit ?? PageSize, 1, MaxPageSize);
+        var now = clock.Now;
+        var myTeamIds = await db.TeamMembers.AsNoTracking().Where(m => m.UserId == uid).Select(m => m.TeamId).ToListAsync(ct);
+        var grantedIds = await db.DocumentGrants.AsNoTracking()
+            .Where(g => !g.Deny && (g.ExpiresAt == null || g.ExpiresAt > now)
+                && ((g.PrincipalType == GrantPrincipal.User && g.PrincipalId == uid) || (g.PrincipalType == GrantPrincipal.Team && myTeamIds.Contains(g.PrincipalId))))
+            .Select(g => g.DocumentId).Distinct().ToListAsync(ct);
+        if (grantedIds.Count == 0) return new DocumentPageDto([], null, 0);
+        var rows = await Base().Where(d => grantedIds.Contains(d.Id) && d.OwnerId != uid).OrderByDescending(d => d.UpdatedAt).Take(size).ToListAsync(ct);
+        var items = await ToItemsAsync(rows, ct);
         return new DocumentPageDto(items, null, items.Count);
     }
 
