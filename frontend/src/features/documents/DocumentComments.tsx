@@ -52,7 +52,7 @@ function CommentsThread({ id }: { id: string }) {
 
 export function CommentsModal({ id, title, onClose }: { id: string; title: string; onClose: () => void }) {
   return (
-    <Modal title="Comments" subtitle={title} size="lg" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Comments" subtitle={title} size="lg" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       <CommentsThread id={id} />
     </Modal>
   );

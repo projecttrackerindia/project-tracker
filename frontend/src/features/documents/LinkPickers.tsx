@@ -37,7 +37,7 @@ export function WorkPicker({ documentId, onClose, requirementId, fixedRelation }
   });
   const usable = (hits.data?.hits ?? []).filter((h) => HIT_TO_TARGET[h.type]);
   return (
-    <Modal title="Link work" subtitle={requirementId ? (fixedRelation === 'Verifies' ? 'Find the test (a task or a test issue) that verifies this requirement.' : 'Find the task or work item that builds this requirement.') : 'Link a project, task, issue or work item to this document.'} size="sm" onClose={onClose}>
+    <Modal title="Link work" subtitle={requirementId ? (fixedRelation === 'Verifies' ? 'Find the test (a task or a test issue) that verifies this requirement.' : 'Find the task or work item that builds this requirement.') : 'Link a project, task, issue or work item to this document.'} size="sm" onClose={onClose} className="doc-scope">
       {!fixedRelation && <RelationField value={relation} onChange={setRelation} />}
       <Field label="Find it"><input className="input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type a title or a key such as WT-12…" /></Field>
       <div className="pick-list">
@@ -65,7 +65,7 @@ export function DocumentPicker({ targetType, targetId, onClose }: { targetType: 
     onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not link it.', 'error'),
   });
   return (
-    <Modal title="Link a document" size="sm" onClose={onClose}>
+    <Modal title="Link a document" size="sm" onClose={onClose} className="doc-scope">
       <RelationField value={relation} onChange={setRelation} document />
       <Field label="Find a document"><input className="input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, DOC-12 or tag…" /></Field>
       <div className="pick-list">

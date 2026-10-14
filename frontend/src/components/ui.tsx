@@ -334,9 +334,11 @@ export function applyServerErrors(err: unknown, setError: (name: any, e: { messa
 }
 
 // ------------------------------------------------------------------ modal
-export function Modal({ title, subtitle, onClose, children, footer, size, onSubmit }: {
+export function Modal({ title, subtitle, onClose, children, footer, size, onSubmit, className }: {
   title: string; subtitle?: string; onClose: () => void; children: ReactNode; footer?: ReactNode;
   size?: 'sm' | 'lg' | 'xl'; onSubmit?: (e: FormEvent<HTMLFormElement>) => void;
+  /** Extra class on the portaled overlay (e.g. 'doc-scope') — a modal portals straight to document.body, outside its caller's DOM subtree, so a scoped theme that redefines CSS custom properties needs its class applied here too, not just on the caller's wrapper. */
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useSheetDrag(() => ref.current, onClose);   // on a phone a dialog is a sheet: drag its handle down to dismiss it
@@ -375,7 +377,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
   );
 
   return createPortal(
-    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className={`modal-overlay${className ? ` ${className}` : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} className={`modal ${size ?? ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-grab" {...drag}><i aria-hidden="true" /></div>
         {onSubmit ? <form onSubmit={onSubmit} noValidate style={{ display: 'contents' }}>{inner}</form> : inner}

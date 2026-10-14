@@ -107,7 +107,7 @@ export function WorkflowsModal({ onClose }: { onClose: () => void }) {
   });
   const d = q.data;
   return (
-    <Modal title="Approval workflows" subtitle="Who must approve a document before it is published." size="lg" onClose={onClose} footer={editing ? undefined : <button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Approval workflows" subtitle="Who must approve a document before it is published." size="lg" onClose={onClose} className="doc-scope" footer={editing ? undefined : <button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : editing ? (
         <Editor existing={editing === 'new' ? null : editing} scope={null} perType={d.perType} reminders={d.reminders} onDone={() => setEditing(null)} onCancel={() => setEditing(null)} />
       ) : !d.allowed ? (

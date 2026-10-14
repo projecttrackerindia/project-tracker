@@ -58,7 +58,7 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save.'),
   });
   return (
-    <Modal title="Document details" onClose={onClose} onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
+    <Modal title="Document details" onClose={onClose} className="doc-scope" onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>Save</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
       <Field label="Title" required><input className="input" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} /></Field>
@@ -157,7 +157,7 @@ export function DocumentPage() {
   });
 
   return (
-    <div className="doc-page">
+    <div className="doc-page doc-scope">
       <nav className="doc-crumbs" aria-label="Breadcrumb">
         <Link to="/documents">Documents</Link>
         {d.projectId && <><Icon name="chevronR" size={13} /><Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectKey}</Link></>}

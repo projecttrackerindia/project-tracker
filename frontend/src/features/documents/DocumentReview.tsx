@@ -24,7 +24,7 @@ export function SubmitModal({ detail, review, onClose }: { detail: DocumentDetai
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not submit.'),
   });
   return (
-    <Modal title="Submit for review" subtitle={`${review.workflowName ?? 'Approval'} · ${review.stepCount} ${review.stepCount === 1 ? 'step' : 'steps'}`} size="sm" onClose={onClose}
+    <Modal title="Submit for review" subtitle={`${review.workflowName ?? 'Approval'} · ${review.stepCount} ${review.stepCount === 1 ? 'step' : 'steps'}`} size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); if (!summary.trim()) { setError('Say in a sentence what changed.'); return; } setError(null); send.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={send.isPending}>Submit</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
@@ -47,7 +47,7 @@ function DecideModal({ id, kind, onClose }: { id: string; kind: 'approve' | 'cha
     onError: (e) => setError(e instanceof ApiError ? e.message : 'That did not work.'),
   });
   return (
-    <Modal title={kind === 'approve' ? 'Approve this document' : 'Ask for changes'} size="sm" onClose={onClose}
+    <Modal title={kind === 'approve' ? 'Approve this document' : 'Ask for changes'} size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); if (kind === 'changes' && !comment.trim()) { setError('Say what needs to change.'); return; } setError(null); go.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={go.isPending}>{kind === 'approve' ? 'Approve' : 'Send back'}</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
@@ -154,7 +154,7 @@ export function PublishApprovedModal({ detail, review, onClose }: { detail: Docu
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not publish.'),
   });
   return (
-    <Modal title="Publish the approved version" subtitle="It goes out exactly as it was approved." size="sm" onClose={onClose}
+    <Modal title="Publish the approved version" subtitle="It goes out exactly as it was approved." size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); go.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={go.isPending}>Publish</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}

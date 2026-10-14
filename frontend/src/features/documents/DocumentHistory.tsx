@@ -29,7 +29,7 @@ export function PublishModal({ detail, onClose }: { detail: DocumentDetail; onCl
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not publish.'),
   });
   return (
-    <Modal title={`Publish version ${next}`} subtitle="Publishing freezes this text as a version people can read, compare and go back to." size="sm" onClose={onClose}
+    <Modal title={`Publish version ${next}`} subtitle="Publishing freezes this text as a version people can read, compare and go back to." size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); if (!summary.trim()) { setError('Say in a sentence what changed.'); return; } setError(null); publish.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={publish.isPending}>Publish {next}</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
@@ -143,7 +143,7 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
 
   const title = mode.kind === 'list' ? 'Version history' : mode.kind === 'view' ? `Version ${view.data?.version.label ?? ''}` : 'Compare versions';
   return (
-    <Modal title={title} subtitle={`${detail.item.key} · ${detail.item.title}`} size="xl" onClose={onClose}
+    <Modal title={title} subtitle={`${detail.item.key} · ${detail.item.title}`} size="xl" onClose={onClose} className="doc-scope"
       footer={mode.kind === 'list' ? <button className="btn btn-ghost" onClick={onClose}>Close</button> : <button className="btn btn-ghost" onClick={() => setMode({ kind: 'list' })}><Icon name="arrowLeft" size={15} /> Back to history</button>}>
       {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode.kind === 'list' ? (
         <>

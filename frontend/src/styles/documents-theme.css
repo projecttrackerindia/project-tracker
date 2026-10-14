@@ -1,0 +1,197 @@
+/* ============================================================
+   DOCUMENTS THEME — a scoped dark re-skin matching DocTracker
+   ============================================================
+
+   `.doc-scope` redefines, LOCALLY, the exact custom-property names tokens.css
+   already defines at `:root`/`[data-theme='dark']`. components.css and
+   documents.css already build `.card`/`.btn-ghost`/`.badge-*`/`.input`/`.select`/
+   `table`/etc. out of those same names, so anything from that shared sheet
+   re-skins itself automatically wherever it renders inside `.doc-scope` — no
+   forked `.card`/`.btn`/`.badge` classes needed for Documents.
+
+   Known gap (confirmed by reading the rules, not assumed): `.btn-primary`,
+   `.btn-danger`, the `.select` dropdown-arrow background-image and
+   `.progress-bar` are painted with hardcoded violet/indigo literals in
+   components.css/professional.css, not the custom properties above — token
+   overrides do NOT reach them. They will keep Project Tracker's violet look
+   inside `.doc-scope` until a later stage restyles them directly. Flagged for
+   the next stage, not fixed here (out of this pass's scope).
+
+   Tokens intentionally left out of this file because nothing `.doc-scope`
+   renders consumes them: `--surface-3`/`--panel-solid`/`--hl`/`--hl-2` ARE
+   consumed (by `.badge-neutral`, `.ss-pop`, `.card`, etc.) so they ARE
+   redefined below even though the task's suggested list didn't name them;
+   `--modal-*` tokens are NOT redefined here because `.doc-scope` is also
+   applied directly to each Documents modal's portaled overlay (see
+   `components/ui.tsx`'s `Modal` `className` prop and every `<Modal ... />`
+   call in features/documents), so modal chrome reads this same block.
+   ============================================================ */
+
+.doc-scope {
+  color-scheme: dark;
+
+  /* ---- surfaces: DocTracker's near-black ladder ---- */
+  --bg: #0a0e15;
+  --surface: #121822;
+  --surface-2: #161d29;
+  --surface-3: rgba(92, 124, 250, .12);
+  --surface-solid: #121822;
+  --panel-solid: #161d29;
+
+  --border: #212a38;
+  --border-strong: rgba(92, 124, 250, .38);
+
+  --text: #e9edf5;
+  --text-2: #909cb0;
+  --text-3: #576277;
+
+  /* ---- accent: DocTracker blue ---- */
+  --primary: #5c7cfa;
+  --primary-hover: #7b96fb;
+  --primary-fill: #5c7cfa;
+  --primary-soft: rgba(92, 124, 250, .16);
+  --primary-text: #ffffff;
+
+  /* ---- status colours, softened for a dark surface (same hues as [data-theme='dark'], kept for continuity) ---- */
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, .14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, .14);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, .14);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, .14);
+  --purple: #c4b5fd;
+  --purple-soft: rgba(196, 181, 253, .14);
+
+  /* ---- DocTracker is flat, not glass: no blur, faint inset highlights only ---- */
+  --glass: none;
+  --glass-strong: none;
+  --glass-soft: none;
+  --hl: inset 0 1px 0 rgba(255, 255, 255, .03);
+  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .03);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, .6);
+
+  --hover-bg: rgba(92, 124, 250, .10);
+  --field-border: rgba(92, 124, 250, .32);
+  --field-bg: #0d1219;
+  --field-focus-bg: #0d1219;
+  --tint: rgba(92, 124, 250, .08);
+  --tint-strong: rgba(92, 124, 250, .16);
+
+  /* ---- smaller, sharper radii than Project Tracker's 16/10/22 scale ---- */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+
+  --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* No existing token name for this — DocTracker reserves a monospace face for code/paths/IDs (doc-key, api-def version
+     pills, etc. already reference var(--mono, …) with a system fallback; this is the first place that actually
+     defines it to something other than the fallback). Loaded via @fontsource/jetbrains-mono, see main.tsx. */
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* `--bg`/`--font` above only matter if something inside .doc-scope actually reads them — the page's own <body>
+     background/font (base.css) sits OUTSIDE this subtree, so this element paints its own. */
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  min-height: calc(100vh - var(--topbar-h, 64px));
+}
+
+/* ============================================================
+   DOCUMENTS SIDEBAR — pinned scopes + a project tree, DocTracker's layout
+   ============================================================ */
+
+.doc-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.doc-shell-main { min-width: 0; }
+
+.doc-sidebar {
+  position: sticky;
+  top: calc(var(--topbar-h, 64px) + 18px);
+  max-height: calc(100vh - var(--topbar-h, 64px) - 36px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--hl), var(--shadow-sm);
+  overflow: hidden;
+}
+
+.doc-sidebar-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex: none;
+}
+.doc-sidebar-search svg { flex: none; color: var(--text-3); }
+.doc-sidebar-search .input {
+  height: 30px; padding: 0 8px; font-size: 12.5px; background: var(--field-bg); border-color: var(--field-border);
+}
+
+.doc-sidebar-pinned, .doc-sidebar-groups { list-style: none; margin: 0; padding: 6px; display: grid; gap: 1px; }
+.doc-sidebar-pinned { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 4px; }
+
+.doc-sidebar-row {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: var(--radius-sm);
+  font-size: 12.5px; font-weight: 550; color: var(--text-2); text-align: left; min-width: 0;
+}
+.doc-sidebar-row svg { flex: none; color: var(--text-3); }
+.doc-sidebar-row span:not(.doc-count) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.doc-sidebar-row:hover { background: var(--hover-bg); color: var(--text); }
+.doc-sidebar-row.active { background: var(--primary-soft); color: var(--text); font-weight: 650; }
+.doc-sidebar-row.active svg { color: var(--primary); }
+.doc-sidebar-row .doc-count { margin-left: auto; background: var(--primary); }
+
+.doc-sidebar-tree { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
+.doc-sidebar-label {
+  padding: 8px 15px 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
+}
+
+/* ---- tree connectors: a vertical spine down the open group's children, drawn with ::before on the row
+   elements themselves (no extra connector <div>s in the DOM), exactly DocTracker's technique. */
+.doc-sidebar-group { position: relative; }
+.doc-sidebar-group-head {
+  width: 100%; display: flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: var(--radius-sm);
+  font-size: 12.5px; font-weight: 550; color: var(--text-2); text-align: left; min-width: 0;
+}
+.doc-sidebar-group-head svg { flex: none; color: var(--text-3); }
+.doc-sidebar-group-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.doc-sidebar-group-head:hover { background: var(--hover-bg); color: var(--text); }
+.doc-sidebar-group-head.active { color: var(--primary); font-weight: 650; }
+
+.doc-sidebar-children { list-style: none; margin: 0; padding: 0 0 0 19px; position: relative; }
+.doc-sidebar-children::before {
+  content: ''; position: absolute; left: 10px; top: 0; bottom: 8px; width: 1px; background: var(--border-strong);
+}
+.doc-sidebar-children li { position: relative; }
+.doc-sidebar-children li::before {
+  content: ''; position: absolute; left: -9px; top: 13px; width: 8px; height: 8px;
+  border: 1px solid var(--border-strong); border-top: 0; border-right: 0; border-radius: 0 0 0 6px;
+}
+.doc-sidebar-child { padding-left: 9px; }
+.doc-sidebar-child .doc-key { margin-right: 2px; }
+
+.doc-sidebar-empty { padding: 8px 15px; font-size: 12px; }
+
+@media (max-width: 900px) {
+  .doc-shell { grid-template-columns: minmax(0, 1fr); }
+  .doc-sidebar { position: static; max-height: none; }
+  .doc-sidebar-tree { max-height: 320px; }
+}

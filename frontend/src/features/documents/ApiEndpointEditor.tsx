@@ -62,7 +62,7 @@ export function EndpointEditor({ documentId, definitions, existing, startDefinit
   });
   const body: ApiBody | null = d.requestBody;
   return (
-    <Modal title={existing ? `${e0!.method} ${e0!.path}` : 'New endpoint'} size="xl" onClose={onClose}
+    <Modal title={existing ? `${e0!.method} ${e0!.path}` : 'New endpoint'} size="xl" onClose={onClose} className="doc-scope"
       onSubmit={(ev) => { ev.preventDefault(); setError(null); save.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>Save endpoint</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}

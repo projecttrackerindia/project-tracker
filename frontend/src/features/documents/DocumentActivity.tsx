@@ -54,7 +54,7 @@ export function ActivityModal({ id, title, onClose }: { id: string; title: strin
   const canAudit = auditEntitled && hasAuditPermission;
   const [tab, setTab] = useState<'activity' | 'audit'>('activity');
   return (
-    <Modal title="Activity" subtitle={title} size="xl" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Activity" subtitle={title} size="xl" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       <div className="seg" role="tablist" aria-label="View">
         <button role="tab" aria-selected={tab === 'activity'} className={tab === 'activity' ? 'on' : ''} onClick={() => setTab('activity')}>Activity</button>
         {canAudit && <button role="tab" aria-selected={tab === 'audit'} className={tab === 'audit' ? 'on' : ''} onClick={() => setTab('audit')}>Audit trail</button>}

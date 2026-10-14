@@ -51,7 +51,7 @@ export function CoverageModal({ documentId, canEdit, onClose }: { documentId: st
   const data: Coverage | undefined = q.data;
   const rows = (data?.rows ?? []).filter((r) => filter === 'all' || r.state === filter);
   return (
-    <Modal title="Requirements and coverage" subtitle="What the document asks for, the work that builds it and the tests that prove it." size="xl" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Requirements and coverage" subtitle="What the document asks for, the work that builds it and the tests that prove it." size="xl" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {q.isLoading ? <PageLoader /> : q.isError || !data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="cov">
           <div className="cov-stats" role="group" aria-label="Filter by coverage">
