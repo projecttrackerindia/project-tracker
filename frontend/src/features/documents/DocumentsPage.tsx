@@ -9,7 +9,7 @@ import { DocumentList } from './DocumentList';
 import { InboxView } from './DocumentInbox';
 import { WorkflowsModal } from './DocumentWorkflows';
 import { DocumentSecurityModal } from './DocumentSecurity';
-import { DocumentOverview } from './DocumentOverview';
+import { DocumentsControlCenter } from './DocumentsControlCenter';
 import { DocumentWizard } from './DocumentWizard';
 import { DocumentsSidebar, type DocumentsView } from './DocumentsSidebar';
 
@@ -46,7 +46,7 @@ export function DocumentsPage() {
       <div className="doc-shell">
         <DocumentsSidebar view={view} onSelectView={(v) => setView(v)} waiting={waiting} activeProject={project} onSelectProject={setProject} />
         <div className="doc-shell-main">
-          {view === 'all' && !inProject && <DocumentOverview />}
+          {view === 'all' && !inProject && <DocumentsControlCenter />}
           {view === 'inbox' && !inProject ? <InboxView /> : (
             <DocumentList canCreate={canCreate} onNew={() => setCreating(true)}
               fixedScope={!inProject && (view === 'recent' || view === 'shared' || view === 'trash') ? view : undefined}

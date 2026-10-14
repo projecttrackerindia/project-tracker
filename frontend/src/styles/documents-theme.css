@@ -195,3 +195,90 @@
   .doc-sidebar { position: static; max-height: none; }
   .doc-sidebar-tree { max-height: 320px; }
 }
+
+/* ============================================================
+   DOCUMENTS CONTROL CENTER — hero + KPI grid + status bar + data table,
+   DocTracker's landing-page pattern (`DocumentsControlCenter.tsx`).
+   ============================================================ */
+
+/* ---- hero banner: icon tile colored by "published %" health, headline, right-aligned stat ---- */
+.cc-hero {
+  display: flex; align-items: center; gap: 22px; padding: 22px 26px; margin-bottom: 18px;
+  border-radius: var(--radius-lg); border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--primary-soft), transparent 70%);
+  box-shadow: var(--hl), var(--shadow-sm);
+}
+.cc-hero-icon { flex: none; width: 56px; height: 56px; border-radius: var(--radius); display: grid; place-items: center; background: var(--surface-3); color: var(--text-3); }
+.cc-hero-icon.good { background: var(--success-soft); color: var(--success); }
+.cc-hero-icon.warn { background: var(--warning-soft); color: var(--warning); }
+.cc-hero-icon.bad { background: var(--danger-soft); color: var(--danger); }
+.cc-hero-main { flex: 1; min-width: 0; }
+.cc-hero-main h2 { margin: 0 0 4px; font-size: 19px; letter-spacing: -.01em; color: var(--text); }
+.cc-hero-main p { margin: 0; font-size: 13px; color: var(--text-2); }
+.cc-hero-stat { flex: none; width: 150px; text-align: right; }
+.cc-hero-stat b { display: block; font: 700 32px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.cc-hero-stat span { display: block; margin: 2px 0 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+
+/* ---- KPI card grid: 3px left-accent bar (DocTracker's tile signature), uppercase label, mono value ---- */
+.cc-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.cc-kpi {
+  position: relative; padding: 13px 16px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--hl), var(--shadow-sm); overflow: hidden;
+}
+.cc-kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent, var(--primary)); }
+.cc-kpi-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
+.cc-kpi-value { display: block; font: 700 23px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.cc-kpi.warn .cc-kpi-value { color: var(--accent); }
+
+/* ---- status distribution: a thin stacked bar + a legend, folded out of the old flat `.doc-stat-bars` strip ---- */
+.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--hl), var(--shadow-sm); }
+.cc-status-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 9px; }
+.cc-status-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); }
+.cc-status-bar span { min-width: 3px; opacity: .9; }
+.cc-status-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.cc-status-legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+.cc-status-legend b { color: var(--text); font-weight: 650; }
+
+/* ---- table head: title + search, above the data table ---- */
+.cc-table-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
+.cc-table-head h3 { margin: 0; font-size: 15px; letter-spacing: -.01em; color: var(--text); }
+.cc-table-search { position: relative; flex: 1 1 260px; max-width: 320px; }
+.cc-table-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.cc-table-search .input { padding-left: 34px; width: 100%; }
+
+/* ---- the data table itself: rounded-and-clipped wrapper (radius lives on the wrapper, not the table,
+   so corners stay sharp despite border-collapse), tinted uppercase header row, hover rows ---- */
+.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--hl), var(--shadow-sm); }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.data-table th { text-align: left; padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+table.data-table th button {
+  all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-3);
+  font: inherit; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+}
+table.data-table th button:hover { color: var(--text-2); }
+table.data-table th[aria-sort] button { color: var(--primary); }
+table.data-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
+table.data-table tbody tr:last-child td { border-bottom: none; }
+table.data-table tbody tr { cursor: pointer; transition: background .12s; }
+table.data-table tbody tr:hover { background: var(--hover-bg); }
+.cc-table-title-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cc-table-title-cell > span { display: flex; flex-direction: column; min-width: 0; }
+.cc-table-key { font: 600 11px/1.3 var(--mono); color: var(--text-3); letter-spacing: .02em; }
+.cc-table-title { font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-table-title:hover { color: var(--primary); text-decoration: underline; }
+.cc-table-owner { display: inline-flex; align-items: center; gap: 7px; }
+
+/* ---- known gap closure (see the file-header note): `.progress`/`.progress-bar` paint hardcoded violet/green/amber/red
+   literals in components.css, bypassing the token overrides above. The hero's coverage bar (<Progress tone="auto">)
+   is the only place this component uses them, so only that pair is re-pointed at this scope's real tokens here. */
+.doc-scope .progress { background: var(--surface-3); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .4); }
+.doc-scope .progress-bar { background: linear-gradient(90deg, var(--primary), var(--primary-hover)); box-shadow: 0 0 10px var(--primary-soft); }
+.doc-scope .progress-bar.green { background: linear-gradient(90deg, var(--success), #5eead4); box-shadow: 0 0 10px var(--success-soft); }
+.doc-scope .progress-bar.amber { background: linear-gradient(90deg, var(--warning), #fde68a); box-shadow: 0 0 10px var(--warning-soft); }
+.doc-scope .progress-bar.red { background: linear-gradient(90deg, var(--danger), #fda4af); box-shadow: 0 0 10px var(--danger-soft); }
+
+@media (max-width: 720px) {
+  .cc-hero { flex-wrap: wrap; }
+  .cc-hero-stat { width: 100%; text-align: left; }
+  table.data-table th:nth-child(2), table.data-table td:nth-child(2) { display: none; }  /* Type column: title's own TypeChip already shows it */
+}
