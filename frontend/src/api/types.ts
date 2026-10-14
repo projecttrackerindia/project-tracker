@@ -579,6 +579,7 @@ export interface DocumentItem {
   id: string; key: string; number: number; title: string; typeId: string; typeCode: string; typeName: string; typeColor: string; typeIcon: string;
   projectId: string | null; projectKey: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
   owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; classification: DocumentClassification; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
+  versionLabel: string; sharedCount: number;
 }
 export interface DocumentPage { items: DocumentItem[]; nextCursor: string | null; total: number | null }
 export interface DocumentSection { key: string; title: string; kind: SectionKind; sortOrder: number; content: string }

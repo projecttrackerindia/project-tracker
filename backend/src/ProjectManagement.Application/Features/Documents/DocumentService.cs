@@ -16,7 +16,8 @@ public record DocumentTypeDto(Guid Id, string Code, string Name, string? Descrip
 public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false, bool Publish = false);
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
-    IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount, DocumentClassification Classification = DocumentClassification.Internal);
+    IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount, DocumentClassification Classification = DocumentClassification.Internal,
+    string VersionLabel = "Draft", int SharedCount = 0);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
 public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false);
@@ -213,15 +214,25 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             .GroupBy(x => x.DocumentId).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(x => x.Tag).OrderBy(x => x).ToList());
         var linked = await db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId)).GroupBy(l => l.DocumentId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
 
+        // The label a reader would actually see: the PUBLISHED version's "major.minor" if there is one, else literally "Draft" - matching
+        // GetAsync's own rule exactly. The draft version row's own (always 0.0) label is never shown; it isn't a version anyone reads yet.
+        var versionIds = rows.Where(r => r.PublishedVersionId != null).Select(r => r.PublishedVersionId!.Value).Distinct().ToList();
+        var versions = await db.DocumentVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id)).Select(v => new { v.Id, v.Major, v.Minor }).ToDictionaryAsync(v => v.Id, ct);
+        var now = clock.Now;
+        var sharedCounts = await db.DocumentGrants.AsNoTracking().Where(g => ids.Contains(g.DocumentId) && !g.Deny && (g.ExpiresAt == null || g.ExpiresAt > now))
+            .GroupBy(g => g.DocumentId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+
         return rows.Select(r =>
         {
             var ty = types.GetValueOrDefault(r.TypeId);
             projects.TryGetValue(r.ProjectId ?? Guid.Empty, out var pr);
             var teamId = r.TeamId ?? pr?.TeamId;
+            var versionLabel = r.PublishedVersionId is { } v && versions.TryGetValue(v, out var ver) ? DocumentVersionService.Label(ver.Major, ver.Minor) : "Draft";
             return new DocumentItemDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.TypeId, ty?.Code ?? "", ty?.Name ?? "Document", ty?.Color ?? "#8b5cf6", ty?.Icon ?? "file",
                 r.ProjectId, pr?.Key, pr?.Name, teamId, teamId is { } tid ? teams.GetValueOrDefault(tid) : null,
                 new UserRefDto(r.OwnerId, owners.GetValueOrDefault(r.OwnerId) ?? "Former member"), r.Status, r.Visibility,
-                tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id), r.Classification);
+                tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id), r.Classification,
+                versionLabel, sharedCounts.GetValueOrDefault(r.Id));
         }).ToList();
     }
 

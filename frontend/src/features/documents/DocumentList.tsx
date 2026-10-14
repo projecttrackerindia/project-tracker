@@ -26,6 +26,8 @@ function sortItems(items: DocumentItem[], sort: SortKey): DocumentItem[] {
 function Meta({ d }: { d: DocumentItem }) {
   return (
     <>
+      <span className="doc-version muted" title="Version">v{d.versionLabel}</span>
+      {d.sharedCount > 0 && <span className="doc-shared" title={`Shared with ${d.sharedCount} ${d.sharedCount === 1 ? 'grant' : 'grants'}`}><Icon name="users" size={14} /> {d.sharedCount}</span>}
       {d.linkedCount > 0 && <span className="doc-links" title={`${d.linkedCount} linked`}><Icon name="git" size={14} /> {d.linkedCount}</span>}
       {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
       <span className="doc-vis" title={VISIBILITY[d.visibility].hint}><Icon name={VISIBILITY[d.visibility].icon} size={14} /></span>

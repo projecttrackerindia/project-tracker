@@ -100,6 +100,29 @@ public class DocumentScopesTests
     }
 
     [Fact]
+    public async Task The_list_reports_a_version_label_and_a_share_count_per_document()
+    {
+        var (owner, brd) = await Org(_factory);
+        var doc = await Make(owner, brd, "Versioned and shared");
+        var viewer = await owner.AddMemberAsync(_factory, TenantRole.Member, "Val Viewer");
+
+        var fresh = await owner.Get("/api/v1/documents");
+        var row = fresh.Data!["items"]!.AsArray().First(i => S(i!["id"]) == doc.ToString());
+        Assert.Equal("Draft", S(row!["versionLabel"]));
+        Assert.Equal(0, row["sharedCount"]!.GetValue<int>());
+
+        var rev = (await owner.Get($"/api/v1/documents/{doc}")).Data!["revision"]!.GetValue<int>();
+        var publish = await owner.Post($"/api/v1/documents/{doc}/publish", new { changeSummary = "First cut", major = true, revision = rev });
+        Assert.True(publish.Ok, publish.ToString());
+        Assert.True((await owner.Post($"/api/v1/documents/{doc}/grants", new { principalType = "User", principalId = viewer.UserId, level = "Viewer" })).Ok);
+
+        var after = await owner.Get("/api/v1/documents");
+        var row2 = after.Data!["items"]!.AsArray().First(i => S(i!["id"]) == doc.ToString());
+        Assert.Equal("1.0", S(row2!["versionLabel"]));
+        Assert.Equal(1, row2["sharedCount"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task Scope_restricted_covers_both_sensitive_tiers_but_not_public_or_internal()
     {
         var (owner, brd) = await Org(_factory);
