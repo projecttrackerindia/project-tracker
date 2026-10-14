@@ -1,14 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { documentApi, projectApi, teamApi } from '../../api/endpoints';
+import { documentApi, projectApi, teamApi, workspaceApi } from '../../api/endpoints';
 import type { DocumentClassification, DocumentType, DocumentVisibility } from '../../api/types';
 import { Select } from '../../components/Select';
 import { Field, Modal, PageLoader } from '../../components/ui';
 import { Icon } from '../../components/Icon';
+import { formatBytes } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
+import { useAuth, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { SectionEditor } from './SectionEditor';
 import { CLASSIFICATION, TypeChip, VISIBILITY } from './docUi';
@@ -23,10 +24,12 @@ const hasText = (json: string | undefined) => !!json && /"text":"[^"]*\S/.test(j
 export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () => void; projectId?: string; onCreated: (id: string) => void }) {
   const wid = useWorkspaceId();
   const personal = useIsPersonal();
+  const myId = useAuth((s) => s.ctx?.user?.id);
   const canSeeTeams = useModule('teams') > 0 && !personal;
   const types = useWsQuery(['document-types'], documentApi.types);
   const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: !projectId });
   const teams = useWsQuery(['teams'], teamApi.list, { enabled: canSeeTeams });
+  const members = useWsQuery(['members'], workspaceApi.members, { enabled: !personal });
 
   const [step, setStep] = useState(0);
   const [typeId, setTypeId] = useState('');
@@ -38,7 +41,12 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
   const [teamId, setTeamId] = useState('');
   const [tags, setTags] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<File[]>([]);
+  const [over, setOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [collaborators, setCollaborators] = useState<string[]>([]);
   const [error, setError] = useState<{ message: string; limit: boolean } | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const type: DocumentType | undefined = types.data?.find((t) => t.id === typeId);
   const groups = useMemo(() => {
@@ -63,7 +71,19 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
       tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       sections: Object.entries(values).filter(([, v]) => hasText(v)).map(([key, content]) => ({ key, content })),
     }),
-    onSuccess: (d) => { toast(`${d.item.key} created.`); invalidateWorkspace(wid, 'documents'); invalidateWorkspace(wid, 'linked-documents'); onCreated(d.item.id); },
+    onSuccess: async (d) => {
+      toast(`${d.item.key} created.`);
+      invalidateWorkspace(wid, 'documents'); invalidateWorkspace(wid, 'linked-documents');
+      // Files and collaborators both need a real document id, so they happen right after creation rather than being part of the create
+      // request itself - the wizard still reads as "one step", the document is just briefly created-but-not-yet-fully-set-up underneath.
+      if (files.length > 0 || collaborators.length > 0) {
+        setUploading(true);
+        for (const f of files) { try { await documentApi.uploadFile(d.item.id, f); } catch { toast(`Could not add "${f.name}".`, 'error'); } }
+        for (const uid of collaborators) { try { await documentApi.grant(d.item.id, { principalType: 'User', principalId: uid, level: 'Editor' }); } catch { toast('Could not share with everyone chosen.', 'error'); } }
+        setUploading(false);
+      }
+      onCreated(d.item.id);
+    },
     onError: (e) => setError({ message: e instanceof ApiError ? e.message : 'Could not create the document.', limit: e instanceof ApiError && e.code === 'PLAN_LIMIT_REACHED' }),
   });
 
@@ -77,7 +97,7 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
         <button className="btn btn-ghost" type="button" onClick={step === 0 ? onClose : () => { setError(null); setStep(step - 1); }}>{step === 0 ? 'Cancel' : 'Back'}</button>
         {step < last
           ? <button className="btn btn-primary" type="button" onClick={next} disabled={!types.data}>{step === last - 1 ? 'Review' : 'Next'} <Icon name="arrowRight" size={15} /></button>
-          : <button className="btn btn-primary" type="button" onClick={() => { setError(null); create.mutate(); }} disabled={create.isPending}>{create.isPending && <span className="spinner" />}Create document</button>}
+          : <button className="btn btn-primary" type="button" onClick={() => { setError(null); create.mutate(); }} disabled={create.isPending || uploading}>{(create.isPending || uploading) && <span className="spinner" />}{uploading ? 'Adding files…' : 'Create document'}</button>}
       </>}>
       {!types.data ? <PageLoader /> : (
         <div className="wiz">
@@ -133,6 +153,19 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
                 </Select>
               </Field>
               <Field label="Tags" hint="Separate with commas. They help people find it."><input className="input" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="payroll, integration" /></Field>
+              {!personal && (
+                <Field label="Collaborators" hint="Editor access, in addition to whoever this is already visible to.">
+                  <div className="wiz-collabs">
+                    {(members.data ?? []).filter((m) => m.userId !== myId).map((m) => (
+                      <label key={m.userId} className="check-row">
+                        <input type="checkbox" checked={collaborators.includes(m.userId)}
+                          onChange={(e) => setCollaborators((c) => e.target.checked ? [...c, m.userId] : c.filter((x) => x !== m.userId))} />
+                        <span>{m.displayName}</span>
+                      </label>
+                    ))}
+                  </div>
+                </Field>
+              )}
             </div>
           )}
 
@@ -151,6 +184,24 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
               </dl>
               <p className="muted">{filled} of {type.sections.length} sections have content. You can write the rest after it is created: it starts as a draft only you and the people allowed above can open.</p>
               <ul className="wiz-empty">{type.sections.map((s) => <li key={s.key} className={hasText(values[s.key]) ? 'ok' : ''}>{hasText(values[s.key]) ? '✓' : '○'} {s.title}</li>)}</ul>
+
+              <Field label="Files" hint="Added once the document is created - pictures, specifications, spreadsheets.">
+                <div className={`wiz-drop${over ? ' drop' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setOver(false); const fs = Array.from(e.dataTransfer.files); if (fs.length) setFiles((x) => [...x, ...fs]); }}>
+                  <input ref={fileInput} type="file" hidden multiple onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) setFiles((x) => [...x, ...fs]); }} />
+                  <Icon name="upload" size={18} /><span>Drop files here or <button type="button" className="link-btn" onClick={() => fileInput.current?.click()}>choose</button></span>
+                </div>
+                {files.length > 0 && (
+                  <ul className="wiz-files">
+                    {files.map((f, i) => (
+                      <li key={`${f.name}-${i}`}><Icon name="paperclip" size={14} /><span>{f.name}</span><span className="muted">{formatBytes(f.size)}</span>
+                        <button type="button" className="btn-icon" aria-label={`Remove ${f.name}`} onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}><Icon name="close" size={12} /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Field>
             </div>
           )}
         </div>
