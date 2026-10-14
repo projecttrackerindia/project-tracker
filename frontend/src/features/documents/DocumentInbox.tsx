@@ -29,7 +29,7 @@ export function DecideAccessModal({ request, onClose }: { request: AccessRequest
     onError: (e) => setError(e instanceof ApiError ? e.message : 'That did not work.'),
   });
   return (
-    <Modal title={`${request.requester.name} asks for access`} subtitle={`${request.documentKey}${request.documentTitle ? ` · ${request.documentTitle}` : ''}`} size="sm" onClose={onClose}
+    <Modal title={`${request.requester.name} asks for access`} subtitle={`${request.documentKey}${request.documentTitle ? ` · ${request.documentTitle}` : ''}`} size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); setError(null); go.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={go.isPending}>{approve ? 'Give access' : 'Decline'}</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}

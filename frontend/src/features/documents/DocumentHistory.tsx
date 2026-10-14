@@ -29,7 +29,7 @@ export function PublishModal({ detail, onClose }: { detail: DocumentDetail; onCl
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not publish.'),
   });
   return (
-    <Modal title={`Publish version ${next}`} subtitle="Publishing freezes this text as a version people can read, compare and go back to." size="sm" onClose={onClose}
+    <Modal title={`Publish version ${next}`} subtitle="Publishing freezes this text as a version people can read, compare and go back to." size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); if (!summary.trim()) { setError('Say in a sentence what changed.'); return; } setError(null); publish.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={publish.isPending}>Publish {next}</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
@@ -124,6 +124,7 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
   const id = detail.item.id;
   const q = useWsQuery(['documents', id, 'versions'], () => documentApi.versions(id));
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  const [verLimit, setVerLimit] = useState(8);
   const [a, setA] = useState(''); const [b, setB] = useState('');
   const items = q.data?.items ?? [];
   const published = items.find((v) => v.isCurrent);
@@ -143,17 +144,18 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
 
   const title = mode.kind === 'list' ? 'Version history' : mode.kind === 'view' ? `Version ${view.data?.version.label ?? ''}` : 'Compare versions';
   return (
-    <Modal title={title} subtitle={`${detail.item.key} · ${detail.item.title}`} size="xl" onClose={onClose}
+    <Modal title={title} subtitle={`${detail.item.key} · ${detail.item.title}`} size="xl" onClose={onClose} className="doc-scope"
       footer={mode.kind === 'list' ? <button className="btn btn-ghost" onClick={onClose}>Close</button> : <button className="btn btn-ghost" onClick={() => setMode({ kind: 'list' })}><Icon name="arrowLeft" size={15} /> Back to history</button>}>
       {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode.kind === 'list' ? (
         <>
           {items.length <= 1 && !q.data?.publishedLabel && <p className="muted">Nothing has been published yet. Publish a version to start the history.</p>}
           <ul className="ver-list">
-            {items.map((v) => (
+            {items.slice(0, verLimit).map((v) => (
               <VersionRow key={v.id} v={v} canRestore={detail.can.edit} onView={() => setMode({ kind: 'view', id: v.id })} onRestore={() => doRestore(v)}
                 onCompare={() => setMode(against(v))} />
             ))}
           </ul>
+          {items.length > verLimit && <button className="btn btn-ghost btn-sm" onClick={() => setVerLimit((n) => n + 8)}>Show more</button>}
           {items.length >= 2 && (
             <div className="ver-pick">
               <b>Compare any two</b>

@@ -96,8 +96,8 @@ type FixedScope = 'recent' | 'shared' | 'trash';
  * which is the point). `mine` and `restricted` instead narrow the NORMAL filterable list (My Documents / Restricted Documents are still worth
  * searching and filtering within).
  */
-export function DocumentList({ projectId, onNew, canCreate, fixedScope, mine, restricted }: {
-  projectId?: string; onNew?: () => void; canCreate: boolean; fixedScope?: FixedScope; mine?: string; restricted?: boolean;
+export function DocumentList({ projectId, general, onNew, canCreate, fixedScope, mine, restricted }: {
+  projectId?: string; general?: boolean; onNew?: () => void; canCreate: boolean; fixedScope?: FixedScope; mine?: string; restricted?: boolean;
 }) {
   const wid = useWorkspaceId();
   const [q, setQ] = useState('');
@@ -114,16 +114,16 @@ export function DocumentList({ projectId, onNew, canCreate, fixedScope, mine, re
   const dq = useDebounced(q.trim(), 300);
   const dtag = useDebounced(tag.trim(), 300);
   const types = useWsQuery(['document-types'], documentApi.types, { enabled: !fixedScope });
-  const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: !projectId && !fixedScope });
+  const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: !projectId && !general && !fixedScope });
   const members = useWsQuery(['members'], workspaceApi.members, { enabled: !fixedScope && !mine });
 
   const query = useInfiniteQuery({
-    queryKey: fixedScope ? [wid, 'documents', fixedScope] : [wid, 'documents', { projectId, dq, typeId, status, scope, ownerId, dtag, mine, restricted }],
+    queryKey: fixedScope ? [wid, 'documents', fixedScope] : [wid, 'documents', { projectId, general, dq, typeId, status, scope, ownerId, dtag, mine, restricted }],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => fixedScope
       ? documentApi.list({ scope: fixedScope, limit: 50 })
       : documentApi.list({
-          projectId: projectId ?? (scope && scope !== 'general' ? scope : undefined), general: scope === 'general' ? true : undefined,
+          projectId: projectId ?? (scope && scope !== 'general' ? scope : undefined), general: general || scope === 'general' ? true : undefined,
           q: dq || undefined, typeId: typeId || undefined, status: status || undefined, ownerId: mine ?? (ownerId || undefined),
           tag: dtag || undefined, scope: restricted ? 'restricted' : undefined, cursor: pageParam, limit: 25,
         }),
@@ -149,7 +149,7 @@ export function DocumentList({ projectId, onNew, canCreate, fixedScope, mine, re
           <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Search titles, text and tags, or DOC-12…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search documents" /></div>
           <Select className="select" value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Kind"><option value="">All kinds</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
           <Select className="select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Any status</option>{STATUSES.map((s) => <option key={s} value={s}>{s.replace(/([A-Z])/g, ' $1').trim()}</option>)}</Select>
-          {!projectId && (
+          {!projectId && !general && (
             <Select className="select" value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Project">
               <option value="">Everywhere</option><option value="general">General (no project)</option>
               {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}

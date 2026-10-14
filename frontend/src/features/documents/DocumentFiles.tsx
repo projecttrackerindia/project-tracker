@@ -22,7 +22,7 @@ export function DocumentFiles({ documentId, canEdit }: { documentId: string; can
   });
   const items = q.data ?? [];
   return (
-    <div className={`card doc-side-card${over ? ' drop' : ''}`}
+    <div className={`card doc-side-card doc-accent-card doc-accent-info${over ? ' drop' : ''}`}
       onDragOver={canEdit ? (e) => { e.preventDefault(); setOver(true); } : undefined} onDragLeave={() => setOver(false)}
       onDrop={canEdit ? (e) => { e.preventDefault(); setOver(false); const files = Array.from(e.dataTransfer.files); if (files.length) upload.mutate(files); } : undefined}>
       <div className="card-head">

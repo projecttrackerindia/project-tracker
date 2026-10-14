@@ -26,7 +26,7 @@ export function LinkedWork({ documentId, canLink }: { documentId: string; canLin
   const w = q.data;
   const pct = w && w.total > 0 ? Math.round((w.done / w.total) * 100) : 0;
   return (
-    <div className="card doc-side-card">
+    <div className="card doc-side-card doc-accent-card doc-accent-primary">
       <div className="card-head">
         <div><h3>Linked work</h3><p>The tasks, issues and projects this document is about.</p></div>
         {canLink && <button className="btn btn-ghost btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Link</button>}

@@ -61,7 +61,7 @@ export function DocumentSecrets({ documentId, canEdit }: { documentId: string; c
   const d = q.data;
   const items = d?.items ?? [];
   return (
-    <div className="card doc-side-card">
+    <div className="card doc-side-card doc-accent-card doc-accent-danger">
       <div className="card-head">
         <div><h3>Secrets</h3><p>Keys and passwords, kept encrypted and hidden.</p></div>
         {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> Add</button>}
@@ -123,7 +123,7 @@ function SecretModal({ documentId, existing, confidentialAllowed, onClose, onSav
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save.'),
   });
   return (
-    <Modal title={existing ? 'Edit secret' : 'Add a secret'} subtitle="The value is encrypted and cannot be read back except by a reveal." onClose={onClose}
+    <Modal title={existing ? 'Edit secret' : 'Add a secret'} subtitle="The value is encrypted and cannot be read back except by a reveal." onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={save.isPending || !label.trim() || (!existing && !value)}>{save.isPending && <span className="spinner" />}Save</button></>}>
       <div className="form-grid">
@@ -149,7 +149,7 @@ function StepUpModal({ onClose, onDone }: { onClose: () => void; onDone: (t: { t
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not check the code.'),
   });
   return (
-    <Modal title="Confirm it is you" subtitle="This value is confidential. Enter the code from your authenticator app (or a recovery code)." size="sm" onClose={onClose}
+    <Modal title="Confirm it is you" subtitle="This value is confidential. Enter the code from your authenticator app (or a recovery code)." size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); setError(null); check.mutate(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={check.isPending || code.trim().length < 6}>{check.isPending && <span className="spinner" />}Confirm</button></>}>
       <label className="field"><span>Code</span><input value={code} inputMode="numeric" autoComplete="one-time-code" autoFocus onChange={(e) => setCode(e.target.value)} placeholder="123 456" aria-label="Two-step code" /></label>

@@ -26,7 +26,7 @@ export function DocumentSecurityModal({ onClose }: { onClose: () => void }) {
   const verify = useMutation({ mutationFn: () => documentApi.verifyAudit(), onSuccess: (r) => { done(r.intact ? 'The audit trail is intact.' : 'The audit trail does not verify.'); }, onError: fail });
   const customValid = /^\d+$/.test(custom) && +custom >= 5 && +custom <= 300;
   return (
-    <Modal title="Document security" subtitle="Secrets, reveal time and the audit trail." size="lg" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Document security" subtitle="Secrets, reveal time and the audit trail." size="lg" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="dsec">
           <section>

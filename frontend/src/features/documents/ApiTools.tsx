@@ -33,7 +33,7 @@ export function DefinitionModal({ documentId, existing, onClose, onSaved }: { do
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save.'),
   });
   return (
-    <Modal title={existing ? `Edit ${existing.name}` : 'Describe an API'} size="lg" onClose={onClose}
+    <Modal title={existing ? `Edit ${existing.name}` : 'Describe an API'} size="lg" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); if (!name.trim()) { setError('Name the API.'); return; } setError(null); save.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>Save</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
@@ -91,7 +91,7 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
   const canImport = !!result?.success && !result.applied && (result.added + result.updated + result.removed > 0);
   const step = !file ? 1 : result?.success ? 3 : 2;
   return (
-    <Modal title="Import an API" subtitle="Bring in an OpenAPI file, a Postman collection or cURL commands instead of typing it endpoint by endpoint." size="lg" onClose={onClose}
+    <Modal title="Import an API" subtitle="Bring in an OpenAPI file, a Postman collection or cURL commands instead of typing it endpoint by endpoint." size="lg" onClose={onClose} className="doc-scope"
       footer={<><button className="btn btn-ghost" onClick={onClose}>{result?.applied ? 'Close' : 'Cancel'}</button>
         {!result?.applied && <button className="btn btn-primary" disabled={!canImport || run.isPending} onClick={() => run.mutate(false)}>{run.isPending ? <span className="spinner" /> : <Icon name="upload" size={15} />} Import{canImport ? ` ${result!.added + result!.updated} endpoint${result!.added + result!.updated === 1 ? '' : 's'}` : ''}</button>}</>}>
       <ol className="imp-steps" aria-label="Steps">{['Choose a file', 'Choose where it goes', 'Review and import'].map((t, i) => <li key={t} className={step === i + 1 ? 'on' : step > i + 1 ? 'done' : ''}><span>{step > i + 1 ? '✓' : i + 1}</span>{t}</li>)}</ol>
@@ -196,7 +196,7 @@ export function ChangesModal({ documentId, canEdit, onClose }: { documentId: str
   const options = items.map((v) => <option key={v.id} value={v.id}>{v.isDraft ? 'Working copy' : `Version ${v.label}`}</option>);
   const d = q.data;
   return (
-    <Modal title="API changes" subtitle="What callers of the API will notice between two versions." size="xl" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="API changes" subtitle="What callers of the API will notice between two versions." size="xl" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {versions.isLoading ? <PageLoader /> : (
         <>
           <div className="chg-pick">

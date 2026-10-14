@@ -54,7 +54,7 @@ export function ActivityModal({ id, title, onClose }: { id: string; title: strin
   const canAudit = auditEntitled && hasAuditPermission;
   const [tab, setTab] = useState<'activity' | 'audit'>('activity');
   return (
-    <Modal title="Activity" subtitle={title} size="xl" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Activity" subtitle={title} size="xl" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       <div className="seg" role="tablist" aria-label="View">
         <button role="tab" aria-selected={tab === 'activity'} className={tab === 'activity' ? 'on' : ''} onClick={() => setTab('activity')}>Activity</button>
         {canAudit && <button role="tab" aria-selected={tab === 'audit'} className={tab === 'audit' ? 'on' : ''} onClick={() => setTab('audit')}>Audit trail</button>}
@@ -66,15 +66,24 @@ export function ActivityModal({ id, title, onClose }: { id: string; title: strin
 
 export function ActivityCard({ id, title }: { id: string; title: string }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const q = useWsQuery(['documents', id, 'activity'], () => documentApi.activity(id));
   return (
-    <div className="card doc-side-card">
-      <div className="card-head"><div><h3>Activity</h3></div><button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>All</button></div>
-      <div className="card-body">
-        {(q.data ?? []).length === 0 ? <p className="muted">Nothing yet.</p> : (
-          <ul className="act mini">{(q.data ?? []).slice(0, 5).map((a) => <li key={a.id}><div><span>{a.summary}</span><small title={formatDateTime(a.at)}>{a.by?.name ?? 'Someone'} · {timeAgo(a.at)}</small></div></li>)}</ul>
-        )}
+    <div className="card doc-side-card doc-accent-card doc-accent-neutral">
+      <div className="card-head">
+        <div className="doc-acc-head-left">
+          <button type="button" className="doc-acc-caret" aria-expanded={!collapsed} aria-label={collapsed ? 'Expand activity' : 'Collapse activity'} onClick={() => setCollapsed((c) => !c)}><Icon name="chevronD" size={14} /></button>
+          <h3>Activity</h3>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>All</button>
       </div>
+      {!collapsed && (
+        <div className="card-body">
+          {(q.data ?? []).length === 0 ? <p className="muted">Nothing yet.</p> : (
+            <ul className="act mini">{(q.data ?? []).slice(0, 5).map((a) => <li key={a.id}><div><span>{a.summary}</span><small title={formatDateTime(a.at)}>{a.by?.name ?? 'Someone'} · {timeAgo(a.at)}</small></div></li>)}</ul>
+          )}
+        </div>
+      )}
       {open && <ActivityModal id={id} title={title} onClose={() => setOpen(false)} />}
     </div>
   );

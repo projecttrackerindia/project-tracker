@@ -78,7 +78,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
     : kind === 'Team' ? (teams.data ?? []).map((t) => ({ id: t.id, name: t.name })) : (org.data?.roles ?? []).filter((r) => !r.isDeleted).map((r) => ({ id: r.id, name: r.name }));
 
   return (
-    <Modal title="Who can open this" subtitle={`${detail.item.key} · ${detail.item.title}`} size="lg" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Who can open this" subtitle={`${detail.item.key} · ${detail.item.title}`} size="lg" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {q.isLoading ? <PageLoader /> : q.isError || !data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="acc">
           <div className="acc-base">

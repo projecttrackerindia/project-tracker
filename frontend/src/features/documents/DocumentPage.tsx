@@ -58,7 +58,7 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save.'),
   });
   return (
-    <Modal title="Document details" onClose={onClose} onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
+    <Modal title="Document details" onClose={onClose} className="doc-scope" onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>Save</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
       <Field label="Title" required><input className="input" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} /></Field>
@@ -157,7 +157,7 @@ export function DocumentPage() {
   });
 
   return (
-    <div className="doc-page">
+    <div className="doc-page doc-scope">
       <nav className="doc-crumbs" aria-label="Breadcrumb">
         <Link to="/documents">Documents</Link>
         {d.projectId && <><Icon name="chevronR" size={13} /><Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectKey}</Link></>}
@@ -169,9 +169,9 @@ export function DocumentPage() {
         <div className="doc-head-main">
           <h1>{d.title}</h1>
           <div className="doc-head-sub">
-            <span className="doc-key">{d.key}</span><span>{d.typeName}</span><DocStatusBadge status={d.status} />
+            <span className="doc-key doc-meta-chip">{d.key}</span><span className="doc-meta-chip">{d.typeName}</span><DocStatusBadge status={d.status} />
             {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
-            <span className="muted">Version {detail.versionLabel}</span>
+            <span className="doc-meta-chip">Version {detail.versionLabel}</span>
             {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="doc-dirty" title="The draft differs from the published version">Not published yet</span>}
             {dirty && <span className="doc-dirty">Unsaved changes</span>}
           </div>
@@ -237,7 +237,7 @@ export function DocumentPage() {
           </DocumentIdContext.Provider>
         </main>
         <aside className="doc-side">
-          <div className="card doc-side-card">
+          <div className="card doc-side-card doc-accent-card doc-accent-primary">
             <div className="card-head"><div><h3>About</h3></div></div>
             <div className="card-body">
               <dl className="doc-facts">

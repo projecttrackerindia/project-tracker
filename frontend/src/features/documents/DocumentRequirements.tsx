@@ -51,7 +51,7 @@ export function CoverageModal({ documentId, canEdit, onClose }: { documentId: st
   const data: Coverage | undefined = q.data;
   const rows = (data?.rows ?? []).filter((r) => filter === 'all' || r.state === filter);
   return (
-    <Modal title="Requirements and coverage" subtitle="What the document asks for, the work that builds it and the tests that prove it." size="xl" onClose={onClose} footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <Modal title="Requirements and coverage" subtitle="What the document asks for, the work that builds it and the tests that prove it." size="xl" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {q.isLoading ? <PageLoader /> : q.isError || !data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="cov">
           <div className="cov-stats" role="group" aria-label="Filter by coverage">
@@ -106,7 +106,7 @@ export function RequirementsCard({ documentId, canEdit }: { documentId: string; 
   const c = q.data;
   const pct = c && c.requirements > 0 ? Math.round((c.covered / c.requirements) * 100) : 0;
   return (
-    <div className="card doc-side-card">
+    <div className="card doc-side-card doc-accent-card doc-accent-success">
       <div className="card-head"><div><h3>Requirements</h3></div><button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>{c && c.requirements > 0 ? 'Open' : canEdit ? 'Add' : 'View'}</button></div>
       <div className="card-body">
         {!c || c.requirements === 0 ? <p className="muted">{canEdit ? 'List what this document asks for, then link the work and tests that cover each requirement.' : 'No requirements listed.'}</p> : (
