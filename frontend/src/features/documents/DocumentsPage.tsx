@@ -21,10 +21,11 @@ export function DocumentsPage() {
   const [security, setSecurity] = useState(false);
   const isAdmin = useAuth((s) => s.ctx?.current?.role === 'Owner' || s.ctx?.current?.role === 'Admin');
   const [params, setParams] = useSearchParams();
-  const view = params.get('view') === 'inbox' ? 'inbox' : 'all';
+  const viewParam = params.get('view');
+  const view = viewParam === 'inbox' ? 'inbox' : viewParam === 'recent' ? 'recent' : 'all';
   const inbox = useWsQuery(['documents', 'inbox'], documentApi.inbox);
   const waiting = inbox.data?.waiting ?? 0;
-  const setView = (v: 'all' | 'inbox') => setParams(v === 'inbox' ? { view: 'inbox' } : {}, { replace: true });
+  const setView = (v: 'all' | 'inbox' | 'recent') => setParams(v === 'all' ? {} : { view: v }, { replace: true });
   return (
     <>
       <PageHead title="Documents" sub="Requirements, API documentation, test plans and more, linked to the projects and tasks that deliver them.">
@@ -35,9 +36,10 @@ export function DocumentsPage() {
       <div className="seg doc-views" role="tablist" aria-label="Documents view">
         <button role="tab" aria-selected={view === 'all'} className={view === 'all' ? 'on' : ''} onClick={() => setView('all')}>All documents</button>
         <button role="tab" aria-selected={view === 'inbox'} className={view === 'inbox' ? 'on' : ''} onClick={() => setView('inbox')}>Waiting for me{waiting > 0 && <span className="doc-count">{waiting}</span>}</button>
+        <button role="tab" aria-selected={view === 'recent'} className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')}>Recently viewed</button>
       </div>
       {view === 'all' && <DocumentOverview />}
-      {view === 'inbox' ? <InboxView /> : <DocumentList canCreate={canCreate} onNew={() => setCreating(true)} />}
+      {view === 'inbox' ? <InboxView /> : view === 'recent' ? <DocumentList canCreate={canCreate} onNew={() => setCreating(true)} recent /> : <DocumentList canCreate={canCreate} onNew={() => setCreating(true)} />}
       {flows && <WorkflowsModal onClose={() => setFlows(false)} />}
       {security && <DocumentSecurityModal onClose={() => setSecurity(false)} />}
       {creating && <DocumentWizard onClose={() => setCreating(false)} onCreated={(id) => nav(`/documents/${id}`)} />}

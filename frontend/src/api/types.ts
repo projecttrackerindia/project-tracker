@@ -586,7 +586,7 @@ export interface DocumentDetail {
   item: DocumentItem; revision: number; versionLabel: string; sections: DocumentSection[]; can: { edit: boolean; delete: boolean; link: boolean; share: boolean; publish: boolean };
   publishedLabel: string | null; hasUnpublishedChanges: boolean; viewingPublished: boolean;
 }
-export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; cursor?: string; limit?: number }
+export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; scope?: string; cursor?: string; limit?: number }
 export interface LinkedItem {
   linkId: string; targetType: LinkTarget; targetId: string; relation: LinkRelation; restricted: boolean; key: string; title: string; status: string;
   done: boolean; dueDate: string | null; overdue: boolean; projectId: string | null; assignee: string | null; requirementId?: string | null;
@@ -654,6 +654,7 @@ export interface CoverageItem { linkId: string; targetType: LinkTarget; targetId
 export interface CoverageRow { requirement: Requirement; state: 'Covered' | 'NoTask' | 'NoTest' | 'Failing'; implementing: CoverageItem[]; verifying: CoverageItem[] }
 export interface Coverage { rows: CoverageRow[]; requirements: number; covered: number; withoutTask: number; withoutTest: number; failingTests: number; workWithoutTest: number; restricted: number }
 export interface DocActivity { id: string; at: string; action: string; summary: string; by: UserRef | null }
+export interface DocComment { id: string; user: UserRef; body: string; createdAt: string; editedAt: string | null; mine: boolean }
 export interface DocAuditEntry { id: string; at: string; action: string; by: UserRef | null; ip: string | null; device: string | null; oldValue: string | null; newValue: string | null }
 export interface DocAuditPage { items: DocAuditEntry[]; nextCursor: string | null }
 

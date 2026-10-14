@@ -37,46 +37,53 @@ function Row({ d, showProject }: { d: DocumentItem; showProject: boolean }) {
   );
 }
 
-/** The documents a person may open, filtered and paged. Used on the Documents page and on a project's Documents tab (then fixed to that project). */
-export function DocumentList({ projectId, onNew, canCreate }: { projectId?: string; onNew?: () => void; canCreate: boolean }) {
+/**
+ * The documents a person may open, filtered and paged. Used on the Documents page and on a project's Documents tab (then fixed to that project).
+ * With `recent`, shows the "Recently viewed" list instead (server-ordered by most-recently-opened, no filters - a fixed, small list is the point).
+ */
+export function DocumentList({ projectId, onNew, canCreate, recent }: { projectId?: string; onNew?: () => void; canCreate: boolean; recent?: boolean }) {
   const wid = useWorkspaceId();
   const [q, setQ] = useState('');
   const [typeId, setTypeId] = useState('');
   const [status, setStatus] = useState('');
   const [scope, setScope] = useState('');   // '' all, 'general', or a project id
   const dq = useDebounced(q.trim(), 300);
-  const types = useWsQuery(['document-types'], documentApi.types);
-  const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: !projectId });
+  const types = useWsQuery(['document-types'], documentApi.types, { enabled: !recent });
+  const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: !projectId && !recent });
 
   const query = useInfiniteQuery({
-    queryKey: [wid, 'documents', { projectId, dq, typeId, status, scope }],
+    queryKey: recent ? [wid, 'documents', 'recent'] : [wid, 'documents', { projectId, dq, typeId, status, scope }],
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => documentApi.list({ projectId: projectId ?? (scope && scope !== 'general' ? scope : undefined), general: scope === 'general' ? true : undefined, q: dq || undefined, typeId: typeId || undefined, status: status || undefined, cursor: pageParam, limit: 25 }),
+    queryFn: ({ pageParam }) => recent
+      ? documentApi.list({ scope: 'recent', limit: 50 })
+      : documentApi.list({ projectId: projectId ?? (scope && scope !== 'general' ? scope : undefined), general: scope === 'general' ? true : undefined, q: dq || undefined, typeId: typeId || undefined, status: status || undefined, cursor: pageParam, limit: 25 }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!wid,
   });
   const items = query.data?.pages.flatMap((p) => p.items) ?? [];
   const total = query.data?.pages[0]?.total ?? null;
-  const filtered = !!(dq || typeId || status || scope);
+  const filtered = !recent && !!(dq || typeId || status || scope);
 
   return (
     <div className="doc-list">
-      <div className="doc-filters">
-        <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Search titles, text and tags, or DOC-12…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search documents" /></div>
-        <Select className="select" value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Kind"><option value="">All kinds</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
-        <Select className="select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Any status</option>{STATUSES.map((s) => <option key={s} value={s}>{s.replace(/([A-Z])/g, ' $1').trim()}</option>)}</Select>
-        {!projectId && (
-          <Select className="select" value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Project">
-            <option value="">Everywhere</option><option value="general">General (no project)</option>
-            {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-          </Select>
-        )}
-      </div>
+      {!recent && (
+        <div className="doc-filters">
+          <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Search titles, text and tags, or DOC-12…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search documents" /></div>
+          <Select className="select" value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Kind"><option value="">All kinds</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+          <Select className="select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Any status</option>{STATUSES.map((s) => <option key={s} value={s}>{s.replace(/([A-Z])/g, ' $1').trim()}</option>)}</Select>
+          {!projectId && (
+            <Select className="select" value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Project">
+              <option value="">Everywhere</option><option value="general">General (no project)</option>
+              {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
+            </Select>
+          )}
+        </div>
+      )}
 
       {query.isLoading ? <PageLoader /> : query.isError ? <ErrorState error={query.error} retry={() => query.refetch()} /> : items.length === 0 ? (
-        <EmptyState icon="note" title={filtered ? 'No documents match' : 'No documents yet'}
-          text={filtered ? 'Try fewer filters or a different word.' : 'Write a requirement document, API documentation or a test plan, and link it to the work that delivers it.'}
-          action={canCreate && !filtered ? <button className="btn btn-primary" onClick={onNew}><Icon name="plus" /> New document</button> : undefined} />
+        <EmptyState icon="note" title={recent ? 'Nothing viewed yet' : filtered ? 'No documents match' : 'No documents yet'}
+          text={recent ? 'Documents you open will show up here.' : filtered ? 'Try fewer filters or a different word.' : 'Write a requirement document, API documentation or a test plan, and link it to the work that delivers it.'}
+          action={canCreate && !filtered && !recent ? <button className="btn btn-primary" onClick={onNew}><Icon name="plus" /> New document</button> : undefined} />
       ) : (
         <>
           <div className="doc-rows">{items.map((d) => <Row key={d.id} d={d} showProject={!projectId} />)}</div>

@@ -19,6 +19,7 @@ import { DocumentGate } from './DocumentGate';
 import { PublishApprovedModal, ReviewPanel, SubmitModal } from './DocumentReview';
 import { RequirementsCard } from './DocumentRequirements';
 import { ActivityCard } from './DocumentActivity';
+import { CommentsCard } from './DocumentComments';
 import { Menu } from '../../components/Menu';
 import { useExportPdf } from './ExportPdf';
 import { ApiReference } from './ApiReference';
@@ -253,6 +254,7 @@ export function DocumentPage() {
           <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />
           <DocumentSecrets documentId={id} canEdit={editable} />
           <DocumentFiles documentId={id} canEdit={editable} />
+          <CommentsCard id={id} title={`${d.key} · ${d.title}`} />
           <ActivityCard id={id} title={`${d.key} · ${d.title}`} />
         </aside>
       </div>
