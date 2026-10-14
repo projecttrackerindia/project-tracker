@@ -5,7 +5,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.53.0" />
-    <PackageReference Include="AWSSDK.S3" Version="4.0.104" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.3" />
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="ITfoxtec.Identity.Saml2" Version="4.21.0" />
     <!-- Explicit security floor for SAML XML signature verification. -->
