@@ -10,7 +10,7 @@ import { Avatar, ErrorState, Modal, PageLoader } from '../../components/ui';
 import { formatDate } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
-import { toast } from '../../stores/ui';
+import { confirmDialog, toast } from '../../stores/ui';
 import { VISIBILITY } from './docUi';
 import { AccessRequestRow, DecideAccessModal } from './DocumentInbox';
 import type { AccessRequest } from '../../api/types';
@@ -117,7 +117,10 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
 
           <h4>Shared in addition ({data.grants.length})</h4>
           {data.grants.length === 0 ? <p className="muted">Not shared beyond who can open it by default.</p> : (
-            <ul className="grants">{data.grants.map((g) => <GrantRow key={g.id} g={g} canManage={data.canManage} onRemove={() => remove.mutate(g.id)} />)}</ul>
+            <ul className="grants">{data.grants.map((g) => <GrantRow key={g.id} g={g} canManage={data.canManage} onRemove={async () => {
+              if (!(await confirmDialog({ title: 'Remove this access?', message: `${g.name} will no longer be able to open “${detail.item.title}” through this grant.`, confirmText: 'Remove' }))) return;
+              remove.mutate(g.id);
+            }} />)}</ul>
           )}
 
           <div className="acc-people-head">

@@ -46,6 +46,7 @@ export function DocumentFiles({ documentId, canEdit }: { documentId: string; can
             ))}
           </ul>
         )}
+        {items.length > 0 && <p className="muted doc-files-caveat">Downloaded files are no longer protected by this app once saved locally — handle them per your organization's policy.</p>}
       </div>
     </div>
   );

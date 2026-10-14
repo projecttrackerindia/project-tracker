@@ -175,11 +175,14 @@ export function DocumentPage() {
           {canEdit && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
           {canEdit && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
           <Menu label="Actions" icon="more" items={[
-            { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', hint: 'Secret values are never included', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
+            { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', hint: 'Secret values are never included. Once downloaded, this app can no longer control or protect the file.', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
             { label: 'History', hint: 'Versions and changes', icon: 'clock', onSelect: () => setPanel('history') },
             { label: detail.can.share ? 'Share' : 'Access', hint: 'Who can open it', icon: 'users', onSelect: () => setPanel('access') },
             { label: 'Details', hint: 'Title, tags, owner, visibility', icon: 'edit', onSelect: () => setDetails(true), hidden: !detail.can.edit },
-            { label: 'Archive', hint: 'Make it read-only', icon: 'folder', onSelect: () => run.mutate(() => documentApi.archive(id)), hidden: d.status === 'Archived' || !detail.can.edit },
+            { label: 'Archive', hint: 'Make it read-only', icon: 'folder', onSelect: async () => {
+              if (!(await confirmDialog({ title: 'Archive this document?', message: `${d.key} “${d.title}” becomes read-only for everyone until it's reopened.`, confirmText: 'Archive' }))) return;
+              run.mutate(() => documentApi.archive(id));
+            }, hidden: d.status === 'Archived' || !detail.can.edit },
             { label: 'Reopen', icon: 'folder', onSelect: () => run.mutate(() => documentApi.reopen(id)), hidden: !(d.status === 'Archived' && detail.can.delete) },
             { label: 'Delete', hint: 'Recoverable for 30 days', icon: 'trash', danger: true, hidden: !detail.can.delete, onSelect: async () => {
               if (!(await confirmDialog({ title: 'Delete this document?', message: `${d.key} “${d.title}” disappears for everyone. You can bring it back for 30 days.`, confirmText: 'Delete', danger: false }))) return;

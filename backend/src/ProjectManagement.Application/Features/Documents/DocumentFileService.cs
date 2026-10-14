@@ -53,10 +53,18 @@ public class DocumentFileService(IAppDbContext db, ICurrentContext ctx, AppClock
 
     public async Task<(DocumentFile File, Stream Content)> OpenAsync(Guid documentId, Guid fileId, CancellationToken ct = default)
     {
-        await VisibleAsync(documentId, ct);
+        var doc = await VisibleAsync(documentId, ct);
+        // Checked and audited as its own action, distinct from viewing the document's metadata/content in the
+        // reader — today every visible document's files are downloadable (there is no separate "view but don't
+        // download" grant in the schema yet), but the check and the audit event are now explicit rather than
+        // implicit, so a future per-grant download restriction has a real enforcement point to extend, and so
+        // a download is distinguishable from an ordinary read in the audit trail.
+        await rights.RightsAsync(doc, ct);
         var f = await db.DocumentFiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == fileId && x.DocumentId == documentId, ct) ?? throw new NotFoundException("File not found.");
         var stream = await storage.OpenReadAsync(f.StorageKey, ct);
         if (stream is null) { log.LogError("Document file {Id} is missing from storage ({Key})", f.Id, f.StorageKey); throw new NotFoundException("This file is no longer available."); }
+        recorder.Audit("document.file_downloaded", "Document", doc.Id, null, new { f.FileName });
+        await db.SaveChangesAsync(ct);
         return (f, stream);
     }
 
