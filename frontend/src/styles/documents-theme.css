@@ -124,7 +124,6 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--hl), var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -204,10 +203,15 @@
 /* ---- hero banner: icon tile colored by "published %" health, headline, right-aligned stat ---- */
 .cc-hero {
   display: flex; align-items: center; gap: 22px; padding: 22px 26px; margin-bottom: 18px;
-  border-radius: var(--radius-lg); border: 1px solid var(--border);
-  background: linear-gradient(135deg, var(--primary-soft), transparent 70%);
-  box-shadow: var(--hl), var(--shadow-sm);
+  border-radius: var(--radius-lg); border: 1px solid var(--border); position: relative; overflow: hidden;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
 }
+/* DocTracker's real hero (`.ctrl-hero`) has a soft radial glow in the corner, not a flat diagonal tint. */
+.cc-hero::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .6;
+  background: radial-gradient(420px 180px at 88% -10%, var(--primary-soft), transparent 70%);
+}
+.cc-hero > * { position: relative; z-index: 1; }
 .cc-hero-icon { flex: none; width: 56px; height: 56px; border-radius: var(--radius); display: grid; place-items: center; background: var(--surface-3); color: var(--text-3); }
 .cc-hero-icon.good { background: var(--success-soft); color: var(--success); }
 .cc-hero-icon.warn { background: var(--warning-soft); color: var(--warning); }
@@ -231,14 +235,13 @@
 .cc-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .cc-kpi {
   padding: 13px 16px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
-  box-shadow: var(--hl), var(--shadow-sm);
 }
 .cc-kpi-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
 .cc-kpi-value { display: block; font: 700 23px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .cc-kpi.warn .cc-kpi-value { color: var(--accent); }
 
 /* ---- status distribution: a thin stacked bar + a legend, folded out of the old flat `.doc-stat-bars` strip ---- */
-.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--hl), var(--shadow-sm); }
+.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
 .cc-status-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 9px; }
 .cc-status-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); }
 .cc-status-bar span { min-width: 3px; opacity: .9; }
@@ -250,20 +253,24 @@
 .cc-table-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
 .cc-table-head h3 { margin: 0; font-size: 15px; letter-spacing: -.01em; color: var(--text); }
 .cc-table-search { position: relative; flex: 1 1 260px; max-width: 320px; }
-.cc-table-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
-.cc-table-search .input { padding-left: 34px; width: 100%; }
+.cc-table-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+/* Fully pill-shaped (DocTracker's `.cc-search-wrap input`), not the generic rectangular `.input` radius -
+   a search box reading as a search box, not a plain form field. */
+.cc-table-search .input { padding-left: 36px; width: 100%; border-radius: 999px; }
 
 /* ---- the data table itself: rounded-and-clipped wrapper (radius lives on the wrapper, not the table,
    so corners stay sharp despite border-collapse), tinted uppercase header row, hover rows ---- */
-.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--hl), var(--shadow-sm); }
+.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-table.data-table th { text-align: left; padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+/* DocTracker tints its table headers with the accent color (background: accent-soft, text: accent) rather than
+   a plain neutral gray - this is what makes its tables read as "designed" instead of a generic admin grid. */
+table.data-table th { text-align: left; padding: 10px 14px; background: var(--primary-soft); color: var(--primary); border-bottom: 1px solid var(--border); white-space: nowrap; }
 table.data-table th button {
-  all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-3);
+  all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: inherit; opacity: .75;
   font: inherit; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
-table.data-table th button:hover { color: var(--text-2); }
-table.data-table th[aria-sort] button { color: var(--primary); }
+table.data-table th button:hover { opacity: 1; }
+table.data-table th[aria-sort] button { opacity: 1; }
 table.data-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 table.data-table tbody tr:last-child td { border-bottom: none; }
 table.data-table tbody tr { cursor: pointer; transition: background .12s; }
@@ -323,15 +330,14 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
 .doc-scope .seg button { color: var(--text-2); }
 .doc-scope .seg button:hover { color: var(--text); background: var(--hover-bg); }
 .doc-scope .seg button.active, .doc-scope .seg button.on {
-  background: var(--primary-soft); color: var(--primary); box-shadow: var(--hl), inset 0 0 0 1px var(--border-strong);
+  background: var(--primary-soft); color: var(--primary); box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 /* ---- the section outline rail (`.doc-outline`, documents.css): a bare bordered list by default, which reads
    as unstyled next to every other panel here (hero, KPI cards, accent cards) that has its own surface/border/
    shadow. Giving it the same card treatment folds it into the same visual family instead of looking orphaned. */
 .doc-scope .doc-outline {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--hl), var(--shadow-sm); padding: 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
 }
 .doc-scope .doc-outline ul { border-left: none; }
 .doc-scope .doc-outline a { border-radius: var(--radius-sm); }
@@ -369,13 +375,34 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
    prominent place Stage 3 renders `.btn-primary` inside `.doc-scope`, but the same literal is read by every
    other `.btn-primary`/`.btn-danger` already rendered in this scope (Comment, Compare, secret-save buttons,
    etc.), so this closes the gap for the whole scope at once rather than just the header. */
-.doc-scope .btn-primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: var(--primary-text);
-  box-shadow: 0 8px 22px var(--primary-soft), inset 0 1px 0 rgba(255, 255, 255, .12);
+/* DocTracker's real buttons are flat (`button.primary { background:var(--accent); }`, no gradient, no glow
+   box-shadow - hover is just `filter:brightness(1.08)`). The earlier fix recolored the host app's gradient+glow
+   button shape to our palette instead of replacing the shape itself, which is why buttons still read as a
+   different, softer "glassy" design language layered on top of the right colors. Flattened here to match. */
+.doc-scope .btn-primary { background: var(--primary); color: var(--primary-text); box-shadow: none; }
+.doc-scope .btn-primary:hover:not(:disabled) { filter: brightness(1.08); box-shadow: none; }
+.doc-scope .btn-danger { background: var(--danger); color: #fff; box-shadow: none; }
+.doc-scope .btn-danger:hover:not(:disabled) { filter: brightness(1.08); box-shadow: none; }
+.doc-scope .btn-ghost { box-shadow: none; }
+.doc-scope .btn-icon:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
+
+/* `.card`/`.doc-filters` (components.css/documents.css) apply the host app's `--hl`/`--shadow-sm` glow to every
+   surface; DocTracker never shadows a flat panel (only modals/popups get a real shadow, via --shadow-lg/-modal
+   equivalents, left untouched here), so this scope's cards/toolbar go flat-bordered to match. */
+.doc-scope .card, .doc-scope .doc-filters { box-shadow: none; }
+
+/* The shared `.input`/`.select`/`.ss-trigger` focus state, and the `.select` dropdown arrow, are painted with a
+   hardcoded violet literal in components.css (`rgba(139, 92, 246, …)` / `stroke='%238b5cf6'`) that the earlier
+   token-override pass didn't catch, since neither reads a custom property. Re-pointed at this scope's real blue. */
+.doc-scope .input:focus, .doc-scope .select:focus, .doc-scope .textarea:focus, .doc-scope .ss-trigger[aria-expanded='true'] {
+  border-color: var(--primary); background-color: var(--field-focus-bg); box-shadow: 0 0 0 3px var(--primary-soft);
 }
-.doc-scope .btn-primary:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 12px 28px var(--primary-soft), inset 0 1px 0 rgba(255, 255, 255, .14); }
-.doc-scope .btn-danger {
-  background: linear-gradient(135deg, var(--danger), #fda4af); color: #fff;
-  box-shadow: 0 8px 22px var(--danger-soft), inset 0 1px 0 rgba(255, 255, 255, .12);
+.doc-scope .select {
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c7cfa' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
 }
-.doc-scope .btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* The Select component's popup portals to document.body (see components/Select.tsx) and now carries the
+   `.doc-scope` class over explicitly when its trigger lives in this scope, so `.ss-pop` and its children
+   (`.ss-search`, `.ss-opt`, etc.) read this same token block directly - no extra rule needed here. Its
+   `box-shadow: var(--shadow-lg)` (components.css) is left as-is: a floating popup, unlike a flat card, is
+   exactly where DocTracker's own design does use a real shadow (its modals/drawers use `--shadow-modal`). */

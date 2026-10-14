@@ -160,8 +160,13 @@ export function Select({ children, className = '', style, id, title, disabled, v
       <select ref={native} className="ss-native" tabIndex={-1} aria-hidden="true" name={name} required={required} disabled={disabled} value={value} defaultValue={defaultValue} onChange={onChange}>
         {children}
       </select>
+      {/* The popup portals to document.body, escaping any scoped-theme wrapper (e.g. Documents' `.doc-scope` dark
+          re-skin) the trigger itself sits inside — same class of bug the Modal component had. Rather than thread a
+          new prop through every one of this app's ~40 call sites, carry the trigger's own scope class over by
+          reading the live DOM at open time: the trigger is never itself portaled, so `.closest()` on it reflects
+          reality for any current or future scoped-theme wrapper, not just this one. */}
       {open && place && createPortal(
-        <div ref={pop} className="ss-pop" style={{ left: place.left, width: place.width, top: place.top, bottom: place.bottom, maxHeight: place.maxHeight }}>
+        <div ref={pop} className={`ss-pop${trigger.current?.closest('.doc-scope') ? ' doc-scope' : ''}`} style={{ left: place.left, width: place.width, top: place.top, bottom: place.bottom, maxHeight: place.maxHeight }}>
           <div className="ss-search">
             <Icon name="search" size={14} />
             <input ref={search} value={query} onChange={(e) => { setQuery(e.target.value); setActive(0); }} onKeyDown={onSearchKey} placeholder="Search…"
