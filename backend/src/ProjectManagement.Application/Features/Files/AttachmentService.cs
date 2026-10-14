@@ -244,7 +244,12 @@ public class AttachmentService(IAppDbContext db, ICurrentContext ctx, Permission
     /// Checks a file (type by extension, content that agrees with it, the plan's size and storage limits) and saves its bytes. Whoever calls this adds the
     /// metadata row, and must delete the stored bytes again if that fails.
     /// </summary>
-    public async Task<StoredFile> StoreAsync(string? fileName, Stream content, long length, CancellationToken ct = default)
+    /// <param name="beforeStore">
+    /// Optional transform applied to the validated plaintext right before it's written to storage (e.g. encrypting it) - every existing caller leaves
+    /// this null and gets exactly today's behavior. The transform receives the stream the hash is computed from, so <c>hashing.Hex()</c> below still
+    /// reflects the plaintext's SHA-256 regardless of what the transform does to the bytes afterward; it must fully drain what it's given.
+    /// </param>
+    public async Task<StoredFile> StoreAsync(string? fileName, Stream content, long length, CancellationToken ct = default, Func<Stream, CancellationToken, Task<Stream>>? beforeStore = null)
     {
         var tid = ctx.RequireTenantId();
         // ---- what kind of file, and does it fit the plan?
@@ -273,7 +278,8 @@ public class AttachmentService(IAppDbContext db, ICurrentContext ctx, Permission
         // ---- store the bytes, then the metadata; never leave an orphan file behind
         var key = $"{tid:N}/{clock.Now:yyyyMM}/{Guid.NewGuid():N}";
         using var hashing = new HashingReadStream(content);
-        await storage.SaveAsync(key, hashing, ct);
+        Stream toStore = beforeStore is null ? hashing : await beforeStore(hashing, ct);
+        try { await storage.SaveAsync(key, toStore, ct); } finally { if (toStore != hashing) await toStore.DisposeAsync(); }
         if (hashing.Total != length)
         {
             await storage.DeleteAsync(key, ct);

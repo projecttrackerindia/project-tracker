@@ -17,7 +17,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.20")
+                .HasAnnotation("ProductVersion", "9.0.21")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -2257,6 +2257,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("Classification")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2471,10 +2474,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("Encrypted")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<int>("KeyVersion")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Sha256")
                         .IsRequired()

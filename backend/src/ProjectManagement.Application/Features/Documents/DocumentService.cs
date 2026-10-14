@@ -15,15 +15,16 @@ public record DocumentTypeDto(Guid Id, string Code, string Name, string? Descrip
 public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false, bool Publish = false);
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
-    IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount);
+    IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount, DocumentClassification Classification = DocumentClassification.Internal);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
 public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false);
 
 public record SectionInput(string Key, string? Content);
 public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId = null, Guid? TeamId = null, DocumentVisibility? Visibility = null,
-    IReadOnlyList<string>? Tags = null, IReadOnlyList<SectionInput>? Sections = null);
-public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility, IReadOnlyList<string>? Tags, Guid? OwnerId, int Revision, Guid? TeamId = null);
+    IReadOnlyList<string>? Tags = null, IReadOnlyList<SectionInput>? Sections = null, DocumentClassification? Classification = null);
+public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility, IReadOnlyList<string>? Tags, Guid? OwnerId, int Revision, Guid? TeamId = null,
+    DocumentClassification? Classification = null);
 public record SaveSectionsRequest(int Revision, IReadOnlyList<SectionInput> Sections);
 public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? TypeId = null, DocumentStatus? Status = null, Guid? OwnerId = null, string? Tag = null, string? Q = null, bool? General = null);
 
@@ -124,7 +125,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             return new DocumentItemDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.TypeId, ty?.Code ?? "", ty?.Name ?? "Document", ty?.Color ?? "#8b5cf6", ty?.Icon ?? "file",
                 r.ProjectId, pr?.Key, pr?.Name, teamId, teamId is { } tid ? teams.GetValueOrDefault(tid) : null,
                 new UserRefDto(r.OwnerId, owners.GetValueOrDefault(r.OwnerId) ?? "Former member"), r.Status, r.Visibility,
-                tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id));
+                tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id), r.Classification);
         }).ToList();
     }
 
@@ -177,12 +178,13 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         Project? project = null; Guid? teamId = req.TeamId;
         if (req.ProjectId is { } pid) { project = await access.GetProjectAsync(pid, ct); teamId = project.TeamId; }
         var visibility = await ResolveVisibilityAsync(req.Visibility, project, teamId, ct);
+        var classification = req.Classification ?? DocumentClassification.Internal;
 
         var now = clock.Now;
         var doc = new Document
         {
             TenantId = tid, Title = title, TypeId = type.Id, ProjectId = project?.Id, TeamId = project is null ? teamId : null, OwnerId = uid,
-            Visibility = visibility, Status = DocumentStatus.Draft, CreatedAt = now, UpdatedAt = now, CreatedBy = uid,
+            Visibility = visibility, Classification = classification, Status = DocumentStatus.Draft, CreatedAt = now, UpdatedAt = now, CreatedBy = uid,
             Number = await NextNumberAsync(tid, ct),
         };
         var version = new DocumentVersion { TenantId = tid, DocumentId = doc.Id, Major = 0, Minor = 0, IsDraft = true, CreatedAt = now, CreatedBy = uid };
@@ -202,7 +204,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         db.DocumentVersions.Add(version);
         foreach (var tag in CleanTags(req.Tags)) db.DocumentTags.Add(new DocumentTag { TenantId = tid, DocumentId = doc.Id, Tag = tag, CreatedAt = now });
         recorder.Activity("document.created", "Document", doc.Id, $"Created {KeyOf(doc.Number)} \"{title}\"", project?.Id);
-        recorder.Audit("document.created", "Document", doc.Id, null, new { doc.Number, title, type = type.Code, project = project?.Key, visibility = visibility.ToString() });
+        recorder.Audit("document.created", "Document", doc.Id, null, new { doc.Number, title, type = type.Code, project = project?.Key, visibility = visibility.ToString(), classification = classification.ToString() });
         try { await db.SaveChangesAsync(ct); await indexer.IndexAsync(doc.Id, ct); }
         catch (DbUpdateException)
         {
@@ -242,10 +244,11 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var doc = await RequireEditableAsync(id, ct);
         if (doc.Revision != req.Revision) throw Changed();
         var title = CleanTitle(req.Title);
-        var before = new { doc.Title, visibility = doc.Visibility.ToString(), doc.OwnerId };
+        var before = new { doc.Title, visibility = doc.Visibility.ToString(), classification = doc.Classification.ToString(), doc.OwnerId };
         Project? project = doc.ProjectId is { } pid ? await db.Projects.FirstOrDefaultAsync(p => p.Id == pid, ct) : null;
         var teamId = project is null ? (req.TeamId ?? doc.TeamId) : null;
         var visibility = await ResolveVisibilityAsync(req.Visibility, project, teamId, ct);
+        var classification = req.Classification ?? doc.Classification;
         if (req.OwnerId is { } owner && owner != doc.OwnerId)
         {
             if (doc.OwnerId != ctx.UserId && !await permissions.HasAsync(Permissions.DocsEdit, ct)) throw new ForbiddenException("Only the owner can hand a document over.", "PERMISSION_DENIED");
@@ -253,11 +256,11 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             doc.OwnerId = owner;
             await notifier.SendAsync([owner], doc, $"owner:{doc.Revision}", $"{KeyOf(doc.Number)} was handed over to you", doc.Title, ct: ct);
         }
-        doc.Title = title; doc.Visibility = visibility; doc.TeamId = teamId;
+        doc.Title = title; doc.Visibility = visibility; doc.Classification = classification; doc.TeamId = teamId;
         await SetTagsAsync(doc.Id, req.Tags, ct);
         Touch(doc);
         recorder.Activity("document.updated", "Document", doc.Id, $"Updated {KeyOf(doc.Number)} \"{title}\"", doc.ProjectId);
-        recorder.Audit("document.updated", "Document", doc.Id, before, new { Title = title, visibility = visibility.ToString(), doc.OwnerId });
+        recorder.Audit("document.updated", "Document", doc.Id, before, new { Title = title, visibility = visibility.ToString(), classification = classification.ToString(), doc.OwnerId });
         await SaveAsync(ct);
         await indexer.IndexAsync(doc.Id, ct);   // the title and tags are part of the search text
         return await GetAsync(id, ct);

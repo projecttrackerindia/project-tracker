@@ -568,6 +568,8 @@ export interface InvoiceSeller { legalName: string; address: string; taxId: stri
 // ---- Documents (BRDs, API documentation, test plans ...)
 export type DocumentStatus = 'Draft' | 'InReview' | 'ChangesRequested' | 'Approved' | 'Published' | 'Archived';
 export type DocumentVisibility = 'Project' | 'Team' | 'Organization' | 'Private';
+/** How sensitive a document's own content is, independent of who may see it (DocumentVisibility). Confidential/Restricted documents get their files encrypted at rest. */
+export type DocumentClassification = 'Public' | 'Internal' | 'Confidential' | 'Restricted';
 export type SectionKind = 'RichText' | 'Table';
 export type LinkTarget = 'Project' | 'Task' | 'Issue' | 'WorkItem' | 'Sprint';
 export type LinkRelation = 'Describes' | 'Implements' | 'Verifies' | 'References' | 'DependsOn';
@@ -576,7 +578,7 @@ export interface DocumentType { id: string; code: string; name: string; descript
 export interface DocumentItem {
   id: string; key: string; number: number; title: string; typeId: string; typeCode: string; typeName: string; typeColor: string; typeIcon: string;
   projectId: string | null; projectKey: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
-  owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
+  owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; classification: DocumentClassification; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
 }
 export interface DocumentPage { items: DocumentItem[]; nextCursor: string | null; total: number | null }
 export interface DocumentSection { key: string; title: string; kind: SectionKind; sortOrder: number; content: string }

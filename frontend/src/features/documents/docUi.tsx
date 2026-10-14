@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { Icon, type IconName } from '../../components/Icon';
-import type { DocumentItem, DocumentStatus, DocumentVisibility, LinkRelation, LinkTarget } from '../../api/types';
+import type { DocumentClassification, DocumentItem, DocumentStatus, DocumentVisibility, LinkRelation, LinkTarget } from '../../api/types';
 import { labelize } from '../../lib/format';
 
 /** The icon names the server's built-in types use, mapped onto the app's own icon set. */
@@ -25,6 +25,18 @@ export const VISIBILITY: Record<DocumentVisibility, { label: string; hint: strin
   Team: { label: 'Team', hint: 'Members of the chosen team', icon: 'users' },
   Organization: { label: 'Organization', hint: 'Every member of the workspace (not guests)', icon: 'building' },
   Private: { label: 'Only me', hint: 'You, and the organization’s owners and admins', icon: 'lock' },
+};
+
+/** How sensitive the content itself is - separate from Visibility (who can open it at all). Confidential and Restricted get their files encrypted at rest. */
+export const CLASSIFICATION: Record<DocumentClassification, { label: string; hint: string; icon: IconName; tone: string }> = {
+  Public: { label: 'Public', hint: 'Nothing sensitive - fine for anyone this document is already visible to', icon: 'building', tone: 'badge-neutral' },
+  Internal: { label: 'Internal', hint: 'Ordinary business content, not specially protected', icon: 'folder', tone: 'badge-neutral' },
+  Confidential: { label: 'Confidential', hint: 'Sensitive - files attached to this document are encrypted at rest', icon: 'lock', tone: 'badge-warning' },
+  Restricted: { label: 'Restricted', hint: 'Highly sensitive - files are encrypted at rest and reopening them after a classification change never happens silently', icon: 'shield', tone: 'badge-critical' },
+};
+export const ClassificationBadge = ({ classification }: { classification: DocumentClassification }) => {
+  const c = CLASSIFICATION[classification];
+  return <span className={`badge ${c.tone}`} title={c.hint}><Icon name={c.icon} size={12} />{c.label}</span>;
 };
 
 export const RELATIONS: { value: LinkRelation; label: string; hint: string }[] = [

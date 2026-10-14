@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { apiDocApi, documentApi, teamApi, workspaceApi } from '../../api/endpoints';
-import type { DocumentDetail, DocumentVisibility } from '../../api/types';
+import type { DocumentClassification, DocumentDetail, DocumentVisibility } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Avatar, ErrorState, Field, Modal, PageLoader, SubmitButton } from '../../components/ui';
@@ -25,7 +25,7 @@ import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
-import { DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
+import { ClassificationBadge, CLASSIFICATION, DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
 function hasContent(kind: string, value: string): boolean {
@@ -45,13 +45,14 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
   const teams = useWsQuery(['teams'], teamApi.list, { enabled: !personal && d.projectId === null });
   const [title, setTitle] = useState(d.title);
   const [visibility, setVisibility] = useState<DocumentVisibility>(d.visibility);
+  const [classification, setClassification] = useState<DocumentClassification>(d.classification);
   const [teamId, setTeamId] = useState(d.teamId ?? '');
   const [ownerId, setOwnerId] = useState(d.owner.id);
   const [tags, setTags] = useState(d.tags.join(', '));
   const [error, setError] = useState<string | null>(null);
   const options: DocumentVisibility[] = d.projectId ? ['Project', 'Private'] : ['Team', 'Organization', 'Private'];
   const save = useMutation({
-    mutationFn: () => documentApi.update(d.id, { title: title.trim(), visibility, teamId: d.projectId ? null : teamId || null, ownerId, tags: tags.split(',').map((t) => t.trim()).filter(Boolean), revision: detail.revision }),
+    mutationFn: () => documentApi.update(d.id, { title: title.trim(), visibility, classification, teamId: d.projectId ? null : teamId || null, ownerId, tags: tags.split(',').map((t) => t.trim()).filter(Boolean), revision: detail.revision }),
     onSuccess: (r) => { queryClient.setQueryData([wid, 'documents', d.id], r); invalidateWorkspace(wid, 'documents'); toast('Saved.'); onClose(); },
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save.'),
   });
@@ -65,6 +66,14 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
       </Field>
       {!d.projectId && visibility === 'Team' && (
         <Field label="Team"><Select className="select" value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Team"><option value="">Choose a team…</option>{teams.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+      )}
+      <Field label="How sensitive is the content?" hint={CLASSIFICATION[classification].hint}>
+        <Select className="select" value={classification} onChange={(e) => setClassification(e.target.value as DocumentClassification)} aria-label="Classification">
+          {(Object.keys(CLASSIFICATION) as DocumentClassification[]).map((c) => <option key={c} value={c}>{CLASSIFICATION[c].label}</option>)}
+        </Select>
+      </Field>
+      {classification !== d.classification && (classification === 'Confidential' || classification === 'Restricted') && (
+        <div className="doc-alert info"><Icon name="info" size={16} /><div>Files already attached to this document won't be re-encrypted retroactively — only files added from now on will be.</div></div>
       )}
       <Field label="Owner"><Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} aria-label="Owner">{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
       <Field label="Tags" hint="Separate with commas."><input className="input" value={tags} onChange={(e) => setTags(e.target.value)} /></Field>
@@ -159,7 +168,9 @@ export function DocumentPage() {
         <div className="doc-head-main">
           <h1>{d.title}</h1>
           <div className="doc-head-sub">
-            <span className="doc-key">{d.key}</span><span>{d.typeName}</span><DocStatusBadge status={d.status} /><span className="muted">Version {detail.versionLabel}</span>
+            <span className="doc-key">{d.key}</span><span>{d.typeName}</span><DocStatusBadge status={d.status} />
+            {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
+            <span className="muted">Version {detail.versionLabel}</span>
             {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="doc-dirty" title="The draft differs from the published version">Not published yet</span>}
             {dirty && <span className="doc-dirty">Unsaved changes</span>}
           </div>

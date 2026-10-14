@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { documentApi, projectApi, teamApi } from '../../api/endpoints';
-import type { DocumentType, DocumentVisibility } from '../../api/types';
+import type { DocumentClassification, DocumentType, DocumentVisibility } from '../../api/types';
 import { Select } from '../../components/Select';
 import { Field, Modal, PageLoader } from '../../components/ui';
 import { Icon } from '../../components/Icon';
@@ -11,7 +11,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { SectionEditor } from './SectionEditor';
-import { TypeChip, VISIBILITY } from './docUi';
+import { CLASSIFICATION, TypeChip, VISIBILITY } from './docUi';
 
 const PER_STEP = 4;
 const hasText = (json: string | undefined) => !!json && /"text":"[^"]*\S/.test(json) || (!!json && /"rows":\[\s*\{/.test(json));
@@ -34,6 +34,7 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
   const [where, setWhere] = useState<'project' | 'general'>(projectId || personal ? 'project' : 'project');
   const [project, setProject] = useState(projectId ?? '');
   const [visibility, setVisibility] = useState<DocumentVisibility>('Project');
+  const [classification, setClassification] = useState<DocumentClassification>('Internal');
   const [teamId, setTeamId] = useState('');
   const [tags, setTags] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
@@ -58,7 +59,7 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
 
   const create = useMutation({
     mutationFn: () => documentApi.create({
-      title: title.trim(), typeId, projectId: where === 'project' ? project : null, teamId: where === 'general' && visibility === 'Team' ? teamId : null, visibility,
+      title: title.trim(), typeId, projectId: where === 'project' ? project : null, teamId: where === 'general' && visibility === 'Team' ? teamId : null, visibility, classification,
       tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       sections: Object.entries(values).filter(([, v]) => hasText(v)).map(([key, content]) => ({ key, content })),
     }),
@@ -126,6 +127,11 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
                   <Select className="select" value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Team"><option value="">Choose a team…</option>{teams.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
                 </Field>
               )}
+              <Field label="How sensitive is the content?" hint={CLASSIFICATION[classification].hint}>
+                <Select className="select" value={classification} onChange={(e) => setClassification(e.target.value as DocumentClassification)} aria-label="Classification">
+                  {(Object.keys(CLASSIFICATION) as DocumentClassification[]).map((c) => <option key={c} value={c}>{CLASSIFICATION[c].label}</option>)}
+                </Select>
+              </Field>
               <Field label="Tags" hint="Separate with commas. They help people find it."><input className="input" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="payroll, integration" /></Field>
             </div>
           )}

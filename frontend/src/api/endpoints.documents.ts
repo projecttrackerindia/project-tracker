@@ -1,5 +1,5 @@
 import { del, download, get, post, put, uploadFile } from './client';
-import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocAuditPage,SecretClass,DocumentDashboard,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse } from './types';
+import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocAuditPage,SecretClass,DocumentDashboard,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse } from './types';
 
 // ---- passkeys: sign in with the device's own fingerprint, face or screen lock
 export const passkeyApi = {
@@ -31,8 +31,8 @@ export const documentApi = {
   types: () => get<DocumentType[]>('/document-types'),
   list: (f: DocumentFilters = {}) => get<DocumentPage>('/documents', { ...f }),
   get: (id: string) => get<DocumentDetail>(`/documents/${id}`),
-  create: (b: { title: string; typeId: string; projectId?: string | null; teamId?: string | null; visibility?: DocumentVisibility; tags?: string[]; sections?: { key: string; content: string }[] }) => post<DocumentDetail>('/documents', b),
-  update: (id: string, b: { title: string; visibility: DocumentVisibility; tags: string[]; ownerId?: string | null; revision: number; teamId?: string | null }) => put<DocumentDetail>(`/documents/${id}`, b),
+  create: (b: { title: string; typeId: string; projectId?: string | null; teamId?: string | null; visibility?: DocumentVisibility; classification?: DocumentClassification; tags?: string[]; sections?: { key: string; content: string }[] }) => post<DocumentDetail>('/documents', b),
+  update: (id: string, b: { title: string; visibility: DocumentVisibility; classification?: DocumentClassification; tags: string[]; ownerId?: string | null; revision: number; teamId?: string | null }) => put<DocumentDetail>(`/documents/${id}`, b),
   saveSections: (id: string, b: { revision: number; sections: { key: string; content: string }[] }) => put<DocumentDetail>(`/documents/${id}/sections`, b),
   archive: (id: string) => post<DocumentDetail>(`/documents/${id}/archive`),
   reopen: (id: string) => post<DocumentDetail>(`/documents/${id}/reopen`),

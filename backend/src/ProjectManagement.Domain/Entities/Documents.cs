@@ -13,6 +13,14 @@ public enum DocumentStatus { Draft = 0, InReview = 1, ChangesRequested = 2, Appr
 /// </summary>
 public enum DocumentVisibility { Project = 0, Team = 1, Organization = 2, Private = 3 }
 
+/// <summary>
+/// How sensitive a document's own content is, independent of <see cref="DocumentVisibility"/> (who may see it at all). Visibility answers "who can
+/// open this"; classification answers "how carefully does the content itself need to be protected" - a Team-visible document can still hold
+/// Confidential content. Confidential and Restricted documents get their files encrypted at rest (see <see cref="DocumentFile.Encrypted"/>);
+/// Public and Internal do not.
+/// </summary>
+public enum DocumentClassification { Public = 0, Internal = 1, Confidential = 2, Restricted = 3 }
+
 /// <summary>How a section's content is stored and edited: ProseMirror JSON for rich text, or a small JSON grid for a table.</summary>
 public enum SectionKind { RichText = 0, Table = 1 }
 
@@ -70,6 +78,7 @@ public class Document : TenantEntity, ITenantScoped, ISoftDelete
     public Guid OwnerId { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Draft;
     public DocumentVisibility Visibility { get; set; } = DocumentVisibility.Project;
+    public DocumentClassification Classification { get; set; } = DocumentClassification.Internal;
     /// <summary>The version people are editing now (the draft).</summary>
     public Guid? DraftVersionId { get; set; }
     /// <summary>The newest published (frozen) version. People who may read but not edit the document see this one. Null until the first publish.</summary>
@@ -162,7 +171,12 @@ public class DocumentFile : TenantEntity, ITenantScoped
     public string ContentType { get; set; } = "";
     public long SizeBytes { get; set; }
     public string StorageKey { get; set; } = "";
+    /// <summary>SHA-256 of the plaintext content, computed while the upload streams in - this is a content-integrity fingerprint, never of the ciphertext, so it still means the same thing whether or not the bytes are encrypted at rest.</summary>
     public string Sha256 { get; set; } = "";
+    /// <summary>Whether the stored bytes are AES-256-GCM ciphertext (set at upload time from the document's classification at that moment - changing a document's classification later does not retroactively re-encrypt or decrypt files already stored).</summary>
+    public bool Encrypted { get; set; }
+    /// <summary>Which of the workspace's data keys (see <see cref="DocumentKey"/>) encrypted this file; 0 when <see cref="Encrypted"/> is false.</summary>
+    public int KeyVersion { get; set; }
 }
 
 /// <summary>One entry of a document type's template (what a new document starts with).</summary>
