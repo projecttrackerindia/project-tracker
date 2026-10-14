@@ -97,7 +97,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Include(@"\b(portfolio|risk|forecast|completion)\b", PortfolioBrief, PortfolioScenario);
         Include(@"\b(workload|team|people|overloaded|assignee)\b", TeamWorkload, ListPeople, WorkloadBalance, SuggestAssignee);
         Include(@"\b(history|historical|pace|accuracy)\b", HistoryInsights);
-        Include(@"\b(meeting|calendar)\b", ListMeetings);
+        Include(@"\b(meeting|calendar|scrum|standup|stand-up)\b", ListMeetings);
         Include(@"\b(document|documents|notes|knowledge)\b", SearchDocuments, ReadDocument);
         Include(@"\b(knowledge|evidence|reference|search|find)\b", SearchKnowledge, ReadKnowledge);
         return matched ? all.Where(t => selected.Contains(t.Name)).ToList() : all;
@@ -237,10 +237,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string","description":"Default: \"<project name> Discussion\"."},
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project"]}
                 """),
-            new(ScheduleMeeting, "Propose scheduling a Google Meet on a project for a specific time. The person confirms first, and needs their own Google account connected (Settings > Google Workspace).",
+            new(ScheduleMeeting, "Propose scheduling a Google Meet or scrum call on a project for a specific time. For repeats, supply repeat_frequency and an explicitly requested total session count; ask when either is missing. The person confirms first, and needs their own Google account connected (Settings > Google Workspace).",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"agenda":{"type":"string","description":"Optional description/agenda."},
                  "at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"duration_minutes":{"type":"integer","description":"Default 30."},
+                 "repeat_frequency":{"type":"string","enum":["Daily","Weekdays","Weekly"],"description":"Only when repetition is requested. Ask for the session count if missing."},"occurrences":{"type":"integer","minimum":2,"maximum":120,"description":"Total sessions including the first. Required when repeating."},
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project","title","at"]}
                 """),
         ]);
@@ -1008,6 +1009,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (list.Count == 0) return new AiToolOutcome($"No Google Meet meetings on {project.Label}.", "Looked for meetings", 0);
         var shown = list.Take(ListCap).Select(m =>
             $"{m.Title} | {m.Status} | {m.StartTime:yyyy-MM-dd HH:mm}–{m.EndTime:HH:mm} UTC | organizer {m.OrganizerName} | " +
+            (m.RecurrenceRule is null ? "" : $"series {m.RecurrenceRule}; first session shown; consult Google Calendar for exceptions | ") +
             string.Join(", ", m.Participants.Where(p => p.Role != "Organizer").Select(p => $"{p.Name}:{p.RsvpStatus}")));
         return new AiToolOutcome(string.Join("\n", shown), $"Found {list.Count} meeting(s) on {project.Label}", list.Count);
     }
@@ -1045,8 +1047,16 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (startUtc <= clock.Now) throw new AiToolException("That time has already passed; choose a later one.");
         var minutes = a.TryGetProperty("duration_minutes", out var dm) && dm.ValueKind == JsonValueKind.Number ? Math.Clamp(dm.GetInt32(), 5, 480) : 30;
         var participantIds = await ParticipantIdsAsync(a, ct);
-        var payload = new { projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds };
+        if (a.TryGetProperty("occurrences", out _) && Str(a, "repeat_frequency") is null) throw new AiToolException("How often should the meeting repeat: daily, weekdays, or weekly?");
+        ProjectManagement.Application.Features.ProjectMeetings.MeetingRepeat? repeat = null;
+        if (Str(a, "repeat_frequency") is { } frequency) {
+            if (!a.TryGetProperty("occurrences", out var count) || !count.TryGetInt32(out var total)) throw new AiToolException("How many sessions should this series contain (2-120)?");
+            repeat = new(frequency, total);
+            ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Rule(repeat, new DateTimeOffset(startUtc, TimeSpan.Zero), zone);
+        }
+        var payload = new { repeat, projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds };
         var summary = $"In {project.Label} — {local:ddd d MMM yyyy, HH:mm} ({zone}), {minutes} minutes{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
+        if (repeat is not null) summary += $"; {repeat.Frequency}, {repeat.Occurrences} sessions including the first; Google Calendar invitations will be sent";
         return Propose("schedule_meeting", $"Schedule a Google Meet “{title}”", summary, payload, Str(a, "agenda"));
     }
 

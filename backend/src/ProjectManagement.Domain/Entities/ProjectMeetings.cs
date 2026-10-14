@@ -31,6 +31,8 @@ namespace ProjectManagement.Domain.Entities
         public DateTime EndTimeUtc { get; set; }
         /// <summary>IANA zone the organizer scheduled it in (e.g. "Asia/Kolkata"); times above are always UTC regardless.</summary>
         public string TimeZone { get; set; } = "UTC";
+        public string? RecurrenceRule { get; set; }
+        public string? CalendarUrl { get; set; }
         public MeetingStatus Status { get; set; } = MeetingStatus.Scheduled;
         public string GoogleCalendarEventId { get; set; } = "";
         /// <summary>The Meet space's resource name ("spaces/{id}"), when created through the Meet API rather than only Calendar conferenceData.</summary>

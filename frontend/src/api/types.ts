@@ -370,6 +370,7 @@ export interface GoogleConnectionStatus { inboxEnabled?: boolean; inboxAccess?: 
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
+  recurrenceRule?: string | null; calendarUrl?: string | null;
   status: 'Scheduled' | 'Cancelled' | 'Completed'; meetUri: string; organizerUserId: string; organizerName: string; participants: MeetingParticipant[];
 }
 /** The parsed shape of a chat message whose kind is 'Meeting' (body is JSON, not text - see ChatService.PostMeetingCardAsync). */

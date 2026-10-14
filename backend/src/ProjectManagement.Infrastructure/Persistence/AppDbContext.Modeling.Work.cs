@@ -315,6 +315,8 @@ public partial class AppDbContext
             e.Property(x => x.GoogleCalendarEventId).HasMaxLength(200);
             e.Property(x => x.GoogleMeetSpaceName).HasMaxLength(200);
             e.Property(x => x.GoogleMeetUri).HasMaxLength(300);
+            e.Property(x => x.RecurrenceRule).HasMaxLength(200);
+            e.Property(x => x.CalendarUrl).HasMaxLength(2000);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerUserId).OnDelete(DeleteBehavior.Restrict);
         });

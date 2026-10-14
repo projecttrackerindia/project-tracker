@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Tests.Infrastructure;
 
@@ -82,10 +83,12 @@ public sealed partial class AiMessageSendingTests
     [Fact]
     public Task Submitted_timesheet_weeks_cannot_receive_planned_leave() => Run(async (owner, _) =>
     {
-        var from = DateOnly.FromDateTime(DateTime.UtcNow);
+        // Use the same workspace date as the API; UTC can still be yesterday in India.
+        var from = factory.Services.GetRequiredService<ProjectManagement.Application.Services.AppClock>().Today;
         var week = ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(from);
         var submitted = await owner.Post("/api/v1/time/week/submit", new { weekStart = week.ToString("yyyy-MM-dd"), note = "Ready" }); Assert.True(submitted.Ok, submitted.ToString());
         var leave = await owner.Post("/api/v1/time/leave", new { userIds = new[] { owner.UserId }, from = from.ToString("yyyy-MM-dd"), to = from.ToString("yyyy-MM-dd"), requestId = Guid.NewGuid() });
         Assert.Equal(HttpStatusCode.Conflict, leave.Status);
+        Assert.Equal("TIMESHEET_LOCKED", leave.ErrorCode);
     });
 }

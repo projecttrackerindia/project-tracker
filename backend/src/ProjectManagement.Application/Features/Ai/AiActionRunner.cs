@@ -173,7 +173,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             {
                 var projectId = Guid(a, "projectId")!.Value;
                 var m = await meetings.ScheduleAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.ScheduleMeetingRequest(
-                    Str(a, "title")!, Str(a, "description"), DateTimeOffset.Parse(Str(a, "startTime")!), DateTimeOffset.Parse(Str(a, "endTime")!), Str(a, "timeZone") ?? "UTC", Guids(a, "participantUserIds")), ct);
+                    Str(a, "title")!, Str(a, "description"), DateTimeOffset.Parse(Str(a, "startTime")!), DateTimeOffset.Parse(Str(a, "endTime")!), Str(a, "timeZone") ?? "UTC", Guids(a, "participantUserIds"), a.TryGetProperty("repeat", out var repeat) && repeat.ValueKind == JsonValueKind.Object ? repeat.Deserialize<ProjectManagement.Application.Features.ProjectMeetings.MeetingRepeat>(Json) : null), ct);
                 return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
             }
             default:

@@ -8,13 +8,15 @@
     <PackageReference Include="AWSSDK.S3" Version="4.0.104" />
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="ITfoxtec.Identity.Saml2" Version="4.21.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.20" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.20" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.20">
+    <!-- Explicit security floor for SAML XML signature verification. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="9.0.21" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.21" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.21" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.21">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.20" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.21" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
   </ItemGroup>
 </Project>

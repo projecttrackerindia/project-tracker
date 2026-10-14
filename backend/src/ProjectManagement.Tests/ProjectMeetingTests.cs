@@ -352,4 +352,45 @@ public class ProjectMeetingTests(ApiFactory factory)
         var noticesAgain = await teammate.Get("/api/v1/notifications");
         Assert.Equal(1, noticesAgain.Data!["items"]!.AsArray().Count(n => n!["title"]!.GetValue<string>().Contains("starts in")));
     }
+
+    [Fact]
+    public async Task Recurring_scrum_is_one_calendar_series_and_cancellation_cancels_that_series()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        var project = await owner.CreateProjectAsync("Scrum delivery");
+        await ConnectGoogleAsync(owner);
+        var start = DateTimeOffset.UtcNow.AddDays(2);
+        var res = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new {
+            title = "Daily scrum", startTime = start, endTime = start.AddMinutes(15), timeZone = "America/New_York",
+            repeat = new { frequency = "Daily", occurrences = 10 }, participantUserIds = Array.Empty<Guid>()
+        });
+        Assert.True(res.Ok, res.ToString());
+        Assert.Equal("RRULE:FREQ=DAILY;COUNT=10", res.Data!["recurrenceRule"]!.GetValue<string>());
+        var saved = Assert.Single(factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project).ToList()));
+        var provider = factory.GoogleCalendar.Event(saved.GoogleCalendarEventId);
+        Assert.Equal(saved.RecurrenceRule, provider.GetProperty("recurrence")[0].GetString());
+        Assert.Equal("America/New_York", provider.GetProperty("start").GetProperty("timeZone").GetString());
+        Assert.StartsWith("https://calendar.google.com/", saved.CalendarUrl);
+        var move = await owner.Post($"/api/v1/meetings/{saved.Id}/reschedule", new { startTime=start.AddDays(1),endTime=start.AddDays(1).AddMinutes(15) });
+        Assert.Equal("RECURRING_MEETING_EDIT_IN_CALENDAR", move.ErrorCode);
+        var cancel = await owner.Post($"/api/v1/meetings/{saved.Id}/cancel");
+        Assert.True(cancel.Ok, cancel.ToString());
+        Assert.Equal(MeetingStatus.Cancelled, factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Single(m => m.Id == saved.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Invalid_repeat_cannot_create_a_meeting()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        var project = await owner.CreateProjectAsync("Scrum validation");
+        var start = DateTimeOffset.UtcNow.AddDays(2);
+        var res = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new {
+            title = "Scrum", startTime = start, endTime = start.AddMinutes(15), timeZone = "UTC",
+            repeat = new { frequency = "Daily", occurrences = 121 }
+        });
+        Assert.Equal("VALIDATION_FAILED", res.ErrorCode);
+        Assert.Empty(factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project).ToList()));
+    }
 }

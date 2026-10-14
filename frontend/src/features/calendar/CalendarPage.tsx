@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ScrumCallButton } from '../meetings/ScrumCallButton';
 import { useNavigate } from 'react-router-dom';
 import { PageHead } from '../../components/ui';
 import { usePersonPicker } from '../../lib/hooks';
@@ -31,6 +32,7 @@ export function CalendarPage() {
             </Select>
           )}
           {!userId && <label className="cal-mine"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Only my work</label>}
+          <ScrumCallButton />
           <CalendarSubscribe />
         </div>
       </PageHead>

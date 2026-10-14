@@ -22,7 +22,7 @@ public class MicrosoftMigrationTests(ApiFactory factory)
         foreach(var command in generator.Generate([table],db.Model))await db.Database.ExecuteSqlRawAsync(command.CommandText);
         var coreTables=assembly.Migrations.Values.SelectMany(type=>assembly.CreateMigration(type,db.Database.ProviderName!).UpOperations)
             .OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.CreateTableOperation>()
-            .Where(t=>t.Name is "Projects" or "ProjectStages").ToArray();
+            .Where(t=>t.Name is "Projects" or "ProjectStages" or "ProjectMeetings").ToArray();
         foreach(var core in coreTables)
             foreach(var command in generator.Generate([core],db.Model))await db.Database.ExecuteSqlRawAsync(command.CommandText);
     }

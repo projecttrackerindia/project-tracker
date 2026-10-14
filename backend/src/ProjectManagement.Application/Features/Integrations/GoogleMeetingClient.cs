@@ -37,11 +37,12 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
     /// Calendar invitation e-mail to every attendee - Project Tracker's own notification (added by the caller) is additional, not a
     /// replacement for it.</summary>
     public async Task<CreatedGoogleMeeting> CreateEventAsync(Guid organizerUserId, string title, string? description, DateTime startUtc, DateTime endUtc,
-        string timeZone, IReadOnlyList<GoogleMeetingAttendee> attendees, CancellationToken ct = default)
+        string timeZone, IReadOnlyList<GoogleMeetingAttendee> attendees, CancellationToken ct = default, string? recurrenceRule = null)
     {
         var token = await auth.GetAccessTokenAsync(organizerUserId, ct);
         var payload = new
         {
+            recurrence = recurrenceRule is null ? null : new[] { recurrenceRule },
             summary = title,
             description,
             start = new { dateTime = startUtc.ToString("o"), timeZone },

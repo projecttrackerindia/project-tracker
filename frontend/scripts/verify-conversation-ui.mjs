@@ -61,7 +61,7 @@ try {
     await page.locator(composer+' :is(textarea,[contenteditable="true"])').blur();await page.evaluate(()=>{delete visualViewport.height;visualViewport.dispatchEvent(new Event('resize'));});
     await page.locator('.m-tabs').waitFor({state:'visible'});checks.push(`${kind}-navigation-restored-after-keyboard`);
    }
-   if(kind==='agent'&&width===390){await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-star').first().evaluate(e=>getComputedStyle(e).animationName),'none');checks.push('agent-mark-reduced-motion');}
+   if(kind==='agent'&&width===390){await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-ribbon').first().evaluate(e=>getComputedStyle(e).animationName),'none');checks.push('agent-mark-reduced-motion');}
    await page.close();
   }
  }

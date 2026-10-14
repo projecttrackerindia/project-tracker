@@ -19,6 +19,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     /// an arbitrary grant - this dictionary accumulates across every test in the collection, so "any" grant is never a safe stand-in.</summary>
     private readonly ConcurrentDictionary<string, Grant> _accessTokens = new();
     private readonly ConcurrentDictionary<string, JsonElement> _events = new();
+    public JsonElement Event(string id) => _events[id];
     public ConcurrentBag<string> AccessTokensIssued { get; } = new();
     public ConcurrentBag<string> RevokedTokens { get; } = new();
     /// <summary>When set, every token-endpoint call fails (simulates an expired/revoked grant, for GOOGLE_TOKEN_EXPIRED tests).</summary>
@@ -198,6 +199,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         {
             id,
             htmlLink = $"https://calendar.google.com/event?eid={id}",
+            recurrence = req.TryGetProperty("recurrence", out var rec) ? rec : (existing?.TryGetProperty("recurrence", out var oldRec) == true ? oldRec : (object?)null),
             summary = Prop(req, "summary") ?? Prop(existing, "summary"),
             start = req.TryGetProperty("start", out var s) ? s : existing?.GetProperty("start"),
             end = req.TryGetProperty("end", out var e) ? e : existing?.GetProperty("end"),
