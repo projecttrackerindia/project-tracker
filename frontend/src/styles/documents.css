@@ -372,6 +372,14 @@
 .aud-pager { display: flex; gap: 8px; justify-content: flex-end; }
 
 .doc-scope-note { margin: 0 0 10px; font-size: 12px; }
+.doc-tag-filter { max-width: 140px; }
+
+/* ---- grid view */
+.doc-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.doc-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; text-decoration: none; }
+.doc-card-head { display: flex; align-items: center; gap: 8px; }
+.doc-card-title { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 
 /* ---- comments */
 .cmt { display: grid; gap: 16px; margin-top: 14px; }
