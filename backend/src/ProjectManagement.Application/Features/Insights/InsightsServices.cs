@@ -218,6 +218,28 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         events.AddRange(work.Where(w => w.DueDate is not null).Select(w => new CalendarEventDto(w.Kind == WorkItemKind.ActionItem ? "action" : "work", w.Id, w.Title, w.DueDate!.Value,
             w.Status, w.Category, w.IsOverdue, w.ProjectId, w.ProjectName, w.Priority)));
 
+        // Scheduled meetings (project meetings and scrum calls) starting in the range, for the same people. Personal like tasks/work items
+        // (organizer or an invited participant), so this follows the assignees filter rather than showWorkspaceEvents.
+        // Local-to-UTC shift, with ticks clamped before the shift so a boundary date (DateOnly.MinValue/MaxValue, reachable when a caller
+        // omits "from"/"to" and model binding defaults them) can never make AddMinutes overflow past what DateTime can represent.
+        DateTime ShiftToUtc(DateOnly localDate)
+        {
+            var ticks = Math.Clamp(localDate.ToDateTime(TimeOnly.MinValue).Ticks - TimeSpan.FromMinutes(clock.OffsetMinutes).Ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks);
+            return DateTime.SpecifyKind(new DateTime(ticks), DateTimeKind.Utc);
+        }
+        var fromUtc = ShiftToUtc(from);
+        var toUtcExclusive = ShiftToUtc(to == DateOnly.MaxValue ? to : to.AddDays(1));
+        var visibleForMeetings = access.VisibleProjects().Select(p => p.Id);
+        var meq = db.ProjectMeetings.Where(m => m.StartTimeUtc >= fromUtc && m.StartTimeUtc < toUtcExclusive
+                                                && m.Status != MeetingStatus.Cancelled && visibleForMeetings.Contains(m.ProjectId));
+        if (projectId is { } meetingProject) meq = meq.Where(m => m.ProjectId == meetingProject);
+        if (assignees is { } meetingIds) meq = meq.Where(m => meetingIds.Contains(m.OrganizerUserId) || m.Participants.Any(p => p.UserId != null && meetingIds.Contains(p.UserId.Value)));
+        var meetingRows = await meq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
+            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.Status, m.ProjectId, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault() })
+            .ToListAsync(ct);
+        events.AddRange(meetingRows.Select(m => new CalendarEventDto("meeting", m.Id, m.Title, DateOnly.FromDateTime(m.StartTimeUtc.AddMinutes(clock.OffsetMinutes)), m.Status.ToString(), null,
+            false, m.ProjectId, m.ProjectName, null)));
+
         if (showWorkspaceEvents)
         {
             var pq = access.VisibleProjects().Where(p => p.DueDate != null && p.DueDate >= from && p.DueDate <= to
