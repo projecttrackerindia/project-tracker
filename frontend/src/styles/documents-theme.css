@@ -89,14 +89,24 @@
 /* ---- tree connectors: a vertical spine down the open group's children, drawn with ::before on the row
    elements themselves (no extra connector <div>s in the DOM), exactly DocTracker's technique. */
 .doc-sidebar-group { position: relative; }
+/* A flex row, not a single button: the toggle takes most of the width, an optional per-project actions menu
+   (delete, for now) sits at the end - a project here had no way to reach it at all before, even though the
+   capability already existed on the main Projects list and a project's own Actions menu. */
 .doc-sidebar-group-head {
-  width: 100%; display: flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: var(--radius-sm);
-  font-size: 12.5px; font-weight: 550; color: var(--text-2); text-align: left; min-width: 0;
+  width: 100%; display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm);
+  color: var(--text-2);
 }
-.doc-sidebar-group-head svg { flex: none; color: var(--text-3); }
-.doc-sidebar-group-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .doc-sidebar-group-head:hover { background: var(--hover-bg); color: var(--text); }
 .doc-sidebar-group-head.active { color: var(--primary); font-weight: 650; }
+.doc-sidebar-group-toggle {
+  flex: 1; display: flex; align-items: center; gap: 6px; padding: 6px 0 6px 9px;
+  font-size: 12.5px; font-weight: 550; color: inherit; text-align: left; min-width: 0;
+}
+.doc-sidebar-group-toggle svg { flex: none; color: var(--text-3); }
+.doc-sidebar-group-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.doc-sidebar-group-menu { position: relative; flex: none; opacity: 0; }
+.doc-sidebar-group:hover .doc-sidebar-group-menu, .doc-sidebar-group-menu:has(.menu-list) { opacity: 1; }
+.doc-sidebar-group-menu .btn-icon { width: 24px; height: 24px; margin-right: 4px; }
 
 .doc-sidebar-children { list-style: none; margin: 0; padding: 0 0 0 19px; position: relative; }
 .doc-sidebar-children::before {

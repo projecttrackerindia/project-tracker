@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '../../components/Icon';
+import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
-import { useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useCan, useWorkspaceId } from '../../stores/auth';
+import { confirmDialog, toast } from '../../stores/ui';
 
 export type DocumentsView = 'all' | 'inbox' | 'recent' | 'mine' | 'shared' | 'restricted' | 'trash';
 
@@ -26,6 +29,34 @@ function loadExpanded(): Set<string> {
   } catch { return new Set(); }
 }
 
+/** A project's one sidebar action, for now - same `projectApi.remove` + confirm pattern already used on the
+ * Projects list and a project's own Actions menu (`ProjectDetailPage.tsx`), just reachable from here too:
+ * Documents' project tree had no way to delete a project at all, even though the capability already existed
+ * elsewhere in the app. Icon-only to fit the tree row's tight layout. */
+function GroupMenu({ name, onDelete }: { name: string; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  return (
+    <div className="doc-sidebar-group-menu" ref={ref}>
+      <button type="button" className="btn-icon" aria-haspopup="menu" aria-expanded={open} aria-label={`${name} actions`}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}><Icon name="more" size={14} /></button>
+      {open && (
+        <ul className="menu-list right" role="menu">
+          <li role="none"><button type="button" role="menuitem" className="danger" onClick={(e) => { e.stopPropagation(); setOpen(false); onDelete(); }}>
+            <Icon name="trash" size={15} /><span><b>Delete project</b></span></button></li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /**
  * The Documents landing page's left rail: the 7 fixed scopes pinned at top (unchanged behavior from the old tab
  * strip, including the "Waiting for me" badge), then every project as a collapsible group below it. Picking a
@@ -36,9 +67,21 @@ export function DocumentsSidebar({ view, onSelectView, waiting, activeProject, o
   view: DocumentsView; onSelectView: (v: DocumentsView) => void; waiting: number;
   activeProject: string | null; onSelectProject: (id: string | null) => void;
 }) {
+  const wid = useWorkspaceId();
+  const canDelete = useCan('projects.delete');
   const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
   const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }));
+
+  const deleteProject = async (id: string, name: string) => {
+    if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting "${name}" will also remove all of its tasks.` }))) return;
+    try {
+      await projectApi.remove(id);
+      toast('Project deleted.', 'warning');
+      if (activeProject === id) onSelectProject(null);
+      await invalidateWorkspace(wid);
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete the project.', 'error'); }
+  };
 
   const toggle = (id: string) => setExpanded((s) => {
     const n = new Set(s);
@@ -84,11 +127,13 @@ export function DocumentsSidebar({ view, onSelectView, waiting, activeProject, o
             const isActive = activeProject === g.id;
             return (
               <li key={g.id} className="doc-sidebar-group">
-                <button type="button" className={`doc-sidebar-group-head${isActive ? ' active' : ''}`}
-                  aria-expanded={isOpen} onClick={() => toggle(g.id)}>
-                  <Icon name={isOpen ? 'chevronD' : 'chevronR'} size={12} />
-                  <span>{g.name}</span>
-                </button>
+                <div className={`doc-sidebar-group-head${isActive ? ' active' : ''}`}>
+                  <button type="button" className="doc-sidebar-group-toggle" aria-expanded={isOpen} onClick={() => toggle(g.id)}>
+                    <Icon name={isOpen ? 'chevronD' : 'chevronR'} size={12} />
+                    <span>{g.name}</span>
+                  </button>
+                  {canDelete && g.id !== GENERAL_ID && <GroupMenu name={g.name} onDelete={() => void deleteProject(g.id, g.name)} />}
+                </div>
                 {isOpen && (
                   <ul className="doc-sidebar-children">
                     <li>
