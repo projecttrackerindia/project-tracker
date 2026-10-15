@@ -1,68 +1,69 @@
 /* ============================================================
-   DESIGN TOKENS — lavender glass surfaces and violet accents
+   DESIGN TOKENS — lavender glass (light) / deep slate blue with a restrained violet accent (dark)
    Ported from the reference productivity app.
    ============================================================ */
 :root {
   --bg: #eef0fb;
-  --bg-image: radial-gradient(1200px 820px at 8% -12%, #e6d8ff 0%, transparent 58%),
+  --bg-image:
+    radial-gradient(1200px 820px at 8% -12%, #e6d8ff 0%, transparent 58%),
     radial-gradient(1050px 720px at 96% -4%, #d3dcff 0%, transparent 54%),
     radial-gradient(950px 900px at 48% 112%, #f4d9ff 0%, transparent 58%),
-    linear-gradient(160deg,#f7f5ff 0%,#eef0ff 45%,#f8f3ff 100%);
+    linear-gradient(160deg, #f7f5ff 0%, #eef0ff 45%, #f8f3ff 100%);
 
-  --surface: rgba(255,255,255,.62);
-  --surface-2: rgba(255,255,255,.40);
-  --surface-3: rgba(139,92,246,.10);
-  --surface-solid: rgba(255,255,255,.94);
+  --surface: rgba(255, 255, 255, .62);
+  --surface-2: rgba(255, 255, 255, .40);
+  --surface-3: rgba(139, 92, 246, .10);
+  --surface-solid: rgba(255, 255, 255, .94);
 
-  --border: rgba(255,255,255,.72);
-  --border-strong: rgba(139,92,246,.26);
+  --border: rgba(255, 255, 255, .72);
+  --border-strong: rgba(139, 92, 246, .26);
 
   --text: #221a3a;
   --text-2: #5a4f79;
-  --text-3: #716486;
+  --text-3: #928aa9;
 
   --primary: #7c3aed;
   --primary-hover: #6d28d9;
-  --primary-soft: rgba(139,92,246,.15);
+  --primary-soft: rgba(139, 92, 246, .15);
   --primary-text: #ffffff;
 
   --success: #0e9f6e;
-  --success-soft: rgba(14,159,110,.13);
+  --success-soft: rgba(14, 159, 110, .13);
   --warning: #d97706;
-  --warning-soft: rgba(217,119,6,.13);
+  --warning-soft: rgba(217, 119, 6, .13);
   --danger: #e11d48;
-  --danger-soft: rgba(225,29,72,.12);
+  --danger-soft: rgba(225, 29, 72, .12);
   --info: #0284c7;
-  --info-soft: rgba(2,132,199,.12);
+  --info-soft: rgba(2, 132, 199, .12);
   --purple: #8b5cf6;
-  --purple-soft: rgba(139,92,246,.15);
+  --purple-soft: rgba(139, 92, 246, .15);
 
   --glass: blur(20px) saturate(180%);
   --glass-strong: blur(30px) saturate(190%);
   --glass-soft: blur(12px) saturate(160%);
-  --hl: inset 0 1px 0 rgba(255,255,255,.78);
-  --hl-2: inset 0 0 0 1px rgba(255,255,255,.35);
+  --hl: inset 0 1px 0 rgba(255, 255, 255, .78);
+  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .35);
 
-  --shadow-sm: 0 2px 10px rgba(76,29,149,.07);
-  --shadow: 0 10px 30px rgba(76,29,149,.12);
-  --shadow-lg: 0 24px 64px rgba(76,29,149,.24);
+  --shadow-sm: 0 2px 10px rgba(76, 29, 149, .07);
+  --shadow: 0 10px 30px rgba(76, 29, 149, .12);
+  --shadow-lg: 0 24px 64px rgba(76, 29, 149, .24);
 
   --hover-bg: rgba(255, 255, 255, .55);
-  --field-border: #b7a4d5;
-  --panel-solid: #faf7ff;
-  --field-bg: rgba(255,255,255,.88);
+  --field-border: rgba(124, 58, 237, .24);
+  --panel-solid: #fbfaff;
+  --field-bg: rgba(255, 255, 255, .62);
   --field-focus-bg: rgba(255, 255, 255, .85);
   --tint: rgba(139, 92, 246, .09);
   --tint-strong: rgba(139, 92, 246, .14);
 
   /* modal is a calmer, near-opaque surface for legibility (spec: professional, enterprise-ready) */
-  --modal-bg: #faf7ff;
-  --modal-border: rgba(139,92,246,.26);
-  --modal-line: #e5dcf2;
-  --modal-foot: #f1eafa;
+  --modal-bg: rgba(255, 255, 255, .97);
+  --modal-border: rgba(148, 163, 184, .28);
+  --modal-line: #e7e9ef;
+  --modal-foot: #f8f9fb;
   --modal-field: #ffffff;
-  --modal-field-border: #b7a4d5;
-  --modal-overlay: rgba(34,26,58,.48);
+  --modal-field-border: #d9dee8;
+  --modal-overlay: rgba(15, 23, 42, .48);
 
   --radius: 16px;
   --radius-sm: 10px;
@@ -84,81 +85,88 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* ---- Surfaces: a ladder of steps in deep lavender, each about 4% lighter than the one below it, so the page,
+  /* ---- Surfaces: a ladder of steps in deep slate blue, each about 4% lighter than the one below it, so the page,
      the cards on it and what sits on those cards are told apart by depth rather than by borders or colour. ---- */
-  --bg: #0e0a1d;                      /* the page */
-  --chrome: rgba(28,20,50,.88);                  /* sidebar and top bar: the darkest layer, framing the page */
-  --bg-image: radial-gradient(1200px 820px at 6% -12%, #43207d 0%, transparent 58%),
-    radial-gradient(1050px 720px at 98% 2%, #1d2a72 0%, transparent 54%),
-    radial-gradient(950px 900px at 48% 112%, #5a1f6e 0%, transparent 58%),
-    linear-gradient(160deg,#0f0a1e 0%,#140e2c 50%,#0c0a1a 100%);
+  --bg: #1b2533;                      /* the page */
+  --chrome: #131c2a;                  /* sidebar and top bar: the darkest layer, framing the page */
+  --bg-image:
+    radial-gradient(1100px 620px at 14% -12%, rgba(104, 132, 190, .09), transparent 62%),
+    linear-gradient(180deg, #1d2836 0%, #18212e 100%);
 
-  --surface: rgba(43,32,74,.55);                 /* cards and panels */
-  --surface-solid: rgba(28,20,50,.96);
-  --surface-2: rgba(56,43,96,.40);               /* raised: secondary buttons, chips, blocks nested inside a card */
-  --surface-3: rgba(167,139,250,.12);   /* neutral wash: tags, counters */
-  --panel-solid: #241a3d;             /* floating layers: menus, drawers, pickers */
+  --surface: #242e3d;                 /* cards and panels */
+  --surface-solid: #242e3d;
+  --surface-2: #2e3847;               /* raised: secondary buttons, chips, blocks nested inside a card */
+  --surface-3: rgba(176, 190, 222, .09);   /* neutral wash: tags, counters */
+  --panel-solid: #303b4b;             /* floating layers: menus, drawers, pickers */
 
-  --border: rgba(167,139,250,.17);
-  --border-strong: rgba(167,139,250,.36);
+  --border: rgba(170, 186, 222, .12);
+  --border-strong: rgba(170, 186, 222, .22);
 
-  --text: #ece9fb;
-  --text-2: #b3a8d6;
-  --text-3: #b0a2ca;
+  --text: #edf0f6;
+  --text-2: #b9bec6;
+  --text-3: #a3a9b1;
 
   /* ---- The accent: kept for the active menu item, buttons, selections and key highlights only.
      --primary is the accent as text / icon colour, --primary-fill as a solid background behind white text. ---- */
-  --accent-rgb: 167, 139, 250;
-  --primary: #a78bfa;
-  --primary-hover: #c4b5fd;
-  --primary-fill: #7c3aed;
-  --primary-soft: rgba(167,139,250,.17);
-  --primary-text: #221a3a;
+  --accent-rgb: 117, 97, 235;
+  --primary: #bdb2ff;
+  --primary-hover: #d0c8ff;
+  --primary-fill: #7561eb;
+  --primary-soft: rgba(117, 97, 235, .18);
+  --primary-text: #17123a;
 
   /* ---- Status colours: softer than the light theme's, each one readable on every surface above ---- */
-  --success: #34d399;
-  --success-soft: rgba(52,211,153,.14);
-  --warning: #fbbf24;
-  --warning-soft: rgba(251,191,36,.14);
-  --danger: #fb7185;
+  --success: #58da98;
+  --success-soft: rgba(88, 218, 152, .11);
+  --warning: #f7bc57;
+  --warning-soft: rgba(247, 188, 87, .11);
+  --danger: #fb8083;
   --danger-text: #fc9c9e;               /* the same red, lighter, for text on a tinted chip */
-  --danger-soft: rgba(251,113,133,.14);
-  --info: #38bdf8;
-  --info-soft: rgba(56,189,248,.14);
-  --purple: #c4b5fd;
-  --purple-soft: rgba(196,181,253,.14);
+  --danger-soft: rgba(251, 128, 131, .11);
+  --info: #6ec6f7;
+  --info-soft: rgba(110, 198, 247, .11);
+  --purple: #c4a4fe;
+  --purple-soft: rgba(196, 164, 254, .13);
 
-  /* Shared reference glass treatment for both themes */
+  /* the glass blur is a light-theme effect: opaque surfaces need none */
   --glass: none;
   --glass-strong: none;
   --glass-soft: none;
-  --hl: inset 0 1px 0 rgba(255,255,255,.09);
-  --hl-2: inset 0 0 0 1px rgba(255,255,255,.04);
+  --hl: inset 0 1px 0 rgba(255, 255, 255, .04);
+  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .02);
 
-  --shadow-sm: 0 2px 10px rgba(0,0,0,.30);
-  --shadow: 0 10px 30px rgba(0,0,0,.42);
-  --shadow-lg: 0 24px 64px rgba(0,0,0,.58);
+  --shadow-sm: 0 1px 2px rgba(4, 8, 16, .30), 0 2px 8px rgba(4, 8, 16, .14);
+  --shadow: 0 4px 10px rgba(4, 8, 16, .22), 0 14px 32px rgba(4, 8, 16, .26);
+  --shadow-lg: 0 8px 20px rgba(4, 8, 16, .30), 0 28px 70px rgba(4, 8, 16, .50);
 
-  --hover-bg: rgba(167,139,250,.12);
-  --field-border: rgba(167,139,250,.45);
-  --field-bg: rgba(14,10,29,.55);   /* inputs sink into whatever surface they are on */
-  --field-focus-bg: #1c1432;
-  --tint: rgba(167,139,250,.08);
-  --tint-strong: rgba(167,139,250,.16);
+  --hover-bg: rgba(170, 186, 222, .07);
+  --field-border: rgba(170, 186, 222, .20);
+  --field-bg: rgba(8, 13, 24, .34);   /* inputs sink into whatever surface they are on */
+  --field-focus-bg: rgba(8, 13, 24, .46);
+  --tint: rgba(170, 186, 222, .045);
+  --tint-strong: rgba(170, 186, 222, .09);
 
-  --modal-bg: #241a3d;
-  --modal-border: rgba(167,139,250,.36);
-  --modal-line: rgba(167,139,250,.20);
-  --modal-foot: #1c1432;
-  --modal-field: #1c1432;
-  --modal-field-border: rgba(167,139,250,.45);
-  --modal-overlay: rgba(14,10,29,.68);
+  --modal-bg: #2a3444;
+  --modal-border: rgba(170, 186, 222, .16);
+  --modal-line: rgba(170, 186, 222, .12);
+  --modal-foot: #232c3a;
+  --modal-field: #202936;
+  --modal-field-border: rgba(170, 186, 222, .20);
+  --modal-overlay: rgba(6, 10, 20, .62);
 
   /* the sign-in backdrop: dimmer, and cooler, than the light theme's blobs */
-  --auth-blob-1: #43207d;
-  --auth-blob-2: #5a1f6e;
-  --auth-blob-3: #4c1d95;
-  --auth-blob-4: #1d2a72;
+  --auth-blob-1: #4a5a9a;
+  --auth-blob-2: #5b4fb8;
+  --auth-blob-3: #3d4f8a;
+  --auth-blob-4: #2f6a94;
   --auth-blob-opacity: .20;
   --auth-grid-line: rgba(170, 186, 222, .04);
+}
+
+
+/* ---- laptop-width override: the app's base sizing (above) was tuned for a large monitor, so on
+   a viewport in the ordinary laptop range these come back down ~20%, matching what was confirmed
+   against a real laptop screen. Excludes phone widths, which already have their own tuning above. ---- */
+@media (min-width: 769px) and (max-width: 1600px) {
+  :root { --radius: 12.8px; --radius-sm: 8px; --radius-lg: 17.6px; --sidebar-w: 204.8px; --sidebar-w-collapsed: 57.6px; --topbar-h: 51.2px; }
 }
