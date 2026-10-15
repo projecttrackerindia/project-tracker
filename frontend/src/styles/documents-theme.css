@@ -1,103 +1,27 @@
 /* ============================================================
-   DOCUMENTS THEME — a scoped dark re-skin matching DocTracker
+   DOCUMENTS THEME — DocTracker's layout patterns, Project Tracker's own colors
    ============================================================
 
-   `.doc-scope` redefines, LOCALLY, the exact custom-property names tokens.css
-   already defines at `:root`/`[data-theme='dark']`. components.css and
-   documents.css already build `.card`/`.btn-ghost`/`.badge-*`/`.input`/`.select`/
-   `table`/etc. out of those same names, so anything from that shared sheet
-   re-skins itself automatically wherever it renders inside `.doc-scope` — no
-   forked `.card`/`.btn`/`.badge` classes needed for Documents.
+   Earlier versions of this file also redefined every surface/accent/shadow custom
+   property inside `.doc-scope` to DocTracker's own forced-dark blue palette. That
+   was reverted: Documents now renders with Project Tracker's REAL `:root`/
+   `[data-theme='dark']` tokens, unmodified, so it switches with the app's own
+   light/dark toggle and looks like the rest of the app, not a separate bolted-on
+   sub-app. What DocTracker actually contributes here is STRUCTURE — a tree
+   sidebar, a hero + KPI-grid landing page, left-accent-bar cards, an accent-tinted
+   table header, pill meta-chips, a collapsible-card pattern — built the same way
+   `.card`/`.btn`/`.badge`/`.input`/`.select`/`table` already are, out of the exact
+   custom-property names `tokens.css` defines. Nothing below redefines a color,
+   shadow, radius or glass token: everything here is layout/shape only, and
+   inherits its colors from whatever theme (light or dark) is actually active.
 
-   Known gap (confirmed by reading the rules, not assumed): `.btn-primary`,
-   `.btn-danger`, the `.select` dropdown-arrow background-image and
-   `.progress-bar` are painted with hardcoded violet/indigo literals in
-   components.css/professional.css, not the custom properties above — token
-   overrides do NOT reach them. They will keep Project Tracker's violet look
-   inside `.doc-scope` until a later stage restyles them directly. Flagged for
-   the next stage, not fixed here (out of this pass's scope).
-
-   Tokens intentionally left out of this file because nothing `.doc-scope`
-   renders consumes them: `--surface-3`/`--panel-solid`/`--hl`/`--hl-2` ARE
-   consumed (by `.badge-neutral`, `.ss-pop`, `.card`, etc.) so they ARE
-   redefined below even though the task's suggested list didn't name them;
-   `--modal-*` tokens are NOT redefined here because `.doc-scope` is also
-   applied directly to each Documents modal's portaled overlay (see
-   `components/ui.tsx`'s `Modal` `className` prop and every `<Modal ... />`
-   call in features/documents), so modal chrome reads this same block.
+   `--mono` is the one new token: tokens.css has no monospace face, and document
+   keys/IDs/code-like values (`.doc-key`, `.cc-table-key`, KPI values) want one.
+   Loaded via @fontsource/jetbrains-mono (see main.tsx).
    ============================================================ */
 
 .doc-scope {
-  color-scheme: dark;
-
-  /* ---- surfaces: DocTracker's near-black ladder ---- */
-  --bg: #0a0e15;
-  --surface: #121822;
-  --surface-2: #161d29;
-  --surface-3: rgba(92, 124, 250, .12);
-  --surface-solid: #121822;
-  --panel-solid: #161d29;
-
-  --border: #212a38;
-  --border-strong: rgba(92, 124, 250, .38);
-
-  --text: #e9edf5;
-  --text-2: #909cb0;
-  --text-3: #576277;
-
-  /* ---- accent: DocTracker blue ---- */
-  --primary: #5c7cfa;
-  --primary-hover: #7b96fb;
-  --primary-fill: #5c7cfa;
-  --primary-soft: rgba(92, 124, 250, .16);
-  --primary-text: #ffffff;
-
-  /* ---- status colours, softened for a dark surface (same hues as [data-theme='dark'], kept for continuity) ---- */
-  --success: #34d399;
-  --success-soft: rgba(52, 211, 153, .14);
-  --warning: #fbbf24;
-  --warning-soft: rgba(251, 191, 36, .14);
-  --danger: #fb7185;
-  --danger-soft: rgba(251, 113, 133, .14);
-  --info: #38bdf8;
-  --info-soft: rgba(56, 189, 248, .14);
-  --purple: #c4b5fd;
-  --purple-soft: rgba(196, 181, 253, .14);
-
-  /* ---- DocTracker is flat, not glass: no blur, faint inset highlights only ---- */
-  --glass: none;
-  --glass-strong: none;
-  --glass-soft: none;
-  --hl: inset 0 1px 0 rgba(255, 255, 255, .03);
-  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .03);
-
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow: 0 8px 24px rgba(0, 0, 0, .45);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, .6);
-
-  --hover-bg: rgba(92, 124, 250, .10);
-  --field-border: rgba(92, 124, 250, .32);
-  --field-bg: #0d1219;
-  --field-focus-bg: #0d1219;
-  --tint: rgba(92, 124, 250, .08);
-  --tint-strong: rgba(92, 124, 250, .16);
-
-  /* ---- smaller, sharper radii than Project Tracker's 16/10/22 scale ---- */
-  --radius: 10px;
-  --radius-sm: 6px;
-  --radius-lg: 14px;
-
-  --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  /* No existing token name for this — DocTracker reserves a monospace face for code/paths/IDs (doc-key, api-def version
-     pills, etc. already reference var(--mono, …) with a system fallback; this is the first place that actually
-     defines it to something other than the fallback). Loaded via @fontsource/jetbrains-mono, see main.tsx. */
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-
-  /* `--bg`/`--font` above only matter if something inside .doc-scope actually reads them — the page's own <body>
-     background/font (base.css) sits OUTSIDE this subtree, so this element paints its own. */
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
   font-size: 13px;
   min-height: calc(100vh - var(--topbar-h, 64px));
 }
@@ -124,6 +48,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--hl), var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -140,9 +65,7 @@
   flex: none;
 }
 .doc-sidebar-search svg { flex: none; color: var(--text-3); }
-.doc-sidebar-search .input {
-  height: 30px; padding: 0 8px; font-size: 12.5px; background: var(--field-bg); border-color: var(--field-border);
-}
+.doc-sidebar-search .input { height: 30px; padding: 0 8px; font-size: 12.5px; }
 
 .doc-sidebar-pinned, .doc-sidebar-groups { list-style: none; margin: 0; padding: 6px; display: grid; gap: 1px; }
 .doc-sidebar-pinned { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 4px; }
@@ -205,8 +128,8 @@
   display: flex; align-items: center; gap: 22px; padding: 22px 26px; margin-bottom: 18px;
   border-radius: var(--radius-lg); border: 1px solid var(--border); position: relative; overflow: hidden;
   background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: var(--hl), var(--shadow-sm);
 }
-/* DocTracker's real hero (`.ctrl-hero`) has a soft radial glow in the corner, not a flat diagonal tint. */
 .cc-hero::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .6;
   background: radial-gradient(420px 180px at 88% -10%, var(--primary-soft), transparent 70%);
@@ -224,9 +147,9 @@
 .cc-hero-stat span { display: block; margin: 2px 0 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
 
 /* ---- the 3px left-accent-bar card: DocTracker's one signature tile/card treatment, shared by the KPI grid
-   (below) AND Stage 3's detail-page right-rail cards (see "DOCUMENT PAGE" section further down) - one base
-   class instead of two copies of the same `::before` rule. `--accent` defaults to `--primary` when a card
-   doesn't set one (e.g. a plain KPI tile); cards that need a specific hue set `--accent` inline (KPI grid,
+   (below) AND the detail-page right-rail cards (see "DOCUMENT PAGE" section further down) - one base class
+   instead of two copies of the same `::before` rule. `--accent` defaults to `--primary` when a card doesn't
+   set one (e.g. a plain KPI tile); cards that need a specific hue set `--accent` inline (KPI grid,
    `DocumentsControlCenter.tsx`) or via a `.doc-accent-<name>` modifier class (right rail, see below). */
 .doc-accent-card { position: relative; overflow: hidden; }
 .doc-accent-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent, var(--primary)); z-index: 1; }
@@ -235,13 +158,14 @@
 .cc-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .cc-kpi {
   padding: 13px 16px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--hl), var(--shadow-sm);
 }
 .cc-kpi-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
 .cc-kpi-value { display: block; font: 700 23px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .cc-kpi.warn .cc-kpi-value { color: var(--accent); }
 
 /* ---- status distribution: a thin stacked bar + a legend, folded out of the old flat `.doc-stat-bars` strip ---- */
-.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--hl), var(--shadow-sm); }
 .cc-status-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 9px; }
 .cc-status-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); }
 .cc-status-bar span { min-width: 3px; opacity: .9; }
@@ -260,7 +184,7 @@
 
 /* ---- the data table itself: rounded-and-clipped wrapper (radius lives on the wrapper, not the table,
    so corners stay sharp despite border-collapse), tinted uppercase header row, hover rows ---- */
-.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--hl), var(--shadow-sm); }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 /* DocTracker tints its table headers with the accent color (background: accent-soft, text: accent) rather than
    a plain neutral gray - this is what makes its tables read as "designed" instead of a generic admin grid. */
@@ -281,15 +205,6 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
 .cc-table-title { font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-table-title:hover { color: var(--primary); text-decoration: underline; }
 .cc-table-owner { display: inline-flex; align-items: center; gap: 7px; }
-
-/* ---- known gap closure (see the file-header note): `.progress`/`.progress-bar` paint hardcoded violet/green/amber/red
-   literals in components.css, bypassing the token overrides above. The hero's coverage bar (<Progress tone="auto">)
-   is the only place this component uses them, so only that pair is re-pointed at this scope's real tokens here. */
-.doc-scope .progress { background: var(--surface-3); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .4); }
-.doc-scope .progress-bar { background: linear-gradient(90deg, var(--primary), var(--primary-hover)); box-shadow: 0 0 10px var(--primary-soft); }
-.doc-scope .progress-bar.green { background: linear-gradient(90deg, var(--success), #5eead4); box-shadow: 0 0 10px var(--success-soft); }
-.doc-scope .progress-bar.amber { background: linear-gradient(90deg, var(--warning), #fde68a); box-shadow: 0 0 10px var(--warning-soft); }
-.doc-scope .progress-bar.red { background: linear-gradient(90deg, var(--danger), #fda4af); box-shadow: 0 0 10px var(--danger-soft); }
 
 @media (max-width: 720px) {
   .cc-hero { flex-wrap: wrap; }
@@ -322,22 +237,12 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
    `.doc-meta-chip` on the same span just wraps that existing look in the pill without overriding it. */
 .doc-scope .doc-key.doc-meta-chip { color: var(--text-3); }
 
-/* ---- the Document / API reference tab strip (`.seg.doc-tabs`): `.seg button.on` (components.css) paints a
-   hardcoded light violet gradient meant for the app's light/lavender surfaces - inside this dark scope it
-   renders as a pale, out-of-place pill instead of a selected tab. Re-pointed at this scope's real tokens,
-   same technique as the `.btn-primary`/`.progress-bar` gap closures below. */
-.doc-scope .seg { background: var(--surface-2); border-color: var(--border); }
-.doc-scope .seg button { color: var(--text-2); }
-.doc-scope .seg button:hover { color: var(--text); background: var(--hover-bg); }
-.doc-scope .seg button.active, .doc-scope .seg button.on {
-  background: var(--primary-soft); color: var(--primary); box-shadow: inset 0 0 0 1px var(--border-strong);
-}
-
 /* ---- the section outline rail (`.doc-outline`, documents.css): a bare bordered list by default, which reads
    as unstyled next to every other panel here (hero, KPI cards, accent cards) that has its own surface/border/
    shadow. Giving it the same card treatment folds it into the same visual family instead of looking orphaned. */
 .doc-scope .doc-outline {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--hl), var(--shadow-sm); padding: 10px;
 }
 .doc-scope .doc-outline ul { border-left: none; }
 .doc-scope .doc-outline a { border-radius: var(--radius-sm); }
@@ -369,40 +274,3 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
 .doc-scope .doc-acc-caret svg { transition: transform .15s ease; }
 .doc-scope .doc-acc-caret:hover { background: var(--hover-bg); color: var(--text); }
 .doc-scope .doc-acc-caret[aria-expanded="false"] svg { transform: rotate(-90deg); }
-
-/* ---- known gap closure (see the file-header note): `.btn-primary`/`.btn-danger` paint hardcoded violet/rose
-   gradients in components.css, bypassing the token overrides above. The header's Save button is the one new,
-   prominent place Stage 3 renders `.btn-primary` inside `.doc-scope`, but the same literal is read by every
-   other `.btn-primary`/`.btn-danger` already rendered in this scope (Comment, Compare, secret-save buttons,
-   etc.), so this closes the gap for the whole scope at once rather than just the header. */
-/* DocTracker's real buttons are flat (`button.primary { background:var(--accent); }`, no gradient, no glow
-   box-shadow - hover is just `filter:brightness(1.08)`). The earlier fix recolored the host app's gradient+glow
-   button shape to our palette instead of replacing the shape itself, which is why buttons still read as a
-   different, softer "glassy" design language layered on top of the right colors. Flattened here to match. */
-.doc-scope .btn-primary { background: var(--primary); color: var(--primary-text); box-shadow: none; }
-.doc-scope .btn-primary:hover:not(:disabled) { filter: brightness(1.08); box-shadow: none; }
-.doc-scope .btn-danger { background: var(--danger); color: #fff; box-shadow: none; }
-.doc-scope .btn-danger:hover:not(:disabled) { filter: brightness(1.08); box-shadow: none; }
-.doc-scope .btn-ghost { box-shadow: none; }
-.doc-scope .btn-icon:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
-
-/* `.card`/`.doc-filters` (components.css/documents.css) apply the host app's `--hl`/`--shadow-sm` glow to every
-   surface; DocTracker never shadows a flat panel (only modals/popups get a real shadow, via --shadow-lg/-modal
-   equivalents, left untouched here), so this scope's cards/toolbar go flat-bordered to match. */
-.doc-scope .card, .doc-scope .doc-filters { box-shadow: none; }
-
-/* The shared `.input`/`.select`/`.ss-trigger` focus state, and the `.select` dropdown arrow, are painted with a
-   hardcoded violet literal in components.css (`rgba(139, 92, 246, …)` / `stroke='%238b5cf6'`) that the earlier
-   token-override pass didn't catch, since neither reads a custom property. Re-pointed at this scope's real blue. */
-.doc-scope .input:focus, .doc-scope .select:focus, .doc-scope .textarea:focus, .doc-scope .ss-trigger[aria-expanded='true'] {
-  border-color: var(--primary); background-color: var(--field-focus-bg); box-shadow: 0 0 0 3px var(--primary-soft);
-}
-.doc-scope .select {
-  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c7cfa' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-}
-
-/* The Select component's popup portals to document.body (see components/Select.tsx) and now carries the
-   `.doc-scope` class over explicitly when its trigger lives in this scope, so `.ss-pop` and its children
-   (`.ss-search`, `.ss-opt`, etc.) read this same token block directly - no extra rule needed here. Its
-   `box-shadow: var(--shadow-lg)` (components.css) is left as-is: a floating popup, unlike a flat card, is
-   exactly where DocTracker's own design does use a real shadow (its modals/drawers use `--shadow-modal`). */
