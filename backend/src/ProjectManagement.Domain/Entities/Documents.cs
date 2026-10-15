@@ -180,6 +180,30 @@ public class DocumentFile : TenantEntity, ITenantScoped
 }
 
 /// <summary>
+/// The build artifact attached to one version of a Build Artifact document - the analogue of <see cref="DocumentSection"/> for that document type.
+/// At most one row per <see cref="DocumentVersion"/>: a draft gets one when someone uploads a file, and publishing freezes it with the version (the
+/// version row itself is frozen in place, so this row's <see cref="VersionId"/> keeps pointing at it); the next draft starts with no row until a
+/// new file is attached, exactly as a fresh draft starts with no unpublished section edits. <see cref="DocumentFile"/>'s encryption-at-rest pattern
+/// (set once, at upload time, from the document's classification then) carries over unchanged: see <see cref="Encrypted"/>/<see cref="KeyVersion"/>.
+/// </summary>
+public class DocumentVersionArtifact : TenantEntity, ITenantScoped
+{
+    public Guid VersionId { get; set; }
+    /// <summary>Denormalized from the version, so a file can be found and permission-checked without a join back through <see cref="DocumentVersion"/>.</summary>
+    public Guid DocumentId { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string StorageKey { get; set; } = "";
+    /// <summary>SHA-256 of the plaintext content, computed while the upload streams in (see <see cref="DocumentFile.Sha256"/>).</summary>
+    public string Sha256 { get; set; } = "";
+    public bool Encrypted { get; set; }
+    public int KeyVersion { get; set; }
+    /// <summary>Whether the first bytes are a zip signature (.zip/.jar/.war/.ear or any other zip-based container) - when true, comparing two versions can diff the entries inside; when false, compare falls back to size/hash/date only.</summary>
+    public bool IsZip { get; set; }
+}
+
+/// <summary>
 /// When a person last opened a document: one row per (document, person) pair, upserted on read and debounced (see
 /// <see cref="Application.Features.Documents.DocumentService.ViewThrottleMinutes"/>) so a refetch within a few minutes never writes again.
 /// Powers the "Recently viewed" list; per-viewer, not a single timestamp on the document, since two people open the same document at different times.

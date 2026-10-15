@@ -74,6 +74,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentAccessService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentVersionService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentFileService>();
+        services.AddScoped<ProjectManagement.Application.Features.Documents.ArtifactVersionService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentRetentionService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentNotifier>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentWorkflowService>();

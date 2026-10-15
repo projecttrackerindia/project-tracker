@@ -1,5 +1,5 @@
 import { del, download, get, post, put, uploadFile } from './client';
-import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse } from './types';
+import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse,ArtifactVersions,ArtifactVersion,ArtifactCompare } from './types';
 
 // ---- passkeys: sign in with the device's own fingerprint, face or screen lock
 export const passkeyApi = {
@@ -97,6 +97,12 @@ export const documentApi = {
   addComment: (id: string, body: string) => post<DocComment>(`/documents/${id}/comments`, { body }),
   audit: (id: string, cursor?: string, action?: string) => get<DocAuditPage>(`/documents/${id}/audit`, { cursor, action }),
   exportAudit: (id: string) => download(`/documents/${id}/audit/export`, `document-audit.csv`),
+  // build artifacts (the "Build artifact" document type): one file per version, auto-versioned and auto-dated
+  artifactVersions: (id: string) => get<ArtifactVersions>(`/documents/${id}/artifact/versions`),
+  uploadArtifactDraft: (id: string, file: File) => uploadFile<ArtifactVersion>(`/documents/${id}/artifact/draft`, file),
+  publishArtifact: (id: string, revision: number) => post<ArtifactVersions>(`/documents/${id}/artifact/publish`, { revision }),
+  downloadArtifact: (id: string, versionId: string, fileName: string) => download(`/documents/${id}/artifact/versions/${versionId}/download`, fileName),
+  compareArtifacts: (id: string, from: string, to: string) => get<ArtifactCompare>(`/documents/${id}/artifact/compare`, { from, to }),
 };
 
 export const apiDocApi = {

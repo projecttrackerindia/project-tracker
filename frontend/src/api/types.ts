@@ -193,7 +193,7 @@ export interface Dashboard {
   myWork: WorkItem[];
 }
 export interface CalendarEvent {
-  type: 'task' | 'action' | 'work' | 'project' | 'stage' | 'milestone'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
+  type: 'task' | 'action' | 'work' | 'project' | 'stage' | 'milestone' | 'meeting'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
   overdue: boolean; projectId: string | null; projectName: string | null; priority: Priority | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
@@ -625,6 +625,16 @@ export interface DocAccess {
   canManage: boolean; advancedPermissions: boolean;
 }
 export interface DocFile { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean; uploadedBy: UserRef | null; createdAt: string; canDelete: boolean }
+
+// ---- Build artifacts (the "Build artifact" document type): one file per version, auto-versioned and auto-dated.
+export interface ArtifactFile { fileName: string; contentType: string; sizeBytes: number; sha256: string; isZip: boolean }
+export interface ArtifactVersion { id: string; label: string; isDraft: boolean; isCurrent: boolean; publishedAt: string | null; publishedBy: UserRef | null; file: ArtifactFile | null }
+export interface ArtifactVersions { items: ArtifactVersion[]; publishedLabel: string | null; hasUnpublishedChanges: boolean; nextLabel: string }
+export interface ArtifactEntryDiff { path: string; change: 'Added' | 'Removed' | 'Changed'; fromCrc32: number | null; toCrc32: number | null; fromSize: number | null; toSize: number | null }
+export interface ArtifactCompare {
+  from: ArtifactVersion; to: ArtifactVersion; comparableAsZip: boolean; added: number; removed: number; changed: number; unchanged: number; entries: ArtifactEntryDiff[];
+  sizeChanged: boolean; hashChanged: boolean; fromSizeBytes: number; toSizeBytes: number; fromSha256: string; toSha256: string;
+}
 
 // ---- Document review, access requests, requirements and audit
 export type ApproverKind = 'User' | 'Team' | 'JobRole' | 'ProjectOwner';

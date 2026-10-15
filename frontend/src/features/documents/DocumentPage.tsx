@@ -12,6 +12,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { LinkedWork } from './LinkedWork';
+import { ArtifactCard } from './ArtifactHistory';
 import { DocumentFiles } from './DocumentFiles';
 import { DocumentIdContext } from './DocImage';
 import { HistoryModal, PublishModal } from './DocumentHistory';
@@ -146,6 +147,9 @@ export function DocumentPage() {
   const canEdit = detail.can.edit && canWrite;
   const editable = canEdit && mode === 'edit';
   const workflow = !!review.data?.workflowApplies;
+  // A Build Artifact document is published from its own card (ArtifactHistory.tsx) - a file, not typed section
+  // text, so the generic "what changed?" Publish/Submit flow below does not apply to it.
+  const isArtifact = type?.code === 'ARTIFACT';
   const hasApi = type?.code === 'API' || (apiOverview.data?.definitions.length ?? 0) > 0;
   const onApiTab = hasApi && params.get('tab') === 'api';
   const setTab = (t: 'doc' | 'api') => setParams(t === 'api' ? { tab: 'api' } : {}, { replace: true });
@@ -184,11 +188,11 @@ export function DocumentPage() {
             </div>
           )}
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
-          {canEdit && detail.can.publish && !workflow && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
-          {canEdit && workflow && review.data?.canSubmit && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
+          {canEdit && detail.can.publish && !workflow && !isArtifact && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
+          {canEdit && workflow && review.data?.canSubmit && !isArtifact && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
           <Menu label="Actions" icon="more" items={[
-            { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', hint: 'Secret values are never included. Once downloaded, this app can no longer control or protect the file.', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
-            { label: 'History', hint: 'Versions and changes', icon: 'clock', onSelect: () => setPanel('history') },
+            { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', hint: 'Secret values are never included. Once downloaded, this app can no longer control or protect the file.', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); }, hidden: isArtifact },
+            { label: 'History', hint: 'Versions and changes', icon: 'clock', onSelect: () => setPanel('history'), hidden: isArtifact },
             { label: detail.can.share ? 'Share' : 'Access', hint: 'Who can open it', icon: 'users', onSelect: () => setPanel('access') },
             { label: 'Details', hint: 'Title, tags, owner, visibility', icon: 'edit', onSelect: () => setDetails(true), hidden: !detail.can.edit },
             { label: 'Archive', hint: 'Make it read-only', icon: 'folder', onSelect: async () => {
@@ -250,6 +254,7 @@ export function DocumentPage() {
               </dl>
             </div>
           </div>
+          {isArtifact && <ArtifactCard detail={detail} canEdit={canEdit} />}
           <RequirementsCard documentId={id} canEdit={editable} />
           <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />
           <DocumentSecrets documentId={id} canEdit={editable} />

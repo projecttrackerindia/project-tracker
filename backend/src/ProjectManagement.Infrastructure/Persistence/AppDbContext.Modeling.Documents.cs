@@ -79,6 +79,18 @@ public partial class AppDbContext
             e.Property(x => x.Sha256).HasMaxLength(64);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<DocumentVersionArtifact>(e =>
+        {
+            // One file per version: a draft gets at most one row, replaced (never duplicated) while re-uploading before publishing.
+            e.HasIndex(x => new { x.TenantId, x.VersionId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.DocumentId });
+            e.Property(x => x.FileName).HasMaxLength(200);
+            e.Property(x => x.ContentType).HasMaxLength(120);
+            e.Property(x => x.StorageKey).HasMaxLength(200);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.HasOne<DocumentVersion>().WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<DocumentLink>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.DocumentId, x.TargetType, x.TargetId, x.Relation, x.RequirementId }).IsUnique();

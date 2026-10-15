@@ -2997,6 +2997,79 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("DocumentVersions");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentVersionArtifact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Encrypted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsZip")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("KeyVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VersionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("VersionId");
+
+                    b.HasIndex("TenantId", "DocumentId");
+
+                    b.HasIndex("TenantId", "VersionId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentVersionArtifacts");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentView", b =>
                 {
                     b.Property<Guid>("Id")
@@ -9628,6 +9701,21 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasOne("ProjectManagement.Domain.Entities.Document", null)
                         .WithMany()
                         .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DocumentVersionArtifact", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProjectManagement.Domain.Entities.DocumentVersion", null)
+                        .WithMany()
+                        .HasForeignKey("VersionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

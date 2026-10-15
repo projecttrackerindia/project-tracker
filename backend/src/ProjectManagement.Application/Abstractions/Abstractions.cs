@@ -48,6 +48,7 @@ public interface IAppDbContext
     DbSet<DocumentLink> DocumentLinks { get; }
     DbSet<DocumentGrant> DocumentGrants { get; }
     DbSet<DocumentFile> DocumentFiles { get; }
+    DbSet<DocumentVersionArtifact> DocumentVersionArtifacts { get; }
     DbSet<WorkflowDefinition> WorkflowDefinitions { get; }
     DbSet<DocumentApproval> DocumentApprovals { get; }
     DbSet<ApprovalDecision> ApprovalDecisions { get; }

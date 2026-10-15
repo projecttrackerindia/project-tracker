@@ -67,6 +67,8 @@ public static class DocumentTemplates
         [Rich("summary", "Summary", "What this release delivers."), Rich("changes", "Changes", "New, changed and fixed."), Rich("knownIssues", "Known issues", ""), Rich("upgrade", "Upgrade notes", "")]),
         new("ENV", "Environment documentation", "A system landscape: servers, URLs, access and configuration notes.", "server", "#0d9488",
         [Rich("overview", "Overview", ""), Grid("components", "Components", "", "Component", "Location", "Purpose", "Owner"), Rich("access", "Access and configuration", "Describe how access is granted. Do not paste secrets here.")]),
+        // No sections: what this document carries is a build file, versioned and compared like every other document's text (see DocumentVersionArtifact).
+        new("ARTIFACT", "Build artifact", "A built release file (jar, zip, installer...) with automatic versioning, so every build stays traceable and comparable.", "layers", "#f97316", []),
     ];
 
     public static string ToJson(SectionTemplate[] sections) => JsonSerializer.Serialize(sections, Json);
