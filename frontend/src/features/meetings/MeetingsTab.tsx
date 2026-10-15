@@ -8,6 +8,7 @@ import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
+import { wallInZone, zonedTimeToUtc } from './timezone';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 
@@ -41,9 +42,11 @@ function LiveStatus({ m }: { m: Meeting }) {
 
 /** Reschedule the time, and add or remove participants - organizer only, on a still-scheduled meeting (spec sections 12 and 14). */
 function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; projectId: string; onClose: () => void; onChanged: () => void }) {
-  const inHour = new Date(m.startTime);
-  const [date, setDate] = useState(`${inHour.getFullYear()}-${String(inHour.getMonth() + 1).padStart(2, '0')}-${String(inHour.getDate()).padStart(2, '0')}`);
-  const [startTime, setStartTime] = useState(inHour.toTimeString().slice(0, 5));
+  // Read and re-typed in the meeting's own time zone (spec/established pattern, same as scheduling) - never this browser's own clock
+  // setting, which may not match the zone the meeting was actually scheduled in.
+  const inHour = wallInZone(new Date(m.startTime), m.timeZone);
+  const [date, setDate] = useState(`${inHour.year}-${String(inHour.monthIndex + 1).padStart(2, '0')}-${String(inHour.day).padStart(2, '0')}`);
+  const [startTime, setStartTime] = useState(`${String(inHour.hour).padStart(2, '0')}:${String(inHour.minute).padStart(2, '0')}`);
   const durationMin = Math.max(5, Math.round((new Date(m.endTime).getTime() - new Date(m.startTime).getTime()) / 60_000));
   const [duration, setDuration] = useState(durationMin);
   const [busy, setBusy] = useState<string | null>(null);
@@ -54,7 +57,10 @@ function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; 
   const eligible = (picker.data ?? []).filter((p) => p.userId && !invitedIds.has(p.userId));
 
   const reschedule = async () => {
-    const start = new Date(`${date}T${startTime}:00`);
+    const [y, mo, d] = date.split('-').map(Number);
+    const [h, mi] = startTime.split(':').map(Number);
+    if (!y || !mo || !d || Number.isNaN(h) || Number.isNaN(mi)) { setError('Choose a date and a start time.'); return; }
+    const start = zonedTimeToUtc(y, mo - 1, d, h, mi, m.timeZone);
     if (Number.isNaN(start.getTime())) { setError('Choose a date and a start time.'); return; }
     const end = new Date(start.getTime() + duration * 60_000);
     setBusy('reschedule'); setError(null);
@@ -89,6 +95,7 @@ function ManageMeetingModal({ m, projectId, onClose, onChanged }: { m: Meeting; 
           </select>
         </Field>
       </div>}
+      {!m.recurrenceRule && <p className="muted" style={{ fontSize: 12.5, marginTop: -4 }}>Time zone: {m.timeZone} (set when the meeting was scheduled; cancel and reschedule to change it)</p>}
       {!m.recurrenceRule && <button type="button" className="btn btn-primary btn-sm" disabled={busy === 'reschedule'} onClick={() => void reschedule()}>{busy === 'reschedule' && <span className="spinner" />}Save new time</button>}
       {m.recurrenceRule && <p className="gm-invite-note">Participant changes affect the whole series. Open Google Calendar to change individual occurrences or the repeat schedule.</p>}
 

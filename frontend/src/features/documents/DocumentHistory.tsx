@@ -147,6 +147,9 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
     <Modal title={title} subtitle={`${detail.item.key} · ${detail.item.title}`} size="xl" onClose={onClose} className="doc-scope"
       footer={mode.kind === 'list' ? <button className="btn btn-ghost" onClick={onClose}>Close</button> : <button className="btn btn-ghost" onClick={() => setMode({ kind: 'list' })}><Icon name="arrowLeft" size={15} /> Back to history</button>}>
       {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode.kind === 'list' ? (
+        items.length === 0 ? (
+          <EmptyState icon="clock" title="No versions yet" text="Publish this document to start its history — every version stays here, readable and restorable." />
+        ) : (
         <>
           {items.length <= 1 && !q.data?.publishedLabel && <p className="muted">Nothing has been published yet. Publish a version to start the history.</p>}
           <ul className="ver-list">
@@ -158,19 +161,26 @@ export function HistoryModal({ detail, onClose }: { detail: DocumentDetail; onCl
           {items.length > verLimit && <button className="btn btn-ghost btn-sm" onClick={() => setVerLimit((n) => n + 8)}>Show more</button>}
           {items.length >= 2 && (
             <div className="ver-pick">
-              <b>Compare any two</b>
-              <Select className="select" value={a} onChange={(e) => setA(e.target.value)} aria-label="Older"><option value="">Choose…</option>{items.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select>
-              <Icon name="arrowRight" size={14} />
-              <Select className="select" value={b} onChange={(e) => setB(e.target.value)} aria-label="Newer"><option value="">Choose…</option>{items.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select>
-              <button className="btn btn-primary btn-sm" disabled={!a || !b || a === b} onClick={() => setMode({ kind: 'compare', from: a, to: b })}>Compare</button>
+              <b>Compare any two versions</b>
+              <div className="ver-pick-row">
+                <div className="ver-pick-field"><label>From</label><Select className="select" value={a} onChange={(e) => setA(e.target.value)} aria-label="From version"><option value="">Choose a version…</option>{items.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select></div>
+                <Icon name="arrowRight" size={14} className="ver-pick-arrow" />
+                <div className="ver-pick-field"><label>To</label><Select className="select" value={b} onChange={(e) => setB(e.target.value)} aria-label="To version"><option value="">Choose a version…</option>{items.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</Select></div>
+                <button className="btn btn-primary btn-sm ver-pick-go" disabled={!a || !b || a === b} onClick={() => setMode({ kind: 'compare', from: a, to: b })}>Compare</button>
+              </div>
+              {a && b && a === b && <p className="muted ver-pick-hint">Choose two different versions to compare.</p>}
             </div>
           )}
         </>
+        )
       ) : mode.kind === 'compare' ? <CompareView documentId={id} from={mode.from} to={mode.to} /> : (
         view.isLoading ? <PageLoader /> : view.isError || !view.data ? <ErrorState error={view.error} /> : (
           <div className="ver-view">
+            <div className="ver-view-banner"><Icon name="eye" size={14} /> Reading version {view.data.version.label} · read-only</div>
             {view.data.version.changeSummary && <p className="ver-sum"><b>{view.data.version.changeSummary}</b>{view.data.version.changeReason ? ` — ${view.data.version.changeReason}` : ''}</p>}
-            {view.data.sections.map((s) => <SectionEditor key={s.key} section={s} value={s.content} readOnly />)}
+            {view.data.sections.length === 0
+              ? <EmptyState icon="note" title="Nothing was written in this version" />
+              : view.data.sections.map((s) => <SectionEditor key={s.key} section={s} value={s.content} readOnly />)}
           </div>
         )
       )}
