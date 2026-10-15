@@ -50,7 +50,7 @@ public class DocumentTests(ApiFactory factory) : IAsyncLifetime
     {
         var (owner, brd) = await OwnerWithTypes();
         var types = (await owner.Get("/api/v1/document-types")).Data!.AsArray();
-        Assert.Equal(16, types.Count);
+        Assert.Equal(17, types.Count);
         Assert.Contains(types, t => S(t!["code"]) == "API" && S(t["name"]) == "API documentation");
 
         var res = await NewDoc(owner, brd);

@@ -157,6 +157,10 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 [data-theme='dark'] .cal-ev.cyan { color: #7dd3fc; }
 [data-theme='dark'] .cal-ev.orange { color: #fdba74; }
 
+/* Calendar: meetings. */
+.cal-ev.teal { background: rgba(13, 148, 136, .14); color: #0d9488; }
+[data-theme='dark'] .cal-ev.teal { color: #5eead4; }
+
 
 
 

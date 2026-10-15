@@ -38,6 +38,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
     public DbSet<DocumentGrant> DocumentGrants => Set<DocumentGrant>();
     public DbSet<DocumentFile> DocumentFiles => Set<DocumentFile>();
+    public DbSet<DocumentVersionArtifact> DocumentVersionArtifacts => Set<DocumentVersionArtifact>();
     public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
     public DbSet<DocumentApproval> DocumentApprovals => Set<DocumentApproval>();
     public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();

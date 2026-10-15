@@ -11,9 +11,9 @@ import { Sheet } from '../../components/Sheet';
 import { haptic, useIsMobile } from '../../lib/mobile';
 
 const cls = (e: CalendarEvent) =>
-  e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
-const TYPE_LABEL: Record<CalendarEvent['type'], string> = { task: 'Task', action: 'Action item', work: 'Operational', project: 'Deadline', milestone: 'Milestone', stage: 'Stage' };
-const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ ', milestone: '⚑ ', stage: '◆ ', action: '✓ ', work: '⚡ ' };
+  e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.type === 'meeting' ? 'teal' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
+const TYPE_LABEL: Record<CalendarEvent['type'], string> = { task: 'Task', action: 'Action item', work: 'Operational', project: 'Deadline', milestone: 'Milestone', stage: 'Stage', meeting: 'Meeting' };
+const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ ', milestone: '⚑ ', stage: '◆ ', action: '✓ ', work: '⚡ ', meeting: '☉ ' };
 
 /** Month calendar of task, action item and operational work deadlines, project deadlines and lifecycle stage ends. Days can be picked one at a time,
  *  as a range (click a start then an end), or as a scattered multi-select — whichever the "Dates" mode is set to. */
@@ -29,7 +29,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
   const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
   // The day the pointer (or keyboard focus) is on: it lights up before it is clicked, and once a range is started the days up to it are previewed.
   const [hover, setHover] = useState<string | null>(null);
-  const [show, setShow] = useState({ task: true, action: true, work: true, project: true, stage: true, milestone: true });
+  const [show, setShow] = useState({ task: true, action: true, work: true, project: true, stage: true, milestone: true, meeting: true });
 
   const cells = useMemo(() => monthCells(year, month), [month, year]);
 
@@ -65,6 +65,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
     if (e.type === 'task') onOpenTask(e.id, e.projectId);
     else if (e.type === 'action' && e.projectId) nav(`/projects/${e.projectId}?tab=actions&action=${e.id}`);
     else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/operations?task=${e.id}`); }
+    else if (e.type === 'meeting' && e.projectId) nav(`/projects/${e.projectId}?tab=meetings&meeting=${e.id}`);
     else if (e.projectId && e.projectId !== projectId) nav(`/projects/${e.projectId}`);
   };
 
@@ -85,7 +86,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
               ))}
             </div>
             <div className="legend">
-              {([['task', 'var(--primary)', 'Tasks'], ['action', '#0ea5e9', 'Action items'], ['work', '#f97316', 'Operational work'], ['project', 'var(--purple)', 'Project deadlines'], ['stage', 'var(--warning)', 'Stage ends'], ['milestone', 'var(--purple)', 'Milestones']] as const).map(([k, c, label]) => (
+              {([['task', 'var(--primary)', 'Tasks'], ['action', '#0ea5e9', 'Action items'], ['work', '#f97316', 'Operational work'], ['project', 'var(--purple)', 'Project deadlines'], ['stage', 'var(--warning)', 'Stage ends'], ['milestone', 'var(--purple)', 'Milestones'], ['meeting', '#0d9488', 'Meetings']] as const).map(([k, c, label]) => (
                 <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
                   <input type="checkbox" checked={show[k]} onChange={(e) => setShow((s) => ({ ...s, [k]: e.target.checked }))} /><i style={{ background: c }} />{label}
                 </label>
@@ -139,7 +140,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
           </div>
         </div>
       )}
-      {q.data && q.data.length === 0 && activeDates.size === 0 && <EmptyState icon="calendar" title="Nothing scheduled" text="Tasks, action items and operational work with due dates appear here." />}
+      {q.data && q.data.length === 0 && activeDates.size === 0 && <EmptyState icon="calendar" title="Nothing scheduled" text="Tasks, action items, operational work and meetings with due dates appear here." />}
       {daySheet && (
         <Sheet title={formatDate(daySheet)} onClose={() => setDaySheet(null)}>
           {(byDate.get(daySheet) ?? []).length === 0 ? <div className="m-empty"><Icon name="calendar" size={26} /><b>Nothing scheduled</b><span>No deadlines on this day.</span></div> : (

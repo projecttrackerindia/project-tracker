@@ -17,7 +17,7 @@ public record AttachmentDto(Guid Id, Guid ProjectId, Guid? TaskId, string? TaskK
 
 public record AttachmentLimitsDto(long MaxFileBytes, long StorageLimitBytes, long StorageUsedBytes, IReadOnlyList<string> AllowedExtensions);
 
-public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text, SevenZip, Rar, Gzip, Video }
+public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text, SevenZip, Rar, Gzip, Video, Binary }
 
 /// <summary>What may be uploaded. The extension decides the type, and the first bytes of the file must agree with it.</summary>
 public static class FileRules
@@ -72,10 +72,18 @@ public static class FileRules
         return name;
     }
 
-    public static bool TryDescribe(string fileName, out string contentType, out FileKind kind)
+    /// <summary>
+    /// Looks up a known extension. With <paramref name="allowUnknown"/>, an extension that is not in <see cref="Allowed"/> (or missing entirely) still
+    /// succeeds as an opaque <see cref="FileKind.Binary"/> - for build artifacts and other arbitrary application binaries, which have no fixed
+    /// extension list and no single byte signature to check against. This only ever widens what an unrecognized extension is allowed to be; every
+    /// extension already in <see cref="Allowed"/> keeps going through its own magic-byte check exactly as before (see <see cref="LooksLike"/>), and
+    /// callers that never pass <paramref name="allowUnknown"/> (every attachment and document-file upload today) see no behavior change at all.
+    /// </summary>
+    public static bool TryDescribe(string fileName, out string contentType, out FileKind kind, bool allowUnknown = false)
     {
         var ext = Path.GetExtension(fileName).TrimStart('.');
         if (ext.Length > 0 && Allowed.TryGetValue(ext, out var t)) { (contentType, kind) = t; return true; }
+        if (allowUnknown) { (contentType, kind) = ("application/octet-stream", FileKind.Binary); return true; }
         (contentType, kind) = ("", default);
         return false;
     }
@@ -98,6 +106,8 @@ public static class FileRules
         FileKind.Gzip => h.StartsWith((ReadOnlySpan<byte>)[0x1F, 0x8B]),
         FileKind.Video => h.Length >= 12 && (h[4..8].SequenceEqual("ftyp"u8) || h[4..8].SequenceEqual("moov"u8) || h[4..8].SequenceEqual("mdat"u8)
             || h[4..8].SequenceEqual("wide"u8) || h[4..8].SequenceEqual("free"u8)),
+        // An unrecognized extension has no fixed shape to check the bytes against; the SHA-256 integrity hash and the size cap are the checks it gets.
+        FileKind.Binary => true,
         _ => false,
     };
 }
@@ -249,13 +259,13 @@ public class AttachmentService(IAppDbContext db, ICurrentContext ctx, Permission
     /// this null and gets exactly today's behavior. The transform receives the stream the hash is computed from, so <c>hashing.Hex()</c> below still
     /// reflects the plaintext's SHA-256 regardless of what the transform does to the bytes afterward; it must fully drain what it's given.
     /// </param>
-    public async Task<StoredFile> StoreAsync(string? fileName, Stream content, long length, CancellationToken ct = default, Func<Stream, CancellationToken, Task<Stream>>? beforeStore = null)
+    public async Task<StoredFile> StoreAsync(string? fileName, Stream content, long length, CancellationToken ct = default, Func<Stream, CancellationToken, Task<Stream>>? beforeStore = null, bool allowUnknownExtension = false)
     {
         var tid = ctx.RequireTenantId();
         // ---- what kind of file, and does it fit the plan?
         var name = FileRules.CleanName(fileName);
         if (name.Length == 0) throw new ValidationException("file", "The file has no name.");
-        if (!FileRules.TryDescribe(name, out var contentType, out var kind))
+        if (!FileRules.TryDescribe(name, out var contentType, out var kind, allowUnknownExtension))
             throw new ValidationException("file", $"“{Path.GetExtension(name)}” files are not allowed. Allowed: {string.Join(", ", FileRules.Extensions)}.");
         if (length <= 0) throw new ValidationException("file", "The file is empty.");
         if (length > FileRules.AbsoluteMaxBytes) throw new AppException(413, "FILE_TOO_LARGE", $"Files can be at most {Mb(FileRules.AbsoluteMaxBytes)}.");

@@ -256,6 +256,8 @@
 .doc-files li { display: flex; gap: 8px; align-items: center; font-size: 13px; flex-wrap: wrap; }
 .doc-files .link-btn { flex: 1 1 120px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-side-card.drop { outline: 2px dashed var(--primary); outline-offset: -4px; }
+/* ---- build artifact card (ArtifactHistory.tsx): the publish/history actions under the current build's file row */
+.art-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .doc-img { position: relative; display: inline-block; max-width: 100%; margin: .4em 0; border-radius: 10px; }
 .doc-img img { display: block; max-width: 100%; max-height: 520px; border-radius: 10px; border: 1px solid var(--border); }
 .doc-img.selected img { outline: 2px solid var(--primary); }

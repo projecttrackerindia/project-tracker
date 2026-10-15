@@ -393,4 +393,22 @@ public class ProjectMeetingTests(ApiFactory factory)
         Assert.Equal("VALIDATION_FAILED", res.ErrorCode);
         Assert.Empty(factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project).ToList()));
     }
+
+    /// <summary>A scheduled meeting (project meeting or scrum call) is a calendar event too, same as a milestone or stage - the gap
+    /// PlanningTests.Milestones_show_up_on_the_calendar_and_need_edit_access covers for milestones.</summary>
+    [Fact]
+    public async Task Scheduled_meetings_show_up_on_the_calendar()
+    {
+        var owner = await TestClient.RegisterAsync(factory);
+        await owner.CreateOrgAsync();
+        var project = await owner.CreateProjectAsync("Payment Engine");
+        await ConnectGoogleAsync(owner);
+
+        var start = new DateTimeOffset(2027, 6, 10, 10, 0, 0, TimeSpan.Zero);
+        var scheduled = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new { title = "Daily scrum", startTime = start, endTime = start.AddMinutes(15), timeZone = "UTC" });
+        Assert.True(scheduled.Ok, scheduled.ToString());
+
+        var events = (await owner.Get("/api/v1/calendar?from=2027-06-01&to=2027-06-30")).Data!.AsArray();
+        Assert.Contains(events, e => e!["type"]!.GetValue<string>() == "meeting" && e["title"]!.GetValue<string>() == "Daily scrum" && e["projectId"]!.GetValue<string>() == project.ToString());
+    }
 }
