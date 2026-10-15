@@ -34,6 +34,16 @@ const Code = ({ value, onChange, rows = 4, label, hint, ph }: { value: string | 
   <Field label={label} hint={hint}><textarea className="textarea epe-code" rows={rows} spellCheck={false} value={value ?? ''} placeholder={ph} onChange={(e) => onChange(e.target.value || null)} /></Field>
 );
 
+/** Wraps one tab's rows in DocTracker's grouped-section chrome: a small accent-tinted header strip naming the
+ * section, over the accent-card's own left bar. `kind` picks the hue, matching how `.doc-accent-success`/
+ * `.doc-accent-info` are already used on the document page's right-rail cards. */
+const Section = ({ kind, title, hint, children }: { kind: 'success' | 'info'; title: string; hint?: string; children: React.ReactNode }) => (
+  <div className={`epe-section doc-accent-card doc-accent-${kind}`}>
+    <div className="epe-section-head"><b>{title}</b>{hint && <span>{hint}</span>}</div>
+    <div className="epe-section-body">{children}</div>
+  </div>
+);
+
 /** Write or change one endpoint: where it is, what it takes, what it returns, how it fails, and an example. */
 export function EndpointEditor({ documentId, definitions, existing, startDefinition, onClose, onSaved }: {
   documentId: string; definitions: ApiDefinition[]; existing: EndpointDetail | null; startDefinition: string; onClose: () => void; onSaved: (e: EndpointDetail) => void;
@@ -91,29 +101,30 @@ export function EndpointEditor({ documentId, definitions, existing, startDefinit
 
       {tab === 'Parameters' && (
         <div className="epe-pane">
-          <p className="muted">Query, path, header and cookie parameters. Path parameters are always required.</p>
-          <Rows<ApiParam> items={d.parameters} onChange={(parameters) => set({ parameters })} add="Add a parameter" blank={() => ({ name: '', in: 'query', required: false, type: 'string', description: null, example: null, schema: null })}
-            render={(p, s) => (
-              <>
-                <div className="epe-line">
-                  <input className="input" value={p.name} placeholder="name" maxLength={100} aria-label="Name" onChange={(e) => s({ ...p, name: e.target.value })} />
-                  <Select className="select" value={p.in} onChange={(e) => s({ ...p, in: e.target.value, required: e.target.value === 'path' ? true : p.required })} aria-label="Where"><option value="query">query</option><option value="path">path</option><option value="header">header</option><option value="cookie">cookie</option></Select>
-                  <input className="input" value={p.type ?? ''} placeholder="type" maxLength={60} aria-label="Type" onChange={(e) => s({ ...p, type: e.target.value || null })} />
-                  <label className="check-row small"><input type="checkbox" checked={p.required || p.in === 'path'} disabled={p.in === 'path'} onChange={(e) => s({ ...p, required: e.target.checked })} /> required</label>
-                </div>
-                <div className="epe-line">
-                  <input className="input" value={p.description ?? ''} placeholder="what it is" maxLength={1000} aria-label="Description" onChange={(e) => s({ ...p, description: e.target.value || null })} />
-                  <input className="input" value={p.example ?? ''} placeholder="example" maxLength={1000} aria-label="Example" onChange={(e) => s({ ...p, example: e.target.value || null })} />
-                </div>
-              </>
-            )} />
+          <Section kind="success" title="Request parameters" hint="Query, path, header and cookie parameters. Path parameters are always required.">
+            <Rows<ApiParam> items={d.parameters} onChange={(parameters) => set({ parameters })} add="Add a parameter" blank={() => ({ name: '', in: 'query', required: false, type: 'string', description: null, example: null, schema: null })}
+              render={(p, s) => (
+                <>
+                  <div className="epe-line">
+                    <input className="input" value={p.name} placeholder="name" maxLength={100} aria-label="Name" onChange={(e) => s({ ...p, name: e.target.value })} />
+                    <Select className="select" value={p.in} onChange={(e) => s({ ...p, in: e.target.value, required: e.target.value === 'path' ? true : p.required })} aria-label="Where"><option value="query">query</option><option value="path">path</option><option value="header">header</option><option value="cookie">cookie</option></Select>
+                    <input className="input" value={p.type ?? ''} placeholder="type" maxLength={60} aria-label="Type" onChange={(e) => s({ ...p, type: e.target.value || null })} />
+                    <label className="check-row small"><input type="checkbox" checked={p.required || p.in === 'path'} disabled={p.in === 'path'} onChange={(e) => s({ ...p, required: e.target.checked })} /> required</label>
+                  </div>
+                  <div className="epe-line">
+                    <input className="input" value={p.description ?? ''} placeholder="what it is" maxLength={1000} aria-label="Description" onChange={(e) => s({ ...p, description: e.target.value || null })} />
+                    <input className="input" value={p.example ?? ''} placeholder="example" maxLength={1000} aria-label="Example" onChange={(e) => s({ ...p, example: e.target.value || null })} />
+                  </div>
+                </>
+              )} />
+          </Section>
         </div>
       )}
 
       {tab === 'Request' && (
         <div className="epe-pane">
           {!body ? <button type="button" className="btn btn-ghost" onClick={() => set({ requestBody: { contentType: 'application/json', required: true, description: null, schema: null, example: null } })}><Icon name="plus" size={14} /> This endpoint takes a request body</button> : (
-            <>
+            <Section kind="success" title="Request body">
               <div className="epe-line">
                 <input className="input" value={body.contentType ?? ''} placeholder="application/json" aria-label="Content type" onChange={(e) => set({ requestBody: { ...body, contentType: e.target.value || null } })} />
                 <label className="check-row small"><input type="checkbox" checked={body.required} onChange={(e) => set({ requestBody: { ...body, required: e.target.checked } })} /> required</label>
@@ -122,27 +133,29 @@ export function EndpointEditor({ documentId, definitions, existing, startDefinit
               <Field label="What it carries"><input className="input" value={body.description ?? ''} maxLength={1000} onChange={(e) => set({ requestBody: { ...body, description: e.target.value || null } })} /></Field>
               <Code label="Schema (JSON Schema)" hint="Must be valid JSON." rows={8} value={body.schema} ph='{"type":"object","properties":{"amount":{"type":"integer"}},"required":["amount"]}' onChange={(v) => set({ requestBody: { ...body, schema: v } })} />
               <Code label="Example" rows={5} value={body.example} onChange={(v) => set({ requestBody: { ...body, example: v } })} />
-            </>
+            </Section>
           )}
         </div>
       )}
 
       {tab === 'Responses' && (
         <div className="epe-pane">
-          <Rows<ApiResponse> items={d.responses} onChange={(responses) => set({ responses })} add="Add a response" blank={() => ({ status: '400', description: null, contentType: 'application/json', schema: null, example: null })}
-            render={(r, s) => (
-              <>
-                <div className="epe-line">
-                  <input className="input epe-status" value={r.status} maxLength={12} aria-label="Status" placeholder="200" onChange={(e) => s({ ...r, status: e.target.value })} />
-                  <input className="input" value={r.description ?? ''} maxLength={1000} aria-label="Description" placeholder="what it means" onChange={(e) => s({ ...r, description: e.target.value || null })} />
-                  <input className="input" value={r.contentType ?? ''} maxLength={100} aria-label="Content type" placeholder="application/json" onChange={(e) => s({ ...r, contentType: e.target.value || null })} />
-                </div>
-                <div className="epe-line">
-                  <textarea className="textarea epe-code" rows={4} spellCheck={false} aria-label="Schema" placeholder="Schema (JSON)" value={r.schema ?? ''} onChange={(e) => s({ ...r, schema: e.target.value || null })} />
-                  <textarea className="textarea epe-code" rows={4} spellCheck={false} aria-label="Example" placeholder="Example" value={r.example ?? ''} onChange={(e) => s({ ...r, example: e.target.value || null })} />
-                </div>
-              </>
-            )} />
+          <Section kind="info" title="Response fields" hint="One per status code it can return.">
+            <Rows<ApiResponse> items={d.responses} onChange={(responses) => set({ responses })} add="Add a response" blank={() => ({ status: '400', description: null, contentType: 'application/json', schema: null, example: null })}
+              render={(r, s) => (
+                <>
+                  <div className="epe-line">
+                    <input className="input epe-status" value={r.status} maxLength={12} aria-label="Status" placeholder="200" onChange={(e) => s({ ...r, status: e.target.value })} />
+                    <input className="input" value={r.description ?? ''} maxLength={1000} aria-label="Description" placeholder="what it means" onChange={(e) => s({ ...r, description: e.target.value || null })} />
+                    <input className="input" value={r.contentType ?? ''} maxLength={100} aria-label="Content type" placeholder="application/json" onChange={(e) => s({ ...r, contentType: e.target.value || null })} />
+                  </div>
+                  <div className="epe-line">
+                    <textarea className="textarea epe-code" rows={4} spellCheck={false} aria-label="Schema" placeholder="Schema (JSON)" value={r.schema ?? ''} onChange={(e) => s({ ...r, schema: e.target.value || null })} />
+                    <textarea className="textarea epe-code" rows={4} spellCheck={false} aria-label="Example" placeholder="Example" value={r.example ?? ''} onChange={(e) => s({ ...r, example: e.target.value || null })} />
+                  </div>
+                </>
+              )} />
+          </Section>
         </div>
       )}
 
