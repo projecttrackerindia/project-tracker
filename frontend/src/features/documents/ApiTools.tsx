@@ -110,7 +110,7 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
               <div className="imp-drop-ico"><Icon name="upload" size={26} /></div>
               <b>Drop a file here, or click to choose</b>
               <span>Up to 6 MB and 10,000 endpoints</span>
-              <div className="imp-formats"><span>OpenAPI 3 · JSON</span><span>OpenAPI 3 · YAML</span><span>Postman 2.1</span><span>cURL · .sh / .txt</span></div>
+              <div className="imp-formats"><span className="doc-meta-chip">OpenAPI 3 · JSON</span><span className="doc-meta-chip">OpenAPI 3 · YAML</span><span className="doc-meta-chip">Postman 2.1</span><span className="doc-meta-chip">cURL · .sh / .txt</span></div>
               <input ref={input} type="file" hidden accept=".json,.yaml,.yml,.sh,.txt,.curl,application/json,text/plain" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} />
             </div>
           ) : (
@@ -159,14 +159,16 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
           {result.success ? (
             <>
               <div className="imp-tiles" aria-label="What would change">
-                <div className="add"><b>{result.added}</b><span>new</span></div><div className="chg"><b>{result.updated}</b><span>changed</span></div>
-                <div><b>{result.unchanged}</b><span>unchanged</span></div><div className={result.removed ? 'del' : ''}><b>{result.removed}</b><span>removed</span></div>
+                <div className="add doc-accent-card doc-accent-success"><b>{result.added}</b><span>new</span></div>
+                <div className="chg doc-accent-card doc-accent-info"><b>{result.updated}</b><span>changed</span></div>
+                <div className="doc-accent-card doc-accent-neutral"><b>{result.unchanged}</b><span>unchanged</span></div>
+                <div className={`doc-accent-card doc-accent-danger${result.removed ? ' del' : ''}`}><b>{result.removed}</b><span>removed</span></div>
               </div>
               <div className={`doc-alert ${result.applied ? 'ok' : 'info'}`}><Icon name={result.applied ? 'checkCircle' : 'info'} size={16} /><div>{result.applied ? <><b>Imported</b> into “{result.definition}”.</> : <>Ready to import into “{result.definition}”.</>}{result.issues.length > 0 ? ` ${result.issues.length} note${result.issues.length === 1 ? '' : 's'} below.` : ''}</div></div>
             </>
           ) : <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div><b>This file cannot be imported.</b> Fix the problems below and choose it again.</div></div>}
           {result.issues.length > 0 && (
-            <div className="table-wrap"><table className="table imp-table">
+            <div className="table-wrap"><table className="table imp-table data-table">
               <thead><tr><th>Line</th><th>Where</th><th>Problem</th></tr></thead>
               <tbody>{result.issues.slice(0, 200).map((i, n) => (
                 <tr key={n} className={i.severity}><td>{i.line ? `${i.line}${i.column ? `:${i.column}` : ''}` : '–'}</td><td><code>{i.pointer ?? ''}</code></td><td><span className={`badge ${i.severity === 'error' ? 'badge-danger' : 'badge-warning'}`}>{i.severity === 'error' ? 'Error' : 'Note'}</span> {i.message}</td></tr>

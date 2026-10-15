@@ -36,7 +36,11 @@ export function SubmitModal({ detail, review, onClose }: { detail: DocumentDetai
   );
 }
 
-/** Approve (a comment is optional) or ask for changes (saying what is needed is required). */
+/** Approve (a comment is optional) or ask for changes (saying what is needed is required).
+ * The two outcomes are opposite enough that they must never share a button colour: approving uses the
+ * app's normal primary action colour, sending it back uses `.btn-danger` - the shared `SubmitButton`
+ * always renders `.btn-primary` regardless of which decision it submits, which is exactly the ambiguity
+ * this modal must not have, so it builds its own submit button here instead of using that helper. */
 function DecideModal({ id, kind, onClose }: { id: string; kind: 'approve' | 'changes'; onClose: () => void }) {
   const wid = useWorkspaceId();
   const [comment, setComment] = useState('');
@@ -49,7 +53,8 @@ function DecideModal({ id, kind, onClose }: { id: string; kind: 'approve' | 'cha
   return (
     <Modal title={kind === 'approve' ? 'Approve this document' : 'Ask for changes'} size="sm" onClose={onClose} className="doc-scope"
       onSubmit={(e) => { e.preventDefault(); if (kind === 'changes' && !comment.trim()) { setError('Say what needs to change.'); return; } setError(null); go.mutate(); }}
-      footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={go.isPending}>{kind === 'approve' ? 'Approve' : 'Send back'}</SubmitButton></>}>
+      footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button>
+        <button type="submit" className={`btn ${kind === 'approve' ? 'btn-primary' : 'btn-danger'}`} disabled={go.isPending}>{go.isPending && <span className="spinner" />}{kind === 'approve' ? 'Approve' : 'Send back'}</button></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
       <Field label={kind === 'approve' ? 'Comment' : 'What needs to change?'} required={kind === 'changes'} hint={kind === 'approve' ? 'Optional.' : 'The author and the owner are told.'}>
         <textarea className="textarea" value={comment} maxLength={1000} rows={3} autoFocus onChange={(e) => setComment(e.target.value)} />
@@ -58,6 +63,8 @@ function DecideModal({ id, kind, onClose }: { id: string; kind: 'approve' | 'cha
   );
 }
 
+const STEP_LABEL: Record<ApprovalStep['state'], string> = { Done: 'Approved', Current: 'Awaiting', Waiting: 'Not yet', ChangesRequested: 'Changes requested', Skipped: 'Skipped' };
+
 function StepTrack({ steps, current }: { steps: ApprovalStep[]; current: number }) {
   return (
     <ol className="rv-steps" aria-label="Approval steps">
@@ -65,7 +72,7 @@ function StepTrack({ steps, current }: { steps: ApprovalStep[]; current: number 
         <li key={i} className={`rv-step ${s.state.toLowerCase()}${i === current ? ' now' : ''}`}>
           <span className="rv-dot">{s.state === 'Done' ? <Icon name="tick" size={12} /> : i + 1}</span>
           <div className="rv-step-main">
-            <b>{s.name}</b>
+            <div className="rv-step-top"><b>{s.name}</b><span className={`rv-step-tag ${s.state.toLowerCase()}`}>{STEP_LABEL[s.state]}</span></div>
             <span className="muted">{s.who}{s.rule === 'All' && s.people.length > 1 ? ' · everyone' : ''}{s.dueDays ? ` · ${s.dueDays} d` : ''}</span>
             {(s.state === 'Current' || s.state === 'ChangesRequested' || s.people.some((p) => p.decision)) && (
               <div className="rv-people">
@@ -117,18 +124,23 @@ export function ReviewPanel({ detail, review, canEdit, onPublish }: { detail: Do
   if (!live) return review.history.length + (a ? 1 : 0) > 0 ? <section className="rv rv-quiet"><PastReviews items={a ? [a, ...review.history] : review.history} /></section> : null;
   const tone = a.state === 'Approved' ? 'ok' : a.state === 'ChangesRequested' ? 'warn' : 'info';
   const asked = a.steps.flatMap((s) => s.people).find((p) => p.decision === 'ChangesRequested');
+  const current = a.state === 'Pending' ? a.steps[a.currentStep] : null;
   return (
     <section className={`rv ${tone}`} aria-label="Review">
       <div className="rv-head">
         <div className="rv-title">
           <Icon name={a.state === 'Approved' ? 'checkCircle' : a.state === 'ChangesRequested' ? 'alert' : 'clock'} size={18} />
           <div>
-            <b>{a.state === 'Pending' ? `In review · step ${a.currentStep + 1} of ${a.steps.length}` : a.state === 'Approved' ? 'Approved, ready to publish' : 'Sent back for changes'}</b>
+            <div className="rv-title-row">
+              <b>{a.state === 'Pending' ? `In review · step ${a.currentStep + 1} of ${a.steps.length}` : a.state === 'Approved' ? 'Approved, ready to publish' : 'Sent back for changes'}</b>
+              {a.canDecide && <span className="rv-turn">Your decision</span>}
+            </div>
             <span className="muted">{a.workflowName} · submitted by {a.submittedBy.name} <span title={formatDateTime(a.submittedAt)}>{timeAgo(a.submittedAt)}</span>{a.dueAt && a.state === 'Pending' ? ` · due ${formatDateTime(a.dueAt)}` : ''}</span>
+            {current && !a.canDecide && <span className="rv-waiting"><Icon name="clock" size={12} /> Waiting on {current.who}</span>}
           </div>
         </div>
         <div className="rv-actions">
-          {a.canDecide && <><button className="btn btn-primary" onClick={() => setDecide('approve')}>Approve</button><button className="btn btn-ghost" onClick={() => setDecide('changes')}>Ask for changes</button></>}
+          {a.canDecide && <><button className="btn btn-primary" onClick={() => setDecide('approve')}>Approve</button><button className="btn btn-danger" onClick={() => setDecide('changes')}>Ask for changes</button></>}
           {a.state === 'Approved' && canEdit && detail.can.publish && <button className="btn btn-primary" onClick={onPublish}><Icon name="upload" size={15} /> Publish</button>}
           {a.canWithdraw && <button className="btn btn-ghost" disabled={withdraw.isPending} onClick={() => withdraw.mutate()}>Withdraw</button>}
         </div>
