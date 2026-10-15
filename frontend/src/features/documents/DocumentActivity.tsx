@@ -29,6 +29,7 @@ function AuditTrail({ id }: { id: string }) {
   const exp = useMutation({ mutationFn: () => documentApi.exportAudit(id), onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not export.', 'error') });
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+  if (q.data.items.length === 0 && cursors.length === 1) return <EmptyState icon="clock" title="Nothing recorded yet" text="Every read, change and reveal on this document will be listed here." />;
   return (
     <div className="aud">
       <div className="aud-bar"><span className="muted">Who did what, from where. Reading this trail is recorded too.</span><button className="btn btn-ghost btn-sm" disabled={exp.isPending} onClick={() => exp.mutate()}><Icon name="download" size={14} /> Export CSV</button></div>
