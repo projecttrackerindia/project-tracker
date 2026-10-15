@@ -59,7 +59,7 @@ try{
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});
   await page.goto(origin+'/preview-org/calendar');await page.getByRole('button',{name:'Scrum call',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0,'Header Ask Agent removed');
-  await page.getByRole('button',{name:'Scrum call',exact:true}).click();await page.getByRole('button',{name:'DEMO ? Connected delivery',exact:true}).click();
+  await page.getByRole('button',{name:'Scrum call',exact:true}).click();await page.getByRole('button',{name:'DEMO · Connected delivery',exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule scrum call'}).waitFor();
   assert.equal(await dialog.locator('input').first().inputValue(),'Connected delivery Scrum');
   await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
