@@ -9,6 +9,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import './meetings.css';
 import { toast } from '../../stores/ui';
+import { allTimeZones, deviceZone, zonedTimeToUtc } from './timezone';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const copy = async (text: string, what: string) => {
@@ -126,7 +127,11 @@ function StartMeetingModal({ projectId, projectName, organizerUserId, onClose }:
 
 export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, onClose, scrum = false }: { projectId: string; projectName: string; organizerUserId?: string; onClose: () => void; scrum?: boolean }) {
   const wid = useWorkspaceId();
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The organizer's own choice, not just a silent guess: this device's detected zone is only the starting suggestion. A machine whose
+  // system clock reports UTC (common on shared/VDI desktops) must not silently schedule "9:00" as 9:00 UTC when the organizer meant
+  // 9:00 Central - so the zone used to turn the typed wall-clock time into a real instant is always this explicit, visible value.
+  const [tz, setTz] = useState(deviceZone());
+  const zones = useState(allTimeZones)[0];
   const inHour = new Date(Date.now() + 60 * 60 * 1000);
   const [title, setTitle] = useState(scrum ? `${projectName} Scrum` : '');
   const [agenda, setAgenda] = useState(scrum ? 'Progress since the last stand-up\nPriorities for today\nBlockers and help needed' : '');
@@ -144,7 +149,12 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
   const schedule = async () => {
     if (!title.trim()) { setError('Give the meeting a title.'); return; }
     if (frequency !== 'Once' && (!Number.isInteger(occurrences) || occurrences < 2 || occurrences > 120)) { setError('Choose 2 to 120 sessions, including the first.'); return; }
-    const start = new Date(`${date}T${startTime}:00`);
+    const [y, mo, d] = date.split('-').map(Number);
+    const [h, mi] = startTime.split(':').map(Number);
+    if (!y || !mo || !d || Number.isNaN(h) || Number.isNaN(mi)) { setError('Choose a date and a start time.'); return; }
+    // The typed date/time means that wall-clock moment in `tz` - the zone the organizer picked below, never this browser's own clock
+    // setting, so the resulting instant (and so the Calendar invite everyone receives) matches what they actually meant.
+    const start = zonedTimeToUtc(y, mo - 1, d, h, mi, tz);
     if (Number.isNaN(start.getTime())) { setError('Choose a date and a start time.'); return; }
     const end = new Date(start.getTime() + duration * 60_000);
     setBusy(true); setError(null);
@@ -187,7 +197,12 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
       </div><p className="gm-invite-note">{frequency === 'Once' ? 'One Google Calendar invitation.' : `${occurrences} sessions in ${tz}. Google Calendar handles repeat invitations and reminders. Individual occurrences can be changed in Google Calendar.`}</p></div>
       <Field label="Agenda" hint="Optional"><textarea className="input" rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} maxLength={4000} /></Field>
       <ParticipantPicker projectId={projectId} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />
-      <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Time zone: {tz}</p>
+      <Field label="Time zone" hint="The date and time above are read in this zone - change it if it is not the one you meant.">
+        <select className="select" aria-label="Time zone" value={tz} onChange={(e) => setTz(e.target.value)}>
+          {!zones.includes(tz) && <option value={tz}>{tz}</option>}
+          {zones.map((z) => <option key={z} value={z}>{z}</option>)}
+        </select>
+      </Field>
     </Modal>
   );
 }
