@@ -226,6 +226,53 @@ public class ReminderTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task An_automatic_reminder_is_not_sent_to_someone_the_work_was_taken_from_or_for_an_old_due_date()
+    {
+        var o = await Setup();
+        var due = LocalToday.AddDays(6);
+        var task = await o.Owner.CreateTaskAsync(o.Project, "Board pack", new { title = "Board pack", priority = "High", assigneeId = o.Dev.UserId, dueDate = due.ToString("yyyy-MM-dd") });
+        var taskId = Guid.Parse(S(task["id"]));
+        await Run(DateTime.UtcNow);
+        var dayBefore = factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Single(r => r.TargetId == taskId && r.SystemKey!.Contains(":L1:")));
+
+        // Reassigned between planning and firing: firing alone (no planning pass in between) must not tell the old assignee.
+        factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().First(t => t.Id == taskId).AssigneeId = o.Owner.UserId; db.SaveChanges(); return 0; });
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<ReminderEngine>().FireDueAsync(dayBefore.NextFireAt!.Value.AddMinutes(1));
+        Assert.DoesNotContain(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == o.Dev.UserId && n.Type == NotificationType.DueSoon).ToList()),
+            n => n.Title.StartsWith($"{o.Key}-1"));
+        Assert.Null(factory.WithDb(db => db.Reminders.IgnoreQueryFilters().FirstOrDefault(r => r.Id == dayBefore.Id)));
+
+        // The key says which assignee and due date it was planned for.
+        var r = new Reminder { Source = ReminderSource.DueDate, UserId = o.Dev.UserId, SystemKey = $"auto:task:{taskId:N}:{o.Dev.UserId:N}:L1:{due:yyyyMMdd}" };
+        Assert.True(ReminderEngine.StillMatches(r, new TargetState(true, due, o.Project, o.Dev.UserId)));
+        Assert.False(ReminderEngine.StillMatches(r, new TargetState(true, due.AddDays(1), o.Project, o.Dev.UserId)));
+        Assert.False(ReminderEngine.StillMatches(r, new TargetState(true, due, o.Project, o.Owner.UserId)));
+        Assert.False(ReminderEngine.StillMatches(r, new TargetState(true, null, o.Project, o.Dev.UserId)));
+        // Escalations go to someone else by design; personal reminders are never second-guessed.
+        Assert.True(ReminderEngine.StillMatches(new Reminder { Source = ReminderSource.Escalation, UserId = o.Owner.UserId, SystemKey = r.SystemKey }, new TargetState(true, due, o.Project, o.Dev.UserId)));
+        Assert.True(ReminderEngine.StillMatches(new Reminder { Source = ReminderSource.Personal, UserId = o.Dev.UserId }, new TargetState(true, null, o.Project, o.Owner.UserId)));
+    }
+
+    [Fact]
+    public async Task Two_servers_briefing_at_once_send_one_briefing()
+    {
+        var o = await Setup();
+        var day = new WorkCalendar(new ReminderSettings()).WorkingOnOrAfter(LocalToday.AddDays(1));
+        await o.Owner.CreateTaskAsync(o.Project, "Ship the release", new { title = "Ship the release", priority = "High", assigneeId = o.Dev.UserId, dueDate = day.ToString("yyyy-MM-dd") });
+        // The person has settings already (the usual case), so both servers race on claiming the day.
+        Assert.True((await o.Dev.Get("/api/v1/reminders/settings")).Ok);
+        factory.WithDb(db => { if (!db.ReminderSettings.Any(s => s.UserId == o.Dev.UserId)) { db.ReminderSettings.Add(new ReminderSettings { UserId = o.Dev.UserId }); db.SaveChanges(); } return 0; });
+        async Task Brief()
+        {
+            using var scope = factory.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<ReminderEngine>().BriefAsync(At(day, 8, 40));
+        }
+        await Task.WhenAll(Brief(), Brief());
+        Assert.Single(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == o.Dev.UserId && n.TenantId == o.Owner.WorkspaceId && n.Type == NotificationType.Briefing).ToList()));
+    }
+
+    [Fact]
     public async Task Action_items_are_reminded_like_every_other_kind_of_work_automatically_and_on_request()
     {
         var o = await Setup();

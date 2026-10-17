@@ -169,6 +169,13 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             {
                 if (!targets.TryGetValue((r.TargetType, targetId), out var state)) { Stop(r, ReminderState.Cancelled, now); continue; }
                 if (r.OnlyIfOpen && !state.Open) { Stop(r, ReminderState.Done, now); continue; }   // finished together with its work
+                // An automatic reminder is about one assignee and one due date: when either has changed since it was planned, it is withdrawn
+                // (the planner makes the right one), so nobody hears "due tomorrow" about work that moved or is no longer theirs.
+                if (!StillMatches(r, state))
+                {
+                    if (r.State == ReminderState.Scheduled) db.Reminders.Remove(r); else Stop(r, ReminderState.Cancelled, now);
+                    continue;
+                }
                 // Access is checked again: a guest who left the project no longer hears about its work.
                 if (role == TenantRole.Guest && state.ProjectId is { } pid
                     && !await db.ProjectMembers.IgnoreQueryFilters().AnyAsync(m => m.ProjectId == pid && m.UserId == r.UserId, ct))
@@ -250,6 +257,20 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
         return pending.Count;
     }
 
+    /// <summary>
+    /// Whether an automatic reminder still fits its work. Its key is "auto:{kind}:{item}:{user}:{step}:{due}" (see <see cref="ReminderPlanner"/>):
+    /// the due date must still be the one it was planned for, and - except for escalations, which go to a manager or owner - the person
+    /// reminded must still be the one the work is assigned to. Anything else (personal reminders, nudges, unknown keys) is left alone.
+    /// </summary>
+    public static bool StillMatches(Reminder r, TargetState state)
+    {
+        if (!Automatic.Contains(r.Source) || r.SystemKey is not { } key || !key.StartsWith("auto:", StringComparison.Ordinal)) return true;
+        var parts = key.Split(':');
+        if (parts.Length != 6) return true;
+        if (r.Source != ReminderSource.Escalation && state.AssigneeId != r.UserId) return false;
+        return state.Due is { } due && parts[5] == due.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private static void Stop(Reminder r, ReminderState state, DateTime now)
     {
         r.State = state; r.NextFireAt = null; r.ActionTokenHash = null;
@@ -273,7 +294,8 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                             select new { m.TenantId, m.UserId, u.TimeZone }).ToListAsync(ct);
         if (people.Count == 0) return 0;
         var userIds = people.Select(p => p.UserId).Distinct().ToList();
-        var settings = await db.ReminderSettings.Where(s => userIds.Contains(s.UserId)).ToDictionaryAsync(s => s.UserId, ct);
+        // Read without tracking: the day is claimed with a conditional update below, never by saving these copies.
+        var settings = await db.ReminderSettings.AsNoTracking().Where(s => userIds.Contains(s.UserId)).ToDictionaryAsync(s => s.UserId, ct);
 
         // Who is due a briefing now.
         var due = new List<(Guid Tenant, Guid User, DateOnly Today, NodaTime.DateTimeZone Tz)>();
@@ -289,8 +311,27 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             var at = TimeOnly.FromDateTime(local);
             var time = s?.BriefingTime ?? new ReminderSettings().BriefingTime;
             if (s?.LastBriefingDay == day || !cal.IsWorkingDay(today) || at < time) continue;
-            if (s is null) { s = new ReminderSettings { UserId = person.Key }; db.ReminderSettings.Add(s); settings[person.Key] = s; }
-            s.LastBriefingDay = day;
+            // Claim today's briefing before preparing it: with several servers only the one that marks the day sends it.
+            if (s is null)
+            {
+                s = new ReminderSettings { UserId = person.Key, LastBriefingDay = day };
+                db.ReminderSettings.Add(s);
+                try { await db.SaveChangesAsync(ct); }
+                catch (DbUpdateException ex)   // another server made this person's settings (and so claimed the day) at the same moment
+                {
+                    log.LogDebug(ex, "Another server is briefing this person");
+                    db.ReminderSettings.Entry(s).State = EntityState.Detached;
+                    continue;
+                }
+                settings[person.Key] = s;
+            }
+            else
+            {
+                var claimed = await db.ReminderSettings.Where(x => x.Id == s.Id && (x.LastBriefingDay == null || x.LastBriefingDay != day))
+                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastBriefingDay, day), ct);
+                if (claimed != 1) continue;   // another server has it
+                s.LastBriefingDay = day;
+            }
             if (at > time.AddHours(3)) continue;   // too late in the day: skipped, not sent late
             foreach (var p in person) due.Add((p.TenantId, p.UserId, today, tz));
         }
@@ -348,7 +389,11 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
 /// </summary>
 public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, ILogger<ReminderPlanner> log)
 {
-    private const int Cap = 5000;
+    /// <summary>Rows read per query: the work is walked in pages (by id), so every item is seen however many there are.</summary>
+    private const int Page = 2000;
+    /// <summary>A safety ceiling on dated items held in memory in one run. Normal workloads are far below it; past it, planning still runs
+    /// for what was read and only the "withdraw what nobody needs" sweep is limited to that work (and a warning is logged).</summary>
+    private const int Ceiling = 200_000;
     private static readonly ReminderSource[] Automatic = [ReminderSource.DueDate, ReminderSource.Overdue, ReminderSource.Escalation];
 
     private sealed record Item(ReminderTarget Type, Guid Id, Guid TenantId, string Key, string Title, Guid? ProjectId, string Link, DateOnly Due, Guid Assignee, Guid? Owner, decimal? Estimate);
@@ -361,36 +406,62 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
         var to = today.AddDays(30);
         var items = new List<Item>();
 
-        var tasks = await db.Tasks.IgnoreQueryFilters().AsNoTracking()
-            .Where(t => !t.IsDeleted && !t.Project!.IsDeleted && t.AssigneeId != null && t.DueDate >= from && t.DueDate <= to
-                && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled
-                && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == t.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active))
-            .Select(t => new { t.Id, t.TenantId, t.Number, t.Title, t.ProjectId, Key = t.Project!.Key, Owner = t.Project.OwnerId, Due = t.DueDate!.Value, Assignee = t.AssigneeId!.Value, t.EstimatedHours })
-            .Take(Cap).ToListAsync(ct);
-        items.AddRange(tasks.Select(t => new Item(ReminderTarget.Task, t.Id, t.TenantId, $"{t.Key}-{t.Number}", t.Title, t.ProjectId, $"/projects/{t.ProjectId}?task={t.Id}", t.Due, t.Assignee, t.Owner, t.EstimatedHours)));
+        var complete = true;
 
-        var work = await db.WorkTasks.IgnoreQueryFilters().AsNoTracking()
-            .Where(w => !w.IsDeleted && w.AssigneeId != null && w.DueDate >= from && w.DueDate <= to
-                && (w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold)
-                && (w.Kind == WorkTaskKind.Operational || db.Projects.IgnoreQueryFilters().Any(p => p.Id == w.RelatedProjectId && !p.IsDeleted))
-                && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == w.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active))
-            .Select(w => new { w.Id, w.TenantId, w.Kind, w.Number, w.Title, w.RelatedProjectId, Due = w.DueDate!.Value, Assignee = w.AssigneeId!.Value, w.ReporterId,
-                ProjectOwner = db.Projects.IgnoreQueryFilters().Where(p => p.Id == w.RelatedProjectId).Select(p => (Guid?)p.OwnerId).FirstOrDefault() })
-            .Take(Cap).ToListAsync(ct);
-        items.AddRange(work.Select(w => w.Kind == WorkTaskKind.ActionItem
-            ? new Item(ReminderTarget.ActionItem, w.Id, w.TenantId, WorkItemService.KeyOf(w.Kind, w.Number), w.Title, w.RelatedProjectId, ActionItemService.LinkOf(w.RelatedProjectId!.Value, w.Id), w.Due, w.Assignee, w.ProjectOwner, null)
-            : new Item(ReminderTarget.Operational, w.Id, w.TenantId, WorkItemService.KeyOf(w.Kind, w.Number), w.Title, w.RelatedProjectId, WorkTaskService.LinkOf(w.Id), w.Due, w.Assignee, w.ReporterId, null)));
+        for (Guid? after = null; complete;)
+        {
+            var q = db.Tasks.IgnoreQueryFilters().AsNoTracking()
+                .Where(t => !t.IsDeleted && !t.Project!.IsDeleted && t.AssigneeId != null && t.DueDate >= from && t.DueDate <= to
+                    && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled
+                    && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == t.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active));
+            if (after is { } last) q = q.Where(t => t.Id.CompareTo(last) > 0);
+            var tasks = await q.OrderBy(t => t.Id)
+                .Select(t => new { t.Id, t.TenantId, t.Number, t.Title, t.ProjectId, Key = t.Project!.Key, Owner = t.Project.OwnerId, Due = t.DueDate!.Value, Assignee = t.AssigneeId!.Value, t.EstimatedHours })
+                .Take(Page).ToListAsync(ct);
+            items.AddRange(tasks.Select(t => new Item(ReminderTarget.Task, t.Id, t.TenantId, $"{t.Key}-{t.Number}", t.Title, t.ProjectId, $"/projects/{t.ProjectId}?task={t.Id}", t.Due, t.Assignee, t.Owner, t.EstimatedHours)));
+            if (tasks.Count < Page) break;
+            after = tasks[^1].Id;
+            complete = items.Count < Ceiling;
+        }
 
-        var milestones = await db.Milestones.IgnoreQueryFilters().AsNoTracking()
-            .Where(m => !m.IsDeleted && m.OwnerId != null && m.DueDate >= from && m.DueDate <= to && m.Status != StageStatus.Completed
-                && db.Projects.IgnoreQueryFilters().Any(p => p.Id == m.ProjectId && !p.IsDeleted)
-                && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == m.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active))
-            .Select(m => new { m.Id, m.TenantId, m.Name, m.ProjectId, Due = m.DueDate!.Value, Owner = m.OwnerId!.Value,
-                Key = db.Projects.IgnoreQueryFilters().Where(p => p.Id == m.ProjectId).Select(p => p.Key).FirstOrDefault(),
-                ProjectOwner = db.Projects.IgnoreQueryFilters().Where(p => p.Id == m.ProjectId).Select(p => p.OwnerId).FirstOrDefault() })
-            .Take(Cap).ToListAsync(ct);
-        items.AddRange(milestones.Select(m => new Item(ReminderTarget.Milestone, m.Id, m.TenantId, $"{m.Key} milestone", m.Name, m.ProjectId, $"/projects/{m.ProjectId}?tab=plan", m.Due, m.Owner, m.ProjectOwner, null)));
-        var complete = tasks.Count < Cap && work.Count < Cap && milestones.Count < Cap;
+        for (Guid? after = null; complete;)
+        {
+            var q = db.WorkTasks.IgnoreQueryFilters().AsNoTracking()
+                .Where(w => !w.IsDeleted && w.AssigneeId != null && w.DueDate >= from && w.DueDate <= to
+                    && (w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold)
+                    && (w.Kind == WorkTaskKind.Operational || db.Projects.IgnoreQueryFilters().Any(p => p.Id == w.RelatedProjectId && !p.IsDeleted))
+                    && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == w.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active));
+            if (after is { } last) q = q.Where(w => w.Id.CompareTo(last) > 0);
+            var work = await q.OrderBy(w => w.Id)
+                .Select(w => new { w.Id, w.TenantId, w.Kind, w.Number, w.Title, w.RelatedProjectId, Due = w.DueDate!.Value, Assignee = w.AssigneeId!.Value, w.ReporterId,
+                    ProjectOwner = db.Projects.IgnoreQueryFilters().Where(p => p.Id == w.RelatedProjectId).Select(p => (Guid?)p.OwnerId).FirstOrDefault() })
+                .Take(Page).ToListAsync(ct);
+            items.AddRange(work.Select(w => w.Kind == WorkTaskKind.ActionItem
+                ? new Item(ReminderTarget.ActionItem, w.Id, w.TenantId, WorkItemService.KeyOf(w.Kind, w.Number), w.Title, w.RelatedProjectId, ActionItemService.LinkOf(w.RelatedProjectId!.Value, w.Id), w.Due, w.Assignee, w.ProjectOwner, null)
+                : new Item(ReminderTarget.Operational, w.Id, w.TenantId, WorkItemService.KeyOf(w.Kind, w.Number), w.Title, w.RelatedProjectId, WorkTaskService.LinkOf(w.Id), w.Due, w.Assignee, w.ReporterId, null)));
+            if (work.Count < Page) break;
+            after = work[^1].Id;
+            complete = items.Count < Ceiling;
+        }
+
+        for (Guid? after = null; complete;)
+        {
+            var q = db.Milestones.IgnoreQueryFilters().AsNoTracking()
+                .Where(m => !m.IsDeleted && m.OwnerId != null && m.DueDate >= from && m.DueDate <= to && m.Status != StageStatus.Completed
+                    && db.Projects.IgnoreQueryFilters().Any(p => p.Id == m.ProjectId && !p.IsDeleted)
+                    && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == m.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active));
+            if (after is { } last) q = q.Where(m => m.Id.CompareTo(last) > 0);
+            var milestones = await q.OrderBy(m => m.Id)
+                .Select(m => new { m.Id, m.TenantId, m.Name, m.ProjectId, Due = m.DueDate!.Value, Owner = m.OwnerId!.Value,
+                    Key = db.Projects.IgnoreQueryFilters().Where(p => p.Id == m.ProjectId).Select(p => p.Key).FirstOrDefault(),
+                    ProjectOwner = db.Projects.IgnoreQueryFilters().Where(p => p.Id == m.ProjectId).Select(p => p.OwnerId).FirstOrDefault() })
+                .Take(Page).ToListAsync(ct);
+            items.AddRange(milestones.Select(m => new Item(ReminderTarget.Milestone, m.Id, m.TenantId, $"{m.Key} milestone", m.Name, m.ProjectId, $"/projects/{m.ProjectId}?tab=plan", m.Due, m.Owner, m.ProjectOwner, null)));
+            if (milestones.Count < Page) break;
+            after = milestones[^1].Id;
+            complete = items.Count < Ceiling;
+        }
+        if (!complete) log.LogWarning("Reminder planning reached its ceiling of {Ceiling} dated items; work past it is planned on a later run", Ceiling);
 
         // The people involved: assignees, and for escalation their managers and the owners.
         var tenantIds = items.Select(i => i.TenantId).Distinct().ToList();
@@ -470,24 +541,42 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
         }
         await db.SaveChangesAsync(ct);
 
-        // Withdraw waiting automatic reminders the work no longer calls for.
-        if (complete)
+        // Withdraw waiting automatic reminders the work no longer calls for. When every dated item was read, that is any waiting automatic
+        // reminder that is not wanted; when the ceiling was reached, only those about work that was read (the rest is unknown this time).
+        var seen = complete ? null : items.Select(i => i.Id).ToHashSet();
+        for (Guid? after = null; ;)
         {
-            var waiting = await db.Reminders.IgnoreQueryFilters().AsNoTracking()
-                .Where(r => r.State == ReminderState.Scheduled && r.SystemKey != null && Automatic.Contains(r.Source)).Select(r => new { r.Id, r.SystemKey }).ToListAsync(ct);
-            var stale = waiting.Where(r => !keepKeys.Contains(r.SystemKey!)).Select(r => r.Id).ToList();
+            var q = db.Reminders.IgnoreQueryFilters().AsNoTracking()
+                .Where(r => r.State == ReminderState.Scheduled && r.SystemKey != null && Automatic.Contains(r.Source));
+            if (after is { } last) q = q.Where(r => r.Id.CompareTo(last) > 0);
+            var waiting = await q.OrderBy(r => r.Id).Select(r => new { r.Id, r.SystemKey, r.TargetId }).Take(Page).ToListAsync(ct);
+            var stale = waiting.Where(r => !keepKeys.Contains(r.SystemKey!) && (seen is null || (r.TargetId is { } target && seen.Contains(target)))).Select(r => r.Id).ToList();
             foreach (var chunk in stale.Chunk(400))
             {
                 var ids = chunk.ToList();
                 await db.Reminders.IgnoreQueryFilters().Where(r => ids.Contains(r.Id) && r.State == ReminderState.Scheduled).ExecuteDeleteAsync(ct);
             }
+            if (waiting.Count < Page) break;
+            after = waiting[^1].Id;
         }
-        else log.LogWarning("Reminder planning saw more than {Cap} dated items of one kind; waiting reminders were left as they are this time", Cap);
 
         // Reminders about work: finished with the work, gone with it, and - when set relative to the due date - moved with it.
-        var watched = await db.Reminders.IgnoreQueryFilters()
-            .Where(r => r.TargetId != null && (r.State == ReminderState.Scheduled || r.State == ReminderState.Fired) && (r.OnlyIfOpen || r.AnchorDays != null))
-            .Take(Cap * 2).ToListAsync(ct);
+        for (Guid? after = null; ;)
+        {
+            var q = db.Reminders.IgnoreQueryFilters()
+                .Where(r => r.TargetId != null && (r.State == ReminderState.Scheduled || r.State == ReminderState.Fired) && (r.OnlyIfOpen || r.AnchorDays != null));
+            if (after is { } last) q = q.Where(r => r.Id.CompareTo(last) > 0);
+            var watched = await q.OrderBy(r => r.Id).Take(Page).ToListAsync(ct);
+            await FollowWorkAsync(watched, now, ct);
+            if (watched.Count < Page) break;
+            after = watched[^1].Id;
+        }
+        return created;
+    }
+
+    /// <summary>One page of reminders about work, brought in line with it and saved (then forgotten, so a long walk holds one page at a time).</summary>
+    private async Task FollowWorkAsync(List<Reminder> watched, DateTime now, CancellationToken ct)
+    {
         var states = await TargetStates.LoadAsync(db, watched.Select(r => (r.TargetType, r.TargetId!.Value)), ct);
         foreach (var r in watched)
         {
@@ -506,7 +595,8 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
             }
         }
         await db.SaveChangesAsync(ct);
-        return created;
+        foreach (var r in watched)
+            if (db.Reminders.Entry(r).State != EntityState.Detached) db.Reminders.Entry(r).State = EntityState.Detached;
     }
 }
 
