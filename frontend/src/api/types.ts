@@ -396,6 +396,8 @@ export interface ImportError { row: number; field: string; message: string }
 export interface ImportPreview {
   delimiter: string; headers: string[]; sample: string[][]; totalRows: number; suggestedMapping: Record<string, number>;
   validRows: number; invalidRows: number; errors: ImportError[]; newLabels: number;
+  /** Things worth checking that do not stop the import (e.g. the file was not UTF-8). */
+  warnings?: string[] | null;
 }
 export interface ImportResult { created: number; skipped: number; labelsCreated: number; errors: ImportError[] }
 

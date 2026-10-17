@@ -157,6 +157,7 @@ export function ImportModal({ projectId, onClose }: { projectId: string; onClose
           <><b>{preview.validRows}</b> of {preview.totalRows} rows are ready{preview.invalidRows > 0 ? <> · <b>{preview.invalidRows}</b> have problems{skipInvalid ? ' and will be skipped' : ''}</> : ''}{preview.newLabels > 0 ? ` · ${preview.newLabels} new label${preview.newLabels === 1 ? '' : 's'}` : ''}</>
         )}
       </div>
+      {(preview.warnings ?? []).map((w) => <p key={w} className="import-summary" role="note">{w}</p>)}
       {preview.errors.length > 0 && <ErrorList errors={preview.errors} />}
     </Modal>
   );

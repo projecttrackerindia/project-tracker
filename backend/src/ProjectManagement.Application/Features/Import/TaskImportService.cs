@@ -20,7 +20,8 @@ public record ImportOptions(bool SkipInvalid, bool CreateMissingLabels, string D
 
 /// <summary>What the file looks like and how it would import with the chosen column mapping.</summary>
 public record ImportPreviewDto(char Delimiter, IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyList<string>> Sample, int TotalRows,
-    IReadOnlyDictionary<string, int> SuggestedMapping, int ValidRows, int InvalidRows, IReadOnlyList<ImportError> Errors, int NewLabels);
+    IReadOnlyDictionary<string, int> SuggestedMapping, int ValidRows, int InvalidRows, IReadOnlyList<ImportError> Errors, int NewLabels,
+    IReadOnlyList<string>? Warnings = null);
 public record ImportResultDto(int Created, int Skipped, int LabelsCreated, IReadOnlyList<ImportError> Errors);
 
 /// <summary>
@@ -54,15 +55,49 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
     // ---------------------------------------------------------------- reading the file
 
-    public static string Decode(byte[] bytes)
+    public const string LegacyEncodingWarning = "The file is not UTF-8, so it was read as Windows-1252 (Excel's \u201cCSV\u201d on Windows). Check that accented letters look right; saving as \u201cCSV UTF-8\u201d avoids this.";
+
+    public static string Decode(byte[] bytes) => Decode(bytes, out _);
+
+    /// <summary>
+    /// UTF-8 (with or without a byte-order mark) when the bytes are valid UTF-8; otherwise the file came from a spreadsheet that saved it in
+    /// the Windows code page, and it is read as Windows-1252 instead of turning every accented letter into "\uFFFD".
+    /// </summary>
+    public static string Decode(byte[] bytes, out bool legacyEncoding)
     {
         if (bytes.Length > MaxBytes) throw new ValidationException("file", $"The file is larger than {MaxBytes / 1024 / 1024} MB.");
-        return new UTF8Encoding(false, false).GetString(bytes);
+        legacyEncoding = false;
+        try { return new UTF8Encoding(false, true).GetString(bytes); }
+        catch (DecoderFallbackException) { }
+        legacyEncoding = true;
+        return Windows1252(bytes);
     }
 
-    private static CsvTable Read(byte[] bytes)
+    // Windows-1252 is Latin-1 except for 0x80-0x9F, where it has printable characters (curly quotes, dashes, the euro sign...). The few
+    // positions it leaves undefined keep their Latin-1 meaning. Written out so no code-page provider package is needed.
+    private static readonly char[] Cp1252High =
+    [
+        '\u20AC', '\u0081', '\u201A', '\u0192', '\u201E', '\u2026', '\u2020', '\u2021', '\u02C6', '\u2030', '\u0160', '\u2039', '\u0152', '\u008D', '\u017D', '\u008F',
+        '\u0090', '\u2018', '\u2019', '\u201C', '\u201D', '\u2022', '\u2013', '\u2014', '\u02DC', '\u2122', '\u0161', '\u203A', '\u0153', '\u009D', '\u017E', '\u0178',
+    ];
+
+    private static string Windows1252(byte[] bytes)
     {
-        try { return CsvParser.Parse(Decode(bytes), MaxRows); }
+        var chars = new char[bytes.Length];
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            var b = bytes[i];
+            chars[i] = b is >= 0x80 and <= 0x9F ? Cp1252High[b - 0x80] : (char)b;
+        }
+        return new string(chars);
+    }
+
+    private static CsvTable Read(byte[] bytes) => Read(bytes, out _);
+
+    private static CsvTable Read(byte[] bytes, out bool legacyEncoding)
+    {
+        var text = Decode(bytes, out legacyEncoding);
+        try { return CsvParser.Parse(text, MaxRows); }
         catch (CsvException e) { throw new ValidationException("file", e.Message); }
     }
 
@@ -247,17 +282,18 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
     public async Task<ImportPreviewDto> PreviewAsync(Guid projectId, byte[] file, string? mappingJson, ImportOptions? options, CancellationToken ct = default)
     {
         var lk = await LoadLookupsAsync(projectId, ct);
-        var table = Read(file);
+        var table = Read(file, out var legacyEncoding);
+        IReadOnlyList<string>? warnings = legacyEncoding ? [LegacyEncodingWarning] : null;
         var suggested = Suggest(table.Headers, lk.Custom);
         var map = string.IsNullOrWhiteSpace(mappingJson) ? suggested : ParseMapping(mappingJson, table.Headers.Count, lk.Custom.Keys);
         var sample = table.Rows.Take(5).Select(r => (IReadOnlyList<string>)r.Select(c => c.Length > 120 ? c[..120] + "…" : c).ToList()).ToList();
 
         if (!map.ContainsKey("title"))
             return new ImportPreviewDto(table.Delimiter, table.Headers, sample, table.Rows.Count, suggested, 0, table.Rows.Count,
-                [new ImportError(0, "title", "Choose which column holds the task title.")], 0);
+                [new ImportError(0, "title", "Choose which column holds the task title.")], 0, warnings);
 
         var (rows, errors, newLabels, invalid) = Validate(table, map, lk, Clean(options));
-        return new ImportPreviewDto(table.Delimiter, table.Headers, sample, table.Rows.Count, suggested, rows.Count, invalid, errors.Take(MaxErrorsShown).ToList(), newLabels.Count);
+        return new ImportPreviewDto(table.Delimiter, table.Headers, sample, table.Rows.Count, suggested, rows.Count, invalid, errors.Take(MaxErrorsShown).ToList(), newLabels.Count, warnings);
     }
 
     // ---------------------------------------------------------------- import
