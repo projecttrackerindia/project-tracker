@@ -193,7 +193,7 @@ public class TaskService(
         var project = await access.GetProjectAsync(projectId, ct);
         ProjectAccess.EnsureNotArchived(project, "add tasks");
 
-        await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await db.Tasks.CountAsync(ct), 1, ct);
+        await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await entitlements.TaskCountAsync(ct), 1, ct);
 
         TaskItem? parentTask = null;
         if (req.ParentTaskId is { } parentId)

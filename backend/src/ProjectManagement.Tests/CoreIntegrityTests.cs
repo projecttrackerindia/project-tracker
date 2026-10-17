@@ -47,4 +47,22 @@ public class CoreIntegrityTests(ApiFactory factory)
         Assert.Equal("Before archiving", S(after["title"]));
         Assert.Equal(0, after["commentCount"]!.GetValue<int>());
     }
+
+    [Fact]
+    public async Task Plan_limits_count_the_whole_workspace_even_for_someone_limited_to_their_teams()
+    {
+        var (owner, project) = await Setup();
+        var member = await owner.AddMemberAsync(factory, ProjectManagement.Domain.Enums.TenantRole.Manager, "Team-limited manager");
+        Assert.True((await owner.Put("/api/v1/workspace/project-visibility", new { mode = "teams" })).Ok);
+        // Two projects exist (one the member cannot see); the plan allows two.
+        await owner.CreateProjectAsync("Hidden from the member");
+        factory.WithDb(db =>
+        {
+            db.TenantFeatureOverrides.Add(new ProjectManagement.Domain.Entities.TenantFeatureOverride { TenantId = owner.WorkspaceId, FeatureKey = "PROJECT_LIMIT", Value = 2, Reason = "test" });
+            db.SaveChanges(); return 0;
+        });
+        var over = await member.Post("/api/v1/projects", new { name = "One too many", priority = "Medium" });
+        Assert.Equal(HttpStatusCode.Forbidden, over.Status);
+        Assert.Equal("PLAN_LIMIT_REACHED", over.ErrorCode);
+    }
 }

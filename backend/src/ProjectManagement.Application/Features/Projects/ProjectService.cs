@@ -222,7 +222,7 @@ public partial class ProjectService(
         var tid = ctx.RequireTenantId();
         var userId = ctx.RequireUserId();
 
-        var activeCount = await db.Projects.CountAsync(p => p.Status != ProjectStatus.Archived, ct);
+        var activeCount = await entitlements.ActiveProjectCountAsync(ct);
         await entitlements.EnsureWithinLimitAsync(FeatureKeys.ProjectLimit, activeCount, 1, ct);
         ValidateDates(req.StartDate, req.DueDate);
         if (req.StageScheduleMode is { } requestedMode && (!Enum.IsDefined(requestedMode) || (requestedMode != StageScheduleMode.Manual && (req.StartDate is null || req.DueDate is null))))
@@ -370,7 +370,7 @@ public partial class ProjectService(
         if (project.Status == ProjectStatus.Archived && req.Status != ProjectStatus.Archived)
         {
             // Restoring an archived project consumes a project slot again.
-            var active = await db.Projects.CountAsync(p => p.Status != ProjectStatus.Archived, ct);
+            var active = await entitlements.ActiveProjectCountAsync(ct);
             await entitlements.EnsureWithinLimitAsync(FeatureKeys.ProjectLimit, active, 1, ct);
         }
 
@@ -440,7 +440,7 @@ public partial class ProjectService(
 
         if (old == ProjectStatus.Archived && req.Status != ProjectStatus.Archived)
         {
-            var active = await db.Projects.CountAsync(p => p.Status != ProjectStatus.Archived, ct);
+            var active = await entitlements.ActiveProjectCountAsync(ct);
             await entitlements.EnsureWithinLimitAsync(FeatureKeys.ProjectLimit, active, 1, ct);
         }
 

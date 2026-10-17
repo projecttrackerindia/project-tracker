@@ -276,7 +276,7 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (rows.Count == 0) throw new ValidationException("file", "There are no valid rows to import.");
         if (newLabels.Count > MaxNewLabels) throw new ValidationException("labels", $"The file would create {newLabels.Count} new labels. Import is limited to {MaxNewLabels} new labels at once.");
 
-        await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await db.Tasks.CountAsync(ct), rows.Count, ct);
+        await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await entitlements.TaskCountAsync(ct), rows.Count, ct);
 
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId(); var now = clock.Now;
         var labelIds = (await db.Labels.ToListAsync(ct)).ToDictionary(l => l.Name.ToLowerInvariant(), l => l.Id);
