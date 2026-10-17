@@ -209,7 +209,7 @@ export function DevLinks({ taskId, workTaskId }: { taskId?: string; workTaskId?:
     <div className="dev-links">
       <h4><Icon name="git" size={14} /> Development</h4>
       {links.map((l) => (
-        <a key={l.id} className="dev-link" href={l.url} target="_blank" rel="noreferrer noopener">
+        <a key={l.id} className="dev-link" href={safeHref(l.url)} target="_blank" rel="noreferrer noopener">
           <span className={`dev-kind ${l.kind === 'commit' ? 'commit' : l.state ?? 'open'}`}>{l.kind === 'commit' ? l.externalId.slice(0, 7) : `#${l.externalId}`}</span>
           <span className="dev-title">{l.title}</span>
           <span className="dev-meta">{l.kind === 'pull_request' && l.state ? `${l.state} · ` : ''}{l.repository ? `${l.repository} · ` : ''}{l.author ? `${l.author} · ` : ''}{timeAgo(l.occurredAt)}</span>
@@ -331,3 +331,6 @@ export function CalendarSubscribe() {
     </>
   );
 }
+
+/** Only web links from webhook payloads become clickable: anything else (javascript:, data:) is neutralised. */
+const safeHref = (url: string) => { try { const u = new URL(url); return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : '#'; } catch { return '#'; } };

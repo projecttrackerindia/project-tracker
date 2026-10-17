@@ -224,9 +224,11 @@ export function AiPage() {
       run.finished = true;
       if (!alreadySettled) {
         const partial = run.text.trim();
-        if (run.failure || partial || run.reasoning) {
+        // A stream that ended without its closing event (server restart, proxy cut) was cut off - not stopped by the person.
+        const cutOff = !run.failure && !ac.signal.aborted;
+        if (run.failure || partial || run.reasoning || cutOff) {
           setMessages((m) => [...m, settled({
-            content: partial || run.failure?.message || '', status: run.failure ? 'failed' : 'stopped', reasoning: run.reasoning || null,
+            content: partial || run.failure?.message || (cutOff ? 'The answer was cut off before it finished. Try again.' : ''), status: run.failure || cutOff ? 'failed' : 'stopped', reasoning: run.reasoning || null,
             tier: run.route?.tier ?? null, routeReason: run.route?.reason ?? null, tools: run.tools, actions: run.actions,
           })]);
         }

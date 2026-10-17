@@ -74,7 +74,8 @@ function createWindow() {
 
   // Pages of the app stay in the window; everything else opens in the person's own browser.
   win.webContents.setWindowOpenHandler(({ url }) => { if (isInternal(url, BASE)) return { action: 'allow' }; if (/^https?:|^mailto:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
-  win.webContents.on('will-navigate', (e, url) => { if (!isInternal(url, BASE) && !url.startsWith('data:')) { e.preventDefault(); if (/^https?:|^mailto:/.test(url)) shell.openExternal(url); } });
+  // The offline page is loaded by this process (loadURL does not pass through here), so no page may navigate the window to a data: or other URL.
+  win.webContents.on('will-navigate', (e, url) => { if (!isInternal(url, BASE)) { e.preventDefault(); if (/^https?:|^mailto:/.test(url)) shell.openExternal(url); } });
 
   // The unread count in the page title becomes the badge on the dock / taskbar / tray.
   win.webContents.on('page-title-updated', (_e, title) => {
@@ -121,7 +122,8 @@ function contextMenu(p) {
     for (const w of p.dictionarySuggestions.slice(0, 5)) items.push({ label: w, click: () => win.webContents.replaceMisspelling(w) });
     items.push({ label: 'Add to dictionary', click: () => win.webContents.session.addWordToSpellCheckerDictionary(p.misspelledWord) }, { type: 'separator' });
   }
-  if (p.linkURL) items.push({ label: 'Open link in browser', click: () => shell.openExternal(p.linkURL) }, { label: 'Copy link address', click: () => require('electron').clipboard.writeText(p.linkURL) }, { type: 'separator' });
+  // Only web and mail links go to the operating system: file:, smb:, ms-* and other schemes in page content are never handed over.
+  if (p.linkURL) items.push(...(/^https?:|^mailto:/i.test(p.linkURL) ? [{ label: 'Open link in browser', click: () => shell.openExternal(p.linkURL) }] : []), { label: 'Copy link address', click: () => require('electron').clipboard.writeText(p.linkURL) }, { type: 'separator' });
   if (p.mediaType === 'image') items.push({ label: 'Copy image', click: () => win.webContents.copyImageAt(p.x, p.y) }, { label: 'Save image as…', click: () => win.webContents.downloadURL(p.srcURL) }, { type: 'separator' });
   if (p.isEditable) items.push({ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' });
   else if (p.selectionText) items.push({ role: 'copy' });
@@ -235,7 +237,7 @@ else {
       shell.openExternal(new URL(`${slug ? '/' + slug : ''}/account/integrations`, BASE).href);
     });
     ipcMain.on('win-control', (e, action) => {
-      if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE)) return;
       if (action === 'minimize') win.minimize();
       else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
       else if (action === 'close') win.close();
@@ -244,7 +246,7 @@ else {
     // The page asks for attention when an alert arrives and the window is not in front: the taskbar button flashes (Windows, Linux) or the
     // dock icon bounces (Mac) until the person comes back. Urgent alerts (reminders, overdue, security) keep going until then.
     ipcMain.on('attention', (e, kind) => {
-      if (!win || win.isDestroyed() || e.sender !== win.webContents || win.isFocused()) return;
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE) || win.isFocused()) return;
       const urgent = kind === 'urgent';
       if (MAC) app.dock?.bounce(urgent ? 'critical' : 'informational');
       else win.flashFrame(true);
