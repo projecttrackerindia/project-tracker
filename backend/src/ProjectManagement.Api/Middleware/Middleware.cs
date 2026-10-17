@@ -154,7 +154,16 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
     public const string ClaimKey = "api_key", ClaimScope = "api_scope";
 
     /// <summary>Areas a key can never use, whatever its owner may do: the things that manage access itself.</summary>
-    private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/me/passkeys", "/api/v1/me/device-login", "/api/v1/admin", "/api/v1/billing", "/api/v1/workspaces", "/api/v1/dev"];
+    private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/me/passkeys", "/api/v1/me/device-login",
+        "/api/v1/me/password", "/api/v1/me/sessions", "/api/v1/admin", "/api/v1/billing", "/api/v1/workspace", "/api/v1/workspaces", "/api/v1/org",
+        "/api/v1/integrations", "/api/v1/push", "/api/v1/dev"];
+
+    /// <summary>Segment-aware: "/api/v1/workspace" blocks "/api/v1/workspace" and "/api/v1/workspace/sso", not "/api/v1/workspace-foo".</summary>
+    internal static bool IsBlocked(string path)
+    {
+        var p = path.TrimEnd('/');
+        return Blocked.Any(b => p.Equals(b, StringComparison.OrdinalIgnoreCase) || p.StartsWith(b + "/", StringComparison.OrdinalIgnoreCase));
+    }
 
     private static string? TokenOf(HttpRequest r)
     {
@@ -183,9 +192,9 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
         }
 
         var path = http.Request.Path.Value ?? "";
-        var isMe = path.StartsWith("/api/v1/me", StringComparison.OrdinalIgnoreCase);
+        var isMe = path.TrimEnd('/').Equals("/api/v1/me", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/api/v1/me/", StringComparison.OrdinalIgnoreCase);
         var meContext = path.TrimEnd('/').Equals("/api/v1/me", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsGet(http.Request.Method);
-        if (Blocked.Any(b => path.StartsWith(b, StringComparison.OrdinalIgnoreCase)) || (isMe && !meContext))
+        if (IsBlocked(path) || (isMe && !meContext))
         {
             await ErrorWriter.WriteAsync(http, 403, "API keys cannot be used for this.", [new ApiError("API_KEY_NOT_ALLOWED", "API keys cannot be used for account, billing, administration or key management.")]);
             return;
@@ -229,7 +238,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
                     await ErrorWriter.WriteAsync(http, 401, "This API key is not valid.", [new ApiError("INVALID_API_KEY", "This API key is not valid.")]);
                     return;
                 }
-                ctx.UserId = keyUser; ctx.SessionId = null; ctx.IsPlatformAdmin = false; // a key never carries platform-admin rights
+                ctx.UserId = keyUser; ctx.SessionId = null; ctx.IsPlatformAdmin = false; ctx.ViaApiKey = true; // a key never carries platform-admin rights
                 // A key has no two-step verification of its own to check; an IP allowlist still applies to it.
                 await ApplyMembershipAsync(http, ctx, db, orgSecurity, keyUser, mfaEnabled: true);
                 await next(http);

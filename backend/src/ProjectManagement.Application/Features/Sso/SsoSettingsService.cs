@@ -54,6 +54,7 @@ public class SsoSettingsService(IAppDbContext db, ICurrentContext ctx, AppClock 
     private Guid RequireOrgAdmin()
     {
         var tid = ctx.RequireTenantId();
+        if (ctx.ViaApiKey) throw new ForbiddenException("API keys cannot manage single sign-on.", "API_KEY_NOT_ALLOWED");
         if (ctx.WorkspaceType != WorkspaceType.Organization) throw new ForbiddenException("Single sign-on is for organization workspaces.", "PERMISSION_DENIED");
         if (ctx.Role is not (TenantRole.Owner or TenantRole.Admin)) throw new ForbiddenException("Only owners and admins can manage single sign-on.", "PERMISSION_DENIED");
         return tid;
