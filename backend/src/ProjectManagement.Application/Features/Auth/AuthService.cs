@@ -288,7 +288,15 @@ public class AuthService(
     }
 
     /// <summary>Rotates the refresh token. Presenting an already-used token revokes the whole session.</summary>
-    public async Task<AuthResult> RefreshAsync(string? rawToken, CancellationToken ct = default)
+    public Task<AuthResult> RefreshAsync(string? rawToken, CancellationToken ct = default) => RefreshAsync(rawToken, null, ct);
+
+    /// <summary>
+    /// Rotates the refresh token, issuing the access token for <paramref name="requestedWorkspace"/> (the workspace the calling tab is in) when the
+    /// person is still a member of it, otherwise for the session's workspace. The token is claimed atomically, so two simultaneous refreshes
+    /// cannot both rotate it. A second use within the grace window (another tab of the same browser) gets a fresh access token for the same
+    /// session and no new refresh token (the browser already holds the one the first request issued). A later reuse revokes the whole session.
+    /// </summary>
+    public async Task<AuthResult> RefreshAsync(string? rawToken, Guid? requestedWorkspace, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(rawToken)) throw new UnauthorizedException("Refresh token missing.", "INVALID_REFRESH_TOKEN");
 
@@ -301,22 +309,38 @@ public class AuthService(
         if (session is null || session.RevokedAt is not null || stored.ExpiresAt <= now)
             throw new UnauthorizedException("Session expired. Please sign in again.", "SESSION_EXPIRED");
 
-        if (stored.UsedAt is { } usedAt)
+        // Claim the token in one statement: of two simultaneous requests exactly one sees "unused" and rotates it.
+        var storedId = stored.Id;
+        var claimed = stored.UsedAt is null
+            && await db.RefreshTokens.Where(t => t.Id == storedId && t.UsedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct) == 1;
+        if (!claimed)
         {
+            var current = await db.RefreshTokens.AsNoTracking().Where(t => t.Id == storedId)
+                .Select(t => new { t.UsedAt, t.ReplacedByTokenId }).FirstAsync(ct);
+            var usedAt = current.UsedAt ?? now;
             // A near-simultaneous second request (e.g. two tabs) is benign; anything later is token theft.
             if ((now - usedAt).TotalSeconds > _opt.RefreshReuseGraceSeconds)
             {
                 session.RevokedAt = now;
                 recorder.Audit("session.reuse_detected", "UserSession", session.Id, userId: stored.UserId);
                 await db.SaveChangesAsync(ct);
+                throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
             }
-            throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
+            // Within the grace window: only while the token that replaced it is still the live one (or is being written right now).
+            var successorLive = current.ReplacedByTokenId is not { } successorId
+                || await db.RefreshTokens.AnyAsync(t => t.Id == successorId && t.UsedAt == null && t.ExpiresAt > now, ct);
+            if (!successorLive) throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
+            var graceUser = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
+            if (graceUser is null || !graceUser.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
+            var graceWorkspace = await PickWorkspaceAsync(graceUser.Id, requestedWorkspace ?? session.WorkspaceId, ct);
+            var graceAccess = tokens.CreateAccessToken(graceUser, session.Id, graceWorkspace);
+            return new AuthResult(graceAccess.Token, graceAccess.ExpiresAt, ToDto(graceUser), null, stored.ExpiresAt);
         }
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
         if (user is null || !user.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
 
-        var workspaceId = await PickWorkspaceAsync(user.Id, session.WorkspaceId, ct);
+        var workspaceId = await PickWorkspaceAsync(user.Id, requestedWorkspace ?? session.WorkspaceId, ct);
         session.WorkspaceId = workspaceId;
         session.LastSeenAt = now;
         session.IpAddress = ctx.IpAddress ?? session.IpAddress;

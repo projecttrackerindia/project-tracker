@@ -97,8 +97,11 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
                 throw new ForbiddenException("Missing X-Requested-With header.", "CSRF_CHECK_FAILED");
             token = Request.Cookies[CookieName];
         }
-        try { return Ok(Deliver(await auth.RefreshAsync(token, ct))); }
-        catch (UnauthorizedException) { ClearCookie(); throw; }
+        // The tab's own workspace (the app sends it), so a switch in one tab does not move every other tab on their next refresh.
+        Guid? workspace = Guid.TryParse(Request.Headers["X-Workspace-Id"].ToString(), out var w) ? w : null;
+        // Only a session that is really over loses its cookie; a token another tab just rotated must not sign this browser out.
+        try { return Ok(Deliver(await auth.RefreshAsync(token, workspace, ct))); }
+        catch (UnauthorizedException ex) when (ex.Code is "INVALID_REFRESH_TOKEN" or "SESSION_EXPIRED" or "ACCOUNT_DISABLED") { ClearCookie(); throw; }
     }
 
     [HttpPost("logout"), AllowAnonymous]
