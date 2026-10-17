@@ -271,6 +271,21 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (!c.AutoProvision) throw new ForbiddenException($"You do not have an account in {tenant.Name} yet. Ask an administrator to add you.", "SSO_NOT_PROVISIONED");
             user = await CreateAccountAsync(email, name, emailVerified: true, ct);
         }
+        else if (login is null)
+        {
+            // Linking an existing account by email alone: only for ordinary members of this organization. An account that carries more
+            // (platform administration, ownership of this organization, membership of other organizations) must sign in normally first
+            // and connect single sign-on from there, so a misconfigured or hostile identity provider cannot take it over.
+            var userId = user.Id;
+            var privileged = user.IsPlatformAdmin
+                || await db.TenantMembers.AnyAsync(m => m.TenantId == c.TenantId && m.UserId == userId && m.Role == TenantRole.Owner, ct)
+                || await (from m in db.TenantMembers
+                          join t in db.Tenants on m.TenantId equals t.Id
+                          where m.UserId == userId && m.TenantId != c.TenantId && t.Type == WorkspaceType.Organization
+                          select m.Id).AnyAsync(ct);
+            if (privileged)
+                throw new ForbiddenException($"An account with {email} already exists. Sign in with your password first, then connect single sign-on from your account.", "SSO_LINK_REQUIRES_SIGN_IN");
+        }
         if (!user.IsActive) throw new ForbiddenException("This account has been disabled.", "ACCOUNT_DISABLED");
 
         if (!await db.TenantMembers.AnyAsync(m => m.TenantId == c.TenantId && m.UserId == user.Id, ct))
@@ -287,6 +302,12 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         c.LastUsedAt = clock.Now;
         await SsoGroupSync.SyncAsync(db, recorder, clock, c.TenantId, user.Id, groups, ct);
 
+        // Single sign-on replaces the password, not the person's own second step: with two-step verification on they still enter their code.
+        if (user.MfaEnabled)
+        {
+            await db.SaveChangesAsync(ct);
+            throw new MfaRequiredRedirect(auth.CreateMfaChallenge(user), "sso", returnUrl);
+        }
         var session = await auth.SignInExternalAsync(user, "sso", c.TenantId, c.TenantId, ct);
         return new SignInCompletion(session, returnUrl);
     }

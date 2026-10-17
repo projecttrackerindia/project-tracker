@@ -94,6 +94,10 @@ public class SsoSettingsService(IAppDbContext db, ICurrentContext ctx, AppClock 
         await entitlements.EnsureFeatureAsync(FeatureKeys.AdvancedSecurity, ct);
         var c = await db.SsoConnections.FirstOrDefaultAsync(x => x.TenantId == tid, ct);
         var isNew = c is null;
+        // Who the organization trusts to vouch for its people (issuer, client, SAML entity, address and certificate) is the Owner's decision alone;
+        // Admins can still see the settings and switch options such as provisioning on the connection the Owner set up.
+        if (ctx.Role != TenantRole.Owner && (c is null || ChangesTrust(c, req)))
+            throw new ForbiddenException("Only the owner of the organization can change the identity provider (issuer, client, certificate or sign-in address).", "OWNER_REQUIRED");
         c ??= new SsoConnection { TenantId = tid };
 
         c.Protocol = req.Protocol;
@@ -124,6 +128,16 @@ public class SsoSettingsService(IAppDbContext db, ICurrentContext ctx, AppClock 
         await db.SaveChangesAsync(ct);
         return await GetAsync(ct);
     }
+
+    private static bool Differs(string? current, string? requested) =>
+        !string.IsNullOrWhiteSpace(requested) && !string.Equals(current?.Trim().TrimEnd('/'), requested.Trim().TrimEnd('/'), StringComparison.Ordinal);
+
+    /// <summary>The request changes which identity provider the organization trusts (a blank secret or certificate keeps the stored one).</summary>
+    private static bool ChangesTrust(SsoConnection c, SaveSsoConnectionRequest req) =>
+        c.Protocol != req.Protocol
+        || (req.Protocol == SsoProtocol.Oidc
+            ? Differs(c.Authority, req.Authority) || Differs(c.ClientId, req.ClientId) || !string.IsNullOrWhiteSpace(req.ClientSecret)
+            : Differs(c.SamlEntityId, req.SamlEntityId) || Differs(c.SamlSsoUrl, req.SamlSsoUrl) || Differs(c.SamlCertificate, req.SamlCertificate));
 
     /// <summary>Reads the provider's discovery document (OpenID Connect) or the certificate (SAML) to show that the settings make sense.</summary>
     public async Task<SsoCheckDto> CheckAsync(CancellationToken ct = default)
