@@ -30,7 +30,7 @@ public class DocumentLinkService(IAppDbContext db, ICurrentContext ctx, AppClock
     {
         if (!await db.Documents.AnyAsync(d => d.Id == documentId, ct)) throw new NotFoundException("Document not found.");
         var links = await db.DocumentLinks.AsNoTracking().Where(l => l.DocumentId == documentId).OrderBy(l => l.CreatedAt).Take(MaxLinksPerDocument).ToListAsync(ct);
-        var today = DateOnly.FromDateTime(clock.Now);
+        var today = clock.Today;
         var resolved = new Dictionary<(LinkTarget, Guid), Resolved>();
         foreach (var g in links.GroupBy(l => l.TargetType))
             foreach (var (id, r) in await ResolveAsync(g.Key, g.Select(l => l.TargetId).Distinct().ToList(), today, ct)) resolved[(g.Key, id)] = r;
@@ -46,7 +46,7 @@ public class DocumentLinkService(IAppDbContext db, ICurrentContext ctx, AppClock
     public async Task<LinkedDocumentsDto> ForTargetAsync(LinkTarget type, Guid targetId, CancellationToken ct = default)
     {
         // The target must be one this person can open; otherwise it does not exist for them.
-        var today = DateOnly.FromDateTime(clock.Now);
+        var today = clock.Today;
         if (!(await ResolveAsync(type, [targetId], today, ct)).ContainsKey(targetId)) throw new NotFoundException("Not found.");
         var links = await db.DocumentLinks.AsNoTracking().Where(l => l.TargetType == type && l.TargetId == targetId).Take(MaxLinksPerDocument).ToListAsync(ct);
         var ids = links.Select(l => l.DocumentId).Distinct().ToList();
@@ -62,7 +62,7 @@ public class DocumentLinkService(IAppDbContext db, ICurrentContext ctx, AppClock
         var tid = ctx.RequireTenantId();
         await permissions.RequireModuleAsync(Modules.Documents, AccessLevel.Edit, ct);
         var doc = await db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct) ?? throw new NotFoundException("Document not found.");
-        var today = DateOnly.FromDateTime(clock.Now);
+        var today = clock.Today;
         var target = (await ResolveAsync(req.TargetType, [req.TargetId], today, ct)).GetValueOrDefault(req.TargetId) ?? throw new NotFoundException("The item to link was not found.");
         if (await db.DocumentLinks.AnyAsync(l => l.DocumentId == documentId, ct) && await db.DocumentLinks.CountAsync(l => l.DocumentId == documentId, ct) >= MaxLinksPerDocument)
             throw new ValidationException("targetId", $"A document can be linked to at most {MaxLinksPerDocument} items.");

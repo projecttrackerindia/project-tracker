@@ -118,7 +118,7 @@ public class InboundEmailService(IAppDbContext db, ICurrentContext ctx, AppClock
         if (!box.Enabled) throw await Refuse(new ForbiddenException("The mailbox is switched off.", "MAILBOX_DISABLED"));
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == box.TenantId && t.Status == TenantStatus.Active, ct);
         if (tenant is null) throw await Refuse(new ForbiddenException("The workspace is not active.", "WORKSPACE_INACTIVE"));
-        var today = DateOnly.FromDateTime(clock.Now);
+        var today = clock.TodayIn(tenant.TimeZone);   // the workspace's day: inbound mail has no signed-in person
         if (box.Day == today && box.DayCount >= MaxPerDay) throw await Refuse(new ConflictException($"The mailbox already received {MaxPerDay} emails today.", "MAILBOX_LIMIT"));
 
         var sender = EmailOf(email.From);

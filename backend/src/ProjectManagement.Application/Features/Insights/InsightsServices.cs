@@ -152,8 +152,7 @@ public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock cl
             showActivity ? recent.Items : recent.Items.Take(0).ToList(), myWork.Take(8).ToList());
     }
 
-    private DateTime LocalDayStartUtc(DateOnly today) =>
-        DateTime.SpecifyKind(today.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc).AddMinutes(-clock.OffsetMinutes);
+    private DateTime LocalDayStartUtc(DateOnly today) => clock.StartOfDayUtc(today);
 }
 
 public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access,
@@ -237,7 +236,7 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var meetingRows = await meq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
             .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.Status, m.ProjectId, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault() })
             .ToListAsync(ct);
-        events.AddRange(meetingRows.Select(m => new CalendarEventDto("meeting", m.Id, m.Title, DateOnly.FromDateTime(m.StartTimeUtc.AddMinutes(clock.OffsetMinutes)), m.Status.ToString(), null,
+        events.AddRange(meetingRows.Select(m => new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(m.StartTimeUtc), m.Status.ToString(), null,
             false, m.ProjectId, m.ProjectName, null)));
 
         if (showWorkspaceEvents)
@@ -381,7 +380,7 @@ public class ReportService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         var since = clock.Now.AddDays(-Math.Max(days, 30) - 1);
         var completions = await access.LensTasks(lens).Where(t => t.CompletedAt != null && t.CompletedAt >= since)
             .Select(t => t.CompletedAt!.Value).ToListAsync(ct);
-        var localDates = completions.Select(d => DateOnly.FromDateTime(d.AddMinutes(clock.OffsetMinutes))).ToList();
+        var localDates = completions.Select(d => clock.LocalDate(d)).ToList();
         var perDay = Enumerable.Range(0, days).Select(i => today.AddDays(-(days - 1 - i)))
             .Select(d => new DayCount(d, localDates.Count(x => x == d))).ToList();
 

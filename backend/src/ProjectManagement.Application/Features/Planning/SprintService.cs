@@ -78,7 +78,8 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         if (s.Status == SprintStatus.Planned) return [];
         var finished = await db.Tasks.Where(t => t.SprintId == s.Id && t.CompletedAt != null && t.Status!.Category == StatusCategory.Done)
             .Select(t => t.CompletedAt!.Value).ToListAsync(ct);
-        var last = s.Status == SprintStatus.Completed ? DateOnly.FromDateTime(s.CompletedAt ?? DateTime.UtcNow) : (clock.Today < s.EndDate ? clock.Today : s.EndDate);
+        // Days are the viewer's own calendar days: a task finished at 01:00 their time counts on that day, not the UTC day before.
+        var last = s.Status == SprintStatus.Completed ? clock.LocalDate(s.CompletedAt ?? clock.Now) : (clock.Today < s.EndDate ? clock.Today : s.EndDate);
         if (last < s.StartDate) last = s.StartDate;
 
         var committed = Math.Max(s.Committed, s.TaskTotal);
@@ -86,7 +87,7 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         var points = new List<BurndownPointDto>();
         for (var d = s.StartDate; d <= last; d = d.AddDays(1))
         {
-            var doneByThen = finished.Count(f => DateOnly.FromDateTime(f) <= d);
+            var doneByThen = finished.Count(f => clock.LocalDate(f) <= d);
             var ideal = Math.Max(0, committed * (1 - (double)(d.DayNumber - s.StartDate.DayNumber) / span));
             points.Add(new BurndownPointDto(d, Math.Max(0, committed - doneByThen), Math.Round(ideal, 1)));
         }
