@@ -162,7 +162,21 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
         using var scope = scopes.CreateScope();
         var sp = scope.ServiceProvider;
         var db = sp.GetRequiredService<IAppDbContext>();
-        var pending = await db.Notifications.IgnoreQueryFilters().Where(n => n.PushPending).OrderBy(n => n.CreatedAt).Take(Batch).ToListAsync(ct);
+        var waiting = await db.Notifications.IgnoreQueryFilters().Where(n => n.PushPending).OrderBy(n => n.CreatedAt).Take(Batch).ToListAsync(ct);
+        if (waiting.Count == 0) return 0;
+        // Claim each one first: with several servers, only the one whose update took it off the queue pushes it (a push is sent once).
+        var pending = new List<Notification>(waiting.Count);
+        foreach (var n in waiting)
+        {
+            var id = n.Id;
+            var mine = await db.Notifications.IgnoreQueryFilters().Where(x => x.Id == id && x.PushPending)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.PushPending, false), ct) == 1;
+            var entry = db.Notifications.Entry(n);
+            if (!mine) { entry.State = EntityState.Detached; continue; }
+            entry.Property(x => x.PushPending).OriginalValue = false;
+            n.PushPending = false;
+            pending.Add(n);
+        }
         if (pending.Count == 0) return 0;
         var users = pending.Select(n => n.UserId).Distinct().ToList();
         var subs = await db.PushSubscriptions.Where(s => users.Contains(s.UserId)).ToListAsync(ct);
