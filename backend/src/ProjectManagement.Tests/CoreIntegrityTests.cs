@@ -143,10 +143,18 @@ public class CoreIntegrityTests(ApiFactory factory)
         var (owner, project) = await Setup();
         var csv = "Title\n" + string.Join("\n", Enumerable.Range(1, 40).Select(i => $"Imported {i}")) + "\n";
         var import = owner.Upload($"/api/v1/projects/{project}/import", "tasks.csv", Encoding.UTF8.GetBytes(csv), new Dictionary<string, string>());
-        var creates = Enumerable.Range(1, 5).Select(i => owner.Post($"/api/v1/projects/{project}/tasks", new { title = $"Typed {i}", priority = "Medium" })).ToList();
+        // Someone keeps adding tasks by hand while the file is imported.
+        var typing = Task.Run(async () =>
+        {
+            for (var i = 1; i <= 5; i++)
+            {
+                var res = await owner.Post($"/api/v1/projects/{project}/tasks", new { title = $"Typed {i}", priority = "Medium" });
+                Assert.True(res.Ok, res.ToString());
+            }
+        });
         var imported = await import;
         Assert.True(imported.Ok, imported.ToString());
-        foreach (var c in creates) Assert.True((await c).Ok);
+        await typing;
         var numbers = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == project).Select(t => t.Number).ToList());
         Assert.Equal(45, numbers.Count);
         Assert.Equal(numbers.Count, numbers.Distinct().Count());

@@ -283,7 +283,7 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
     {
         var lk = await LoadLookupsAsync(projectId, ct);
         var table = Read(file, out var legacyEncoding);
-        IReadOnlyList<string>? warnings = legacyEncoding ? [LegacyEncodingWarning] : null;
+        IReadOnlyList<string>? warnings = legacyEncoding ? new[] { LegacyEncodingWarning } : null;
         var suggested = Suggest(table.Headers, lk.Custom);
         var map = string.IsNullOrWhiteSpace(mappingJson) ? suggested : ParseMapping(mappingJson, table.Headers.Count, lk.Custom.Keys);
         var sample = table.Rows.Take(5).Select(r => (IReadOnlyList<string>)r.Select(c => c.Length > 120 ? c[..120] + "…" : c).ToList()).ToList();
