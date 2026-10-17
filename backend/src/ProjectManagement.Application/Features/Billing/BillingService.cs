@@ -382,7 +382,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
                 // The provider charges each month and tells us by webhook. If the period ended and no news came for three days, treat it as a failed renewal.
                 if (sub.CurrentPeriodEnd!.Value.AddDays(3) <= now) sub.Status = SubscriptionStatus.PastDue;
             }
-            else if (sub.Status == SubscriptionStatus.Active && sub.Plan?.PriceMonthly is not null && !sub.CancelAtPeriodEnd && payments.RequiresCheckout)
+            else if (sub.Status == SubscriptionStatus.Active && sub.Plan?.PriceMonthly is > 0 && !sub.CancelAtPeriodEnd && payments.RequiresCheckout)
             {
                 // A real provider charges only through a subscription the owner approved; there is none here, so the server cannot renew it by itself.
                 // It goes past due (the owner is told) and lapses after the grace period unless they choose the plan again.

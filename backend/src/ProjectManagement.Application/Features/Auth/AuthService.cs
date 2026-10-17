@@ -258,6 +258,13 @@ public class AuthService(
         return memberships.FirstOrDefault()?.Id;
     }
 
+    /// <summary>The tab's own workspace while the person is still in it, otherwise the session's (or, failing that, any they are in).</summary>
+    private async Task<Guid?> RefreshWorkspaceAsync(Guid userId, Guid? requested, Guid? sessionWorkspace, CancellationToken ct)
+    {
+        if (requested is { } r && await PickWorkspaceAsync(userId, r, ct) == r) return r;
+        return await PickWorkspaceAsync(userId, sessionWorkspace, ct);
+    }
+
     /// <summary>A short-lived proof that the first step of a sign-in succeeded; the second step (an authenticator code) completes it.</summary>
     public string CreateMfaChallenge(User user) => tokens.CreateChallenge(user.Id, TimeSpan.FromMinutes(5));
 
@@ -312,7 +319,7 @@ public class AuthService(
         // Claim the token in one statement: of two simultaneous requests exactly one sees "unused" and rotates it.
         var storedId = stored.Id;
         var claimed = stored.UsedAt is null
-            && await db.RefreshTokens.Where(t => t.Id == storedId && t.UsedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct) == 1;
+            && await db.RefreshTokens.Where(t => t.Id == storedId && t.UsedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, (DateTime?)now), ct) == 1;
         if (!claimed)
         {
             var current = await db.RefreshTokens.AsNoTracking().Where(t => t.Id == storedId)
@@ -332,7 +339,7 @@ public class AuthService(
             if (!successorLive) throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
             var graceUser = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
             if (graceUser is null || !graceUser.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
-            var graceWorkspace = await PickWorkspaceAsync(graceUser.Id, requestedWorkspace ?? session.WorkspaceId, ct);
+            var graceWorkspace = await RefreshWorkspaceAsync(graceUser.Id, requestedWorkspace, session.WorkspaceId, ct);
             var graceAccess = tokens.CreateAccessToken(graceUser, session.Id, graceWorkspace);
             return new AuthResult(graceAccess.Token, graceAccess.ExpiresAt, ToDto(graceUser), null, stored.ExpiresAt);
         }
@@ -340,7 +347,7 @@ public class AuthService(
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
         if (user is null || !user.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
 
-        var workspaceId = await PickWorkspaceAsync(user.Id, requestedWorkspace ?? session.WorkspaceId, ct);
+        var workspaceId = await RefreshWorkspaceAsync(user.Id, requestedWorkspace, session.WorkspaceId, ct);
         session.WorkspaceId = workspaceId;
         session.LastSeenAt = now;
         session.IpAddress = ctx.IpAddress ?? session.IpAddress;

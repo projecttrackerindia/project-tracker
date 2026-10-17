@@ -196,7 +196,8 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
         var proposal = await Ask(sender, request);
         Assert.Equal(body, proposal["actions"]![0]!["preview"]!.GetValue<string>());
         Assert.Contains("Siva Reddy", proposal["actions"]![0]!["summary"]!.GetValue<string>());
-        var reply = await Ask(sender, "Confirm sending the message", Conversation(proposal));
+        var binding = new AiConfirmationBinding(Guid.Parse(proposal["id"]!.GetValue<string>()), proposal["actions"]![0]!["id"]!.GetValue<string>(), "send_message");
+        var reply = await Ask(sender, "Confirm sending the message", Conversation(proposal), confirmation: binding);
         Assert.Contains("Verified saved message ID", reply["content"]!.GetValue<string>());
         Assert.Equal(body, factory.WithDb(db => db.ChatMessages.IgnoreQueryFilters().Single(m => m.TenantId == sender.WorkspaceId).Body));
         Assert.Empty(factory.Chat.Requests);
