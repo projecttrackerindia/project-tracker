@@ -958,6 +958,7 @@ public partial class AiWorkspaceTests(ApiFactory factory)
 
         var doc = Assert.Single(factory.WithDb(db => db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == o.Owner.WorkspaceId && d.Title == "Razorpay API").ToList()));
         Assert.Equal(o.Project, doc.ProjectId);
+        Assert.Equal(DocumentVisibility.Private, doc.Visibility);   // the author shares it once they have read it
         var opened = await o.Owner.Get($"/api/v1/documents/{doc.Id}");
         Assert.True(opened.Ok, opened.ToString());
         var overview = opened.Data!["sections"]!.AsArray().FirstOrDefault(s => S(s!["key"]) == "overview");
@@ -967,6 +968,18 @@ public partial class AiWorkspaceTests(ApiFactory factory)
         // Re-confirming an already-auto-run card is refused, same as double-clicking any other confirm button.
         var again = await o.Owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm");
         Assert.Equal(HttpStatusCode.Conflict, again.Status);
+    }
+
+    [Fact]
+    public async Task A_document_proposed_after_reading_other_content_waits_for_a_confirm_click()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("list_projects", new { }));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_document", new { title = "Injected", type = "API documentation", project = "Atlas", content = "# Overview\nText." }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
+        var res = await Ask(o.Owner, "Look at the projects and write up a document under Atlas");
+        Assert.Equal("proposed", S(res.Last("action")["action"]!["status"]));
+        Assert.Empty(factory.WithDb(db => db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == o.Owner.WorkspaceId && d.Title == "Injected").ToList()));
     }
 
     [Fact]

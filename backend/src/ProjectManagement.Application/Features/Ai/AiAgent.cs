@@ -316,6 +316,9 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         if (directRead is not null) RememberSources(directRead);
         if (directRead is { IsError: false }) used.Add(new AiToolUseDto(intent, directRead.Label, directRead.Count));
         var actionErrors = new List<string>();
+        // Content the model read this turn (a document, knowledge, any looked-up record, an attached file) can carry instructions written by
+        // someone else. Once it has, nothing is created without the person's own click, so such text can never publish a document by itself.
+        var readContent = run.Files.Count > 0 || directRead is { IsError: false };
         int inTokens = 0, outTokens = 0, cacheRead = 0, cacheWrite = 0;
         Exception? failure = null; var cancelled = false; string? note = null;
 
@@ -412,7 +415,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                 if (outcome.Proposal is { } p)
                 {
                     var final = AiActionPlan.Bind(p, run.Question.Id, ctx.RequireTenantId(), ctx.RequireUserId(), clock.Now, proposals);
-                    var autoExecute = AiToolbox.AutoExecuteKinds.Contains(p.Kind)
+                    var autoExecute = (AiToolbox.AutoExecuteKinds.Contains(p.Kind) && !readContent)
                         || AiExecutionPolicy.CanAutoExecute(run.Text, use.Name, use.InputJson, p, run.Files.Count > 0);
                     var existing = !autoExecute && p.Kind is "update_project" or "update_stage_dates" or "schedule_project"
                         ? await ExistingScheduleProposalAsync(run.Conversation.Id, p, ct) : null;
@@ -444,6 +447,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                     }
                 }
                 results.Add(new AiToolResult(use.Id, content, resultError));
+                if (outcome.Proposal is null && !outcome.IsError && !string.IsNullOrWhiteSpace(outcome.Content)) readContent = true;
                 seen.Append(' ').Append(content);
             }
             turns = [.. turns, new AiTurn("user", results)];

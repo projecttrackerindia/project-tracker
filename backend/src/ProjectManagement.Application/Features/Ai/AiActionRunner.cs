@@ -160,7 +160,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                     ? secEl.EnumerateArray().Select(s => new SectionInput(Str(s, "key")!, Str(s, "content"))).ToList() : null;
                 var tags = a.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array
                     ? tagsEl.EnumerateArray().Select(t => t.GetString()!).ToList() : null;
-                var d = await documents.CreateAsync(new CreateDocumentRequest(Str(a, "title")!, Guid(a, "typeId")!.Value, Guid(a, "projectId"), Guid(a, "teamId"), null, tags, sections), ct);
+                // What the assistant writes starts out visible to its author only; they share it once they have read it.
+                var d = await documents.CreateAsync(new CreateDocumentRequest(Str(a, "title")!, Guid(a, "typeId")!.Value, Guid(a, "projectId"), Guid(a, "teamId"), DocumentVisibility.Private, tags, sections), ct);
                 return new AiActionResult($"/documents/{d.Item.Id}", d.Item.Id);
             }
             case "start_meeting":
