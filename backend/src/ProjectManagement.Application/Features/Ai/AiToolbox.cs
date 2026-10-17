@@ -415,11 +415,15 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (a.TryGetProperty("all_teams", out var atEl) && atEl.ValueKind == JsonValueKind.True)
         {
             var tid = ctx.RequireTenantId();
+            var me = ctx.RequireUserId();
             await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
-            // IgnoreQueryFilters: the normal Project filter also confines results to the caller's team lens (same as the Projects page), which
-            // is exactly the restriction all_teams asks to see past. Tenant isolation and soft-delete are reapplied explicitly below.
-            var all = await (from p in db.Projects.IgnoreQueryFilters().AsNoTracking()
-                              where p.TenantId == tid && !p.IsDeleted && p.Status != ProjectStatus.Archived
+            // all_teams looks past the team lens only, never past what the person may see: with no lens the normal filter is exactly that;
+            // with a lens, the same reach is worked out again without it (tenant, soft-delete and the person's project scope all reapplied).
+            var source = ctx.TeamLens is null
+                ? db.Projects
+                : ProjectAccess.WithinScope(db, db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == tid && !p.IsDeleted), ctx.ProjectScope, me);
+            var all = await (from p in source.AsNoTracking()
+                              where p.Status != ProjectStatus.Archived
                               join t in db.Teams.AsNoTracking() on p.TeamId equals t.Id into tj
                               from t in tj.DefaultIfEmpty()
                               orderby p.Name

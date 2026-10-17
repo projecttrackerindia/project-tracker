@@ -25,6 +25,18 @@ public class ProjectAccess(IAppDbContext db, ICurrentContext ctx, PermissionServ
     public IQueryable<Project> VisibleProjects() => db.Projects;
 
     /// <summary>
+    /// Narrows <paramref name="query"/> to the projects a person with this <paramref name="scope"/> reaches (owner, added to it, or - for the Teams
+    /// scope - one of their teams' projects). The single definition of "reach" used for the request's reachable projects (CurrentContextMiddleware)
+    /// and for anything that must look past the team lens but never past the person's own scope (the assistant's list_projects all_teams).
+    /// </summary>
+    public static IQueryable<Project> WithinScope(IAppDbContext db, IQueryable<Project> query, ProjectScope scope, Guid me) =>
+        scope == ProjectScope.None ? query
+        : scope == ProjectScope.Members
+            ? query.Where(p => db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me))
+            : query.Where(p => p.OwnerId == me || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me)
+                || (p.TeamId != null && db.TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == me)));
+
+    /// <summary>
     /// The teams this person may look at as a whole on the dashboard, reports and Portfolio. Everyone who is not limited to their own teams
     /// (Owners, Admins, roles that see every team's projects, or a workspace that is not team-limited) may pick any team; a person limited to
     /// their teams may pick only the teams they belong to. Guests pick none.

@@ -316,11 +316,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
         var scope = ctx.ProjectScope;
         var query = db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.TenantId == tenant && !p.IsDeleted);
         if (lens is { } team) query = query.Where(p => p.TeamId == team);
-        if (scope != ProjectScope.None)
-            query = scope == ProjectScope.Members
-                ? query.Where(p => db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me))
-                : query.Where(p => p.OwnerId == me || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me)
-                    || (p.TeamId != null && db.TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == me)));
+        query = ProjectManagement.Application.Services.ProjectAccess.WithinScope(db, query, scope, me);
         ctx.ProjectIds = await query.Select(p => p.Id).ToArrayAsync(http.RequestAborted);
     }
 

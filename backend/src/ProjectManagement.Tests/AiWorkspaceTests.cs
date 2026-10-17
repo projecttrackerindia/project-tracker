@@ -929,6 +929,11 @@ public partial class AiWorkspaceTests(ApiFactory factory)
         Assert.Contains("Razor pay", all);
         Assert.Contains("Atlas", all);
         o.Owner.TeamLens = null;
+
+        // all_teams looks past the team lens, never past what the caller may see: a guest was added to neither project.
+        var guestAll = await RunTool(o.Guest, "list_projects", new { all_teams = true }, "Which projects are running, across every team?");
+        Assert.DoesNotContain("Atlas", guestAll);
+        Assert.DoesNotContain("Razor pay", guestAll);
     }
 
     [Fact]
