@@ -4,6 +4,7 @@ import { del, get, post } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { PageLoader } from '../../components/ui';
 import { Markdown } from './Markdown';
+import { formatDateTime } from '../../lib/format';
 
 type Kind = 'portfolio' | 'workload' | 'history';
 interface Source { kind: string; id: string; label: string; link: string; version?: string }
@@ -46,12 +47,12 @@ export function AgentWorkflowsPage() {
     </section>
     <section className="card" style={{ padding: 20, marginBottom: 20 }}><h2>Scheduled reviews</h2>
       {!schedules.data?.length && <p>No scheduled reviews yet. The first review runs shortly after you create a schedule.</p>}
-      {schedules.data?.map(s => <div key={s.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}><span>{s.title} · every {s.intervalMinutes / 60} hours · next {new Date(s.nextRunAt).toLocaleString()}</span><button className="btn" disabled={busy} onClick={() => void perform(() => del(`/ai/operations/schedules/${s.id}`))}>Remove schedule</button></div>)}
+      {schedules.data?.map(s => <div key={s.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}><span>{s.title} · every {s.intervalMinutes / 60} hours · next {formatDateTime(s.nextRunAt)}</span><button className="btn" disabled={busy} onClick={() => void perform(() => del(`/ai/operations/schedules/${s.id}`))}>Remove schedule</button></div>)}
     </section>
     <section className="card" style={{ padding: 20 }}><h2>Review history</h2>
       {!jobs.data?.length && <p>Your reviews and saved results will appear here.</p>}
       {jobs.data?.map(j => <div key={j.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-        <button className="btn" onClick={() => setSelected(j.id)}>{j.title}</button><span>{j.status} · {j.progress}% · {new Date(j.createdAt).toLocaleString()}</span>
+        <button className="btn" onClick={() => setSelected(j.id)}>{j.title}</button><span>{j.status} · {j.progress}% · {formatDateTime(j.createdAt)}</span>
         {['queued', 'running'].includes(j.status) && <button className="btn" disabled={busy} onClick={() => void perform(() => post(`/ai/operations/jobs/${j.id}/cancel`, {}))}>Cancel</button>}
       </div>)}
     </section>
@@ -62,7 +63,7 @@ export function AgentWorkflowsPage() {
     </section>}
     {picked && <section className="card" style={{ padding: 20, marginTop: 20 }}><h2>{picked.title}</h2>
       {picked.errorCode && <p role="alert">{picked.errorCode === 'AI_EVIDENCE_ACCESS_CHANGED' ? 'Your access has changed since this review. Run a new review to see current authorized evidence.' : picked.errorCode === 'AI_EVIDENCE_EXPIRED' ? 'Saved review evidence expires after 30 days. Run a new review for current evidence.' : `This review could not finish (${picked.errorCode}).`}</p>}
-      {picked.result ? <><p>Evidence as of {new Date(picked.result.evidenceAt).toLocaleString()}</p><Markdown text={picked.result.summary} /><p>{picked.result.methodology}</p><h3>Sources</h3><ul>{picked.result.sources.map(s => <li key={`${s.kind}:${s.id}`}><Link to={s.link}>{s.label}</Link>{s.version && ` · ${s.version}`}</li>)}</ul><Link to="/ai" state={{ ask: `Review this ${picked.kind} analysis and recommend actions. Retrieve current evidence first.`, ts: Date.now() }}>Ask the agent to investigate and propose actions</Link></> : !picked.errorCode && <p>{picked.status === 'cancelled' ? 'This review was cancelled.' : 'A result will appear when the worker finishes.'}</p>}
+      {picked.result ? <><p>Evidence as of {formatDateTime(picked.result.evidenceAt)}</p><Markdown text={picked.result.summary} /><p>{picked.result.methodology}</p><h3>Sources</h3><ul>{picked.result.sources.map(s => <li key={`${s.kind}:${s.id}`}><Link to={s.link}>{s.label}</Link>{s.version && ` · ${s.version}`}</li>)}</ul><Link to="/ai" state={{ ask: `Review this ${picked.kind} analysis and recommend actions. Retrieve current evidence first.`, ts: Date.now() }}>Ask the agent to investigate and propose actions</Link></> : !picked.errorCode && <p>{picked.status === 'cancelled' ? 'This review was cancelled.' : 'A result will appear when the worker finishes.'}</p>}
     </section>}
   </div>;
 }

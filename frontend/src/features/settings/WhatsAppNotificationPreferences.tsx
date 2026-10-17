@@ -5,6 +5,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { Field } from '../../components/ui';
 import { WhatsAppDeliveryHistory } from './WhatsAppDeliveryHistory';
 import { toast } from '../../stores/ui';
+import { formatDateTime } from '../../lib/format';
 interface Preferences {
   version:number; optedIn:boolean; canEnable:boolean; taskAssignments:boolean; overdue:boolean; supportUpdates:boolean;
   timeZone:string; quietStartMinutes:number; quietEndMinutes:number; requiredConsentVersion:string;
@@ -38,7 +39,7 @@ export function WhatsAppNotificationPreferences() {
     {query.isLoading&&<p role="status">Loading preferences...</p>}
     {query.error&&<p role="alert">{query.error.message}</p>}
     {draft&&<form onSubmit={e=>{e.preventDefault();void save(true);}}>
-      {draft.optedIn&&<p role="status">Consent recorded until {draft.expiresAt?new Date(draft.expiresAt).toLocaleString():''}.{draft.deliveryEnabled?' Notifications follow your quiet hours and delivery allowance.':' Messages are not being sent.'}</p>}
+      {draft.optedIn&&<p role="status">Consent recorded until {draft.expiresAt?formatDateTime(draft.expiresAt):''}.{draft.deliveryEnabled?' Notifications follow your quiet hours and delivery allowance.':' Messages are not being sent.'}</p>}
       {!draft.canEnable&&<p>Verify your number on an eligible, active organization connection before enabling preferences.</p>}
       <fieldset disabled={busy||!draft.canEnable} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <legend>Message categories</legend>

@@ -1,11 +1,16 @@
+import { daysFromToday, formatInZone, shiftIsoDate, zoneToday } from './zone';
+
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const pad = (n: number) => String(n).padStart(2, '0');
+/** "yyyy-MM-dd" of a local calendar Date (the fields as written, e.g. from a date picker). For instants use {@link isoDateIn}. */
 export const toISODate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-export const todayISO = () => toISODate(new Date());
-export const dateOffset = (days: number, from = new Date()) => { const d = new Date(from); d.setDate(d.getDate() + days); return toISODate(d); };
+/** Today in the person's time zone (not the device's), so "today" matches the server everywhere. */
+export const todayISO = () => zoneToday();
+/** A day relative to today (in the person's zone), or to a given local calendar date. */
+export const dateOffset = (days: number, from?: Date) => (from ? shiftIsoDate(toISODate(from), days) : shiftIsoDate(zoneToday(), days));
 const parts = (iso: string) => iso.slice(0, 10).split('-').map(Number) as [number, number, number];
 
 export function formatDate(iso?: string | null) {
@@ -18,17 +23,22 @@ export function formatDateShort(iso?: string | null) {
   const [, m, d] = parts(iso);
   return `${pad(d)} ${MONTHS[m - 1]}`;
 }
-export function formatDateTime(iso?: string | null) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+/** An instant (UTC from the server) as a date and time in the person's time zone. */
+export function formatDateTime(iso?: string | number | Date | null) {
+  if (iso === null || iso === undefined || iso === '') return '—';
+  return formatInZone(iso, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+/** Just the time of an instant, in the person's time zone ("14:05" / "2:05 pm"). */
+export function formatTime(iso?: string | number | Date | null) {
+  if (iso === null || iso === undefined || iso === '') return '—';
+  return formatInZone(iso, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Days from today (in the person's zone) to a calendar day: 0 today, 1 tomorrow, negative when past. */
 export function daysUntil(iso?: string | null) {
   if (!iso) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const [y, m, d] = parts(iso);
-  return Math.round((new Date(y, m - 1, d).getTime() - today.getTime()) / 86400000);
+  return daysFromToday(iso);
 }
 
 /** Friendly relative due label: Today / Tomorrow / Yesterday / 3d overdue / 12 Oct. */

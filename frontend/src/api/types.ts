@@ -39,6 +39,8 @@ export interface CurrentWorkspace {
   /** Level per module for the signed-in user: 0 none, 1 view, 2 edit, 3 full. */
   modules: Record<string, number>;
   reportCount?: number;
+  /** The workspace's default time zone (IANA); null = the platform default. Each person's own zone wins. */
+  timeZone?: string | null;
 }
 export interface AccessBlocked { workspaceId: string; code: string; message: string }
 export interface ConsentDocument { type: string; version: number; title: string; body: string; publishedAt: string | null }

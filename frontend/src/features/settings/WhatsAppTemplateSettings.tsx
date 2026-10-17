@@ -3,6 +3,7 @@ import { get, post } from '../../api/client';
 import { useWsQuery, invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { formatDateTime } from '../../lib/format';
 
 interface Template { key: string; name: string; language: string; category: string; body: string; state: string }
 interface TemplateStatus { checkEnabled: boolean; state: string; checkedAt: string | null; templates: Template[]; messagingEnabled: boolean }
@@ -47,7 +48,7 @@ export function WhatsAppTemplateSettings() {
         <p>Language: English (US) ({template.language}) &middot; Category: {template.category}</p>
         <p><b>Exact template body</b></p><blockquote>{template.body}</blockquote>
       </details>)}</div>
-      {status.data.checkedAt && <p className="muted">Last template check: {new Date(status.data.checkedAt).toLocaleString()}</p>}
+      {status.data.checkedAt && <p className="muted">Last template check: {formatDateTime(status.data.checkedAt)}</p>}
       {!status.data.checkEnabled && <p>Template checks require platform activation, plan access and a successful current provider health check.</p>}
       <button className="btn" disabled={!status.data.checkEnabled || check.isPending || status.data.state === 'checking'} onClick={() => check.mutate()}>
         {check.isPending ? 'Checking templates...' : 'Check templates'}</button>

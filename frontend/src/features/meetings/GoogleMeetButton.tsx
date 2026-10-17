@@ -9,7 +9,8 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import './meetings.css';
 import { toast } from '../../stores/ui';
-import { allTimeZones, deviceZone, zonedTimeToUtc } from './timezone';
+import { allTimeZones, zonedTimeToUtc } from './timezone';
+import { appZone } from '../../lib/zone';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const copy = async (text: string, what: string) => {
@@ -130,7 +131,7 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
   // The organizer's own choice, not just a silent guess: this device's detected zone is only the starting suggestion. A machine whose
   // system clock reports UTC (common on shared/VDI desktops) must not silently schedule "9:00" as 9:00 UTC when the organizer meant
   // 9:00 Central - so the zone used to turn the typed wall-clock time into a real instant is always this explicit, visible value.
-  const [tz, setTz] = useState(deviceZone());
+  const [tz, setTz] = useState(appZone());
   const zones = useState(allTimeZones)[0];
   const inHour = new Date(Date.now() + 60 * 60 * 1000);
   const [title, setTitle] = useState(scrum ? `${projectName} Scrum` : '');
