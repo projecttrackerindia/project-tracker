@@ -142,7 +142,7 @@ public class EmailDeliveryTests(ApiFactory factory)
 
     private sealed class SharedSender : IEmailSender
     {
-        public System.Collections.Concurrent.ConcurrentBag<EmailMessage> Sent { get; } = [];
+        public System.Collections.Concurrent.ConcurrentBag<EmailMessage> Sent { get; } = new();
         public string Name => "shared";
         public async Task SendAsync(EmailMessage message, CancellationToken ct = default) { await Task.Delay(20, ct); Sent.Add(message); }
     }

@@ -262,8 +262,8 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         }
         foreach (var g in leaving)
         {
-            var from = g.Key; var removed = g.Count();
-            await db.Sprints.Where(s => s.Id == from && s.Status == SprintStatus.Active)
+            var source = g.Key; var removed = g.Count();
+            await db.Sprints.Where(s => s.Id == source && s.Status == SprintStatus.Active)
                 .ExecuteUpdateAsync(u => u.SetProperty(s => s.CommittedTasks, s => s.CommittedTasks > removed ? s.CommittedTasks - removed : 0), ct);
         }
         await db.SaveChangesAsync(ct);
