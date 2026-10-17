@@ -26,7 +26,8 @@ public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerif
 public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null);
 
 /// <summary>Result of login / refresh. The refresh token is delivered by the API layer (cookie or body).</summary>
-public record AuthResult(string AccessToken, DateTime ExpiresAt, UserDto User, string RefreshToken, DateTime RefreshExpiresAt);
+/// <summary>A signed-in session. RefreshToken is null when the caller keeps the refresh token it already has (see AuthService.RefreshAsync).</summary>
+public record AuthResult(string AccessToken, DateTime ExpiresAt, UserDto User, string? RefreshToken, DateTime RefreshExpiresAt);
 /// <summary>Either a session, or (when two-step verification is on) a challenge to answer with a code.</summary>
 public record LoginOutcome(AuthResult? Session, string? MfaChallenge);
 public record RegisterResult(Guid UserId, bool RequiresEmailVerification);

@@ -22,6 +22,8 @@ public record ExternalLinkStartDto(string Url);
 public class SsoAuthController(SsoLoginService sso, ProjectManagement.Application.Abstractions.ICurrentContext ctx, IOptions<AppOptions> options, ILogger<SsoAuthController> log) : ApiControllerBase
 {
     private string Web => PublicUrls.Web(options.Value);
+    /// <summary>https end to end as far as the browser is concerned (see AuthCookies.IsSecure).</summary>
+    private bool SecureCookies => AuthCookies.IsSecure(Request);
 
     /// <summary>Which outside sign-in options this installation offers (only those with their settings in place).</summary>
     [HttpGet("providers"), AllowAnonymous]
@@ -39,7 +41,7 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
         {
             HttpOnly = true, IsEssential = true, Path = "/api/v1/auth", MaxAge = TimeSpan.FromMinutes(10),
             // The SAML and Apple answers arrive as cross-site POSTs, which only carry a SameSite=None cookie; that requires https.
-            Secure = Request.IsHttps, SameSite = Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
+            Secure = SecureCookies, SameSite = SecureCookies ? SameSiteMode.None : SameSiteMode.Lax,
         });
         return value;
     }
@@ -47,7 +49,7 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     private string? Binding()
     {
         var v = Request.Cookies[AuthCookies.Binding];
-        Response.Cookies.Delete(AuthCookies.Binding, new CookieOptions { Path = "/api/v1/auth", Secure = Request.IsHttps, SameSite = Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax });
+        Response.Cookies.Delete(AuthCookies.Binding, new CookieOptions { Path = "/api/v1/auth", Secure = SecureCookies, SameSite = SecureCookies ? SameSiteMode.None : SameSiteMode.Lax });
         return v;
     }
 
@@ -58,7 +60,7 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     {
         if (done.Session is { } session)
         {
-            AuthCookies.WriteRefresh(Response, Request.IsHttps, session);
+            AuthCookies.WriteRefresh(Response, SecureCookies, session);
             return Redirect($"{Web}/auth/complete?to={Uri.EscapeDataString(done.RedirectTo)}");
         }
         return Redirect($"{Web}{done.RedirectTo}");
@@ -82,7 +84,7 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     [HttpGet("sso/start"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> StartSso([FromQuery] string? email, [FromQuery] Guid? org, [FromQuery] string? returnUrl, CancellationToken ct)
     {
-        try { return Redirect(await sso.StartSsoAsync(email, org, returnUrl, Bind(), Request.IsHttps, ct)); }
+        try { return Redirect(await sso.StartSsoAsync(email, org, returnUrl, Bind(), SecureCookies, ct)); }
         catch (AppException ex) { return Redirect(Fail(ex.Code, ex.Message)); }
     }
 
@@ -123,14 +125,14 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     [HttpGet("external/{provider}/start"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> StartExternal(string provider, [FromQuery] string? returnUrl, CancellationToken ct)
     {
-        try { return Redirect(await sso.StartExternalAsync(provider, returnUrl, Bind(), Request.IsHttps, null, ct)); }
+        try { return Redirect(await sso.StartExternalAsync(provider, returnUrl, Bind(), SecureCookies, null, ct)); }
         catch (AppException ex) { return Redirect(Fail(ex.Code, ex.Message)); }
     }
 
     /// <summary>Connects an outside account to the signed-in one: returns the address to send the browser to.</summary>
     [HttpPost("external/{provider}/link")]
     public async Task<IActionResult> StartLink(string provider, CancellationToken ct) =>
-        Ok(new ExternalLinkStartDto(await sso.StartExternalAsync(provider, "/account/security", Bind(), Request.IsHttps, ctx.RequireUserId(), ct)));
+        Ok(new ExternalLinkStartDto(await sso.StartExternalAsync(provider, "/account/security", Bind(), SecureCookies, ctx.RequireUserId(), ct)));
 
     [HttpGet("external/{provider}/callback"), AllowAnonymous]
     public Task<IActionResult> ExternalCallback(string provider, [FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct) =>
