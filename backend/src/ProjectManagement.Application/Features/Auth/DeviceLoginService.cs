@@ -36,7 +36,7 @@ public class DeviceLoginService(IAppDbContext db, ICurrentContext ctx, AppClock 
     IOptions<AppOptions> app, ILogger<DeviceLoginService> log, ProjectManagement.Application.Features.Notifications.SecurityAlerts alerts)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
-    private const int MaxPromptsPer10Minutes = 3, MaxWrongNumbers = 2;
+    private const int MaxPromptsPer10Minutes = 3, MaxWrongNumbers = 1;   // three choices: a second guess would be a coin flip
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ------------------------------------------------------------------ the computer asks
