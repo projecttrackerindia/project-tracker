@@ -75,6 +75,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Webhooks__AllowPrivateTargets", "true");
         Environment.SetEnvironmentVariable("Webhooks__SettleSeconds", "0");
         Environment.SetEnvironmentVariable("Dev__Mailbox", "true");
+        Environment.SetEnvironmentVariable("Swagger__Enabled", "true"); // the API description is only published outside Development when asked for
         Environment.SetEnvironmentVariable("Seed__Demo", "false");
         Environment.SetEnvironmentVariable("Proxy__Trust", "true"); // lets tests simulate a caller address via X-Forwarded-For (org IP-allowlist tests)
         Environment.SetEnvironmentVariable("Auth__Google__ClientId", "google-client");   // social sign-in tests (the fake provider answers for Google)
