@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -7,11 +7,11 @@ import type { DocumentItem, DocumentStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Avatar, EmptyState, ErrorState, PageLoader } from '../../components/ui';
-import { timeAgo } from '../../lib/format';
+import { formatDateTime, timeAgo } from '../../lib/format';
 import { useDebounced, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { ClassificationBadge, DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
+import { ClassificationBadge, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
 
 const STATUSES: DocumentStatus[] = ['Draft', 'InReview', 'ChangesRequested', 'Approved', 'Published', 'Archived'];
 type SortKey = 'updated' | 'title' | 'owner';
@@ -23,33 +23,25 @@ function sortItems(items: DocumentItem[], sort: SortKey): DocumentItem[] {
   return items;   // 'updated' is already the server's own order
 }
 
-function Meta({ d }: { d: DocumentItem }) {
+function Flags({ d }: { d: DocumentItem }) {
   return (
-    <>
-      <span className="doc-version muted" title="Version">v{d.versionLabel}</span>
-      {d.sharedCount > 0 && <span className="doc-shared" title={`Shared with ${d.sharedCount} ${d.sharedCount === 1 ? 'grant' : 'grants'}`}><Icon name="users" size={14} /> {d.sharedCount}</span>}
-      {d.linkedCount > 0 && <span className="doc-links" title={`${d.linkedCount} linked`}><Icon name="git" size={14} /> {d.linkedCount}</span>}
+    <span className="ds-flags">
       {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
-      <span className="doc-vis" title={VISIBILITY[d.visibility].hint}><Icon name={VISIBILITY[d.visibility].icon} size={14} /></span>
-      <DocStatusBadge status={d.status} />
-      <span className="doc-owner"><Avatar name={d.owner.name} userId={d.owner.id} /><span>{d.owner.name}</span></span>
-      <span className="muted doc-when">{timeAgo(d.updatedAt)}</span>
-    </>
+      <span className="ds-flag" title={`Visible to: ${VISIBILITY[d.visibility].label} - ${VISIBILITY[d.visibility].hint}`}><Icon name={VISIBILITY[d.visibility].icon} size={13} /></span>
+      {d.sharedCount > 0 && <span className="ds-flag" title={`Shared with ${d.sharedCount} ${d.sharedCount === 1 ? 'grant' : 'grants'}`}><Icon name="users" size={13} />{d.sharedCount}</span>}
+      {d.linkedCount > 0 && <span className="ds-flag" title={`${d.linkedCount} linked work item${d.linkedCount === 1 ? '' : 's'}`}><Icon name="git" size={13} />{d.linkedCount}</span>}
+    </span>
   );
 }
 
 function Card({ d, showProject }: { d: DocumentItem; showProject: boolean }) {
   const place = d.projectName ? `${d.projectKey} · ${d.projectName}` : d.teamName ?? 'General';
   return (
-    <Link className="card doc-card" to={`/documents/${d.id}`}>
-      <div className="doc-card-head"><TypeChip doc={d} size={30} /><span className="doc-key">{d.key}</span></div>
-      <b className="doc-card-title">{d.title}</b>
-      <div className="doc-row-sub">
-        <span>{d.typeName}</span>
-        {showProject && <span>{place}</span>}
-        {d.tags.slice(0, 3).map((t) => <span className="doc-tag" key={t}>{t}</span>)}
-      </div>
-      <div className="doc-card-meta"><Meta d={d} /></div>
+    <Link className="ds-doc-card" to={`/documents/${d.id}`} style={{ '--dc': d.typeColor } as CSSProperties}>
+      <div className="ds-doc-card-head"><TypeCode doc={d} /><span className="ds-key">{d.key}</span><span className="ds-ver">v{d.versionLabel}</span></div>
+      <b className="ds-doc-card-title">{d.title}</b>
+      <div className="ds-doc-sub">{showProject && <span>{place}</span>}{d.tags.slice(0, 3).map((t) => <span className="ds-tag" key={t}>{t}</span>)}</div>
+      <div className="ds-doc-card-foot"><DocStatusBadge status={d.status} /><Flags d={d} /><span className="ds-owner"><Avatar name={d.owner.name} userId={d.owner.id} /></span><span className="ds-when">{timeAgo(d.updatedAt)}</span></div>
     </Link>
   );
 }
@@ -63,29 +55,22 @@ function Row({ d, showProject, trash, onRestored }: { d: DocumentItem; showProje
   });
   const content = (
     <>
-      <TypeChip doc={d} />
-      <div className="doc-row-main">
-        <div className="doc-row-title"><span className="doc-key">{d.key}</span><b>{d.title}</b></div>
-        <div className="doc-row-sub">
-          <span>{d.typeName}</span>
-          {showProject && <span>{place}</span>}
-          {d.tags.slice(0, 3).map((t) => <span className="doc-tag" key={t}>{t}</span>)}
-        </div>
-      </div>
-      <div className="doc-row-meta"><Meta d={d} /></div>
+      <span className="ds-cell ds-cell-doc">
+        <TypeCode doc={d} />
+        <span className="ds-doc-main">
+          <span className="ds-doc-title"><span className="ds-key">{d.key}</span><b>{d.title}</b></span>
+          <span className="ds-doc-sub"><span>{d.typeName}</span>{showProject && <span>{place}</span>}<Flags d={d} />{d.tags.slice(0, 3).map((t) => <span className="ds-tag" key={t}>{t}</span>)}</span>
+        </span>
+      </span>
+      <span className="ds-cell ds-cell-status"><DocStatusBadge status={d.status} /><span className="ds-ver">v{d.versionLabel}</span></span>
+      <span className="ds-cell ds-cell-owner"><Avatar name={d.owner.name} userId={d.owner.id} /><span>{d.owner.name}</span></span>
+      <span className="ds-cell ds-cell-when" title={formatDateTime(d.updatedAt)}>{trash
+        ? <button className="btn btn-ghost btn-sm" disabled={restore.isPending} onClick={(e) => { e.preventDefault(); restore.mutate(); }}>{restore.isPending && <span className="spinner" />}<Icon name="undo" size={14} /> Restore</button>
+        : timeAgo(d.updatedAt)}</span>
     </>
   );
-  if (trash) {
-    return (
-      <div className="doc-row doc-row-trash">
-        {content}
-        <button className="btn btn-ghost btn-sm" disabled={restore.isPending} onClick={(e) => { e.preventDefault(); restore.mutate(); }}>
-          {restore.isPending && <span className="spinner" />}<Icon name="undo" size={14} /> Restore
-        </button>
-      </div>
-    );
-  }
-  return <Link className="doc-row" to={`/documents/${d.id}`}>{content}</Link>;
+  if (trash) return <div className="ds-row" role="row">{content}</div>;
+  return <Link className="ds-row" role="row" to={`/documents/${d.id}`}>{content}</Link>;
 }
 
 type FixedScope = 'recent' | 'shared' | 'trash';
@@ -145,7 +130,7 @@ export function DocumentList({ projectId, general, onNew, canCreate, fixedScope,
   return (
     <div className="doc-list">
       {!fixedScope && (
-        <div className="doc-filters">
+        <div className="doc-filters ds-toolbar">
           <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Search titles, text and tags, or DOC-12…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search documents" /></div>
           <Select className="select" value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Kind"><option value="">All kinds</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
           <Select className="select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Any status</option>{STATUSES.map((s) => <option key={s} value={s}>{s.replace(/([A-Z])/g, ' $1').trim()}</option>)}</Select>
@@ -179,9 +164,12 @@ export function DocumentList({ projectId, general, onNew, canCreate, fixedScope,
       ) : (
         <>
           {grid ? (
-            <div className="doc-grid">{items.map((d) => <Card key={d.id} d={d} showProject={!projectId} />)}</div>
+            <div className="ds-grid">{items.map((d) => <Card key={d.id} d={d} showProject={!projectId} />)}</div>
           ) : (
-            <div className="doc-rows">{items.map((d) => <Row key={d.id} d={d} showProject={!projectId} trash={trash} onRestored={() => query.refetch()} />)}</div>
+            <div className="ds-table" role="table" aria-label="Documents">
+              <div className="ds-row ds-row-head" role="row"><span>Document</span><span>Status</span><span>Owner</span><span>{trash ? '' : 'Updated'}</span></div>
+              {items.map((d) => <Row key={d.id} d={d} showProject={!projectId} trash={trash} onRestored={() => query.refetch()} />)}
+            </div>
           )}
           <div className="doc-foot">
             <span className="muted">{total !== null ? `${items.length} of ${total}` : `${items.length} shown`}</span>

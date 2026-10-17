@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -7,7 +7,7 @@ import type { DocumentClassification, DocumentDetail, DocumentVisibility } from 
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Avatar, ErrorState, Field, Modal, PageLoader, SubmitButton } from '../../components/ui';
-import { formatDate, timeAgo } from '../../lib/format';
+import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -27,7 +27,7 @@ import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
-import { ClassificationBadge, CLASSIFICATION, DocStatusBadge, TypeChip, VISIBILITY } from './docUi';
+import { CLASSIFICATION, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
 function hasContent(kind: string, value: string): boolean {
@@ -161,24 +161,20 @@ export function DocumentPage() {
   });
 
   return (
-    <div className="doc-page doc-scope">
-      <nav className="doc-crumbs" aria-label="Breadcrumb">
-        <Link to="/documents">Documents</Link>
-        {d.projectId && <><Icon name="chevronR" size={13} /><Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectKey}</Link></>}
-        <Icon name="chevronR" size={13} /><span>{d.key}</span>
+    <div className="doc-page doc-scope" style={{ '--dc': d.typeColor } as CSSProperties}>
+      <nav className="ds-crumb" aria-label="Breadcrumb">
+        <Link to="/documents">documents</Link>
+        {d.projectId && <><i>/</i><Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectKey?.toLowerCase()}</Link></>}
+        <i>/</i><b>{d.key}</b>
+        <DocStatusBadge status={d.status} />
+        {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="ds-pill accent" title="The draft differs from the published version"><i />Draft ahead of v{detail.publishedLabel}</span>}
+        {dirty && <span className="ds-pill warn"><i />Unsaved changes</span>}
       </nav>
 
-      <header className="doc-head">
-        <TypeChip doc={d} size={46} />
-        <div className="doc-head-main">
+      <header className="doc-head ds-doc-head">
+        <div className="ds-doc-titlerow">
+          <TypeCode doc={d} large />
           <h1>{d.title}</h1>
-          <div className="doc-head-sub">
-            <span className="doc-key doc-meta-chip">{d.key}</span><span className="doc-meta-chip">{d.typeName}</span><DocStatusBadge status={d.status} />
-            {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
-            <span className="doc-meta-chip">Version {detail.versionLabel}</span>
-            {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="doc-dirty" title="The draft differs from the published version">Not published yet</span>}
-            {dirty && <span className="doc-dirty">Unsaved changes</span>}
-          </div>
         </div>
         <div className="doc-head-actions">
           {canEdit && (
@@ -210,6 +206,20 @@ export function DocumentPage() {
         </div>
       </header>
 
+      <section className="ds-summary" style={{ '--dc': d.typeColor } as CSSProperties} aria-label="About this document">
+        <div className="ds-meta">
+          <span className="ds-meta-chip"><i style={{ background: d.typeColor }} />Type <b>{d.typeName}</b></span>
+          <span className="ds-meta-chip"><i />Version <b>{detail.versionLabel}</b>{detail.publishedLabel && detail.publishedLabel !== detail.versionLabel && <em>published {detail.publishedLabel}</em>}</span>
+          <span className="ds-meta-chip" title={VISIBILITY[d.visibility].hint}><i />Visible to <b>{VISIBILITY[d.visibility].label}</b></span>
+          <span className="ds-meta-chip" title={CLASSIFICATION[d.classification].hint}><i className={`cls-${d.classification.toLowerCase()}`} />Classification <b>{CLASSIFICATION[d.classification].label}</b></span>
+          <span className="ds-meta-chip"><i />Belongs to <b>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{d.projectKey} · {d.projectName}</Link> : d.teamName ?? 'The organization'}</b></span>
+          <span className="ds-meta-chip"><Avatar name={d.owner.name} userId={d.owner.id} />Owner <b>{d.owner.name}</b></span>
+          <span className="ds-meta-chip" title={formatDateTime(d.createdAt)}><i className="ok" />Added <b>{formatDate(d.createdAt)}</b></span>
+          <span className="ds-meta-chip" title={formatDateTime(d.updatedAt)}><i className="warn" />Modified <b>{timeAgo(d.updatedAt)}</b></span>
+          {d.tags.map((t) => <span className="ds-tag" key={t}>#{t}</span>)}
+        </div>
+      </section>
+
       {stale && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>Someone else changed this document while you were editing. <button className="link-btn" onClick={() => { setStale(false); q.refetch(); }}>Reload to see their changes</button> (your unsaved words stay here until you save or leave).</div></div>}
       {d.status === 'Archived' && <div className="doc-alert info"><Icon name="info" size={16} /><div>This document is archived and read-only.</div></div>}
       {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={canEdit} onPublish={() => setPanel('publishApproved')} />}
@@ -223,16 +233,10 @@ export function DocumentPage() {
       {onApiTab ? <ApiReference detail={detail} editable={editable} /> : (
       <div className={`doc-layout${editable ? '' : ' reading'}`}>
         <aside className="doc-outline" aria-label="Sections">
-          <ul>{shownSections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{edits[s.key] !== undefined && <i className="dot-dirty" />}{s.title}</a></li>)}</ul>
+          <div className="ds-outline-title">On this page</div>
+          <ul>{shownSections.map((s, i) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><span className="ds-outline-n">{String(i + 1).padStart(2, '0')}</span>{s.title}{edits[s.key] !== undefined && <i className="dot-dirty" />}</a></li>)}</ul>
         </aside>
         <main className="doc-body">
-          {!editable && (
-            <header className="doc-paper-head">
-              <span className="doc-paper-key">{d.key} · {d.typeName}</span>
-              <h1>{d.title}</h1>
-              <p>Version {detail.versionLabel} · {d.status} · {d.owner.name} · Updated {formatDate(d.updatedAt)}</p>
-            </header>
-          )}
           {!editable && shownSections.length === 0 && <p className="muted doc-blank">Nothing has been written yet.{canEdit ? ' Choose the pencil to start.' : ''}</p>}
           <DocumentIdContext.Provider value={id}>
             {shownSections.map((s) => (
@@ -240,28 +244,7 @@ export function DocumentPage() {
             ))}
           </DocumentIdContext.Provider>
         </main>
-        <aside className="doc-side">
-          <div className="card doc-side-card doc-accent-card doc-accent-primary">
-            <div className="card-head"><div><h3>About</h3></div></div>
-            <div className="card-body">
-              <dl className="doc-facts">
-                <div><dt>Owner</dt><dd><Avatar name={d.owner.name} userId={d.owner.id} /> {d.owner.name}</dd></div>
-                <div><dt>Belongs to</dt><dd>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{d.projectKey} · {d.projectName}</Link> : d.teamName ?? 'The organization'}</dd></div>
-                <div><dt>Visible to</dt><dd><Icon name={VISIBILITY[d.visibility].icon} size={14} /> {VISIBILITY[d.visibility].label}</dd></div>
-                {d.tags.length > 0 && <div><dt>Tags</dt><dd className="doc-tags">{d.tags.map((t) => <span className="doc-tag" key={t}>{t}</span>)}</dd></div>}
-                <div><dt>Updated</dt><dd title={formatDate(d.updatedAt)}>{timeAgo(d.updatedAt)}</dd></div>
-                <div><dt>Created</dt><dd>{formatDate(d.createdAt)}</dd></div>
-              </dl>
-            </div>
-          </div>
-          {isArtifact && <ArtifactCard detail={detail} canEdit={canEdit} />}
-          <RequirementsCard documentId={id} canEdit={editable} />
-          <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />
-          <DocumentSecrets documentId={id} canEdit={editable} />
-          <DocumentFiles documentId={id} canEdit={editable} />
-          <CommentsCard id={id} title={`${d.key} · ${d.title}`} />
-          <ActivityCard id={id} title={`${d.key} · ${d.title}`} />
-        </aside>
+        <Inspector id={id} detail={detail} isArtifact={isArtifact} canEdit={canEdit} editable={editable} canLink={detail.can.link && canWrite} />
       </div>
       )}
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
@@ -271,5 +254,49 @@ export function DocumentPage() {
       {panel === 'submit' && review.data && <SubmitModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
       {panel === 'publishApproved' && review.data && <PublishApprovedModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
     </div>
+  );
+}
+
+type InspectorTab = 'artifact' | 'links' | 'requirements' | 'files' | 'secrets' | 'comments' | 'activity';
+
+/**
+ * Everything around a document, in one tabbed panel instead of a column of separate cards: the build artifact (for artifact documents),
+ * linked work, requirements, files, secrets, comments and activity. The open tab is remembered per browser.
+ */
+function Inspector({ id, detail, isArtifact, canEdit, editable, canLink }: { id: string; detail: DocumentDetail; isArtifact: boolean; canEdit: boolean; editable: boolean; canLink: boolean }) {
+  const d = detail.item;
+  const tabs: { id: InspectorTab; label: string; icon: 'upload' | 'git' | 'checks' | 'paperclip' | 'key' | 'message' | 'activity' }[] = [
+    ...(isArtifact ? [{ id: 'artifact' as const, label: 'Artifact', icon: 'upload' as const }] : []),
+    { id: 'links', label: 'Linked work', icon: 'git' },
+    { id: 'requirements', label: 'Requirements', icon: 'checks' },
+    { id: 'files', label: 'Files', icon: 'paperclip' },
+    { id: 'secrets', label: 'Secrets', icon: 'key' },
+    { id: 'comments', label: 'Comments', icon: 'message' },
+    { id: 'activity', label: 'Activity', icon: 'activity' },
+  ];
+  const [tab, setTabState] = useState<InspectorTab>(() => {
+    try { const t = localStorage.getItem('pf_doc_inspector') as InspectorTab | null; return t && tabs.some((x) => x.id === t) ? t : tabs[0].id; } catch { return tabs[0].id; }
+  });
+  const setTab = (t: InspectorTab) => { setTabState(t); try { localStorage.setItem('pf_doc_inspector', t); } catch { /* storage unavailable */ } };
+  const current = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
+  return (
+    <aside className="doc-side ds-inspector" aria-label="Linked work, files and discussion">
+      <div className="ds-inspector-tabs" role="tablist">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''} title={t.label} onClick={() => setTab(t.id)}>
+            <Icon name={t.icon} size={14} /><span>{t.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="ds-inspector-body" role="tabpanel">
+        {current === 'artifact' && <ArtifactCard detail={detail} canEdit={canEdit} />}
+        {current === 'links' && <LinkedWork documentId={id} canLink={canLink} />}
+        {current === 'requirements' && <RequirementsCard documentId={id} canEdit={editable} />}
+        {current === 'files' && <DocumentFiles documentId={id} canEdit={editable} />}
+        {current === 'secrets' && <DocumentSecrets documentId={id} canEdit={editable} />}
+        {current === 'comments' && <CommentsCard id={id} title={`${d.key} · ${d.title}`} />}
+        {current === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
+      </div>
+    </aside>
   );
 }
