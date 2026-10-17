@@ -16,7 +16,7 @@ public class PasskeySignInController(PasskeyService passkeys) : ApiControllerBas
     public async Task<IActionResult> Verify([FromBody] PasskeyFinishRequest req, CancellationToken ct)
     {
         var s = await passkeys.FinishSignInAsync(req, ct);
-        AuthCookies.WriteRefresh(Response, Request.IsHttps, s);
+        AuthCookies.WriteRefresh(Response, AuthCookies.IsSecure(Request), s);
         var body = Request.Headers["X-Token-Delivery"] == "body";
         return Ok(new AuthResponse(s.AccessToken, s.ExpiresAt, s.User, body ? s.RefreshToken : null));
     }

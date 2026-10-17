@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
-import { setAccessToken, setAuthLostHandler, refreshSession } from '../api/client';
+import { setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { disableNativePush } from '../lib/native';
 import { setAppZones } from '../lib/zone';
@@ -114,6 +114,24 @@ export const useAuth = create<AuthState>((set, get) => ({
 setAuthLostHandler(() => {
   queryClient.clear();
   useAuth.setState({ status: 'anonymous', ctx: null });
+});
+
+// Every refresh names this tab's workspace; keep the API client told which one that is.
+useAuth.subscribe((s) => setTabWorkspace(s.ctx?.current?.id ?? null));
+
+/**
+ * A refresh came back for another workspace than this tab shows (the person was removed from it, or it was suspended). Load the context
+ * the token now carries; the organization router then either re-activates the workspace in the address or moves to one that works. One at a
+ * time, so overlapping refreshes cannot bounce between workspaces.
+ */
+let reconciling = false;
+setWorkspaceMismatchHandler(() => {
+  if (reconciling || useAuth.getState().status !== 'authenticated') return;
+  reconciling = true;
+  queueMicrotask(() => {
+    queryClient.clear();
+    useAuth.getState().reloadContext().catch(() => undefined).finally(() => { reconciling = false; });
+  });
 });
 
 /**

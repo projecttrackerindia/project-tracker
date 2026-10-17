@@ -26,7 +26,8 @@ public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerif
 public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null);
 
 /// <summary>Result of login / refresh. The refresh token is delivered by the API layer (cookie or body).</summary>
-public record AuthResult(string AccessToken, DateTime ExpiresAt, UserDto User, string RefreshToken, DateTime RefreshExpiresAt);
+/// <summary>A signed-in session. RefreshToken is null when the caller keeps the refresh token it already has (see AuthService.RefreshAsync).</summary>
+public record AuthResult(string AccessToken, DateTime ExpiresAt, UserDto User, string? RefreshToken, DateTime RefreshExpiresAt);
 /// <summary>Either a session, or (when two-step verification is on) a challenge to answer with a code.</summary>
 public record LoginOutcome(AuthResult? Session, string? MfaChallenge);
 public record RegisterResult(Guid UserId, bool RequiresEmailVerification);
@@ -164,7 +165,17 @@ public class AuthService(
             AppTelemetry.Count(AppTelemetry.Logins, "wrong_password");
             throw new UnauthorizedException("Invalid email or password.", "INVALID_CREDENTIALS");
         }
-        if (user.LockoutEnd is { } lockEnd && lockEnd > now)
+        // The password is checked first, so neither a lockout nor an organization's single sign-on rule tells a stranger that the address
+        // has an account, and a stranger cannot keep an account locked by guessing: while locked, wrong guesses get the generic answer.
+        var passwordOk = user.IsActive && hasher.Verify(user.PasswordHash, req.Password);
+        var locked = user.LockoutEnd is { } lockEnd && lockEnd > now;
+        if (!passwordOk)
+        {
+            if (!locked) await RegisterFailedPasswordAsync(user, now, ct);
+            AppTelemetry.Count(AppTelemetry.Logins, locked ? "locked" : "wrong_password");
+            throw new UnauthorizedException("Invalid email or password.", "INVALID_CREDENTIALS");
+        }
+        if (locked)
         {
             AppTelemetry.Count(AppTelemetry.Logins, "locked");
             throw new TooManyRequestsException("Too many failed sign-in attempts. Try again later.", "ACCOUNT_LOCKED");
@@ -172,19 +183,6 @@ public class AuthService(
         // An organization that requires its own single sign-on for this email's domain: the password is not the way in (Owners excepted).
         if (await ssoPolicy.EnforcedForAsync(user.Email, user.Id, ct) is { } enforced)
             throw new ForbiddenException($"{enforced.Name} is required for this account. Use \"Sign in with SSO\".", "SSO_REQUIRED");
-
-        if (!user.IsActive || !hasher.Verify(user.PasswordHash, req.Password))
-        {
-            if (user.IsActive && ++user.FailedLoginCount >= _opt.MaxFailedLogins)
-            {
-                user.LockoutEnd = now.AddMinutes(_opt.LockoutMinutes);
-                user.FailedLoginCount = 0;
-                recorder.Audit("user.locked_out", "User", user.Id, userId: user.Id);
-            }
-            await db.SaveChangesAsync(ct);
-            AppTelemetry.Count(AppTelemetry.Logins, "wrong_password");
-            throw new UnauthorizedException("Invalid email or password.", "INVALID_CREDENTIALS");
-        }
         if (!user.EmailVerified && _opt.RequireEmailVerification)
             throw new ForbiddenException("Verify your email address before signing in.", "EMAIL_NOT_VERIFIED");
 
@@ -196,6 +194,18 @@ public class AuthService(
             return new LoginOutcome(null, tokens.CreateChallenge(user.Id, TimeSpan.FromMinutes(5)));
         }
         return new LoginOutcome(await SignInAsync(user, "password", ct), null);
+    }
+
+    /// <summary>Counts a wrong password towards the lockout (sign-in and changing the password share the same budget).</summary>
+    private async Task RegisterFailedPasswordAsync(User user, DateTime now, CancellationToken ct)
+    {
+        if (user.IsActive && ++user.FailedLoginCount >= _opt.MaxFailedLogins)
+        {
+            user.LockoutEnd = now.AddMinutes(_opt.LockoutMinutes);
+            user.FailedLoginCount = 0;
+            recorder.Audit("user.locked_out", "User", user.Id, userId: user.Id);
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Second step of a sign-in: the challenge from the password step plus an authenticator code or a recovery code.</summary>
@@ -248,6 +258,13 @@ public class AuthService(
         return memberships.FirstOrDefault()?.Id;
     }
 
+    /// <summary>The tab's own workspace while the person is still in it, otherwise the session's (or, failing that, any they are in).</summary>
+    private async Task<Guid?> RefreshWorkspaceAsync(Guid userId, Guid? requested, Guid? sessionWorkspace, CancellationToken ct)
+    {
+        if (requested is { } r && await PickWorkspaceAsync(userId, r, ct) == r) return r;
+        return await PickWorkspaceAsync(userId, sessionWorkspace, ct);
+    }
+
     /// <summary>A short-lived proof that the first step of a sign-in succeeded; the second step (an authenticator code) completes it.</summary>
     public string CreateMfaChallenge(User user) => tokens.CreateChallenge(user.Id, TimeSpan.FromMinutes(5));
 
@@ -278,7 +295,15 @@ public class AuthService(
     }
 
     /// <summary>Rotates the refresh token. Presenting an already-used token revokes the whole session.</summary>
-    public async Task<AuthResult> RefreshAsync(string? rawToken, CancellationToken ct = default)
+    public Task<AuthResult> RefreshAsync(string? rawToken, CancellationToken ct = default) => RefreshAsync(rawToken, null, ct);
+
+    /// <summary>
+    /// Rotates the refresh token, issuing the access token for <paramref name="requestedWorkspace"/> (the workspace the calling tab is in) when the
+    /// person is still a member of it, otherwise for the session's workspace. The token is claimed atomically, so two simultaneous refreshes
+    /// cannot both rotate it. A second use within the grace window (another tab of the same browser) gets a fresh access token for the same
+    /// session and no new refresh token (the browser already holds the one the first request issued). A later reuse revokes the whole session.
+    /// </summary>
+    public async Task<AuthResult> RefreshAsync(string? rawToken, Guid? requestedWorkspace, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(rawToken)) throw new UnauthorizedException("Refresh token missing.", "INVALID_REFRESH_TOKEN");
 
@@ -291,22 +316,38 @@ public class AuthService(
         if (session is null || session.RevokedAt is not null || stored.ExpiresAt <= now)
             throw new UnauthorizedException("Session expired. Please sign in again.", "SESSION_EXPIRED");
 
-        if (stored.UsedAt is { } usedAt)
+        // Claim the token in one statement: of two simultaneous requests exactly one sees "unused" and rotates it.
+        var storedId = stored.Id;
+        var claimed = stored.UsedAt is null
+            && await db.RefreshTokens.Where(t => t.Id == storedId && t.UsedAt == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, (DateTime?)now), ct) == 1;
+        if (!claimed)
         {
+            var current = await db.RefreshTokens.AsNoTracking().Where(t => t.Id == storedId)
+                .Select(t => new { t.UsedAt, t.ReplacedByTokenId }).FirstAsync(ct);
+            var usedAt = current.UsedAt ?? now;
             // A near-simultaneous second request (e.g. two tabs) is benign; anything later is token theft.
             if ((now - usedAt).TotalSeconds > _opt.RefreshReuseGraceSeconds)
             {
                 session.RevokedAt = now;
                 recorder.Audit("session.reuse_detected", "UserSession", session.Id, userId: stored.UserId);
                 await db.SaveChangesAsync(ct);
+                throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
             }
-            throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
+            // Within the grace window: only while the token that replaced it is still the live one (or is being written right now).
+            var successorLive = current.ReplacedByTokenId is not { } successorId
+                || await db.RefreshTokens.AnyAsync(t => t.Id == successorId && t.UsedAt == null && t.ExpiresAt > now, ct);
+            if (!successorLive) throw new UnauthorizedException("Refresh token has already been used.", "REFRESH_TOKEN_REUSED");
+            var graceUser = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
+            if (graceUser is null || !graceUser.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
+            var graceWorkspace = await RefreshWorkspaceAsync(graceUser.Id, requestedWorkspace, session.WorkspaceId, ct);
+            var graceAccess = tokens.CreateAccessToken(graceUser, session.Id, graceWorkspace);
+            return new AuthResult(graceAccess.Token, graceAccess.ExpiresAt, ToDto(graceUser), null, stored.ExpiresAt);
         }
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
         if (user is null || !user.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
 
-        var workspaceId = await PickWorkspaceAsync(user.Id, session.WorkspaceId, ct);
+        var workspaceId = await RefreshWorkspaceAsync(user.Id, requestedWorkspace, session.WorkspaceId, ct);
         session.WorkspaceId = workspaceId;
         session.LastSeenAt = now;
         session.IpAddress = ctx.IpAddress ?? session.IpAddress;
@@ -418,8 +459,14 @@ public class AuthService(
     {
         var userId = ctx.RequireUserId();
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
+        var now = clock.Now;
+        if (user.LockoutEnd is { } lockEnd && lockEnd > now)
+            throw new TooManyRequestsException("Too many failed attempts. Try again later.", "ACCOUNT_LOCKED");
         if (!hasher.Verify(user.PasswordHash, req.CurrentPassword))
+        {
+            await RegisterFailedPasswordAsync(user, now, ct);   // guessing the current password counts like guessing at sign-in
             throw new ValidationException("currentPassword", "Current password is incorrect.");
+        }
         await passwordPolicy.EnsureAcceptableAsync("newPassword", req.NewPassword, user.Email, user.DisplayName, user, ct);
         if (user.MustChangePassword && hasher.Verify(user.PasswordHash, req.NewPassword))
             throw new ValidationException("newPassword", "Choose a password different from the temporary one you were given.");

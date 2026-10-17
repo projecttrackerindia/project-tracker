@@ -3707,7 +3707,14 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Number")
+                        .IsUnique();
+
                     b.HasIndex("TenantId", "IssuedAt");
+
+                    b.HasIndex("TenantId", "ProviderReference")
+                        .IsUnique()
+                        .HasFilter("\"ProviderReference\" IS NOT NULL");
 
                     b.ToTable("Invoices");
                 });

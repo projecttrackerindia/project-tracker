@@ -19,11 +19,11 @@ public class BillingController(BillingService billing, InvoiceService invoices) 
     [HttpGet("quote")]
     public async Task<IActionResult> Quote([FromQuery] string? planCode, [FromQuery] int? seats, [FromQuery] string? period, CancellationToken ct) => Ok(await billing.QuoteAsync(planCode, seats, period, ct));
 
-    [HttpPost("checkout")]
+    [HttpPost("checkout"), ExternalOperation]
     public async Task<IActionResult> Checkout([FromBody] CheckoutRequest req, CancellationToken ct) => Ok(await billing.CheckoutAsync(req, ct));
 
     /// <summary>The payment window's result, sent by the browser with the provider's signature.</summary>
-    [HttpPost("confirm")]
+    [HttpPost("confirm"), ExternalOperation]
     public async Task<IActionResult> Confirm([FromBody] ConfirmPaymentRequest req, CancellationToken ct) => Ok(await billing.ConfirmPaymentAsync(req, ct));
 
     // ---- invoices people can keep

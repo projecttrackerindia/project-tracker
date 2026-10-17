@@ -27,6 +27,52 @@ describe('AI request limits', () => {
   });
 });
 
+const tokenFor = (wid: string) => `h.${btoa(JSON.stringify({ wid })).replace(/=+$/, '')}.s`;
+
+describe('session refresh across tabs', () => {
+  it('names the tab workspace and reports a token issued for another one', async () => {
+    const { client } = await setup();
+    const mismatch = vi.fn();
+    client.setWorkspaceMismatchHandler(mismatch);
+    client.setTabWorkspace('w-tab');
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { accessToken: tokenFor('w-other') } })));
+    vi.stubGlobal('fetch', fetch);
+    await client.refreshSession();
+    expect(fetch.mock.calls[0][1].headers['X-Workspace-Id']).toBe('w-tab');
+    expect(mismatch).toHaveBeenCalledWith('w-other');
+  });
+
+  it('does not report anything when the token is for the tab workspace', async () => {
+    const { client } = await setup();
+    const mismatch = vi.fn();
+    client.setWorkspaceMismatchHandler(mismatch);
+    client.setTabWorkspace('w-tab');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { accessToken: tokenFor('w-tab') } }))));
+    await client.refreshSession();
+    expect(client.workspaceOfToken(client.getAccessToken())).toBe('w-tab');
+    expect(mismatch).not.toHaveBeenCalled();
+  });
+
+  it('runs the refresh under the shared browser lock when there is one', async () => {
+    const { client } = await setup();
+    const request = vi.fn((_name: string, work: () => Promise<unknown>) => work());
+    vi.stubGlobal('navigator', { locks: { request } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(session()));
+    expect((await client.refreshSession())?.accessToken).toBe('renewed');
+    expect(request).toHaveBeenCalledWith('pt-refresh', expect.any(Function));
+  });
+
+  it('ends a lost session when an upload cannot be renewed', async () => {
+    const { client } = await setup();
+    const lost = vi.fn();
+    client.setAuthLostHandler(lost);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(error(401)).mockResolvedValueOnce(error(401)));
+    await expect(client.uploadFile('/files', new File(['x'], 'x.txt'))).rejects.toMatchObject({ status: 401 });
+    expect(lost).toHaveBeenCalledOnce();
+    expect(client.getAccessToken()).toBeNull();
+  });
+});
+
 describe('protected downloads', () => {
   it('passes the view cancellation signal through to the protected file request', async () => {
     const { client, saveFile } = await setup();

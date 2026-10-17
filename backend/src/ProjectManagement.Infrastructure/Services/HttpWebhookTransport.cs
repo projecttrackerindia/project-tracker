@@ -20,6 +20,8 @@ public sealed class HttpWebhookTransport : IWebhookTransport, IDisposable
         var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
+            // A system proxy would make the connection itself, past the address checks below.
+            UseProxy = false,
             ConnectTimeout = TimeSpan.FromSeconds(5),
             PooledConnectionLifetime = TimeSpan.FromMinutes(2),
             ConnectCallback = async (context, ct) =>

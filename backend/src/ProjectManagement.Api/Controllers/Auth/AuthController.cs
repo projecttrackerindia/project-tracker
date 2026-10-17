@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Auth;
 using ProjectManagement.Application.Features.Notifications;
@@ -14,12 +16,24 @@ public static class AuthCookies
     public const string Refresh = "pm_refresh";
     public const string Binding = "pm_signin";
 
-    public static void WriteRefresh(HttpResponse response, bool https, AuthResult r) =>
+    /// <summary>
+    /// Whether cookies must be Secure: the request came over https, or the app is published on an https address (behind a proxy that
+    /// terminates TLS without forwarding the scheme, Request.IsHttps is false even though the browser is on https).
+    /// </summary>
+    public static bool IsSecure(HttpRequest request) =>
+        request.IsHttps
+        || (request.HttpContext.RequestServices.GetService<IOptions<AppOptions>>()?.Value.WebBaseUrl ?? "").StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Sets the refresh cookie; a result without a new refresh token (a second tab within the grace window) leaves the cookie as it is.</summary>
+    public static void WriteRefresh(HttpResponse response, bool https, AuthResult r)
+    {
+        if (r.RefreshToken is null) return;
         response.Cookies.Append(Refresh, r.RefreshToken, new CookieOptions
         {
             HttpOnly = true, Secure = https, SameSite = SameSiteMode.Strict, Path = "/api/v1/auth",
             Expires = r.RefreshExpiresAt, IsEssential = true,
         });
+    }
 }
 
 [Route("api/v1/auth")]
@@ -36,11 +50,11 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
 
     private AuthResponse Deliver(AuthResult r)
     {
-        AuthCookies.WriteRefresh(Response, Request.IsHttps, r);
+        AuthCookies.WriteRefresh(Response, AuthCookies.IsSecure(Request), r);
         return new AuthResponse(r.AccessToken, r.ExpiresAt, r.User, BodyDelivery ? r.RefreshToken : null);
     }
 
-    private void ClearCookie() => Response.Cookies.Delete(CookieName, new CookieOptions { Path = "/api/v1/auth" });
+    private void ClearCookie() => Response.Cookies.Delete(CookieName, new CookieOptions { Path = "/api/v1/auth", Secure = AuthCookies.IsSecure(Request), SameSite = SameSiteMode.Strict });
 
     [HttpPost("register"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req, CancellationToken ct) =>
@@ -83,8 +97,11 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
                 throw new ForbiddenException("Missing X-Requested-With header.", "CSRF_CHECK_FAILED");
             token = Request.Cookies[CookieName];
         }
-        try { return Ok(Deliver(await auth.RefreshAsync(token, ct))); }
-        catch (UnauthorizedException) { ClearCookie(); throw; }
+        // The tab's own workspace (the app sends it), so a switch in one tab does not move every other tab on their next refresh.
+        Guid? workspace = Guid.TryParse(Request.Headers["X-Workspace-Id"].ToString(), out var w) ? w : null;
+        // Only a session that is really over loses its cookie; a token another tab just rotated must not sign this browser out.
+        try { return Ok(Deliver(await auth.RefreshAsync(token, workspace, ct))); }
+        catch (UnauthorizedException ex) when (ex.Code is "INVALID_REFRESH_TOKEN" or "SESSION_EXPIRED" or "ACCOUNT_DISABLED") { ClearCookie(); throw; }
     }
 
     [HttpPost("logout"), AllowAnonymous]

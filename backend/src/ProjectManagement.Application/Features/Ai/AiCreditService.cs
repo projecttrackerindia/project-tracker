@@ -142,7 +142,9 @@ public sealed class AiCreditLease(AiCreditService service, Guid id, int amount) 
     {
         if (complete) return;
         settling = true;
-        await service.CompleteAsync(id, charged, ct); complete = true;
+        // A settlement that fails must not leave the reservation held forever: once it has failed, disposing releases it.
+        try { await service.CompleteAsync(id, charged, ct); complete = true; }
+        finally { settling = false; }
     }
     public async ValueTask DisposeAsync()
     {

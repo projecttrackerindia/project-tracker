@@ -32,8 +32,9 @@ public class ResumePurchaseService(IAppDbContext db,ICurrentContext ctx,ResumeSe
         }
         if(await Mine.CountAsync(p=>p.Status!="paid"&&p.Status!="refunded",ct)>=20)throw new ConflictException("Resolve pending purchases before starting another.");
         var file=await resumes.PrepareCleanAsync(req.ResumeId,req.Number,req.TemplateId,req.Format,ct);
-        var tax=(long)decimal.Round(4900*options.Value.TaxPercent!.Value/100,0,MidpointRounding.AwayFromZero);
-        var row=new ResumeExportPurchase{UserId=ctx.RequireUserId(),ResumeVersionId=v.Id,TemplateId=req.TemplateId,Format=req.Format,TaxMinor=tax,TaxPercent=options.Value.TaxPercent.Value,TaxLabel=options.Value.TaxLabel.Trim(),ArtifactSha256=Convert.ToHexString(SHA256.HashData(file.Bytes)),ArtifactKey=$"resume-exports/{ctx.RequireUserId():N}/{Guid.NewGuid():N}"};
+        var row=new ResumeExportPurchase{UserId=ctx.RequireUserId(),ResumeVersionId=v.Id,TemplateId=req.TemplateId,Format=req.Format,TaxPercent=options.Value.TaxPercent!.Value,TaxLabel=options.Value.TaxLabel.Trim(),ArtifactSha256=Convert.ToHexString(SHA256.HashData(file.Bytes)),ArtifactKey=$"resume-exports/{ctx.RequireUserId():N}/{Guid.NewGuid():N}"};
+        // Tax on the price actually charged for this purchase, not on a separate copy of it.
+        row.TaxMinor=(long)decimal.Round(row.BaseMinor*row.TaxPercent/100,0,MidpointRounding.AwayFromZero);
         // Persist one immutable fulfillment record before contacting the gateway. Unknown outcomes never create replacement orders.
         db.ResumeExportPurchases.Add(row);await db.SaveChangesAsync(ct);await prepare.CommitIfOwnedAsync(ct);
         await using(var bytes=new MemoryStream(file.Bytes))await storage.SaveAsync(row.ArtifactKey,bytes,ct);

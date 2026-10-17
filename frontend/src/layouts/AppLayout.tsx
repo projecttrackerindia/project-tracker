@@ -157,6 +157,7 @@ function GlobalSearch() {
   const ref = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
+  const searchWid = useAuth((s) => s.ctx?.current?.id);
   useClickOutside(ref, () => setOpen(false));
 
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 250); return () => clearTimeout(t); }, [q]);
@@ -171,7 +172,7 @@ function GlobalSearch() {
   }, []);
 
   const { data, isFetching } = useQuery({
-    queryKey: ['search', debounced], queryFn: () => insightApi.search(debounced), enabled: debounced.length >= 2,
+    queryKey: ['search', searchWid, debounced], queryFn: () => insightApi.search(debounced), enabled: debounced.length >= 2,
   });
 
   const go = (h: { type: string; id: string; projectId: string | null; taskId: string | null }) => {

@@ -116,18 +116,13 @@ public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     // ------------------------------------------------------------------ sign in (anonymous)
 
     /// <summary>
-    /// With an email, the passkeys of that account are offered; without one, the device picks from the passkeys it holds for this site. An unknown email
-    /// gets the same shape of answer as a known one (options over no credentials), so nothing is revealed about who has an account.
+    /// The device picks from the passkeys it holds for this site (discoverable credentials). The answer never lists an account's credentials, whatever
+    /// email was typed, so it reveals nothing about who has an account or a passkey. The email is accepted for compatibility and ignored.
     /// </summary>
     public async Task<PasskeyOptionsDto> BeginSignInAsync(PasskeyLoginOptionsRequest req, CancellationToken ct = default)
     {
+        _ = req;
         var allowed = new List<PublicKeyCredentialDescriptor>();
-        var email = Text.NormalizeEmail(req.Email ?? "");
-        if (email.Length > 0)
-        {
-            var ids = await (from p in db.PasskeyCredentials.AsNoTracking() join u in db.Users on p.UserId equals u.Id where u.NormalizedEmail == email && u.IsActive select p.CredentialId).ToListAsync(ct);
-            allowed = ids.Select(id => new PublicKeyCredentialDescriptor(B64.Decode(id))).ToList();
-        }
         var options = Relying().GetAssertionOptions(new GetAssertionOptionsParams { AllowedCredentials = allowed, UserVerification = UserVerificationRequirement.Required });
         return await StoreAsync(null, "login", options.ToJson(), ct);
     }

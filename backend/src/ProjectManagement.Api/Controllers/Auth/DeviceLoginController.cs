@@ -18,7 +18,7 @@ public class DeviceLoginController(DeviceLoginService login) : ApiControllerBase
     {
         var r = await login.PollAsync(id, req, ct);
         if (r.Session is null) return Ok(new { status = r.Status });
-        AuthCookies.WriteRefresh(Response, Request.IsHttps, r.Session);
+        AuthCookies.WriteRefresh(Response, AuthCookies.IsSecure(Request), r.Session);
         var body = Request.Headers["X-Token-Delivery"] == "body";
         return Ok(new { status = r.Status, auth = new AuthResponse(r.Session.AccessToken, r.Session.ExpiresAt, r.Session.User, body ? r.Session.RefreshToken : null) });
     }

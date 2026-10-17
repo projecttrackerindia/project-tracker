@@ -35,7 +35,8 @@ public static class SqliteEnterpriseUpgrade
         "20261012171600_PlannedTimesheetLeave",
         "20261013101012_AutomaticStageScheduling",
         "20261013175049_RecurringProjectMeetings",
-        "20261018000050_WorkspaceTimeZone"
+        "20261018000050_WorkspaceTimeZone",
+        "20261018000100_UniqueInvoiceReferences"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

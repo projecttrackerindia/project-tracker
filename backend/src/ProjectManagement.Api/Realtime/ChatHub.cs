@@ -97,7 +97,7 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
 /// the connection is made), never from anything the browser says afterwards.
 /// </summary>
 [Authorize]
-public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock) : Hub
+public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock, IServiceProvider services) : Hub
 {
     private const string TenantKey = "tenant", UserKey = "user", NameKey = "name", WatchingKey = "watching";
 
@@ -166,12 +166,14 @@ public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock
     {
         var parts = key.Split(':');
         if (parts.Length != 2 || !Guid.TryParse(parts[1], out var id)) return null;
-        var exists = parts[0] switch
-        {
-            "task" => await db.Tasks.IgnoreQueryFilters().AnyAsync(t => t.Id == id && t.TenantId == tenant && !t.IsDeleted),
-            "work" => await db.WorkTasks.IgnoreQueryFilters().AnyAsync(t => t.Id == id && t.TenantId == tenant && !t.IsDeleted),
-            _ => false,
-        };
+        if (parts[0] is not ("task" or "work") || Context.Items[UserKey] is not Guid user) return null;
+        // The same reach an API request of this person has (membership, guests, team-limited projects), so nobody can learn who is looking
+        // at a task they could not open themselves. The normal data filters then apply to the lookups below.
+        try { await ProjectManagement.Application.Services.WorkspaceExecutionPrincipal.ConfigureAsync(services, user, tenant, null, Context.ConnectionAborted); }
+        catch (ProjectManagement.Application.Exceptions.AppException) { return null; }
+        var exists = parts[0] == "task"
+            ? await db.Tasks.AsNoTracking().AnyAsync(t => t.Id == id)
+            : await db.WorkTasks.AsNoTracking().AnyAsync(t => t.Id == id);
         return exists ? $"{parts[0]}:{id:N}" : null;
     }
 
