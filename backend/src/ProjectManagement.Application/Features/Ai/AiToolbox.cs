@@ -1247,7 +1247,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             ?? throw ProjectLookupError("No such project.");
         // IDs and keys use authoritative queries before the bounded name search.
         var key = t.ToUpperInvariant();
-        var keyed = await visible.Where(p => p.Key == key).Select(p => new ProjectRef(p.Id, p.Key, p.Name)).SingleOrDefaultAsync(ct);
+        var keyed = await visible.Where(p => p.Key == key).Select(p => new ProjectRef(p.Id, p.Key, p.Name)).FirstOrDefaultAsync(ct);
         if (keyed is not null) return keyed;
         var all = await visible.OrderBy(p => p.Id).Select(p => new ProjectRef(p.Id, p.Key, p.Name)).Take(501).ToListAsync(ct);
         if (all.Count > 500) throw ProjectLookupError("There are too many visible projects for a safe name match. Please provide the exact project key or ID; no project was created.");

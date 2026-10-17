@@ -237,9 +237,38 @@ public class TaskService(
             await notifications.AddAsync(who, NotificationType.TaskAssigned, $"You were assigned {key}", task.Title, $"/projects/{projectId}?task={task.Id}");
         await automation.RunAsync(task, key, AutomationTrigger.TaskCreated, task.StatusId, task.Priority, (req.LabelIds ?? []).Distinct().ToList(), ct);
         project.UpdatedAt = now;
-        await db.SaveChangesAsync(ct);
+        await SaveNewTaskAsync(task, project.Key, ct);
         if (parentTask is null) await completion.SyncStagesAsync([task.StageId], ct);
         return await GetDtoAsync(task.Id, ct);
+    }
+
+    /// <summary>
+    /// Saves a new task. Numbers are "highest so far + 1", so a task created at the same moment (another person, a CSV import) can take the
+    /// same number first: then the next free one is used, and what this save says about the task (its activity line, its notifications)
+    /// is updated to the new key, before trying again - up to three times.
+    /// </summary>
+    private async Task SaveNewTaskAsync(TaskItem task, string projectKey, CancellationToken ct)
+    {
+        for (var retry = 0; ; retry++)
+        {
+            try { await db.SaveChangesAsync(ct); return; }
+            catch (DbUpdateException ex) when (retry < 3 && DbErrors.IsTaskNumberTaken(ex))
+            {
+                var oldKey = $"{projectKey}-{task.Number}";
+                task.Number = await NextNumberAsync(task.ProjectId, ct);
+                var newKey = $"{projectKey}-{task.Number}";
+                var pattern = new System.Text.RegularExpressions.Regex(System.Text.RegularExpressions.Regex.Escape(oldKey) + @"(?!\d)");
+                string? Rekey(string? text) => text is null ? null : pattern.Replace(text, newKey);
+                foreach (var a in db.Activities.Local.Where(a => a.EntityId == task.Id && db.Activities.Entry(a).State == EntityState.Added).ToList())
+                    a.Summary = Rekey(a.Summary)!;
+                var link = task.Id.ToString();
+                foreach (var n in db.Notifications.Local.Where(n => n.Link != null && n.Link.Contains(link, StringComparison.Ordinal) && db.Notifications.Entry(n).State == EntityState.Added).ToList())
+                {
+                    n.Title = Rekey(n.Title)!;
+                    n.Body = Rekey(n.Body);
+                }
+            }
+        }
     }
 
     public async Task<TaskDto> UpdateAsync(Guid id, UpdateTaskRequest req, CancellationToken ct = default)

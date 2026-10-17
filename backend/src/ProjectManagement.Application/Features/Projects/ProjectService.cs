@@ -267,7 +267,12 @@ public partial class ProjectService(
 
         recorder.Activity("project.created", "Project", project.Id, $"Created project \"{project.Name}\" ({timeline.Name} timeline)", project.Id);
         recorder.Audit("project.created", "Project", project.Id, newValue: new { project.Name, project.Key });
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException ex) when (DbErrors.IsProjectKeyTaken(ex))
+        {
+            // Someone created a project with the same key a moment ago.
+            throw new ConflictException($"A project with key \"{key}\" already exists. Please try again.", "KEY_TAKEN");
+        }
         return await BuildDetailAsync(project, ct);
     }
 
@@ -311,15 +316,26 @@ public partial class ProjectService(
             var key = requested.Trim().ToUpperInvariant();
             if (!ProjectMetrics.KeyPattern().IsMatch(key))
                 throw new ValidationException("key", "Key must be 2-10 characters: letters and digits, starting with a letter.");
-            if (await db.Projects.AnyAsync(p => p.Key == key, ct))
+            if (await KeyTakenAsync(key, ct))
                 throw new ConflictException($"A project with key \"{key}\" already exists.", "KEY_TAKEN");
             return key;
         }
         var baseKey = Text.KeyFrom(name);
         var candidate = baseKey;
-        for (var n = 2; await db.Projects.AnyAsync(p => p.Key == candidate, ct); n++) candidate = $"{baseKey}{n}";
+        for (var n = 2; await KeyTakenAsync(candidate, ct); n++) candidate = $"{baseKey}{n}";
         return candidate;
     }
+
+    /// <summary>
+    /// A key is unique in the workspace (an index enforces it), including projects this person cannot see and deleted projects - whose task
+    /// keys (ATL-12) still appear in history, links and commits. So this looks past the per-person and soft-delete filters on purpose.
+    /// </summary>
+    private Task<bool> KeyTakenAsync(string key, CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId();
+        return db.Projects.IgnoreQueryFilters().AnyAsync(p => p.TenantId == tid && p.Key == key, ct);
+    }
+
 
     /// <summary>
     /// The project group a project is put in: required, it must exist, and it must be active (an inactive group keeps its projects but takes no new ones,

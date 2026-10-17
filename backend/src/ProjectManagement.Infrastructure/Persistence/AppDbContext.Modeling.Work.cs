@@ -15,7 +15,8 @@ public partial class AppDbContext
     {
         b.Entity<Project>(e =>
         {
-            e.HasIndex(x => new { x.TenantId, x.Key });
+            // A key names the project's tasks (ATL-12) in links, commits and history, so it is unique in the workspace - deleted projects included.
+            e.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
             e.HasIndex(x => new { x.TenantId, x.Status });
             e.HasIndex(x => new { x.TenantId, x.DueDate });
             e.Property(x => x.Name).HasMaxLength(120);
@@ -551,6 +552,9 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.WorkTaskId, x.WorkDate });
             e.HasIndex(x => new { x.UserId, x.WorkDate });
             e.HasIndex(x => new { x.ProjectId, x.WorkDate });
+            // One running timer per person in a workspace, also when two are started at the same moment.
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique().HasFilter("\"StartedAt\" IS NOT NULL AND \"EndedAt\" IS NULL")
+                .HasDatabaseName("IX_TimeEntries_TenantId_UserId_Running");
             e.Property(x => x.Note).HasMaxLength(500);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TaskItem>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);

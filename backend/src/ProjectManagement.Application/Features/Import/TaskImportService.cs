@@ -323,11 +323,12 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
             labelIds[name.ToLowerInvariant()] = label.Id;
         }
 
-        var number = await db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == projectId).MaxAsync(t => (int?)t.Number, ct) ?? 0;
+        var number = await HighestNumberAsync(projectId, ct);
         var positions = (await db.Tasks.Where(t => t.ProjectId == projectId).GroupBy(t => t.StatusId).Select(g => new { g.Key, Max = g.Max(t => t.Position) }).ToListAsync(ct))
             .ToDictionary(x => x.Key, x => x.Max);
         var doneStatuses = lk.Statuses.Where(s => s.Category == StatusCategory.Done).Select(s => s.Id).ToHashSet();
 
+        var created = new List<TaskItem>(rows.Count);
         foreach (var r in rows)
         {
             var task = new TaskItem
@@ -338,6 +339,7 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
             };
             positions[r.StatusId] = task.Position;
             db.Tasks.Add(task);
+            created.Add(task);
             foreach (var (fieldId, value) in r.Custom) db.CustomFieldValues.Add(new CustomFieldValue { TenantId = tid, TaskId = task.Id, FieldId = fieldId, Value = value, CreatedAt = now, CreatedBy = uid });
             foreach (var l in r.Labels) db.TaskLabels.Add(new TaskLabel { TenantId = tid, TaskId = task.Id, LabelId = labelIds[l.ToLowerInvariant()], CreatedAt = now });
         }
@@ -346,7 +348,20 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
         // One summary entry instead of one per task, and no assignment notifications: a bulk import should not flood anyone's inbox.
         recorder.Activity("task.imported", "Project", projectId, $"Imported {rows.Count} task{(rows.Count == 1 ? "" : "s")} from a CSV file into {lk.Project.Key}", projectId);
         recorder.Audit("task.import", "Project", projectId, newValue: new { Created = rows.Count, Skipped = invalid, LabelsCreated = newLabels.Count });
-        await db.SaveChangesAsync(ct);
+        for (var retry = 0; ; retry++)
+        {
+            try { await db.SaveChangesAsync(ct); break; }
+            catch (DbUpdateException ex) when (retry < 3 && DbErrors.IsTaskNumberTaken(ex))
+            {
+                // A task was created in this project while the file was being imported and took one of these numbers: number the whole
+                // import again after the current highest and save it again (nothing of the failed attempt was stored).
+                var next = await HighestNumberAsync(projectId, ct);
+                foreach (var task in created) task.Number = ++next;
+            }
+        }
         return new ImportResultDto(rows.Count, invalid, newLabels.Count, errors.Take(MaxErrorsShown).ToList());
     }
+
+    private async Task<int> HighestNumberAsync(Guid projectId, CancellationToken ct) =>
+        await db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == projectId).MaxAsync(t => (int?)t.Number, ct) ?? 0;
 }
