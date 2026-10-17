@@ -321,6 +321,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var readContent = run.Files.Count > 0 || directRead is { IsError: false };
         int inTokens = 0, outTokens = 0, cacheRead = 0, cacheWrite = 0;
         Exception? failure = null; var cancelled = false; string? note = null;
+        var modelWrote = false;   // the model itself produced text this run (not the application's own messages)
 
         if (fastGreeting)
         {
@@ -355,7 +356,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                     switch (events.Current)
                     {
                         case AiInferenceState state: yield return new AiStreamInference(state.State, state.WaitLimitSeconds); break;
-                        case AiTextDelta t: answer.Append(t.Text); if (!guardActionWrite) { firstTokenMs ??= elapsed.ElapsedMilliseconds; yield return new AiStreamText(t.Text); } break;
+                        case AiTextDelta t: modelWrote = true; answer.Append(t.Text); if (!guardActionWrite) { firstTokenMs ??= elapsed.ElapsedMilliseconds; yield return new AiStreamText(t.Text); } break;
                         case AiThinkingDelta th: if (thinking.Length < 12_000) thinking.Append(th.Text); yield return new AiStreamReasoning(th.Text); break;
                         case AiTurnEnd e: end = e; model = e.Model ?? model; provider = e.Provider ?? provider; break;
                     }
@@ -502,7 +503,10 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var status = failure is not null ? "failed" : cancelled ? "stopped" : "complete";
         var failureText = failure is null ? null : failure is AppException ae ? ae.Message : "The assistant could not answer. Try again.";
         if (failure is not null and not AppException) log.LogError(failure, "The AI answer failed");
-        var credits = status == "failed" || applicationReply ? 0 : cfg.Credits;
+        // A failed run that still produced model output (text, or tool turns that consumed tokens) used the provider; it is charged. A run that
+        // failed before the model answered anything stays free.
+        var producedOutput = modelWrote || outTokens > 0;
+        var credits = applicationReply || (status == "failed" && !producedOutput) ? 0 : cfg.Credits;
         var (body, followUps) = SplitFollowUps(answer.ToString());
         var unverified = status == "complete" ? await UnverifiedKeysAsync(body, seen.ToString(), run, CancellationToken.None) : [];
         var providerCost = AiProviderCost.Estimate(timings, TierId(tier), options.Value, applicationReply);
@@ -571,6 +575,10 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             || p.Id == run.Confirmation.ActionId && p.Kind == run.Confirmation.Kind)).ToList();
         if (pending.Count != 1 || latest is null)
             return new("No single matching action is awaiting confirmation in the latest answer. It may already be handled. Use the exact confirmation card; I have not sent another message.", true);
+        // What reaches other people (a chat message, an invitation, an emailed report) is only ever sent by approving that exact card:
+        // a bare typed "yes" may be meant for something else on the screen.
+        if (!cancel && run.Confirmation is null && pending[0].Kind is "send_message" or "invite_member" or "send_report" or "email")
+            return new("This sends something to other people, so it needs the exact card: press Confirm on it. Nothing was sent.", true);
         try
         {
             if (cancel)
@@ -694,6 +702,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     /// <summary>Carries out one suggestion as the person. A failure (no permission, a plan limit) is recorded on the card instead of being thrown.</summary>
     public async Task<AiActionDto> ConfirmAsync(Guid messageId, string actionId, CancellationToken ct = default)
     {
+        await EnsureAiEnabledAsync(ct);
         var (msg, all, p) = await ProposalAsync(messageId, actionId, ct);
         AiActionPlan.Validate(p, all, ctx.RequireTenantId(), ctx.RequireUserId(), clock.Now);
         if (all.Any(a => a.Status == "running")) throw new ConflictException("Another suggestion in this answer is still running.", "AI_ACTION_HANDLED");
@@ -781,6 +790,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     /// </summary>
     public async Task<IReadOnlyList<AiActionDto>> ConfirmAllAsync(Guid messageId, CancellationToken ct = default)
     {
+        await EnsureAiEnabledAsync(ct);
         var me = ctx.RequireUserId();
         var json = await db.AiMessages.AsNoTracking().Where(m => m.Id == messageId && m.UserId == me && m.Role == "assistant").Select(m => m.ActionsJson).FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("Suggestion not found.");
@@ -797,6 +807,14 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
     }
 
     private static bool MayAct(AiPlanLevels plan) => plan.Actions;
+
+    /// <summary>Switching the assistant off for a workspace also stops its pending suggestions from being carried out.</summary>
+    private async Task EnsureAiEnabledAsync(CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId();
+        if (await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct))
+            throw new ForbiddenException("The AI assistant is switched off for this workspace.", "AI_DISABLED");
+    }
 
     public async Task<AiActionDto> DismissAsync(Guid messageId, string actionId, CancellationToken ct = default)
     {

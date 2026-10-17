@@ -221,7 +221,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """{"type":"object","properties":{"recipient":{"type":"string"},"body":{"type":"string","maxLength":4000}},"required":["recipient","body"]}"""),
             new(SendReport, "For email reports only, never use this to send a chat message. Propose emailing a written report to people in the workspace (default: the person themselves). The person confirms first. Write the full report in 'body'.",
                 """
-                {"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string","description":"The report in Markdown."},
+                {"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string","maxLength":4000,"description":"The report in Markdown, at most 4,000 characters."},
                  "recipients":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: me."}},"required":["title","body"]}
                 """),
             new(CreateDocument, "Create a document in the Documents tab (a BRD, API reference, general write-up...). Runs immediately, no confirmation card - write the full content in 'content', it becomes the document's body.",
@@ -1122,7 +1122,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var title = (Str(a, "title") ?? throw new AiToolException("Give the report a title.")).Trim();
         var body = (Str(a, "body") ?? throw new AiToolException("Write the report in 'body'.")).Trim();
         if (title.Length is < 3 or > 120) throw new AiToolException("The title is 3 to 120 characters.");
-        if (body.Length is < 20 or > 20_000) throw new AiToolException("The report must be 20 to 20,000 characters.");
+        // The confirmation card shows the first 4,000 characters: nothing beyond what the person can read before approving is ever sent.
+        if (body.Length is < 20 or > 4_000) throw new AiToolException("The report must be 20 to 4,000 characters (the person reviews all of it before it is sent).");
         var names = Strs(a, "recipients");
         var people = new List<Person>();
         foreach (var n in names.Count == 0 ? ["me"] : names) { var p = await PersonAsync(n, ct); if (people.All(x => x.Id != p.Id)) people.Add(p); }
