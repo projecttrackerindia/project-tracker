@@ -69,10 +69,20 @@ public class SubscriptionActivator(IAppDbContext db, IPaymentProvider payments, 
     {
         if (await db.Invoices.IgnoreQueryFilters().AnyAsync(i => i.TenantId == tenantId && i.ProviderReference == paymentId, ct)) return;
         var now = DateTime.UtcNow;
-        db.Invoices.Add(new Invoice
+        var invoice = new Invoice
         {
             TenantId = tenantId, Number = BillingService.NewInvoiceNumber(now), PlanCode = plan.Code, Amount = amount, Currency = currency,
             Status = success ? InvoiceStatus.Paid : InvoiceStatus.Failed, ProviderReference = paymentId, Description = error is null ? description : $"{description} ({error})", IssuedAt = now, CreatedAt = now,
-        });
+        };
+        db.Invoices.Add(invoice);
+        // The browser and the webhook can report the same payment at the same moment: the unique (tenant, provider reference) index lets only one
+        // invoice in, and the other report finds it already recorded. Inside a transaction EF Core rolls back to its own savepoint on failure.
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException ex)
+        {
+            db.Invoices.Entry(invoice).State = EntityState.Detached;
+            if (!await db.Invoices.IgnoreQueryFilters().AsNoTracking().AnyAsync(i => i.TenantId == tenantId && i.ProviderReference == paymentId, ct)) throw;
+            log.LogInformation(ex, "Payment {PaymentId} was already recorded by a concurrent report", paymentId);
+        }
     }
 }

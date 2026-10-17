@@ -238,6 +238,8 @@ public class WebhookTests(ApiFactory factory)
     [InlineData("192.168.1.1", true)] [InlineData("169.254.169.254", true)] [InlineData("100.64.0.1", true)] [InlineData("0.0.0.0", true)]
     [InlineData("::1", true)] [InlineData("fe80::1", true)] [InlineData("fd00::1", true)] [InlineData("::ffff:10.0.0.1", true)]
     [InlineData("8.8.8.8", false)] [InlineData("93.184.216.34", false)] [InlineData("2606:4700:4700::1111", false)]
+    [InlineData("198.18.0.1", true)] [InlineData("198.19.255.1", true)] [InlineData("198.20.0.1", false)]
+    [InlineData("64:ff9b::a00:1", true)] [InlineData("2002:a00:1::1", true)]
     public void Internal_addresses_are_recognised(string ip, bool blocked) => Assert.Equal(blocked, WebhookUrlRules.IsBlocked(IPAddress.Parse(ip)));
 
     [Fact]

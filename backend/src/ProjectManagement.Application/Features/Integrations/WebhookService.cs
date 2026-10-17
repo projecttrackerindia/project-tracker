@@ -70,14 +70,18 @@ public static class WebhookUrlRules
         {
             if (ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6Multicast) return true;
             var b6 = ip.GetAddressBytes();
-            return (b6[0] & 0xFE) == 0xFC; // fc00::/7 unique local
+            if ((b6[0] & 0xFE) == 0xFC) return true; // fc00::/7 unique local
+            if (b6[0] == 0x20 && b6[1] == 0x02) return true; // 2002::/16 6to4: embeds an IPv4 address that may be internal
+            // 64:ff9b::/96 NAT64: translated to the IPv4 address in its last four bytes, which may be internal
+            return b6[0] == 0x00 && b6[1] == 0x64 && b6[2] == 0xFF && b6[3] == 0x9B && b6.Skip(4).Take(8).All(x => x == 0);
         }
         var b = ip.GetAddressBytes();
         return b[0] == 10 || b[0] == 0 || b[0] >= 224
             || (b[0] == 172 && b[1] is >= 16 and <= 31)
             || (b[0] == 192 && b[1] == 168)
             || (b[0] == 169 && b[1] == 254)            // link-local, includes cloud metadata services
-            || (b[0] == 100 && b[1] is >= 64 and <= 127); // carrier-grade NAT
+            || (b[0] == 100 && b[1] is >= 64 and <= 127)  // carrier-grade NAT
+            || (b[0] == 198 && b[1] is 18 or 19);         // 198.18.0.0/15 benchmarking, used for internal networks
     }
 
     /// <summary>Returns the reason a URL cannot be used, or null when it is fine.</summary>

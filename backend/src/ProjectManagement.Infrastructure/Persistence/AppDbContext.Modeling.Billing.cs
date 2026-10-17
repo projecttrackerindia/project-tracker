@@ -27,6 +27,13 @@ public partial class AppDbContext
             e.Property(x => x.Provider).HasMaxLength(20); e.Property(x => x.ProviderSubscriptionId).HasMaxLength(60); e.Property(x => x.PendingProviderSubscriptionId).HasMaxLength(60);
             e.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
         });
-        b.Entity<Invoice>(e => { e.HasIndex(x => new { x.TenantId, x.IssuedAt }); e.Property(x => x.Number).HasMaxLength(40); });
+        b.Entity<Invoice>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.IssuedAt });
+            e.Property(x => x.Number).HasMaxLength(40);
+            e.HasIndex(x => x.Number).IsUnique();
+            // One invoice per provider payment, however many times it is reported (see SubscriptionActivator.RecordPaymentAsync).
+            e.HasIndex(x => new { x.TenantId, x.ProviderReference }).IsUnique().HasFilter("\"ProviderReference\" IS NOT NULL");
+        });
     }
 }

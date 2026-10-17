@@ -25,20 +25,30 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
         var type = root.TryGetProperty("event", out var ev) ? ev.GetString() ?? "" : "";
-        eventId = string.IsNullOrWhiteSpace(eventId) ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body))) : eventId;
+        var bodyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
+        eventId = string.IsNullOrWhiteSpace(eventId) ? bodyHash : eventId;
         if (eventId.Length > 100) throw new ValidationException("eventId", "The payment event ID is too long.");
+        // The same signed message replayed under another event id is the same event: the body itself is a receipt too.
+        var bodyKey = "body:" + bodyHash;
         await using var transaction = await db.Database.BeginOwnedTransactionAsync(ct);
         await db.LockBillingEventsAsync(payments.Name, ct);
-        if (await db.BillingEvents.AnyAsync(e => e.Provider == payments.Name && e.ProviderEventId == eventId, ct))
+        if (await db.BillingEvents.AnyAsync(e => e.Provider == payments.Name && (e.ProviderEventId == eventId || e.ProviderEventId == bodyKey), ct))
         { await transaction.CommitIfOwnedAsync(ct); return; }
 
-        db.BillingEvents.Add(new BillingEvent { Provider = payments.Name, ProviderEventId = eventId, Type = type, ReceivedAt = clock.GetUtcNow().UtcDateTime });
+        var receivedAt = clock.GetUtcNow().UtcDateTime;
+        db.BillingEvents.Add(new BillingEvent { Provider = payments.Name, ProviderEventId = eventId, Type = type, ReceivedAt = receivedAt });
+        if (bodyKey != eventId) db.BillingEvents.Add(new BillingEvent { Provider = payments.Name, ProviderEventId = bodyKey, Type = type, ReceivedAt = receivedAt });
 
         if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("subscription", out var subWrap) || !subWrap.TryGetProperty("entity", out var subEntity))
         { await db.SaveChangesAsync(ct); await transaction.CommitIfOwnedAsync(ct); return; }
         var providerSubId = subEntity.GetProperty("id").GetString() ?? "";
         var sub = await db.Subscriptions.Include(s => s.Plan).FirstOrDefaultAsync(s => s.ProviderSubscriptionId == providerSubId || s.PendingProviderSubscriptionId == providerSubId, ct);
-        if (sub is null) { log.LogInformation("Billing event {Type} for an unknown subscription {Id}", type, providerSubId); await db.SaveChangesAsync(ct); await transaction.CommitIfOwnedAsync(ct); return; }
+        if (sub is null)
+        {
+            var noted = subEntity.TryGetProperty("notes", out var notes) && notes.ValueKind == JsonValueKind.Object && notes.TryGetProperty("tenantId", out var nt) && nt.ValueKind == JsonValueKind.String ? nt.GetString() : null;
+            log.LogWarning("Billing event {Type} for an unknown subscription {Id} (tenant in its notes: {NotedTenant})", type, providerSubId, noted ?? "none");
+            await db.SaveChangesAsync(ct); await transaction.CommitIfOwnedAsync(ct); return;
+        }
         var pending = sub.PendingProviderSubscriptionId == providerSubId;
         var now = clock.GetUtcNow().UtcDateTime;
         var owner = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == sub.TenantId).Select(t => t.OwnerUserId).FirstOrDefaultAsync(ct);
@@ -54,7 +64,13 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
             case "subscription.charged":
             {
                 var plan = pending && sub.PendingPlanId is { } pid ? await db.Plans.FirstAsync(p => p.Id == pid, ct) : sub.Plan ?? await db.Plans.FirstAsync(p => p.Id == sub.PlanId, ct);
-                await activator.ActivateAsync(sub, plan, providerSubId, At(subEntity, "current_start") ?? now, At(subEntity, "current_end"), ct);
+                // A cancelled subscription is not switched back on by an event from before the cancellation (a late or replayed message);
+                // only an event created after it (the provider really charged again) brings it back.
+                var created = At(root, "created_at");
+                if (!pending && sub.CancelledAt is { } cancelledAt && (created is null || created <= cancelledAt))
+                    log.LogWarning("Ignored {Type} for cancelled subscription {Id}: the event is not newer than the cancellation", type, providerSubId);
+                else
+                    await activator.ActivateAsync(sub, plan, providerSubId, At(subEntity, "current_start") ?? now, At(subEntity, "current_end"), ct);
                 if (payload.TryGetProperty("payment", out var pay) && pay.TryGetProperty("entity", out var pe) && pe.TryGetProperty("id", out var payId))
                 {
                     var minor = pe.TryGetProperty("amount", out var a) ? a.GetInt64() : 0;
