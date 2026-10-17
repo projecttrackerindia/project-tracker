@@ -213,6 +213,7 @@ public class AttachmentService(IAppDbContext db, ICurrentContext ctx, Permission
     {
         var tid = ctx.RequireTenantId();
         var project = await access.GetProjectAsync(projectId, ct);
+        ProjectAccess.EnsureNotArchived(project, "add files");
         StageIssue? issue = null;
         if (issueId is { } iid) issue = await issues.RequireCanAttachAsync(project, iid, ct);
         else if (taskId is { } t)

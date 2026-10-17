@@ -191,8 +191,7 @@ public class TaskService(
         var tid = ctx.RequireTenantId();
         var userId = ctx.RequireUserId();
         var project = await access.GetProjectAsync(projectId, ct);
-        if (project.Status == ProjectStatus.Archived)
-            throw new ConflictException("Archived projects are read-only. Restore the project to add tasks.", "PROJECT_ARCHIVED");
+        ProjectAccess.EnsureNotArchived(project, "add tasks");
 
         await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await db.Tasks.CountAsync(ct), 1, ct);
 
@@ -247,6 +246,7 @@ public class TaskService(
     {
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await permissions.RequireTaskEditAsync(task, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "change its tasks", ct);
         if (task.Version != req.Version)
             throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");
@@ -400,6 +400,7 @@ public class TaskService(
     {
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await permissions.RequireTaskEditAsync(task, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "move its tasks", ct);
         var status = await db.WorkflowStatuses.FirstOrDefaultAsync(x => x.Id == req.StatusId && x.ProjectId == task.ProjectId, ct)
             ?? throw new ValidationException("statusId", "Status does not belong to this project.");
         var oldName = await db.WorkflowStatuses.Where(x => x.Id == task.StatusId).Select(x => x.Name).FirstAsync(ct);
@@ -429,6 +430,7 @@ public class TaskService(
     {
         await permissions.RequireAsync(Permissions.TasksDelete, ct);
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
+        await access.EnsureWritableAsync(task.ProjectId, "delete its tasks", ct);
         var now = clock.Now;
         foreach (var t in await db.Tasks.Where(t => t.Id == id || t.ParentTaskId == id).ToListAsync(ct))
         { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = ctx.UserId; }
@@ -460,6 +462,7 @@ public class TaskService(
     {
         await permissions.RequireAsync(Permissions.TasksComment, ct);
         var task = await VisibleTaskAsync(taskId, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "comment on its tasks", ct);
         var userId = ctx.RequireUserId();
         if (req.ParentCommentId is { } parentId && !await db.TaskComments.AnyAsync(c => c.Id == parentId && c.TaskId == taskId, ct))
             throw new ValidationException("parentCommentId", "Parent comment not found.");
