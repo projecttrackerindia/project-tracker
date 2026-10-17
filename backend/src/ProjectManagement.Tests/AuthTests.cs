@@ -44,7 +44,22 @@ public class AuthTests(ApiFactory factory)
             var bad = await c.LoginAsync("wrong-password-1");
             Assert.Equal(HttpStatusCode.Unauthorized, bad.Status);
         }
+        // While locked, a wrong guess gets the same answer as any wrong password: a stranger learns nothing and cannot extend the lock.
+        var guess = await c.LoginAsync("wrong-password-1");
+        Assert.Equal(HttpStatusCode.Unauthorized, guess.Status);
+        Assert.Equal("INVALID_CREDENTIALS", guess.ErrorCode);
         var locked = await c.LoginAsync(); // correct password, but the account is now locked
+        Assert.Equal(HttpStatusCode.TooManyRequests, locked.Status);
+        Assert.Equal("ACCOUNT_LOCKED", locked.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Wrong_current_passwords_when_changing_it_count_towards_the_lockout()
+    {
+        var c = await TestClient.RegisterAsync(factory);
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Post("/api/v1/me/password", new { currentPassword = "wrong-password-1", newPassword = "N3w#Passw0rd!x" })).Status);
+        var locked = await c.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "N3w#Passw0rd!x" });
         Assert.Equal(HttpStatusCode.TooManyRequests, locked.Status);
         Assert.Equal("ACCOUNT_LOCKED", locked.ErrorCode);
     }

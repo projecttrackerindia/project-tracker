@@ -169,6 +169,8 @@ public class SsoTests(ApiFactory factory)
         var login = await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/login", new { email, password = "Temp#Passw0rd!" }, anonymous: true);
         Assert.Equal(403, (int)login.Status);
         Assert.Equal("SSO_REQUIRED", login.ErrorCode);
+        var guess = await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/login", new { email, password = "not-the-password" }, anonymous: true);
+        Assert.Equal("INVALID_CREDENTIALS", guess.ErrorCode);   // the rule is only revealed to someone who knows the password
         Assert.True((await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/sso/discover", new { email }, anonymous: true)).Data!["enforced"]!.GetValue<bool>());
 
         // the owner (on another domain) is unaffected, and switching enforcement off lets the password work again

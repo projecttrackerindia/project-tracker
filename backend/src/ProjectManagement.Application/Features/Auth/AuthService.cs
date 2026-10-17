@@ -165,7 +165,17 @@ public class AuthService(
             AppTelemetry.Count(AppTelemetry.Logins, "wrong_password");
             throw new UnauthorizedException("Invalid email or password.", "INVALID_CREDENTIALS");
         }
-        if (user.LockoutEnd is { } lockEnd && lockEnd > now)
+        // The password is checked first, so neither a lockout nor an organization's single sign-on rule tells a stranger that the address
+        // has an account, and a stranger cannot keep an account locked by guessing: while locked, wrong guesses get the generic answer.
+        var passwordOk = user.IsActive && hasher.Verify(user.PasswordHash, req.Password);
+        var locked = user.LockoutEnd is { } lockEnd && lockEnd > now;
+        if (!passwordOk)
+        {
+            if (!locked) await RegisterFailedPasswordAsync(user, now, ct);
+            AppTelemetry.Count(AppTelemetry.Logins, locked ? "locked" : "wrong_password");
+            throw new UnauthorizedException("Invalid email or password.", "INVALID_CREDENTIALS");
+        }
+        if (locked)
         {
             AppTelemetry.Count(AppTelemetry.Logins, "locked");
             throw new TooManyRequestsException("Too many failed sign-in attempts. Try again later.", "ACCOUNT_LOCKED");
@@ -173,19 +183,6 @@ public class AuthService(
         // An organization that requires its own single sign-on for this email's domain: the password is not the way in (Owners excepted).
         if (await ssoPolicy.EnforcedForAsync(user.Email, user.Id, ct) is { } enforced)
             throw new ForbiddenException($"{enforced.Name} is required for this account. Use \"Sign in with SSO\".", "SSO_REQUIRED");
-
-        if (!user.IsActive || !hasher.Verify(user.PasswordHash, req.Password))
-        {
-            if (user.IsActive && ++user.FailedLoginCount >= _opt.MaxFailedLogins)
-            {
-                user.LockoutEnd = now.AddMinutes(_opt.LockoutMinutes);
-                user.FailedLoginCount = 0;
-                recorder.Audit("user.locked_out", "User", user.Id, userId: user.Id);
-            }
-            await db.SaveChangesAsync(ct);
-            AppTelemetry.Count(AppTelemetry.Logins, "wrong_password");
-            throw new UnauthorizedException("Invalid email or password.", "INVALID_CREDENTIALS");
-        }
         if (!user.EmailVerified && _opt.RequireEmailVerification)
             throw new ForbiddenException("Verify your email address before signing in.", "EMAIL_NOT_VERIFIED");
 
@@ -197,6 +194,18 @@ public class AuthService(
             return new LoginOutcome(null, tokens.CreateChallenge(user.Id, TimeSpan.FromMinutes(5)));
         }
         return new LoginOutcome(await SignInAsync(user, "password", ct), null);
+    }
+
+    /// <summary>Counts a wrong password towards the lockout (sign-in and changing the password share the same budget).</summary>
+    private async Task RegisterFailedPasswordAsync(User user, DateTime now, CancellationToken ct)
+    {
+        if (user.IsActive && ++user.FailedLoginCount >= _opt.MaxFailedLogins)
+        {
+            user.LockoutEnd = now.AddMinutes(_opt.LockoutMinutes);
+            user.FailedLoginCount = 0;
+            recorder.Audit("user.locked_out", "User", user.Id, userId: user.Id);
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Second step of a sign-in: the challenge from the password step plus an authenticator code or a recovery code.</summary>
@@ -419,8 +428,14 @@ public class AuthService(
     {
         var userId = ctx.RequireUserId();
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
+        var now = clock.Now;
+        if (user.LockoutEnd is { } lockEnd && lockEnd > now)
+            throw new TooManyRequestsException("Too many failed attempts. Try again later.", "ACCOUNT_LOCKED");
         if (!hasher.Verify(user.PasswordHash, req.CurrentPassword))
+        {
+            await RegisterFailedPasswordAsync(user, now, ct);   // guessing the current password counts like guessing at sign-in
             throw new ValidationException("currentPassword", "Current password is incorrect.");
+        }
         await passwordPolicy.EnsureAcceptableAsync("newPassword", req.NewPassword, user.Email, user.DisplayName, user, ct);
         if (user.MustChangePassword && hasher.Verify(user.PasswordHash, req.NewPassword))
             throw new ValidationException("newPassword", "Choose a password different from the temporary one you were given.");
