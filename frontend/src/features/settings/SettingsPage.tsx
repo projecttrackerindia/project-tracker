@@ -1,4 +1,3 @@
-import { WhatsAppContactSection } from './WhatsAppContactSection';
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -22,7 +21,7 @@ import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
 import { ProjectVisibilityPanel } from '../organization/ProjectVisibilityPanel';
 import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
-import { NotificationSettings } from './NotificationSettings';
+import { TimeZonePicker } from '../../components/TimeZonePicker';
 import { TwoStepRow } from './TwoStep';
 import { PasskeysRow } from './Passkeys';
 import { PrivacyRow } from './Privacy';
@@ -38,7 +37,6 @@ import { ReminderPolicySettings } from '../reminders/Policy';
 import { LabelSettings } from './LabelSettings';
 import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
-import { Select } from '../../components/Select';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
 import { MobileAppSection } from './MobileAppSection';
@@ -48,7 +46,6 @@ import { SlackSettings } from './SlackSettings';
 import { WhatsAppSettings } from './WhatsAppSettings';
 const ResumeBuilderSection = lazy(() => import('./ResumeBuilder').then(m=>({default:m.ResumeBuilderSection})));
 
-const TIME_ZONES = ['Asia/Kolkata', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
 /** How the session was opened, in the person's words ("with a passkey · "). Empty when it is the ordinary password. */
 function signedInWith(method?: string | null) {
@@ -72,7 +69,7 @@ export function AccountPage({ section }: { section: AccountSection }) {
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   const groups: { items: SectionLink[] }[] = [{ items: [
     { to: '/account', label: 'Profile', icon: 'user' },
-    ...(!isPlatformAdmin ? [{ to: '/account/notifications', label: 'Notifications', icon: 'bell' as const }] : []),
+    ...(!isPlatformAdmin ? [{ to: '/notifications/preferences', label: 'Notification Center', icon: 'bell' as const }] : []),
     { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
     ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'bell' as const }] : []),
     ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Connected accounts', icon: 'video' as const }] : []),
@@ -81,7 +78,6 @@ export function AccountPage({ section }: { section: AccountSection }) {
   return (
     <SectionLayout wide title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
-      {section === 'notifications' && <><NotificationSettings /><WhatsAppContactSection /></>}
       {section === 'security' && <SecuritySection />}
       {section === 'mobile' && <MobileAppSection />}
       {section === 'integrations' && <GoogleIntegrationSection />}
@@ -110,7 +106,7 @@ function ProfileSection() {
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (name.trim()) profile.mutate(); }}>
             <Field label="Full name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
             <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified'}><input className="input" value={ctx.user.email} disabled /></Field>
-            <Field label="Time zone" hint="Used to display dates and times."><Select className="select" value={tz} onChange={(e) => setTz(e.target.value)}>{[...new Set([tz, ...TIME_ZONES])].map((z) => <option key={z}>{z}</option>)}</Select></Field>
+            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it. More options in Notification Center → Schedule."><TimeZonePicker value={tz} onChange={(z) => z && setTz(z)} /></Field>
             <div className="full"><SubmitButton busy={profile.isPending}>Save profile</SubmitButton></div>
           </form>
         </div>

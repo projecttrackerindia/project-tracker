@@ -1,4 +1,4 @@
-import { useAuth } from '../stores/auth';
+import { useSyncExternalStore } from 'react';
 
 /**
  * The one time zone the whole app runs in for the signed-in person.
@@ -33,21 +33,34 @@ export function isKnownZone(zone: string | null | undefined): zone is string {
   return ok;
 }
 
+// The signed-in person's and workspace's zones, pushed in by the auth store whenever the context changes. (This module must not import
+// the auth store: nearly everything imports the date helpers, and that import cycle breaks the bundle's start-up order.)
+let userZone: string | null = null;
+let workspaceZone: string | null = null;
+let version = 0;
+const zoneListeners = new Set<() => void>();
+
+/** Called by the auth store with the person's own zone and the active workspace's default zone. */
+export function setAppZones(user: string | null | undefined, workspace: string | null | undefined) {
+  const u = user ?? null, w = workspace ?? null;
+  if (u === userZone && w === workspaceZone) return;
+  userZone = u; workspaceZone = w; version++;
+  zoneListeners.forEach((l) => l());
+}
+
 /** The zone the app runs in right now (see the order above). Safe outside React. */
 export function appZone(): string {
-  const ctx = useAuth.getState().ctx;
-  const own = ctx?.user.timeZone;
-  if (isKnownZone(own)) return canonicalZone(own);
-  const ws = ctx?.current?.timeZone;
-  if (isKnownZone(ws)) return canonicalZone(ws);
+  if (isKnownZone(userZone)) return canonicalZone(userZone);
+  if (isKnownZone(workspaceZone)) return canonicalZone(workspaceZone);
   return deviceZone();
 }
 
+const subscribe = (l: () => void) => { zoneListeners.add(l); return () => { zoneListeners.delete(l); }; };
+
 /** The same, as a hook: components re-render when the person changes their zone. */
 export function useAppZone(): string {
-  const own = useAuth((s) => s.ctx?.user.timeZone);
-  const ws = useAuth((s) => s.ctx?.current?.timeZone);
-  return isKnownZone(own) ? canonicalZone(own) : isKnownZone(ws) ? canonicalZone(ws) : deviceZone();
+  useSyncExternalStore(subscribe, () => version, () => version);
+  return appZone();
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { setAccessToken, setAuthLostHandler, refreshSession } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { disableNativePush } from '../lib/native';
+import { setAppZones } from '../lib/zone';
 import type { AppContext, AuthResponse } from '../api/types';
 import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
 
@@ -130,6 +131,9 @@ useAuth.subscribe((s, prev) => {
 // ---- selectors / helpers
 // Pure, so they're unit-testable without rendering a component or touching the Zustand store;
 // the hooks below are thin wrappers that just supply the current ctx.
+// Keep the app-wide time zone (lib/zone) in step with whoever is signed in and the workspace they are in.
+useAuth.subscribe((s) => setAppZones(s.ctx?.user.timeZone, s.ctx?.current?.timeZone));
+
 export const hasPermission = (ctx: AppContext | null | undefined, permission: string) => ctx?.current?.permissions.includes(permission) ?? false;
 export const entitlementOf = (ctx: AppContext | null | undefined, key: string) => ctx?.current?.entitlements[key] ?? 0;
 /** Level (0 none, 1 view, 2 edit, 3 full) the signed-in user has in a module, from their job role. */

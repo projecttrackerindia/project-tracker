@@ -22,6 +22,7 @@ import './styles/documents.css';
 import './styles/documents-theme.css';
 import './styles/reminders.css';
 import './styles/alerts.css';
+import './styles/notification-center.css';
 import './styles/mobile.css';
 import './styles/phone.css';
 import './styles/desktop.css';

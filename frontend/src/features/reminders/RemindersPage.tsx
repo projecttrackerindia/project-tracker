@@ -2,15 +2,14 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
-import { Select } from '../../components/Select';
-import { EmptyState, ErrorState, Modal, PageHead, PageLoader, SubmitButton } from '../../components/ui';
+import { EmptyState, ErrorState, PageHead, PageLoader } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { reminderApi, SNOOZE_CHOICES, type Reminder, type ReminderList, type ReminderSettings, type SnoozePreset } from './api';
+import { reminderApi, SNOOZE_CHOICES, type Reminder, type ReminderList, type SnoozePreset } from './api';
 import { openReminderComposer, refreshReminders } from './store';
-import { addDays, addMinutes, atTime, dayFirst, describeInstant, deviceZone, iso, parseReminder, relative, sameDay, toRRule, wall } from './time';
-import { deviceAlerts, enableDeviceAlerts, onDeviceAlerts, playChime, setSoundOn, soundOn, systemNotification, type DeviceAlerts } from './device';
+import { addDays, atTime, dayFirst, describeInstant, deviceZone, iso, parseReminder, relative, sameDay, toRRule, wall } from './time';
+import { deviceDetail, enableDeviceAlerts, lastDeviceError, onDeviceAlerts, playChime, soundOn, systemNotification, type DeviceDetail } from './device';
 
 type Filter = 'all' | 'mine' | 'others' | 'auto' | 'sent';
 const AUTO = new Set(['DueDate', 'Overdue', 'Escalation']);
@@ -55,10 +54,10 @@ export function RemindersPage() {
   const personal = useIsPersonal();
   const list = useWsQuery(['reminders', 'list'], reminderApi.list, { refetchInterval: 60_000 });
   const insights = useWsQuery(['reminders', 'insights'], reminderApi.insights, { staleTime: 120_000 });
+  const nav = useNavigate();
   const settings = useWsQuery(['reminders', 'settings'], reminderApi.settings, { staleTime: 300_000 });
   const [tab, setTab] = useState<'upcoming' | 'completed'>('upcoming');
   const [filter, setFilter] = useState<Filter>('all');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [bump, setBump] = useState(0);
   const completedTab = useRef<HTMLButtonElement>(null);
   const key = [wid, 'reminders', 'list'];
@@ -152,7 +151,7 @@ export function RemindersPage() {
   return (
     <div className="rp">
       <PageHead title="Reminders" sub={<>Everything you asked to be reminded about — times in <b>{zone}</b>.</>}>
-        <button type="button" className="btn btn-ghost" onClick={() => setSettingsOpen(true)}><Icon name="settings" size={15} /> Settings</button>
+        <button type="button" className="btn btn-ghost" onClick={() => nav('/notifications/schedule')}><Icon name="settings" size={15} /> Settings</button>
         <button type="button" className="btn btn-primary" onClick={() => openReminderComposer()}><Icon name="plus" size={15} /> New reminder</button>
       </PageHead>
 
@@ -209,83 +208,52 @@ export function RemindersPage() {
           </section>
         )))}
 
-      {settingsOpen && settings.data && <SettingsModal initial={settings.data} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
 
-/** Turns a device's notifications on, and says why they matter: without them a reminder only shows inside this tab. */
-async function turnOnDeviceAlerts(): Promise<DeviceAlerts> {
-  const s = await enableDeviceAlerts();
-  if (s === 'on' || s === 'tab-only') {
-    if (soundOn()) playChime();
-    await systemNotification('⏰ Notifications are on', 'This is how reminders will reach you - in other apps too.', 'reminder-test');
-    toast(s === 'on' ? 'Done. Reminders now reach this device even when Project Tracker is closed.' : 'Done. Reminders now show in other apps while Project Tracker is open.', 'success');
-  } else if (s === 'blocked') toast('Notifications are blocked for this site: allow them in the browser (the lock icon left of the address).', 'warning');
-  return s;
-}
-
-const DEVICE_TEXT: Record<Exclude<DeviceAlerts, 'on'>, { title: string; text: string }> = {
-  off: { title: 'Get reminders in other apps too', text: 'Right now they only appear inside this tab. Turn on notifications and they show up like any other app\u2019s - with a sound - even when Project Tracker is closed.' },
-  'tab-only': { title: 'Reminders reach you only while Project Tracker is open', text: 'Turn on push so they arrive even with the tab or browser window closed.' },
-  blocked: { title: 'Notifications are blocked for this site', text: 'Click the lock icon at the left of the address bar \u2192 Notifications \u2192 Allow, then reload this page.' },
-  unsupported: { title: 'This browser cannot notify outside the tab', text: 'Use Chrome, Edge or Firefox - or install Project Tracker as an app from the address bar.' },
-};
-
+/** A nudge to turn this device's notifications on (reminders are pointless if they only show inside a closed tab). Same logic as the Notification Center. */
 function DeviceBanner() {
-  const [state, setState] = useState<DeviceAlerts | null>(null);
+  const nav = useNavigate();
+  const [detail, setDetail] = useState<DeviceDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const [hidden, setHidden] = useState(() => { try { return sessionStorage.getItem('pm_device_banner') === 'hide'; } catch { return false; } });
-  useEffect(() => { void deviceAlerts().then(setState); return onDeviceAlerts(setState); }, []);
-  if (!state || state === 'on' || hidden) return null;
-  const t = DEVICE_TEXT[state];
+  useEffect(() => {
+    const load = () => void deviceDetail().then(setDetail);
+    load();
+    return onDeviceAlerts(load);
+  }, []);
+  if (!detail || detail.state === 'on' || hidden) return null;
+  const turnOn = async () => {
+    setBusy(true); setProblem(null);
+    try {
+      const s = await enableDeviceAlerts();
+      if (s === 'on' || s === 'tab-only') {
+        if (soundOn()) playChime();
+        await systemNotification('Notifications are on', 'This is how reminders will reach you - in other apps too.', 'reminder-test', '/reminders', { sticky: false });
+        toast(s === 'on' ? 'Done. Reminders now reach this device even when Project Tracker is closed.' : 'Done. Reminders now show in other apps while Project Tracker is open.', 'success');
+      }
+      setProblem(lastDeviceError());
+    } finally { setBusy(false); }
+  };
+  const title = detail.state === 'tab-only' ? 'Reminders reach you only while Project Tracker is open'
+    : detail.state === 'blocked' ? 'Notifications are blocked for this site'
+    : detail.state === 'unsupported' ? 'This browser cannot notify outside the tab' : 'Get reminders in other apps too';
+  const text = problem ?? detail.reason ?? (detail.state === 'tab-only' ? 'Turn on push so they arrive even with the tab or browser window closed.'
+    : 'Right now they only appear inside this tab. Turn on notifications and they show up like any other app\u2019s - with a sound.');
   return (
-    <div className={`rp-device is-${state}`} role="note">
+    <div className={`rp-device is-${detail.state}`} role="note">
       <span className="rp-device-ico"><Icon name="bell" size={18} /></span>
-      <div className="rp-device-text"><b>{t.title}</b><span>{t.text}</span></div>
-      {(state === 'off' || state === 'tab-only') && (
-        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => { setBusy(true); void turnOnDeviceAlerts().then(setState).finally(() => setBusy(false)); }}>
-          {busy && <span className="spinner" />}<Icon name="bell" size={14} /> {state === 'tab-only' ? 'Turn on push' : 'Turn on notifications'}
+      <div className="rp-device-text"><b>{title}</b><span>{text}</span></div>
+      {detail.canFixHere && (detail.state === 'off' || detail.state === 'tab-only') && (
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void turnOn()}>
+          {busy && <span className="spinner" />}<Icon name="bell" size={14} /> {detail.state === 'tab-only' ? 'Turn on push' : 'Turn on notifications'}
         </button>
       )}
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => nav('/notifications/devices')}>Details</button>
       <button type="button" className="btn-icon" aria-label="Hide for now" onClick={() => { try { sessionStorage.setItem('pm_device_banner', 'hide'); } catch { /* */ } setHidden(true); }}><Icon name="close" size={14} /></button>
     </div>
-  );
-}
-
-/** Settings → This device: notifications outside the app, the chime, and a real test reminder. */
-function DeviceSection() {
-  const wid = useWorkspaceId();
-  const [state, setState] = useState<DeviceAlerts | null>(null);
-  const [sound, setSound] = useState(soundOn());
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { void deviceAlerts().then(setState); return onDeviceAlerts(setState); }, []);
-  const label = state === 'on' ? 'On - even when Project Tracker is closed' : state === 'tab-only' ? 'On while Project Tracker is open' : state === 'blocked' ? 'Blocked in the browser' : state === 'unsupported' ? 'Not supported by this browser' : 'Off - reminders only show inside the tab';
-  const test = async () => {
-    setBusy(true);
-    try {
-      const zone = deviceZone();
-      await reminderApi.create({ title: 'Test reminder', note: 'Switch to another app - it will find you there.', when: { at: iso(addMinutes(wall(new Date(), zone), 2)), timeZone: zone } });
-      await refreshReminders(wid);
-      toast('A test reminder will go off in about 2 minutes. Switch to another app to see it arrive.', 'success');
-    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not set the test reminder.', 'error'); }
-    finally { setBusy(false); }
-  };
-  return (
-    <section className="rs-device">
-      <h4><Icon name="monitor" size={15} /> This device</h4>
-      <div className="rs-device-row">
-        <span className={`rs-dot is-${state ?? 'off'}`} /> <span>Notifications outside the app: <b>{label}</b></span>
-        {(state === 'off' || state === 'tab-only') && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void turnOnDeviceAlerts().then(setState)}><Icon name="bell" size={13} /> Turn on</button>}
-      </div>
-      <label className="rc-check"><input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundOn(e.target.checked); if (e.target.checked) playChime(); }} /> Play a sound when a reminder goes off <span>— on this device</span></label>
-      <div className="rc-chips">
-        <button type="button" className="rc-chip" onClick={() => playChime()}><Icon name="play" size={12} /> Hear the sound</button>
-        <button type="button" className="rc-chip" disabled={busy} onClick={() => void test()}><Icon name="alarm" size={12} /> Send a test reminder (2 min)</button>
-      </div>
-      {state === 'blocked' && <p className="rc-hint">{DEVICE_TEXT.blocked.text}</p>}
-      <p className="rc-hint">On Windows, also check Settings → System → Notifications: your browser must be allowed, and Focus / Do not disturb off.</p>
-    </section>
   );
 }
 
@@ -424,87 +392,5 @@ function ReminderCard({ r, zone, done, sent, onDone, onSnooze, onRemove, onResto
         )}
       </div>
     </li>
-  );
-}
-
-const WEEK = [{ d: 1, l: 'Mon' }, { d: 2, l: 'Tue' }, { d: 3, l: 'Wed' }, { d: 4, l: 'Thu' }, { d: 5, l: 'Fri' }, { d: 6, l: 'Sat' }, { d: 7, l: 'Sun' }];
-
-/** How reminders behave for this person: working week, quiet hours, automatic reminders, the briefing, time zone. */
-function SettingsModal({ initial, onClose }: { initial: ReminderSettings; onClose: () => void }) {
-  const wid = useWorkspaceId();
-  const [s, setS] = useState<ReminderSettings>(initial);
-  const [quiet, setQuiet] = useState(!!initial.quietStart);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const set = <K extends keyof ReminderSettings>(k: K, v: ReminderSettings[K]) => setS((x) => ({ ...x, [k]: v }));
-  const toggle = (k: 'workDays' | 'dueLeads' | 'overdueSteps', v: number) => setS((x) => ({ ...x, [k]: x[k].includes(v) ? x[k].filter((y) => y !== v) : [...x[k], v].sort((a, b) => a - b) }));
-  const device = deviceZone();
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault(); setError(null); setBusy(true);
-    try {
-      await reminderApi.saveSettings({ ...s, quietStart: quiet ? s.quietStart ?? '21:00' : null, quietEnd: quiet ? s.quietEnd ?? '08:00' : null });
-      if (s.followDeviceTimeZone && s.timeZone !== device) await reminderApi.followDevice();
-      await refreshReminders(wid);
-      toast('Reminder settings saved.', 'success');
-      onClose();
-    } catch (err) { setError(err instanceof ApiError ? err.errors[0]?.message ?? err.message : 'Could not save.'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <Modal title="Reminder settings" subtitle="They apply in every workspace you belong to." size="lg" onClose={onClose} onSubmit={save}
-      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>Save</SubmitButton></>}>
-      <div className="rs-grid">
-        <section>
-          <h4><Icon name="calendar" size={15} /> Your working week</h4>
-          <div className="rc-days">{WEEK.map((d) => <button key={d.d} type="button" aria-pressed={s.workDays.includes(d.d)} className={`rc-day ${s.workDays.includes(d.d) ? 'on' : ''}`} onClick={() => toggle('workDays', d.d)}>{d.l}</button>)}</div>
-          <div className="rc-row">
-            <label className="rc-field"><span>Starts</span><input className="input" type="time" value={s.workStart} onChange={(e) => set('workStart', e.target.value)} /></label>
-            <label className="rc-field"><span>Ends</span><input className="input" type="time" value={s.workEnd} onChange={(e) => set('workEnd', e.target.value)} /></label>
-            <label className="rc-field"><span>“Tomorrow” means</span><input className="input" type="time" value={s.defaultTime} onChange={(e) => set('defaultTime', e.target.value)} /></label>
-          </div>
-          <label className="rc-check"><input type="checkbox" checked={quiet} onChange={(e) => setQuiet(e.target.checked)} /> Quiet hours <span>— automatic reminders and ones from others wait until they end</span></label>
-          {quiet && (
-            <div className="rc-row">
-              <label className="rc-field"><span>From</span><input className="input" type="time" value={s.quietStart ?? '21:00'} onChange={(e) => set('quietStart', e.target.value)} /></label>
-              <label className="rc-field"><span>Until</span><input className="input" type="time" value={s.quietEnd ?? '08:00'} onChange={(e) => set('quietEnd', e.target.value)} /></label>
-            </div>
-          )}
-        </section>
-        <section>
-          <h4><Icon name="bolt" size={15} /> Automatic reminders for your work</h4>
-          <label className="rc-check"><input type="checkbox" checked={s.autoEnabled} onChange={(e) => set('autoEnabled', e.target.checked)} /> Remind me about work assigned to me</label>
-          {s.autoEnabled && (
-            <>
-              <div className="rs-label">Before it is due</div>
-              <div className="rc-chips">{[{ v: 3, l: '3 working days before' }, { v: 2, l: '2 days before' }, { v: 1, l: 'The day before' }, { v: 0, l: 'On the day' }].map((o) => (
-                <button key={o.v} type="button" aria-pressed={s.dueLeads.includes(o.v)} className={`rc-chip ${s.dueLeads.includes(o.v) ? 'on' : ''}`} onClick={() => toggle('dueLeads', o.v)}>{o.l}</button>))}</div>
-              <div className="rs-label">If it becomes overdue</div>
-              <div className="rc-chips">{[1, 3, 7, 14].map((v) => (
-                <button key={v} type="button" aria-pressed={s.overdueSteps.includes(v)} className={`rc-chip ${s.overdueSteps.includes(v) ? 'on' : ''}`} onClick={() => toggle('overdueSteps', v)}>after {v} day{v === 1 ? '' : 's'}</button>))}</div>
-              <label className="rc-field rc-narrow"><span>At most a day</span>
-                <Select className="input" value={String(s.dailyAutoLimit)} onChange={(e) => set('dailyAutoLimit', Number(e.target.value))} aria-label="At most a day">
-                  {[5, 8, 12, 20, 50].map((n) => <option key={n} value={n}>{n} (the rest go in the briefing)</option>)}
-                </Select>
-              </label>
-            </>
-          )}
-        </section>
-        <section>
-          <h4><Icon name="sun" size={15} /> Morning briefing</h4>
-          <label className="rc-check"><input type="checkbox" checked={s.briefingEnabled} onChange={(e) => set('briefingEnabled', e.target.checked)} /> Sum up my day on working days <span>— what is due, overdue and coming up</span></label>
-          {s.briefingEnabled && <label className="rc-field rc-narrow"><span>At</span><input className="input" type="time" value={s.briefingTime} onChange={(e) => set('briefingTime', e.target.value)} /></label>}
-        </section>
-        <DeviceSection />
-        <section>
-          <h4><Icon name="user" size={15} /> Others and time zone</h4>
-          <label className="rc-check"><input type="checkbox" checked={!s.muteNudges} onChange={(e) => set('muteNudges', !e.target.checked)} /> Let people remind me about my work</label>
-          <label className="rc-check"><input type="checkbox" checked={s.followDeviceTimeZone} onChange={(e) => set('followDeviceTimeZone', e.target.checked)} /> Follow this device's time zone <span>— now {device}{s.timeZone !== device ? ` (profile: ${s.timeZone})` : ''}</span></label>
-          <p className="rc-hint">Where each reminder goes — in the app, by email, to your devices — is set under My notifications.</p>
-        </section>
-      </div>
-      {error && <div className="form-error" role="alert">{error}</div>}
-    </Modal>
   );
 }

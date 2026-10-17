@@ -47,7 +47,7 @@ const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePa
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
-const NotificationsPage = page(() => import('./features/activity/ActivityPages'), 'NotificationsPage');
+const NotificationCenterPage = page(() => import('./features/notifications/NotificationCenter'), 'NotificationCenterPage');
 const AccountPage = page(() => import('./features/settings/SettingsPage'), 'AccountPage');
 const WorkspaceSettingsPage = page(() => import('./features/settings/SettingsPage'), 'WorkspaceSettingsPage');
 import { toast } from './stores/ui';
@@ -345,12 +345,15 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="settings" element={<WorkspaceSettingsPage />} />
         <Route path="settings/:section" element={<WorkspaceSettingsPage />} />
         <Route path="account" element={<AccountPage section="profile" />} />
-        <Route path="account/notifications" element={<AccountPage section="notifications" />} />
+        <Route path="account/notifications" element={<Moved to="/notifications/preferences" />} />
         <Route path="account/security" element={<AccountPage section="security" />} />
         <Route path="account/mobile" element={<AccountPage section="mobile" />} />
         <Route path="account/integrations" element={<AccountPage section="integrations" />} />
         <Route path="account/resumes" element={<AccountPage section="resumes" />} />
-        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="notifications" element={<NotificationCenterPage section="inbox" />} />
+        <Route path="notifications/preferences" element={<NotificationCenterPage section="preferences" />} />
+        <Route path="notifications/devices" element={<NotificationCenterPage section="devices" />} />
+        <Route path="notifications/schedule" element={<NotificationCenterPage section="schedule" />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
         {/* Where pages used to be */}
         <Route path="work" element={<Moved to="/operations" />} />

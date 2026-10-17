@@ -295,7 +295,10 @@ function NotificationsMenu() {
               </button>
             ))}
           <div className="dp-sep" />
-          <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/notifications'); }}>View all notifications</button>
+          <div className="dp-foot-row">
+            <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/notifications'); }}><Icon name="inbox" size={14} /> Notification Center</button>
+            <button className="dp-menu-item dp-menu-icon" aria-label="Notification settings" title="Notification settings" onClick={() => { setOpen(false); nav('/notifications/preferences'); }}><Icon name="settings" size={14} /></button>
+          </div>
         </div>
       )}
     </div>
