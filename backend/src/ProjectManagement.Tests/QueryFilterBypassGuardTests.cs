@@ -57,6 +57,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Organization/OrgSecurityService.cs",
         "ProjectManagement.Application/Features/Organization/OrgService.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingSyncEngine.cs",
+        "ProjectManagement.Application/Features/ProjectMeetings/StandupSummaryService.cs", // background: finds stand-up meetings across active tenants (ids and times only); each summary is built in that tenant's own scope
         "ProjectManagement.Application/Features/Projects/ProjectGroupService.cs",
         "ProjectManagement.Application/Features/Projects/ProjectService.cs", // project-key uniqueness only, scoped to the current tenant; no data is read
         "ProjectManagement.Application/Features/Projects/ProjectService.Statuses.cs",

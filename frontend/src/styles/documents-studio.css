@@ -272,3 +272,31 @@ a.ds-row:hover .ds-doc-title b { color: var(--primary); }
   .dv-props dl { grid-template-columns: 100px minmax(0, 1fr); }
 }
 .ds-cell-doc .doc-code { min-width: 42px; }
+
+/* ---------- needs attention ---------- */
+.na { display: grid; gap: 14px; }
+.na-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.na-tabs button { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 0 10px; font-size: 13.5px; font-weight: 550; color: var(--text-2); white-space: nowrap; background: none; border: 0; }
+.na-tabs button:hover { color: var(--text); }
+.na-tabs button.on { color: var(--text); font-weight: 650; }
+.na-tabs button.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary-fill); }
+.na-count { font-size: 11px; font-weight: 650; line-height: 1; padding: 3px 6px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.na-table { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; box-shadow: var(--shadow-sm); }
+.na-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) auto; gap: 16px; align-items: center; padding: 12px 18px; border-top: 1px solid var(--border); }
+.na-row:first-child { border-top: 0; }
+.na-head { background: var(--surface-2); padding-top: 9px; padding-bottom: 9px; }
+.na-head span { font-size: 12px; font-weight: 600; color: var(--text-3); }
+.na-project { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.na-project a { font-size: 14px; font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.na-project a:hover { color: var(--primary); }
+.na-project small { font: 500 11.5px/1 var(--mono, monospace); color: var(--text-3); }
+.na-missing { display: flex; flex-wrap: wrap; gap: 6px; }
+.na-type { --dc: var(--primary-fill); display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; background: var(--surface-3); font-size: 12.5px; color: var(--text); }
+.na-type i { width: 8px; height: 8px; border-radius: 2px; background: var(--dc); }
+.na-actions { display: flex; justify-content: flex-end; }
+.na-types { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.na-types label { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 4px 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.na-types label:hover { background: var(--hover-bg); }
+.na-types small { grid-column: 2 / -1; color: var(--text-3); font-size: 12px; }
+.na-types .na-type { justify-self: start; }
+@media (max-width: 720px) { .na-row { grid-template-columns: 1fr; gap: 8px; } .na-head { display: none; } .na-actions { justify-content: flex-start; } }

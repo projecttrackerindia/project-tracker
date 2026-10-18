@@ -12,6 +12,8 @@ public class AppOptions
     /// <summary>Public URL of the API when it is not served from the same address as the web client (identity providers call back here).</summary>
     public string? ApiBaseUrl { get; set; }
     public bool RequireEmailVerification { get; set; } = true;
+    /// <summary>E-mail and push created during a person's quiet hours wait until they end (the in-app item never waits). Tests switch it off for predictable timing.</summary>
+    public bool HoldNotificationsInQuietHours { get; set; } = true;
     public int MaxFailedLogins { get; set; } = 5;
     public int LockoutMinutes { get; set; } = 15;
     public int VerificationTokenHours { get; set; } = 24;

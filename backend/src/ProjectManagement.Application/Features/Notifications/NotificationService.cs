@@ -6,6 +6,7 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Auth;
+using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
@@ -27,9 +28,36 @@ public readonly record struct Channels(bool InApp, bool Email, bool Browser)
     public bool Any => InApp || Email || Browser;
 }
 
-/// <summary>Turns a recipient's preferences (or the catalog defaults) into channels. Preferences are loaded once per user and cached for the request.</summary>
-public class NotificationRouter(IAppDbContext db)
+/// <summary>
+/// Quiet hours for e-mail and push: what is created while the recipient's quiet hours are on (Notifications → Schedule) waits until they
+/// end. The in-app item always appears at once, and some kinds are never held (see <see cref="NeverHeld"/>).
+/// </summary>
+public static class QuietHours
 {
+    /// <summary>Security alerts, reminders the person set for a chosen time, service-level breaches and invitations go out at once.</summary>
+    public static bool NeverHeld(NotificationType type) =>
+        NotificationCatalog.For(type).Locked || type is NotificationType.Security or NotificationType.Reminder or NotificationType.ServiceLevel or NotificationType.Invitation or NotificationType.Briefing;
+
+    /// <summary>When quiet hours that are on at <paramref name="nowUtc"/> end (UTC); null when it is not quiet time now.</summary>
+    public static DateTime? Until(ReminderSettings s, NodaTime.DateTimeZone tz, DateTime nowUtc)
+    {
+        if (s.QuietStart is null || s.QuietEnd is not { } end || s.QuietStart == s.QuietEnd) return null;
+        var local = ZoneTime.ToLocal(nowUtc, tz);
+        var time = TimeOnly.FromDateTime(local);
+        if (!new WorkCalendar(s).InQuietHours(time)) return null;
+        var day = DateOnly.FromDateTime(local);
+        // Still before the end time: it ends later today (the morning part of a window that runs past midnight, or a daytime window).
+        // Otherwise this is the evening part of a window that runs past midnight: it ends tomorrow.
+        var endDay = time < end ? day : day.AddDays(1);
+        return ZoneTime.ToUtc(ZoneTime.At(endDay, end), tz);
+    }
+}
+
+/// <summary>Turns a recipient's preferences (or the catalog defaults) into channels. Preferences are loaded once per user and cached for the request.</summary>
+public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOptions> options)
+{
+    private readonly Dictionary<Guid, (ReminderSettings Settings, NodaTime.DateTimeZone Zone)> _quiet = new();
+
     private readonly Dictionary<(Guid, NotificationType), Channels> _chosen = new();
     private readonly HashSet<Guid> _loaded = [];
 
@@ -64,7 +92,23 @@ public class NotificationRouter(IAppDbContext db)
         n.EmailPending = c.Email;
         n.Browser = c.Browser && c.InApp; // a desktop notification needs the in-app item to open
         n.PushPending = n.Browser;        // and is also pushed to the person's devices, for when the app is closed
+        if ((n.EmailPending || n.PushPending) && options.Value.HoldNotificationsInQuietHours && !QuietHours.NeverHeld(n.Type))
+            n.DeliverAfter = await QuietUntilAsync(n.UserId, n.TenantId, ct);
         return c.Any;
+    }
+
+    /// <summary>The recipient's quiet hours and zone (their own zone, else the workspace's, else the platform default), loaded once per person.</summary>
+    private async Task<DateTime?> QuietUntilAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        if (!_quiet.TryGetValue(userId, out var q))
+        {
+            var settings = await db.ReminderSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct) ?? new ReminderSettings { UserId = userId };
+            var zone = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZone).FirstOrDefaultAsync(ct);
+            if (!ZoneTime.IsKnown(zone)) zone = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
+            q = (settings, ZoneTime.IsKnown(zone) ? ZoneTime.Find(zone) : clock.DefaultZone);
+            _quiet[userId] = q;
+        }
+        return QuietHours.Until(q.Settings, q.Zone, clock.Now);
     }
 }
 
@@ -208,8 +252,10 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
     {
         var chatCutoff = clock.Now.AddMinutes(-ChatEmailDelayMinutes);
+        var deliverableAt = clock.Now;   // held for quiet hours until then
         var rows = await db.Notifications.IgnoreQueryFilters()
-            .Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts && (n.Type != NotificationType.Message || n.CreatedAt <= chatCutoff))
+            .Where(n => n.EmailPending && n.EmailAttempts < MaxAttempts && (n.Type != NotificationType.Message || n.CreatedAt <= chatCutoff)
+                        && (n.DeliverAfter == null || n.DeliverAfter <= deliverableAt))
             .OrderBy(n => n.CreatedAt).Take(batch).ToListAsync(ct);
         if (rows.Count == 0) return 0;
 

@@ -81,8 +81,10 @@ type FixedScope = 'recent' | 'shared' | 'trash';
  * which is the point). `mine` and `restricted` instead narrow the NORMAL filterable list (My Documents / Restricted Documents are still worth
  * searching and filtering within).
  */
-export function DocumentList({ projectId, general, onNew, canCreate, fixedScope, mine, restricted }: {
+export function DocumentList({ projectId, general, onNew, canCreate, fixedScope, mine, restricted, attention }: {
   projectId?: string; general?: boolean; onNew?: () => void; canCreate: boolean; fixedScope?: FixedScope; mine?: string; restricted?: boolean;
+  /** "Needs attention": only documents not updated for 90 days, or never published (archived ones excluded). */
+  attention?: 'stale' | 'unpublished';
 }) {
   const wid = useWorkspaceId();
   const [q, setQ] = useState('');
@@ -103,14 +105,14 @@ export function DocumentList({ projectId, general, onNew, canCreate, fixedScope,
   const members = useWsQuery(['members'], workspaceApi.members, { enabled: !fixedScope && !mine });
 
   const query = useInfiniteQuery({
-    queryKey: fixedScope ? [wid, 'documents', fixedScope] : [wid, 'documents', { projectId, general, dq, typeId, status, scope, ownerId, dtag, mine, restricted }],
+    queryKey: fixedScope ? [wid, 'documents', fixedScope] : [wid, 'documents', { projectId, general, dq, typeId, status, scope, ownerId, dtag, mine, restricted, attention }],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => fixedScope
       ? documentApi.list({ scope: fixedScope, limit: 50 })
       : documentApi.list({
           projectId: projectId ?? (scope && scope !== 'general' ? scope : undefined), general: general || scope === 'general' ? true : undefined,
           q: dq || undefined, typeId: typeId || undefined, status: status || undefined, ownerId: mine ?? (ownerId || undefined),
-          tag: dtag || undefined, scope: restricted ? 'restricted' : undefined, cursor: pageParam, limit: 25,
+          tag: dtag || undefined, scope: restricted ? 'restricted' : attention, cursor: pageParam, limit: 25,
         }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!wid,
@@ -121,6 +123,7 @@ export function DocumentList({ projectId, general, onNew, canCreate, fixedScope,
   const trash = fixedScope === 'trash';
   const grid = view === 'grid' && !fixedScope && !trash;
 
+  const attentionEmpty = attention === 'stale' ? { title: 'Nothing out of date', text: 'Every document has been updated in the last 90 days.' } : { title: 'Everything is published', text: 'Every document has a published version people can rely on.' };
   const emptyCopy: Record<string, { title: string; text: string }> = {
     recent: { title: 'Nothing viewed yet', text: 'Documents you open will show up here.' },
     shared: { title: 'Nothing shared with you yet', text: 'Documents someone grants you access to will show up here.' },
@@ -158,9 +161,9 @@ export function DocumentList({ projectId, general, onNew, canCreate, fixedScope,
       {restricted && <p className="muted doc-scope-note">Confidential and Restricted documents — files attached to these are encrypted at rest.</p>}
 
       {query.isLoading ? <PageLoader /> : query.isError ? <ErrorState error={query.error} retry={() => query.refetch()} /> : items.length === 0 ? (
-        <EmptyState icon="note" title={fixedScope ? emptyCopy[fixedScope].title : filtered ? 'No documents match' : 'No documents yet'}
-          text={fixedScope ? emptyCopy[fixedScope].text : filtered ? 'Try fewer filters or a different word.' : 'Write a requirement document, API documentation or a test plan, and link it to the work that delivers it.'}
-          action={canCreate && !filtered && !fixedScope ? <button className="btn btn-primary" onClick={onNew}><Icon name="plus" /> New document</button> : undefined} />
+        <EmptyState icon={attention && !filtered ? 'checkCircle' : 'note'} title={fixedScope ? emptyCopy[fixedScope].title : filtered ? 'No documents match' : attention ? attentionEmpty.title : 'No documents yet'}
+          text={fixedScope ? emptyCopy[fixedScope].text : filtered ? 'Try fewer filters or a different word.' : attention ? attentionEmpty.text : 'Write a requirement document, API documentation or a test plan, and link it to the work that delivers it.'}
+          action={canCreate && !filtered && !fixedScope && !attention ? <button className="btn btn-primary" onClick={onNew}><Icon name="plus" /> New document</button> : undefined} />
       ) : (
         <>
           {grid ? (

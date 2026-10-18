@@ -76,3 +76,14 @@ public class Invoice : TenantEntity, ITenantScoped
     public string? ProviderReference { get; set; }
     public DateTime IssuedAt { get; set; }
 }
+
+/// <summary>
+/// The last tax-invoice number issued in one Indian financial year (April to March), so paid invoices are numbered in one unbroken
+/// sequence per year as GST requires ("PT/26-27/000042"). Not tenant-owned: the seller - and so the sequence - is the platform itself.
+/// </summary>
+public class InvoiceSequence
+{
+    /// <summary>"26-27" for April 2026 to March 2027.</summary>
+    public string FinancialYear { get; set; } = "";
+    public int LastNumber { get; set; }
+}

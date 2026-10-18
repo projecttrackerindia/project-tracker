@@ -189,9 +189,10 @@ public class BillingService(
             }
 
             var charge = await payments.ChargeAsync(tid, plan.Code, quote.ChargePerCycle, plan.Currency, ct);
+            var number = await InvoiceNumberAsync(db, now, charge.Success, ct);
             db.Invoices.Add(new Invoice
             {
-                TenantId = tid, Number = NewInvoiceNumber(now), PlanCode = plan.Code, Amount = quote.ChargePerCycle, Currency = plan.Currency,
+                TenantId = tid, Number = number, PlanCode = plan.Code, Amount = quote.ChargePerCycle, Currency = plan.Currency,
                 Status = charge.Success ? InvoiceStatus.Paid : InvoiceStatus.Failed, ProviderReference = charge.Reference,
                 Description = description, IssuedAt = now, CreatedAt = now,
             });
@@ -285,7 +286,27 @@ public class BillingService(
     }
 
     /// <summary>"INV-20261018-1A2B3C4D". Unique (an index enforces it); not a gap-free sequence.</summary>
-    internal static string NewInvoiceNumber(DateTime now) => $"INV-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+    /// <summary>A reference for a payment attempt that failed: not a tax invoice, so it takes no number from the sequence.</summary>
+    internal static string NewAttemptReference(DateTime now) => $"ATT-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+
+    /// <summary>The Indian financial year (April to March, India time) a moment falls in, as "26-27".</summary>
+    public static string FinancialYear(DateTime utc)
+    {
+        var local = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(utc, ProjectManagement.Application.Features.Reminders.ZoneTime.Find("Asia/Kolkata"));
+        var start = local.Month >= 4 ? local.Year : local.Year - 1;
+        return $"{start % 100:00}-{(start + 1) % 100:00}";
+    }
+
+    /// <summary>"INV/26-27/000042": unique within the financial year, sequential, and within GST's 16-character limit.</summary>
+    public static string FormatInvoiceNumber(string financialYear, int n) => $"INV/{financialYear}/{n:000000}";
+
+    /// <summary>The number for an invoice: the next in the year's sequence when it is paid (a tax invoice), an attempt reference when it failed.</summary>
+    internal static async Task<string> InvoiceNumberAsync(IAppDbContext db, DateTime now, bool paid, CancellationToken ct)
+    {
+        if (!paid) return NewAttemptReference(now);
+        var year = FinancialYear(now);
+        return FormatInvoiceNumber(year, await db.NextInvoiceNumberAsync(year, ct));
+    }
 }
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
@@ -392,9 +413,10 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
             {
                 var quote = Pricing.Quote(pricing.Value, sub.Plan.Code, unit, sub.Plan.Currency, sub.Plan.PerSeat, sub.Seats, sub.BillingPeriod);
                 var charge = await payments.ChargeAsync(sub.TenantId, sub.Plan.Code, quote.ChargePerCycle, sub.Plan.Currency, ct);
+                var number = await BillingService.InvoiceNumberAsync(db, now, charge.Success, ct);
                 db.Invoices.Add(new Invoice
                 {
-                    TenantId = sub.TenantId, Number = BillingService.NewInvoiceNumber(now), PlanCode = sub.Plan.Code, Amount = quote.ChargePerCycle,
+                    TenantId = sub.TenantId, Number = number, PlanCode = sub.Plan.Code, Amount = quote.ChargePerCycle,
                     Currency = sub.Plan.Currency, Status = charge.Success ? InvoiceStatus.Paid : InvoiceStatus.Failed,
                     Description = BillingService.DescribePurchase(sub.Plan, quote) + " — renewal", ProviderReference = charge.Reference, IssuedAt = now, CreatedAt = now,
                 });

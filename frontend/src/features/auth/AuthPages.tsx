@@ -15,6 +15,7 @@ import { useAuth } from '../../stores/auth';
 import { usePageTitle } from '../../lib/title';
 import { celebrate, firstName, originOf, useCelebration, type CelebrationKind } from '../../stores/celebrate';
 import { toast } from '../../stores/ui';
+import { startOutsideSignIn } from '../../lib/native';
 import { PhoneStep } from './PhoneSignIn';
 import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
@@ -64,7 +65,7 @@ export const PROVIDER_ICON: Record<ExternalProvider['id'], ReactNode> = {
 function SocialButtons({ redirect, email, onSso }: { redirect: string; email: string; onSso: () => void }) {
   const q = useQuery({ queryKey: ['auth', 'providers'], queryFn: authApi.providers, staleTime: 5 * 60_000, retry: false });
   const providers = q.data?.providers ?? [];
-  const go = (id: string) => window.location.assign(apiUrl(`/auth/external/${id}/start?returnUrl=${encodeURIComponent(redirect)}`));
+  const go = (id: string) => void startOutsideSignIn(apiUrl(`/auth/external/${id}/start?returnUrl=${encodeURIComponent(redirect)}`));
   return (
     <>
       <div className="auth-divider">or continue with</div>
@@ -93,7 +94,7 @@ function SsoStep({ email: initial, redirect, onBack }: { email: string; redirect
     try {
       const d = await authApi.ssoDiscover(email.trim());
       if (!d.sso) { setError(`Single sign-on is not set up for ${email.trim().split('@')[1]}. Sign in with your password instead.`); setBusy(false); return; }
-      window.location.assign(apiUrl(`/auth/sso/start?email=${encodeURIComponent(email.trim())}&returnUrl=${encodeURIComponent(redirect)}`));
+      void startOutsideSignIn(apiUrl(`/auth/sso/start?email=${encodeURIComponent(email.trim())}&returnUrl=${encodeURIComponent(redirect)}`));
     } catch (e) { setError(e instanceof ApiError ? e.message : 'Could not check single sign-on. Please try again.'); setBusy(false); }
   };
   return (
@@ -220,7 +221,7 @@ export function LoginPage() {
       // The organization requires its own single sign-on for this address: go there instead of showing an error.
       if (e instanceof ApiError && e.code === 'SSO_REQUIRED') {
         toast('Your organization signs you in through its single sign-on. Taking you there…', 'info');
-        window.location.assign(apiUrl(`/auth/sso/start?email=${encodeURIComponent(v.email)}&returnUrl=${encodeURIComponent(redirect)}`));
+        void startOutsideSignIn(apiUrl(`/auth/sso/start?email=${encodeURIComponent(v.email)}&returnUrl=${encodeURIComponent(redirect)}`));
         return;
       }
       setSigningIn(false);

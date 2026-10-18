@@ -63,6 +63,8 @@ public class DocumentType : TenantEntity, ITenantScoped
     public bool IsActive { get; set; } = true;
     /// <summary>Built in (seeded for every workspace). Built-in kinds cannot be deleted, only switched off.</summary>
     public bool IsSystem { get; set; }
+    /// <summary>Every active project is expected to have a document of this kind; projects without one show under "Needs attention".</summary>
+    public bool RequiredForProjects { get; set; }
 }
 
 /// <summary>The stable identity of a document. The words live in <see cref="DocumentVersion"/> and <see cref="DocumentSection"/>.</summary>

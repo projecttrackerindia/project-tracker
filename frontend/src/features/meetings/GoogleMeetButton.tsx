@@ -203,12 +203,12 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
     const end = new Date(start.getTime() + duration * 60_000);
     const body = {
       title: title.trim(), description: agenda.trim() || undefined, startTime: start.toISOString(), endTime: end.toISOString(), timeZone: tz,
-      participantUserIds: Array.from(selected), repeat: frequency === 'Once' ? undefined : { frequency, occurrences },
+      participantUserIds: Array.from(selected), repeat: frequency === 'Once' ? undefined : { frequency, occurrences }, scrum: scrum || undefined,
     };
     setBusy(true); setError(null);
     try {
       const m = project ? await meetingApi.schedule(project.id, body) : await meetingApi.scheduleForWorkspace(body);
-      invalidateWorkspace(wid, 'meetings');
+      invalidateWorkspace(wid, 'meetings'); invalidateWorkspace(wid, 'calendar');
       toast(frequency === 'Once' ? 'Meeting scheduled.' : 'Recurring series scheduled.');
       setReady({ title: m.title, meetUri: m.meetUri });
     } catch (e) {

@@ -28,12 +28,15 @@ public static class AuthCookies
     public static void WriteRefresh(HttpResponse response, bool https, AuthResult r)
     {
         if (r.RefreshToken is null) return;
-        response.Cookies.Append(Refresh, r.RefreshToken, new CookieOptions
+        WriteRefresh(response, https, r.RefreshToken, r.RefreshExpiresAt);
+    }
+
+    public static void WriteRefresh(HttpResponse response, bool https, string refreshToken, DateTime expiresAt) =>
+        response.Cookies.Append(Refresh, refreshToken, new CookieOptions
         {
             HttpOnly = true, Secure = https, SameSite = SameSiteMode.Strict, Path = "/api/v1/auth",
-            Expires = r.RefreshExpiresAt, IsEssential = true,
+            Expires = expiresAt, IsEssential = true,
         });
-    }
 }
 
 [Route("api/v1/auth")]

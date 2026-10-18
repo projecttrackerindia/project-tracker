@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { insightApi } from '../../api/endpoints';
 import type { CalendarEvent } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState } from '../../components/ui';
-import { DOW, MONTHS_FULL, formatDate, toISODate, todayISO } from '../../lib/format';
+import { DOW, MONTHS_FULL, formatDate, formatTime, toISODate, todayISO } from '../../lib/format';
+import { WorkspaceMeetingModal } from '../meetings/WorkspaceMeetingModal';
 import { type SelectMode, activeDates as datesOf, dayClasses, monthCells, nextSelection, previewDates } from '../../lib/calendar';
 import { useWsQuery } from '../../lib/hooks';
 import { Sheet } from '../../components/Sheet';
@@ -20,6 +21,11 @@ const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ '
 export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }: { projectId?: string; mine?: boolean; userId?: string; onOpenTask: (taskId: string, projectId: string | null) => void; onOpenWork?: (workTaskId: string) => void }) {
   const nav = useNavigate();
   const phone = useIsMobile();
+  // A workspace meeting (no project) opens in a dialog here - also straight from its notification (/calendar?meeting=...).
+  const [params, setParams] = useSearchParams();
+  const meetingParam = params.get('meeting');
+  const [meeting, setMeeting] = useState<string | null>(meetingParam);
+  const closeMeeting = () => { setMeeting(null); if (meetingParam) { const next = new URLSearchParams(params); next.delete('meeting'); setParams(next, { replace: true }); } };
   const [daySheet, setDaySheet] = useState<string | null>(null);   // on a phone a tapped day opens its list in a sheet
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
@@ -66,6 +72,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
     else if (e.type === 'action' && e.projectId) nav(`/projects/${e.projectId}?tab=actions&action=${e.id}`);
     else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/operations?task=${e.id}`); }
     else if (e.type === 'meeting' && e.projectId) nav(`/projects/${e.projectId}?tab=meetings&meeting=${e.id}`);
+    else if (e.type === 'meeting') setMeeting(e.id);
     else if (e.projectId && e.projectId !== projectId) nav(`/projects/${e.projectId}`);
   };
 
@@ -132,7 +139,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
                 {selectedEvents.map((e) => (
                   <button key={`${e.date}:${e.type}:${e.id}`} className="member-item" style={{ textAlign: 'left' }} onClick={() => open(e)}>
                     <span className={`cal-ev ${cls(e)}`} style={{ flexShrink: 0 }}>{TYPE_LABEL[e.type]}</span>
-                    <span className="member-main"><span className="member-name">{e.title}</span><span className="member-role">{mode !== 'single' ? `${formatDate(e.date)} · ` : ''}{e.projectName ?? ''}{e.status ? ` · ${e.status}` : ''}{e.overdue ? ' · overdue' : ''}</span></span>
+                    <span className="member-main"><span className="member-name">{e.title}</span><span className="member-role">{mode !== 'single' ? `${formatDate(e.date)} · ` : ''}{e.startsAt ? `${formatTime(e.startsAt)} · ` : ''}{e.projectName ?? (e.type === 'meeting' ? 'Workspace' : '')}{e.status ? ` · ${e.status}` : ''}{e.overdue ? ' · overdue' : ''}</span></span>
                   </button>
                 ))}
               </div>
@@ -148,7 +155,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
               {(byDate.get(daySheet) ?? []).map((e) => (
                 <li key={`${e.type}:${e.id}`}><button type="button" className="m-row" onClick={() => { setDaySheet(null); open(e); }}>
                   <span className={`m-dot-lg ${cls(e)}`} />
-                  <span className="m-row-main"><b>{e.title}</b><small>{TYPE_LABEL[e.type]}{e.projectName ? ` · ${e.projectName}` : ''}</small></span>
+                  <span className="m-row-main"><b>{e.title}</b><small>{TYPE_LABEL[e.type]}{e.startsAt ? ` · ${formatTime(e.startsAt)}` : ''}{e.projectName ? ` · ${e.projectName}` : ''}</small></span>
                   <Icon name="chevronR" size={16} />
                 </button></li>
               ))}
@@ -156,6 +163,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
           )}
         </Sheet>
       )}
+      {meeting && <WorkspaceMeetingModal id={meeting} onClose={closeMeeting} />}
     </>
   );
 }

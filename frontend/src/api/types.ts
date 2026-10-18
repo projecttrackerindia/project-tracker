@@ -197,6 +197,8 @@ export interface Dashboard {
 export interface CalendarEvent {
   type: 'task' | 'action' | 'work' | 'project' | 'stage' | 'milestone' | 'meeting'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
   overdue: boolean; projectId: string | null; projectName: string | null; priority: Priority | null;
+  /** When a meeting session starts (UTC); null for anything that only has a date. */
+  startsAt?: string | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
 export interface ReportSummary {
@@ -374,6 +376,20 @@ export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
   recurrenceRule?: string | null; calendarUrl?: string | null;
   status: 'Scheduled' | 'Cancelled' | 'Completed'; meetUri: string; organizerUserId: string; organizerName: string; participants: MeetingParticipant[];
+  /** A stand-up: a summary of the project's work is posted to its chat after each session. */
+  isScrum?: boolean;
+}
+/** A meeting for the workspace as a whole (no project), as the people invited see it. */
+export interface WorkspaceMeetingDetail {
+  id: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string; status: 'Scheduled' | 'Cancelled' | 'Completed';
+  meetUri: string; calendarUrl: string | null; recurrenceRule: string | null; isScrum: boolean; organizerUserId: string; organizerName: string; canManage: boolean;
+  attendees: MeetingParticipant[];
+}
+export interface StandupItem { key: string; taskId: string; title: string; who: string | null; due: string | null }
+/** The stand-up summary card posted to a project chat (a 'Meeting' message whose JSON has kind "standup"). */
+export interface StandupCard {
+  kind: 'standup'; meetingId: string; title: string; projectName: string; day: string; doneCount: number; doingCount: number; overdueCount: number;
+  done: StandupItem[]; doing: StandupItem[]; overdue: StandupItem[];
 }
 /** The parsed shape of a chat message whose kind is 'Meeting' (body is JSON, not text - see ChatService.PostMeetingCardAsync). */
 export interface MeetingCard {
@@ -578,7 +594,9 @@ export type SectionKind = 'RichText' | 'Table';
 export type LinkTarget = 'Project' | 'Task' | 'Issue' | 'WorkItem' | 'Sprint';
 export type LinkRelation = 'Describes' | 'Implements' | 'Verifies' | 'References' | 'DependsOn';
 export interface SectionTemplate { key: string; title: string; kind: SectionKind; hint: string | null; columns: string[] | null }
-export interface DocumentType { id: string; code: string; name: string; description: string | null; icon: string; color: string; sections: SectionTemplate[]; sortOrder: number }
+export interface DocumentType { id: string; code: string; name: string; description: string | null; icon: string; color: string; sections: SectionTemplate[]; sortOrder: number; requiredForProjects?: boolean }
+/** An active project missing a document of a kind the workspace marked as required for every project. */
+export interface RequiredGap { projectId: string; projectKey: string; projectName: string; missing: { id: string; code: string; name: string; color: string }[] }
 export interface DocumentItem {
   id: string; key: string; number: number; title: string; typeId: string; typeCode: string; typeName: string; typeColor: string; typeIcon: string;
   projectId: string | null; projectKey: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
@@ -713,7 +731,7 @@ export interface ChainStatus { intact: boolean; records: number; verifiedUpTo: n
 export interface DocSecurity { revealSeconds: number; entitled: boolean; keyVersion: number; valuesTotal: number; valuesOnOldKeys: number; lastRotatedAt: string | null; chain: ChainStatus }
 
 export interface DashboardCount { key: string; label: string; count: number }
-export interface DocumentDashboard { total: number; byStatus: DashboardCount[]; byType: DashboardCount[]; mine: number; waitingForMe: number; updatedThisWeek: number; notUpdatedIn90Days: number; unpublished: number; recent: DocumentItem[] }
+export interface DocumentDashboard { total: number; byStatus: DashboardCount[]; byType: DashboardCount[]; mine: number; waitingForMe: number; updatedThisWeek: number; notUpdatedIn90Days: number; unpublished: number; recent: DocumentItem[]; projectsMissingRequired?: number; requiredTypes?: number }
 
 export interface GroupMapping { id: string; group: string; teamId: string; teamName: string }
 export interface GroupMappings { items: GroupMapping[] }

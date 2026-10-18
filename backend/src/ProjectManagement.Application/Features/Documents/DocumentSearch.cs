@@ -76,7 +76,11 @@ public class DocumentSearchIndexer(IAppDbContext db, AppClock clock)
     }
 }
 
-public record DocumentDashboardDto(int Total, IReadOnlyList<DashboardCount> ByStatus, IReadOnlyList<DashboardCount> ByType, int Mine, int WaitingForMe, int UpdatedThisWeek, int NotUpdatedIn90Days, int Unpublished, IReadOnlyList<DocumentItemDto> Recent);
+public record DocumentDashboardDto(int Total, IReadOnlyList<DashboardCount> ByStatus, IReadOnlyList<DashboardCount> ByType, int Mine, int WaitingForMe, int UpdatedThisWeek, int NotUpdatedIn90Days, int Unpublished, IReadOnlyList<DocumentItemDto> Recent,
+    int ProjectsMissingRequired = 0, int RequiredTypes = 0);
+public record DocumentTypeRefDto(Guid Id, string Code, string Name, string Color);
+/// <summary>An active project that lacks a document of one or more of the kinds the workspace marked as required for every project.</summary>
+public record RequiredGapDto(Guid ProjectId, string ProjectKey, string ProjectName, IReadOnlyList<DocumentTypeRefDto> Missing);
 public record DashboardCount(string Key, string Label, int Count);
 
 /// <summary>The numbers on the Documents overview. Every number is a count over the documents the person may open (the same query as the list), so they always agree with it.</summary>
@@ -97,7 +101,46 @@ public class DocumentDashboardService(IAppDbContext db, ICurrentContext ctx, App
             byStatus.OrderBy(x => x.Key).Select(x => new DashboardCount(x.Key.ToString(), x.Key.ToString(), x.N)).ToList(),
             byType.OrderByDescending(x => x.N).Select(x => new DashboardCount(x.Key.ToString(), typeNames.GetValueOrDefault(x.Key) ?? "Other", x.N)).ToList(),
             await q.CountAsync(d => d.OwnerId == me, ct), toDecide.Count,
-            await q.CountAsync(d => d.UpdatedAt >= week, ct), await q.CountAsync(d => d.UpdatedAt < stale, ct),
-            await q.CountAsync(d => d.PublishedVersionId == null, ct), recent.Items);
+            // Same rules as the "stale" and "unpublished" lists (archived documents are finished on purpose), so a number and its list always agree.
+            await q.CountAsync(d => d.UpdatedAt >= week, ct), await q.CountAsync(d => d.Status != DocumentStatus.Archived && (d.UpdatedAt ?? d.CreatedAt) < stale, ct),
+            await q.CountAsync(d => d.Status != DocumentStatus.Archived && d.PublishedVersionId == null, ct), recent.Items,
+            (await RequiredGapsAsync(ct)).Count, await db.DocumentTypes.CountAsync(t => t.IsActive && t.RequiredForProjects, ct));
+    }
+
+    /// <summary>
+    /// Active projects (planning, active or on hold) the person can see that have no document of a required kind. Whether such a document exists
+    /// is checked across the whole workspace, not only the documents this person may open - a project whose test plan is private to someone
+    /// else still has a test plan (only the fact that one exists is used, never its content).
+    /// </summary>
+    public async Task<IReadOnlyList<RequiredGapDto>> RequiredGapsAsync(CancellationToken ct = default)
+    {
+        var tid = ctx.RequireTenantId();
+        var required = await db.DocumentTypes.AsNoTracking().Where(t => t.IsActive && t.RequiredForProjects).OrderBy(t => t.SortOrder)
+            .Select(t => new DocumentTypeRefDto(t.Id, t.Code, t.Name, t.Color)).ToListAsync(ct);
+        if (required.Count == 0) return [];
+        var typeIds = required.Select(r => r.Id).ToList();
+        var projects = await db.Projects.AsNoTracking()
+            .Where(p => p.Status == ProjectStatus.Planning || p.Status == ProjectStatus.Active || p.Status == ProjectStatus.OnHold)
+            .OrderBy(p => p.Name).Take(300).Select(p => new { p.Id, p.Key, p.Name }).ToListAsync(ct);
+        if (projects.Count == 0) return [];
+        var projectIds = projects.Select(p => p.Id).ToList();
+        var have = (await db.Documents.IgnoreQueryFilters().AsNoTracking()
+                .Where(d => d.TenantId == tid && !d.IsDeleted && d.ProjectId != null && projectIds.Contains(d.ProjectId.Value) && typeIds.Contains(d.TypeId))
+                .Select(d => new { ProjectId = d.ProjectId!.Value, d.TypeId }).Distinct().ToListAsync(ct))
+            .Select(x => (x.ProjectId, x.TypeId)).ToHashSet();
+        return projects
+            .Select(p => new RequiredGapDto(p.Id, p.Key, p.Name, required.Where(t => !have.Contains((p.Id, t.Id))).ToList()))
+            .Where(g => g.Missing.Count > 0).ToList();
+    }
+
+    /// <summary>Creates a draft of every required kind a project is still missing (titled "Test plan · Payments"), for its owners to fill in.</summary>
+    public async Task<IReadOnlyList<DocumentDto>> CreateMissingAsync(Guid projectId, CancellationToken ct = default)
+    {
+        var gap = (await RequiredGapsAsync(ct)).FirstOrDefault(g => g.ProjectId == projectId);
+        if (gap is null) return [];
+        var created = new List<DocumentDto>();
+        foreach (var type in gap.Missing)
+            created.Add(await documents.CreateAsync(new CreateDocumentRequest($"{type.Name} · {gap.ProjectName}", type.Id, ProjectId: projectId), ct));
+        return created;
     }
 }

@@ -3,10 +3,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
-import type { ChatAttachment, ChatMessage, ChatThread, Conversation, MeetingCard } from '../../api/types';
+import type { ChatAttachment, ChatMessage, ChatThread, Conversation, MeetingCard, StandupCard, StandupItem } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Avatar, Badge, PageLoader, Spinner } from '../../components/ui';
-import { formatDateTime } from '../../lib/format';
+import { formatDate, formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
@@ -18,10 +18,36 @@ import { openReminderComposer } from '../reminders/store';
 import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
 
 /** A Google Meet message card (spec section 7): the meeting's own public details only - never anything from the Google connection itself. */
+/** The stand-up summary posted after each session of a project's scrum call. */
+function StandupCardMessage({ card, projectId }: { card: StandupCard; projectId: string }) {
+  const section = (title: string, items: StandupItem[], total: number, due?: boolean) => total > 0 && (
+    <div className="su-sec">
+      <h5>{title}</h5>
+      <ul>{items.map((i) => (
+        <li key={i.taskId}><code>{i.key}</code><Link className="link" to={`/projects/${projectId}?task=${i.taskId}`}><span>{i.title}</span></Link><em>{due && i.due ? `due ${formatDate(i.due)}` : i.who ?? ''}</em></li>
+      ))}</ul>
+      {total > items.length && <div className="su-more">and {total - items.length} more</div>}
+    </div>
+  );
+  return (
+    <div className="su-card">
+      <div className="su-head"><Icon name="checks" size={16} /><b>Stand-up summary</b><span>{formatDate(card.day)}</span></div>
+      <div className="su-counts">
+        <Badge tone="success">{card.doneCount} done</Badge><Badge tone="info">{card.doingCount} in progress</Badge>{card.overdueCount > 0 && <Badge tone="danger">{card.overdueCount} overdue</Badge>}
+      </div>
+      {section('Done since the last stand-up', card.done, card.doneCount)}
+      {section('In progress', card.doing, card.doingCount)}
+      {section('Overdue', card.overdue, card.overdueCount, true)}
+      {card.doneCount + card.doingCount + card.overdueCount === 0 && <p className="su-more" style={{ margin: '6px 0 0' }}>Nothing done, in progress or overdue in this project.</p>}
+    </div>
+  );
+}
+
 function MeetingCardMessage({ body, projectId }: { body: string; projectId: string }) {
   let card: MeetingCard | null = null;
   try { card = JSON.parse(body) as MeetingCard; } catch { /* malformed - fall through to the plain-text fallback below */ }
   if (!card) return <div className="sys-line">Google Meet</div>;
+  if ((card as unknown as { kind?: string }).kind === 'standup') return <StandupCardMessage card={card as unknown as StandupCard} projectId={projectId} />;
   const cancelled = card.status === 'Cancelled';
   return (
     <div className={`gm-chat-card ${cancelled ? 'cancelled' : ''}`}>

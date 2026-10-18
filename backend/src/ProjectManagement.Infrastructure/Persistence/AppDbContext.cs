@@ -110,6 +110,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<GoogleConnection> GoogleConnections => Set<GoogleConnection>();
     public DbSet<ProjectMeeting> ProjectMeetings => Set<ProjectMeeting>();
     public DbSet<MeetingParticipant> MeetingParticipants => Set<MeetingParticipant>();
+    public DbSet<WorkspaceMeeting> WorkspaceMeetings => Set<WorkspaceMeeting>();
+    public DbSet<WorkspaceMeetingAttendee> WorkspaceMeetingAttendees => Set<WorkspaceMeetingAttendee>();
+    public DbSet<InvoiceSequence> InvoiceSequences => Set<InvoiceSequence>();
     public DbSet<DevLink> DevLinks => Set<DevLink>();
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();

@@ -71,7 +71,7 @@ public class SubscriptionActivator(IAppDbContext db, IPaymentProvider payments, 
         var now = DateTime.UtcNow;
         var invoice = new Invoice
         {
-            TenantId = tenantId, Number = BillingService.NewInvoiceNumber(now), PlanCode = plan.Code, Amount = amount, Currency = currency,
+            TenantId = tenantId, Number = await BillingService.InvoiceNumberAsync(db, now, success, ct), PlanCode = plan.Code, Amount = amount, Currency = currency,
             Status = success ? InvoiceStatus.Paid : InvoiceStatus.Failed, ProviderReference = paymentId, Description = error is null ? description : $"{description} ({error})", IssuedAt = now, CreatedAt = now,
         };
         db.Invoices.Add(invoice);

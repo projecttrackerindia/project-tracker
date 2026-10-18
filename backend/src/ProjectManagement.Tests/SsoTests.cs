@@ -476,6 +476,48 @@ public class SsoTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task The_android_app_signs_in_through_a_browser_tab_and_redeems_a_one_time_code_with_its_secret()
+    {
+        var verifier = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var challenge = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(verifier)));
+        var email = $"app-{Guid.NewGuid():N}@gmail.test";
+
+        var tab = Browser();   // the Custom Tab: a different browser from the app
+        var start = await tab.GetAsync($"/api/v1/auth/external/google/start?app={challenge}");
+        Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
+        var q = QueryOf(start.Headers.Location!);
+        var idpCode = factory.Idp.Issue(new() { ["sub"] = $"g-{Guid.NewGuid():N}", ["email"] = email, ["email_verified"] = true, ["name"] = "App User", ["nonce"] = q["nonce"] });
+        var done = await tab.GetAsync($"/api/v1/auth/external/google/callback?code={idpCode}&state={q["state"]}");
+        Assert.Equal(HttpStatusCode.OK, done.StatusCode);   // a page with one "Open Project Tracker" button, not a silent redirect
+        var html = await done.Content.ReadAsStringAsync();
+        var link = Regex.Match(html, "projecttracker://auth/sso\\?code=([0-9A-F]+)");
+        Assert.True(link.Success, html);
+        Assert.Contains(email, html);
+
+        async Task<HttpResponseMessage> Redeem(HttpClient client, string code, string secret)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/sso/app-handoff") { Content = System.Net.Http.Json.JsonContent.Create(new { code, verifier = secret }) };
+            req.Headers.Add("X-Requested-With", "XMLHttpRequest");
+            return await client.SendAsync(req);
+        }
+
+        var app = Browser();
+        var redeemed = await Redeem(app, link.Groups[1].Value, verifier);
+        Assert.Equal(HttpStatusCode.OK, redeemed.StatusCode);
+        Assert.Equal(email, S((await SessionOf(app)).Me["user"]!["email"]));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Redeem(Browser(), link.Groups[1].Value, verifier)).StatusCode);   // one use only
+
+        // Someone who saw the code but does not hold the app's secret gets nothing.
+        var tab2 = Browser();
+        var start2 = await tab2.GetAsync($"/api/v1/auth/external/google/start?app={challenge}");
+        var q2 = QueryOf(start2.Headers.Location!);
+        var idpCode2 = factory.Idp.Issue(new() { ["sub"] = $"g-{Guid.NewGuid():N}", ["email"] = $"app2-{Guid.NewGuid():N}@gmail.test", ["email_verified"] = true, ["name"] = "Other", ["nonce"] = q2["nonce"] });
+        var html2 = await (await tab2.GetAsync($"/api/v1/auth/external/google/callback?code={idpCode2}&state={q2["state"]}")).Content.ReadAsStringAsync();
+        var code2 = Regex.Match(html2, "code=([0-9A-F]+)").Groups[1].Value;
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Redeem(Browser(), code2, "not-the-secret")).StatusCode);
+    }
+
+    [Fact]
     public async Task People_with_two_step_verification_still_enter_their_code_after_google()
     {
         var c = await TestClient.RegisterAsync(factory, "Careful");

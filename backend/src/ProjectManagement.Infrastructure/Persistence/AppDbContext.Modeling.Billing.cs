@@ -35,5 +35,10 @@ public partial class AppDbContext
             // One invoice per provider payment, however many times it is reported (see SubscriptionActivator.RecordPaymentAsync).
             e.HasIndex(x => new { x.TenantId, x.ProviderReference }).IsUnique().HasFilter("\"ProviderReference\" IS NOT NULL");
         });
+        b.Entity<InvoiceSequence>(e =>
+        {
+            e.HasKey(x => x.FinancialYear);
+            e.Property(x => x.FinancialYear).HasMaxLength(9);
+        });
     }
 }
