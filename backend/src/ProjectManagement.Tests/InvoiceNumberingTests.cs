@@ -9,7 +9,7 @@ namespace ProjectManagement.Tests;
 public class InvoiceNumberingTests(ApiFactory factory)
 {
     [Theory]
-    [InlineData(2026, 3, 31, 18, 0, "26-27")]    // 31 March 18:00 UTC is already 1 April in India
+    [InlineData(2026, 3, 31, 19, 0, "26-27")]    // 31 March 19:00 UTC is already 00:30 on 1 April in India
     [InlineData(2026, 3, 31, 12, 0, "25-26")]
     [InlineData(2026, 4, 1, 0, 0, "26-27")]
     [InlineData(2027, 1, 15, 9, 0, "26-27")]

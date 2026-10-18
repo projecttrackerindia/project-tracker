@@ -231,7 +231,7 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var visibleForMeetings = access.VisibleProjects().Select(p => p.Id);
         // A series starts before the range and repeats into it, so recurring meetings are read when they began before the range ends and
         // expanded into their sessions below (a series lasts at most 120 sessions, so a year back is plenty).
-        var seriesFloor = fromUtc.AddDays(-366);
+        var seriesFloor = fromUtc.Ticks > TimeSpan.FromDays(366).Ticks ? fromUtc.AddDays(-366) : DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);   // "from" may be DateOnly.MinValue
         var meq = db.ProjectMeetings.Where(m => m.StartTimeUtc < toUtcExclusive && (m.StartTimeUtc >= fromUtc || (m.RecurrenceRule != null && m.StartTimeUtc >= seriesFloor))
                                                 && m.Status != MeetingStatus.Cancelled && visibleForMeetings.Contains(m.ProjectId));
         if (projectId is { } meetingProject) meq = meq.Where(m => m.ProjectId == meetingProject);
