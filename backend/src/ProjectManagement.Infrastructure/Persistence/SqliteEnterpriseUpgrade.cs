@@ -73,6 +73,10 @@ public static class SqliteEnterpriseUpgrade
             }
             foreach(var operation in operations)
             {
+                // A column or index for a table this database does not have (a partial or older development database) has nothing to
+                // upgrade: EnsureCreated databases always have every table, so this only skips work that could never apply.
+                string? target=operation switch{AddColumnOperation c=>c.Table,CreateIndexOperation i=>i.Table,_=>null};
+                if(target is not null&&!await Exists("table",target))continue;
                 var exists=operation switch
                 {
                     CreateTableOperation table=>await Exists("table",table.Name),

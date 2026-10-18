@@ -231,11 +231,16 @@ public class SsoTests(ApiFactory factory)
         // A person on the domain who already belongs to another organization.
         var email = $"busy@{o.Domain}";
         Assert.True((await o.Owner.Post("/api/v1/workspace/members", new { email, displayName = "Busy", role = "Member", password = "Temp#Passw0rd!" })).Ok);
-        var normalized = email.Trim().ToLowerInvariant();
-        factory.WithDb(db => db.Users.Where(u => u.NormalizedEmail == normalized).ExecuteUpdate(s => s.SetProperty(u => u.MustChangePassword, false)));
-        var busy = new TestClient(factory) { Email = email };
-        Assert.True((await busy.LoginAsync("Temp#Passw0rd!")).Ok);
-        await busy.CreateOrgAsync();
+        // ...and is also a member of a second organization (added directly: an account an administrator created must still
+        // change its password and accept the terms before it may create workspaces itself).
+        var other = await TestClient.RegisterAsync(factory, "Other Owner");
+        var otherOrg = await other.CreateOrgAsync();
+        factory.WithDb(db =>
+        {
+            var uid = db.Users.Where(u => u.Email == email).Select(u => u.Id).Single();
+            db.TenantMembers.Add(new ProjectManagement.Domain.Entities.TenantMember { TenantId = otherOrg, UserId = uid, Role = TenantRole.Member });
+            return db.SaveChanges();
+        });
 
         var refused = await SsoCallback(Browser(), email, $"busy-{Guid.NewGuid():N}");
         Assert.Contains("sso_error=SSO_LINK_REQUIRES_SIGN_IN", refused);
