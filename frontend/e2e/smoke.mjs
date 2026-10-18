@@ -44,7 +44,9 @@ check('team picker present', (await page.locator('.lens-btn').count()) === 1);
 // 4. Forms start short.
 await page.goto(`${BASE}/${slug}/projects`); await page.waitForTimeout(1500);
 await page.locator('button', { hasText: 'New project' }).first().click(); await page.waitForTimeout(800);
-check('new project form is short', (await page.locator('.modal .field').count()) <= 4, `${await page.locator('.modal .field').count()} fields`);
+// Fields people fill in (layout rows such as notes and the More options toggle also use the .field class).
+const inputs = page.locator('.modal .field').filter({ has: page.locator('input, select, textarea') });
+check('new project form is short', (await inputs.count()) <= 4, `${await inputs.count()} fields`);
 check('new project form has More options', (await page.locator('.more-toggle').count()) === 1);
 await page.keyboard.press('Escape');
 
