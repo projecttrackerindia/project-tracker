@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
@@ -18,7 +19,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access, AgentSettingsService settings,
     TaskService tasks, ActionItemService actionItems, IssueService issues, NotificationService notifications, AgentMinutesService minutes,
-    Microsoft.Extensions.Logging.ILogger<AgentReviewService> log)
+    ILogger<AgentReviewService> log)
 {
     private const int PageSize = 100;
 

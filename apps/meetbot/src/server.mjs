@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
@@ -19,12 +20,12 @@ export function createServer(env = process.env) {
   const capacity = Number(env.MEETBOT_MAX_BOTS ?? 4);
   const allowedHosts = (env.MEETBOT_ALLOWED_HOSTS ?? 'meet.google.com').split(',').map((s) => s.trim()).filter(Boolean);
   const webhookHosts = (env.MEETBOT_WEBHOOK_HOSTS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const headless = env.MEETBOT_HEADLESS === 'true';
   const log = (m) => { if (env.MEETBOT_QUIET !== 'true') console.log(`${new Date().toISOString()} ${m}`); };
   const bots = new Map();
 
+  // Read at each launch: the virtual screen may have gone away since the service started (then bots run headless).
   const launch = () => chromium.launch({
-    headless,
+    headless: env.MEETBOT_HEADLESS === 'true',
     ...(env.MEETBOT_CHROMIUM ? { executablePath: env.MEETBOT_CHROMIUM } : {}),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required'],
   });
@@ -90,8 +91,38 @@ export function createServer(env = process.env) {
   return server;
 }
 
+/**
+ * A real (non-headless) browser needs a screen: start a virtual one (Xvfb) unless there is a display already. If it cannot start or stops,
+ * bots fall back to headless Chromium rather than the service failing.
+ */
+export function startVirtualScreen(env = process.env, log = console.log) {
+  if (env.MEETBOT_HEADLESS === 'true' || env.DISPLAY) return;
+  const display = env.MEETBOT_DISPLAY ?? ':99';
+  const fallBack = (why) => { if (env.MEETBOT_HEADLESS !== 'true') { env.MEETBOT_HEADLESS = 'true'; log(`virtual screen ${why}; bots run headless`); } };
+  try {
+    const x = spawn('Xvfb', [display, '-screen', '0', '1280x800x24', '-nolisten', 'tcp'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    x.stderr.on('data', (d) => { const t = String(d).trim(); if (/fatal|cannot|error/i.test(t)) log(`Xvfb: ${t.slice(0, 300)}`); });
+    x.on('error', (e) => fallBack(`could not start (${e.message})`));
+    x.on('exit', (code) => fallBack(`stopped (${code})`));
+    x.unref();
+    env.DISPLAY = display;
+    log(`virtual screen ${display}`);
+  } catch (e) { fallBack(`could not start (${e.message})`); }
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  console.log('meeting bot service starting');
+  process.on('uncaughtException', (e) => console.error(`uncaught: ${e?.stack ?? e}`));
+  process.on('unhandledRejection', (e) => console.error(`unhandled: ${e?.stack ?? e}`));
   const port = Number(process.env.PORT ?? 8080);
   if ((process.env.MEETBOT_SECRET ?? '').length < 16) { console.error('Set MEETBOT_SECRET (at least 16 characters).'); process.exit(1); }
-  createServer().listen(port, () => console.log(`meeting bot service on :${port}`));
+  startVirtualScreen();
+  const server = createServer();
+  // Every interface, IPv4 and IPv6 (the host's health check and private network may use either); IPv4 alone where there is no IPv6.
+  server.on('error', (e) => {
+    if (e.code === 'EAFNOSUPPORT' && !server.listening) { server.listen(port, '0.0.0.0'); return; }
+    console.error(`cannot listen on :${port}: ${e.message}`); process.exit(1);
+  });
+  server.on('listening', () => console.log(`meeting bot service on ${JSON.stringify(server.address())}`));
+  server.listen(port, '::');
 }
