@@ -48,7 +48,7 @@ public record ExternalProviderDto(string Id, string Name);
 public record SsoDiscoveryDto(bool Sso, string? Name, bool Enforced);
 public record UserLoginDto(Guid Id, string Provider, string Name, string? Email, DateTime CreatedAt, DateTime? LastUsedAt);
 /// <summary>The end of a redirect sign-in: a session to hand to the browser (or none, when an account was only linked) and where to go.</summary>
-public record SignInCompletion(AuthResult? Session, string RedirectTo);
+public record SignInCompletion(AuthResult? Session, string RedirectTo, string? AppChallenge = null);
 
 /// <summary>Which organization's single sign-on applies to an email address (its domain verified, the connection on).</summary>
 public class SsoPolicy(IAppDbContext db)
@@ -101,7 +101,31 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private sealed record Pending(string Kind, string Provider, Guid? ConnectionId, string Nonce, string? Verifier, string BindingHash, bool BindingRequired,
-        string ReturnUrl, Guid? LinkUserId, string? SamlRequestId);
+        string ReturnUrl, Guid? LinkUserId, string? SamlRequestId, string? App = null);
+
+    /// <summary>
+    /// A sign-in started by the Android app carries the SHA-256 of a secret only the app holds (64 hex characters). It is kept in this server-side
+    /// state - not in a cookie - so it belongs to exactly this sign-in: nothing a web page can plant changes where an ordinary web sign-in ends.
+    /// </summary>
+    private static string? AppChallengeOf(string? value) =>
+        value is { Length: 64 } v && v.All(Uri.IsHexDigit) ? v.ToUpperInvariant() : null;
+
+    /// <summary>Remembers the app's challenge on the outcome of a sign-in, including its failures, so the controller can hand it back to the app.</summary>
+    private static async Task<SignInCompletion> ForApp(Pending p, Func<Task<SignInCompletion>> finish)
+    {
+        try
+        {
+            var done = await finish();
+            return p.App is null ? done : done with { AppChallenge = p.App };
+        }
+        catch (Exception ex) when (p.App is not null && ex is not OperationCanceledException)
+        {
+            ex.Data[AppChallengeKey] = p.App;
+            throw;
+        }
+    }
+
+    public const string AppChallengeKey = "pt.app-challenge";
 
     public static readonly string[] SocialProviders = ["google", "microsoft", "github", "apple"];
 
@@ -162,7 +186,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         endpoint + (endpoint.Contains('?') ? "&" : "?") + string.Join('&', values.Where(v => v.Value is not null).Select(v => $"{Uri.EscapeDataString(v.Key)}={Uri.EscapeDataString(v.Value!)}"));
 
     /// <summary>Starts single sign-on for an email (its verified domain picks the organization), or for an organization by id.</summary>
-    public async Task<string> StartSsoAsync(string? email, Guid? tenantId, string? returnUrl, string binding, bool secureBinding, CancellationToken ct = default)
+    public async Task<string> StartSsoAsync(string? email, Guid? tenantId, string? returnUrl, string binding, bool secureBinding, CancellationToken ct = default, string? appChallenge = null)
     {
         SsoConnection? c = null;
         if (!string.IsNullOrWhiteSpace(email)) c = await policy.ForEmailAsync(email.Trim(), ct);
@@ -174,7 +198,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             var verifier = Random(32);
             var endpoints = await oidc.DiscoverAsync(c.Authority!, ct);
-            var state = await SaveAsync(new Pending("sso", "sso", c.Id, nonce, verifier, HashBinding(binding), true, SafeReturnUrl(returnUrl), null, null), ct);
+            var state = await SaveAsync(new Pending("sso", "sso", c.Id, nonce, verifier, HashBinding(binding), true, SafeReturnUrl(returnUrl), null, null, AppChallengeOf(appChallenge)), ct);
             return Query(endpoints.AuthorizationEndpoint, [
                 new("client_id", c.ClientId), new("response_type", "code"), new("scope", "openid email profile"), new("redirect_uri", PublicUrls.OidcCallback(_o)),
                 new("state", state), new("nonce", nonce), new("code_challenge", Challenge(verifier)), new("code_challenge_method", "S256"),
@@ -185,7 +209,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var pendingId = Random(24);
         var request = saml.CreateRequest(SamlSettingsFor(c), pendingId);
         await cache.SetStringAsync($"signin:{pendingId}", JsonSerializer.Serialize(
-            new Pending("sso", "sso", c.Id, nonce, null, HashBinding(binding), secureBinding, SafeReturnUrl(returnUrl), null, request.RequestId), Json),
+            new Pending("sso", "sso", c.Id, nonce, null, HashBinding(binding), secureBinding, SafeReturnUrl(returnUrl), null, request.RequestId, AppChallengeOf(appChallenge)), Json),
             new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = StateLife }, ct);
         return request.RedirectUrl;
     }
@@ -194,7 +218,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         new(PublicUrls.SamlEntityId(_o, c.TenantId), PublicUrls.SamlAcs(_o), c.SamlEntityId!, c.SamlSsoUrl!, c.SamlCertificate!);
 
     /// <summary>Starts a Google / Microsoft / GitHub / Apple sign-in, or (with <paramref name="linkUserId"/>) connects one to the signed-in account.</summary>
-    public async Task<string> StartExternalAsync(string provider, string? returnUrl, string binding, bool secureBinding, Guid? linkUserId, CancellationToken ct = default)
+    public async Task<string> StartExternalAsync(string provider, string? returnUrl, string binding, bool secureBinding, Guid? linkUserId, CancellationToken ct = default, string? appChallenge = null)
     {
         provider = provider.ToLowerInvariant();
         if (!Providers().Any(p => p.Id == provider)) throw new NotFoundException("This sign-in option is not available.");
@@ -203,7 +227,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // Apple answers with a cross-site form post (needs the SameSite=None cookie, so https); the others redirect back with a GET.
         var bindingRequired = provider != "apple" || secureBinding;
         var state = await SaveAsync(new Pending(linkUserId is null ? "social" : "link", provider, null, nonce, verifier, HashBinding(binding), bindingRequired,
-            SafeReturnUrl(returnUrl), linkUserId, null), ct);
+            SafeReturnUrl(returnUrl), linkUserId, null, linkUserId is null ? AppChallengeOf(appChallenge) : null), ct);
         var redirect = PublicUrls.ExternalCallback(_o, provider);
         switch (provider)
         {
@@ -227,10 +251,13 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<SignInCompletion> CompleteOidcSsoAsync(string? code, string? state, string? binding, CancellationToken ct = default)
     {
         var p = await TakeAsync(state, binding, ct);
-        var c = await ConnectionAsync(p, SsoProtocol.Oidc, ct);
-        if (string.IsNullOrWhiteSpace(code)) throw new UnauthorizedException("The identity provider did not sign you in.", "SSO_REJECTED");
-        var who = await oidc.RedeemAsync(new OidcRedeemRequest(c.Authority!, c.ClientId!, secrets.Unprotect(c.ClientSecret!), code, PublicUrls.OidcCallback(_o), p.Verifier!, p.Nonce), ct);
-        return await FinishSsoAsync(c, who.Subject, who.Email, who.Name, who.Groups, p.ReturnUrl, ct);
+        return await ForApp(p, async () =>
+        {
+            var c = await ConnectionAsync(p, SsoProtocol.Oidc, ct);
+            if (string.IsNullOrWhiteSpace(code)) throw new UnauthorizedException("The identity provider did not sign you in.", "SSO_REJECTED");
+            var who = await oidc.RedeemAsync(new OidcRedeemRequest(c.Authority!, c.ClientId!, secrets.Unprotect(c.ClientSecret!), code, PublicUrls.OidcCallback(_o), p.Verifier!, p.Nonce), ct);
+            return await FinishSsoAsync(c, who.Subject, who.Email, who.Name, who.Groups, p.ReturnUrl, ct);
+        });
     }
 
     public async Task<SignInCompletion> CompleteSamlAsync(IReadOnlyDictionary<string, string> form, string? binding, CancellationToken ct = default)
@@ -239,10 +266,13 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var relay = form.GetValueOrDefault("RelayState") ?? "";
         var state = relay.Split('&').Select(x => x.Split('=', 2)).Where(x => x.Length == 2 && x[0] == "s").Select(x => Uri.UnescapeDataString(x[1])).FirstOrDefault();
         var p = await TakeAsync(state, binding, ct);
-        var c = await ConnectionAsync(p, SsoProtocol.Saml, ct);
-        var who = saml.ReadResponse(SamlSettingsFor(c), form);
-        if (who.InResponseTo != p.SamlRequestId) throw new UnauthorizedException("The sign-in answer does not belong to this sign-in.", "SSO_STATE_INVALID");
-        return await FinishSsoAsync(c, who.NameId, who.Email, who.Name, who.Groups, p.ReturnUrl, ct);
+        return await ForApp(p, async () =>
+        {
+            var c = await ConnectionAsync(p, SsoProtocol.Saml, ct);
+            var who = saml.ReadResponse(SamlSettingsFor(c), form);
+            if (who.InResponseTo != p.SamlRequestId) throw new UnauthorizedException("The sign-in answer does not belong to this sign-in.", "SSO_STATE_INVALID");
+            return await FinishSsoAsync(c, who.NameId, who.Email, who.Name, who.Groups, p.ReturnUrl, ct);
+        });
     }
 
     private async Task<SsoConnection> ConnectionAsync(Pending p, SsoProtocol protocol, CancellationToken ct)
@@ -343,6 +373,11 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         provider = provider.ToLowerInvariant();
         var p = await TakeAsync(state, binding, ct);
         if (p.Provider != provider || p.Kind is not ("social" or "link")) throw new UnauthorizedException("This sign-in link is not valid. Start again.", "SSO_STATE_INVALID");
+        return await ForApp(p, () => CompleteExternalCoreAsync(provider, code, form, p, ct));
+    }
+
+    private async Task<SignInCompletion> CompleteExternalCoreAsync(string provider, string? code, IReadOnlyDictionary<string, string>? form, Pending p, CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(code)) throw new UnauthorizedException("The sign-in was cancelled.", "SSO_REJECTED");
         var redirect = PublicUrls.ExternalCallback(_o, provider);
         var who = provider switch

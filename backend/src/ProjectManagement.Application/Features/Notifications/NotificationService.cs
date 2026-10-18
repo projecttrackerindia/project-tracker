@@ -259,8 +259,8 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             .OrderBy(n => n.CreatedAt).Take(batch).ToListAsync(ct);
         if (rows.Count == 0) return 0;
 
-        // A chat notice that was read in the meantime has nothing left to say: no e-mail for it.
-        foreach (var read in rows.Where(n => n.Type == NotificationType.Message && n.ReadAt != null)) read.EmailPending = false;
+        // A chat notice, or one held through quiet hours, that was read in the meantime has nothing left to say: no e-mail for it.
+        foreach (var read in rows.Where(n => (n.Type == NotificationType.Message || n.DeliverAfter != null) && n.ReadAt != null)) read.EmailPending = false;
         rows.RemoveAll(n => !n.EmailPending);
         // Claim each one before sending it: with several servers running this, only the one whose update took it off the queue e-mails it.
         // (A failed send puts it back for another try, below.)

@@ -154,6 +154,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         RequireNotGuest();
         if (string.IsNullOrWhiteSpace(req.Title)) throw new ValidationException("title", "Give the meeting a title.");
+        if (req.Title.Trim().Length > 200) throw new ValidationException("title", "Keep the title to 200 characters.");
+        if (req.Description is { Length: > 4000 }) throw new ValidationException("description", "Keep the agenda to 4,000 characters.");
         if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
         // Checked before anything reaches Google: an unknown or missing zone must never leave an invitation sent with nothing recorded here.

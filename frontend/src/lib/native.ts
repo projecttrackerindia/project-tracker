@@ -114,15 +114,26 @@ export async function startOutsideSignIn(url: string) {
   const secret = toHex(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = toHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)));
   try { localStorage.setItem(SSO_SECRET_KEY, JSON.stringify({ secret, at: Date.now() })); } catch { window.location.assign(url); return; }
-  await call(plugin('Browser'), 'open', { url: `${url}${url.includes('?') ? '&' : '?'}app=${challenge}`, presentationStyle: 'fullscreen' }).catch(() => window.location.assign(url));
+  // The Custom Tab runs outside this web view, so it needs the full address, not a path of this site.
+  const tab = new URL(url, location.href);
+  tab.searchParams.set('app', challenge);
+  await call(plugin('Browser'), 'open', { url: tab.href, presentationStyle: 'fullscreen' }).catch(() => window.location.assign(url));
 }
+
+/** A path of this site (never another site, whatever "//", "\\" or a scheme the value tries), or null. */
+const sitePath = (value: string | null | undefined) => {
+  if (!value || !value.startsWith('/')) return null;
+  try { const u = new URL(value, location.origin); return u.origin === location.origin ? `${u.pathname}${u.search}${u.hash}` : null; } catch { return null; }
+};
+
+const SSO_RETURN = 'projecttracker://auth/sso';
 
 /** The Custom Tab handed the sign-in back: redeem the code with the secret (which sets the session cookie here), then enter the app. */
 async function finishOutsideSignIn(link: URL) {
   void call(plugin('Browser'), 'close').catch(() => undefined);
-  const to = link.searchParams.get('to');
+  const to = sitePath(link.searchParams.get('to'));
   const code = link.searchParams.get('code');
-  if (!code) { if (to && to.startsWith('/') && !to.startsWith('//')) window.location.assign(to); return; }
+  if (!code) { if (to) window.location.assign(to); return; }
   let secret: string | null = null;
   try {
     const saved = JSON.parse(localStorage.getItem(SSO_SECRET_KEY) ?? 'null') as { secret: string; at: number } | null;
@@ -138,7 +149,7 @@ async function finishOutsideSignIn(link: URL) {
     });
     if (!res.ok) { fail('The sign-in has expired. Please try again.'); return; }
     const body = await res.json() as { data?: { to?: string } };
-    const next = body.data?.to && body.data.to.startsWith('/') && !body.data.to.startsWith('//') ? body.data.to : '/';
+    const next = sitePath(body.data?.to) ?? '/';
     window.location.assign(`/auth/complete?to=${encodeURIComponent(next)}`);   // a full load, so the app starts from the new session
   } catch { fail('The sign-in could not be completed. Please check your connection and try again.'); }
 }
@@ -179,9 +190,12 @@ export function startNativeApp() {
   const app = plugin('App');
   void app?.addListener('backButton', ((e: { canGoBack: boolean }) => { if (e.canGoBack) history.back(); else void call(app, 'exitApp').catch(() => undefined); }) as never);
   void app?.addListener('appUrlOpen', ((e: { url: string }) => {
-    let u: URL | null = null;
-    try { u = new URL(e.url); } catch { /* not a link */ }
-    if (u && u.protocol === 'projecttracker:' && u.host === 'auth' && u.pathname === '/sso') { void finishOutsideSignIn(u); return; }
+    // Matched on the text itself: how a WebView's URL parser splits a custom scheme (host, path) differs between versions.
+    if (e.url === SSO_RETURN || e.url.startsWith(`${SSO_RETURN}?`)) {
+      const query = e.url.slice(SSO_RETURN.length);
+      void finishOutsideSignIn(new URL(`https://app.invalid/${query}`));
+      return;
+    }
     openInApp(e.url);
   }) as never);
   void plugin('PushNotifications')?.addListener('pushNotificationActionPerformed', ((e: { notification?: { data?: { link?: string } } }) => openInApp(e.notification?.data?.link)) as never);

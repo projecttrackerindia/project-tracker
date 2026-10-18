@@ -177,6 +177,8 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
             if (!mine) { entry.State = EntityState.Detached; continue; }
             entry.Property(x => x.PushPending).OriginalValue = false;
             n.PushPending = false;
+            // Held through quiet hours and already read in the app since: nothing to push.
+            if (n.DeliverAfter is not null && n.ReadAt is not null) continue;
             pending.Add(n);
         }
         if (pending.Count == 0) return 0;

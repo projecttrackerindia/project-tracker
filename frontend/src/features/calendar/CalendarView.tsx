@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { insightApi } from '../../api/endpoints';
 import type { CalendarEvent } from '../../api/types';
@@ -25,6 +25,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
   const [params, setParams] = useSearchParams();
   const meetingParam = params.get('meeting');
   const [meeting, setMeeting] = useState<string | null>(meetingParam);
+  useEffect(() => { if (meetingParam) setMeeting(meetingParam); }, [meetingParam]);   // another notification tapped while the calendar is open
   const closeMeeting = () => { setMeeting(null); if (meetingParam) { const next = new URLSearchParams(params); next.delete('meeting'); setParams(next, { replace: true }); } };
   const [daySheet, setDaySheet] = useState<string | null>(null);   // on a phone a tapped day opens its list in a sheet
   const now = new Date();

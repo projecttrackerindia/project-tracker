@@ -47,10 +47,14 @@ public class StandupSummaryService(IAppDbContext db, ICurrentContext ctx, AppClo
     public async Task<int> RunAsync(CancellationToken ct = default)
     {
         var now = clock.Now;
-        var floor = now.AddDays(-370);
+        // A series runs at most 120 weekly sessions (about 2 years 4 months), so nothing older can still have a session today.
+        var floor = now - MeetingRecurrence.LongestSeries;
+        var recent = now - LateLimit - TimeSpan.FromHours(24);
         var candidates = await db.ProjectMeetings.IgnoreQueryFilters()
             .Where(m => m.IsScrum && m.Status == MeetingStatus.Scheduled && m.StartTimeUtc <= now && m.StartTimeUtc >= floor
-                        && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active))
+                        && (m.RecurrenceRule != null || m.EndTimeUtc >= recent)
+                        && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted))
+            .OrderByDescending(m => m.StartTimeUtc)
             .Select(m => new { m.Id, m.TenantId, m.OrganizerUserId, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.LastSummaryDay })
             .Take(500).ToListAsync(ct);
         var posted = 0;

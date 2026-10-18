@@ -5,10 +5,15 @@ namespace ProjectManagement.Application.Features.ProjectMeetings;
 public record MeetingRepeat(string Frequency, int Occurrences);
 public static class MeetingRecurrence
 {
+    /// <summary>The most sessions a series can have, including the first.</summary>
+    public const int MaxOccurrences = 120;
+    /// <summary>How far back a series that still has sessions can have started: 120 weekly sessions.</summary>
+    public static readonly TimeSpan LongestSeries = TimeSpan.FromDays(MaxOccurrences * 7 + 1);
+
     public static string? Rule(MeetingRepeat? repeat, DateTimeOffset start, string timeZone)
     {
         if (repeat is null) return null;
-        if (repeat.Occurrences is < 2 or > 120)
+        if (repeat.Occurrences < 2 || repeat.Occurrences > MaxOccurrences)
             throw new ValidationException("repeat.occurrences", "Choose between 2 and 120 sessions, including the first.");
         if (!ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(timeZone))
             throw new ValidationException("timeZone", "Choose a valid time zone for the recurring meeting.");

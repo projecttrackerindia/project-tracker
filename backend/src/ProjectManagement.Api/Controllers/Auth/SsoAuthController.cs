@@ -26,41 +26,23 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     // ---------------------------------------------------------------- the Android app
     // Identity providers (Google above all) refuse to sign in inside an app's embedded web view, so the Android app runs these redirects in a
     // Chrome Custom Tab instead. The tab is a different browser from the app, so the session cannot simply be left in its cookie: the tab is
-    // sent back to the app (projecttracker://auth/sso?code=...) with a one-time code, which only the app that started the sign-in can redeem,
-    // because redeeming needs the secret ("verifier") whose SHA-256 the app sent at the start (the PKCE idea). Another app that registered the
-    // same link scheme could see the code, but never use it.
-    private const string AppHandoffCookie = "pm_app_handoff";
+    // sent back to the app (projecttracker://auth/sso?code=...) with a one-time code, which only the holder of the secret ("verifier") whose
+    // SHA-256 started the sign-in can redeem (the PKCE idea). That SHA-256 lives in the sign-in's own server-side state (SsoLoginService), not
+    // in a cookie, so no page can make someone's ordinary web sign-in end in the app hand-over; and the hand-over itself waits for a tap.
     private const string AppReturn = "projecttracker://auth/sso";
     private static readonly TimeSpan AppHandoffLife = TimeSpan.FromMinutes(2);
     private sealed record AppHandoff(string Challenge, string RefreshToken, DateTime RefreshExpiresAt, string To);
 
-    /// <summary>Remembers, in the tab, that this sign-in was started by the app (the value is the SHA-256 of the app's secret, 64 hex characters).</summary>
-    private void MarkAppSignIn(string? challenge)
-    {
-        if (challenge is null || challenge.Length != 64 || !challenge.All(Uri.IsHexDigit)) return;
-        Response.Cookies.Append(AppHandoffCookie, challenge.ToUpperInvariant(), new CookieOptions
-        {
-            HttpOnly = true, IsEssential = true, Path = "/api/v1/auth", MaxAge = TimeSpan.FromMinutes(10),
-            Secure = SecureCookies, SameSite = SecureCookies ? SameSiteMode.None : SameSiteMode.Lax,
-        });
-    }
-
-    private string? TakeAppSignIn()
-    {
-        var v = Request.Cookies[AppHandoffCookie];
-        if (v is null) return null;
-        Response.Cookies.Delete(AppHandoffCookie, new CookieOptions { Path = "/api/v1/auth", Secure = SecureCookies, SameSite = SecureCookies ? SameSiteMode.None : SameSiteMode.Lax });
-        return v;
-    }
-
     /// <summary>Sends the browser to a page of the web app - or, for a sign-in the Android app started, back to the app, which opens that page.</summary>
-    private IActionResult Bounce(string webUrl)
+    private IActionResult Bounce(string webUrl, string? appChallenge)
     {
-        if (TakeAppSignIn() is null) return Redirect(webUrl);
+        if (appChallenge is null) return Redirect(webUrl);
         var path = webUrl.StartsWith(Web, StringComparison.Ordinal) ? webUrl[Web.Length..] : "/login";
         return AppPage("Return to the app", "Sign-in did not finish. Go back to Project Tracker to continue.",
             $"{AppReturn}?to={Uri.EscapeDataString(string.IsNullOrEmpty(path) ? "/" : path)}", "Back to the app");
     }
+
+    private static string? AppOf(Exception ex) => ex.Data[SsoLoginService.AppChallengeKey] as string;
 
     /// <summary>
     /// The last page in the Custom Tab: one button that opens the app. Chrome only hands a link over to an app after a tap, and the tap is also
@@ -90,6 +72,8 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     [HttpPost("sso/app-handoff"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> AppHandoffRedeem([FromBody] AppHandoffRequest req, CancellationToken ct)
     {
+        // Only the app's own script calls this (a plain cross-site form cannot add the header).
+        if (Request.Headers["X-Requested-With"] != "XMLHttpRequest") throw new UnauthorizedException("This sign-in has expired. Start again.", "SSO_STATE_EXPIRED");
         if (string.IsNullOrWhiteSpace(req.Code) || req.Code.Length > 100 || string.IsNullOrWhiteSpace(req.Verifier) || req.Verifier.Length > 200)
             throw new UnauthorizedException("This sign-in has expired. Start again.", "SSO_STATE_EXPIRED");
         var key = $"apphandoff:{req.Code}";
@@ -143,28 +127,28 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     {
         if (done.Session is { } session)
         {
-            if (TakeAppSignIn() is { } challenge && session.RefreshToken is { } refresh)
+            if (done.AppChallenge is { } challenge && session.RefreshToken is { } refresh)
             {
                 var code = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
                 await cache.SetStringAsync($"apphandoff:{code}", System.Text.Json.JsonSerializer.Serialize(new AppHandoff(challenge, refresh, session.RefreshExpiresAt, done.RedirectTo)),
-                    new Microsoft.Extensions.Caching.Distributed.DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = AppHandoffLife }, ct);
+                    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = AppHandoffLife }, ct);
                 return AppPage("You're signed in", $"Signed in as {session.User.Email}. Continue in the Project Tracker app.", $"{AppReturn}?code={code}", "Open Project Tracker");
             }
             AuthCookies.WriteRefresh(Response, SecureCookies, session);
             return Redirect($"{Web}/auth/complete?to={Uri.EscapeDataString(done.RedirectTo)}");
         }
-        return Bounce($"{Web}{done.RedirectTo}");
+        return Bounce($"{Web}{done.RedirectTo}", done.AppChallenge);
     }
 
     private async Task<IActionResult> Run(Func<Task<SignInCompletion>> work, string page = "/login", CancellationToken ct = default)
     {
         try { return await FinishAsync(await work(), ct); }
-        catch (MfaRequiredRedirect mfa) { return Bounce($"{Web}/login?mfa_challenge={Uri.EscapeDataString(mfa.Challenge)}&via={mfa.Provider}&to={Uri.EscapeDataString(mfa.ReturnUrl)}"); }
-        catch (AppException ex) { return Bounce(Fail(ex.Code, ex.Message, page)); }
+        catch (MfaRequiredRedirect mfa) { return Bounce($"{Web}/login?mfa_challenge={Uri.EscapeDataString(mfa.Challenge)}&via={mfa.Provider}&to={Uri.EscapeDataString(mfa.ReturnUrl)}", AppOf(mfa)); }
+        catch (AppException ex) { return Bounce(Fail(ex.Code, ex.Message, page), AppOf(ex)); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             log.LogError(ex, "Redirect sign-in failed");
-            return Bounce(Fail("SSO_FAILED", "Sign-in could not be completed. Please try again.", page));
+            return Bounce(Fail("SSO_FAILED", "Sign-in could not be completed. Please try again.", page), AppOf(ex));
         }
     }
 
@@ -174,15 +158,14 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     [HttpGet("sso/start"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> StartSso([FromQuery] string? email, [FromQuery] Guid? org, [FromQuery] string? returnUrl, [FromQuery] string? app, CancellationToken ct)
     {
-        MarkAppSignIn(app);
-        try { return Redirect(await sso.StartSsoAsync(email, org, returnUrl, Bind(), SecureCookies, ct)); }
-        catch (AppException ex) { return Bounce(Fail(ex.Code, ex.Message)); }
+        try { return Redirect(await sso.StartSsoAsync(email, org, returnUrl, Bind(), SecureCookies, ct, app)); }
+        catch (AppException ex) { return Redirect(Fail(ex.Code, ex.Message)); }
     }
 
     [HttpGet("sso/oidc/callback"), AllowAnonymous]
     public Task<IActionResult> OidcCallback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, [FromQuery(Name = "error_description")] string? description, CancellationToken ct) =>
         error is not null
-            ? Task.FromResult(Bounce(Fail("SSO_REJECTED", description ?? "The identity provider did not sign you in.")))
+            ? Task.FromResult<IActionResult>(Redirect(Fail("SSO_REJECTED", description ?? "The identity provider did not sign you in.")))
             : Run(() => sso.CompleteOidcSsoAsync(code, state, Binding(), ct), ct: ct);
 
     /// <summary>The SAML Assertion Consumer Service (HTTP-POST binding).</summary>
@@ -216,9 +199,8 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     [HttpGet("external/{provider}/start"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> StartExternal(string provider, [FromQuery] string? returnUrl, [FromQuery] string? app, CancellationToken ct)
     {
-        MarkAppSignIn(app);
-        try { return Redirect(await sso.StartExternalAsync(provider, returnUrl, Bind(), SecureCookies, null, ct)); }
-        catch (AppException ex) { return Bounce(Fail(ex.Code, ex.Message)); }
+        try { return Redirect(await sso.StartExternalAsync(provider, returnUrl, Bind(), SecureCookies, null, ct, app)); }
+        catch (AppException ex) { return Redirect(Fail(ex.Code, ex.Message)); }
     }
 
     /// <summary>Connects an outside account to the signed-in one: returns the address to send the browser to.</summary>
@@ -229,7 +211,7 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     [HttpGet("external/{provider}/callback"), AllowAnonymous]
     public Task<IActionResult> ExternalCallback(string provider, [FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct) =>
         error is not null
-            ? Task.FromResult(Bounce(Fail("SSO_REJECTED", "The sign-in was cancelled.")))
+            ? Task.FromResult<IActionResult>(Redirect(Fail("SSO_REJECTED", "The sign-in was cancelled.")))
             : Run(() => sso.CompleteExternalAsync(provider, code, state, null, Binding(), ct), ct: ct);
 
     /// <summary>Apple answers with a form post (response_mode=form_post).</summary>
@@ -237,7 +219,7 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     public Task<IActionResult> ExternalCallbackPost(string provider, CancellationToken ct)
     {
         var form = Request.Form.ToDictionary(k => k.Key, v => v.Value.ToString());
-        if (form.ContainsKey("error")) return Task.FromResult(Bounce(Fail("SSO_REJECTED", "The sign-in was cancelled.")));
+        if (form.ContainsKey("error")) return Task.FromResult<IActionResult>(Redirect(Fail("SSO_REJECTED", "The sign-in was cancelled.")));
         return Run(() => sso.CompleteExternalAsync(provider, form.GetValueOrDefault("code"), form.GetValueOrDefault("state"), form, Binding(), ct), ct: ct);
     }
 }
