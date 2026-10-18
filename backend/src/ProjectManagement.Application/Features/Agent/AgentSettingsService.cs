@@ -19,9 +19,8 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access, ISecretProtector secrets,
     IAiClient ai, EntitlementService entitlements, IOptions<InboundEmailOptions> inbound, IOptions<GoogleCalendarOptions> google,
-    IOptions<MicrosoftProductivityOptions> microsoft)
+    IOptions<MicrosoftProductivityOptions> microsoft, MeetingBotClient bot)
 {
-    public static readonly string[] Regions = ["us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1"];
     private bool IsAdmin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
 
     internal static string NewToken(int bytes) => Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes)).ToLowerInvariant();
@@ -54,7 +53,7 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var canManage = await CanManageAsync(project, ct);
         var pending = await db.AgentFindings.CountAsync(f => f.ProjectId == projectId && f.Status == AgentFindingStatus.Proposed, ct);
         var runs = await db.AgentRuns.AsNoTracking().Where(r => r.ProjectId == projectId).OrderByDescending(r => r.StartedAt).Take(8).ToListAsync(ct);
-        var botReady = await db.AgentWorkspaceSettings.AsNoTracking().AnyAsync(w => w.RecallApiKeyProtected != null, ct);
+        var botReady = bot.Configured;
         var uid = ctx.RequireUserId();
         var transcripts = await db.GoogleConnections.AsNoTracking().Where(c => c.UserId == uid).Select(c => c.Scopes).FirstOrDefaultAsync(ct) is { } scopes
             && scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(GoogleCalendarAuthService.TranscriptScope);
@@ -114,28 +113,22 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         ctx.RequireTenantId();
         var w = await db.AgentWorkspaceSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var enabled = await db.ProjectAgentSettings.CountAsync(s => s.Enabled, ct);
-        return new AgentWorkspaceDto(w?.RecallApiKeyProtected is not null, w?.RecallRegion ?? "us-west-2", w?.BotName ?? "Project Tracker Agent", w?.InCallReminders ?? true, IsAdmin, enabled);
+        return new AgentWorkspaceDto(bot.Configured, w?.BotName ?? "Project Tracker Agent", w?.InCallReminders ?? true, IsAdmin, enabled);
     }
 
+    /// <summary>How the workspace's bot is called in meetings and whether it may remind people during them (Owners and Admins).</summary>
     public async Task<AgentWorkspaceDto> SaveWorkspaceAsync(SaveAgentWorkspaceRequest req, CancellationToken ct = default)
     {
         if (!IsAdmin) throw new ForbiddenException("Only owners and admins can set up the meeting bot.", "PERMISSION_DENIED");
         var tid = ctx.RequireTenantId();
-        if (req.RecallRegion is { } region && !Regions.Contains(region)) throw new ValidationException("recallRegion", "Choose one of the meeting-bot regions.");
-        var key = req.RecallApiKey?.Trim();
-        if (key is { Length: > 0 } && (key.Length < 20 || key.Length > 200 || key.Any(char.IsWhiteSpace)))
-            throw new ValidationException("recallApiKey", "That does not look like a Recall.ai API key.");
         var name = req.BotName?.Trim();
         if (name is not null && (name.Length is < 2 or > 60)) throw new ValidationException("botName", "Give the bot a name of 2 to 60 characters.");
         var w = await db.AgentWorkspaceSettings.FirstOrDefaultAsync(ct);
         if (w is null) { w = new AgentWorkspaceSettings { TenantId = tid, CreatedAt = clock.Now, CreatedBy = ctx.UserId }; db.AgentWorkspaceSettings.Add(w); }
-        if (req.ClearRecallKey == true) w.RecallApiKeyProtected = null;
-        else if (key is { Length: > 0 }) w.RecallApiKeyProtected = secrets.Protect(key);
-        w.RecallRegion = req.RecallRegion ?? w.RecallRegion;
         w.BotName = name ?? w.BotName;
         w.InCallReminders = req.InCallReminders ?? w.InCallReminders;
         w.UpdatedAt = clock.Now; w.UpdatedBy = ctx.UserId;
-        recorder.Audit("agent.workspace_saved", "AgentWorkspaceSettings", w.Id, null, new { keySet = w.RecallApiKeyProtected is not null, w.RecallRegion, w.BotName, w.InCallReminders });
+        recorder.Audit("agent.workspace_saved", "AgentWorkspaceSettings", w.Id, null, new { w.BotName, w.InCallReminders });
         await db.SaveChangesAsync(ct);
         return await GetWorkspaceAsync(ct);
     }

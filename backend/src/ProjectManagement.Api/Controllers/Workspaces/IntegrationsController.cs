@@ -176,13 +176,13 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
         return Ok(new { agentSignal = await AgentSignalService.ReceiveMailAsync(services, token, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct) });
     }
 
-    /// <summary>Real-time transcript from the project agent's meeting bot (Recall.ai); the token in the address picks the bot.</summary>
-    [HttpPost("agent/recall/{token}")]
+    /// <summary>Real-time captions from the project agent's own meeting bot (apps/meetbot); the token in the address picks the bot.</summary>
+    [HttpPost("agent/bot/{token}")]
     [RequestSizeLimit(2 * 1024 * 1024)]
-    public async Task<IActionResult> RecallTranscript(string token, CancellationToken ct)
+    public async Task<IActionResult> BotTranscript(string token, CancellationToken ct)
     {
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
-        await AgentMeetingService.ReceiveRecallAsync(services, token, await reader.ReadToEndAsync(ct), ct);
+        await AgentMeetingService.ReceiveBotAsync(services, token, await reader.ReadToEndAsync(ct), ct);
         return Ok(new { received = true });
     }
 

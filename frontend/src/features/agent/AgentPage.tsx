@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client';
 import { agentApi } from '../../api/endpoints';
 import type { AgentInboxOptIn, AgentWorkspace } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, Field, PageHead, PageLoader, PasswordInput, RouteTabs } from '../../components/ui';
+import { EmptyState, ErrorState, Field, PageHead, PageLoader, RouteTabs } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -13,10 +13,6 @@ import { FindingCard } from './FindingCard';
 import './agent.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
-const REGIONS: { id: string; label: string }[] = [
-  { id: 'us-west-2', label: 'US West (default)' }, { id: 'us-east-1', label: 'US East' }, { id: 'eu-central-1', label: 'Europe (Frankfurt)' }, { id: 'ap-northeast-1', label: 'Asia Pacific (Tokyo)' },
-];
-
 /** Project agent: everything waiting for my decision across projects, my own inbox opt-in, and the workspace's meeting bot. */
 export function AgentPage({ section }: { section: 'review' | 'my-inbox' | 'meeting-bot' }) {
   const inbox = useWsQuery(['agent', 'inbox'], agentApi.inbox, { enabled: section === 'review' });
@@ -88,8 +84,6 @@ function MyInbox() {
 function MeetingBot() {
   const wid = useWorkspaceId();
   const q = useWsQuery(['agent', 'workspace'], agentApi.workspace);
-  const [key, setKey] = useState('');
-  const [region, setRegion] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (q.isLoading) return <PageLoader />;
@@ -97,7 +91,7 @@ function MeetingBot() {
   const w: AgentWorkspace = q.data;
   const save = async (b: Parameters<typeof agentApi.saveWorkspace>[0], done?: string) => {
     setBusy(true);
-    try { await agentApi.saveWorkspace(b); setKey(''); await invalidateWorkspace(wid, 'agent'); if (done) toast(done); }
+    try { await agentApi.saveWorkspace(b); setName(null); await invalidateWorkspace(wid, 'agent'); if (done) toast(done); }
     catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
     finally { setBusy(false); }
   };
@@ -105,22 +99,20 @@ function MeetingBot() {
     <div className="card ag-settings">
       <div className="card-body">
         <h3 className="ag-settings-title"><Icon name="video" size={16} /> Live meeting bot</h3>
-        <p className="ag-hint">With a meeting-bot key, the agent can join a project's Google Meet stand-ups as a participant ("{w.botName}"). It introduces itself in the
-          meeting chat, listens, and posts a short reminder when something important is being missed - overdue work nobody mentioned, a commitment with no
-          owner or date, an unanswered question. When the session ends, everything said is read and proposed for approval. The bot is provided by
-          Recall.ai, billed by them per meeting hour; switch it on per project in the project's Agent tab.</p>
-        <div className={`ag-callout ${w.recallConfigured ? 'ok' : ''}`}><Icon name={w.recallConfigured ? 'checkCircle' : 'info'} size={15} />
-          <span>{w.recallConfigured ? `Set up · ${w.enabledProjects} project${w.enabledProjects === 1 ? '' : 's'} with the agent on` : 'No meeting-bot key yet. Without it, the agent still reads Google Meet transcripts after each meeting.'}</span></div>
+        <p className="ag-hint">The agent's own bot joins a project's Google Meet stand-ups as a guest named "{w.botName}". It introduces itself in the meeting
+          chat, follows the conversation through Meet's live captions, and posts a short reminder when something important is being missed - overdue
+          work nobody mentioned, a commitment with no owner or date, an unanswered question. When the session ends, everything said is read and
+          proposed for approval. Switch it on per project in the project's Agent tab.</p>
+        <div className={`ag-callout ${w.botAvailable ? 'ok' : ''}`}><Icon name={w.botAvailable ? 'checkCircle' : 'info'} size={15} />
+          <span>{w.botAvailable ? `Ready · ${w.enabledProjects} project${w.enabledProjects === 1 ? '' : 's'} with the agent on`
+            : 'The meeting bot is not running on this installation yet. Until it is, the agent reads Google Meet transcripts after each meeting.'}</span></div>
+        <ul className="ag-bot-notes">
+          <li><Icon name="users" size={14} />The meeting host lets the bot in when it asks to join, like any guest.</li>
+          <li><Icon name="message" size={14} />Meet's captions must be available in the meeting's language; the bot switches them on itself.</li>
+          <li><Icon name="shield" size={14} />Nothing it hears changes the project until someone who can edit the project approves it.</li>
+        </ul>
         {w.canManage ? (
           <div className="form-grid ag-bot-form">
-            <Field label={w.recallConfigured ? 'Replace the API key' : 'Recall.ai API key'} hint="Stored encrypted; never shown again.">
-              <PasswordInput className="input" aria-label="Recall.ai API key" value={key} autoComplete="off" onChange={(e) => setKey(e.target.value)} placeholder={w.recallConfigured ? '••••••••' : 'Paste the key'} />
-            </Field>
-            <Field label="Region">
-              <select className="input" aria-label="Region" value={region ?? w.recallRegion} onChange={(e) => setRegion(e.target.value)}>
-                {REGIONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-              </select>
-            </Field>
             <Field label="Bot name" hint="How it appears in the meeting."><input className="input" aria-label="Bot name" value={name ?? w.botName} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
             <div className="ag-provider">
               <span><b>Reminders during the meeting</b><small>Post in the meeting chat when something is missed</small></span>
@@ -128,12 +120,10 @@ function MeetingBot() {
                 disabled={busy} onClick={() => void save({ inCallReminders: !w.inCallReminders })} />
             </div>
             <div className="ag-bot-actions full">
-              {w.recallConfigured && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void save({ clearRecallKey: true }, 'The meeting-bot key was removed.')}>Remove key</button>}
-              <button type="button" className="btn btn-primary" disabled={busy || (!key.trim() && region === null && name === null)}
-                onClick={() => void save({ recallApiKey: key.trim() || undefined, recallRegion: region ?? undefined, botName: name?.trim() || undefined }, 'Saved.')}>{busy && <span className="spinner" />}Save</button>
+              <button type="button" className="btn btn-primary" disabled={busy || name === null || !name.trim()} onClick={() => void save({ botName: name!.trim() }, 'Saved.')}>{busy && <span className="spinner" />}Save</button>
             </div>
           </div>
-        ) : <p className="muted">Workspace owners and admins set up the meeting bot.</p>}
+        ) : <p className="muted">Workspace owners and admins choose the bot's name and whether it reminds people.</p>}
       </div>
     </div>
   );

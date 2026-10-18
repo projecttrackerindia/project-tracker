@@ -119,11 +119,13 @@ namespace ProjectManagement.Domain.Entities
         public string? Error { get; set; }
     }
 
-    /// <summary>The workspace's meeting-bot service (Recall.ai) used by every project's live bot.</summary>
+    /// <summary>How the workspace's live meeting bot appears and behaves (the bot itself is the installation's own service, apps/meetbot).</summary>
     public class AgentWorkspaceSettings : TenantEntity, ITenantScoped
     {
+        /// <summary>Unused: kept from when the bot was a third-party service, so no data migration was needed.</summary>
         public string? RecallApiKeyProtected { get; set; }
         /// <summary>us-east-1, us-west-2, eu-central-1 or ap-northeast-1.</summary>
+        /// <summary>Unused (see <see cref="RecallApiKeyProtected"/>).</summary>
         public string RecallRegion { get; set; } = "us-west-2";
         public string BotName { get; set; } = "Project Tracker Agent";
         /// <summary>Post short reminders in the meeting chat while people talk.</summary>
@@ -131,7 +133,7 @@ namespace ProjectManagement.Domain.Entities
     }
 
     /// <summary>
-    /// The agent's part in one session of a project meeting: the live bot sent to it (Kind "recall"), or fetching Google Meet's own transcript
+    /// The agent's part in one session of a project meeting: our live bot sent to it (Kind "bot"), or fetching Google Meet's own transcript
     /// once the session has ended (Kind "meet").
     /// </summary>
     public class AgentMeetingBot : TenantEntity, ITenantScoped
@@ -140,13 +142,13 @@ namespace ProjectManagement.Domain.Entities
         public Guid MeetingId { get; set; }
         public DateTime SessionStartUtc { get; set; }
         public DateTime SessionEndUtc { get; set; }
-        /// <summary>recall or meet.</summary>
-        public string Kind { get; set; } = "recall";
-        /// <summary>The bot service's id for the bot (recall only).</summary>
+        /// <summary>bot or meet.</summary>
+        public string Kind { get; set; } = "bot";
+        /// <summary>The bot service's id for the bot (bot only).</summary>
         public string BotId { get; set; } = "";
         public DateTime? LastAttemptAt { get; set; }
         public int Attempts { get; set; }
-        /// <summary>scheduled, in_call, done, failed (recall); waiting, done, failed (meet).</summary>
+        /// <summary>scheduled, in_call, done, failed (bot); waiting, done, failed (meet).</summary>
         public string Status { get; set; } = "scheduled";
         /// <summary>32 hex characters in the webhook address the bot service calls.</summary>
         public string WebhookToken { get; set; } = "";

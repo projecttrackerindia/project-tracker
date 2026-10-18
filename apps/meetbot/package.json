@@ -1,0 +1,15 @@
+{
+  "name": "project-tracker-meetbot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Project Tracker's own meeting bot: joins Google Meet, reads the live captions for the project agent, and posts reminders in the chat.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/bot.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.64.0"
+  }
+}

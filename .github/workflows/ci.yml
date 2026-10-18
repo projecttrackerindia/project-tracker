@@ -202,6 +202,13 @@ jobs:
           push: false
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
+      - name: Meeting bot image
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/meetbot
+          push: false
+          cache-from: type=gha,scope=meetbot
+          cache-to: type=gha,scope=meetbot,mode=max
 
   desktop:
     name: Desktop app (tests)
@@ -218,3 +225,20 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund   # the tests do not need the Electron download
       - run: npm test
 
+  meetbot:
+    name: Meeting bot (tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/meetbot
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: A real bot against a synthetic Google Meet page
+        run: npm test

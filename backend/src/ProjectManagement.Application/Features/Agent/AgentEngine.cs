@@ -80,7 +80,8 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
     {
         var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.Id == settingsId, ct);
         if (s is null || !s.Enabled) return new(0, 0, 0, 0);
-        var w = await db.AgentWorkspaceSettings.FirstOrDefaultAsync(ct);
+        // Workspace defaults (bot name, reminders on) until an admin changes them.
+        var w = await db.AgentWorkspaceSettings.FirstOrDefaultAsync(ct) ?? new AgentWorkspaceSettings { TenantId = s.TenantId };
         int added = 0, bots = 0, runs = 0, updates = 0;
 
         if (s.ReadChat && await signals.CollectChatAsync(s, ct)) added++;
@@ -98,7 +99,7 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
         }
         if (s.ReadMeetings)
         {
-            if (s.LiveBot && w is not null)
+            if (s.LiveBot)
             {
                 bots += await Step("schedule bots", () => meetings.ScheduleBotsAsync(s, w, ct));
                 await Step("live reminders", () => meetings.NudgeAsync(s, w, ct));

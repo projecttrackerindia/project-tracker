@@ -784,5 +784,6 @@ export interface AgentFinding {
 }
 export interface AgentFindingPage { items: AgentFinding[]; pending: number; canDecide: boolean }
 export interface AgentApproveEdits { title?: string; detail?: string; assigneeId?: string; clearAssignee?: boolean; dueDate?: string; clearDueDate?: boolean; priority?: Priority; newStatus?: string; comment?: string }
-export interface AgentWorkspace { recallConfigured: boolean; recallRegion: string; botName: string; inCallReminders: boolean; canManage: boolean; enabledProjects: number }
+/** botAvailable: this installation runs Project Tracker's own meeting bot. */
+export interface AgentWorkspace { botAvailable: boolean; botName: string; inCallReminders: boolean; canManage: boolean; enabledProjects: number }
 export interface AgentInboxOptIn { googleAvailable: boolean; microsoftAvailable: boolean; provider: 'google' | 'microsoft' | null; enabled: boolean; scannedUntil: string | null; found: number; lastError: string | null }
