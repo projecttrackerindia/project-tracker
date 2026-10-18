@@ -22,6 +22,26 @@ public partial class AppDbContext
         else
             await BillingEvents.Where(e => e.Provider == provider).ExecuteUpdateAsync(s => s.SetProperty(e => e.Type, e => e.Type), ct);
     }
+    /// <summary>One statement, so two servers issuing invoices at the same moment can never get the same number (PostgreSQL and SQLite 3.35+).</summary>
+    public async Task<int> NextInvoiceNumberAsync(string financialYear, CancellationToken ct)
+    {
+        var connection = Database.GetDbConnection();
+        var opened = connection.State != System.Data.ConnectionState.Open;
+        if (opened) await Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = Database.CurrentTransaction is { } tx ? Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(tx) : null;
+            command.CommandText = """
+                INSERT INTO "InvoiceSequences" ("FinancialYear", "LastNumber") VALUES (@fy, 1)
+                ON CONFLICT ("FinancialYear") DO UPDATE SET "LastNumber" = "InvoiceSequences"."LastNumber" + 1
+                RETURNING "LastNumber"
+                """;
+            var p = command.CreateParameter(); p.ParameterName = "@fy"; p.Value = financialYear; command.Parameters.Add(p);
+            return Convert.ToInt32(await command.ExecuteScalarAsync(ct), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        finally { if (opened) await Database.CloseConnectionAsync(); }
+    }
     public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct) =>
         Database.BeginTransactionAsync(Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
             ? System.Data.IsolationLevel.RepeatableRead : System.Data.IsolationLevel.Serializable, ct);

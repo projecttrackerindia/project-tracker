@@ -31,6 +31,20 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     [HttpGet("document-types")]
     public async Task<IActionResult> Types(CancellationToken ct) => Ok(await documents.ListTypesAsync(ct));
 
+    public record SetRequiredRequest(bool Required);
+
+    /// <summary>Marks a document kind as required in every active project (Owners and Admins).</summary>
+    [HttpPut("document-types/{id:guid}/required")]
+    public async Task<IActionResult> SetRequired(Guid id, [FromBody] SetRequiredRequest req, CancellationToken ct) => Ok(await documents.SetRequiredAsync(id, req.Required, ct));
+
+    /// <summary>Active projects missing a document of a required kind.</summary>
+    [HttpGet("documents/required-gaps")]
+    public async Task<IActionResult> RequiredGaps(CancellationToken ct) => Ok(await dashboard.RequiredGapsAsync(ct));
+
+    /// <summary>Creates drafts of the required kinds a project is still missing.</summary>
+    [HttpPost("projects/{projectId:guid}/documents/required")]
+    public async Task<IActionResult> CreateRequired(Guid projectId, CancellationToken ct) => Created(await dashboard.CreateMissingAsync(projectId, ct));
+
     [HttpGet("documents")]
     public async Task<IActionResult> List([FromQuery] Guid? projectId, [FromQuery] Guid? teamId, [FromQuery] Guid? typeId, [FromQuery] DocumentStatus? status,
         [FromQuery] Guid? ownerId, [FromQuery] string? tag, [FromQuery] string? q, [FromQuery] bool? general, [FromQuery] string? scope, [FromQuery] DocumentClassification? classification,

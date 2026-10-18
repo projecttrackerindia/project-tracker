@@ -174,6 +174,38 @@ public partial class ChatService
         await AnnounceAsync(tenant, conv, line, [], ct);
     }
 
+    /// <summary>
+    /// Posts a card (JSON, rendered by the frontend's Thread.tsx by its "kind") into a project's chat, creating the chat if nobody has opened it
+    /// yet - its members follow the project. Used for the daily stand-up summary, which should reach the team even in a quiet project.
+    /// </summary>
+    public async Task PostProjectCardAsync(Guid projectId, object card, string snippetText, CancellationToken ct = default)
+    {
+        var tenant = ctx.RequireTenantId();
+        var conv = await db.Conversations.FirstOrDefaultAsync(c => c.ProjectId == projectId && c.Type == ConversationType.Project, ct);
+        if (conv is null)
+        {
+            var name = await db.Projects.Where(p => p.Id == projectId).Select(p => p.Name).FirstOrDefaultAsync(ct);
+            if (name is null) return;
+            var created = clock.Now;
+            conv = new Conversation { Type = ConversationType.Project, ProjectId = projectId, Name = name, LastMessageAt = created, CreatedAt = created };
+            db.Conversations.Add(conv);
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException)   // someone opened it at the same moment: use theirs
+            {
+                db.Conversations.Remove(conv);
+                conv = await db.Conversations.FirstOrDefaultAsync(c => c.ProjectId == projectId, ct);
+                if (conv is null) return;
+            }
+            await SyncProjectMembersAsync(tenant, conv, ct);
+        }
+        var now = clock.Now;
+        var line = new ChatMessage { ConversationId = conv.Id, Kind = ChatMessageKind.Meeting, Body = JsonSerializer.Serialize(card, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        db.ChatMessages.Add(line);
+        conv.LastMessageAt = now; conv.LastMessageId = line.Id; conv.LastMessageSenderId = null; conv.LastMessageSnippet = Snippet(snippetText);
+        await db.SaveChangesAsync(ct);
+        await AnnounceAsync(tenant, conv, line, [], ct);
+    }
+
     /// <summary>For each project whose chat has news for the caller: how many messages they have not read, and how many of them mention them.</summary>
     public async Task<IReadOnlyList<ProjectChatUnreadDto>> ProjectUnreadAsync(CancellationToken ct = default)
     {

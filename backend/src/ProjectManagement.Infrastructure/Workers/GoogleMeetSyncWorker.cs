@@ -40,6 +40,16 @@ public class GoogleMeetSyncWorker(IServiceScopeFactory scopes, IOptions<GoogleMe
                     log.LogError(ex, "Google Meet RSVP sync failed");
                     beats.Beat("Google Meet RSVP sync", every, ex.GetType().Name);
                 }
+                try
+                {
+                    // Stand-up summaries ride on the same slow tick: a session that just ended gets its summary posted to the project chat.
+                    using var scope = scopes.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<StandupSummaryService>().RunAsync(stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogError(ex, "Stand-up summaries failed");
+                }
             } while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException) { /* shutting down */ }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
@@ -8,7 +8,9 @@ import { PageLoader } from '../../components/ui';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { chatKeys } from './chatStore';
 import { useProjectChat, type ProjectChatTarget } from './projectChatStore';
-import { Thread } from './Thread';
+
+// The conversation itself (and what it needs) is fetched the first time a project chat is opened, not with every page.
+const Thread = lazy(() => import('./Thread').then((m) => ({ default: m.Thread })));
 
 // ------------------------------------------------------------------ what is open
 export { useProjectChat };
@@ -111,5 +113,9 @@ function PanelBody({ target, onClose }: { target: Target; onClose: () => void })
       </div>
     );
   }
-  return <Thread conversation={q.data} variant="panel" onBack={onClose} onClose={onClose} />;
+  return (
+    <Suspense fallback={<div className="pchat-state"><PageLoader /></div>}>
+      <Thread conversation={q.data} variant="panel" onBack={onClose} onClose={onClose} />
+    </Suspense>
+  );
 }

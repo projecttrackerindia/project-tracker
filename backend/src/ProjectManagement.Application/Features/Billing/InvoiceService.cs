@@ -87,7 +87,8 @@ public class InvoiceService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var tenant = await db.Tenants.AsNoTracking().FirstAsync(t => t.Id == inv.TenantId, ct);
         var seller = await ReadSellerAsync(ct);
         var buyer = new InvoiceBuyerDto(string.IsNullOrWhiteSpace(tenant.BillingName) ? tenant.Name : tenant.BillingName, tenant.BillingAddress ?? "", tenant.BillingTaxId ?? "");
-        return new InvoiceFile($"Invoice-{inv.Number}.pdf", InvoicePdf.Write(inv, seller, buyer));
+        // "INV/26-27/000042" -> "Invoice-INV-26-27-000042.pdf": a slash cannot be part of a file name.
+        return new InvoiceFile($"Invoice-{inv.Number.Replace('/', '-')}.pdf", InvoicePdf.Write(inv, seller, buyer));
     }
 }
 

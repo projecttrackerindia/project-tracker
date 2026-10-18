@@ -28,9 +28,9 @@ export function DocumentsControlCenter({ onView }: { onView: (v: DocumentsView) 
     { label: 'All documents', value: d.total, sub: `${pct}% published`, view: 'all' },
     { label: 'Owned by me', value: d.mine, sub: 'Documents you own', view: 'mine' },
     { label: 'Waiting for me', value: d.waitingForMe, sub: d.waitingForMe ? 'Reviews and access requests' : 'Nothing to do', tone: d.waitingForMe ? 'warn' : undefined, view: 'inbox' },
-    { label: 'Unpublished changes', value: d.unpublished, sub: 'Drafts not yet released' },
+    { label: 'Never published', value: d.unpublished, sub: 'Drafts not yet released', view: 'attention' },
     { label: 'Updated this week', value: d.updatedThisWeek, sub: 'Edited in the last 7 days' },
-    { label: 'Not updated in 90 days', value: d.notUpdatedIn90Days, sub: d.notUpdatedIn90Days ? 'May be out of date' : 'Everything is current', tone: d.notUpdatedIn90Days ? 'bad' : undefined },
+    { label: 'Not updated in 90 days', value: d.notUpdatedIn90Days, sub: d.notUpdatedIn90Days ? 'May be out of date' : 'Everything is current', tone: d.notUpdatedIn90Days ? 'bad' : undefined, view: 'attention' },
   ];
   const typeMax = Math.max(1, ...d.byType.map((t) => t.count));
 

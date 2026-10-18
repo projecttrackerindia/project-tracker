@@ -1,6 +1,6 @@
 import { providerConnectionUrl } from './providerConnection';
 import { del, download, fetchBlobUrl, get, post, put, uploadFile } from './client';
-import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
+import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -141,7 +141,7 @@ export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
   start: (projectId: string, b: { title?: string; participantUserIds?: string[] }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
-  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number } }) =>
+  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean }) =>
     post<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),
@@ -150,8 +150,13 @@ export const meetingApi = {
   removeParticipant: (id: string, userId: string) => del<Meeting>(`/meetings/${id}/participants/${userId}`),
   /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google Calendar holds the event. */
   workspaceParticipants: () => get<MeetingParticipant[]>('/meetings/participants'),
-  scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number } }) =>
-    post<{ title: string; meetUri: string; calendarUrl: string | null; participantCount: number }>('/meetings/schedule', b),
+  scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean }) =>
+    post<{ id: string; title: string; meetUri: string; calendarUrl: string | null; participantCount: number }>('/meetings/schedule', b),
+  workspaceGet: (id: string) => get<WorkspaceMeetingDetail>(`/meetings/workspace/${id}`),
+  workspaceCancel: (id: string) => post(`/meetings/workspace/${id}/cancel`, {}),
+  workspaceReschedule: (id: string, b: { startTime: string; endTime: string }) => post<WorkspaceMeetingDetail>(`/meetings/workspace/${id}/reschedule`, b),
+  /** Posts the stand-up summary for a project meeting to the project chat now. */
+  standupSummary: (id: string) => post<StandupCard>(`/meetings/${id}/standup-summary`, {}),
 };
 
 // ---- capacity and cost

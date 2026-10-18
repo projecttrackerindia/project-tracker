@@ -1,4 +1,4 @@
-import { HubConnectionState, type HubConnection } from '@microsoft/signalr';
+import type { HubConnection } from '@microsoft/signalr';
 
 /**
  * The app's one live connection (opened by ChatRealtime) shared with the screens that want live features: who else is viewing a task,
@@ -9,7 +9,8 @@ export const setLiveConnection = (c: HubConnection | null) => { connection = c; 
 
 /** Calls a hub method when connected; quietly does nothing otherwise (live features are best effort). */
 export function hubInvoke(method: string, ...args: unknown[]) {
-  if (connection?.state === HubConnectionState.Connected) void connection.invoke(method, ...args).catch(() => { /* best effort */ });
+  // Compared by value: the connection library itself is only loaded once the live connection opens (see ChatRealtime).
+  if (connection && String(connection.state) === 'Connected') void connection.invoke(method, ...args).catch(() => { /* best effort */ });
 }
 
 export interface ViewingEvent { key: string; userId: string; name?: string | null; on: boolean; hello?: boolean }

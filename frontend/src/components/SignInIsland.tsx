@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { deviceLoginApi } from '../api/endpoints';
 import { useAuth, useEntitlement } from '../stores/auth';
 import { queryClient } from '../stores/auth';
-import { ApprovePrompt } from '../features/auth/PhoneSignIn';
 import { Icon } from './Icon';
 import { haptic } from '../lib/mobile';
+
+// The question itself lives with the sign-in pages; it is fetched only when a request actually arrives.
+const ApprovePrompt = lazy(() => import('../features/auth/PhoneSignIn').then((m) => ({ default: m.ApprovePrompt })));
 
 /**
  * A request to sign in somewhere else, shown at the top of the screen like a phone's live alert: a capsule that drops in and opens to the question,
@@ -38,7 +40,7 @@ export function SignInIsland() {
         <span className="island-title"><b>Sign-in request</b><small>{item.device}</small></span>
         <span className="island-time">{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</span>
       </button>
-      {open && <div className="island-body"><ApprovePrompt item={item} compact onDone={() => finish(item.id)} /></div>}
+      {open && <div className="island-body"><Suspense fallback={null}><ApprovePrompt item={item} compact onDone={() => finish(item.id)} /></Suspense></div>}
     </div>
   );
 }

@@ -647,6 +647,8 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["PUT document-security/reveal-duration"] = () => owner.Put("/api/v1/document-security/reveal-duration", new { seconds = 30 }),
             ["POST document-security/rotate-key"] = () => owner.Post("/api/v1/document-security/rotate-key"),
             ["POST document-security/verify-audit"] = () => owner.Post("/api/v1/document-security/verify-audit"),
+            ["PUT document-types/{id:guid}/required"] = () => owner.Put($"/api/v1/document-types/{brd}/required", new { required = true }),
+            ["POST projects/{projectId:guid}/documents/required"] = async () => { var gap = await owner.CreateProjectAsync("Gap project"); return await owner.Post($"/api/v1/projects/{gap}/documents/required", new { }); },
         };
 
         // 1. Every write endpoint of the controller must have a scenario (a new endpoint without one fails here, until it is covered).

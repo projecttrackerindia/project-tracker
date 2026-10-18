@@ -1,5 +1,5 @@
 import { del, download, get, post, put, uploadFile } from './client';
-import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse,ArtifactVersions,ArtifactVersion,ArtifactCompare } from './types';
+import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,RequiredGap,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse,ArtifactVersions,ArtifactVersion,ArtifactCompare } from './types';
 
 // ---- passkeys: sign in with the device's own fingerprint, face or screen lock
 export const passkeyApi = {
@@ -75,6 +75,10 @@ export const documentApi = {
   exportPdf: (id: string, versionId?: string | null) => post<ReportExport>(`/documents/${id}/export`, { versionId: versionId ?? null }),
   exportStatus: (id: string, exportId: string) => get<ReportExport>(`/documents/${id}/exports/${exportId}`),
   dashboard: () => get<DocumentDashboard>('/documents/dashboard'),
+  /** Active projects without a document of a required kind, and creating those drafts in one go. */
+  requiredGaps: () => get<RequiredGap[]>('/documents/required-gaps'),
+  createRequired: (projectId: string) => post<DocumentDetail[]>(`/projects/${projectId}/documents/required`, {}),
+  setTypeRequired: (typeId: string, required: boolean) => put<DocumentType>(`/document-types/${typeId}/required`, { required }),
   // sensitive values
   secrets: (id: string) => get<SecretList>(`/documents/${id}/secrets`),
   saveSecret: (id: string, secretId: string | null, b: { label: string; value?: string; note?: string; class: SecretClass }) => secretId ? put<SecretList>(`/documents/${id}/secrets/${secretId}`, b) : post<SecretList>(`/documents/${id}/secrets`, b),

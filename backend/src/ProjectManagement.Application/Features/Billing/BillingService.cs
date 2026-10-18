@@ -189,12 +189,12 @@ public class BillingService(
             }
 
             var charge = await payments.ChargeAsync(tid, plan.Code, quote.ChargePerCycle, plan.Currency, ct);
-            db.Invoices.Add(new Invoice
+            await SaveInvoiceAsync(db, new Invoice
             {
-                TenantId = tid, Number = NewInvoiceNumber(now), PlanCode = plan.Code, Amount = quote.ChargePerCycle, Currency = plan.Currency,
+                TenantId = tid, PlanCode = plan.Code, Amount = quote.ChargePerCycle, Currency = plan.Currency,
                 Status = charge.Success ? InvoiceStatus.Paid : InvoiceStatus.Failed, ProviderReference = charge.Reference,
                 Description = description, IssuedAt = now, CreatedAt = now,
-            });
+            }, charge.Success, null, ct);
             if (!charge.Success)
             {
                 recorder.Audit("billing.payment_failed", "Subscription", sub.Id, newValue: new { plan.Code, charge.Error });
@@ -285,8 +285,62 @@ public class BillingService(
     }
 
     /// <summary>"INV-20261018-1A2B3C4D". Unique (an index enforces it); not a gap-free sequence.</summary>
-    internal static string NewInvoiceNumber(DateTime now) => $"INV-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
-}
+    /// <summary>A reference for a payment attempt that failed: not a tax invoice, so it takes no number from the sequence.</summary>
+    internal static string NewAttemptReference(DateTime now) => $"ATT-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+
+    /// <summary>The Indian financial year (April to March, India time) a moment falls in, as "26-27".</summary>
+    public static string FinancialYear(DateTime utc)
+    {
+        var local = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(utc, ProjectManagement.Application.Features.Reminders.ZoneTime.Find("Asia/Kolkata"));
+        var start = local.Month >= 4 ? local.Year : local.Year - 1;
+        return $"{start % 100:00}-{(start + 1) % 100:00}";
+    }
+
+    /// <summary>"INV/26-27/000042": unique within the financial year, sequential, and within GST's 16-character limit.</summary>
+    public static string FormatInvoiceNumber(string financialYear, int n) => $"INV/{financialYear}/{n:000000}";
+
+    /// <summary>
+    /// Adds an invoice and saves (with whatever else is pending). A paid invoice is a tax invoice: it takes the next number of its financial
+    /// year inside the same transaction as the insert - the sequence row stays locked until then - so a failed save, or a payment found to be
+    /// recorded already (<paramref name="alreadyRecorded"/>), gives the number back and the sequence never has a gap. A failed charge is not a
+    /// tax invoice and gets an attempt reference instead. Returns false when nothing was added because it was already recorded.
+    /// </summary>
+    internal static async Task<bool> SaveInvoiceAsync(IAppDbContext db, Invoice invoice, bool paid, Func<Task<bool>>? alreadyRecorded, CancellationToken ct)
+    {
+        if (!paid)
+        {
+            if (alreadyRecorded is not null && await alreadyRecorded()) return false;
+            invoice.Number = NewAttemptReference(invoice.IssuedAt);
+            db.Invoices.Add(invoice);
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        const string Savepoint = "invoice_number";
+        var outer = db.Database.CurrentTransaction;
+        var own = outer is null ? await db.Database.BeginTransactionAsync(ct) : null;
+        if (outer is not null) await outer.CreateSavepointAsync(Savepoint, ct);
+        try
+        {
+            var year = FinancialYear(invoice.IssuedAt);
+            invoice.Number = FormatInvoiceNumber(year, await db.NextInvoiceNumberAsync(year, ct));
+            if (alreadyRecorded is not null && await alreadyRecorded())
+            {
+                if (own is not null) await own.RollbackAsync(ct); else await outer!.RollbackToSavepointAsync(Savepoint, ct);
+                return false;
+            }
+            db.Invoices.Add(invoice);
+            await db.SaveChangesAsync(ct);
+            if (own is not null) await own.CommitAsync(ct); else await outer!.ReleaseSavepointAsync(Savepoint, ct);
+            return true;
+        }
+        catch
+        {
+            db.Invoices.Entry(invoice).State = EntityState.Detached;
+            if (own is not null) await own.RollbackAsync(CancellationToken.None); else await outer!.RollbackToSavepointAsync(Savepoint, CancellationToken.None);
+            throw;
+        }
+        finally { if (own is not null) await own.DisposeAsync(); }
+    }}
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
 public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks, ProjectManagement.Application.Features.Integrations.WhatsAppMetadataMaintenance whatsAppMetadata)
@@ -392,12 +446,12 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
             {
                 var quote = Pricing.Quote(pricing.Value, sub.Plan.Code, unit, sub.Plan.Currency, sub.Plan.PerSeat, sub.Seats, sub.BillingPeriod);
                 var charge = await payments.ChargeAsync(sub.TenantId, sub.Plan.Code, quote.ChargePerCycle, sub.Plan.Currency, ct);
-                db.Invoices.Add(new Invoice
+                await BillingService.SaveInvoiceAsync(db, new Invoice
                 {
-                    TenantId = sub.TenantId, Number = BillingService.NewInvoiceNumber(now), PlanCode = sub.Plan.Code, Amount = quote.ChargePerCycle,
+                    TenantId = sub.TenantId, PlanCode = sub.Plan.Code, Amount = quote.ChargePerCycle,
                     Currency = sub.Plan.Currency, Status = charge.Success ? InvoiceStatus.Paid : InvoiceStatus.Failed,
                     Description = BillingService.DescribePurchase(sub.Plan, quote) + " — renewal", ProviderReference = charge.Reference, IssuedAt = now, CreatedAt = now,
-                });
+                }, charge.Success, null, ct);
                 if (charge.Success) { sub.CurrentPeriodStart = now; sub.CurrentPeriodEnd = now.AddMonths(quote.CycleMonths); }
                 else sub.Status = SubscriptionStatus.PastDue;
             }

@@ -1,9 +1,7 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { insightApi, workApi } from '../../api/endpoints';
 import type { StatusCategory } from '../../api/types';
-import { ChartTip } from '../../components/ChartTip';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Progress, StatCard } from '../../components/ui';
 import { formatDate, formatDateShort, timeAgo } from '../../lib/format';
@@ -13,12 +11,16 @@ import { useAi } from '../ai/Assistant';
 import { GettingStarted } from './GettingStarted';
 import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { formatMinutes } from '../time/time';
-import { TaskModal } from '../tasks/TaskModal';
-import { ProjectFormModal } from '../projects/ProjectFormModal';
-import { WorkTaskModal } from '../work/WorkTaskModal';
 import { MobileHome } from './MobileHome';
 import { useIsMobile } from '../../lib/mobile';
 import { WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from '../workitems/workItems';
+
+// The charts (and the charting library) and the editing dialogs are fetched when they are first shown, so home opens without them.
+const TrendChart = lazy(() => import('./DashboardCharts').then((m) => ({ default: m.TrendChart })));
+const StatusRing = lazy(() => import('./DashboardCharts').then((m) => ({ default: m.StatusRing })));
+const TaskModal = lazy(() => import('../tasks/TaskModal').then((m) => ({ default: m.TaskModal })));
+const ProjectFormModal = lazy(() => import('../projects/ProjectFormModal').then((m) => ({ default: m.ProjectFormModal })));
+const WorkTaskModal = lazy(() => import('../work/WorkTaskModal').then((m) => ({ default: m.WorkTaskModal })));
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = { Todo: '#38bdf8', Active: '#8b5cf6', Done: '#34d399', Cancelled: '#9aa0b5' };
 const CATEGORY_LABEL: Record<StatusCategory, string> = { Todo: 'To do', Active: 'In progress', Done: 'Done', Cancelled: 'Cancelled' };
@@ -80,7 +82,7 @@ export function DashboardPage() {
       <>
         <PageHead title={`Welcome, ${user.displayName.split(' ')[0]}`} sub="Three quick steps and you are up and running." />
         <GettingStarted personal={personal} ai={ai} canCreateProject={canCreateProject} onCreateProject={() => setProjectModal(true)} />
-        {projectModal && <ProjectFormModal onClose={() => setProjectModal(false)} onSaved={(id) => nav(`/projects/${id}`)} />}
+        {projectModal && <Suspense fallback={null}><ProjectFormModal onClose={() => setProjectModal(false)} onSaved={(id) => nav(`/projects/${id}`)} /></Suspense>}
       </>
     );
   }
@@ -150,20 +152,7 @@ export function DashboardPage() {
           </div>
           <div className="card-body">
             <div style={{ height: 200 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="dashTrendFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.35} /><stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval={range <= 14 ? 0 : range <= 30 ? 2 : 6} minTickGap={12} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} width={24} />
-                  <Tooltip content={<ChartTip format={(v) => `${v} completed`} />} cursor={{ stroke: 'var(--border-strong)' }} />
-                  <Area type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2.5} fill="url(#dashTrendFill)" animationDuration={700} animationEasing="ease-out" />
-                </AreaChart>
-              </ResponsiveContainer>
+              <Suspense fallback={null}><TrendChart trend={trend} range={range} /></Suspense>
             </div>
           </div>
         </div>}
@@ -172,14 +161,7 @@ export function DashboardPage() {
           <div className="card-head"><h3>Task status</h3><span>{statusTotal} task{statusTotal === 1 ? '' : 's'}</span></div>
           <div className="ts-body">
             <div className="ts-ring">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={statusDist} dataKey="count" nameKey="category" innerRadius={31} outerRadius={46} paddingAngle={2} animationDuration={650} animationEasing="ease-out" fill="#8b5cf6" stroke="var(--surface-1)" strokeWidth={2}>
-                    {statusDist.map((s) => <Cell key={s.category} fill={CATEGORY_COLOR[s.category]} />)}
-                  </Pie>
-                  <Tooltip content={<ChartTip format={(v) => `${v} (${statusTotal ? Math.round((v / statusTotal) * 100) : 0}%)`} />} />
-                </PieChart>
-              </ResponsiveContainer>
+              <Suspense fallback={null}><StatusRing statusDist={statusDist} statusTotal={statusTotal} colors={CATEGORY_COLOR} /></Suspense>
               <div className="ts-total"><b>{statusTotal}</b><small>tasks</small></div>
             </div>
             <div className="ring-legend">
@@ -230,9 +212,11 @@ export function DashboardPage() {
         </div>}
       </div>}
 
-      {taskModal && <TaskModal taskId={taskModal.id} onClose={() => setTaskModal(null)} />}
-      {workModal && <WorkTaskModal taskId={workModal} onClose={() => setWorkModal(null)} />}
-      {projectModal && <ProjectFormModal onClose={() => setProjectModal(false)} onSaved={(id) => nav(`/projects/${id}`)} />}
+      <Suspense fallback={null}>
+        {taskModal && <TaskModal taskId={taskModal.id} onClose={() => setTaskModal(null)} />}
+        {workModal && <WorkTaskModal taskId={workModal} onClose={() => setWorkModal(null)} />}
+        {projectModal && <ProjectFormModal onClose={() => setProjectModal(false)} onSaved={(id) => nav(`/projects/${id}`)} />}
+      </Suspense>
     </>
   );
 }

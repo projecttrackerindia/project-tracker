@@ -45,8 +45,10 @@ public class PostgresExpansionUpgradeTests
             await db.Database.ExecuteSqlInterpolatedAsync($@"INSERT INTO ""Tenants"" (""Id"",""Name"",""Slug"",""Type"",""OwnerUserId"",""Status"",""TrialUsed"",""AiDisabled"",""ProjectVisibility"",""IsDeleted"",""CreatedAt"")
                 VALUES ({tenant.Id},{tenant.Name},{tenant.Slug},{"Organization"},{user.Id},{"Active"},{false},{false},{0},{false},{DateTime.UtcNow})");
             context.UserId=user.Id;context.TenantId=tenant.Id;context.Role=TenantRole.Owner;context.WorkspaceType=WorkspaceType.Organization;
-            var notification=new Notification{TenantId=tenant.Id,UserId=user.Id,Type=NotificationType.TaskAssigned,Title="Existing notification",Body="Private fixture body"};
-            db.Notifications.Add(notification);await db.SaveChangesAsync();
+            // Raw SQL for the same reason: the current model maps Notifications.DeliverAfter, added by a later migration.
+            var notification=new Notification{Id=Guid.NewGuid()};
+            await db.Database.ExecuteSqlInterpolatedAsync($@"INSERT INTO ""Notifications"" (""Id"",""TenantId"",""UserId"",""Type"",""Title"",""Body"",""InApp"",""Browser"",""EmailPending"",""EmailAttempts"",""PushPending"",""CreatedAt"")
+                VALUES ({notification.Id},{tenant.Id},{user.Id},{"TaskAssigned"},{"Existing notification"},{"Private fixture body"},{true},{true},{false},{0},{false},{DateTime.UtcNow})");
             db.ChangeTracker.Clear();
             await db.Database.MigrateAsync();
             await db.Database.MigrateAsync();

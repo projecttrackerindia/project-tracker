@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
@@ -89,5 +90,79 @@ public class WorkspaceMeetingTests(ApiFactory factory)
         var byGuest = await guest.Post("/api/v1/meetings/schedule", Body());
         Assert.False(byGuest.Ok, byGuest.ToString());
         Assert.Equal(HttpStatusCode.Forbidden, byGuest.Status);
+    }
+
+    [Fact]
+    public async Task A_workspace_series_shows_on_the_invitees_calendar_and_the_organizer_can_cancel_it()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Organizer");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
+        var teammate = await owner.AddMemberAsync(factory, TenantRole.Member, "Invited");
+        var other = await owner.AddMemberAsync(factory, TenantRole.Member, "Not invited");
+        await ConnectGoogleAsync(owner);
+
+        // Monday 7 June 2027, 09:30 in Kolkata; five weekday sessions (7-11 June).
+        var start = new DateTimeOffset(2027, 6, 7, 4, 0, 0, TimeSpan.Zero);
+        var res = await owner.Post("/api/v1/meetings/schedule", new { title = "Team stand-up", startTime = start, endTime = start.AddMinutes(15), timeZone = "Asia/Kolkata",
+            participantUserIds = new[] { teammate.UserId }, repeat = new { frequency = "Weekdays", occurrences = 5 }, scrum = true });
+        Assert.Equal(HttpStatusCode.Created, res.Status);
+        var id = res.Data!["id"]!.GetValue<string>();
+
+        var events = (await teammate.Get("/api/v1/calendar?from=2027-06-01&to=2027-06-30")).Data!.AsArray()
+            .Where(e => e!["type"]!.GetValue<string>() == "meeting" && e["title"]!.GetValue<string>() == "Team stand-up").ToList();
+        Assert.Equal(new[] { "2027-06-07", "2027-06-08", "2027-06-09", "2027-06-10", "2027-06-11" }, events.Select(e => e!["date"]!.GetValue<string>()).ToArray());
+
+        var detail = await teammate.Get($"/api/v1/meetings/workspace/{id}");
+        Assert.True(detail.Ok, detail.ToString());
+        Assert.False(detail.Data!["canManage"]!.GetValue<bool>());
+        Assert.True(detail.Data["isScrum"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.NotFound, (await other.Get($"/api/v1/meetings/workspace/{id}")).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await teammate.Post($"/api/v1/meetings/workspace/{id}/cancel", new { })).Status);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.Post($"/api/v1/meetings/workspace/{id}/cancel", new { })).Status);
+        var after = (await teammate.Get("/api/v1/calendar?from=2027-06-01&to=2027-06-30")).Data!.AsArray();
+        Assert.DoesNotContain(after, e => e!["title"]!.GetValue<string>() == "Team stand-up");
+    }
+
+    [Fact]
+    public async Task A_stand_up_posts_its_summary_to_the_project_chat_on_demand_and_after_a_session()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Scrum Master");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
+        var project = await owner.CreateProjectAsync("Payments Core");
+        await owner.CreateTaskAsync(project, "Overdue reconciliation", new { title = "Overdue reconciliation", priority = "High", dueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-3)) });
+        await ConnectGoogleAsync(owner);
+
+        var start = DateTimeOffset.UtcNow.AddDays(1);
+        var res = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new { title = "Payments Core Scrum", startTime = start, endTime = start.AddMinutes(15), timeZone = "Asia/Kolkata", scrum = true });
+        Assert.True(res.Ok, res.ToString());
+        var meetingId = Guid.Parse(res.Data!["id"]!.GetValue<string>());
+
+        var card = await owner.Post($"/api/v1/meetings/{meetingId}/standup-summary", new { });
+        Assert.True(card.Ok, card.ToString());
+        Assert.Equal("standup", card.Data!["kind"]!.GetValue<string>());
+        Assert.Equal(1, card.Data["overdueCount"]!.GetValue<int>());
+        Assert.Equal("Overdue reconciliation", card.Data["overdue"]![0]!["title"]!.GetValue<string>());
+
+        // The session ended half an hour ago: the background run posts that day's summary once, however often it runs.
+        factory.WithDb(db =>
+        {
+            var m = db.ProjectMeetings.IgnoreQueryFilters().Single(x => x.Id == meetingId);
+            m.StartTimeUtc = DateTime.UtcNow.AddMinutes(-45); m.EndTimeUtc = DateTime.UtcNow.AddMinutes(-30);
+            db.SaveChanges();
+            return 0;
+        });
+        int Posts() => factory.WithDb(db => db.ChatMessages.IgnoreQueryFilters().Count(x => x.Body.Contains("\"kind\":\"standup\"") && x.Body.Contains(meetingId.ToString())));
+        var before = Posts();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var first = await scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Features.ProjectMeetings.StandupSummaryService>().RunAsync();
+            Assert.True(first >= 1);
+        }
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Features.ProjectMeetings.StandupSummaryService>().RunAsync();
+        Assert.Equal(before + 1, Posts());
     }
 }

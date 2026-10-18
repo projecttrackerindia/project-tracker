@@ -48,7 +48,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--hl), var(--shadow-sm);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -138,7 +138,7 @@
   display: flex; align-items: center; gap: 22px; padding: 22px 26px; margin-bottom: 18px;
   border-radius: var(--radius-lg); border: 1px solid var(--border); position: relative; overflow: hidden;
   background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
-  box-shadow: var(--hl), var(--shadow-sm);
+  box-shadow: none;
 }
 .cc-hero::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .6;
@@ -168,14 +168,14 @@
 .cc-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .cc-kpi {
   padding: 13px 16px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
-  box-shadow: var(--hl), var(--shadow-sm);
+  box-shadow: none;
 }
 .cc-kpi-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
 .cc-kpi-value { display: block; font: 700 23px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .cc-kpi.warn .cc-kpi-value { color: var(--accent); }
 
 /* ---- status distribution: a thin stacked bar + a legend, folded out of the old flat `.doc-stat-bars` strip ---- */
-.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--hl), var(--shadow-sm); }
+.cc-status { padding: 14px 16px; margin-bottom: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: none; }
 .cc-status-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 9px; }
 .cc-status-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); }
 .cc-status-bar span { min-width: 3px; opacity: .9; }
@@ -194,7 +194,7 @@
 
 /* ---- the data table itself: rounded-and-clipped wrapper (radius lives on the wrapper, not the table,
    so corners stay sharp despite border-collapse), tinted uppercase header row, hover rows ---- */
-.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--hl), var(--shadow-sm); }
+.cc-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: none; }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 /* DocTracker tints its table headers with the accent color (background: accent-soft, text: accent) rather than
    a plain neutral gray - this is what makes its tables read as "designed" instead of a generic admin grid. */
@@ -252,7 +252,7 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
    shadow. Giving it the same card treatment folds it into the same visual family instead of looking orphaned. */
 .doc-scope .doc-outline {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--hl), var(--shadow-sm); padding: 10px;
+  box-shadow: none; padding: 10px;
 }
 .doc-scope .doc-outline ul { border-left: none; }
 .doc-scope .doc-outline a { border-radius: var(--radius-sm); }

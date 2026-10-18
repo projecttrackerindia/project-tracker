@@ -23,6 +23,8 @@ public interface IAppDbContext
     DbSet<SlackEventReceipt> SlackEventReceipts { get; }
     Task<int> LockTenantLedgerAsync(Guid tenantId, CancellationToken ct);
     Task LockBillingEventsAsync(string provider, CancellationToken ct);
+    /// <summary>Takes the next number of the tax-invoice sequence for a financial year ("26-27"), atomically across servers (starts at 1).</summary>
+    Task<int> NextInvoiceNumberAsync(string financialYear, CancellationToken ct);
     Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginEvidenceSnapshotAsync(CancellationToken ct);
     DbSet<AiForecastSnapshot> AiForecastSnapshots { get; }
     DbSet<AiCreditAccount> AiCreditAccounts { get; }
@@ -122,6 +124,9 @@ public interface IAppDbContext
     DbSet<ProviderOAuthAttempt> ProviderOAuthAttempts { get; }
     DbSet<GoogleConnection> GoogleConnections { get; }
     DbSet<ProjectMeeting> ProjectMeetings { get; }
+    DbSet<WorkspaceMeeting> WorkspaceMeetings { get; }
+    DbSet<WorkspaceMeetingAttendee> WorkspaceMeetingAttendees { get; }
+    DbSet<InvoiceSequence> InvoiceSequences { get; }
     DbSet<MeetingParticipant> MeetingParticipants { get; }
     DbSet<DevLink> DevLinks { get; }
     DbSet<TenantDataPolicy> TenantDataPolicies { get; }

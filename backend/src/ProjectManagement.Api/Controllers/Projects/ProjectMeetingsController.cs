@@ -32,12 +32,29 @@ public class WorkspaceMeetingsController(MeetingService meetings) : ApiControlle
 
     [HttpPost("schedule")]
     public async Task<IActionResult> Schedule([FromBody] ScheduleMeetingRequest req, CancellationToken ct) => Created(await meetings.ScheduleForWorkspaceAsync(req, ct));
+
+    [HttpGet("workspace/{id:guid}")]
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await meetings.GetWorkspaceMeetingAsync(id, ct));
+
+    [HttpPost("workspace/{id:guid}/cancel")]
+    public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
+    {
+        await meetings.CancelWorkspaceMeetingAsync(id, ct);
+        return NoContent();
+    }
+
+    [HttpPost("workspace/{id:guid}/reschedule")]
+    public async Task<IActionResult> Reschedule(Guid id, [FromBody] RescheduleMeetingRequest req, CancellationToken ct) => Ok(await meetings.RescheduleWorkspaceMeetingAsync(id, req, ct));
 }
 
 /// <summary>A single meeting, once you have its id (not nested under its project - the id alone is enough, same as a task).</summary>
 [Route("api/v1/meetings/{id:guid}"), RequireWorkspace]
-public class MeetingsController(MeetingService meetings) : ApiControllerBase
+public class MeetingsController(MeetingService meetings, StandupSummaryService standups) : ApiControllerBase
 {
+    /// <summary>Posts the stand-up summary for this meeting's project to its chat now (the organizer, or anyone who may edit projects).</summary>
+    [HttpPost("standup-summary")]
+    public async Task<IActionResult> StandupSummary(Guid id, CancellationToken ct) => Ok(await standups.PostNowAsync(id, ct));
+
     [HttpGet]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await meetings.GetAsync(id, ct));
 

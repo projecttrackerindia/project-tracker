@@ -28,7 +28,7 @@ public record DashboardDto(DashboardCounts Counts, IReadOnlyList<TaskDto> MyTask
     IReadOnlyList<ActivityDto> Activity, IReadOnlyList<WorkItemDto> MyWork);
 
 public record CalendarEventDto(string Type, Guid Id, string Title, DateOnly Date, string? Status, StatusCategory? Category, bool Overdue,
-    Guid? ProjectId, string? ProjectName, Priority? Priority);
+    Guid? ProjectId, string? ProjectName, Priority? Priority, DateTime? StartsAt = null);
 public record SearchHit(string Type, Guid Id, string Title, string? Subtitle, Guid? ProjectId, Guid? TaskId);
 public record SearchResultDto(IReadOnlyList<SearchHit> Hits);
 
@@ -229,15 +229,34 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var fromUtc = ShiftToUtc(from);
         var toUtcExclusive = ShiftToUtc(to == DateOnly.MaxValue ? to : to.AddDays(1));
         var visibleForMeetings = access.VisibleProjects().Select(p => p.Id);
-        var meq = db.ProjectMeetings.Where(m => m.StartTimeUtc >= fromUtc && m.StartTimeUtc < toUtcExclusive
+        // A series starts before the range and repeats into it, so recurring meetings are read when they began before the range ends and
+        // expanded into their sessions below (a series lasts at most 120 sessions, so a year back is plenty).
+        var seriesFloor = fromUtc.Ticks > ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.LongestSeries.Ticks ? fromUtc - ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.LongestSeries : DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);   // "from" may be DateOnly.MinValue
+        var meq = db.ProjectMeetings.Where(m => m.StartTimeUtc < toUtcExclusive && (m.StartTimeUtc >= fromUtc || (m.RecurrenceRule != null && m.StartTimeUtc >= seriesFloor))
                                                 && m.Status != MeetingStatus.Cancelled && visibleForMeetings.Contains(m.ProjectId));
         if (projectId is { } meetingProject) meq = meq.Where(m => m.ProjectId == meetingProject);
         if (assignees is { } meetingIds) meq = meq.Where(m => meetingIds.Contains(m.OrganizerUserId) || m.Participants.Any(p => p.UserId != null && meetingIds.Contains(p.UserId.Value)));
         var meetingRows = await meq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
-            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.Status, m.ProjectId, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault() })
+            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.ProjectId, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault() })
             .ToListAsync(ct);
-        events.AddRange(meetingRows.Select(m => new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(m.StartTimeUtc), m.Status.ToString(), null,
-            false, m.ProjectId, m.ProjectName, null)));
+        foreach (var m in meetingRows)
+            foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc, toUtcExclusive))
+                events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, m.ProjectId, m.ProjectName, null, at));
+
+        // Workspace meetings (a stand-up with no project): for the people invited, or everyone's when the view is the whole workspace.
+        if (projectId is null)
+        {
+            var wq = db.WorkspaceMeetings.Where(m => m.StartTimeUtc < toUtcExclusive && (m.StartTimeUtc >= fromUtc || (m.RecurrenceRule != null && m.StartTimeUtc >= seriesFloor))
+                                                     && m.Status != MeetingStatus.Cancelled);
+            var orgAdmin = ctx.Role is TenantRole.Owner or TenantRole.Admin;
+            if (assignees is { } invited) wq = wq.Where(m => m.Attendees.Any(a => invited.Contains(a.UserId)));
+            else if (!orgAdmin) wq = wq.Where(m => m.Attendees.Any(a => a.UserId == me));
+            var workspaceRows = await wq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
+                .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status }).ToListAsync(ct);
+            foreach (var m in workspaceRows)
+                foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc, toUtcExclusive))
+                    events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, null, null, null, at));
+        }
 
         if (showWorkspaceEvents)
         {

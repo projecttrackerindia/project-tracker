@@ -2908,6 +2908,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<bool>("RequiredForProjects")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
@@ -3719,6 +3722,20 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("Invoices");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.InvoiceSequence", b =>
+                {
+                    b.Property<string>("FinancialYear")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("integer");
+
+                    b.HasKey("FinancialYear");
+
+                    b.ToTable("InvoiceSequences");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.Label", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4015,6 +4032,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTime?>("DeliverAfter")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("EmailAttempts")
                         .HasColumnType("integer");
 
@@ -4064,6 +4084,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("EmailPending");
 
                     b.HasIndex("PushPending");
+
+                    b.HasIndex("UserId", "CreatedAt");
 
                     b.HasIndex("UserId", "ReadAt");
 
@@ -5085,6 +5107,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
+                    b.Property<bool>("IsScrum")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LastSummaryDay")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<Guid>("OrganizerUserId")
                         .HasColumnType("uuid");
 
@@ -5131,6 +5160,133 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId", "StartTimeUtc");
 
                     b.ToTable("ProjectMeetings");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkspaceMeeting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CalendarUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("EndTimeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GoogleCalendarEventId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("GoogleMeetUri")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<bool>("IsScrum")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrganizerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RecurrenceRule")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("StartTimeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizerUserId");
+
+                    b.HasIndex("TenantId", "StartTimeUtc");
+
+                    b.ToTable("WorkspaceMeetings");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkspaceMeetingAttendee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<bool>("IsOrganizer")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("MeetingId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("WorkspaceMeetingAttendees");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.ProjectMember", b =>
@@ -9799,6 +9955,36 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkspaceMeeting", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.User", "Organizer")
+                        .WithMany()
+                        .HasForeignKey("OrganizerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Organizer");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkspaceMeetingAttendee", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.WorkspaceMeeting", "Meeting")
+                        .WithMany("Attendees")
+                        .HasForeignKey("MeetingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProjectManagement.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Meeting");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.MfaRecoveryCode", b =>
                 {
                     b.HasOne("ProjectManagement.Domain.Entities.User", null)
@@ -10504,6 +10690,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ProjectManagement.Domain.Entities.ProjectMeeting", b =>
                 {
                     b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkspaceMeeting", b =>
+                {
+                    b.Navigation("Attendees");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.TaskItem", b =>

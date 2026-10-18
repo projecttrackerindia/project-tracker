@@ -318,8 +318,29 @@ public partial class AppDbContext
             e.Property(x => x.GoogleMeetUri).HasMaxLength(300);
             e.Property(x => x.RecurrenceRule).HasMaxLength(200);
             e.Property(x => x.CalendarUrl).HasMaxLength(2000);
+            e.Property(x => x.LastSummaryDay).HasMaxLength(8);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<WorkspaceMeeting>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.StartTimeUtc });
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(4000);
+            e.Property(x => x.TimeZone).HasMaxLength(60);
+            e.Property(x => x.GoogleCalendarEventId).HasMaxLength(200);
+            e.Property(x => x.GoogleMeetUri).HasMaxLength(300);
+            e.Property(x => x.RecurrenceRule).HasMaxLength(200);
+            e.Property(x => x.CalendarUrl).HasMaxLength(2000);
+            e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<WorkspaceMeetingAttendee>(e =>
+        {
+            e.HasIndex(x => new { x.MeetingId, x.UserId }).IsUnique();
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.HasOne(x => x.Meeting).WithMany(m => m.Attendees).HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<MeetingParticipant>(e =>
         {
@@ -608,6 +629,7 @@ public partial class AppDbContext
         b.Entity<Notification>(e =>
         {
             e.HasIndex(x => new { x.UserId, x.ReadAt });
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });   // the inbox: a person's notifications, newest first
             e.HasIndex(x => x.DedupeKey);
             e.HasIndex(x => x.EmailPending);
             e.HasIndex(x => x.PushPending);

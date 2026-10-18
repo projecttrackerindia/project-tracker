@@ -12,7 +12,8 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Documents;
 
-public record DocumentTypeDto(Guid Id, string Code, string Name, string? Description, string Icon, string Color, IReadOnlyList<SectionTemplate> Sections, int SortOrder);
+public record DocumentTypeDto(Guid Id, string Code, string Name, string? Description, string Icon, string Color, IReadOnlyList<SectionTemplate> Sections, int SortOrder,
+    bool RequiredForProjects = false);
 public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false, bool Publish = false);
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
@@ -52,7 +53,21 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         return rows.Select(ToDto).ToList();
     }
 
-    private static DocumentTypeDto ToDto(DocumentType t) => new(t.Id, t.Code, t.Name, t.Description, t.Icon, t.Color, DocumentTemplates.FromJson(t.TemplateJson), t.SortOrder);
+    private static DocumentTypeDto ToDto(DocumentType t) => new(t.Id, t.Code, t.Name, t.Description, t.Icon, t.Color, DocumentTemplates.FromJson(t.TemplateJson), t.SortOrder, t.RequiredForProjects);
+
+    /// <summary>Marks a kind as expected in every active project (or not). Owners and Admins only: it changes what every project is measured against.</summary>
+    public async Task<DocumentTypeDto> SetRequiredAsync(Guid typeId, bool required, CancellationToken ct = default)
+    {
+        if (ctx.Role is not (TenantRole.Owner or TenantRole.Admin)) throw new ForbiddenException("Only the organization's owners and admins can choose required documents.", "PERMISSION_DENIED");
+        var type = await db.DocumentTypes.FirstOrDefaultAsync(t => t.Id == typeId, ct) ?? throw new NotFoundException("Document type not found.");
+        if (type.RequiredForProjects != required)
+        {
+            type.RequiredForProjects = required;
+            recorder.Audit(required ? "document_type.required" : "document_type.optional", "DocumentType", type.Id, newValue: new { type.Code, required });
+            await db.SaveChangesAsync(ct);
+        }
+        return ToDto(type);
+    }
 
     /// <summary>A workspace gets the built-in kinds the first time anyone looks; later releases add any kind that is missing.</summary>
     private async Task EnsureTypesAsync(CancellationToken ct)
@@ -94,6 +109,13 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // "Restricted documents": both sensitive tiers (Confidential and Restricted), not literally just the Restricted enum value - a
         // single-classification filter already covers the narrower case, this scope is the nav section's broader "sensitive" meaning.
         if (string.Equals(f.Scope, "restricted", StringComparison.OrdinalIgnoreCase)) q = q.Where(d => d.Classification == DocumentClassification.Confidential || d.Classification == DocumentClassification.Restricted);
+        // "Needs attention": not touched for 90 days, or never published - archived documents are finished on purpose, so they are left out.
+        if (string.Equals(f.Scope, "stale", StringComparison.OrdinalIgnoreCase))
+        {
+            var staleBefore = clock.Now.AddDays(-90);
+            q = q.Where(d => d.Status != DocumentStatus.Archived && (d.UpdatedAt ?? d.CreatedAt) < staleBefore);
+        }
+        if (string.Equals(f.Scope, "unpublished", StringComparison.OrdinalIgnoreCase)) q = q.Where(d => d.Status != DocumentStatus.Archived && d.PublishedVersionId == null);
         if (!string.IsNullOrWhiteSpace(f.Tag)) { var tag = f.Tag.Trim().ToLowerInvariant(); q = q.Where(d => db.DocumentTags.Any(x => x.DocumentId == d.Id && x.Tag == tag)); }
         if (!string.IsNullOrWhiteSpace(f.Q)) q = DocumentSearchIndexer.Match(q, db, f.Q);
         int? total = cursor is null ? await q.CountAsync(ct) : null;

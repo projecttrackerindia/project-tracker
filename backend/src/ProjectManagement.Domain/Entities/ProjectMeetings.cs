@@ -39,10 +39,51 @@ namespace ProjectManagement.Domain.Entities
         public string? GoogleMeetSpaceName { get; set; }
         public string GoogleMeetUri { get; set; } = "";
         public DateTime? CancelledAt { get; set; }
+        /// <summary>A stand-up ("Schedule scrum call"): after each session a summary of the project's work is posted to its chat.</summary>
+        public bool IsScrum { get; set; }
+        /// <summary>The meeting-zone day ("yyyyMMdd") whose stand-up summary was last posted, so each session gets exactly one.</summary>
+        public string? LastSummaryDay { get; set; }
 
         public Project? Project { get; set; }
         public User? Organizer { get; set; }
         public ICollection<MeetingParticipant> Participants { get; set; } = new List<MeetingParticipant>();
+    }
+
+    /// <summary>
+    /// A Google Meet / Calendar meeting for the workspace as a whole - a team stand-up that belongs to no single project ("Schedule scrum
+    /// call" with "No project"). Like <see cref="ProjectMeeting"/> it only reflects the real Calendar event, which Google owns; it is kept
+    /// here so the people invited see it on their Calendar page and the organizer can cancel or move it.
+    /// </summary>
+    public class WorkspaceMeeting : TenantEntity, ITenantScoped
+    {
+        public Guid OrganizerUserId { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+        public DateTime StartTimeUtc { get; set; }
+        public DateTime EndTimeUtc { get; set; }
+        public string TimeZone { get; set; } = "UTC";
+        public string? RecurrenceRule { get; set; }
+        public string? CalendarUrl { get; set; }
+        public MeetingStatus Status { get; set; } = MeetingStatus.Scheduled;
+        public string GoogleCalendarEventId { get; set; } = "";
+        public string GoogleMeetUri { get; set; } = "";
+        public bool IsScrum { get; set; }
+        public DateTime? CancelledAt { get; set; }
+
+        public User? Organizer { get; set; }
+        public ICollection<WorkspaceMeetingAttendee> Attendees { get; set; } = new List<WorkspaceMeetingAttendee>();
+    }
+
+    /// <summary>Someone invited to a <see cref="WorkspaceMeeting"/> (the organizer included), so it shows on their Calendar.</summary>
+    public class WorkspaceMeetingAttendee : TenantEntity, ITenantScoped
+    {
+        public Guid MeetingId { get; set; }
+        public Guid UserId { get; set; }
+        public string Email { get; set; } = "";
+        public bool IsOrganizer { get; set; }
+
+        public WorkspaceMeeting? Meeting { get; set; }
+        public User? User { get; set; }
     }
 
     /// <summary>

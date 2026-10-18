@@ -162,7 +162,9 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
         using var scope = scopes.CreateScope();
         var sp = scope.ServiceProvider;
         var db = sp.GetRequiredService<IAppDbContext>();
-        var waiting = await db.Notifications.IgnoreQueryFilters().Where(n => n.PushPending).OrderBy(n => n.CreatedAt).Take(Batch).ToListAsync(ct);
+        var deliverableAt = sp.GetRequiredService<AppClock>().Now;   // a push created during the person's quiet hours waits until they end
+        var waiting = await db.Notifications.IgnoreQueryFilters().Where(n => n.PushPending && (n.DeliverAfter == null || n.DeliverAfter <= deliverableAt))
+            .OrderBy(n => n.CreatedAt).Take(Batch).ToListAsync(ct);
         if (waiting.Count == 0) return 0;
         // Claim each one first: with several servers, only the one whose update took it off the queue pushes it (a push is sent once).
         var pending = new List<Notification>(waiting.Count);
@@ -175,6 +177,8 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
             if (!mine) { entry.State = EntityState.Detached; continue; }
             entry.Property(x => x.PushPending).OriginalValue = false;
             n.PushPending = false;
+            // Held through quiet hours and already read in the app since: nothing to push.
+            if (n.DeliverAfter is not null && n.ReadAt is not null) continue;
             pending.Add(n);
         }
         if (pending.Count == 0) return 0;

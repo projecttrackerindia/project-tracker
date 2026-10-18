@@ -96,6 +96,64 @@ export async function syncNativePush(register: (token: string) => Promise<unknow
   } catch { /* try again next start */ }
 }
 
+// ------------------------------------------------------------------ signing in with Google / Microsoft / single sign-on
+
+const SSO_SECRET_KEY = 'pm_app_sso';
+const toHex = (bytes: ArrayBuffer | Uint8Array) => Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+
+/** Whether outside sign-in should run in a Chrome Custom Tab: inside the Android app, when this build has the Browser plugin. */
+export const signInInBrowserTab = () => isNativeApp() && !!plugin('Browser');
+
+/**
+ * Starts an outside sign-in (identity providers - Google above all - refuse to run inside an app's embedded web view). The app keeps a fresh
+ * secret, sends only its SHA-256 along, and opens the sign-in in a Custom Tab; the tab comes back to the app with a one-time code that only
+ * this secret can redeem (see the API's SsoAuthController). Anywhere else, it is an ordinary page change.
+ */
+export async function startOutsideSignIn(url: string) {
+  if (!signInInBrowserTab() || !crypto?.subtle) { window.location.assign(url); return; }
+  const secret = toHex(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = toHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)));
+  try { localStorage.setItem(SSO_SECRET_KEY, JSON.stringify({ secret, at: Date.now() })); } catch { window.location.assign(url); return; }
+  // The Custom Tab runs outside this web view, so it needs the full address, not a path of this site.
+  const tab = new URL(url, location.href);
+  tab.searchParams.set('app', challenge);
+  await call(plugin('Browser'), 'open', { url: tab.href, presentationStyle: 'fullscreen' }).catch(() => window.location.assign(url));
+}
+
+/** A path of this site (never another site, whatever "//", "\\" or a scheme the value tries), or null. */
+const sitePath = (value: string | null | undefined) => {
+  if (!value || !value.startsWith('/')) return null;
+  try { const u = new URL(value, location.origin); return u.origin === location.origin ? `${u.pathname}${u.search}${u.hash}` : null; } catch { return null; }
+};
+
+const SSO_RETURN = 'projecttracker://auth/sso';
+
+/** The Custom Tab handed the sign-in back: redeem the code with the secret (which sets the session cookie here), then enter the app. */
+async function finishOutsideSignIn(link: URL) {
+  void call(plugin('Browser'), 'close').catch(() => undefined);
+  const to = sitePath(link.searchParams.get('to'));
+  const code = link.searchParams.get('code');
+  if (!code) { if (to) window.location.assign(to); return; }
+  let secret: string | null = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SSO_SECRET_KEY) ?? 'null') as { secret: string; at: number } | null;
+    if (saved && Date.now() - saved.at < 15 * 60_000) secret = saved.secret;
+    localStorage.removeItem(SSO_SECRET_KEY);
+  } catch { /* storage unavailable */ }
+  const fail = (message: string) => window.location.assign(`/login?sso_error=SSO_FAILED&message=${encodeURIComponent(message)}`);
+  if (!secret) { fail('The sign-in could not be completed. Please try again.'); return; }
+  try {
+    const res = await fetch('/api/v1/auth/sso/app-handoff', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ code, verifier: secret }),
+    });
+    if (!res.ok) { fail('The sign-in has expired. Please try again.'); return; }
+    const body = await res.json() as { data?: { to?: string } };
+    const next = sitePath(body.data?.to) ?? '/';
+    window.location.assign(`/auth/complete?to=${encodeURIComponent(next)}`);   // a full load, so the app starts from the new session
+  } catch { fail('The sign-in could not be completed. Please check your connection and try again.'); }
+}
+
 // ------------------------------------------------------------------ the shell
 
 /** Opens a path inside the app without reloading it. Only paths of this site are accepted. */
@@ -131,7 +189,15 @@ export function startNativeApp() {
   document.documentElement.classList.add('native-app');
   const app = plugin('App');
   void app?.addListener('backButton', ((e: { canGoBack: boolean }) => { if (e.canGoBack) history.back(); else void call(app, 'exitApp').catch(() => undefined); }) as never);
-  void app?.addListener('appUrlOpen', ((e: { url: string }) => openInApp(e.url)) as never);
+  void app?.addListener('appUrlOpen', ((e: { url: string }) => {
+    // Matched on the text itself: how a WebView's URL parser splits a custom scheme (host, path) differs between versions.
+    if (e.url === SSO_RETURN || e.url.startsWith(`${SSO_RETURN}?`)) {
+      const query = e.url.slice(SSO_RETURN.length);
+      void finishOutsideSignIn(new URL(`https://app.invalid/${query}`));
+      return;
+    }
+    openInApp(e.url);
+  }) as never);
   void plugin('PushNotifications')?.addListener('pushNotificationActionPerformed', ((e: { notification?: { data?: { link?: string } } }) => openInApp(e.notification?.data?.link)) as never);
   void call(plugin('SplashScreen'), 'hide').catch(() => undefined);
   matchStatusBar();

@@ -18,10 +18,10 @@
 .chat-shell {
   position: relative; display: grid; grid-template-columns: 330px minmax(0, 1fr) auto;
   height: calc(100vh - var(--topbar-h) - 48px); min-height: 460px;
-  background: var(--surface); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass);
-  border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm), var(--hl); overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: none; overflow: hidden;
 }
-.chat-link { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; background: var(--warning-soft); color: var(--warning); border-bottom: 1px solid rgba(217, 119, 6, .25); backdrop-filter: blur(10px); }
+.chat-link { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; background: var(--warning-soft); color: var(--warning); border-bottom: 1px solid rgba(217, 119, 6, .25); }
 
 /* ---- conversation list */
 .chat-list { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--modal-line); padding: 16px 12px 8px; gap: 12px; }
@@ -31,7 +31,7 @@
 .chat-list-scroll ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .conv-row { width: 100%; display: flex; align-items: center; gap: 11px; text-align: left; padding: 10px; border-radius: 12px; color: var(--text); transition: background .14s; }
 .conv-row:hover { background: var(--hover-bg); }
-.conv-row.active { background: var(--tint-strong); box-shadow: var(--hl-2); }
+.conv-row.active { background: var(--tint-strong); box-shadow: none; }
 .conv-row:focus-visible, .picker-row:focus-visible, .hit-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .conv-text { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .conv-top, .conv-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }

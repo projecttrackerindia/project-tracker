@@ -4,13 +4,14 @@ import { projectApi } from '../../api/endpoints';
 import { useWsQuery } from '../../lib/hooks';
 import { avatarColor } from './docUi';
 
-export type DocumentsView = 'all' | 'inbox' | 'recent' | 'mine' | 'shared' | 'restricted' | 'trash';
+export type DocumentsView = 'all' | 'inbox' | 'attention' | 'recent' | 'mine' | 'shared' | 'restricted' | 'trash';
 
 const PINNED: { id: DocumentsView; label: string; icon: IconName }[] = [
   { id: 'all', label: 'Control center', icon: 'grid' },
   { id: 'mine', label: 'My documents', icon: 'user' },
   { id: 'shared', label: 'Shared with me', icon: 'users' },
   { id: 'inbox', label: 'Waiting for me', icon: 'inbox' },
+  { id: 'attention', label: 'Needs attention', icon: 'alert' },
   { id: 'recent', label: 'Recently viewed', icon: 'clock' },
   { id: 'restricted', label: 'Restricted', icon: 'shield' },
   { id: 'trash', label: 'Trash', icon: 'trash' },
@@ -24,8 +25,8 @@ const GENERAL_ID = 'general';
  * One click on a project shows its documents (no expand-then-click), and the active row is tinted. This component owns no document data:
  * it only sets the page's view or project, so it can never drift from what the list shows.
  */
-export function DocumentsSidebar({ view, onSelectView, waiting, activeProject, onSelectProject }: {
-  view: DocumentsView; onSelectView: (v: DocumentsView) => void; waiting: number;
+export function DocumentsSidebar({ view, onSelectView, waiting, attention = 0, activeProject, onSelectProject }: {
+  view: DocumentsView; onSelectView: (v: DocumentsView) => void; waiting: number; attention?: number;
   activeProject: string | null; onSelectProject: (id: string | null) => void;
 }) {
   const [q, setQ] = useState('');
@@ -51,6 +52,7 @@ export function DocumentsSidebar({ view, onSelectView, waiting, activeProject, o
               <span className="ds-rail-ic"><Icon name={v.icon} size={14} /></span>
               <span className="ds-rail-label">{v.label}</span>
               {v.id === 'inbox' && waiting > 0 && <span className="ds-rail-count warn">{waiting}</span>}
+              {v.id === 'attention' && attention > 0 && <span className="ds-rail-count">{attention}</span>}
             </button>
           </li>
         ))}

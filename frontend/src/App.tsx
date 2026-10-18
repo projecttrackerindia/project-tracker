@@ -8,10 +8,9 @@ import type { ConsentDocument } from './api/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Icon } from './components/Icon';
 import { SuccessCurtain } from './components/SuccessCurtain';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
-import { AcceptInvitePage, AuthCompletePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './features/auth/AuthPages';
-import { TwoStepRow } from './features/settings/TwoStep';
 import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
 
@@ -22,6 +21,19 @@ import { AppLayout } from './layouts/AppLayout';
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   return lazy(() => load().then((m) => ({ default: m[name] })));
 }
+// The sign-in pages (and the form and validation libraries only they use) are not needed by someone already signed in. They are fetched
+// straight away when the address is one of them, alongside the session check rather than after it.
+const loadAuthPages = () => import('./features/auth/AuthPages');
+if (typeof window !== 'undefined' && /^\/(login|register|verify-email|forgot-password|reset-password|invite|auth)(\/|$)/.test(window.location.pathname)) void loadAuthPages().catch(() => undefined);
+const LoginPage = page(loadAuthPages, 'LoginPage');
+const RegisterPage = page(loadAuthPages, 'RegisterPage');
+const VerifyEmailPage = page(loadAuthPages, 'VerifyEmailPage');
+const ForgotPasswordPage = page(loadAuthPages, 'ForgotPasswordPage');
+const ResetPasswordPage = page(loadAuthPages, 'ResetPasswordPage');
+const AcceptInvitePage = page(loadAuthPages, 'AcceptInvitePage');
+const AuthCompletePage = page(loadAuthPages, 'AuthCompletePage');
+// Two-step setup (and its QR-code library) is only shown here when a workspace insists on it.
+const TwoStepRow = page(() => import('./features/settings/TwoStep'), 'TwoStepRow');
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
 const AgentTrackerPage = page(() => import('./features/ai/AgentTrackerPage'), 'AgentTrackerPage');
 const AgentWorkflowsPage = page(() => import('./features/ai/AgentWorkflowsPage'), 'AgentWorkflowsPage');
@@ -76,7 +88,7 @@ function NoWorkspace() {
       </p>
 
       {blocked?.code === 'ORG_MFA_REQUIRED' && (
-        <div className="card" style={{ marginBottom: 18 }}><div className="card-body"><TwoStepRow /></div></div>
+        <div className="card" style={{ marginBottom: 18 }}><div className="card-body"><Suspense fallback={<PageLoader />}><TwoStepRow /></Suspense></div></div>
       )}
       {blocked?.code === 'ORG_IP_BLOCKED' && (
         <button className="btn btn-ghost" style={{ marginBottom: 18 }} onClick={() => void useAuth.getState().reloadContext()}>
@@ -426,8 +438,13 @@ function OrgRouter() {
 export default function App() {
   useEffect(() => { void useAuth.getState().bootstrap(); }, []);
   return (
-    <ErrorBoundary>
-      <OrgRouter />
-    </ErrorBoundary>
+    <>
+      <ErrorBoundary>
+        <OrgRouter />
+      </ErrorBoundary>
+      {/* Outside the router and the error screen: a newer release is worth knowing about everywhere, signed in or not, and most of all when
+          a page of the old one fails to load. */}
+      <UpdateBanner />
+    </>
   );
 }

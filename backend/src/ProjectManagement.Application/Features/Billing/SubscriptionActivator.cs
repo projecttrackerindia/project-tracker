@@ -67,21 +67,21 @@ public class SubscriptionActivator(IAppDbContext db, IPaymentProvider payments, 
     /// <summary>One invoice per provider payment id, however many times it is reported (the browser, the webhook, a webhook retry).</summary>
     public async Task RecordPaymentAsync(Guid tenantId, Plan plan, decimal amount, string currency, string paymentId, bool success, string? error, string description, CancellationToken ct)
     {
-        if (await db.Invoices.IgnoreQueryFilters().AnyAsync(i => i.TenantId == tenantId && i.ProviderReference == paymentId, ct)) return;
+        Task<bool> Recorded() => db.Invoices.IgnoreQueryFilters().AsNoTracking().AnyAsync(i => i.TenantId == tenantId && i.ProviderReference == paymentId, ct);
+        if (await Recorded()) return;
         var now = DateTime.UtcNow;
         var invoice = new Invoice
         {
-            TenantId = tenantId, Number = BillingService.NewInvoiceNumber(now), PlanCode = plan.Code, Amount = amount, Currency = currency,
+            TenantId = tenantId, PlanCode = plan.Code, Amount = amount, Currency = currency,
             Status = success ? InvoiceStatus.Paid : InvoiceStatus.Failed, ProviderReference = paymentId, Description = error is null ? description : $"{description} ({error})", IssuedAt = now, CreatedAt = now,
         };
-        db.Invoices.Add(invoice);
-        // The browser and the webhook can report the same payment at the same moment: the unique (tenant, provider reference) index lets only one
-        // invoice in, and the other report finds it already recorded. Inside a transaction EF Core rolls back to its own savepoint on failure.
-        try { await db.SaveChangesAsync(ct); }
+        // The browser and the webhook can report the same payment at the same moment. A paid invoice's number is taken under the sequence's
+        // row lock and the payment is checked again after it, so the second report finds the first and gives its number back; the unique
+        // (tenant, provider reference) index is the last line for anything else.
+        try { await BillingService.SaveInvoiceAsync(db, invoice, success, Recorded, ct); }
         catch (DbUpdateException ex)
         {
-            db.Invoices.Entry(invoice).State = EntityState.Detached;
-            if (!await db.Invoices.IgnoreQueryFilters().AsNoTracking().AnyAsync(i => i.TenantId == tenantId && i.ProviderReference == paymentId, ct)) throw;
+            if (!await Recorded()) throw;
             log.LogInformation(ex, "Payment {PaymentId} was already recorded by a concurrent report", paymentId);
         }
     }

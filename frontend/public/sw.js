@@ -102,7 +102,9 @@ self.addEventListener('notificationclick', (event) => {
   }));
 });
 
-// Signing out: forget the cached pages too.
+// Signing out: forget the cached pages too. "Reload" on the new-version banner: a worker still waiting takes over now (the page reloads
+// once it has).
 self.addEventListener('message', (event) => {
   if (event.data === 'clear') event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('pm-')).map((k) => caches.delete(k)))));
+  if (event.data === 'skip-waiting') self.skipWaiting();
 });

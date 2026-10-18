@@ -4,28 +4,19 @@
 .sidebar-foot { position: relative; flex-shrink: 0; padding: 10px; border-top: 1px solid var(--border); }
 .account-dock {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px 8px 8px; border-radius: 14px; text-align: left;
-  border: 1px solid var(--border); background: var(--surface-2); box-shadow: var(--hl-2);
+  border: 1px solid var(--border); background: var(--surface-2); box-shadow: none;
   transition: border-color .18s, background .18s, box-shadow .18s, transform .12s;
 }
-.account-dock:hover, .account-dock[aria-expanded="true"] { border-color: rgba(var(--accent-rgb), .42); background: var(--hover-bg); box-shadow: var(--hl-2), 0 8px 22px rgba(var(--accent-rgb), .16); }
+.account-dock:hover, .account-dock[aria-expanded="true"] { border-color: rgba(var(--accent-rgb), .42); background: var(--hover-bg); box-shadow: none; }
 .account-dock:active { transform: translateY(1px); }
 .account-dock:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-/* the avatar, with a slowly turning ring of colour and a presence dot */
+/* the avatar, a plain disc with a presence dot */
 .ad-avatar {
   position: relative; isolation: isolate; flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
   color: #fff; font-size: 12px; font-weight: 750; letter-spacing: .02em;
-  background: var(--primary-fill); box-shadow: 0 0 0 2px var(--panel-solid), 0 4px 12px rgba(var(--accent-rgb), .4);
+  background: var(--primary-fill); box-shadow: 0 0 0 2px var(--panel-solid);
 }
-/* only a thin band outside the avatar (the gap between is the avatar's own 2px shadow), so the initials keep their plain fill */
-.ad-avatar::before {
-  content: ""; position: absolute; inset: -5px; z-index: -1; border-radius: 50%; opacity: .9;
-  background: conic-gradient(from 0deg, var(--primary-fill), #38bdf8, #f472b6, #fbbf24, var(--primary-fill));
-  -webkit-mask: radial-gradient(closest-side, transparent 86%, #000 88%); mask: radial-gradient(closest-side, transparent 86%, #000 88%);
-  animation: ad-spin 7s linear infinite; animation-play-state: paused;
-}
-.account-dock:hover .ad-avatar::before, .account-dock[aria-expanded="true"] .ad-avatar::before, .ad-menu .ad-avatar::before { animation-play-state: running; }
-@keyframes ad-spin { to { rotate: 360deg; } }
 .ad-avatar.lg { width: 44px; height: 44px; font-size: 15px; }
 .ad-avatar.sm { width: 30px; height: 30px; font-size: 11px; }
 .ad-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
@@ -58,7 +49,7 @@
 /* the menu, opening upwards from the card */
 .ad-menu {
   position: absolute; left: 10px; bottom: calc(100% + 6px); z-index: 70; width: 288px; padding: 8px; border-radius: 16px;
-  background: var(--panel-solid); border: 1px solid var(--border); box-shadow: var(--hl), var(--shadow-lg);
+  background: var(--panel-solid); border: 1px solid var(--border); box-shadow: none;
   transform-origin: bottom left; animation: ad-pop .2s cubic-bezier(.2, .8, .2, 1);
 }
 @keyframes ad-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } }
@@ -122,7 +113,7 @@
 @media (max-width: 1024px) {
   .topbar-me { display: grid; place-items: center; }
   .sidebar.collapsed .sidebar-foot { padding: 10px; }
-  .sidebar.collapsed .account-dock { justify-content: flex-start; padding: 8px 10px 8px 8px; border-color: var(--border); background: var(--surface-2); box-shadow: var(--hl-2); }
+  .sidebar.collapsed .account-dock { justify-content: flex-start; padding: 8px 10px 8px 8px; border-color: var(--border); background: var(--surface-2); box-shadow: none; }
   .sidebar.collapsed .ad-main { display: flex; }
   .sidebar.collapsed .ad-caret { display: block; }
   .sidebar.collapsed .ad-menu { left: 10px; bottom: calc(100% + 6px); }
@@ -131,4 +122,4 @@
 
 /* laptop widths: the same ~20% step down as the rest of the app */
 
-@media (prefers-reduced-motion: reduce) { .ad-avatar::before, .ad-plan::after, .ad-menu { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ad-plan::after, .ad-menu { animation: none !important; } }

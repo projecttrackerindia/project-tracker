@@ -245,6 +245,11 @@ public class Notification : TenantEntity, ITenantScoped
     public string? Link { get; set; }
     public DateTime? ReadAt { get; set; }
     public string? DedupeKey { get; set; }
+    /// <summary>
+    /// E-mail and push for this notification wait until this moment (UTC): it was created during the recipient's quiet hours, so it goes
+    /// out when they end. Null = deliver now. The in-app item is never held back.
+    /// </summary>
+    public DateTime? DeliverAfter { get; set; }
 
     // Delivery, decided by the recipient's preferences when the notification is created.
     /// <summary>Shown in the bell / notifications page. False = e-mail (or browser) only.</summary>
