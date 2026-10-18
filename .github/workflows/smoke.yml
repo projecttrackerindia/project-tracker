@@ -51,7 +51,7 @@ jobs:
           for s in smoke invitations public mobile documents documents-api documents-review documents-secrets documents-pdf; do
             if ! node "e2e/$s.mjs" > "$RUNNER_TEMP/$s.log" 2>&1; then
               failed=1
-              detail=$(tail -n 12 "$RUNNER_TEMP/$s.log" | tr -d '\r' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+              detail=$( (grep -E "^FAIL|Error:|waiting for|at .*e2e/" "$RUNNER_TEMP/$s.log" | head -n 14; echo ---; tail -n 4 "$RUNNER_TEMP/$s.log") | tr -d '\r' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
               echo "::error title=Smoke test e2e/$s.mjs failed::$detail"
             fi
             tail -n 5 "$RUNNER_TEMP/$s.log"
