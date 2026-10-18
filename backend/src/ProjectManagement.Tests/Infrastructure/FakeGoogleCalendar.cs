@@ -31,6 +31,10 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public bool UserInfoFails { get; set; }
     public bool OmitRefreshToken { get; set; }
     public FakeInboxMailbox Inbox {get;}=new();
+    /// <summary>The conference record Meet "has" for any meeting code (null: none yet) and the transcript said in it.</summary>
+    public (DateTime Start, DateTime End)? MeetRecord { get; set; }
+    public List<(string Who, string Text)> MeetTranscript { get; } = new();
+    public ConcurrentBag<string> MeetReads { get; } = new();
     public FakeSentMailbox Sent {get;}=new();
 
     public bool PersonalCalendarBlocked {get;set;}
@@ -93,6 +97,25 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
             var auth = request.Headers.Authorization?.Parameter ?? "";
             _accessTokens.TryGetValue(auth, out var grant);
             return Json(new { email = grant?.Email ?? "owner@example.com" });
+        }
+        if (u.Host == "meet.googleapis.com" && request.Method == HttpMethod.Get)
+        {
+            var token = request.Headers.Authorization?.Parameter ?? "";
+            if (!_accessTokens.TryGetValue(token, out var grant) || !grant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/meetings.space.readonly"))
+                return Json(new { error = "permission" }, HttpStatusCode.Forbidden);
+            MeetReads.Add(path + u.Query);
+            if (path == "/v2/conferenceRecords")
+                return Json(new { conferenceRecords = MeetRecord is { } r ? new object[] { new { name = "conferenceRecords/rec-1", startTime = r.Start.ToString("o"), endTime = r.End.ToString("o") } } : [] });
+            if (path == "/v2/conferenceRecords/rec-1/transcripts")
+                return Json(new { transcripts = MeetTranscript.Count > 0 ? new object[] { new { name = "conferenceRecords/rec-1/transcripts/t1", state = "FILE_GENERATED" } } : [] });
+            if (path == "/v2/conferenceRecords/rec-1/participants")
+                return Json(new { participants = MeetTranscript.Select(x => x.Who).Distinct().Select((who, i) => new { name = $"conferenceRecords/rec-1/participants/p{i}", signedinUser = new { displayName = who } }).ToArray() });
+            if (path == "/v2/conferenceRecords/rec-1/transcripts/t1/entries")
+            {
+                var people = MeetTranscript.Select(x => x.Who).Distinct().ToList();
+                return Json(new { transcriptEntries = MeetTranscript.Select(x => new { participant = $"conferenceRecords/rec-1/participants/p{people.IndexOf(x.Who)}", text = x.Text }).ToArray() });
+            }
+            return Json(new { error = "not found" }, HttpStatusCode.NotFound);
         }
         if(u.Host=="gmail.googleapis.com"&&request.Method==HttpMethod.Get&&path.StartsWith("/gmail/v1/users/me/")){
             var token=request.Headers.Authorization?.Parameter??"";

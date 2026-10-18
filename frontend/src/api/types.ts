@@ -370,7 +370,7 @@ export interface InboundMailbox {
 export type GitProvider = 'GitHub' | 'AzureDevOps';
 export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
 export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
-export interface GoogleConnectionStatus { inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
+export interface GoogleConnectionStatus { transcriptAccess?: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
@@ -760,3 +760,29 @@ export interface PersonalCalendarProposal {
 export interface MicrosoftOwnCalendar { id: string; name: string; isDefault: boolean }
 export interface MicrosoftCalendarInventory { account: string; accessContext: string; calendars: MicrosoftOwnCalendar[]; truncated: boolean }
 export interface MicrosoftCalendarAvailability { account: string; accessContext: string; calendarIds: string[]; startUtc: string; endUtc: string; busy: {startUtc: string; endUtc: string}[]; checkedAt: string; scope: string }
+
+// ------------------------------------------------------------------ project agent
+export type AgentFindingKind = 'CreateTask' | 'UpdateTask' | 'CreateActionItem' | 'CreateIssue' | 'UpdateIssue' | 'Delay' | 'Suggestion' | 'Missed' | 'Decision';
+export type AgentFindingStatus = 'Proposed' | 'Applied' | 'Dismissed' | 'Failed';
+export type AgentSourceKind = 'ProjectMailbox' | 'PersonalMail' | 'Chat' | 'MeetingTranscript' | 'LiveMeeting' | 'Manual';
+export interface AgentRun { id: string; trigger: 'schedule' | 'meeting' | 'mail' | 'manual'; status: 'running' | 'done' | 'failed'; signalCount: number; findingCount: number; credits: number; summary: string | null; error: string | null; startedAt: string; finishedAt: string | null }
+export interface ProjectAgent {
+  projectId: string; enabled: boolean; readMailbox: boolean; readChat: boolean; readMeetings: boolean; liveBot: boolean; dailyUpdates: boolean;
+  /** agent+token@... - only shown to people who may set the agent up. */
+  mailboxAddress: string | null; liveBotAvailable: boolean; aiAvailable: boolean; pending: number; lastRunAt: string | null; lastError: string | null;
+  runsThisMonth: number; monthlyRunLimit: number; canManage: boolean; actingUserName: string | null; runs: AgentRun[];
+  /** Whether *this* person allowed the agent to read their Google Meet transcripts (organizers need it). */
+  transcriptAccess: boolean;
+}
+export interface AgentPerson { id: string; name: string }
+export interface AgentFinding {
+  id: string; projectId: string; projectKey: string; projectName: string; runId: string; kind: AgentFindingKind; status: AgentFindingStatus;
+  title: string; detail: string | null; evidence: string | null; sourceLabel: string | null; source: AgentSourceKind | null;
+  taskId: string | null; taskKey: string | null; taskTitle: string | null; issueId: string | null; issueKey: string | null;
+  assignee: AgentPerson | null; dueDate: string | null; priority: Priority | null; newStatus: string | null; comment: string | null; confidence: number;
+  createdAt: string; decidedBy: AgentPerson | null; decidedAt: string | null; appliedEntityId: string | null; appliedKey: string | null; error: string | null;
+}
+export interface AgentFindingPage { items: AgentFinding[]; pending: number; canDecide: boolean }
+export interface AgentApproveEdits { title?: string; detail?: string; assigneeId?: string; clearAssignee?: boolean; dueDate?: string; clearDueDate?: boolean; priority?: Priority; newStatus?: string; comment?: string }
+export interface AgentWorkspace { recallConfigured: boolean; recallRegion: string; botName: string; inCallReminders: boolean; canManage: boolean; enabledProjects: number }
+export interface AgentInboxOptIn { googleAvailable: boolean; microsoftAvailable: boolean; provider: 'google' | 'microsoft' | null; enabled: boolean; scannedUntil: string | null; found: number; lastError: string | null }

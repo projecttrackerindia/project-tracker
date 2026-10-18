@@ -7,3 +7,4 @@ export * from './endpoints.work';
 export * from './endpoints.planning';
 export * from './endpoints.platform';
 export * from './endpoints.documents';
+export * from './endpoints.agent';

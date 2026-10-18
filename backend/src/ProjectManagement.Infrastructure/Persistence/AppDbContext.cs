@@ -113,6 +113,13 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<WorkspaceMeeting> WorkspaceMeetings => Set<WorkspaceMeeting>();
     public DbSet<WorkspaceMeetingAttendee> WorkspaceMeetingAttendees => Set<WorkspaceMeetingAttendee>();
     public DbSet<InvoiceSequence> InvoiceSequences => Set<InvoiceSequence>();
+    public DbSet<ProjectAgentSettings> ProjectAgentSettings => Set<ProjectAgentSettings>();
+    public DbSet<AgentSignal> AgentSignals => Set<AgentSignal>();
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
+    public DbSet<AgentFinding> AgentFindings => Set<AgentFinding>();
+    public DbSet<AgentWorkspaceSettings> AgentWorkspaceSettings => Set<AgentWorkspaceSettings>();
+    public DbSet<AgentMeetingBot> AgentMeetingBots => Set<AgentMeetingBot>();
+    public DbSet<AgentInboxOptIn> AgentInboxOptIns => Set<AgentInboxOptIn>();
     public DbSet<DevLink> DevLinks => Set<DevLink>();
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
@@ -220,6 +227,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         builder.Properties<MeetingStatus>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<AttendeeRsvpStatus>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<MeetingParticipantRole>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<AgentSourceKind>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<AgentFindingKind>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<AgentFindingStatus>().HaveConversion<string>().HaveMaxLength(32);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -251,6 +261,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureResumes(b);
         ConfigureSupport(b);
         ConfigureSupportWorkflows(b);
+        ConfigureAgent(b);
         ApplyQueryFilters(b);
     }
 }

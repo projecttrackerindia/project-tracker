@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Api.Filters;
+using ProjectManagement.Application.Features.Agent;
 using ProjectManagement.Application.Features.Compliance;
 using ProjectManagement.Application.Features.Integrations;
 using ProjectManagement.Domain;
@@ -27,10 +28,10 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
     /// no header from us at all.
     /// </summary>
     [HttpGet("integrations/google/connect")]
-    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct,[FromQuery] bool mail=false,[FromQuery] bool inbox=false)
+    public async Task<IActionResult> GoogleConnect([FromQuery] string? returnUrl, CancellationToken ct,[FromQuery] bool mail=false,[FromQuery] bool inbox=false,[FromQuery] bool transcripts=false)
     {
         var proof=Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-        var url=await google.StartConnectAsync(returnUrl,proof,ct,mail,inbox);
+        var url=await google.StartConnectAsync(returnUrl,proof,ct,mail,inbox,transcripts);
         Response.Headers.CacheControl="no-store";
         Response.Cookies.Append(ProviderConnectionBrowser.CookieName("google",Request,environment),proof,ProviderConnectionBrowser.CookieOptions("/api/v1/integrations/google/callback",Request,environment));
         return Ok(new{url});
@@ -148,24 +149,60 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> Email(string? token, [FromQuery] string? key, CancellationToken ct)
     {
-        InboundEmail email;
+        var email = await ReadEmailAsync(ct);
+        if (email is null) return BadRequest();
+        // One forwarding route can carry every mailbox: mail to a project agent's address (agent+token@) goes to that project's agent.
+        if (token is null && AgentSignalService.TokenFromRecipients(email.To) is { } agentToken)
+        {
+            var signal = await AgentSignalService.ReceiveMailAsync(services, agentToken, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
+            // The same mail can also be addressed to the work mailbox (work+token@): it still becomes a work task.
+            var workToken = System.Text.RegularExpressions.Regex.Match(email.To ?? "", @"work\+([0-9a-f]{24})@", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!workToken.Success) return Ok(new { agentSignal = signal });
+            var work = await InboundEmailService.ReceiveAsync(services, workToken.Groups[1].Value, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
+            return Ok(new { agentSignal = signal, workTask = work });
+        }
+        var created = await InboundEmailService.ReceiveAsync(services, token, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
+        return Ok(new { workTask = created });
+    }
+
+    /// <summary>Mail for one project's agent, when the provider posts each address to its own URL.</summary>
+    [HttpPost("inbound/agent/{token}")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> AgentEmail(string token, [FromQuery] string? key, CancellationToken ct)
+    {
+        if (token.Length != 24 || !token.All(Uri.IsHexDigit)) return NotFound();
+        var email = await ReadEmailAsync(ct);
+        if (email is null) return BadRequest();
+        return Ok(new { agentSignal = await AgentSignalService.ReceiveMailAsync(services, token, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct) });
+    }
+
+    /// <summary>Real-time transcript from the project agent's meeting bot (Recall.ai); the token in the address picks the bot.</summary>
+    [HttpPost("agent/recall/{token}")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public async Task<IActionResult> RecallTranscript(string token, CancellationToken ct)
+    {
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        await AgentMeetingService.ReceiveRecallAsync(services, token, await reader.ReadToEndAsync(ct), ct);
+        return Ok(new { received = true });
+    }
+
+    private async Task<InboundEmail?> ReadEmailAsync(CancellationToken ct)
+    {
         if (Request.HasFormContentType)
         {
             var f = await Request.ReadFormAsync(ct);
             string? F(params string[] names) => names.Select(n => f[n].ToString()).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-            email = new InboundEmail(F("sender", "from", "From"), F("recipient", "to", "To"), F("subject", "Subject"), F("stripped-text", "body-plain", "text", "TextBody"));
+            return new InboundEmail(F("sender", "from", "From"), F("recipient", "to", "To"), F("subject", "Subject"), F("stripped-text", "body-plain", "text", "TextBody"));
         }
         else
         {
             using var reader = new StreamReader(Request.Body);
             JsonNode? j;
-            try { j = JsonNode.Parse(await reader.ReadToEndAsync(ct)); } catch (System.Text.Json.JsonException) { return BadRequest(); }
+            try { j = JsonNode.Parse(await reader.ReadToEndAsync(ct)); } catch (System.Text.Json.JsonException) { return null; }
             string? J(params string[] names) => names.Select(n => j?[n]?.ToString()).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-            email = new InboundEmail(J("FromFull") is { } full && JsonNode.Parse(full)?["Email"]?.ToString() is { } e ? e : J("from", "From", "sender"),
+            return new InboundEmail(J("FromFull") is { } full && JsonNode.Parse(full)?["Email"]?.ToString() is { } e ? e : J("from", "From", "sender"),
                 J("to", "To", "OriginalRecipient", "recipient"), J("subject", "Subject"), J("StrippedTextReply", "text", "TextBody", "body"));
         }
-        var created = await InboundEmailService.ReceiveAsync(services, token, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
-        return Ok(new { workTask = created });
     }
 
     [HttpPost("inbound/git/{provider}/{token}")]

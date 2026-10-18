@@ -56,6 +56,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/portfolio', label: 'Portfolio', icon: 'monitor', show: lv('projects') > 0 },
       { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0 },
       { to: '/documents', label: 'Documents', icon: 'note', show: lv('documents') > 0, match: (p) => p === '/documents' || p.startsWith('/documents/') },
+      { to: '/project-agent', label: 'Project agent', icon: 'sparkle', show: lv('projects') > 0 && !personal && ai && ctx?.current?.role !== 'Guest', match: (p) => p === '/project-agent' || p.startsWith('/project-agent/') },
     ] },
     { title: 'Insights', items: [
       { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },

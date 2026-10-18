@@ -109,6 +109,16 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingService>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingSyncEngine>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.StandupSummaryService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSettingsService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSignalService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentAnalysisService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentReviewService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentDailyUpdateService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentMeetingService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentInboxScanner>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentProjectTick>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentEngine>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.RecallClient>();
         services.AddSingleton<ProjectManagement.Application.Features.Documents.IDocumentPdfRenderer, ProjectManagement.Application.Features.Documents.DocumentPdfRenderer>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfBuilder>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfJob>();

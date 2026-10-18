@@ -1,0 +1,177 @@
+using ProjectManagement.Domain.Common;
+
+namespace ProjectManagement.Domain.Enums
+{
+    /// <summary>Where something the project agent read came from.</summary>
+    public enum AgentSourceKind { ProjectMailbox, PersonalMail, Chat, MeetingTranscript, LiveMeeting, Manual }
+
+    /// <summary>
+    /// What the agent proposes. The first five change work when approved; Delay, Suggestion, Missed and Decision are notes for the team that are
+    /// recorded (and included in the people's updates) when approved.
+    /// </summary>
+    public enum AgentFindingKind { CreateTask, UpdateTask, CreateActionItem, CreateIssue, UpdateIssue, Delay, Suggestion, Missed, Decision }
+
+    public enum AgentFindingStatus { Proposed, Applied, Dismissed, Failed }
+}
+
+namespace ProjectManagement.Domain.Entities
+{
+    using ProjectManagement.Domain.Enums;
+
+    /// <summary>
+    /// The project agent of one project: what it may read, and its own mailbox address (agent+token@...). It never changes anything by itself:
+    /// everything it finds waits as an <see cref="AgentFinding"/> until someone who may edit the project approves it.
+    /// </summary>
+    public class ProjectAgentSettings : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        public bool Enabled { get; set; }
+        /// <summary>24 lowercase hex characters; mail to agent+{token}@{InboundEmail:Domain} lands in this project.</summary>
+        public string MailboxToken { get; set; } = "";
+        public bool ReadMailbox { get; set; } = true;
+        public bool ReadChat { get; set; } = true;
+        public bool ReadMeetings { get; set; } = true;
+        /// <summary>Send the live meeting bot to this project's stand-ups (needs the workspace's meeting-bot key).</summary>
+        public bool LiveBot { get; set; }
+        /// <summary>Each morning, send everyone with work in the project their own update.</summary>
+        public bool DailyUpdates { get; set; } = true;
+        /// <summary>Who switched it on: background runs act as this person (their rights, the workspace's AI credits).</summary>
+        public Guid ActingUserId { get; set; }
+        public DateTime? ChatReadUntil { get; set; }
+        public DateTime? LastRunAt { get; set; }
+        /// <summary>yyyy-MM of <see cref="RunsThisMonth"/>.</summary>
+        public string? RunMonth { get; set; }
+        public int RunsThisMonth { get; set; }
+        public int MonthlyRunLimit { get; set; } = 300;
+        /// <summary>The workspace day (yyyyMMdd) the daily updates were last sent for.</summary>
+        public string? DailySentDay { get; set; }
+        public int MailReceived { get; set; }
+        public string? LastError { get; set; }
+    }
+
+    /// <summary>Something the agent will read: an e-mail, a stretch of chat, a meeting transcript. The content is stored encrypted.</summary>
+    public class AgentSignal : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        public AgentSourceKind Source { get; set; }
+        /// <summary>Stable reference for de-duplication (message id, meeting id + day, chat window).</summary>
+        public string SourceRef { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string? FromName { get; set; }
+        public string ContentProtected { get; set; } = "";
+        public int Length { get; set; }
+        public DateTime OccurredAt { get; set; }
+        /// <summary>Whose private inbox it came from (personal mail only).</summary>
+        public Guid? OwnerUserId { get; set; }
+        public Guid? MeetingId { get; set; }
+        public DateTime? ProcessedAt { get; set; }
+        public Guid? RunId { get; set; }
+    }
+
+    /// <summary>One time the agent read new signals and wrote findings.</summary>
+    public class AgentRun : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        /// <summary>schedule, meeting, mail, manual.</summary>
+        public string Trigger { get; set; } = "";
+        /// <summary>running, done, failed.</summary>
+        public string Status { get; set; } = "running";
+        public int SignalCount { get; set; }
+        public int FindingCount { get; set; }
+        public int Credits { get; set; }
+        public string? Summary { get; set; }
+        public string? Error { get; set; }
+        public DateTime StartedAt { get; set; }
+        public DateTime? FinishedAt { get; set; }
+        public Guid? MeetingId { get; set; }
+    }
+
+    /// <summary>One proposal or note from the agent, with the words it came from; waits for a person's decision.</summary>
+    public class AgentFinding : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        public Guid RunId { get; set; }
+        public Guid? SignalId { get; set; }
+        public AgentFindingKind Kind { get; set; }
+        public AgentFindingStatus Status { get; set; } = AgentFindingStatus.Proposed;
+        public string Title { get; set; } = "";
+        public string? Detail { get; set; }
+        /// <summary>A short quote from the source.</summary>
+        public string? Evidence { get; set; }
+        /// <summary>"Email from Ravi · 18 Oct", "Stand-up 18 Oct", "Project chat".</summary>
+        public string? SourceLabel { get; set; }
+        /// <summary>The existing task (UpdateTask, Delay) or issue (UpdateIssue) it is about.</summary>
+        public Guid? TaskId { get; set; }
+        public Guid? IssueId { get; set; }
+        public Guid? AssigneeId { get; set; }
+        public DateOnly? DueDate { get; set; }
+        public Priority? Priority { get; set; }
+        /// <summary>For UpdateTask: todo, in_progress, done. For UpdateIssue: in_progress, fixed, resolved.</summary>
+        public string? NewStatus { get; set; }
+        /// <summary>A comment to add to the task or issue.</summary>
+        public string? Comment { get; set; }
+        public int Confidence { get; set; }
+        public Guid? DecidedBy { get; set; }
+        public DateTime? DecidedAt { get; set; }
+        /// <summary>The task, action item or issue it created or changed.</summary>
+        public Guid? AppliedEntityId { get; set; }
+        public string? AppliedKey { get; set; }
+        public string? Error { get; set; }
+    }
+
+    /// <summary>The workspace's meeting-bot service (Recall.ai) used by every project's live bot.</summary>
+    public class AgentWorkspaceSettings : TenantEntity, ITenantScoped
+    {
+        public string? RecallApiKeyProtected { get; set; }
+        /// <summary>us-east-1, us-west-2, eu-central-1 or ap-northeast-1.</summary>
+        public string RecallRegion { get; set; } = "us-west-2";
+        public string BotName { get; set; } = "Project Tracker Agent";
+        /// <summary>Post short reminders in the meeting chat while people talk.</summary>
+        public bool InCallReminders { get; set; } = true;
+    }
+
+    /// <summary>
+    /// The agent's part in one session of a project meeting: the live bot sent to it (Kind "recall"), or fetching Google Meet's own transcript
+    /// once the session has ended (Kind "meet").
+    /// </summary>
+    public class AgentMeetingBot : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        public Guid MeetingId { get; set; }
+        public DateTime SessionStartUtc { get; set; }
+        public DateTime SessionEndUtc { get; set; }
+        /// <summary>recall or meet.</summary>
+        public string Kind { get; set; } = "recall";
+        /// <summary>The bot service's id for the bot (recall only).</summary>
+        public string BotId { get; set; } = "";
+        public DateTime? LastAttemptAt { get; set; }
+        public int Attempts { get; set; }
+        /// <summary>scheduled, in_call, done, failed (recall); waiting, done, failed (meet).</summary>
+        public string Status { get; set; } = "scheduled";
+        /// <summary>32 hex characters in the webhook address the bot service calls.</summary>
+        public string WebhookToken { get; set; } = "";
+        /// <summary>The words so far, "Speaker: text" lines, encrypted.</summary>
+        public string? TranscriptProtected { get; set; }
+        public int TranscriptLength { get; set; }
+        public int CheckedLength { get; set; }
+        public DateTime? LastNudgeAt { get; set; }
+        public int NudgeCount { get; set; }
+        /// <summary>What was already said in the meeting chat, so it is not said twice (one line each).</summary>
+        public string? NudgesSent { get; set; }
+        public DateTime? EndedAt { get; set; }
+        public string? Error { get; set; }
+    }
+
+    /// <summary>A person's own opt-in: the agent may look in their connected Gmail or Outlook for mail about their projects.</summary>
+    public class AgentInboxOptIn : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        /// <summary>google or microsoft.</summary>
+        public string Provider { get; set; } = "";
+        public bool Enabled { get; set; }
+        public DateTime OptedInAt { get; set; }
+        public DateTime? ScannedUntil { get; set; }
+        public int Found { get; set; }
+        public string? LastError { get; set; }
+    }
+}

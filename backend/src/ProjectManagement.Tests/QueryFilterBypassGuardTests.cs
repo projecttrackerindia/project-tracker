@@ -58,6 +58,9 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Organization/OrgService.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingSyncEngine.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/StandupSummaryService.cs", // background: finds stand-up meetings across active tenants (ids and times only); each summary is built in that tenant's own scope
+        "ProjectManagement.Application/Features/Agent/AgentEngine.cs", // background: finds projects with the agent on and inbox opt-ins across active tenants (ids only); each is handled in that tenant's own scope as its acting person
+        "ProjectManagement.Application/Features/Agent/AgentSignalService.cs", // anonymous project-mailbox webhook: the token picks the project before a tenant is known; de-duplication by exact project/source reference
+        "ProjectManagement.Application/Features/Agent/AgentMeetingService.cs", // anonymous meeting-bot webhook: the token picks the bot before a tenant is known; only that row's transcript is appended
         "ProjectManagement.Application/Features/Projects/ProjectGroupService.cs",
         "ProjectManagement.Application/Features/Projects/ProjectService.cs", // project-key uniqueness only, scoped to the current tenant; no data is read
         "ProjectManagement.Application/Features/Projects/ProjectService.Statuses.cs",
