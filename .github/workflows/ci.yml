@@ -63,6 +63,9 @@ jobs:
           name: test-results
           path: backend/TestResults/*.trx
           if-no-files-found: ignore
+      - name: Show failed tests
+        if: failure()
+        run: python3 ../scripts/trx-annotations.py TestResults
       - name: Fail on high or critical NuGet vulnerabilities
         run: |
           python -m unittest discover -s ../tools/ai-evaluation -p test_benchmark.py
@@ -118,7 +121,10 @@ jobs:
       - name: Integration tests against PostgreSQL (the production engine)
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
-        run: dotnet test --no-build -c Release
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=postgres.trx" --results-directory TestResults
+      - name: Show failed tests
+        if: failure()
+        run: python3 ../scripts/trx-annotations.py TestResults
 
   web:
     name: Web (type-check + build)
