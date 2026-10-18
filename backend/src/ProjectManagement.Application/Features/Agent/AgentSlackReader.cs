@@ -120,7 +120,8 @@ public class AgentSlackReader(IAppDbContext db, AppClock clock, ISecretProtector
     /// <summary>Slack's markup made readable: &lt;@U123|ravi&gt; → @ravi, &lt;https://x|label&gt; → label, entities decoded.</summary>
     public static string Plain(string text)
     {
-        var t = System.Text.RegularExpressions.Regex.Replace(text, @"<([^>|]+)\|([^>]+)>", "$2");
+        var t = System.Text.RegularExpressions.Regex.Replace(text, @"<[@#][A-Z0-9]+\|([^>]+)>", m => (m.Value[1] == '@' ? "@" : "#") + m.Groups[1].Value);
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"<([^>|]+)\|([^>]+)>", "$2");
         t = System.Text.RegularExpressions.Regex.Replace(t, @"<([^>]+)>", "$1");
         return t.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&");
     }
