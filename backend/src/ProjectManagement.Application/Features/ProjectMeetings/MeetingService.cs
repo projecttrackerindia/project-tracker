@@ -151,6 +151,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         if (string.IsNullOrWhiteSpace(req.Title)) throw new ValidationException("title", "Give the meeting a title.");
         if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
+        // Checked before anything reaches Google: an unknown or missing zone must never leave an invitation sent with nothing recorded here.
+        if (!ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(req.TimeZone)) throw new ValidationException("timeZone", "Choose a valid time zone for the meeting.");
         var tid = ctx.RequireTenantId();
         var organizerId = ctx.RequireUserId();
         var invitedIds = (req.ParticipantUserIds ?? []).Where(id => id != organizerId).Distinct().ToList();
@@ -176,12 +178,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         return new WorkspaceMeetingDto(title, created.MeetUri, string.IsNullOrEmpty(created.HtmlLink) ? null : created.HtmlLink, req.StartTime, req.EndTime, req.TimeZone, rule, attendees.Count + 1);
     }
 
-    /// <summary>"07 Jan, 9:30 AM (Asia/Kolkata)" - the time as the organizer meant it, in the zone they scheduled in (UTC if that zone is unknown here).</summary>
-    private static string InZone(DateTimeOffset instant, string zone)
-    {
-        try { return $"{TimeZoneInfo.ConvertTime(instant, TimeZoneInfo.FindSystemTimeZoneById(zone)):dd MMM, h:mm tt} ({zone})"; }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { return $"{instant.UtcDateTime:dd MMM, HH:mm} UTC"; }
-    }
+    /// <summary>"07 Jan, 9:30 AM (Asia/Kolkata)" - the time as the organizer meant it, in the zone they scheduled in (validated before this is called).</summary>
+    private static string InZone(DateTimeOffset instant, string zone) =>
+        $"{ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(instant.UtcDateTime, ProjectManagement.Application.Features.Reminders.ZoneTime.Find(zone)):dd MMM, h:mm tt} ({zone})";
 
     private void RequireNotGuest()
     {

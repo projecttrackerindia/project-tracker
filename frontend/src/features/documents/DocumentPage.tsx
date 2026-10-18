@@ -182,7 +182,7 @@ export function DocumentPage() {
   ];
 
   return (
-    <div className="dv" style={{ '--dc': d.typeColor } as CSSProperties}>
+    <div className="dv doc-scope" style={{ '--dc': d.typeColor } as CSSProperties}>
       <nav className="dv-crumb" aria-label="Breadcrumb">
         <Link to="/documents">Documents</Link>
         <Icon name="chevronR" size={13} />
@@ -287,9 +287,9 @@ export function DocumentPage() {
         <div className="dv-panel" role="tabpanel">
           {tab === 'artifact' && <ArtifactCard detail={detail} canEdit={canEdit} />}
           {tab === 'links' && <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />}
-          {tab === 'requirements' && <RequirementsCard documentId={id} canEdit={canEdit} />}
-          {tab === 'files' && <DocumentFiles documentId={id} canEdit={canEdit} />}
-          {tab === 'secrets' && <DocumentSecrets documentId={id} canEdit={canEdit} />}
+          {tab === 'requirements' && <RequirementsCard documentId={id} canEdit={editable} />}
+          {tab === 'files' && <DocumentFiles documentId={id} canEdit={editable} />}
+          {tab === 'secrets' && <DocumentSecrets documentId={id} canEdit={editable} />}
           {tab === 'comments' && <CommentsCard id={id} title={`${d.key} · ${d.title}`} />}
           {tab === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
         </div>

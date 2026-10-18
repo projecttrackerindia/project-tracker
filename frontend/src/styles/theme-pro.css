@@ -25,20 +25,19 @@ body, [data-theme='dark'] body { background: var(--bg) !important; background-im
 .nav-item.active::before { box-shadow: none !important; }
 
 /* 4. cards and panels: solid, hairline, barely-there shadow; no lift on hover */
-.card, .stat-card, .project-card, .detail-hero, .kb-col, .org-tray, .ps-side, .ps-main, .nc-panel,
+.card, .stat-card, .project-card, .detail-hero, .ps-side, .ps-main, .nc-panel,
 [data-theme='dark'] .card, [data-theme='dark'] .stat-card, [data-theme='dark'] .project-card {
-  background-image: none !important; border-color: var(--border) !important; box-shadow: var(--shadow-sm) !important; }
+  background-image: none !important; box-shadow: var(--shadow-sm) !important; }
+.kb-col, .org-tray { background-image: none !important; }   /* their drag-over / drop-over states keep their own border and ring */
 .card:hover, .stat-card:hover, .project-card:hover { transform: none !important; }
 .project-card:hover { border-color: var(--border-strong) !important; }
 
-/* 5. fields: white (or deep navy) with a clear border and a ring on focus */
-.input, .select, .textarea { background: var(--field-bg) !important; border-color: var(--field-border) !important; box-shadow: none !important; }
-.input:focus, .select:focus, .textarea:focus { border-color: var(--primary-fill) !important; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .16) !important; }
+/* 5. fields take their look from the tokens (solid --field-bg, --field-border); nothing forced here, so invalid/transparent variants keep theirs */
 
 /* 6. modals and floating panels */
 .modal, [data-theme='dark'] .modal { background: var(--modal-bg) !important; background-image: none !important; border: 1px solid var(--modal-border) !important; box-shadow: var(--shadow-lg) !important; }
 .modal-backdrop, .modal-overlay, .cmdk-overlay, .asst-overlay, .sidebar-overlay { background: var(--modal-overlay) !important; }
-.dropdown, .menu, .popover, .cmdk, .bell-panel { background: var(--panel-solid) !important; background-image: none !important; }
+.menu-list, .menu-pop, .cmdk, .bell-panel { background: var(--panel-solid) !important; background-image: none !important; }
 
 /* 7. badges and pills: flat tints */
 .badge { background-image: none !important; box-shadow: none !important; }
@@ -77,7 +76,7 @@ body, [data-theme='dark'] body { background: var(--bg) !important; background-im
 .ai-hero h1 { background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; color: var(--text) !important; }
 .ai-hero h1 * { background: none !important; -webkit-text-fill-color: currentColor; color: var(--text) !important; }
 .ai-new { background: var(--primary-fill) !important; box-shadow: var(--shadow-sm) !important; transform: none !important; filter: none !important; }
-.ai-new:hover { background: var(--primary-hover) !important; }
+.ai-new:hover { background: var(--primary-fill) !important; filter: brightness(.92) !important; }
 
 /* 14. calendar: today is a small filled number, the selected day a hairline ring - no heavy wash or glow */
 .cal-day.today .cal-num { box-shadow: none !important; }

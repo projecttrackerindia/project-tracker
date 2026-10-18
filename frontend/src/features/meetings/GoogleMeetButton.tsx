@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { integrationsApi, meetingApi, projectApi } from '../../api/endpoints';
 import type { MeetingParticipant } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Field, Modal, PageLoader } from '../../components/ui';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { ErrorState, Field, Modal, PageLoader } from '../../components/ui';
+import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import './meetings.css';
 import { toast } from '../../stores/ui';
@@ -56,6 +56,7 @@ function ParticipantPicker({ projectId, organizerUserId, selected, onChange }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q.data]);
   if (q.isLoading) return <PageLoader />;
+  if (q.isError) return <Field label="Participants"><ErrorState error={q.error} retry={() => q.refetch()} /></Field>;
   const people = (q.data ?? []).filter((p): p is MeetingParticipant & { userId: string } => !!p.userId && p.userId !== organizerUserId);
   const f = filter.trim().toLowerCase();
   const shown = f ? people.filter((p) => p.name.toLowerCase().includes(f) || p.email.toLowerCase().includes(f)) : people;
@@ -148,12 +149,22 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
 }) {
   const wid = useWorkspaceId();
   const workspaceName = useAuth((s) => s.ctx?.current?.name ?? 'Team');
+  // A guest only ever sees the projects they were invited to, so a whole-workspace call is not theirs to make: they must pick a project.
+  const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
   const [project, setProject] = useState<{ id: string; name: string } | null>(projectId ? { id: projectId, name: projectName ?? '' } : null);
-  const projects = useWsQuery(['projects', 'options'], () => projectApi.list({ pageSize: 100 }), { enabled: pickProject });
+  const [projectQuery, setProjectQuery] = useState('');
+  const dq = useDebounced(projectQuery.trim(), 250);
+  // Searched on the server, so a workspace with hundreds of projects can still reach every one of them.
+  const projects = useWsQuery(['projects', 'meeting-picker', dq], () => projectApi.list({ q: dq || undefined, pageSize: 50 }), { enabled: pickProject });
+  const projectOptions = useMemo(() => {
+    const items = (projects.data?.items ?? []).map((p) => ({ id: p.id, key: p.key as string, name: p.name }));
+    return project && !items.some((p) => p.id === project.id) ? [{ id: project.id, key: '', name: project.name }, ...items] : items;
+  }, [projects.data, project]);
   // The organizer's own choice, not just a silent guess: the app's zone (profile, else workspace, else this device) is only the starting
   // suggestion, and the typed wall-clock time is always read in this explicit, visible value - never in the browser's own clock setting.
   const [tz, setTz] = useState(appZone());
   const zones = useState(allTimeZones)[0];
+  const zoneLabels = useMemo(() => zones.map((z) => ({ z, label: `${z} (${zoneOffsetLabel(z)})` })), [zones]);
   // Default: the next whole hour, as a wall-clock time in that zone (not in this machine's zone, which may differ).
   const [defaults] = useState(() => { const p = zonedParts(new Date(Date.now() + 60 * 60 * 1000), tz); return { date: `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`, time: `${String(p.hour).padStart(2, '0')}:00` }; });
   const autoTitle = (name: string | null) => (scrum ? `${name ?? workspaceName} Scrum` : '');
@@ -172,13 +183,14 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
   const [ready, setReady] = useState<{ title: string; meetUri: string } | null>(null);
 
   const chooseProject = (id: string) => {
-    const p = id === NO_PROJECT ? null : (projects.data?.items ?? []).find((x) => x.id === id);
+    const p = id === NO_PROJECT ? null : projectOptions.find((x) => x.id === id);
     const next = p ? { id: p.id, name: p.name } : null;
     setProject(next); setSelected(new Set());
     if (!titleEdited) setTitle(autoTitle(next?.name ?? null));
   };
 
   const schedule = async () => {
+    if (!project && isGuest) { setError('Choose a project for this call.'); return; }
     if (!title.trim()) { setError('Give the meeting a title.'); return; }
     if (frequency !== 'Once' && (!Number.isInteger(occurrences) || occurrences < 2 || occurrences > 120)) { setError('Choose 2 to 120 sessions, including the first.'); return; }
     const [y, mo, d] = date.split('-').map(Number);
@@ -216,11 +228,14 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
       </>}>
       {error && <div className="form-error" role="alert">{error}</div>}
       {pickProject && (
-        <Field label="Project" hint={project ? 'Invitees come from this project, and the call is posted to its chat and Meetings tab.' : 'No project: invite anyone in the workspace. The call lives in Google Calendar.'}>
-          <select className="select" aria-label="Project" value={project?.id ?? NO_PROJECT} onChange={(e) => chooseProject(e.target.value)}>
-            <option value={NO_PROJECT}>No project · whole workspace</option>
-            {(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-          </select>
+        <Field label="Project" hint={project ? 'Invitees come from this project, and the call is posted to its chat and Meetings tab.' : isGuest ? 'Choose one of the projects you were invited to.' : 'No project: invite anyone in the workspace. The call lives in Google Calendar.'}>
+          <div className="gm-project-pick">
+            <input className="input" type="search" aria-label="Search projects" placeholder="Search projects" value={projectQuery} onChange={(e) => setProjectQuery(e.target.value)} />
+            <select className="select" aria-label="Project" value={project?.id ?? NO_PROJECT} onChange={(e) => chooseProject(e.target.value)}>
+              {isGuest ? (!project && <option value={NO_PROJECT} disabled>Choose a project…</option>) : <option value={NO_PROJECT}>No project · whole workspace</option>}
+              {projectOptions.map((p) => <option key={p.id} value={p.id}>{p.key ? `${p.key} · ` : ''}{p.name}</option>)}
+            </select>
+          </div>
         </Field>
       )}
       <Field label="Title" required><input className="input" aria-label="Title" value={title} onChange={(e) => { setTitle(e.target.value); setTitleEdited(true); }} placeholder="e.g. TLS 1.3 UAT Validation Discussion" maxLength={200} /></Field>
@@ -238,11 +253,11 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
         {frequency !== 'Once' && <Field label="Total sessions" hint="Including the first; maximum 120"><input className="input" aria-label="Total sessions" type="number" min={2} max={120} value={occurrences} onChange={e => setOccurrences(Number(e.target.value))} /></Field>}
       </div><p className="gm-invite-note">{frequency === 'Once' ? 'One Google Calendar invitation.' : `${occurrences} sessions in ${tz}. Google Calendar handles repeat invitations and reminders. Individual occurrences can be changed in Google Calendar.`}</p></div>
       <Field label="Agenda" hint="Optional"><textarea className="input" rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} maxLength={4000} /></Field>
-      <ParticipantPicker key={project?.id ?? 'workspace'} projectId={project?.id ?? null} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />
+      {(project || !isGuest) && <ParticipantPicker key={project?.id ?? 'workspace'} projectId={project?.id ?? null} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />}
       <Field label="Time zone" hint="The date and time above are read in this zone - change it if it is not the one you meant.">
         <select className="select" aria-label="Time zone" value={tz} onChange={(e) => setTz(e.target.value)}>
           {!zones.includes(tz) && <option value={tz}>{tz}</option>}
-          {zones.map((z) => <option key={z} value={z}>{z} ({zoneOffsetLabel(z)})</option>)}
+          {zoneLabels.map(({ z, label }) => <option key={z} value={z}>{label}</option>)}
         </select>
       </Field>
     </Modal>
