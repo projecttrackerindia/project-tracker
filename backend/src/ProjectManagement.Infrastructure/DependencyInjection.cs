@@ -99,6 +99,8 @@ public static class DependencyInjection
         services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("recall", c => c.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IOidcProtocol, OidcProtocol>();
@@ -158,6 +160,8 @@ public static class DependencyInjection
         services.AddHostedService<SlaWorker>();
         services.Configure<GoogleMeetSyncOptions>(config.GetSection(GoogleMeetSyncOptions.Section));
         services.AddHostedService<GoogleMeetSyncWorker>();
+        services.Configure<ProjectManagement.Application.Features.Agent.AgentOptions>(config.GetSection(ProjectManagement.Application.Features.Agent.AgentOptions.Section));
+        services.AddHostedService<ProjectAgentWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
         services.AddHostedService<WhatsAppDeliveryWorker>();

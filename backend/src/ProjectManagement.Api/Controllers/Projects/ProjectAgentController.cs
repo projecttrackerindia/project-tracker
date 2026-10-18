@@ -1,0 +1,69 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using ProjectManagement.Api.Filters;
+using ProjectManagement.Application.Features.Agent;
+using ProjectManagement.Domain;
+
+namespace ProjectManagement.Api.Controllers.Projects;
+
+/// <summary>
+/// The project agent: its settings and mailbox, giving it a transcript, running it now, and the review queue of what it proposed (approve,
+/// edit and approve, dismiss). The workspace's meeting-bot key and a person's own inbox opt-in live here too.
+/// </summary>
+[Route("api/v1"), RequireWorkspace, RequireModule(Modules.Projects)]
+public class ProjectAgentController(AgentSettingsService settings, AgentSignalService signals, AgentAnalysisService analysis, AgentReviewService review) : ApiControllerBase
+{
+    [HttpGet("projects/{projectId:guid}/agent")]
+    public async Task<IActionResult> Get(Guid projectId, CancellationToken ct) => Ok(await settings.GetAsync(projectId, ct));
+
+    [HttpPut("projects/{projectId:guid}/agent")]
+    public async Task<IActionResult> Save(Guid projectId, [FromBody] SaveProjectAgentRequest req, CancellationToken ct) => Ok(await settings.SaveAsync(projectId, req, ct));
+
+    [HttpPost("projects/{projectId:guid}/agent/mailbox/reset")]
+    public async Task<IActionResult> ResetMailbox(Guid projectId, CancellationToken ct) => Ok(await settings.ResetMailboxAsync(projectId, ct));
+
+    [HttpPost("projects/{projectId:guid}/agent/run"), AiRequestLimit]
+    public async Task<IActionResult> Run(Guid projectId, CancellationToken ct) => Ok(await analysis.RunNowAsync(projectId, ct));
+
+    /// <summary>A transcript or meeting notes, read straight away.</summary>
+    [HttpPost("projects/{projectId:guid}/agent/transcript"), AiRequestLimit]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public async Task<IActionResult> Transcript(Guid projectId, [FromBody] AgentTranscriptRequest req, CancellationToken ct)
+    {
+        var signal = await signals.AddTranscriptAsync(projectId, req, ct);
+        AgentRunDto? run = null;
+        // Read at once when the agent is on; otherwise it waits until someone switches it on.
+        try { if (await settings.AiAvailableAsync(ct)) run = await analysis.RunNowAsync(projectId, ct); }
+        catch (ProjectManagement.Application.Exceptions.ConflictException ex) when (ex.Code is "AGENT_DISABLED" or "AGENT_NOTHING_NEW") { }
+        return Created(new { signalId = signal.Id, run });
+    }
+
+    [HttpGet("projects/{projectId:guid}/agent/findings")]
+    public async Task<IActionResult> Findings(Guid projectId, [FromQuery] string? status, CancellationToken ct) => Ok(await review.ListAsync(projectId, status, ct));
+
+    [HttpPost("projects/{projectId:guid}/agent/findings/approve-all")]
+    public async Task<IActionResult> ApproveAll(Guid projectId, CancellationToken ct) => Ok(await review.ApproveAllAsync(projectId, ct));
+
+    /// <summary>Everything waiting for this person's decision across the workspace.</summary>
+    [HttpGet("agent/inbox")]
+    public async Task<IActionResult> Inbox(CancellationToken ct) => Ok(await review.InboxAsync(ct));
+
+    [HttpPost("agent/findings/{id:guid}/approve")]
+    public async Task<IActionResult> Approve(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ApproveFindingRequest? req, CancellationToken ct) =>
+        Ok(await review.ApproveAsync(id, req, ct));
+
+    [HttpPost("agent/findings/{id:guid}/dismiss")]
+    public async Task<IActionResult> Dismiss(Guid id, CancellationToken ct) => Ok(await review.DismissAsync(id, ct));
+
+    [HttpGet("agent/workspace")]
+    public async Task<IActionResult> Workspace(CancellationToken ct) => Ok(await settings.GetWorkspaceAsync(ct));
+
+    [HttpPut("agent/workspace")]
+    public async Task<IActionResult> SaveWorkspace([FromBody] SaveAgentWorkspaceRequest req, CancellationToken ct) => Ok(await settings.SaveWorkspaceAsync(req, ct));
+
+    [HttpGet("agent/my-inbox")]
+    public async Task<IActionResult> MyInbox(CancellationToken ct) => Ok(await settings.GetInboxAsync(ct));
+
+    [HttpPut("agent/my-inbox")]
+    public async Task<IActionResult> SaveMyInbox([FromBody] SaveAgentInboxOptInRequest req, CancellationToken ct) => Ok(await settings.SaveInboxAsync(req, ct));
+}

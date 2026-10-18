@@ -60,6 +60,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
         Environment.SetEnvironmentVariable("GoogleMeetSync__WorkerEnabled", "false"); // tests run the RSVP sync engine explicitly
+        Environment.SetEnvironmentVariable("Agent__WorkerEnabled", "false"); // tests run the project agent's tick explicitly
+        Environment.SetEnvironmentVariable("InboundEmail__Domain", "inbound.test");
         Environment.SetEnvironmentVariable("Support__Workflows__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("WhatsApp__DeliveryEnabled", "false");
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
@@ -92,6 +94,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeGoogleCalendar GoogleCalendar { get; } = new();
     public FakeMicrosoftProductivity MicrosoftProductivity {get;}=new();
     public FakeSlack Slack { get; } = new();
+    /// <summary>Stands in for Recall.ai, the project agent's meeting-bot service.</summary>
+    public FakeRecall Recall { get; } = new();
     public FakeWhatsAppInstallation WhatsApp { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
@@ -133,6 +137,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
                 o.AppId = "A_TEST"; o.RedirectUri = "https://testhost/api/v1/integrations/slack/callback";
             });
             services.AddHttpClient("slack").ConfigurePrimaryHttpMessageHandler(() => Slack);
+            services.AddHttpClient("recall").ConfigurePrimaryHttpMessageHandler(() => Recall);
             services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiClient>();

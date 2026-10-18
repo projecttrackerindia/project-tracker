@@ -30,7 +30,7 @@ public class GoogleCalendarOptions
     public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret) && !string.IsNullOrWhiteSpace(RedirectUri);
 }
 
-public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false,bool MailEnabled=false,bool MailSendAccess=false,bool InboxEnabled=false,bool InboxAccess=false);
+public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false,bool MailEnabled=false,bool MailSendAccess=false,bool InboxEnabled=false,bool InboxAccess=false,bool TranscriptAccess=false);
 public record GoogleAccessGrant(Guid ConnectionId,string RefreshFingerprint,string Account,string AccessToken,Guid ConsentEpoch=default);
 
 /// <summary>
@@ -53,6 +53,8 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     /// not the broader "calendar" scope (full read/write of every calendar), "profile", or anything touching Drive. Optional Gmail sending is requested separately.</summary>
     public const string MailScope="https://www.googleapis.com/auth/gmail.send";
     public const string InboxScope="https://www.googleapis.com/auth/gmail.readonly";
+    /// <summary>Read Google Meet conference records and transcripts, so the project agent can read a finished meeting.</summary>
+    public const string TranscriptScope="https://www.googleapis.com/auth/meetings.space.readonly";
     public const string Scopes = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created https://www.googleapis.com/auth/userinfo.email";
 
     private static string Hash(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
@@ -64,17 +66,17 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     {
         var uid = ctx.RequireUserId();
         var c = await db.GoogleConnections.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == uid, ct);
-        return c is null ? new GoogleConnectionStatusDto(false, null, null, null,false,_o.MailEnabled&&Configured,false,_o.InboxEnabled&&Configured,false) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes),_o.MailEnabled&&Configured,c.Scopes.Split((char)32).Contains(MailScope),_o.InboxEnabled&&Configured,c.Scopes.Split((char)32).Contains(InboxScope));
+        return c is null ? new GoogleConnectionStatusDto(false, null, null, null,false,_o.MailEnabled&&Configured,false,_o.InboxEnabled&&Configured,false) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes),_o.MailEnabled&&Configured,c.Scopes.Split((char)32).Contains(MailScope),_o.InboxEnabled&&Configured,c.Scopes.Split((char)32).Contains(InboxScope),c.Scopes.Split((char)32).Contains(TranscriptScope));
     }
 
     /// <summary>Where to send the browser so the person can grant Project Tracker Calendar/Meet access.</summary>
-    public async Task<string> StartConnectAsync(string? returnUrl, string browserProof, CancellationToken ct = default,bool mail=false,bool inbox=false)
+    public async Task<string> StartConnectAsync(string? returnUrl, string browserProof, CancellationToken ct = default,bool mail=false,bool inbox=false,bool transcripts=false)
     {
         if (!Configured) throw new ConflictException("Google Calendar is not set up for this installation.", "GOOGLE_NOT_CONFIGURED");
         if(mail&&!_o.MailEnabled)throw new ConflictException("Gmail sending is not enabled for this installation.","GMAIL_DISABLED");
         if(inbox&&!_o.InboxEnabled)throw new ConflictException("Gmail inbox access is not enabled for this installation.","INBOX_DISABLED");
-        if(mail&&inbox)throw new ValidationException("inbox","Grant sending and inbox reading in their separate consent steps.");
-        var requested=inbox?InboxScope+" https://www.googleapis.com/auth/userinfo.email":mail?MailScope+" https://www.googleapis.com/auth/userinfo.email":Scopes;
+        if(mail&&inbox||transcripts&&(mail||inbox))throw new ValidationException("inbox","Grant sending, inbox reading and meeting transcripts in their separate consent steps.");
+        var requested=transcripts?TranscriptScope+" https://www.googleapis.com/auth/userinfo.email":inbox?InboxScope+" https://www.googleapis.com/auth/userinfo.email":mail?MailScope+" https://www.googleapis.com/auth/userinfo.email":Scopes;
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         if(string.IsNullOrWhiteSpace(browserProof)||browserProof.Length>100)throw new UnauthorizedException("Start the connection from this browser.","GOOGLE_BROWSER_INVALID");
         var id=Random(32);
