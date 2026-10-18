@@ -258,7 +258,7 @@ a.ds-row:hover .ds-doc-title b { color: var(--primary); }
 @media (max-width: 1180px) { .dv-layout { grid-template-columns: minmax(0, 1fr) 230px; gap: 24px; } .dv-paper { padding: 32px 36px; } }
 @media (max-width: 960px) {
   .dv-layout { grid-template-columns: 1fr; }
-  .dv-aside { position: static; max-height: none; order: -1; }
+  .dv-aside { position: static; max-height: none; }
   .dv-toc { display: none; }
   .dv-actions { padding-top: 0; }
 }
