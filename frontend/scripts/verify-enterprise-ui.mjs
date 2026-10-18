@@ -93,7 +93,11 @@ try {
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   checks.push({name,overflow});
  }
- for(const section of ['', '/notifications','/security','/mobile','/integrations','/resumes']) {
+ // Notification preferences moved into the Notification Center: the old address must land there, and the center must render its sections.
+ await capture('account-notifications-redirect','/account/notifications','.section-layout-wide',1440,1000);
+ assert.match(new URL(page.url()).pathname,/\/notifications\/preferences$/,'/account/notifications must open the Notification Center');
+ assert.equal(await page.getByRole('navigation',{name:'Notification Center sections'}).getByRole('link').count(),4);
+ for(const section of ['','/security','/mobile','/integrations','/resumes']) {
   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.section-layout-wide',1440,1000);
   const nav=page.getByRole('navigation',{name:'My account sections'});assert.equal(await nav.getByRole('link').count(),6);
   const rows=await nav.getByRole('link').evaluateAll(links=>links.map(link=>Math.round(link.getBoundingClientRect().top)));

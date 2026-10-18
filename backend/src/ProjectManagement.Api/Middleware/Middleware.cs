@@ -154,7 +154,16 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
     public const string ClaimKey = "api_key", ClaimScope = "api_scope";
 
     /// <summary>Areas a key can never use, whatever its owner may do: the things that manage access itself.</summary>
-    private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/me/passkeys", "/api/v1/me/device-login", "/api/v1/admin", "/api/v1/billing", "/api/v1/workspaces", "/api/v1/dev"];
+    private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/me/passkeys", "/api/v1/me/device-login",
+        "/api/v1/me/password", "/api/v1/me/sessions", "/api/v1/admin", "/api/v1/billing", "/api/v1/workspace", "/api/v1/workspaces", "/api/v1/org",
+        "/api/v1/integrations", "/api/v1/push", "/api/v1/dev"];
+
+    /// <summary>Segment-aware: "/api/v1/workspace" blocks "/api/v1/workspace" and "/api/v1/workspace/sso", not "/api/v1/workspace-foo".</summary>
+    internal static bool IsBlocked(string path)
+    {
+        var p = path.TrimEnd('/');
+        return Blocked.Any(b => p.Equals(b, StringComparison.OrdinalIgnoreCase) || p.StartsWith(b + "/", StringComparison.OrdinalIgnoreCase));
+    }
 
     private static string? TokenOf(HttpRequest r)
     {
@@ -183,9 +192,9 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
         }
 
         var path = http.Request.Path.Value ?? "";
-        var isMe = path.StartsWith("/api/v1/me", StringComparison.OrdinalIgnoreCase);
+        var isMe = path.TrimEnd('/').Equals("/api/v1/me", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/api/v1/me/", StringComparison.OrdinalIgnoreCase);
         var meContext = path.TrimEnd('/').Equals("/api/v1/me", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsGet(http.Request.Method);
-        if (Blocked.Any(b => path.StartsWith(b, StringComparison.OrdinalIgnoreCase)) || (isMe && !meContext))
+        if (IsBlocked(path) || (isMe && !meContext))
         {
             await ErrorWriter.WriteAsync(http, 403, "API keys cannot be used for this.", [new ApiError("API_KEY_NOT_ALLOWED", "API keys cannot be used for account, billing, administration or key management.")]);
             return;
@@ -213,7 +222,7 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
 public class CurrentContextMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext http, CurrentContext ctx, IAppDbContext db, TimeProvider clock,
-        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity)
+        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone)
     {
         ctx.IpAddress = http.Connection.RemoteIpAddress?.ToString();
         ctx.UserAgent = http.Request.Headers.UserAgent.ToString();
@@ -223,15 +232,16 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var user = http.User;
             if (user.FindFirst(ApiKeyAuthMiddleware.ClaimKey) is not null && Guid.TryParse(user.FindFirst("sub")?.Value, out var keyUser))
             {
-                var active = await db.Users.AsNoTracking().Where(u => u.Id == keyUser).Select(u => u.IsActive).FirstOrDefaultAsync(http.RequestAborted);
-                if (!active)
+                var keyOwner = await db.Users.AsNoTracking().Where(u => u.Id == keyUser).Select(u => new { u.IsActive, u.TimeZone }).FirstOrDefaultAsync(http.RequestAborted);
+                if (keyOwner is null || !keyOwner.IsActive)
                 {
                     await ErrorWriter.WriteAsync(http, 401, "This API key is not valid.", [new ApiError("INVALID_API_KEY", "This API key is not valid.")]);
                     return;
                 }
-                ctx.UserId = keyUser; ctx.SessionId = null; ctx.IsPlatformAdmin = false; // a key never carries platform-admin rights
+                ctx.UserId = keyUser; ctx.SessionId = null; ctx.IsPlatformAdmin = false; ctx.ViaApiKey = true; // a key never carries platform-admin rights
+                zone.UserZoneId = keyOwner.TimeZone;
                 // A key has no two-step verification of its own to check; an IP allowlist still applies to it.
-                await ApplyMembershipAsync(http, ctx, db, orgSecurity, keyUser, mfaEnabled: true);
+                await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, keyUser, mfaEnabled: true);
                 await next(http);
                 return;
             }
@@ -245,7 +255,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var session = await (from s in db.UserSessions
                                  join u in db.Users on s.UserId equals u.Id
                                  where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, s.SsoTenantId, s.AuthMethod }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
@@ -256,11 +266,13 @@ public class CurrentContextMiddleware(RequestDelegate next)
             ctx.SessionId = sessionId;
             ctx.IsPlatformAdmin = session.IsPlatformAdmin;
             ctx.MustChangePassword = session.MustChangePassword;
+            // Every "today", due date and overdue flag in this request is worked out in the person's own time zone.
+            zone.UserZoneId = session.TimeZone;
 
             // A passkey is two factors in one (the device and the person's unlock), and a sign-in approved on the person's own phone is something they have:
             // either satisfies a workspace's two-step rule.
             var secondFactor = session.MfaEnabled || session.AuthMethod is "passkey" or "device";
-            await ApplyMembershipAsync(http, ctx, db, orgSecurity, userId, secondFactor, session.SsoTenantId);
+            await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, userId, secondFactor, session.SsoTenantId);
         }
         await next(http);
     }
@@ -271,7 +283,8 @@ public class CurrentContextMiddleware(RequestDelegate next)
     /// different workspace, must still work) — it is recorded on ctx.BlockedWorkspace so the app can explain it specifically.
     /// </summary>
     private static async Task ApplyMembershipAsync(HttpContext http, CurrentContext ctx, IAppDbContext db,
-        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, Guid userId, bool mfaEnabled, Guid? ssoTenantId = null)
+        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone,
+        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null)
     {
         if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out var workspaceId)) return;
         // Signed in through this organization's own single sign-on: its identity provider vouched for the person (and applies its MFA).
@@ -279,8 +292,9 @@ public class CurrentContextMiddleware(RequestDelegate next)
         var membership = await (from m in db.TenantMembers
                                 join t in db.Tenants on m.TenantId equals t.Id
                                 where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
-                                select new { m.Role, t.Type, t.ProjectVisibility }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                select new { m.Role, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
         if (membership is null) return;
+        zone.WorkspaceZoneId = membership.TimeZone;
 
         var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted);
         if (blocked is not null) { ctx.BlockedWorkspace = (workspaceId, blocked.Code, blocked.Message); return; }
@@ -307,11 +321,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
         var scope = ctx.ProjectScope;
         var query = db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.TenantId == tenant && !p.IsDeleted);
         if (lens is { } team) query = query.Where(p => p.TeamId == team);
-        if (scope != ProjectScope.None)
-            query = scope == ProjectScope.Members
-                ? query.Where(p => db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me))
-                : query.Where(p => p.OwnerId == me || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me)
-                    || (p.TeamId != null && db.TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == me)));
+        query = ProjectManagement.Application.Services.ProjectAccess.WithinScope(db, query, scope, me);
         ctx.ProjectIds = await query.Select(p => p.Id).ToArrayAsync(http.RequestAborted);
     }
 

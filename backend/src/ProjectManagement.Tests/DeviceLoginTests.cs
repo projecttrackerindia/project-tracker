@@ -77,11 +77,6 @@ public class DeviceLoginTests(ApiFactory factory)
         Assert.Contains(number, choices);
         Assert.False(string.IsNullOrWhiteSpace(S(mine["device"])));
 
-        var decoy = choices.First(c => c != number);
-        var wrong = await phone.Post($"/api/v1/me/device-login/{id}/approve", new { number = decoy });
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, wrong.Status);
-        Assert.Equal("pending", S((await Poll(computer, id, secret)).Data!["status"]));        // one wrong tap does not end it, and approves nothing
-
         Assert.Equal(HttpStatusCode.NoContent, (await phone.Post($"/api/v1/me/device-login/{id}/approve", new { number })).Status);
         var done = await Poll(computer, id, secret);
         Assert.Equal("approved", S(done.Data!["status"]));
@@ -92,7 +87,7 @@ public class DeviceLoginTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Only_the_computer_that_asked_can_redeem_and_two_wrong_numbers_stop_the_request()
+    public async Task Only_the_computer_that_asked_can_redeem_and_one_wrong_number_stops_the_request()
     {
         var (phone, _) = await PersonWithPhone();
         var computer = Computer();
@@ -101,7 +96,6 @@ public class DeviceLoginTests(ApiFactory factory)
         var other = number == 55 ? 56 : 55;
 
         Assert.Equal("expired", S((await Poll(computer, id, "not-the-secret")).Data!["status"]));   // someone who saw the id but not the secret learns nothing
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await phone.Post($"/api/v1/me/device-login/{id}/approve", new { number = other })).Status);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await phone.Post($"/api/v1/me/device-login/{id}/approve", new { number = other })).Status);
         Assert.Equal("denied", S((await Poll(computer, id, secret)).Data!["status"]));
         Assert.Equal(HttpStatusCode.Conflict, (await phone.Post($"/api/v1/me/device-login/{id}/approve", new { number })).Status);   // too late: stopped for good

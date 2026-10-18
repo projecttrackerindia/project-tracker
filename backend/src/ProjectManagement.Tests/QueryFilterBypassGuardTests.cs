@@ -58,6 +58,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Organization/OrgService.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingSyncEngine.cs",
         "ProjectManagement.Application/Features/Projects/ProjectGroupService.cs",
+        "ProjectManagement.Application/Features/Projects/ProjectService.cs", // project-key uniqueness only, scoped to the current tenant; no data is read
         "ProjectManagement.Application/Features/Projects/ProjectService.Statuses.cs",
         "ProjectManagement.Application/Features/Projects/ProjectStatusService.cs",
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",

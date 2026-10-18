@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
@@ -132,6 +133,8 @@ public class BillingService(
         {
             // Going back to Free ends any recurring payment at the provider at once.
             if (sub.ProviderSubscriptionId is { } paying) await activator.CancelAtProviderAsync(paying, atCycleEnd: false, ct);
+            // A payment window that was opened and never finished must not turn into a recurring payment later either.
+            if (sub.PendingProviderSubscriptionId is { } unfinished && unfinished != sub.ProviderSubscriptionId) await activator.CancelAtProviderAsync(unfinished, atCycleEnd: false, ct);
             sub.Provider = null; sub.ProviderSubscriptionId = null; sub.PendingPlanId = null; sub.PendingProviderSubscriptionId = null; sub.PendingSeats = null; sub.PendingBillingPeriod = null;
             sub.PlanId = plan.Id; sub.Status = SubscriptionStatus.Active; sub.CurrentPeriodStart = now; sub.CurrentPeriodEnd = null;
             sub.Seats = 1; sub.BillingPeriod = Pricing.Monthly;
@@ -176,6 +179,9 @@ public class BillingService(
                     log.LogWarning(ex, "Could not start a provider checkout for tenant {TenantId}", tid);
                     throw new AppException(502, "PAYMENT_PROVIDER_ERROR", "The payment service could not start the payment. Try again in a moment.");
                 }
+                // An earlier payment window that was never finished is replaced: end it at the provider so it cannot be approved and charged later.
+                if (sub.PendingProviderSubscriptionId is { } previous && previous != checkout.SubscriptionId && previous != sub.ProviderSubscriptionId)
+                    await activator.CancelAtProviderAsync(previous, atCycleEnd: false, ct);
                 sub.PendingPlanId = plan.Id; sub.PendingProviderSubscriptionId = checkout.SubscriptionId; sub.PendingSeats = seats; sub.PendingBillingPeriod = quote.Period;
                 recorder.Audit("billing.checkout_started", "Subscription", sub.Id, newValue: new { plan.Code, seats, quote.Period, quote.ChargePerCycle, checkout.SubscriptionId });
                 await db.SaveChangesAsync(ct);
@@ -246,6 +252,9 @@ public class BillingService(
 
         // A recurring payment at the provider stops at the end of the paid period; no further charge is made.
         if (sub.ProviderSubscriptionId is { } paying) await activator.CancelAtProviderAsync(paying, atCycleEnd: true, ct);
+        // A change that was started (a payment window, or seats that start at the renewal) is dropped too, at the provider and here.
+        if (sub.PendingProviderSubscriptionId is { } unfinished && unfinished != sub.ProviderSubscriptionId) await activator.CancelAtProviderAsync(unfinished, atCycleEnd: false, ct);
+        sub.PendingPlanId = null; sub.PendingProviderSubscriptionId = null; sub.PendingSeats = null; sub.PendingBillingPeriod = null;
         // Access continues until the paid period ends, then the workspace falls back to the Free plan.
         sub.Status = SubscriptionStatus.Cancelled;
         sub.CancelAtPeriodEnd = true;
@@ -275,7 +284,8 @@ public class BillingService(
         return await GetOverviewAsync(ct);
     }
 
-    internal static string NewInvoiceNumber(DateTime now) => $"INV-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..5].ToUpperInvariant()}";
+    /// <summary>"INV-20261018-1A2B3C4D". Unique (an index enforces it); not a gap-free sequence.</summary>
+    internal static string NewInvoiceNumber(DateTime now) => $"INV-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
 }
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
@@ -285,22 +295,34 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
 
     public async Task RunAllAsync(CancellationToken ct = default)
     {
-        await SendCertificationExpiryAsync(ct);
-        await RunSubscriptionLifecycleAsync(ct);
-        await CleanupAsync(ct);
-        await personalFiles.PurgeAsync(ct);
-        await PurgeInboxSummariesAsync(ct);
-        await PurgeEmailRewritesAsync(ct);
-        await whatsAppMetadata.RunAsync(ct);
-        await exports.PurgeExpiredAsync(ct: ct);
-        await webhooks.PurgeAsync(ct);
-        await files.PurgeOrphansAsync(TimeSpan.FromDays(7), ct: ct); // files of projects / tasks deleted more than a week ago
-        await ProjectManagement.Application.Features.Compliance.DataPolicyService.PurgeAllAsync(db, clock.Now, log, ct, auditChain); // each workspace's own retention
-        await keyRotation.ContinueAllAsync(ct);   // values still on an older data key after a rotation
-        await auditChain.VerifyRecentAsync(ct);   // tamper check of audit trails that changed since the last one
-        await documentRetention.PurgeAsync(ct);
-        await searchIndex.SweepAsync(ct);   // documents not yet in (or changed since) the search index
-        await documentWorkflows.SendRemindersAsync(ct);   // Business: approvers of overdue review steps are reminded once   // deleted documents after 30 days; old document versions after the plan's history period
+        // Each step on its own: one that fails is logged and the others still run (a broken export purge must not stop renewals or key rotation).
+        await StepAsync("certification expiry", () => SendCertificationExpiryAsync(ct), ct);
+        await StepAsync("subscription lifecycle", () => RunSubscriptionLifecycleAsync(ct), ct);
+        await StepAsync("cleanup", () => CleanupAsync(ct), ct);
+        await StepAsync("personal files", () => personalFiles.PurgeAsync(ct), ct);
+        await StepAsync("inbox summaries", () => PurgeInboxSummariesAsync(ct), ct);
+        await StepAsync("email rewrites", () => PurgeEmailRewritesAsync(ct), ct);
+        await StepAsync("WhatsApp metadata", () => whatsAppMetadata.RunAsync(ct), ct);
+        await StepAsync("report exports", () => exports.PurgeExpiredAsync(ct: ct), ct);
+        await StepAsync("webhooks", () => webhooks.PurgeAsync(ct), ct);
+        await StepAsync("orphan files", () => files.PurgeOrphansAsync(TimeSpan.FromDays(7), ct: ct), ct); // files of projects / tasks deleted more than a week ago
+        await StepAsync("data retention", () => ProjectManagement.Application.Features.Compliance.DataPolicyService.PurgeAllAsync(db, clock.Now, log, ct, auditChain), ct); // each workspace's own retention
+        await StepAsync("key rotation", () => keyRotation.ContinueAllAsync(ct), ct);   // values still on an older data key after a rotation
+        await StepAsync("audit chain", () => auditChain.VerifyRecentAsync(ct), ct);   // tamper check of audit trails that changed since the last one
+        await StepAsync("document retention", () => documentRetention.PurgeAsync(ct), ct);   // deleted documents after 30 days; old document versions after the plan's history period
+        await StepAsync("search index", () => searchIndex.SweepAsync(ct), ct);   // documents not yet in (or changed since) the search index
+        await StepAsync("document reminders", () => documentWorkflows.SendRemindersAsync(ct), ct);   // Business: approvers of overdue review steps are reminded once
+    }
+
+    private async Task StepAsync(string name, Func<Task> work, CancellationToken ct)
+    {
+        try { await work(); }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.LogError(ex, "Maintenance step {Step} failed; continuing with the others", name);
+            // Whatever the failed step left half-tracked must not be saved by the next one.
+            db.Database.GetService<ICurrentDbContext>().Context.ChangeTracker.Clear();
+        }
     }
 
     public async Task<int> PurgeInboxSummariesAsync(CancellationToken ct=default)
@@ -350,6 +372,8 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
 
         foreach (var sub in subs)
         {
+          try
+          {
             var before = sub.Status;
             if (sub.Status is SubscriptionStatus.Trial or SubscriptionStatus.Cancelled)
                 sub.Status = SubscriptionStatus.Expired;
@@ -357,6 +381,12 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
             {
                 // The provider charges each month and tells us by webhook. If the period ended and no news came for three days, treat it as a failed renewal.
                 if (sub.CurrentPeriodEnd!.Value.AddDays(3) <= now) sub.Status = SubscriptionStatus.PastDue;
+            }
+            else if (sub.Status == SubscriptionStatus.Active && sub.Plan?.PriceMonthly is > 0 && !sub.CancelAtPeriodEnd && payments.RequiresCheckout)
+            {
+                // A real provider charges only through a subscription the owner approved; there is none here, so the server cannot renew it by itself.
+                // It goes past due (the owner is told) and lapses after the grace period unless they choose the plan again.
+                sub.Status = SubscriptionStatus.PastDue;
             }
             else if (sub.Status == SubscriptionStatus.Active && sub.Plan?.PriceMonthly is { } unit && !sub.CancelAtPeriodEnd)
             {
@@ -386,6 +416,12 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
                 };
                 if (await router.ApplyAsync(note, ct)) db.Notifications.Add(note);
             }
+          }
+          catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+          {
+              // One subscription that cannot be processed (a provider error, bad data) must not hold up every other renewal.
+              log.LogError(ex, "Renewal of subscription {Id} for tenant {Tenant} failed; it is tried again on the next run", sub.Id, sub.TenantId);
+          }
         }
         await db.SaveChangesAsync(ct);
     }

@@ -1,8 +1,9 @@
 import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
-import { setAccessToken, setAuthLostHandler, refreshSession } from '../api/client';
+import { setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { disableNativePush } from '../lib/native';
+import { setAppZones } from '../lib/zone';
 import type { AppContext, AuthResponse } from '../api/types';
 import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
 
@@ -115,6 +116,24 @@ setAuthLostHandler(() => {
   useAuth.setState({ status: 'anonymous', ctx: null });
 });
 
+// Every refresh names this tab's workspace; keep the API client told which one that is.
+useAuth.subscribe((s) => setTabWorkspace(s.ctx?.current?.id ?? null));
+
+/**
+ * A refresh came back for another workspace than this tab shows (the person was removed from it, or it was suspended). Load the context
+ * the token now carries; the organization router then either re-activates the workspace in the address or moves to one that works. One at a
+ * time, so overlapping refreshes cannot bounce between workspaces.
+ */
+let reconciling = false;
+setWorkspaceMismatchHandler(() => {
+  if (reconciling || useAuth.getState().status !== 'authenticated') return;
+  reconciling = true;
+  queueMicrotask(() => {
+    queryClient.clear();
+    useAuth.getState().reloadContext().catch(() => undefined).finally(() => { reconciling = false; });
+  });
+});
+
 /**
  * The home address shows the public page to someone signed out and the app to someone signed in. This remembers, on this device only,
  * that someone has signed in (no data, just a flag) so the next visit opens the app at once, and switches the page over the moment a
@@ -130,6 +149,9 @@ useAuth.subscribe((s, prev) => {
 // ---- selectors / helpers
 // Pure, so they're unit-testable without rendering a component or touching the Zustand store;
 // the hooks below are thin wrappers that just supply the current ctx.
+// Keep the app-wide time zone (lib/zone) in step with whoever is signed in and the workspace they are in.
+useAuth.subscribe((s) => setAppZones(s.ctx?.user.timeZone, s.ctx?.current?.timeZone));
+
 export const hasPermission = (ctx: AppContext | null | undefined, permission: string) => ctx?.current?.permissions.includes(permission) ?? false;
 export const entitlementOf = (ctx: AppContext | null | undefined, key: string) => ctx?.current?.entitlements[key] ?? 0;
 /** Level (0 none, 1 view, 2 edit, 3 full) the signed-in user has in a module, from their job role. */

@@ -33,6 +33,36 @@ export const setAccessToken = (t: string | null) => { accessToken = t; };
 export const getAccessToken = () => accessToken;
 export const setAuthLostHandler = (fn: () => void) => { onAuthLost = fn; };
 
+// The workspace this tab is in. Sent with every refresh so a switch made in another tab does not move this one, and compared with the
+// workspace of the token that comes back: when the server could not honour it (no longer a member), the app reloads its context.
+let tabWorkspaceId: string | null = null;
+let onWorkspaceMismatch: ((tokenWorkspace: string | null) => void) | null = null;
+export const setTabWorkspace = (id: string | null) => { tabWorkspaceId = id; };
+export const setWorkspaceMismatchHandler = (fn: (tokenWorkspace: string | null) => void) => { onWorkspaceMismatch = fn; };
+
+/** The workspace claim ("wid") of an access token, or null when it has none or cannot be read. */
+export function workspaceOfToken(token: string | null | undefined): string | null {
+  const part = token?.split('.')[1];
+  if (!part) return null;
+  try {
+    const json = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return typeof json?.wid === 'string' ? json.wid : null;
+  } catch { return null; }
+}
+
+const REFRESHED_AT = 'pt-refreshed-at';
+const remember = () => { try { localStorage.setItem(REFRESHED_AT, String(Date.now())); } catch { /* storage unavailable */ } };
+
+/**
+ * Runs the refresh under a lock shared by every tab of this browser (where the browser has one), so two tabs never present the same
+ * refresh cookie at once: the second one waits, then sends the cookie the first one just received. Without the Web Locks API it just runs.
+ */
+function underRefreshLock<T>(work: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? (navigator as Navigator & { locks?: LockManager }).locks : undefined;
+  if (!locks?.request) return work();
+  return locks.request('pt-refresh', work) as Promise<T>;
+}
+
 type Query = Record<string, string | number | boolean | null | undefined>;
 export const qs = (q?: Query) => {
   if (!q) return '';
@@ -60,14 +90,21 @@ let refreshing: Promise<AuthResponse | null> | null = null;
 export function refreshSession(): Promise<AuthResponse | null> {
   refreshing ??= (async () => {
     try {
-      const res = await fetch(`${BASE}/api/v1/auth/refresh`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }, // CSRF guard for the cookie-based refresh
+      const auth = await underRefreshLock(async () => {
+        // Even when another tab refreshed a moment ago, refresh here too: the cookie this request carries is the one that tab just
+        // received, and the server tolerates a near-simultaneous second use of the same token in any case.
+        const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' }; // CSRF guard for the cookie-based refresh
+        if (tabWorkspaceId) headers['X-Workspace-Id'] = tabWorkspaceId;
+        const res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers });
+        const { data, error } = await parse(res);
+        if (error || !data) return null;
+        remember();
+        return data as AuthResponse;
       });
-      const { data, error } = await parse(res);
-      if (error || !data) return null;
-      const auth = data as AuthResponse;
+      if (!auth) return null;
       accessToken = auth.accessToken;
+      const tokenWorkspace = workspaceOfToken(auth.accessToken);
+      if (tabWorkspaceId && tokenWorkspace !== tabWorkspaceId) onWorkspaceMismatch?.(tokenWorkspace);
       return auth;
     } catch { return null; }
     finally { setTimeout(() => { refreshing = null; }, 0); }
@@ -105,6 +142,14 @@ export const put = <T = void>(path: string, body: unknown) => api<T>('PUT', path
 export const patch = <T = void>(path: string, body: unknown) => api<T>('PATCH', path, body);
 export const del = <T = void>(path: string) => api<T>('DELETE', path);
 
+/** After a 401: renew the session and send again, or, when it cannot be renewed, end it in the app the same way api() does. */
+async function renewOrLose(refused: Response, send: () => Promise<Response>): Promise<Response> {
+  if (await refreshSession()) return send();
+  accessToken = null;
+  onAuthLost?.();
+  return refused;
+}
+
 /** Uploads one file as multipart/form-data (the browser sets the boundary itself). */
 export async function uploadFile<T>(path: string, file: File, fields?: Record<string, string>): Promise<T> {
   const body = new FormData();
@@ -114,7 +159,7 @@ export async function uploadFile<T>(path: string, file: File, fields?: Record<st
     method: 'POST', body, credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   });
   let res = await send();
-  if (res.status === 401 && (await refreshSession())) res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
   const { data, error } = await parse(res);
   if (error) throw error;
   return data as T;
@@ -130,7 +175,7 @@ export async function streamPost(path: string, body: unknown, signal?: AbortSign
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...lensHeaders('POST', path), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
   });
   let res = await send();
-  if (res.status === 401 && (await refreshSession())) res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
   if (!res.ok || !res.body) throw (await parse(res)).error ?? new ApiError(res.status, 'The assistant could not be reached.', []);
   return res;
 }
@@ -139,7 +184,7 @@ export async function streamPost(path: string, body: unknown, signal?: AbortSign
 export async function fetchBlobUrl(path: string, signal?: AbortSignal): Promise<string> {
   const send = async () => fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include', signal });
   let res = await send();
-  if (res.status === 401 && (await refreshSession())) res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
   if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Could not load the file', []);
   return URL.createObjectURL(await res.blob());
 }

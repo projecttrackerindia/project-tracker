@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Resumes.ResumeService>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.ResumePurchaseService>();
         services.AddScoped<ProjectManagement.Application.Features.Resumes.CertificationService>();
+        services.AddScoped<RequestZone>();
         services.AddScoped<AppClock>();
         services.AddScoped<Recorder>();
         services.AddScoped<PermissionService>();

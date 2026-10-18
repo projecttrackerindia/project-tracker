@@ -62,6 +62,8 @@ export const workspaceApi = {
   create: (b: { name: string; description?: string }) => post<Workspace>('/workspaces', b),
   switch: (id: string) => post<{ accessToken: string; expiresAt: string }>(`/workspaces/${id}/switch`),
   update: (b: { name: string; description?: string }) => put<Workspace>('/workspace', b),
+  /** The workspace's default time zone (IANA); null clears it. Organization admins only. */
+  setTimeZone: (timeZone: string | null) => put<{ timeZone: string | null }>('/workspace/time-zone', { timeZone }),
   logo: () => get<WorkspaceLogo>('/workspace/logo'),
   uploadLogo: (file: File) => uploadFile<WorkspaceLogo>('/workspace/logo', file),
   removeLogo: () => del<WorkspaceLogo>('/workspace/logo'),

@@ -1,33 +1,34 @@
 import type { ReactNode } from 'react';
 import { MONTHS } from '../../lib/format';
+import { daysFromToday, formatInZone, isoDateIn, zoneToday } from '../../lib/zone';
 import { useAuth } from '../../stores/auth';
 
 /** The API sends UTC times; read them as UTC even when the text has no "Z". */
 export const utc = (iso: string) => new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`);
 
-const pad = (n: number) => String(n).padStart(2, '0');
-export const timeOf = (iso: string) => utc(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-export const dayKey = (iso: string) => { const d = utc(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+export const timeOf = (iso: string) => formatInZone(utc(iso), { hour: '2-digit', minute: '2-digit' });
+/** The calendar day of a message, in the person's time zone. */
+export const dayKey = (iso: string) => isoDateIn(utc(iso));
 
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-const daysAgo = (iso: string) => Math.round((startOfDay(new Date()) - startOfDay(utc(iso))) / 86_400_000);
+const daysAgo = (iso: string) => -daysFromToday(dayKey(iso));
+const dayParts = (iso: string) => dayKey(iso).split('-').map(Number) as [number, number, number];
 
 /** "Today", "Yesterday", "Monday", "12 Oct" or "12 Oct 2025": the heading above a day's messages. */
 export function dayLabel(iso: string) {
-  const n = daysAgo(iso), d = utc(iso);
+  const n = daysAgo(iso), [y, m, d] = dayParts(iso);
   if (n === 0) return 'Today';
   if (n === 1) return 'Yesterday';
-  if (n < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}${d.getFullYear() === new Date().getFullYear() ? '' : ` ${d.getFullYear()}`}`;
+  if (n < 7) return formatInZone(utc(iso), { weekday: 'long' });
+  return `${d} ${MONTHS[m - 1]}${y === Number(zoneToday().slice(0, 4)) ? '' : ` ${y}`}`;
 }
 
 /** The short time beside a conversation in the list: 14:05, Yesterday, Mon, 12 Oct. */
 export function listTime(iso: string) {
-  const n = daysAgo(iso), d = utc(iso);
+  const n = daysAgo(iso), [, m, d] = dayParts(iso);
   if (n === 0) return timeOf(iso);
   if (n === 1) return 'Yesterday';
-  if (n < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  if (n < 7) return formatInZone(utc(iso), { weekday: 'short' });
+  return `${d} ${MONTHS[m - 1]}`;
 }
 
 // A mention is stored in the message as @[Name](user id). It is shown as a highlighted @Name (and more strongly when it is you).

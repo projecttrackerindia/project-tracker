@@ -5,6 +5,8 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { Field } from '../../components/ui';
 import { WhatsAppDeliveryHistory } from './WhatsAppDeliveryHistory';
 import { toast } from '../../stores/ui';
+import { formatDateTime } from '../../lib/format';
+import { appZone } from '../../lib/zone';
 interface Preferences {
   version:number; optedIn:boolean; canEnable:boolean; taskAssignments:boolean; overdue:boolean; supportUpdates:boolean;
   timeZone:string; quietStartMinutes:number; quietEndMinutes:number; requiredConsentVersion:string;
@@ -26,7 +28,7 @@ export function WhatsAppNotificationPreferences() {
     try {
       const saved=await put<Preferences>(url,{version:draft.version,optIn,acceptedConsentVersion:optIn&&accepted?draft.requiredConsentVersion:null,
         taskAssignments:draft.taskAssignments,overdue:draft.overdue,supportUpdates:draft.supportUpdates,
-        timeZone:draft.timeZone,quietStartMinutes:draft.quietStartMinutes,quietEndMinutes:draft.quietEndMinutes});
+        timeZone:appZone(),quietStartMinutes:draft.quietStartMinutes,quietEndMinutes:draft.quietEndMinutes});
       if(current.current===scope){setAccepted(false);await query.refetch();if(current.current===scope)toast(optIn?(saved.deliveryEnabled?'Notification preferences saved.':'Notification preferences saved. Delivery is awaiting activation.'):'WhatsApp notification consent removed.','success');}
     } catch(e) {
       if(current.current===scope){toast(e instanceof Error?e.message:'Could not save notification preferences.','error');await query.refetch();}
@@ -38,13 +40,13 @@ export function WhatsAppNotificationPreferences() {
     {query.isLoading&&<p role="status">Loading preferences...</p>}
     {query.error&&<p role="alert">{query.error.message}</p>}
     {draft&&<form onSubmit={e=>{e.preventDefault();void save(true);}}>
-      {draft.optedIn&&<p role="status">Consent recorded until {draft.expiresAt?new Date(draft.expiresAt).toLocaleString():''}.{draft.deliveryEnabled?' Notifications follow your quiet hours and delivery allowance.':' Messages are not being sent.'}</p>}
+      {draft.optedIn&&<p role="status">Consent recorded until {draft.expiresAt?formatDateTime(draft.expiresAt):''}.{draft.deliveryEnabled?' Notifications follow your quiet hours and delivery allowance.':' Messages are not being sent.'}</p>}
       {!draft.canEnable&&<p>Verify your number on an eligible, active organization connection before enabling preferences.</p>}
       <fieldset disabled={busy||!draft.canEnable} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <legend>Message categories</legend>
         {([['taskAssignments','Task assignments'],['overdue','Overdue task reminders'],['supportUpdates','Support ticket updates']] as const).map(([key,label])=>
           <label key={key} style={{display:'flex',gap:8,margin:'8px 0'}}><input type="checkbox" checked={draft[key]} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{label}</label>)}
-        <Field label="Notification time zone" hint="Use an IANA zone such as Asia/Kolkata or Europe/London."><input className="input" aria-label="Notification time zone" maxLength={100} value={draft.timeZone} onChange={e=>setDraft({...draft,timeZone:e.target.value})}/></Field>
+        <p className="muted">Quiet hours use your time zone ({appZone()}), set in Notification Center → Schedule.</p>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12}}>
           <Field label="Quiet hours start"><input className="input" type="time" required aria-label="Quiet hours start" value={time(draft.quietStartMinutes)} onChange={e=>{if(e.target.value)setDraft({...draft,quietStartMinutes:minutes(e.target.value)});}}/></Field>
           <Field label="Quiet hours end"><input className="input" type="time" required aria-label="Quiet hours end" value={time(draft.quietEndMinutes)} onChange={e=>{if(e.target.value)setDraft({...draft,quietEndMinutes:minutes(e.target.value)});}}/></Field>

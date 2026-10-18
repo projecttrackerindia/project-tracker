@@ -93,6 +93,8 @@ public class Tenant : AuditableEntity, ISoftDelete
     public bool TrialUsed { get; set; }
     /// <summary>The currency of budgets, cost and bill rates (ISO code). Null = the platform's billing currency.</summary>
     public string? CostCurrency { get; set; }
+    /// <summary>The workspace's default IANA time zone, for people without their own and for workspace-wide schedules. Null = the platform's default.</summary>
+    public string? TimeZone { get; set; }
     /// <summary>The workspace has switched the AI assistant off (nothing of its data is ever sent to the model).</summary>
     public bool AiDisabled { get; set; }
     /// <summary>What the organization tells the assistant about itself and how it works (written by an Owner or Admin, shared with every answer).</summary>

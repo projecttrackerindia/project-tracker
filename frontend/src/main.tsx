@@ -22,14 +22,17 @@ import './styles/documents.css';
 import './styles/documents-theme.css';
 import './styles/reminders.css';
 import './styles/alerts.css';
+import './styles/notification-center.css';
 import './styles/mobile.css';
 import './styles/phone.css';
 import './styles/desktop.css';
 import './styles/professional.css';
 import './styles/futuristic.css';
+import './styles/documents-studio.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
+import { ApiError } from './api/client';
 import './lib/pwa';
 import { startResponsiveTables } from './lib/responsiveTables';
 import { startNativeApp } from './lib/native';
@@ -44,6 +47,18 @@ document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js').catch(() => undefined); });
 }
+
+// A failed request nobody awaited would otherwise vanish silently: say so once (not once per retry).
+let lastUnhandled = 0;
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e.reason as { name?: string; message?: string; status?: number } | undefined;
+  if (!reason || reason.name === 'AbortError' || reason.status === 401) return;
+  console.error('Unhandled promise rejection', reason);
+  if (reason instanceof ApiError && Date.now() - lastUnhandled > 10_000) {
+    lastUnhandled = Date.now();
+    useUi.getState().pushToast(reason.message || 'Something did not work. Try again.', 'error');
+  }
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

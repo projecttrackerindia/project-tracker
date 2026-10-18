@@ -23,6 +23,7 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
 {
     private void RequireManage()
     {
+        if (ctx.ViaApiKey) throw new ForbiddenException("API keys cannot change organization security.", "API_KEY_NOT_ALLOWED");
         if (ctx.Role is not (Domain.Enums.TenantRole.Owner or Domain.Enums.TenantRole.Admin))
             throw new ForbiddenException("Only owners and admins can change organization security.", "PERMISSION_DENIED");
     }

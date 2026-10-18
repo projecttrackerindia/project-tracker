@@ -38,6 +38,10 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
     public async Task<IActionResult> Update([FromBody] UpdateWorkspaceRequest req, CancellationToken ct) =>
         Ok(await workspaces.UpdateAsync(req, ct));
 
+    [HttpPut("time-zone")]
+    public async Task<IActionResult> SetTimeZone([FromBody] SetWorkspaceTimeZoneRequest req, CancellationToken ct) =>
+        Ok(new { timeZone = await workspaces.SetTimeZoneAsync(req, ct) });
+
     [HttpGet("security")]
     public async Task<IActionResult> Security(CancellationToken ct) => Ok(await orgSecurity.GetAsync(ct));
 

@@ -10,7 +10,7 @@ import { syncNativePush } from '../../lib/native';
 import { pushApi } from '../../api/endpoints';
 import { deviceAlerts, primeSound, pushCoversThisDevice, systemNotification } from './device';
 import { getAttention } from '../../lib/attention';
-import { deviceZone } from './time';
+import { deviceZone as realDeviceZone } from '../../lib/zone';
 
 const SOURCE_LABEL: Record<string, string> = { Personal: 'Reminder', Nudge: 'Reminder', DueDate: 'Due soon', Overdue: 'Overdue', Escalation: 'Overdue work' };
 
@@ -60,13 +60,16 @@ export function ReminderAlerts() {
     lastNow.current = n;
   }, [counts.data?.now]);
 
-  // The device's zone, once a session, so "09:00" automatic reminders follow someone who travels (if they keep that setting).
+  // The device's real zone, once a session, so "today", due dates and "09:00" reminders follow someone who travels (when they keep
+  // "Follow this device" on). When the server moves the profile's zone, the whole app is reloaded into it.
+  const reload = useAuth((s) => s.reloadContext);
   useEffect(() => {
-    if (!enabled || !user || user.timeZone === deviceZone()) return;
-    const key = `pm_tz_synced_${deviceZone()}`;
+    const device = realDeviceZone();
+    if (!enabled || !user || user.timeZone === device) return;
+    const key = `pm_tz_synced_${device}`;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* storage unavailable */ }
-    void reminderApi.followDevice().catch(() => undefined);
-  }, [enabled, user]);
+    void reminderApi.followDevice().then((s) => { if (s.timeZone !== user.timeZone) void reload(); }).catch(() => undefined);
+  }, [enabled, user, reload]);
 
   // ⏰ in the tab title while something waits.
   useEffect(() => {

@@ -8,6 +8,7 @@ import { useWsQuery, invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast, confirmDialog } from '../../stores/ui';
 import { loadWhatsAppSdk, launchWhatsAppSignup, type WhatsAppSignupStart } from '../../lib/whatsAppSignup';
+import { formatDateTime } from '../../lib/format';
 
 interface WhatsAppStatus {
   configured: boolean; receptionEnabled: boolean; eligible: boolean; connected: boolean;
@@ -111,7 +112,7 @@ export function WhatsAppSettings() {
           <p role="status">{({unchecked:'Not checked yet.',checking:'Provider check in progress.',verified:health.data.messagingEnabled?'Read checks passed. Notification delivery is enabled for eligible recipients.':'Read checks passed. Delivery remains disabled.',
             attention:'Setup needs attention. Review the checks below.',unavailable:'Provider checks could not be completed. Try again after a minute.',
             stale:'The previous result is out of date. Run a fresh check.'} as Record<string,string>)[health.data.state] || 'Status is unavailable.'}</p>
-          {health.data.checkedAt && <p className="muted">Last check: {new Date(health.data.checkedAt).toLocaleString()}</p>}
+          {health.data.checkedAt && <p className="muted">Last check: {formatDateTime(health.data.checkedAt)}</p>}
           <ul>{([['tokenValid','Token validity'],['scopesPresent','Required business and messaging permissions'],['assetsVerified','Selected business and phone access'],
             ['appSubscribed','App subscribed to this business'],['phoneVerified','Phone ownership verification']] as const).map(([key,label]) =>
             <li key={key}>{label}: {health.data![key] === true ? 'Passed' : health.data![key] === false ? 'Needs attention' : 'Not verified'}</li>)}</ul>
@@ -128,7 +129,7 @@ export function WhatsAppSettings() {
         {receipts.isLoading && <p role="status">Loading receipts...</p>}
         {receipts.error && <p role="alert">{receipts.error.message}</p>}
         {receipts.data?.length === 0 && <p>No receipts recorded.</p>}
-        <ul>{receipts.data?.map((r) => <li key={r.id}>{r.messageType} · {new Date(r.receivedAt).toLocaleString()} · Contact verification required</li>)}</ul>
+        <ul>{receipts.data?.map((r) => <li key={r.id}>{r.messageType} · {formatDateTime(r.receivedAt)} · Contact verification required</li>)}</ul>
       </section>}
     </div>
   </div>;

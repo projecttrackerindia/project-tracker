@@ -51,7 +51,7 @@ public class MeController(AuthService auth, WorkspaceService workspaces, Notific
         return NoContent();
     }
 
-    [HttpPost("password")]
+    [HttpPost("password"), EnableRateLimiting("auth")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req, CancellationToken ct)
     {
         await auth.ChangePasswordAsync(req, ct);

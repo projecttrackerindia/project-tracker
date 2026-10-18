@@ -3707,7 +3707,14 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Number")
+                        .IsUnique();
+
                     b.HasIndex("TenantId", "IssuedAt");
+
+                    b.HasIndex("TenantId", "ProviderReference")
+                        .IsUnique()
+                        .HasFilter("\"ProviderReference\" IS NOT NULL");
 
                     b.ToTable("Invoices");
                 });
@@ -4984,7 +4991,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "DueDate");
 
-                    b.HasIndex("TenantId", "Key");
+                    b.HasIndex("TenantId", "Key")
+                        .IsUnique();
 
                     b.HasIndex("TenantId", "Status");
 
@@ -7636,6 +7644,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("TimeZone")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<bool>("TrialUsed")
                         .HasColumnType("boolean");
 
@@ -7998,6 +8010,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId", "WorkDate");
 
                     b.HasIndex("TaskId", "WorkDate");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TimeEntries_TenantId_UserId_Running")
+                        .HasFilter("\"StartedAt\" IS NOT NULL AND \"EndedAt\" IS NULL");
 
                     b.HasIndex("UserId", "WorkDate");
 

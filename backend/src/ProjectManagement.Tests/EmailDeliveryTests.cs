@@ -140,6 +140,36 @@ public class EmailDeliveryTests(ApiFactory factory)
         Assert.Contains("Task 1 assigned", mine.Single(m => m.Subject.StartsWith("3 updates")).Html);
     }
 
+    private sealed class SharedSender : IEmailSender
+    {
+        public System.Collections.Concurrent.ConcurrentBag<EmailMessage> Sent { get; } = new();
+        public string Name => "shared";
+        public async Task SendAsync(EmailMessage message, CancellationToken ct = default) { await Task.Delay(20, ct); Sent.Add(message); }
+    }
+
+    [Fact]
+    public async Task Two_servers_sending_at_once_email_each_notification_once()
+    {
+        var c = await TestClient.RegisterAsync(factory, "Sam Single");
+        await c.CreateOrgAsync();
+        factory.WithDb(db =>
+        {
+            db.Notifications.Add(new Notification { TenantId = c.WorkspaceId, UserId = c.UserId, Type = NotificationType.Overdue, Title = "Once only", Link = "/my-work", EmailPending = true, InApp = true });
+            db.SaveChanges(); return 0;
+        });
+        var sender = new SharedSender();
+        async Task Send()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var sp = scope.ServiceProvider;
+            var svc = new NotificationEmailService(sp.GetRequiredService<IAppDbContext>(), sender, sp.GetRequiredService<IOptions<AppOptions>>(), sp.GetRequiredService<AppClock>(), NullLogger<NotificationEmailService>.Instance, sp.GetRequiredService<EmailLinks>());
+            await svc.SendPendingAsync(500);
+        }
+        await Task.WhenAll(Send(), Send());
+        Assert.Single(sender.Sent, m => m.To == c.Email);
+        Assert.False(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Single(n => n.UserId == c.UserId && n.Title == "Once only").EmailPending));
+    }
+
     [Fact]
     public async Task Chat_notices_wait_a_few_minutes_and_are_not_e_mailed_once_they_have_been_read()
     {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { get, post, put } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { ErrorState, PageLoader } from '../../components/ui';
+import { formatDateTime } from '../../lib/format';
 
 interface Resolution { workTaskId: string; workVersion: number; note: string | null; proposedAt: string | null; acceptedAt: string | null; current: boolean; canPropose: boolean; canAccept: boolean; documentId: string | null; documentVersion: string | null }
 
@@ -24,7 +25,7 @@ export function SupportResolution({ taskId, onChanged }: { taskId: string; onCha
     <h3>Verified support resolution</h3>
     <p>Complete and verify the work, record the fix, then ask the person who raised it to acknowledge the result. Later work edits make the acknowledgment stale.</p>
     {error && <p className="form-error" role="alert">{error}</p>}
-    {resolution.note && <><p style={{ whiteSpace: 'pre-wrap' }}>{resolution.note}</p><p>{!resolution.current ? 'This proposal is stale. Verify the current work and propose the resolution again.' : resolution.acceptedAt ? `Acknowledged by the reporter on ${new Date(resolution.acceptedAt).toLocaleString()}.` : 'Awaiting reporter acknowledgment.'}</p></>}
+    {resolution.note && <><p style={{ whiteSpace: 'pre-wrap' }}>{resolution.note}</p><p>{!resolution.current ? 'This proposal is stale. Verify the current work and propose the resolution again.' : resolution.acceptedAt ? `Acknowledged by the reporter on ${formatDateTime(resolution.acceptedAt)}.` : 'Awaiting reporter acknowledgment.'}</p></>}
     {resolution.documentId && <p><Link to={`/documents/${resolution.documentId}`}>Linked knowledge document</Link> · approved version {resolution.documentVersion}</p>}
     {resolution.canPropose && <div style={{ display: 'grid', gap: 10 }}>
       <label>Verified fix<textarea className="textarea" value={note} onChange={e => setNote(e.target.value)} maxLength={8000} placeholder="What changed, how it was verified, and how to avoid recurrence" /></label>

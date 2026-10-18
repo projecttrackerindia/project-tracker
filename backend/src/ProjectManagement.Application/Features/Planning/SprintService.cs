@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain;
@@ -78,7 +79,8 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         if (s.Status == SprintStatus.Planned) return [];
         var finished = await db.Tasks.Where(t => t.SprintId == s.Id && t.CompletedAt != null && t.Status!.Category == StatusCategory.Done)
             .Select(t => t.CompletedAt!.Value).ToListAsync(ct);
-        var last = s.Status == SprintStatus.Completed ? DateOnly.FromDateTime(s.CompletedAt ?? DateTime.UtcNow) : (clock.Today < s.EndDate ? clock.Today : s.EndDate);
+        // Days are the viewer's own calendar days: a task finished at 01:00 their time counts on that day, not the UTC day before.
+        var last = s.Status == SprintStatus.Completed ? clock.LocalDate(s.CompletedAt ?? clock.Now) : (clock.Today < s.EndDate ? clock.Today : s.EndDate);
         if (last < s.StartDate) last = s.StartDate;
 
         var committed = Math.Max(s.Committed, s.TaskTotal);
@@ -86,7 +88,7 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         var points = new List<BurndownPointDto>();
         for (var d = s.StartDate; d <= last; d = d.AddDays(1))
         {
-            var doneByThen = finished.Count(f => DateOnly.FromDateTime(f) <= d);
+            var doneByThen = finished.Count(f => clock.LocalDate(f) <= d);
             var ideal = Math.Max(0, committed * (1 - (double)(d.DayNumber - s.StartDate.DayNumber) / span));
             points.Add(new BurndownPointDto(d, Math.Max(0, committed - doneByThen), Math.Round(ideal, 1)));
         }
@@ -103,6 +105,10 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
             throw new ConflictException("Archived projects are read-only. Restore the project to plan sprints.", "PROJECT_ARCHIVED");
         return project;
     }
+
+    /// <summary>Holds the project's row lock until the transaction ends (PostgreSQL row lock; SQLite takes its single writer lock).</summary>
+    private Task<int> LockProjectAsync(Guid projectId, CancellationToken ct) =>
+        db.Projects.Where(p => p.Id == projectId).ExecuteUpdateAsync(u => u.SetProperty(p => p.Version, p => p.Version), ct);
 
     private async Task<Sprint> FindAsync(Guid projectId, Guid id, CancellationToken ct) =>
         await db.Sprints.FirstOrDefaultAsync(s => s.Id == id && s.ProjectId == projectId, ct) ?? throw new NotFoundException("Sprint not found.");
@@ -168,11 +174,23 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         if (await db.Sprints.AnyAsync(s => s.ProjectId == projectId && s.Status == SprintStatus.Active, ct))
             throw new ConflictException("Another sprint is already running. Complete it before starting this one.", "SPRINT_ACTIVE");
 
-        sprint.Status = SprintStatus.Active;
-        sprint.StartedAt = clock.Now;
-        sprint.CommittedTasks = await db.Tasks.CountAsync(t => t.SprintId == id && t.Status!.Category != StatusCategory.Cancelled, ct);
-        recorder.Activity("sprint.started", "Sprint", id, $"Started sprint \"{sprint.Name}\" with {sprint.CommittedTasks} tasks", projectId);
-        await db.SaveChangesAsync(ct);
+        // At most one running sprint per project, also when two people press Start at the same moment: the project row is locked for the
+        // rest of the transaction (an update that changes nothing), and the rule is checked again under that lock.
+        await using (var tx = await db.Database.BeginOwnedTransactionAsync(ct))
+        {
+            await LockProjectAsync(projectId, ct);
+            if (await db.Sprints.AnyAsync(s => s.ProjectId == projectId && s.Status == SprintStatus.Active, ct))
+                throw new ConflictException("Another sprint is already running. Complete it before starting this one.", "SPRINT_ACTIVE");
+            if (await db.Sprints.AnyAsync(s => s.Id == id && s.Status != SprintStatus.Planned, ct))
+                throw new ConflictException("This sprint has already started.", "SPRINT_STARTED");
+
+            sprint.Status = SprintStatus.Active;
+            sprint.StartedAt = clock.Now;
+            sprint.CommittedTasks = await db.Tasks.CountAsync(t => t.SprintId == id && t.Status!.Category != StatusCategory.Cancelled, ct);
+            recorder.Activity("sprint.started", "Sprint", id, $"Started sprint \"{sprint.Name}\" with {sprint.CommittedTasks} tasks", projectId);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitIfOwnedAsync(ct);
+        }
         return (await ListAsync(projectId, ct)).First(s => s.Id == id);
     }
 
@@ -230,17 +248,27 @@ public class SprintService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         foreach (var t in changed) t.SprintId = sprintId;
         foreach (var t in changed) t.Version++;
 
-        // While a sprint runs, tasks added to or dropped from it change what was committed (visible as scope change on the burndown).
-        if (sprint is { Status: SprintStatus.Active }) sprint.CommittedTasks += changed.Count;
-        foreach (var g in leaving)
-        {
-            var left = await db.Sprints.FirstOrDefaultAsync(s => s.Id == g.Key, ct);
-            if (left is { Status: SprintStatus.Active }) left.CommittedTasks = Math.Max(0, left.CommittedTasks - g.Count());
-        }
-
         if (changed.Count > 0)
             recorder.Activity("sprint.tasks_moved", "Sprint", sprintId, $"{changed.Count} task{(changed.Count == 1 ? "" : "s")} moved to {(sprint is null ? "the backlog" : $"sprint \"{sprint.Name}\"")}", projectId);
+
+        await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
+        // While a sprint runs, tasks added to or dropped from it change what was committed (visible as scope change on the burndown). The
+        // count is changed in the database itself (count = count + n), so two people planning at once never overwrite each other's change.
+        // Only running sprints are touched; the tracked copies are never written for this column.
+        if (changed.Count > 0 && sprintId is { } target)
+        {
+            var added = changed.Count;
+            await db.Sprints.Where(s => s.Id == target && s.Status == SprintStatus.Active)
+                .ExecuteUpdateAsync(u => u.SetProperty(s => s.CommittedTasks, s => s.CommittedTasks + added), ct);
+        }
+        foreach (var g in leaving)
+        {
+            var source = g.Key; var removed = g.Count();
+            await db.Sprints.Where(s => s.Id == source && s.Status == SprintStatus.Active)
+                .ExecuteUpdateAsync(u => u.SetProperty(s => s.CommittedTasks, s => s.CommittedTasks > removed ? s.CommittedTasks - removed : 0), ct);
+        }
         await db.SaveChangesAsync(ct);
+        await tx.CommitIfOwnedAsync(ct);
     }
 
     /// <summary>Single-task version used by the task dialog.</summary>

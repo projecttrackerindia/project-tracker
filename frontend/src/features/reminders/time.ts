@@ -1,17 +1,15 @@
+import { appZone } from '../../lib/zone';
 /**
  * Time for reminders, the way people think about it: wall-clock times in the device's own time zone ("tomorrow at 9" means 9 here),
  * turned into what the server needs. Local date-times are carried as "naive" Dates whose UTC fields hold the wall-clock values, so
  * calendar arithmetic never trips over daylight saving; the server turns them into instants in the right zone.
  */
 
-const CURRENT_NAMES: Record<string, string> = {
-  'Asia/Calcutta': 'Asia/Kolkata', 'Asia/Katmandu': 'Asia/Kathmandu', 'Asia/Saigon': 'Asia/Ho_Chi_Minh', 'Asia/Rangoon': 'Asia/Yangon',
-  'Europe/Kiev': 'Europe/Kyiv', 'America/Buenos_Aires': 'America/Argentina/Buenos_Aires', 'Atlantic/Faeroe': 'Atlantic/Faroe', 'Pacific/Truk': 'Pacific/Chuuk',
-};
-/** This device's time zone, by its current IANA name (browsers still report some old ones, like Asia/Calcutta). */
-export const deviceZone = (): string => {
-  try { const z = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; return CURRENT_NAMES[z] ?? z; } catch { return 'UTC'; }
-};
+/**
+ * The zone reminders are written and shown in: the app's one time zone for this person (lib/zone), so "tomorrow at 9" means 9 in the
+ * same zone the rest of the app uses. The name stays for the many callers; the real device's zone is lib/zone's deviceZone().
+ */
+export const deviceZone = (): string => appZone();
 
 /** Day-first (15/10) or month-first (10/15) numeric dates, from the browser's language. */
 export const dayFirst = (): boolean => {

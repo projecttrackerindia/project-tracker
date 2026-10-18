@@ -1,2 +1,0 @@
-Delete this folder from your project (it is the removed Support Center):
-  frontend/src/features/support/

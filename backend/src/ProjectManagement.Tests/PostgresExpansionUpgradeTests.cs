@@ -39,7 +39,11 @@ public class PostgresExpansionUpgradeTests
             await db.GetService<IMigrator>().MigrateAsync(MainMigration);
             var user=new User{Email="upgrade@example.test",NormalizedEmail="UPGRADE@EXAMPLE.TEST",DisplayName="Existing account",PasswordHash="fixture-hash",IsActive=true};
             var tenant=new Tenant{Name="Existing organization",Slug="upgrade-org",Type=WorkspaceType.Organization,OwnerUserId=user.Id};
-            db.Users.Add(user);db.Tenants.Add(tenant);await db.SaveChangesAsync();
+            db.Users.Add(user);await db.SaveChangesAsync();
+            // The workspace row is written with the columns the main schema had: the current model also maps columns added by
+            // later migrations (Tenants.TimeZone), which do not exist yet at this point of the upgrade.
+            await db.Database.ExecuteSqlInterpolatedAsync($@"INSERT INTO ""Tenants"" (""Id"",""Name"",""Slug"",""Type"",""OwnerUserId"",""Status"",""TrialUsed"",""AiDisabled"",""ProjectVisibility"",""IsDeleted"",""CreatedAt"")
+                VALUES ({tenant.Id},{tenant.Name},{tenant.Slug},{"Organization"},{user.Id},{"Active"},{false},{false},{0},{false},{DateTime.UtcNow})");
             context.UserId=user.Id;context.TenantId=tenant.Id;context.Role=TenantRole.Owner;context.WorkspaceType=WorkspaceType.Organization;
             var notification=new Notification{TenantId=tenant.Id,UserId=user.Id,Type=NotificationType.TaskAssigned,Title="Existing notification",Body="Private fixture body"};
             db.Notifications.Add(notification);await db.SaveChangesAsync();

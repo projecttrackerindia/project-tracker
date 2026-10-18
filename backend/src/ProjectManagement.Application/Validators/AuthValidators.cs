@@ -76,5 +76,6 @@ public class ChangePasswordValidator : AbstractValidator<ChangePasswordRequest>
 
 public class UpdateProfileValidator : AbstractValidator<UpdateProfileRequest>
 {
-    public UpdateProfileValidator() { RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(100); RuleFor(x => x.TimeZone).MaximumLength(64); }
+    public UpdateProfileValidator() { RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(100); RuleFor(x => x.TimeZone).MaximumLength(64)
+        .Must(z => string.IsNullOrWhiteSpace(z) || ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(z)).WithMessage("That time zone is not known."); }
 }

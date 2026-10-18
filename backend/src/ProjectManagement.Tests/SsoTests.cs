@@ -169,6 +169,8 @@ public class SsoTests(ApiFactory factory)
         var login = await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/login", new { email, password = "Temp#Passw0rd!" }, anonymous: true);
         Assert.Equal(403, (int)login.Status);
         Assert.Equal("SSO_REQUIRED", login.ErrorCode);
+        var guess = await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/login", new { email, password = "not-the-password" }, anonymous: true);
+        Assert.Equal("INVALID_CREDENTIALS", guess.ErrorCode);   // the rule is only revealed to someone who knows the password
         Assert.True((await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/sso/discover", new { email }, anonymous: true)).Data!["enforced"]!.GetValue<bool>());
 
         // the owner (on another domain) is unaffected, and switching enforcement off lets the password work again
@@ -197,6 +199,79 @@ public class SsoTests(ApiFactory factory)
         Assert.DoesNotContain("\"y\"", saved.Json!.ToJsonString());   // secrets never come back
         var check = await owner.Post("/api/v1/workspace/sso/check");
         Assert.True(check.Data!["ok"]!.GetValue<bool>(), check.ToString());
+    }
+
+    private async Task<string> SsoCallback(HttpClient browser, string email, string sub)
+    {
+        var q = QueryOf((await browser.GetAsync($"/api/v1/auth/sso/start?email={Uri.EscapeDataString(email)}")).Headers.Location!);
+        var code = factory.Idp.Issue(new() { ["sub"] = sub, ["email"] = email, ["nonce"] = q["nonce"] });
+        return (await browser.GetAsync($"/api/v1/auth/sso/oidc/callback?code={code}&state={q["state"]}")).Headers.Location!.ToString();
+    }
+
+    [Fact]
+    public async Task Single_sign_on_does_not_skip_the_persons_own_two_step_verification()
+    {
+        var o = await OrgWithDomain();
+        await EnableOidc(o);
+        var email = $"careful@{o.Domain}";
+        Assert.True((await o.Owner.Post("/api/v1/workspace/members", new { email, displayName = "Careful", role = "Member", password = "Temp#Passw0rd!" })).Ok);
+        var normalized = email.Trim().ToLowerInvariant();
+        factory.WithDb(db => db.Users.Where(u => u.NormalizedEmail == normalized).ExecuteUpdate(s => s.SetProperty(u => u.MfaEnabled, true)));
+
+        var location = await SsoCallback(Browser(), email, $"mfa-{Guid.NewGuid():N}");
+        Assert.StartsWith($"{Web}/login?mfa_challenge=", location);
+        Assert.Contains("via=sso", location);
+    }
+
+    [Fact]
+    public async Task Single_sign_on_will_not_link_an_owner_or_someone_in_other_organizations_by_email_alone()
+    {
+        var o = await OrgWithDomain();
+        await EnableOidc(o);
+        // A person on the domain who already belongs to another organization.
+        var email = $"busy@{o.Domain}";
+        Assert.True((await o.Owner.Post("/api/v1/workspace/members", new { email, displayName = "Busy", role = "Member", password = "Temp#Passw0rd!" })).Ok);
+        // ...and is also a member of a second organization (added directly: an account an administrator created must still
+        // change its password and accept the terms before it may create workspaces itself).
+        var other = await TestClient.RegisterAsync(factory, "Other Owner");
+        var otherOrg = await other.CreateOrgAsync();
+        factory.WithDb(db =>
+        {
+            var uid = db.Users.Where(u => u.Email == email).Select(u => u.Id).Single();
+            db.TenantMembers.Add(new ProjectManagement.Domain.Entities.TenantMember { TenantId = otherOrg, UserId = uid, Role = TenantRole.Member });
+            return db.SaveChanges();
+        });
+
+        var refused = await SsoCallback(Browser(), email, $"busy-{Guid.NewGuid():N}");
+        Assert.Contains("sso_error=SSO_LINK_REQUIRES_SIGN_IN", refused);
+        Assert.Equal(0, factory.WithDb(db => db.UserLogins.Count(l => l.Email == email)));
+
+        // An ordinary member of only this organization is still linked as before.
+        var plain = $"plain@{o.Domain}";
+        Assert.True((await o.Owner.Post("/api/v1/workspace/members", new { email = plain, displayName = "Plain", role = "Member", password = "Temp#Passw0rd!" })).Ok);
+        Assert.Contains("/auth/complete", await SsoCallback(Browser(), plain, $"plain-{Guid.NewGuid():N}"));
+    }
+
+    [Fact]
+    public async Task Only_the_owner_changes_which_identity_provider_is_trusted()
+    {
+        var o = await OrgWithDomain();
+        await EnableOidc(o);
+        var admin = await o.Owner.AddMemberAsync(factory, TenantRole.Admin, "Ada Admin");
+        Assert.True((await admin.Get("/api/v1/workspace/sso")).Ok);   // admins can still see the settings
+        var swap = await admin.Put("/api/v1/workspace/sso/connection", new
+        {
+            protocol = "Oidc", name = "Acme SSO", enabled = true, autoProvision = true, defaultRole = "Member",
+            authority = "https://evil.test", clientId = "acme-app",
+        });
+        Assert.Equal(403, (int)swap.Status);
+        Assert.Equal("OWNER_REQUIRED", swap.ErrorCode);
+        var toggle = await admin.Put("/api/v1/workspace/sso/connection", new
+        {
+            protocol = "Oidc", name = "Acme SSO", enabled = true, autoProvision = false, defaultRole = "Member",
+            authority = "https://idp.test", clientId = "acme-app",
+        });
+        Assert.True(toggle.Ok, toggle.ToString());   // same provider, other options: fine
     }
 
     // ------------------------------------------------------------------ SAML

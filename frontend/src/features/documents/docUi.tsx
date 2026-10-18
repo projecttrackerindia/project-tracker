@@ -15,6 +15,15 @@ export function TypeChip({ doc, size = 34 }: { doc: Pick<DocumentItem, 'typeColo
   return <span className="doc-chip" style={style} title={doc.typeName}><Icon name={typeIcon(doc.typeIcon)} size={Math.round(size * 0.52)} /></span>;
 }
 
+/** The type as a short code chip ("API", "REQ", "TEST"), the way DocTracker shows HTTP methods: mono, uppercase, tinted with the type's colour. */
+export function TypeCode({ doc, large }: { doc: Pick<DocumentItem, 'typeColor' | 'typeCode' | 'typeName'>; large?: boolean }) {
+  return <span className={`doc-code${large ? ' lg' : ''}`} style={{ '--dc': doc.typeColor } as CSSProperties} title={doc.typeName}>{doc.typeCode}</span>;
+}
+
+/** A stable colour for a project's letter avatar in the sidebar. */
+const AVATAR_COLORS = ['#5c7cfa', '#35b8c9', '#c55aa8', '#e0a83e', '#35c491', '#8b6cf0', '#ef5c6e', '#4fa3f7'];
+export const avatarColor = (seed: string) => AVATAR_COLORS[[...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length];
+
 const STATUS_TONE: Record<DocumentStatus, string> = {
   Draft: 'badge-neutral', InReview: 'badge-info', ChangesRequested: 'badge-warning', Approved: 'badge-success', Published: 'badge-success', Archived: 'badge-neutral',
 };

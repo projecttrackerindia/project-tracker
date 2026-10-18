@@ -9,11 +9,11 @@ using ProjectManagement.Domain;
 
 namespace ProjectManagement.Api.Controllers.Admin;
 
-/// <summary>Development-only helpers. Not registered outside Development / when Dev:Mailbox is off.</summary>
+/// <summary>Development-only helpers: answer only in Development, or in the automated test environment ("Testing") when Dev:Mailbox is on.</summary>
 [Route("api/v1/dev"), AllowAnonymous]
 public class DevController(DevMailbox mailbox, IWebHostEnvironment env, IConfiguration config) : ApiControllerBase
 {
     [HttpGet("emails")]
     public IActionResult Emails() =>
-        env.IsDevelopment() || config.GetValue("Dev:Mailbox", false) ? Ok(mailbox.Recent()) : NotFound();
+        env.IsDevelopment() || (env.IsEnvironment("Testing") && config.GetValue("Dev:Mailbox", false)) ? Ok(mailbox.Recent()) : NotFound();
 }

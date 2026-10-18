@@ -183,6 +183,8 @@ public interface ICurrentContext
     (Guid WorkspaceId, string Code, string Message)? BlockedWorkspace { get; }
     /// <summary>The signed-in person still has the temporary password an administrator gave them and must replace it.</summary>
     bool MustChangePassword { get; }
+    /// <summary>The request is authenticated by an API key (a script), not by a person's signed-in session.</summary>
+    bool ViaApiKey { get; }
     /// <summary>How far this request's person may reach into projects (decided once per request, from the workspace setting and their role). Every project and task query is narrowed by it.</summary>
     ProjectScope ProjectScope { get; }
     /// <summary>The one team this request looks at (the person picked it in the app and may pick it), or null for every team they can see. Reads only; narrows every project and task query.</summary>
@@ -209,6 +211,7 @@ public class CurrentContext : ICurrentContext
     public string? UserAgent { get; set; }
     public (Guid WorkspaceId, string Code, string Message)? BlockedWorkspace { get; set; }
     public bool MustChangePassword { get; set; }
+    public bool ViaApiKey { get; set; }
     public ProjectScope ProjectScope { get; set; }
     public Guid? TeamLens { get; set; }
     public bool RestrictsProjects { get; set; }

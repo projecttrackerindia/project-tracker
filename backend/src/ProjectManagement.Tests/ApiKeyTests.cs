@@ -97,7 +97,8 @@ public class ApiKeyTests(ApiFactory factory)
         var (c, _) = await Setup();
         var (secret, _) = await NewKey(c);
         var api = As(secret);
-        foreach (var path in new[] { "/api/v1/api-keys", "/api/v1/billing", "/api/v1/workspaces", "/api/v1/admin/stats", "/api/v1/me/sessions", "/api/v1/me/mfa" })
+        foreach (var path in new[] { "/api/v1/api-keys", "/api/v1/billing", "/api/v1/workspaces", "/api/v1/admin/stats", "/api/v1/me/sessions", "/api/v1/me/mfa",
+                     "/api/v1/workspace", "/api/v1/workspace/", "/api/v1/workspace/sso", "/api/v1/workspace/security", "/api/v1/org/chart", "/api/v1/integrations/slack", "/api/v1/push/devices" })
         {
             var res = await api.Get(path);
             Assert.Equal(HttpStatusCode.Forbidden, res.Status);

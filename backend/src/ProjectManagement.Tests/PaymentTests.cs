@@ -105,6 +105,45 @@ public class PaymentTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task An_abandoned_payment_window_is_ended_at_the_provider_when_replaced_or_when_going_back_to_free()
+    {
+        factory.Payments.Hosted = true;
+        try
+        {
+            var (owner, first) = await StartPro();
+            var second = (await owner.Post("/api/v1/billing/checkout", new { planCode = "BUSINESS", startTrial = false })).Data!["payment"]!["subscriptionId"]!.GetValue<string>();
+            Assert.Contains((first, false), factory.Payments.Cancelled);
+            Assert.True((await owner.Post("/api/v1/billing/checkout", new { planCode = "FREE", startTrial = false })).Ok);
+            Assert.Contains((second, false), factory.Payments.Cancelled);
+        }
+        finally { factory.Payments.Hosted = false; }
+    }
+
+    [Fact]
+    public async Task A_cancelled_subscription_is_not_switched_back_on_by_an_older_or_replayed_charge()
+    {
+        factory.Payments.Hosted = true;
+        try
+        {
+            var (owner, sub) = await StartPro();
+            await Webhook("subscription.charged", sub, "evt_k1", Pay("pay_k1"), Unix(DateTime.UtcNow), Unix(DateTime.UtcNow.AddMonths(1)));
+            Assert.True((await owner.Post("/api/v1/billing/cancel")).Ok);
+            await Webhook("subscription.charged", sub, "evt_k2", Pay("pay_k2"), Unix(DateTime.UtcNow), Unix(DateTime.UtcNow.AddMonths(1)));   // no created_at: not newer
+            Assert.Equal("Cancelled", (await owner.Get("/api/v1/billing")).Data!["plan"]!["status"]!.GetValue<string>());
+
+            // The same signed body under a new event id is the same event.
+            var body = JsonSerializer.Serialize(new { @event = "subscription.charged", created_at = Unix(DateTime.UtcNow.AddMinutes(5)),
+                payload = new { subscription = new { entity = new { id = sub, status = "active" } }, payment = new { entity = Pay("pay_k3") } } });
+            Assert.Equal(HttpStatusCode.OK, (await Webhook("subscription.charged", sub, "evt_k3", bodyOverride: body)).Status);
+            Assert.Equal("Active", (await owner.Get("/api/v1/billing")).Data!["plan"]!["status"]!.GetValue<string>());   // a charge after the cancellation
+            var invoices = (await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().Count;
+            Assert.Equal(HttpStatusCode.OK, (await Webhook("subscription.charged", sub, "evt_k3_replay", bodyOverride: body)).Status);
+            Assert.Equal(invoices, (await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().Count);
+        }
+        finally { factory.Payments.Hosted = false; }
+    }
+
+    [Fact]
     public async Task A_webhook_with_a_bad_signature_is_refused_and_one_for_an_unknown_subscription_is_ignored()
     {
         Assert.Equal(HttpStatusCode.Unauthorized, (await Webhook("subscription.charged", "sub_x", "evt_bad", signature: "nope")).Status);

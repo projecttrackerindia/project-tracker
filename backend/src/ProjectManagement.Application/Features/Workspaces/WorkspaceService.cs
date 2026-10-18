@@ -16,13 +16,15 @@ public record WorkspaceDto(Guid Id, string Name, string Slug, WorkspaceType Type
 public record PlanSummaryDto(string Code, string Name, SubscriptionStatus Status, DateTime? TrialEnd, DateTime? PeriodEnd, bool CancelAtPeriodEnd, bool Downgraded);
 public record CurrentWorkspaceDto(Guid Id, string Name, string Slug, WorkspaceType Type, TenantRole Role, string? Description,
     IReadOnlyList<string> Permissions, PlanSummaryDto Plan, IReadOnlyDictionary<string, long> Entitlements,
-    IReadOnlyDictionary<string, int> Modules, int ReportCount = 0);
+    IReadOnlyDictionary<string, int> Modules, int ReportCount = 0, string? TimeZone = null);
 /// <summary>Everything the app shows or hides based on what a person may do. <see cref="Fingerprint"/> changes exactly when that changes.</summary>
 public record ContextDto(UserDto User, IReadOnlyList<WorkspaceDto> Workspaces, CurrentWorkspaceDto? Current, string Fingerprint = "",
     Organization.AccessBlockedDto? Blocked = null, IReadOnlyList<Admin.ConsentDocumentDto>? PendingConsent = null);
 public record FingerprintDto(string Fingerprint);
 public record CreateWorkspaceRequest(string Name, string? Description);
 public record UpdateWorkspaceRequest(string Name, string? Description);
+/// <summary>The workspace's default time zone (IANA name); empty clears it so the platform's default applies.</summary>
+public record SetWorkspaceTimeZoneRequest(string? TimeZone);
 public record SwitchResult(string AccessToken, DateTime ExpiresAt);
 
 public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null, bool HasAvatar = false);
@@ -70,7 +72,8 @@ public class WorkspaceService(
                 new PlanSummaryDto(plan.Plan.Code, plan.Plan.Name, plan.Status, plan.TrialEnd, plan.PeriodEnd, plan.CancelAtPeriodEnd, plan.Downgraded),
                 await entitlements.GetEntitlementsAsync(tid, ct),
                 await permissions.LevelsAsync(ct),
-                await reporting.CountMineAsync(userId, tid, ct));
+                await reporting.CountMineAsync(userId, tid, ct),
+                tenant.TimeZone);
         }
         var blocked = current is null && ctx.BlockedWorkspace is { } b ? new Organization.AccessBlockedDto(b.WorkspaceId, b.Code, b.Message) : null;
         var consentStatus = await consent.StatusForAsync(userId, ct);
@@ -173,6 +176,25 @@ public class WorkspaceService(
         recorder.Audit("workspace.updated", "Tenant", tid, old, new { tenant.Name, tenant.Description });
         await db.SaveChangesAsync(ct);
         return (await ListAsync(ct)).First(w => w.Id == tid);
+    }
+
+    /// <summary>
+    /// Sets the workspace's default time zone: what people without their own zone, workspace-wide digests and SLA clocks follow.
+    /// Each person's own zone (My account) still wins for everything they see.
+    /// </summary>
+    public async Task<string?> SetTimeZoneAsync(SetWorkspaceTimeZoneRequest req, CancellationToken ct = default)
+    {
+        await permissions.RequireAsync(Permissions.OrgManage, ct);
+        var tid = ctx.RequireTenantId();
+        var zone = string.IsNullOrWhiteSpace(req.TimeZone) ? null : req.TimeZone.Trim();
+        if (zone is not null && !ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(zone)) throw new ValidationException("timeZone", "That time zone is not known.");
+        var tenant = await db.Tenants.FirstAsync(t => t.Id == tid, ct);
+        var old = tenant.TimeZone;
+        if (old == zone) return zone;
+        tenant.TimeZone = zone;
+        recorder.Audit("workspace.time_zone", "Tenant", tid, old, zone);
+        await db.SaveChangesAsync(ct);
+        return zone;
     }
 
     // ---------------------------------------------------------------- members

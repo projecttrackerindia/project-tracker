@@ -34,7 +34,9 @@ public static class SqliteEnterpriseUpgrade
         "20261012060025_DurablePersonalEmailRecovery",
         "20261012171600_PlannedTimesheetLeave",
         "20261013101012_AutomaticStageScheduling",
-        "20261013175049_RecurringProjectMeetings"
+        "20261013175049_RecurringProjectMeetings",
+        "20261018000050_WorkspaceTimeZone",
+        "20261018000100_UniqueInvoiceReferences"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)
@@ -71,6 +73,10 @@ public static class SqliteEnterpriseUpgrade
             }
             foreach(var operation in operations)
             {
+                // A column or index for a table this database does not have (a partial or older development database) has nothing to
+                // upgrade: EnsureCreated databases always have every table, so this only skips work that could never apply.
+                string? target=operation switch{AddColumnOperation c=>c.Table,CreateIndexOperation i=>i.Table,_=>null};
+                if(target is not null&&!await Exists("table",target))continue;
                 var exists=operation switch
                 {
                     CreateTableOperation table=>await Exists("table",table.Name),

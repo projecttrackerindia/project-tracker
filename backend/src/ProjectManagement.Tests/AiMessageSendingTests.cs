@@ -56,7 +56,11 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
         Assert.Contains("Sivareddy", proposal["actions"]![0]!["summary"]!.GetValue<string>());
         Assert.Equal(0, Sent(sender));
         var conversation = Conversation(proposal);
-        var answer = await Ask(sender, "yes, send it", conversation);
+        var unbound = await Ask(sender, "yes, send it", conversation);
+        Assert.Contains("needs the exact card", unbound["content"]!.GetValue<string>());   // a typed yes alone never sends to other people
+        Assert.Equal(0, Sent(sender));
+        var binding = new AiConfirmationBinding(Guid.Parse(proposal["id"]!.GetValue<string>()), proposal["actions"]![0]!["id"]!.GetValue<string>(), "send_message");
+        var answer = await Ask(sender, "yes, send it", conversation, confirmation: binding);
         Assert.Equal("builtin-confirmation", answer["model"]!.GetValue<string>());
         Assert.Contains("Verified saved message ID", answer["content"]!.GetValue<string>());
         Assert.Equal(1, Sent(sender));
@@ -68,7 +72,7 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
         var received = (await recipient.Get($"/api/v1/chat/conversations/{chatId}/messages")).Data!["items"]!.AsArray();
         Assert.Single(received); Assert.Equal("Hi", received[0]!["body"]!.GetValue<string>());
         Assert.Equal(id, received[0]!["id"]!.GetValue<string>());
-        var repeated = await Ask(sender, "yes, send it", conversation);
+        var repeated = await Ask(sender, "yes, send it", conversation, confirmation: binding);
         Assert.Empty(repeated["actions"]!.AsArray()); Assert.Equal(1, Sent(sender));
         Assert.Contains("No single matching", repeated["content"]!.GetValue<string>());
         Assert.Empty(factory.Chat.Requests);
@@ -192,7 +196,8 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
         var proposal = await Ask(sender, request);
         Assert.Equal(body, proposal["actions"]![0]!["preview"]!.GetValue<string>());
         Assert.Contains("Siva Reddy", proposal["actions"]![0]!["summary"]!.GetValue<string>());
-        var reply = await Ask(sender, "Confirm sending the message", Conversation(proposal));
+        var binding = new AiConfirmationBinding(Guid.Parse(proposal["id"]!.GetValue<string>()), proposal["actions"]![0]!["id"]!.GetValue<string>(), "send_message");
+        var reply = await Ask(sender, "Confirm sending the message", Conversation(proposal), confirmation: binding);
         Assert.Contains("Verified saved message ID", reply["content"]!.GetValue<string>());
         Assert.Equal(body, factory.WithDb(db => db.ChatMessages.IgnoreQueryFilters().Single(m => m.TenantId == sender.WorkspaceId).Body));
         Assert.Empty(factory.Chat.Requests);

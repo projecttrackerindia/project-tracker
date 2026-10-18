@@ -101,7 +101,7 @@ public class DocumentTraceService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await ReadableAsync(documentId, ct);
         var reqs = await db.DocumentRequirements.AsNoTracking().Where(r => r.DocumentId == documentId).OrderBy(r => r.SortOrder).ThenBy(r => r.Number).ToListAsync(ct);
         var linkRows = await db.DocumentLinks.AsNoTracking().Where(l => l.DocumentId == documentId && l.RequirementId != null && (l.Relation == LinkRelation.Implements || l.Relation == LinkRelation.Verifies)).ToListAsync(ct);
-        var today = DateOnly.FromDateTime(clock.Now);
+        var today = clock.Today;
         var resolved = new Dictionary<(LinkTarget, Guid), DocumentLinkService.Resolved>();
         foreach (var g in linkRows.GroupBy(l => l.TargetType))
             foreach (var (id, r) in await links.ResolveAsync(g.Key, g.Select(l => l.TargetId).Distinct().ToList(), today, ct)) resolved[(g.Key, id)] = r;

@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { adminApi, insightApi, notificationApi } from '../../api/endpoints';
+import { adminApi, insightApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader, Pager } from '../../components/ui';
 import { formatDateTime, timeAgo } from '../../lib/format';
-import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
-import { useWorkspaceId } from '../../stores/auth';
+import { useDebounced, useWsQuery } from '../../lib/hooks';
 import { activityIcon } from '../dashboard/DashboardPage';
 
 export function ActivityPage() {
@@ -33,41 +31,6 @@ export function ActivityPage() {
             </div>
           )}
         </div>
-        <Pager page={d.page} totalPages={d.totalPages} totalItems={d.totalItems} onPage={setPage} />
-      </div>
-    </>
-  );
-}
-
-/** Unread notifications only — once one is opened (or "Mark all read" is used), it drops off this list. */
-export function NotificationsPage() {
-  const wid = useWorkspaceId();
-  const nav = useNavigate();
-  const [page, setPage] = useState(1);
-  const q = useWsQuery(['notifications', 'page', page], () => notificationApi.list(page, true), { placeholderData: (p) => p });
-  const refresh = () => invalidateWorkspace(wid, 'notifications');
-  const EMOJI: Record<string, string> = { TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒' };
-
-  if (q.isLoading) return <PageLoader />;
-  if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
-  const d = q.data;
-  return (
-    <>
-      <PageHead title="Notifications" sub={`${d.totalItems} unread`}>
-        <button className="btn btn-ghost" onClick={async () => { await notificationApi.readAll(); refresh(); }}><Icon name="tick" /> Mark all read</button>
-      </PageHead>
-      <div className="card">
-        {d.items.length === 0 ? <div className="card-body"><EmptyState icon="bell" title="You're all caught up" text="Assignments, mentions, comments and due-date reminders show up here." /></div> : (
-          <div className="card-body" style={{ padding: 8 }}>
-            {d.items.map((n) => (
-              <button key={n.id} className="dp-item unread" style={{ padding: '12px 14px' }}
-                onClick={async () => { await notificationApi.read(n.id); refresh(); if (n.link) nav(n.link); }}>
-                <span className="dp-ico">{EMOJI[n.type] ?? '🔔'}</span>
-                <span className="dp-main"><b>{n.title}</b>{n.body && <span>{n.body}</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{timeAgo(n.createdAt)}</span></span>
-              </button>
-            ))}
-          </div>
-        )}
         <Pager page={d.page} totalPages={d.totalPages} totalItems={d.totalItems} onPage={setPage} />
       </div>
     </>

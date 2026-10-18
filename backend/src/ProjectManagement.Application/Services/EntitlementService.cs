@@ -128,22 +128,43 @@ public class EntitlementService(IAppDbContext db, ICurrentContext ctx, AppClock 
         if (limit != FeatureKeys.Unlimited && currentCount + adding > limit) throw new PlanLimitException(key, limit);
     }
 
-    /// <summary>Bytes used by files of projects that still exist (files of deleted projects no longer count).</summary>
-    public async Task<long> StorageUsedBytesAsync(CancellationToken ct = default) =>
-        (await db.Attachments.Where(a => db.Projects.Any(p => p.Id == a.ProjectId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
-        + (await db.WorkTaskAttachments.Where(a => db.WorkTasks.Any(t => t.Id == a.WorkTaskId)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
-        // Files sent in chat and shown to the AI assistant live in the same storage and count against the same plan limit.
-        + (await db.DocumentFiles.Where(f => db.Documents.IgnoreQueryFilters().Any(d => d.Id == f.DocumentId && !d.IsDeleted)).SumAsync(f => (long?)f.SizeBytes, ct) ?? 0)
-        + (await db.ChatAttachments.SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
-        + (await db.AiAttachments.SumAsync(a => (long?)a.SizeBytes, ct) ?? 0);
+    // Plan usage counts the whole workspace, not what the caller happens to see: a person limited to some projects (a guest, a
+    // team-limited member) must hit the same limit as an owner. So these read past the per-person project filters, scoped explicitly
+    // to the current workspace and to rows that are not deleted.
+
+    /// <summary>Projects that use a project slot: every project in the workspace that is neither deleted nor archived.</summary>
+    public Task<int> ActiveProjectCountAsync(CancellationToken ct = default)
+    {
+        var tid = ctx.RequireTenantId();
+        return db.Projects.IgnoreQueryFilters().CountAsync(p => p.TenantId == tid && !p.IsDeleted && p.Status != ProjectStatus.Archived, ct);
+    }
+
+    /// <summary>Tasks that count against the plan: every task in the workspace that is not deleted.</summary>
+    public Task<int> TaskCountAsync(CancellationToken ct = default)
+    {
+        var tid = ctx.RequireTenantId();
+        return db.Tasks.IgnoreQueryFilters().CountAsync(t => t.TenantId == tid && !t.IsDeleted, ct);
+    }
+
+    /// <summary>Bytes used by files of projects that still exist (files of deleted projects no longer count), across the whole workspace.</summary>
+    public async Task<long> StorageUsedBytesAsync(CancellationToken ct = default)
+    {
+        var tid = ctx.RequireTenantId();
+        return (await db.Attachments.IgnoreQueryFilters().Where(a => a.TenantId == tid && db.Projects.IgnoreQueryFilters().Any(p => p.Id == a.ProjectId && !p.IsDeleted)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
+            + (await db.WorkTaskAttachments.IgnoreQueryFilters().Where(a => a.TenantId == tid && db.WorkTasks.IgnoreQueryFilters().Any(t => t.Id == a.WorkTaskId && !t.IsDeleted)).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
+            // Files sent in chat and shown to the AI assistant live in the same storage and count against the same plan limit.
+            + (await db.DocumentFiles.IgnoreQueryFilters().Where(f => f.TenantId == tid && db.Documents.IgnoreQueryFilters().Any(d => d.Id == f.DocumentId && !d.IsDeleted)).SumAsync(f => (long?)f.SizeBytes, ct) ?? 0)
+            + (await db.ChatAttachments.IgnoreQueryFilters().Where(a => a.TenantId == tid).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0)
+            + (await db.AiAttachments.IgnoreQueryFilters().Where(a => a.TenantId == tid).SumAsync(a => (long?)a.SizeBytes, ct) ?? 0);
+    }
 
     public record UsageItem(string Key, string Label, long Used, long Limit);
 
     public async Task<IReadOnlyList<UsageItem>> GetUsageAsync(CancellationToken ct = default)
     {
         var ent = await GetEntitlementsAsync(ctx.RequireTenantId(), ct);
-        var projects = await db.Projects.CountAsync(p => p.Status != ProjectStatus.Archived, ct);
-        var tasks = await db.Tasks.CountAsync(ct);
+        var projects = await ActiveProjectCountAsync(ct);
+        var tasks = await TaskCountAsync(ct);
         var members = await db.TenantMembers.CountAsync(m => m.TenantId == ctx.TenantId, ct)
             + await db.TenantInvitations.CountAsync(i => i.TenantId == ctx.TenantId && i.Status == InvitationStatus.Pending && i.ExpiresAt > clock.Now, ct);
         var teams = await db.Teams.CountAsync(ct);

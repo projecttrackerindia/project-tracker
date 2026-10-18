@@ -191,10 +191,9 @@ public class TaskService(
         var tid = ctx.RequireTenantId();
         var userId = ctx.RequireUserId();
         var project = await access.GetProjectAsync(projectId, ct);
-        if (project.Status == ProjectStatus.Archived)
-            throw new ConflictException("Archived projects are read-only. Restore the project to add tasks.", "PROJECT_ARCHIVED");
+        ProjectAccess.EnsureNotArchived(project, "add tasks");
 
-        await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await db.Tasks.CountAsync(ct), 1, ct);
+        await entitlements.EnsureWithinLimitAsync(FeatureKeys.TaskLimit, await entitlements.TaskCountAsync(ct), 1, ct);
 
         TaskItem? parentTask = null;
         if (req.ParentTaskId is { } parentId)
@@ -238,15 +237,45 @@ public class TaskService(
             await notifications.AddAsync(who, NotificationType.TaskAssigned, $"You were assigned {key}", task.Title, $"/projects/{projectId}?task={task.Id}");
         await automation.RunAsync(task, key, AutomationTrigger.TaskCreated, task.StatusId, task.Priority, (req.LabelIds ?? []).Distinct().ToList(), ct);
         project.UpdatedAt = now;
-        await db.SaveChangesAsync(ct);
+        await SaveNewTaskAsync(task, project.Key, ct);
         if (parentTask is null) await completion.SyncStagesAsync([task.StageId], ct);
         return await GetDtoAsync(task.Id, ct);
+    }
+
+    /// <summary>
+    /// Saves a new task. Numbers are "highest so far + 1", so a task created at the same moment (another person, a CSV import) can take the
+    /// same number first: then the next free one is used, and what this save says about the task (its activity line, its notifications)
+    /// is updated to the new key, before trying again - up to three times.
+    /// </summary>
+    private async Task SaveNewTaskAsync(TaskItem task, string projectKey, CancellationToken ct)
+    {
+        for (var retry = 0; ; retry++)
+        {
+            try { await db.SaveChangesAsync(ct); return; }
+            catch (DbUpdateException ex) when (retry < 3 && DbErrors.IsTaskNumberTaken(ex))
+            {
+                var oldKey = $"{projectKey}-{task.Number}";
+                task.Number = await NextNumberAsync(task.ProjectId, ct);
+                var newKey = $"{projectKey}-{task.Number}";
+                var pattern = new System.Text.RegularExpressions.Regex(System.Text.RegularExpressions.Regex.Escape(oldKey) + @"(?!\d)");
+                string? Rekey(string? text) => text is null ? null : pattern.Replace(text, newKey);
+                foreach (var a in db.Activities.Local.Where(a => a.EntityId == task.Id && db.Activities.Entry(a).State == EntityState.Added).ToList())
+                    a.Summary = Rekey(a.Summary)!;
+                var link = task.Id.ToString();
+                foreach (var n in db.Notifications.Local.Where(n => n.Link != null && n.Link.Contains(link, StringComparison.Ordinal) && db.Notifications.Entry(n).State == EntityState.Added).ToList())
+                {
+                    n.Title = Rekey(n.Title)!;
+                    n.Body = Rekey(n.Body);
+                }
+            }
+        }
     }
 
     public async Task<TaskDto> UpdateAsync(Guid id, UpdateTaskRequest req, CancellationToken ct = default)
     {
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await permissions.RequireTaskEditAsync(task, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "change its tasks", ct);
         if (task.Version != req.Version)
             throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");
@@ -400,6 +429,7 @@ public class TaskService(
     {
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await permissions.RequireTaskEditAsync(task, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "move its tasks", ct);
         var status = await db.WorkflowStatuses.FirstOrDefaultAsync(x => x.Id == req.StatusId && x.ProjectId == task.ProjectId, ct)
             ?? throw new ValidationException("statusId", "Status does not belong to this project.");
         var oldName = await db.WorkflowStatuses.Where(x => x.Id == task.StatusId).Select(x => x.Name).FirstAsync(ct);
@@ -429,6 +459,7 @@ public class TaskService(
     {
         await permissions.RequireAsync(Permissions.TasksDelete, ct);
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
+        await access.EnsureWritableAsync(task.ProjectId, "delete its tasks", ct);
         var now = clock.Now;
         foreach (var t in await db.Tasks.Where(t => t.Id == id || t.ParentTaskId == id).ToListAsync(ct))
         { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = ctx.UserId; }
@@ -460,6 +491,7 @@ public class TaskService(
     {
         await permissions.RequireAsync(Permissions.TasksComment, ct);
         var task = await VisibleTaskAsync(taskId, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "comment on its tasks", ct);
         var userId = ctx.RequireUserId();
         if (req.ParentCommentId is { } parentId && !await db.TaskComments.AnyAsync(c => c.Id == parentId && c.TaskId == taskId, ct))
             throw new ValidationException("parentCommentId", "Parent comment not found.");

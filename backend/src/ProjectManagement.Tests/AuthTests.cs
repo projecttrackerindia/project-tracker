@@ -44,7 +44,22 @@ public class AuthTests(ApiFactory factory)
             var bad = await c.LoginAsync("wrong-password-1");
             Assert.Equal(HttpStatusCode.Unauthorized, bad.Status);
         }
+        // While locked, a wrong guess gets the same answer as any wrong password: a stranger learns nothing and cannot extend the lock.
+        var guess = await c.LoginAsync("wrong-password-1");
+        Assert.Equal(HttpStatusCode.Unauthorized, guess.Status);
+        Assert.Equal("INVALID_CREDENTIALS", guess.ErrorCode);
         var locked = await c.LoginAsync(); // correct password, but the account is now locked
+        Assert.Equal(HttpStatusCode.TooManyRequests, locked.Status);
+        Assert.Equal("ACCOUNT_LOCKED", locked.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Wrong_current_passwords_when_changing_it_count_towards_the_lockout()
+    {
+        var c = await TestClient.RegisterAsync(factory);
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Post("/api/v1/me/password", new { currentPassword = "wrong-password-1", newPassword = "N3w#Passw0rd!x" })).Status);
+        var locked = await c.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "N3w#Passw0rd!x" });
         Assert.Equal(HttpStatusCode.TooManyRequests, locked.Status);
         Assert.Equal("ACCOUNT_LOCKED", locked.ErrorCode);
     }
@@ -82,6 +97,46 @@ public class AuthTests(ApiFactory factory)
 
         var afterwards = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = second }, true);
         Assert.Equal(HttpStatusCode.Unauthorized, afterwards.Status); // the legitimate token died with the session
+    }
+
+    [Fact]
+    public async Task A_second_tab_refreshing_with_the_same_token_within_the_grace_window_gets_an_access_token_but_no_new_refresh_token()
+    {
+        var c = await TestClient.RegisterAsync(factory);
+        var first = c.RefreshToken!;
+        var rotated = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = first }, true);
+        Assert.True(rotated.Ok, rotated.ToString());
+        var second = rotated.Data!["refreshToken"]!.GetValue<string>();
+
+        var otherTab = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = first }, true);
+        Assert.True(otherTab.Ok, otherTab.ToString());
+        Assert.Null(otherTab.Data!["refreshToken"]);
+        var tab = new TestClient(factory) { Token = otherTab.Data["accessToken"]!.GetValue<string>() };
+        Assert.True((await tab.Get("/api/v1/me")).Ok);
+
+        // the session is intact: the rotated token still works
+        Assert.True((await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = second }, true)).Ok);
+    }
+
+    [Fact]
+    public async Task Refresh_issues_the_token_for_the_tabs_own_workspace_when_still_a_member()
+    {
+        var c = await TestClient.RegisterAsync(factory);
+        var personal = Guid.Parse((await c.Get("/api/v1/me")).Data!["current"]!["id"]!.GetValue<string>());
+        var org = await c.CreateOrgAsync();   // the session now points at the organization
+        c.Extra["X-Workspace-Id"] = personal.ToString();
+        var res = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = c.RefreshToken }, true);
+        Assert.True(res.Ok, res.ToString());
+        var tab = new TestClient(factory) { Token = res.Data!["accessToken"]!.GetValue<string>() };
+        Assert.Equal(personal.ToString(), (await tab.Get("/api/v1/me")).Data!["current"]!["id"]!.GetValue<string>());
+
+        // a workspace the person is not in is ignored: the session's own workspace is used instead
+        c.Extra["X-Workspace-Id"] = Guid.NewGuid().ToString();
+        var other = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = res.Data["refreshToken"]!.GetValue<string>() }, true);
+        Assert.True(other.Ok, other.ToString());
+        var tab2 = new TestClient(factory) { Token = other.Data!["accessToken"]!.GetValue<string>() };
+        Assert.Equal(personal.ToString(), (await tab2.Get("/api/v1/me")).Data!["current"]!["id"]!.GetValue<string>());
+        _ = org;
     }
 
     [Fact]

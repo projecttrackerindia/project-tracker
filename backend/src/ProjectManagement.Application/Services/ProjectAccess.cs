@@ -25,6 +25,18 @@ public class ProjectAccess(IAppDbContext db, ICurrentContext ctx, PermissionServ
     public IQueryable<Project> VisibleProjects() => db.Projects;
 
     /// <summary>
+    /// Narrows <paramref name="query"/> to the projects a person with this <paramref name="scope"/> reaches (owner, added to it, or - for the Teams
+    /// scope - one of their teams' projects). The single definition of "reach" used for the request's reachable projects (CurrentContextMiddleware)
+    /// and for anything that must look past the team lens but never past the person's own scope (the assistant's list_projects all_teams).
+    /// </summary>
+    public static IQueryable<Project> WithinScope(IAppDbContext db, IQueryable<Project> query, ProjectScope scope, Guid me) =>
+        scope == ProjectScope.None ? query
+        : scope == ProjectScope.Members
+            ? query.Where(p => db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me))
+            : query.Where(p => p.OwnerId == me || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == me)
+                || (p.TeamId != null && db.TeamMembers.Any(tm => tm.TeamId == p.TeamId && tm.UserId == me)));
+
+    /// <summary>
     /// The teams this person may look at as a whole on the dashboard, reports and Portfolio. Everyone who is not limited to their own teams
     /// (Owners, Admins, roles that see every team's projects, or a workspace that is not team-limited) may pick any team; a person limited to
     /// their teams may pick only the teams they belong to. Guests pick none.
@@ -79,6 +91,21 @@ public class ProjectAccess(IAppDbContext db, ICurrentContext ctx, PermissionServ
         var sees = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct)
             || (project.TeamId is { } team && await db.TeamMembers.AnyAsync(m => m.TeamId == team && m.UserId == userId, ct));
         if (!sees) db.ProjectMembers.Add(new ProjectMember { TenantId = tid, ProjectId = projectId, UserId = userId, CreatedAt = DateTime.UtcNow });
+    }
+
+    /// <summary>Archived projects are read-only: nothing in them is added, changed, moved, commented on or deleted until the project is restored.</summary>
+    public static void EnsureNotArchived(Project project, string action = "change it")
+    {
+        if (project.Status == ProjectStatus.Archived)
+            throw new ConflictException($"Archived projects are read-only. Restore the project to {action}.", "PROJECT_ARCHIVED");
+    }
+
+    /// <summary>The same rule as <see cref="EnsureNotArchived"/>, for callers that only hold the project's id (a task, a file).</summary>
+    public async Task EnsureWritableAsync(Guid projectId, string action = "change it", CancellationToken ct = default)
+    {
+        var status = await db.Projects.Where(p => p.Id == projectId).Select(p => (ProjectStatus?)p.Status).FirstOrDefaultAsync(ct);
+        if (status == ProjectStatus.Archived)
+            throw new ConflictException($"Archived projects are read-only. Restore the project to {action}.", "PROJECT_ARCHIVED");
     }
 
     public async Task RequireProjectEditAsync(Project project, CancellationToken ct = default)

@@ -35,6 +35,34 @@ public class ImportTests(ApiFactory factory)
     // ------------------------------------------------------------------ the CSV reader
 
     [Fact]
+    public void Files_that_are_not_utf8_are_read_as_windows_1252_and_say_so()
+    {
+        // "Café – “done”" as Excel on Windows saves it: é = 0xE9, en dash = 0x96, curly quotes = 0x93 / 0x94.
+        byte[] legacy = [.. "Title\nCaf"u8.ToArray(), 0xE9, (byte)' ', 0x96, (byte)' ', 0x93, .. "done"u8.ToArray(), 0x94, (byte)'\n'];
+        var text = ProjectManagement.Application.Features.Import.TaskImportService.Decode(legacy, out var fellBack);
+        Assert.True(fellBack);
+        Assert.Equal("Title\nCaf\u00e9 \u2013 \u201cdone\u201d\n", text);
+
+        var utf8 = ProjectManagement.Application.Features.Import.TaskImportService.Decode(Encoding.UTF8.GetBytes("Title\nCaf\u00e9\n"), out var plain);
+        Assert.False(plain);
+        Assert.Equal("Title\nCaf\u00e9\n", utf8);
+    }
+
+    [Fact]
+    public async Task The_preview_warns_when_the_file_was_not_utf8()
+    {
+        var (c, project) = await Setup();
+        byte[] legacy = [.. "Title\nCaf"u8.ToArray(), 0xE9, (byte)'\n'];
+        var res = await c.Upload($"/api/v1/projects/{project}/import/preview", "tasks.csv", legacy, new Dictionary<string, string>());
+        Assert.True(res.Ok, res.ToString());
+        Assert.Contains("Windows-1252", res.Data!["warnings"]![0]!.GetValue<string>());
+        Assert.Equal("Caf\u00e9", res.Data["sample"]![0]![0]!.GetValue<string>());
+        var clean = await Preview(c, project, "Title\nCafe\n");
+        Assert.True(clean.Data!["warnings"] is null || clean.Data["warnings"]!.AsArray().Count == 0);
+    }
+
+
+    [Fact]
     public void Csv_reader_handles_quotes_line_breaks_bom_and_regional_separators()
     {
         var t = CsvParser.Parse("﻿Title,Notes\r\n\"Fix \"\"login\"\", now\",\"line one\nline two\"\r\n\r\nPlain,x\n", 100);

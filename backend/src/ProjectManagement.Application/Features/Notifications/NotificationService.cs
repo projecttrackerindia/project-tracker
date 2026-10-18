@@ -216,6 +216,21 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
         // A chat notice that was read in the meantime has nothing left to say: no e-mail for it.
         foreach (var read in rows.Where(n => n.Type == NotificationType.Message && n.ReadAt != null)) read.EmailPending = false;
         rows.RemoveAll(n => !n.EmailPending);
+        // Claim each one before sending it: with several servers running this, only the one whose update took it off the queue e-mails it.
+        // (A failed send puts it back for another try, below.)
+        var claimed = new List<Notification>(rows.Count);
+        foreach (var n in rows)
+        {
+            var id = n.Id;
+            var mine = await db.Notifications.IgnoreQueryFilters().Where(x => x.Id == id && x.EmailPending)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.EmailPending, false), ct) == 1;
+            var entry = db.Notifications.Entry(n);
+            if (!mine) { entry.State = EntityState.Detached; continue; }
+            entry.Property(x => x.EmailPending).OriginalValue = false;   // the row now says false; a retry below writes true again
+            n.EmailPending = false;
+            claimed.Add(n);
+        }
+        rows = claimed;
         if (rows.Count == 0) { await db.SaveChangesAsync(ct); return 0; }
 
         var userIds = rows.Select(n => n.UserId).Distinct().ToList();
@@ -246,7 +261,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                foreach (var n in list) { n.EmailAttempts++; if (n.EmailAttempts >= MaxAttempts) n.EmailPending = false; handled.Add(n.Id); }
+                foreach (var n in list) { n.EmailAttempts++; n.EmailPending = n.EmailAttempts < MaxAttempts; handled.Add(n.Id); }
                 AppTelemetry.Count(AppTelemetry.Emails, "failed");
                 log.LogWarning(ex, "Could not e-mail a digest of {Count} notifications", list.Count);
             }
@@ -275,7 +290,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             {
                 n.EmailAttempts++;
                 AppTelemetry.Count(AppTelemetry.Emails, "failed");
-                if (n.EmailAttempts >= MaxAttempts) n.EmailPending = false; // give up; the in-app notification is unaffected
+                n.EmailPending = n.EmailAttempts < MaxAttempts; // try again later, or give up; the in-app notification is unaffected
                 log.LogWarning(ex, "Could not e-mail notification {Id} (attempt {Attempt}/{Max})", n.Id, n.EmailAttempts, MaxAttempts);
             }
         }

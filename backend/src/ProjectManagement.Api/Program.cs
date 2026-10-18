@@ -26,8 +26,10 @@ builder.Services
     .AddTelemetry(builder.Configuration, builder.Environment)
     .AddForwardedHeadersIfTrusted(builder.Configuration);
 
-// The API description is public (set Api:PublishDocs=false to hide it): customers who use API keys need it.
-var publishDocs = builder.Configuration.GetValue("Api:PublishDocs", true);
+// The API description is published in Development, and elsewhere only when Swagger:Enabled=true (customers who use API keys may need it).
+// Api:PublishDocs=false hides it everywhere.
+var publishDocs = (builder.Environment.IsDevelopment() || builder.Configuration.GetValue("Swagger:Enabled", false))
+    && builder.Configuration.GetValue("Api:PublishDocs", true);
 if (publishDocs) builder.Services.AddApiSwagger();
 
 var app = builder.Build();
@@ -74,8 +76,24 @@ app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
 
+WarnAboutUnsafeSettings(app);
 await DatabaseInitializer.InitializeAsync(app.Services);
 await app.RunAsync();
+
+// Settings that are fine on a developer's machine and dangerous anywhere else. Logged loudly rather than refused, so an existing
+// deployment keeps starting; each one should be fixed before real customers use it.
+static void WarnAboutUnsafeSettings(WebApplication app)
+{
+    if (app.Environment.IsDevelopment()) return;
+    var config = app.Configuration;
+    var log = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+    if ((config["Email:Provider"] ?? "Log").Equals("Log", StringComparison.OrdinalIgnoreCase))
+        log.LogCritical("Email:Provider is \"Log\" outside Development: no email (verification, password reset, invitations, security alerts) is delivered. Set Email:Provider to Smtp or Resend.");
+    if (!(config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
+        log.LogCritical("Billing:Provider is the simulated (Mock) provider outside Development: every paid plan is granted without any payment. Set Billing:Provider=Razorpay.");
+    if (string.IsNullOrWhiteSpace(config["Mfa:EncryptionKey"]))
+        log.LogCritical("Mfa:EncryptionKey is empty outside Development: stored secrets (authenticator keys, single sign-on client secrets) are encrypted with a key derived from Jwt:SigningKey, so rotating the signing key makes them all unreadable. Set Mfa:EncryptionKey to the key currently in effect before rotating.");
+}
 
 /// <summary>Exposed for WebApplicationFactory-based integration tests.</summary>
 public partial class Program;

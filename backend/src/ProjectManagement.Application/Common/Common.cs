@@ -20,8 +20,13 @@ public class AppOptions
     public int TrialDays { get; set; } = 14;
     public int RefreshTokenDays { get; set; } = 30;
     public int RefreshReuseGraceSeconds { get; set; } = 10;
-    /// <summary>Offset applied to UTC to decide what "today" means (default: India Standard Time, UTC+05:30).</summary>
+    /// <summary>Legacy fixed offset used for "today" when <see cref="DefaultTimeZone"/> is not set (default: India Standard Time, UTC+05:30).</summary>
     public int TimeZoneOffsetMinutes { get; set; } = 330;
+    /// <summary>
+    /// The platform's default IANA time zone, for background work and people/workspaces without one. Every signed-in request uses the
+    /// person's own zone (their profile), then the workspace's default zone, then this.
+    /// </summary>
+    public string? DefaultTimeZone { get; set; } = "Asia/Kolkata";
 }
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalItems)

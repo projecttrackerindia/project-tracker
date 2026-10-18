@@ -4,6 +4,7 @@ import { get, put } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { ErrorState, PageHead, PageLoader } from '../../components/ui';
+import { formatDateTime } from '../../lib/format';
 
 interface Trace {
   agent: string; version: string; correlationId: string; provider: string; model: string; startedAt: string;
@@ -101,7 +102,7 @@ export function AgentTrackerPage() {
 
 function RunRow({ run: r, expanded, select }: { run: Run; expanded: boolean; select: () => void }) {
   return <>
-    <tr><td>{new Date(r.trace.startedAt).toLocaleString()}</td><td>{r.status.replaceAll('_', ' ')}</td><td>{r.trace.model}</td><td>{seconds(r.trace.durationMs)}</td><td>{r.trace.firstTokenMs === null ? '—' : seconds(r.trace.firstTokenMs)}</td><td>{r.trace.models.length}</td><td>{r.trace.tools.length}</td><td><button className="btn" aria-expanded={expanded} onClick={select}>Trace</button></td></tr>
+    <tr><td>{formatDateTime(r.trace.startedAt)}</td><td>{r.status.replaceAll('_', ' ')}</td><td>{r.trace.model}</td><td>{seconds(r.trace.durationMs)}</td><td>{r.trace.firstTokenMs === null ? '—' : seconds(r.trace.firstTokenMs)}</td><td>{r.trace.models.length}</td><td>{r.trace.tools.length}</td><td><button className="btn" aria-expanded={expanded} onClick={select}>Trace</button></td></tr>
     {expanded && <tr><td colSpan={8}><div className="card-body">
       <p>{r.trace.intent && <>Intent: {r.trace.intent.replaceAll('_', ' ')} · Routing: {r.trace.intentMs ?? 0}ms · </>}Correlation: {r.trace.correlationId} · {r.trace.provider} · Context: {seconds(r.trace.contextMs)} · Prompt: {r.trace.promptChars.toLocaleString()} characters · {r.trace.toolDefinitions} available tools</p>
       {r.trace.errorCode && <p>Error: {r.trace.errorCode}</p>}
