@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
+import type { HubConnection } from '@microsoft/signalr';
 import { getAccessToken, refreshSession } from '../../api/client';
 import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../../api/types';
 import { appPath } from '../../lib/orgPath';
@@ -44,9 +44,18 @@ async function freshToken(): Promise<string> {
 
 let current: HubConnection | null = null;
 
+/**
+ * The connection library is fetched when the live connection is first opened (after signing in), not with the first page: it is a fair
+ * share of the app's code and the sign-in screens never use it.
+ */
+type SignalR = typeof import('@microsoft/signalr');
+let signalr: SignalR | null = null;
+let loading: Promise<SignalR> | null = null;
+const loadSignalR = () => (loading ??= import('@microsoft/signalr').then((m) => (signalr = m)).catch((e) => { loading = null; throw e; }));
+
 /** Tells the others in a conversation that the signed-in person is typing (the server ignores it unless they are in it). */
 export function sendTyping(conversationId: string) {
-  if (current?.state === HubConnectionState.Connected) void current.invoke('Typing', conversationId).catch(() => { /* typing is best effort */ });
+  if (signalr && current?.state === signalr.HubConnectionState.Connected) void current.invoke('Typing', conversationId).catch(() => { /* typing is best effort */ });
 }
 
 /**
@@ -61,25 +70,36 @@ export function ChatRealtime() {
   const goto = useNavigate();
   const navigate = useRef(goto);
   navigate.current = goto;
+  const [hub, setHub] = useState<SignalR | null>(signalr);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!wid || !me) return;
+    if (!wid || !me || hub) return;
+    let off = false;
+    let again: number | undefined;
+    loadSignalR().then((m) => { if (!off) setHub(m); })
+      .catch(() => { if (!off) again = window.setTimeout(() => setAttempt((n) => n + 1), RETRY_MS); });   // offline: try again later
+    return () => { off = true; window.clearTimeout(again); };
+  }, [wid, me, hub, attempt]);
+
+  useEffect(() => {
+    if (!wid || !me || !hub) return;
     const chat = useChat.getState();
     chat.reset();
     let stopped = false;
     let retry: number | undefined;
 
-    const connection = new HubConnectionBuilder()
+    const connection = new hub.HubConnectionBuilder()
       .withUrl(`${BASE}/hubs/chat`, { accessTokenFactory: freshToken })
       .withAutomaticReconnect([0, 2000, 5000, 10000, 20000, 30000])
-      .configureLogging(LogLevel.None)
+      .configureLogging(hub.LogLevel.None)
       .build();
     current = connection;
     setLiveConnection(connection);
 
     // Tell the server when this tab goes idle (5 minutes without keyboard, mouse or touch) and when the person is back, so they show as
     // Away instead of Active. A connection starts out active, so after (re)connecting only an idle tab has anything to say.
-    const sendIdle = (idle: boolean) => { if (connection.state === HubConnectionState.Connected) void connection.invoke('SetIdle', idle).catch(() => { /* best effort */ }); };
+    const sendIdle = (idle: boolean) => { if (connection.state === hub.HubConnectionState.Connected) void connection.invoke('SetIdle', idle).catch(() => { /* best effort */ }); };
     const idle = trackIdle(sendIdle);
 
     // Live updates: someone changed something - refresh the work screens that are open (at most about once a second).
@@ -207,7 +227,7 @@ export function ChatRealtime() {
       if (current === connection) { current = null; setLiveConnection(null); }
       void connection.stop();
     };
-  }, [wid, me]);
+  }, [wid, me, hub]);
 
   return null;
 }

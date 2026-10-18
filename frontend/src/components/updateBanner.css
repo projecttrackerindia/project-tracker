@@ -1,0 +1,49 @@
+/* "A new version is available" (components/UpdateBanner.tsx): a small card at the bottom centre, under any open dialog (z-index 200)
+   and clear of the toasts (bottom right on a computer, top on a phone) and of the phone's tab bar. */
+.upd-banner {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); z-index: 190;
+  transform: translateX(-50%); width: max-content; max-width: min(560px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px;
+  background: var(--panel-solid); color: var(--text); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, .16), 0 2px 6px rgba(16, 24, 40, .06);
+  font-size: 13.5px; line-height: 1.35;
+  animation: updIn .32s cubic-bezier(.2, .9, .3, 1) both;
+}
+.upd-ico {
+  flex-shrink: 0; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%;
+  color: var(--primary); background: var(--primary-soft);
+}
+.upd-text { display: flex; flex-direction: column; min-width: 0; }
+.upd-text strong { font-weight: 600; }
+.upd-text span { color: var(--text-2); font-size: 12.5px; }
+.upd-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 4px; }
+.upd-btn {
+  height: 32px; padding: 0 14px; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px solid transparent; transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
+}
+.upd-btn:disabled { opacity: .6; cursor: default; }
+.upd-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.upd-later { background: transparent; color: var(--text-2); border-color: var(--border); }
+.upd-later:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
+.upd-reload { background: var(--primary-fill); color: #fff; }
+.upd-reload:hover:not(:disabled) { filter: brightness(1.06); }
+
+[data-theme="dark"] .upd-banner { box-shadow: 0 12px 32px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3); }
+
+@keyframes updIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .upd-banner { animation: none; } }
+
+/* Phones: the full width between the 16px gutters, the words above the buttons, and above the tab bar when there is one. */
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
+  .upd-banner {
+    left: 16px; right: 16px; width: auto; max-width: none; transform: none; flex-wrap: wrap; gap: 10px 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); animation-name: updInPhone;
+  }
+  body:has(.m-tabs) .upd-banner { bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); }
+  /* A conversation fills the screen down to its composer: there the card sits under the top bar instead of over what is being typed. */
+  body:has(.m-shell.m-conversation) .upd-banner { top: calc(env(safe-area-inset-top, 0px) + 62px); bottom: auto; }
+  .upd-text { flex: 1 1 calc(100% - 46px); }
+  .upd-actions { flex: 1 1 100%; margin-left: 0; justify-content: flex-end; }
+  .upd-btn { height: 36px; padding: 0 16px; }
+}
+@keyframes updInPhone { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }

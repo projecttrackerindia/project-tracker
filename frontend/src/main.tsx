@@ -38,6 +38,7 @@ import './lib/pwa';
 import { startResponsiveTables } from './lib/responsiveTables';
 import { startNativeApp } from './lib/native';
 import { startDesktopApp } from './lib/desktop';
+import { startUpdateWatch, watchServiceWorker } from './lib/updateWatch';
 
 startNativeApp();
 startDesktopApp();
@@ -46,8 +47,10 @@ document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 
 // The installable app: the service worker lets it start offline and receive push notifications (production builds only).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js').catch(() => undefined); });
+  window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js').then(watchServiceWorker).catch(() => undefined); });
 }
+// A tab left open across a release is told that a newer version is live (see lib/updateWatch.ts).
+startUpdateWatch();
 
 // A failed request nobody awaited would otherwise vanish silently: say so once (not once per retry).
 let lastUnhandled = 0;
