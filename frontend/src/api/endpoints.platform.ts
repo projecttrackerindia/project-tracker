@@ -148,6 +148,10 @@ export const meetingApi = {
   reschedule: (id: string, b: { startTime: string; endTime: string }) => post<Meeting>(`/meetings/${id}/reschedule`, b),
   addParticipant: (id: string, userId: string) => post<Meeting>(`/meetings/${id}/participants`, { userId }),
   removeParticipant: (id: string, userId: string) => del<Meeting>(`/meetings/${id}/participants/${userId}`),
+  /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google Calendar holds the event. */
+  workspaceParticipants: () => get<MeetingParticipant[]>('/meetings/participants'),
+  scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number } }) =>
+    post<{ title: string; meetUri: string; calendarUrl: string | null; participantCount: number }>('/meetings/schedule', b),
 };
 
 // ---- capacity and cost

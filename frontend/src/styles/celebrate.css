@@ -27,7 +27,7 @@
   background: radial-gradient(120% 85% at 50% 36%, #3b1d8f 0%, #1c1150 36%, #0b0820 70%, #05040f 100%);
 }
 .sc-aurora { position: absolute; width: 72vmax; height: 72vmax; border-radius: 50%; filter: blur(70px); mix-blend-mode: screen; }
-.sc-aurora-1 { top: -34vmax; left: -22vmax; opacity: .6; background: radial-gradient(circle, #7c3aed 0%, transparent 62%); animation: sc-drift-1 6s ease-in-out infinite alternate; }
+.sc-aurora-1 { top: -34vmax; left: -22vmax; opacity: .6; background: radial-gradient(circle, var(--primary-fill) 0%, transparent 62%); animation: sc-drift-1 6s ease-in-out infinite alternate; }
 .sc-aurora-2 { bottom: -38vmax; right: -26vmax; opacity: .42; background: radial-gradient(circle, #c026d3 0%, transparent 62%); animation: sc-drift-2 7s ease-in-out infinite alternate; }
 .sc-register .sc-aurora-2 { background: radial-gradient(circle, #059669 0%, transparent 62%); opacity: .5; }
 @keyframes sc-drift-1 { to { transform: translate(8vmax, 6vmax) scale(1.12); } }
@@ -35,18 +35,18 @@
 .sc-stars {
   position: absolute; inset: 0; opacity: .75; animation: sc-twinkle 2.2s ease-in-out infinite alternate;
   background-image:
-    radial-gradient(1.6px 1.6px at 8% 14%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 22% 36%, #e9d5ff 50%, transparent 55%),
+    radial-gradient(1.6px 1.6px at 8% 14%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 22% 36%, var(--primary-soft) 50%, transparent 55%),
     radial-gradient(1.8px 1.8px at 34% 9%, #fff 50%, transparent 55%), radial-gradient(1.1px 1.1px at 46% 28%, #c7d2fe 50%, transparent 55%),
     radial-gradient(1.5px 1.5px at 61% 12%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 73% 31%, #f5d0fe 50%, transparent 55%),
     radial-gradient(1.9px 1.9px at 86% 18%, #fff 50%, transparent 55%), radial-gradient(1.1px 1.1px at 93% 42%, #e0e7ff 50%, transparent 55%),
-    radial-gradient(1.4px 1.4px at 4% 48%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 16% 60%, #ddd6fe 50%, transparent 55%),
+    radial-gradient(1.4px 1.4px at 4% 48%, #fff 50%, transparent 55%), radial-gradient(1.2px 1.2px at 16% 60%, var(--primary-soft) 50%, transparent 55%),
     radial-gradient(1.5px 1.5px at 82% 58%, #fff 50%, transparent 55%), radial-gradient(1.1px 1.1px at 67% 49%, #fbcfe8 50%, transparent 55%),
     radial-gradient(1.3px 1.3px at 28% 52%, #fff 50%, transparent 55%), radial-gradient(1.6px 1.6px at 55% 6%, #fff 50%, transparent 55%);
 }
 @keyframes sc-twinkle { from { opacity: .45; } to { opacity: .9; } }
 .sc-floor {
   position: absolute; left: -50%; right: -50%; bottom: -6%; height: 72%; opacity: .8;
-  background-image: linear-gradient(rgba(167, 139, 250, .6) 1px, transparent 1px), linear-gradient(90deg, rgba(167, 139, 250, .5) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(var(--accent-rgb), .6) 1px, transparent 1px), linear-gradient(90deg, rgba(var(--accent-rgb), .5) 1px, transparent 1px);
   background-size: 64px 64px;
   transform: perspective(420px) rotateX(58deg); transform-origin: 50% 100%;
   -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 70%); mask-image: linear-gradient(to top, #000 0%, transparent 70%);
@@ -63,15 +63,15 @@
 .sc-emblem { position: relative; width: 140px; height: 140px; display: grid; place-items: center; margin-bottom: 28px; }
 .sc-halo {
   position: absolute; inset: -46px; border-radius: 50%; filter: blur(20px); opacity: 0;
-  background: radial-gradient(circle, rgba(139, 92, 246, .62), transparent 66%);
+  background: radial-gradient(circle, rgba(var(--accent-rgb), .62), transparent 66%);
   animation: sc-fade-in .8s .3s ease forwards, sc-breathe 2.4s 1.2s ease-in-out infinite;
 }
-.sc-register .sc-halo { background: radial-gradient(circle, rgba(16, 185, 129, .5), rgba(139, 92, 246, .3) 45%, transparent 68%); }
+.sc-register .sc-halo { background: radial-gradient(circle, rgba(16, 185, 129, .5), rgba(var(--accent-rgb), .3) 45%, transparent 68%); }
 @keyframes sc-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sc-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 .sc-flash {
   position: absolute; left: 50%; top: 50%; width: 640px; height: 640px; margin: -320px 0 0 -320px; border-radius: 50%; pointer-events: none; opacity: 0;
-  background: radial-gradient(circle, rgba(255, 255, 255, .55) 0%, rgba(196, 181, 253, .16) 26%, transparent 60%);
+  background: radial-gradient(circle, rgba(255, 255, 255, .55) 0%, rgba(var(--accent-rgb), .16) 26%, transparent 60%);
   animation: sc-flash .8s 1.04s ease-out forwards;
 }
 @keyframes sc-flash { 0% { opacity: 0; transform: scale(.4); } 20% { opacity: 1; } 100% { opacity: 0; transform: scale(1.1); } }
@@ -80,13 +80,13 @@
 .sc-ring-track { fill: none; stroke: rgba(255, 255, 255, .1); stroke-width: 2; }
 .sc-ring-fill {
   fill: none; stroke: url(#sc-ring-grad); stroke-width: 3.5; stroke-linecap: round;
-  stroke-dasharray: 100; stroke-dashoffset: 100; filter: drop-shadow(0 0 6px rgba(196, 181, 253, .9));
+  stroke-dasharray: 100; stroke-dashoffset: 100; filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), .9));
   animation: sc-ring .78s .25s cubic-bezier(.65, 0, .35, 1) forwards;
 }
 @keyframes sc-ring { to { stroke-dashoffset: 0; } }
 
 .sc-orbit {
-  position: absolute; inset: -16px; border-radius: 50%; border: 1px dashed rgba(196, 181, 253, .22); opacity: 0;
+  position: absolute; inset: -16px; border-radius: 50%; border: 1px dashed rgba(var(--accent-rgb), .22); opacity: 0;
   animation: sc-fade-in .6s .5s ease forwards, sc-spin 3.2s linear infinite;
 }
 .sc-orbit i { position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #f0abfc; box-shadow: 0 0 12px 3px rgba(240, 171, 252, .8); }
@@ -96,8 +96,8 @@
 
 .sc-core {
   position: relative; width: 88px; height: 88px; border-radius: 50%; display: grid; place-items: center; transform: scale(0);
-  background: radial-gradient(circle at 32% 26%, #ddd6fe 0%, #8b5cf6 42%, #5b21b6 100%);
-  box-shadow: 0 0 0 6px rgba(139, 92, 246, .2), 0 0 44px 10px rgba(139, 92, 246, .55), inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -10px 20px rgba(46, 16, 101, .45);
+  background: radial-gradient(circle at 32% 26%, var(--primary-soft) 0%, var(--primary-fill) 42%, #5b21b6 100%);
+  box-shadow: 0 0 0 6px rgba(var(--accent-rgb), .2), 0 0 44px 10px rgba(var(--accent-rgb), .55), inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -10px 20px rgba(16, 24, 40, .45);
   animation: sc-pop .56s .85s cubic-bezier(.2, 1.45, .4, 1) forwards;
 }
 .sc-register .sc-core {
@@ -111,7 +111,7 @@
 
 .sc-wave {
   position: absolute; left: 50%; top: 50%; width: 88px; height: 88px; margin: -44px 0 0 -44px; border-radius: 50%;
-  border: 2px solid rgba(196, 181, 253, .75); opacity: 0; pointer-events: none;
+  border: 2px solid rgba(var(--accent-rgb), .75); opacity: 0; pointer-events: none;
   animation: sc-wave 1.3s 1.05s cubic-bezier(.2, .7, .3, 1) forwards;
 }
 .sc-wave-2 { animation-delay: 1.24s; border-color: rgba(240, 171, 252, .6); }
@@ -140,7 +140,7 @@
 /* ---- words ---- */
 .sc-eyebrow {
   display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 6px 14px 6px 10px; border-radius: 99px;
-  font-size: 11.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #ddd6fe;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--primary-soft);
   background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14);
   animation: sc-rise .55s .5s cubic-bezier(.2, .8, .2, 1) both;
 }
@@ -181,7 +181,7 @@
 @keyframes sc-step-done { to { color: #fff; } }
 .sc-step-icon { position: relative; width: 22px; height: 22px; flex-shrink: 0; }
 .sc-step-spin {
-  position: absolute; inset: 2px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .18); border-top-color: #c4b5fd;
+  position: absolute; inset: 2px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .18); border-top-color: var(--primary);
   animation: sc-spin .7s linear infinite, sc-gone .2s calc(1.15s + var(--i) * 380ms) ease forwards;
 }
 @keyframes sc-gone { to { opacity: 0; } }
@@ -190,11 +190,11 @@
   background: linear-gradient(135deg, #34d399, #059669); box-shadow: 0 0 14px rgba(52, 211, 153, .6);
   animation: sc-pop .42s calc(1.15s + var(--i) * 380ms) cubic-bezier(.2, 1.45, .4, 1) forwards;
 }
-.sc-steps li.next .sc-step-check { background: linear-gradient(135deg, #f0abfc, #8b5cf6); box-shadow: 0 0 14px rgba(240, 171, 252, .6); }
+.sc-steps li.next .sc-step-check { background: linear-gradient(135deg, #f0abfc, var(--primary-fill)); box-shadow: 0 0 14px rgba(240, 171, 252, .6); }
 .sc-progress { display: block; height: 3px; margin-top: 15px; border-radius: 99px; background: rgba(255, 255, 255, .1); overflow: hidden; }
 .sc-progress i {
   display: block; width: 0; height: 100%; border-radius: inherit;
-  background: linear-gradient(90deg, #8b5cf6, #f0abfc, #60a5fa); box-shadow: 0 0 12px rgba(240, 171, 252, .8);
+  background: linear-gradient(90deg, var(--primary-fill), #f0abfc, #60a5fa); box-shadow: 0 0 12px rgba(240, 171, 252, .8);
   animation: sc-fill var(--sc-fill, 2s) .3s cubic-bezier(.4, 0, .2, 1) forwards;
 }
 @keyframes sc-fill { to { width: 100%; } }

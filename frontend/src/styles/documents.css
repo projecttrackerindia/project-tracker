@@ -2,7 +2,7 @@
    DOCUMENTS — list, wizard, editor, linked work
    ============================================================ */
 
-.doc-chip { --dc: #8b5cf6; flex: none; display: inline-grid; place-items: center; border-radius: 11px; color: var(--dc);
+.doc-chip { --dc: var(--primary-fill); flex: none; display: inline-grid; place-items: center; border-radius: 11px; color: var(--dc);
   background: color-mix(in srgb, var(--dc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--dc) 28%, transparent); }
 .doc-key { font: 600 11.5px/1 var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); color: var(--text-3); letter-spacing: .02em; flex: none; }
 .doc-tag { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: var(--tint); color: var(--text-2); }
@@ -90,7 +90,7 @@
 
 /* ---- rich text editor */
 .rte { border: 1px solid var(--field-border); border-radius: 12px; background: var(--field-bg); overflow: clip; }   /* clip, not hidden: hidden would make the box the scroll container and push the sticky toolbar down */
-.rte:focus-within { border-color: rgba(139, 92, 246, .55); box-shadow: 0 0 0 3px var(--primary-soft); }
+.rte:focus-within { border-color: rgba(var(--accent-rgb), .55); box-shadow: 0 0 0 3px var(--primary-soft); }
 .rte.readonly { border-color: transparent; background: transparent; }
 .rte-loading { min-height: 90px; }
 .rte-bar { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; border-bottom: 1px solid var(--border); background: var(--surface-2); position: sticky; top: var(--topbar-h); z-index: 3; }
@@ -633,7 +633,7 @@
 .apv-banner.m-get { --m: #2563eb; background: linear-gradient(90deg, rgba(37,99,235,.09), transparent 70%), var(--surface); }
 .apv-banner.m-post { --m: #16a34a; background: linear-gradient(90deg, rgba(22,163,74,.10), transparent 70%), var(--surface); }
 .apv-banner.m-put { --m: #d97706; background: linear-gradient(90deg, rgba(217,119,6,.10), transparent 70%), var(--surface); }
-.apv-banner.m-patch { --m: #7c3aed; background: linear-gradient(90deg, rgba(124,58,237,.10), transparent 70%), var(--surface); }
+.apv-banner.m-patch { --m: var(--primary-fill); background: linear-gradient(90deg, rgba(var(--accent-rgb), .10), transparent 70%), var(--surface); }
 .apv-banner.m-delete { --m: #dc2626; background: linear-gradient(90deg, rgba(220,38,38,.09), transparent 70%), var(--surface); }
 .apv-ver { font-size: 12px; color: var(--text-3); }
 .apv-tools { display: flex; gap: 6px; align-items: center; }

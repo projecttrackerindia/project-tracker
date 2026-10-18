@@ -1,166 +1,158 @@
 /* ============================================================
-   DESIGN TOKENS — lavender glass (light) / deep slate blue with a restrained violet accent (dark)
+   DESIGN TOKENS — professional: neutral slate (light) / navy (dark), solid surfaces, one indigo accent
    Ported from the reference productivity app.
    ============================================================ */
 :root {
-  --bg: #eef0fb;
-  --bg-image:
-    radial-gradient(1200px 820px at 8% -12%, #e6d8ff 0%, transparent 58%),
-    radial-gradient(1050px 720px at 96% -4%, #d3dcff 0%, transparent 54%),
-    radial-gradient(950px 900px at 48% 112%, #f4d9ff 0%, transparent 58%),
-    linear-gradient(160deg, #f7f5ff 0%, #eef0ff 45%, #f8f3ff 100%);
+  /* ---- Professional theme: neutral slate surfaces, solid (no glass), one restrained indigo accent. ---- */
+  --bg: #f4f6f9;
+  --chrome: #ffffff;                  /* sidebar and top bar */
+  --bg-image: none;
 
-  --surface: rgba(255, 255, 255, .62);
-  --surface-2: rgba(255, 255, 255, .40);
-  --surface-3: rgba(139, 92, 246, .10);
-  --surface-solid: rgba(255, 255, 255, .94);
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;               /* raised inside a card: secondary buttons, chips */
+  --surface-3: #f1f3f7;               /* neutral wash: tags, counters */
+  --surface-solid: #ffffff;
+  --panel-solid: #ffffff;             /* menus, drawers, pickers */
 
-  --border: rgba(255, 255, 255, .72);
-  --border-strong: rgba(139, 92, 246, .26);
+  --border: #e3e7ed;
+  --border-strong: #cfd6e0;
 
-  --text: #221a3a;
-  --text-2: #5a4f79;
-  --text-3: #928aa9;
+  --text: #111827;
+  --text-2: #4b5565;
+  --text-3: #8892a2;
 
-  --primary: #7c3aed;
-  --primary-hover: #6d28d9;
-  --primary-soft: rgba(139, 92, 246, .15);
+  --accent-rgb: 74, 95, 224;
+  --primary: #4a5fe0;
+  --primary-hover: #3c50cc;
+  --primary-fill: #4a5fe0;
+  --primary-soft: rgba(74, 95, 224, .09);
   --primary-text: #ffffff;
 
-  --success: #0e9f6e;
-  --success-soft: rgba(14, 159, 110, .13);
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, .13);
-  --danger: #e11d48;
-  --danger-soft: rgba(225, 29, 72, .12);
-  --info: #0284c7;
-  --info-soft: rgba(2, 132, 199, .12);
-  --purple: #8b5cf6;
-  --purple-soft: rgba(139, 92, 246, .15);
+  --success: #13805c;
+  --success-soft: rgba(19, 128, 92, .09);
+  --warning: #b45d07;
+  --warning-soft: rgba(180, 93, 7, .09);
+  --danger: #d0303f;
+  --danger-text: #c02535;
+  --danger-soft: rgba(208, 48, 63, .08);
+  --info: #1e6fd0;
+  --info-soft: rgba(30, 111, 208, .09);
+  --purple: #6d4fe0;
+  --purple-soft: rgba(109, 79, 224, .09);
 
-  --glass: blur(20px) saturate(180%);
-  --glass-strong: blur(30px) saturate(190%);
-  --glass-soft: blur(12px) saturate(160%);
-  --hl: inset 0 1px 0 rgba(255, 255, 255, .78);
-  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .35);
+  --glass: none;
+  --glass-strong: none;
+  --glass-soft: none;
+  --hl: none;
+  --hl-2: none;
 
-  --shadow-sm: 0 2px 10px rgba(76, 29, 149, .07);
-  --shadow: 0 10px 30px rgba(76, 29, 149, .12);
-  --shadow-lg: 0 24px 64px rgba(76, 29, 149, .24);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
+  --shadow: 0 2px 4px rgba(16, 24, 40, .04), 0 8px 20px rgba(16, 24, 40, .07);
+  --shadow-lg: 0 8px 16px rgba(16, 24, 40, .08), 0 24px 56px rgba(16, 24, 40, .16);
 
-  --hover-bg: rgba(255, 255, 255, .55);
-  --field-border: rgba(124, 58, 237, .24);
-  --panel-solid: #fbfaff;
-  --field-bg: rgba(255, 255, 255, .62);
-  --field-focus-bg: rgba(255, 255, 255, .85);
-  --tint: rgba(139, 92, 246, .09);
-  --tint-strong: rgba(139, 92, 246, .14);
+  --hover-bg: #f2f4f8;
+  --field-border: #d3d9e2;
+  --field-bg: #ffffff;
+  --field-focus-bg: #ffffff;
+  --tint: rgba(74, 95, 224, .05);
+  --tint-strong: rgba(74, 95, 224, .09);
 
-  /* modal is a calmer, near-opaque surface for legibility (spec: professional, enterprise-ready) */
-  --modal-bg: rgba(255, 255, 255, .97);
-  --modal-border: rgba(148, 163, 184, .28);
-  --modal-line: #e7e9ef;
+  --modal-bg: #ffffff;
+  --modal-border: #e3e7ed;
+  --modal-line: #eceff4;
   --modal-foot: #f8f9fb;
   --modal-field: #ffffff;
-  --modal-field-border: #d9dee8;
-  --modal-overlay: rgba(15, 23, 42, .48);
+  --modal-field-border: #d3d9e2;
+  --modal-overlay: rgba(15, 23, 42, .45);
 
-  --radius: 16px;
-  --radius-sm: 10px;
-  --radius-lg: 22px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
   --sidebar-w: 256px;
   --sidebar-w-collapsed: 72px;
   --topbar-h: 64px;
   --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* the drifting blobs behind the sign-in / sign-up card */
-  --auth-blob-1: #c4b5fd;
-  --auth-blob-2: #ddd6fe;
-  --auth-blob-3: #e9d5ff;
-  --auth-blob-4: #bfdbfe;
-  --auth-blob-opacity: .58;
-  --auth-grid-line: rgba(107, 68, 189, .055);
+  /* the sign-in page: a calm, flat backdrop (the drifting blobs are switched off) */
+  --auth-blob-1: #dfe4f5;
+  --auth-blob-2: #e6e9f2;
+  --auth-blob-3: #e9edf5;
+  --auth-blob-4: #dde6f3;
+  --auth-blob-opacity: 0;
+  --auth-grid-line: rgba(17, 24, 39, .035);
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
+  /* ---- Navy ladder: page < chrome < card < raised < floating, told apart by small steps, never by glow. ---- */
+  --bg: #0b0f16;
+  --chrome: #0e131b;
+  --bg-image: none;
 
-  /* ---- Surfaces: a ladder of steps in deep slate blue, each about 4% lighter than the one below it, so the page,
-     the cards on it and what sits on those cards are told apart by depth rather than by borders or colour. ---- */
-  --bg: #1b2533;                      /* the page */
-  --chrome: #131c2a;                  /* sidebar and top bar: the darkest layer, framing the page */
-  --bg-image:
-    radial-gradient(1100px 620px at 14% -12%, rgba(104, 132, 190, .09), transparent 62%),
-    linear-gradient(180deg, #1d2836 0%, #18212e 100%);
+  --surface: #121822;
+  --surface-solid: #121822;
+  --surface-2: #18202c;
+  --surface-3: rgba(148, 163, 184, .08);
+  --panel-solid: #1a2230;
 
-  --surface: #242e3d;                 /* cards and panels */
-  --surface-solid: #242e3d;
-  --surface-2: #2e3847;               /* raised: secondary buttons, chips, blocks nested inside a card */
-  --surface-3: rgba(176, 190, 222, .09);   /* neutral wash: tags, counters */
-  --panel-solid: #303b4b;             /* floating layers: menus, drawers, pickers */
+  --border: #222b39;
+  --border-strong: #2f3a4b;
 
-  --border: rgba(170, 186, 222, .12);
-  --border-strong: rgba(170, 186, 222, .22);
+  --text: #e8ecf3;
+  --text-2: #a7b1c2;
+  --text-3: #738096;
 
-  --text: #edf0f6;
-  --text-2: #b9bec6;
-  --text-3: #a3a9b1;
+  --accent-rgb: 92, 124, 250;
+  --primary: #8aa0ff;
+  --primary-hover: #a3b4ff;
+  --primary-fill: #5c7cfa;
+  --primary-soft: rgba(92, 124, 250, .16);
+  --primary-text: #0b1020;
 
-  /* ---- The accent: kept for the active menu item, buttons, selections and key highlights only.
-     --primary is the accent as text / icon colour, --primary-fill as a solid background behind white text. ---- */
-  --accent-rgb: 117, 97, 235;
-  --primary: #bdb2ff;
-  --primary-hover: #d0c8ff;
-  --primary-fill: #7561eb;
-  --primary-soft: rgba(117, 97, 235, .18);
-  --primary-text: #17123a;
+  --success: #35c491;
+  --success-soft: rgba(53, 196, 145, .12);
+  --warning: #e0a83e;
+  --warning-soft: rgba(224, 168, 62, .12);
+  --danger: #ef5c6e;
+  --danger-text: #f58a97;
+  --danger-soft: rgba(239, 92, 110, .12);
+  --info: #4fa3f7;
+  --info-soft: rgba(79, 163, 247, .12);
+  --purple: #a991ff;
+  --purple-soft: rgba(169, 145, 255, .13);
 
-  /* ---- Status colours: softer than the light theme's, each one readable on every surface above ---- */
-  --success: #58da98;
-  --success-soft: rgba(88, 218, 152, .11);
-  --warning: #f7bc57;
-  --warning-soft: rgba(247, 188, 87, .11);
-  --danger: #fb8083;
-  --danger-text: #fc9c9e;               /* the same red, lighter, for text on a tinted chip */
-  --danger-soft: rgba(251, 128, 131, .11);
-  --info: #6ec6f7;
-  --info-soft: rgba(110, 198, 247, .11);
-  --purple: #c4a4fe;
-  --purple-soft: rgba(196, 164, 254, .13);
-
-  /* the glass blur is a light-theme effect: opaque surfaces need none */
   --glass: none;
   --glass-strong: none;
   --glass-soft: none;
-  --hl: inset 0 1px 0 rgba(255, 255, 255, .04);
-  --hl-2: inset 0 0 0 1px rgba(255, 255, 255, .02);
+  --hl: none;
+  --hl-2: none;
 
-  --shadow-sm: 0 1px 2px rgba(4, 8, 16, .30), 0 2px 8px rgba(4, 8, 16, .14);
-  --shadow: 0 4px 10px rgba(4, 8, 16, .22), 0 14px 32px rgba(4, 8, 16, .26);
-  --shadow-lg: 0 8px 20px rgba(4, 8, 16, .30), 0 28px 70px rgba(4, 8, 16, .50);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow: 0 4px 12px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, .5);
 
-  --hover-bg: rgba(170, 186, 222, .07);
-  --field-border: rgba(170, 186, 222, .20);
-  --field-bg: rgba(8, 13, 24, .34);   /* inputs sink into whatever surface they are on */
-  --field-focus-bg: rgba(8, 13, 24, .46);
-  --tint: rgba(170, 186, 222, .045);
-  --tint-strong: rgba(170, 186, 222, .09);
+  --hover-bg: rgba(148, 163, 184, .07);
+  --field-border: #2c3646;
+  --field-bg: #0f141d;
+  --field-focus-bg: #0f141d;
+  --tint: rgba(92, 124, 250, .06);
+  --tint-strong: rgba(92, 124, 250, .12);
 
-  --modal-bg: #2a3444;
-  --modal-border: rgba(170, 186, 222, .16);
-  --modal-line: rgba(170, 186, 222, .12);
-  --modal-foot: #232c3a;
-  --modal-field: #202936;
-  --modal-field-border: rgba(170, 186, 222, .20);
-  --modal-overlay: rgba(6, 10, 20, .62);
+  --modal-bg: #151c27;
+  --modal-border: #263040;
+  --modal-line: #222b39;
+  --modal-foot: #121822;
+  --modal-field: #0f141d;
+  --modal-field-border: #2c3646;
+  --modal-overlay: rgba(2, 6, 14, .66);
 
-  /* the sign-in backdrop: dimmer, and cooler, than the light theme's blobs */
-  --auth-blob-1: #4a5a9a;
-  --auth-blob-2: #5b4fb8;
-  --auth-blob-3: #3d4f8a;
-  --auth-blob-4: #2f6a94;
-  --auth-blob-opacity: .20;
-  --auth-grid-line: rgba(170, 186, 222, .04);
+  --auth-blob-1: #1a2233;
+  --auth-blob-2: #1a2233;
+  --auth-blob-3: #1a2233;
+  --auth-blob-4: #1a2233;
+  --auth-blob-opacity: 0;
+  --auth-grid-line: rgba(148, 163, 184, .035);
 }
 
 

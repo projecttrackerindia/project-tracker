@@ -22,6 +22,18 @@ public class ProjectMeetingsController(MeetingService meetings) : ApiControllerB
     public async Task<IActionResult> Schedule(Guid projectId, [FromBody] ScheduleMeetingRequest req, CancellationToken ct) => Created(await meetings.ScheduleAsync(projectId, req, ct));
 }
 
+/// <summary>Meetings that belong to the workspace rather than a project - "Schedule a scrum call" with no project chosen. Calendar-module gated,
+/// since that is where the entry point lives; who may be invited is the workspace's active, non-guest members.</summary>
+[Route("api/v1/meetings"), RequireWorkspace, RequireModule(Modules.Calendar)]
+public class WorkspaceMeetingsController(MeetingService meetings) : ApiControllerBase
+{
+    [HttpGet("participants")]
+    public async Task<IActionResult> Participants(CancellationToken ct) => Ok(await meetings.WorkspaceParticipantsAsync(ct));
+
+    [HttpPost("schedule")]
+    public async Task<IActionResult> Schedule([FromBody] ScheduleMeetingRequest req, CancellationToken ct) => Created(await meetings.ScheduleForWorkspaceAsync(req, ct));
+}
+
 /// <summary>A single meeting, once you have its id (not nested under its project - the id alone is enough, same as a task).</summary>
 [Route("api/v1/meetings/{id:guid}"), RequireWorkspace]
 public class MeetingsController(MeetingService meetings) : ApiControllerBase
