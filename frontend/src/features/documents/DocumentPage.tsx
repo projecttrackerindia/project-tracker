@@ -284,12 +284,14 @@ export function DocumentPage() {
       )}
       {tab === 'api' && <ApiReference detail={detail} editable={editable} />}
       {tab !== 'doc' && tab !== 'api' && (
+        // These tabs are about the document, not its text, so anyone who may edit can manage them without switching to Edit mode;
+        // the server checks the same permission on every change.
         <div className="dv-panel" role="tabpanel">
           {tab === 'artifact' && <ArtifactCard detail={detail} canEdit={canEdit} />}
           {tab === 'links' && <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />}
-          {tab === 'requirements' && <RequirementsCard documentId={id} canEdit={editable} />}
-          {tab === 'files' && <DocumentFiles documentId={id} canEdit={editable} />}
-          {tab === 'secrets' && <DocumentSecrets documentId={id} canEdit={editable} />}
+          {tab === 'requirements' && <RequirementsCard documentId={id} canEdit={canEdit} />}
+          {tab === 'files' && <DocumentFiles documentId={id} canEdit={canEdit} />}
+          {tab === 'secrets' && <DocumentSecrets documentId={id} canEdit={canEdit} />}
           {tab === 'comments' && <CommentsCard id={id} title={`${d.key} · ${d.title}`} />}
           {tab === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
         </div>
