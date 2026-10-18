@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Work;
@@ -229,7 +230,13 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             Billable = await BillableByDefaultAsync(projectId, ct),
         };
         db.TimeEntries.Add(entry);
-        await db.SaveChangesAsync(ct);
+        // One running timer per person (a unique index): a timer started at the same moment elsewhere (another tab, the phone) wins.
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException ex) when (DbErrors.IsTimerRunning(ex))
+        {
+            db.TimeEntries.Entry(entry).State = EntityState.Detached;
+            throw new ConflictException("A timer was just started somewhere else. Stop it before starting another.", "TIMER_RUNNING");
+        }
         return await DtoAsync(entry.Id, ct);
     }
 

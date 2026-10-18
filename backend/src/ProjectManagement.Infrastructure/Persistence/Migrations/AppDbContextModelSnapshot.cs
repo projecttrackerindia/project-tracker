@@ -4991,7 +4991,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "DueDate");
 
-                    b.HasIndex("TenantId", "Key");
+                    b.HasIndex("TenantId", "Key")
+                        .IsUnique();
 
                     b.HasIndex("TenantId", "Status");
 
@@ -8009,6 +8010,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId", "WorkDate");
 
                     b.HasIndex("TaskId", "WorkDate");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TimeEntries_TenantId_UserId_Running")
+                        .HasFilter("\"StartedAt\" IS NOT NULL AND \"EndedAt\" IS NULL");
 
                     b.HasIndex("UserId", "WorkDate");
 

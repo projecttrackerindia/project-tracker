@@ -93,6 +93,21 @@ public class ProjectAccess(IAppDbContext db, ICurrentContext ctx, PermissionServ
         if (!sees) db.ProjectMembers.Add(new ProjectMember { TenantId = tid, ProjectId = projectId, UserId = userId, CreatedAt = DateTime.UtcNow });
     }
 
+    /// <summary>Archived projects are read-only: nothing in them is added, changed, moved, commented on or deleted until the project is restored.</summary>
+    public static void EnsureNotArchived(Project project, string action = "change it")
+    {
+        if (project.Status == ProjectStatus.Archived)
+            throw new ConflictException($"Archived projects are read-only. Restore the project to {action}.", "PROJECT_ARCHIVED");
+    }
+
+    /// <summary>The same rule as <see cref="EnsureNotArchived"/>, for callers that only hold the project's id (a task, a file).</summary>
+    public async Task EnsureWritableAsync(Guid projectId, string action = "change it", CancellationToken ct = default)
+    {
+        var status = await db.Projects.Where(p => p.Id == projectId).Select(p => (ProjectStatus?)p.Status).FirstOrDefaultAsync(ct);
+        if (status == ProjectStatus.Archived)
+            throw new ConflictException($"Archived projects are read-only. Restore the project to {action}.", "PROJECT_ARCHIVED");
+    }
+
     public async Task RequireProjectEditAsync(Project project, CancellationToken ct = default)
     {
         if (await permissions.HasAsync(Permissions.ProjectsEdit, ct)) return;
