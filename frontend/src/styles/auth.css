@@ -1,7 +1,7 @@
 /* ============================================================
    AUTH PAGES — sign in / sign up / reset / verify / accept invite
-   A lavender glass card over a drifting, gently textured backdrop. AuthLayout
-   mounts the animated blobs + grid + grain; a few utility screens (the error
+   A solid card over a calm, faintly gridded backdrop. AuthLayout
+   mounts the grid + grain; a few utility screens (the error
    boundary, the "no workspace" fallback, the dev mailbox) reuse just the card
    and heading classes directly, over the app's ordinary background wash.
    ============================================================ */
@@ -10,14 +10,7 @@
 
 /* ---- animated backdrop (mounted by AuthLayout only) ---- */
 .auth-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.auth-blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: var(--auth-blob-opacity); will-change: transform; }
-.auth-blob.b1 { width: 520px; height: 520px; background: var(--auth-blob-1); top: -170px; left: -150px; animation: auth-drift-a 20s ease-in-out infinite; }
-.auth-blob.b2 { width: 460px; height: 460px; background: var(--auth-blob-2); bottom: -190px; right: -130px; animation: auth-drift-b 24s ease-in-out infinite; }
-.auth-blob.b3 { width: 380px; height: 380px; background: var(--auth-blob-3); top: 40%; left: 60%; opacity: calc(var(--auth-blob-opacity) * .86); animation: auth-drift-c 22s ease-in-out infinite; }
-.auth-blob.b4 { width: 280px; height: 280px; background: var(--auth-blob-4); top: 6%; right: 14%; opacity: calc(var(--auth-blob-opacity) * .55); animation: auth-drift-b 28s ease-in-out infinite reverse; }
-@keyframes auth-drift-a { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(74px, 54px) scale(1.14); } }
-@keyframes auth-drift-b { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-66px, -48px) scale(1.10); } }
-@keyframes auth-drift-c { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-88px, 44px) scale(1.16); } }
+.auth-blob { display: none; }   /* the drifting colour blobs are switched off */
 
 .auth-grid {
   position: absolute; inset: 0;
@@ -31,23 +24,17 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* ---- wrapper + ambient glow (AuthLayout only) ---- */
+/* ---- wrapper (AuthLayout only); the ambient glow it mounts is switched off ---- */
 .auth-wrap { position: relative; z-index: 1; width: 100%; max-width: 442px; }
-.auth-glow {
-  position: absolute; inset: -70px -50px -50px; z-index: -1; border-radius: 50%;
-  background: radial-gradient(58% 52% at 50% 42%, rgba(155, 125, 232, .40), transparent 72%), radial-gradient(44% 40% at 22% 82%, rgba(var(--accent-rgb), .34), transparent 70%);
-  filter: blur(46px); animation: auth-pulse 9s ease-in-out infinite;
-}
-@keyframes auth-pulse { 0%, 100% { opacity: .85; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
+.auth-glow { display: none; }
 
 /* ---- the card ---- */
 .auth-card {
   position: relative; z-index: 1; width: 100%; max-width: 420px;
   padding: 38px 36px 32px; border-radius: var(--radius-lg);
-  background: linear-gradient(158deg, var(--surface) 0%, var(--surface-2) 42%, var(--surface-3) 100%);
+  background: var(--surface);
   border: 1px solid var(--border);
-  -webkit-backdrop-filter: var(--glass-strong); backdrop-filter: var(--glass-strong);
-  box-shadow: var(--shadow-lg), var(--hl);
+  box-shadow: var(--shadow);
   animation: auth-card-in .78s cubic-bezier(.2, .9, .3, 1.25) both;
 }
 .auth-card::before {
@@ -171,7 +158,7 @@
   position: relative; width: 100%; height: 54px; display: grid; place-items: center; overflow: hidden;
   border-radius: var(--radius); color: #fff; font-size: 15px; font-weight: 600; letter-spacing: .1px;
   background: var(--primary-fill);
-  box-shadow: 0 18px 34px -14px rgba(var(--accent-rgb), .92), 0 6px 14px -8px rgba(var(--accent-rgb), .6), inset 0 1px 0 rgba(255, 255, 255, .42);
+  box-shadow: var(--shadow-sm);
   transition: transform .18s, box-shadow .26s, filter .26s;
 }
 .auth-submit::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255, 255, 255, .22), transparent 52%); pointer-events: none; }
@@ -192,18 +179,10 @@
 .auth-ripple { position: absolute; z-index: 0; border-radius: 50%; background: rgba(255, 255, 255, .42); transform: scale(0); pointer-events: none; animation: auth-ripple .62s ease-out forwards; }
 @keyframes auth-ripple { to { transform: scale(1); opacity: 0; } }
 
-/* ---- signature details: a light beam that circles the card's edge, a sheen across the primary button, and the
+/* ---- signature details: a sheen across the primary button, and the
    card's contents rising in one after another. (The success moment itself is the full-screen curtain in
    celebrate.css.) ---- */
-@property --auth-beam-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
-.auth-card > .auth-beam {
-  position: absolute; inset: -1px; z-index: 2; border-radius: inherit; padding: 1.5px; pointer-events: none;
-  background: conic-gradient(from var(--auth-beam-a), transparent 0deg, transparent 230deg, rgba(var(--accent-rgb), .0) 250deg, var(--primary) 300deg, var(--primary) 330deg, var(--primary-fill) 352deg, transparent 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  animation: auth-beam 6s linear infinite;
-}
-@keyframes auth-beam { to { --auth-beam-a: 360deg; } }
+.auth-beam { display: none; }   /* the light beam that circled the card is switched off */
 
 .auth-submit::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -264,7 +243,6 @@
   .auth-title { font-size: 22px; }
   .auth-sub { font-size: 13px; margin-bottom: 22px; }
   .auth-brand { margin-bottom: 24px; }
-  .auth-glow { inset: -50px -30px -30px; }
   .auth-socials { gap: 8px; }
   .auth-social { font-size: 12px; gap: 6px; }
 }
@@ -309,13 +287,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-blob, .auth-glow, .auth-card, .auth-card.shake, .auth-submit .auth-spinner, .auth-ripple, .auth-submit::before,
-  .auth-card > .auth-beam, .auth-shell .auth-brand, .auth-shell .auth-title, .auth-shell .auth-sub, .auth-shell .auth-form > *,
+  .auth-card, .auth-card.shake, .auth-submit .auth-spinner, .auth-ripple, .auth-submit::before,
+  .auth-shell .auth-brand, .auth-shell .auth-title, .auth-shell .auth-sub, .auth-shell .auth-form > *,
   .auth-shell .auth-foot, .amh-icon, .amh-wave, .auth-visual, .auth-visual *, .auth-visual *::before, .auth-visual *::after {
     animation: none !important;
     transition: none !important;
   }
-  .auth-card > .auth-beam, .av-cursor, .amh-wave { display: none; }
+  .av-cursor, .amh-wave { display: none; }
   .av-rotator > span:not(:first-child) { display: none; }
   .av-rotator > span:first-child { opacity: 1; }
 }
@@ -340,7 +318,6 @@
     padding: clamp(22px, 2.6vw, 40px) clamp(24px, 3vw, 48px); border-radius: 28px; overflow: hidden;
     container-type: inline-size;
     background: var(--av-panel); border: 1px solid var(--av-panel-border); box-shadow: var(--av-panel-shadow);
-    -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
     animation: av-panel-in .8s cubic-bezier(.2, .8, .2, 1) both;
   }
   /* soft light pooling in two corners of the panel, and a faint dot grid fading toward the middle */
@@ -447,7 +424,7 @@
 
 .av-window {
   position: absolute; left: 26px; top: 14px; width: 540px; height: calc(var(--scene-h, 340px) - 48px); border-radius: 18px; overflow: hidden;
-  background: var(--av-window); border: 1px solid var(--av-card-border); box-shadow: var(--av-shadow), var(--hl);
+  background: var(--av-window); border: 1px solid var(--av-card-border); box-shadow: none;
   transform: rotateY(calc(9deg + var(--mx) * 6deg)) rotateX(calc(4deg - var(--my) * 5deg));
   transition: transform .8s cubic-bezier(.2, .8, .2, 1);
   animation: av-in 1s .2s cubic-bezier(.2, .8, .2, 1) both;
@@ -569,7 +546,7 @@
 
 .av-ring-in, .av-activity-in, .av-timer-in {
   position: relative; display: flex; align-items: center; gap: 11px; padding: 11px 14px; border-radius: 16px;
-  background: var(--av-widget); border: 1px solid var(--av-card-border); box-shadow: var(--av-shadow), var(--hl);
+  background: var(--av-widget); border: 1px solid var(--av-card-border); box-shadow: none;
 }
 .av-ring { width: 44px; height: 44px; flex-shrink: 0; transform: rotate(-90deg); }
 .av-ring-track { fill: none; stroke: var(--av-lane); stroke-width: 5; }
@@ -599,7 +576,7 @@
 .av-time span { color: var(--text-3); }
 .av-timer-in small { display: block; max-width: 160px; font-size: 10.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.av-chart-in { position: relative; padding: 12px 14px 8px; border-radius: 16px; background: var(--av-widget); border: 1px solid var(--av-card-border); box-shadow: var(--av-shadow), var(--hl); }
+.av-chart-in { position: relative; padding: 12px 14px 8px; border-radius: 16px; background: var(--av-widget); border: 1px solid var(--av-card-border); box-shadow: none; }
 .av-chart-head { margin-bottom: 10px; }
 .av-chart-head small { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
 .av-chart-head strong { display: block; font-size: 18px; font-weight: 780; line-height: 1.2; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -1,6 +1,6 @@
 /* ============================================================
    AI WORKSPACE — a full page for the assistant: conversations | thread | composer.
-   Glass surfaces and a faint aurora, with the gradient kept for what matters (the assistant's mark, the active level, send).
+   Solid surfaces, with the gradient kept for what matters (the assistant's mark, the active level, send).
    Everything uses the shared tokens, so the light and dark themes both work.
    ============================================================ */
 
@@ -9,8 +9,8 @@
   --ai-grad: linear-gradient(135deg, var(--ai-a), var(--ai-b));
   position: relative; display: grid; grid-template-columns: 288px minmax(0, 1fr);
   height: calc(100vh - var(--topbar-h) - 48px); min-height: 520px;
-  background: var(--surface); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass);
-  border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm), var(--hl); overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: none; overflow: hidden;
 }
 .ai-shell.solo { display: grid; place-items: center; grid-template-columns: 1fr; height: auto; min-height: 60vh; }
 [data-theme='dark'] .ai-shell { --ai-a: #8f7bf0; --ai-b: #d65fa4; --ai-c: #4cc9e0; }
@@ -19,9 +19,9 @@
 .ai-rail { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 16px 12px 10px; border-right: 1px solid var(--modal-line); background: var(--surface-3); }
 .ai-new {
   display: flex; align-items: center; justify-content: center; gap: 8px; height: 42px; border-radius: 13px; color: #fff; font-weight: 650; font-size: 14px;
-  background: var(--ai-grad); box-shadow: 0 8px 22px rgba(var(--accent-rgb), .32); transition: transform .15s, box-shadow .15s, filter .15s;
+  background: var(--primary-fill); box-shadow: var(--shadow-sm); transition: transform .15s, box-shadow .15s, filter .15s;
 }
-.ai-new:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 12px 28px rgba(var(--accent-rgb), .42); }
+.ai-new:hover { filter: brightness(.92); }
 .ai-new:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ai-rail-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px 8px; }
 .ai-rail-empty { padding: 18px 8px; color: var(--text-3); font-size: 13px; text-align: center; }
@@ -29,7 +29,7 @@
 .ai-rail-group h4 { margin: 0 0 4px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .ai-conv { position: relative; border-radius: 11px; }
 .ai-conv:hover, .ai-conv:focus-within { background: var(--hover-bg); }
-.ai-conv.active { background: var(--tint-strong); box-shadow: var(--hl-2); }
+.ai-conv.active { background: var(--tint-strong); box-shadow: none; }
 .ai-conv.active::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 3px; background: var(--ai-grad); }
 .ai-conv-main { width: 100%; display: flex; flex-direction: column; gap: 1px; text-align: left; padding: 9px 11px; min-width: 0; color: var(--text); border-radius: 11px; }
 .ai-conv-main span { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -45,16 +45,8 @@
 
 /* ---- the main column */
 .ai-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; container-type: inline-size; container-name: ai-workspace; }
-.ai-aurora {
-  position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  background:
-    radial-gradient(620px 380px at 88% -8%, rgba(var(--accent-rgb), .17), transparent 70%),
-    radial-gradient(540px 340px at 2% 108%, rgba(34, 211, 238, .11), transparent 70%),
-    linear-gradient(rgba(var(--accent-rgb), .05) 1px, transparent 1px) 0 0 / 34px 34px,
-    linear-gradient(90deg, rgba(var(--accent-rgb), .05) 1px, transparent 1px) 0 0 / 34px 34px;
-  -webkit-mask-image: radial-gradient(130% 95% at 50% 0%, #000 28%, transparent 86%); mask-image: radial-gradient(130% 95% at 50% 0%, #000 28%, transparent 86%);
-}
-.ai-head { position: relative; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; padding: 18px 22px; border-bottom: 1px solid var(--modal-line); background: linear-gradient(110deg, var(--primary-soft), transparent 75%), var(--surface); }
+.ai-aurora { display: none; }   /* the old aurora grid behind the thread is switched off */
+.ai-head { position: relative; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; padding: 18px 22px; border-bottom: 1px solid var(--modal-line); background: var(--surface); }
 .ai-head-primary, .ai-head-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ai-head-primary { flex: 1 1 100%; }
 .ai-head-controls { flex: 1 1 100%; flex-wrap: wrap; }
@@ -222,7 +214,7 @@
 
 /* ---- the empty page */
 .ai-hero { max-width: 880px; margin: 0 auto; padding: min(9vh, 80px) 22px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-.ai-hero h1 { margin: 22px 0 8px; font-size: clamp(26px, 3.4vw, 36px); font-weight: 780; letter-spacing: -.03em; background: linear-gradient(135deg, var(--text) 35%, var(--ai-a)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ai-hero h1 { margin: 22px 0 8px; font-size: clamp(26px, 3.4vw, 36px); font-weight: 780; letter-spacing: -.03em; color: var(--text); }
 .ai-hero > p { max-width: 560px; margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-2); }
 .ai-suggest { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 12px; width: 100%; margin-top: 30px; text-align: left; }
 .ai-suggest-card { position: relative; display: grid; gap: 4px; padding: 15px 16px; border-radius: 16px; background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-sm); text-align: left; transition: transform .16s, border-color .16s, box-shadow .16s; }
@@ -273,7 +265,7 @@
 .ai-send:focus-visible, .ai-attach:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ai-fineprint { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 14px; margin: 8px 6px 0; font-size: 11.5px; color: var(--text-3); }
 .ai-fineprint span { display: inline-flex; align-items: center; gap: 5px; }
-.ai-drop { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; pointer-events: none; color: var(--primary); background: rgba(var(--accent-rgb), .12); backdrop-filter: blur(4px); border: 2px dashed var(--ai-a); border-radius: var(--radius-lg); }
+.ai-drop { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; pointer-events: none; color: var(--primary); background: rgba(var(--accent-rgb), .12); border: 2px dashed var(--ai-a); border-radius: var(--radius-lg); }
 .ai-drop b { font-size: 18px; } .ai-drop span { font-size: 13px; color: var(--text-2); }
 
 /* ---- smaller screens: the conversation list slides in */

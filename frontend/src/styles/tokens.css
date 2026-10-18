@@ -6,7 +6,6 @@
   /* ---- Professional theme: neutral slate surfaces, solid (no glass), one restrained indigo accent. ---- */
   --bg: #f4f6f9;
   --chrome: #ffffff;                  /* sidebar and top bar */
-  --bg-image: none;
 
   --surface: #ffffff;
   --surface-2: #f8f9fb;               /* raised inside a card: secondary buttons, chips */
@@ -40,12 +39,6 @@
   --purple: #6d4fe0;
   --purple-soft: rgba(109, 79, 224, .09);
 
-  --glass: none;
-  --glass-strong: none;
-  --glass-soft: none;
-  --hl: none;
-  --hl-2: none;
-
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
   --shadow: 0 2px 4px rgba(16, 24, 40, .04), 0 8px 20px rgba(16, 24, 40, .07);
   --shadow-lg: 0 8px 16px rgba(16, 24, 40, .08), 0 24px 56px rgba(16, 24, 40, .16);
@@ -74,12 +67,7 @@
   --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* the sign-in page: a calm, flat backdrop (the drifting blobs are switched off) */
-  --auth-blob-1: #dfe4f5;
-  --auth-blob-2: #e6e9f2;
-  --auth-blob-3: #e9edf5;
-  --auth-blob-4: #dde6f3;
-  --auth-blob-opacity: 0;
+  /* the sign-in page: a calm, flat backdrop with a faint grid */
   --auth-grid-line: rgba(17, 24, 39, .035);
 }
 
@@ -88,7 +76,6 @@
   /* ---- Navy ladder: page < chrome < card < raised < floating, told apart by small steps, never by glow. ---- */
   --bg: #0b0f16;
   --chrome: #0e131b;
-  --bg-image: none;
 
   --surface: #121822;
   --surface-solid: #121822;
@@ -122,12 +109,6 @@
   --purple: #a991ff;
   --purple-soft: rgba(169, 145, 255, .13);
 
-  --glass: none;
-  --glass-strong: none;
-  --glass-soft: none;
-  --hl: none;
-  --hl-2: none;
-
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
   --shadow: 0 4px 12px rgba(0, 0, 0, .35);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, .5);
@@ -147,11 +128,6 @@
   --modal-field-border: #2c3646;
   --modal-overlay: rgba(2, 6, 14, .66);
 
-  --auth-blob-1: #1a2233;
-  --auth-blob-2: #1a2233;
-  --auth-blob-3: #1a2233;
-  --auth-blob-4: #1a2233;
-  --auth-blob-opacity: 0;
   --auth-grid-line: rgba(148, 163, 184, .035);
 }
 

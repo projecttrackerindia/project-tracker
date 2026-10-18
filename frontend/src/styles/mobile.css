@@ -44,11 +44,8 @@
   .m-top {
     position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 8px;
     height: calc(var(--m-top) + var(--safe-t)); padding: var(--safe-t) 8px 0 10px;
-    background: var(--surface-solid, #fff);
+    background: color-mix(in srgb, var(--surface-solid, #fff) 84%, transparent);
     border-bottom: 1px solid transparent; transition: border-color .2s, box-shadow .2s;
-  }
-  @supports (backdrop-filter: blur(1px)) {
-    .m-top { background: color-mix(in srgb, var(--surface-solid, #fff) 84%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7); }
   }
   .m-top.scrolled { border-bottom-color: var(--border); box-shadow: 0 8px 24px rgba(16, 24, 40, .08); }
   .m-org { display: inline-flex; align-items: center; gap: 9px; min-width: 0; height: 44px; padding: 0 8px 0 4px; border-radius: 15px; text-align: left; transition: background .15s, transform .15s; }
@@ -98,7 +95,7 @@
   .m-fab.open { transform: rotate(135deg); }
 
   /* ---- sheets */
-  .sheet-overlay { position: fixed; inset: 0; z-index: 210; display: flex; align-items: flex-end; background: rgba(15, 23, 42, calc(.5 * var(--fade, 1))); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: m-fade .22s ease both; }
+  .sheet-overlay { position: fixed; inset: 0; z-index: 210; display: flex; align-items: flex-end; background: rgba(15, 23, 42, calc(.5 * var(--fade, 1))); animation: m-fade .22s ease both; }
   .sheet {
     width: 100%; display: flex; flex-direction: column; max-height: min(90dvh, calc(100dvh - var(--safe-t) - 24px));
     background: var(--panel-solid, var(--surface-solid, #fff)); border-radius: 28px 28px 0 0; padding-bottom: var(--safe-b);
@@ -114,9 +111,9 @@
   .sheet-foot { flex: none; padding: 12px 16px; border-top: 1px solid var(--border); }
 
   /* a dialog on a phone is a sheet */
-  .modal-overlay { padding: 0; align-items: flex-end; background: rgba(15, 23, 42, calc(.5 * var(--fade, 1))); overflow: hidden; }
+  .modal-overlay { padding: 0; align-items: flex-end; overflow: hidden; }
   .modal, .modal.sm, .modal.lg, .modal.xl {
-    max-width: 100%; width: 100%; max-height: min(93dvh, calc(100dvh - var(--safe-t) - 10px)); border-radius: 28px 28px 0 0; border-bottom: 0;
+    max-width: 100%; width: 100%; max-height: min(93dvh, calc(100dvh - var(--safe-t) - 10px)); border-radius: 28px 28px 0 0;
     padding-bottom: var(--safe-b); animation: m-sheet .4s cubic-bezier(.2, .9, .25, 1) both; will-change: transform;
   }
   .modal-grab { display: block; flex: none; padding: 9px 0 0; touch-action: none; }
@@ -203,7 +200,6 @@
   .page-actions .btn { flex: 1 1 auto; }
   .hub-section-title { font-size: 20px; }
   .card { border-radius: 22px; }
-  .card:hover, .stat-card:hover { transform: none; }
 }
 
 /* ---------------- screens ---------------- */
@@ -237,7 +233,6 @@
   .toolbar-spacer { display: none; }
 
   .project-card { border-radius: 22px; }
-  .project-card:hover { transform: none; }
   .wi-row { padding: 14px 16px; }
   .wi-title { font-size: 15px; }
   .wi-sub, .wi-meta { font-size: 12.5px; }
@@ -278,8 +273,7 @@
   /* sign-in and the other account screens: the whole screen, not a card floating on it */
   .auth-shell { display: block; padding: 0; min-height: 100dvh; }
   .auth-wrap { width: 100%; max-width: none; min-height: 100dvh; display: flex; }
-  .auth-glow, .auth-beam { display: none; }
-  .auth-card { width: 100%; max-width: none; min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; border-radius: 0; border: 0; background: transparent !important; box-shadow: none !important; -webkit-backdrop-filter: none; backdrop-filter: none; padding: calc(var(--safe-t) + 44px) 24px calc(var(--safe-b) + 28px); }
+  .auth-card { width: 100%; max-width: none; min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; border-radius: 0; padding: calc(var(--safe-t) + 44px) 24px calc(var(--safe-b) + 28px); }
   .auth-card::before, .auth-card::after { display: none; }
   .auth-brand { flex-direction: column; text-align: center; gap: 14px; margin-bottom: 24px; }
   .auth-brand .brand-mark { width: 68px; height: 68px; border-radius: 22px; }
@@ -298,7 +292,7 @@
   .more-toggle { display: flex; width: 100%; flex-wrap: wrap; justify-content: flex-start; min-height: 46px; padding: 10px 14px; border-radius: 14px; font-size: 14.5px; }
   .more-toggle span { flex-basis: 100%; padding-left: 26px; }
   .cmdk-overlay { padding: 0; align-items: flex-end; }
-  .cmdk { background: var(--panel-solid, var(--surface-solid, #fff)); width: 100%; max-width: 100%; max-height: calc(100dvh - var(--safe-t) - 12px); height: calc(100dvh - var(--safe-t) - 12px); border-radius: 28px 28px 0 0; padding-bottom: var(--safe-b); animation: m-sheet .38s cubic-bezier(.2, .9, .25, 1) both; }
+  .cmdk { width: 100%; max-width: 100%; max-height: calc(100dvh - var(--safe-t) - 12px); height: calc(100dvh - var(--safe-t) - 12px); border-radius: 28px 28px 0 0; padding-bottom: var(--safe-b); animation: m-sheet .38s cubic-bezier(.2, .9, .25, 1) both; }
 }
 
 /* ---------------- home, in the phone app's own design ---------------- */
@@ -325,7 +319,7 @@
   .mh-focus-top b { display: block; font-size: 36px; line-height: 1.05; letter-spacing: -.04em; font-weight: 800; margin-top: 4px; }
   .mh-focus-top b span { font-size: 15px; font-weight: 650; letter-spacing: 0; opacity: .8; }
   .mh-focus-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-  .mh-focus-chips em { font-style: normal; font-size: 12px; font-weight: 750; padding: 4px 11px; border-radius: 99px; background: rgba(255, 255, 255, .18); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .mh-focus-chips em { font-style: normal; font-size: 12px; font-weight: 750; padding: 4px 11px; border-radius: 99px; background: rgba(255, 255, 255, .18); }
   .mh-focus-chips em.late { background: rgba(254, 202, 202, .95); color: #7f1d1d; }
   .mh-bar { height: 9px; border-radius: 9px; background: rgba(255, 255, 255, .2); overflow: hidden; }
   .mh-bar i { display: block; height: 100%; border-radius: 9px; background: #fff; box-shadow: 0 0 14px rgba(255, 255, 255, .7); transition: width .8s cubic-bezier(.2, .8, .2, 1); }
@@ -369,13 +363,8 @@
   .mh-card-prog > :first-child { flex: 1; }
   .mh-card-prog b { font-size: 13px; }
 
-  /* the tiles under it: each tinted by what it counts */
-  .stat-card:has(.stat-icon.blue) { background: linear-gradient(135deg, rgba(var(--accent-rgb), .16), var(--surface)); }
-  .stat-card:has(.stat-icon.green) { background: linear-gradient(135deg, rgba(16, 185, 129, .16), var(--surface)); }
-  .stat-card:has(.stat-icon.amber) { background: linear-gradient(135deg, rgba(245, 158, 11, .18), var(--surface)); }
-  .stat-card:has(.stat-icon.red) { background: linear-gradient(135deg, rgba(244, 63, 94, .16), var(--surface)); }
-  .stat-card:has(.stat-icon.cyan) { background: linear-gradient(135deg, rgba(14, 165, 233, .16), var(--surface)); }
-  .stat-card:has(.stat-icon.purple) { background: linear-gradient(135deg, rgba(var(--accent-rgb), .16), var(--surface)); }
+  /* the tiles under it: no fill of their own (their old gradient tint was switched off with the professional theme) */
+  .stat-card:has(.stat-icon:is(.blue, .green, .amber, .red, .cyan, .purple)) { background: none; }
   .m-shell .dash-mywork, .m-shell .dash-projects { display: none; }
 
   /* pill switchers, as in the references */
@@ -383,9 +372,6 @@
   .seg button { border-radius: 99px; }
   .tabs { border-radius: 99px; }
   .tab { border-radius: 99px; }
-
-  /* the page behind a dark phone has a soft glow at the top */
-  [data-theme='dark'] body { background-image: radial-gradient(80% 360px at 50% 0%, rgba(var(--accent-rgb), .32), transparent), var(--bg-image); background-repeat: no-repeat; }
 }
 
 @keyframes m-sheet { from { transform: translateY(100%); } to { transform: translateY(0); } }

@@ -1,17 +1,13 @@
 /* Shared visual foundation. Adapt layouts to the space available while retaining readable controls. */
 :root { --sidebar-w: 248px; --sidebar-w-collapsed: 72px; --topbar-h: 68px; }
 body { font-size: 14px; }
-.sidebar { background: var(--chrome); box-shadow: none; }
-.topbar { background: var(--chrome); box-shadow: none; }
-.brand-mark { background: var(--primary-fill); box-shadow: none; }
 .nav-item { min-height: 42px; border-radius: 10px; }
-.nav-item.active, .section-nav-item.active { background: var(--primary-soft); box-shadow: none; }
 .nav-item.active::before { left: 0; background: var(--primary); }
 .content { padding: clamp(18px, 2.2vw, 36px); }
 .page-title { font-size: clamp(23px, 2vw, 30px); letter-spacing: -.04em; line-height: 1.2; }
 .page-sub { font-size: 14px; line-height: 1.65; max-width: 80ch; margin-top: 8px; }
 .page-head { margin-bottom: 26px; }
-.card, .stat-card, .project-card { box-shadow: var(--shadow-sm); border-color: var(--border); }
+.card, .stat-card, .project-card { border-color: var(--border); }
 .btn { min-height: 40px; border-radius: 10px; box-shadow: none; font-size: 13px; }
 .btn-primary { background: var(--primary-fill, var(--primary)); color: #fff; box-shadow: var(--shadow-sm); }
 .btn-primary:hover { background: var(--primary-fill, var(--primary-hover)); filter: brightness(1.06); }
@@ -35,12 +31,14 @@ body { font-size: 14px; }
   .input, .select, .textarea { font-size: 16px; min-height: 46px; }
   .section-layout-wide { gap: 18px; }
   .m-topbar { background: var(--panel-solid); }
-  .m-pill { background: var(--panel-solid); border-color: var(--border); box-shadow: 0 8px 30px #0f172a18; }
+  .m-top { background: var(--chrome); border-bottom: 1px solid var(--border); }
+  .m-pill { background: var(--panel-solid); border-color: var(--border); box-shadow: var(--shadow); }
+  [data-theme='dark'] .m-pill { background: var(--panel-solid); }
   .m-pill { border-radius:22px; }
   .m-tab { flex:1; flex-direction:column; gap:3px; border-radius:16px; color:var(--text-2); }
   .m-tab.on { color:var(--primary); background:var(--primary-soft); box-shadow:none; }
   .m-tab .m-tab-label { display:block; font-size:10px; font-weight:650; }
-  .m-fab { background:var(--primary); box-shadow:var(--shadow); }
+  .m-fab { background:var(--primary-fill); box-shadow:var(--shadow); }
 }
 
 /* Portfolio adapts to its actual panel width, including split view and a collapsed sidebar. */

@@ -16,8 +16,8 @@
 .section-layout { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 22px; align-items: start; }
 .section-nav {
   position: sticky; top: calc(var(--topbar-h) + 18px);
-  background: var(--surface); -webkit-backdrop-filter: var(--glass); backdrop-filter: var(--glass);
-  border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--hl), var(--shadow-sm);
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); box-shadow: none;
   padding: 10px;
 }
 .section-nav-group + .section-nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
@@ -29,7 +29,7 @@
 }
 .section-nav-item svg { flex-shrink: 0; color: var(--text-3); }
 .section-nav-item:hover { background: var(--hover-bg); color: var(--text); }
-.section-nav-item.active { background: linear-gradient(135deg, rgba(var(--accent-rgb), .22), rgba(var(--accent-rgb), .14)); color: var(--primary); font-weight: 650; }
+.section-nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 650; }
 .section-nav-item.active svg { color: var(--primary); }
 .section-body { min-width: 0; }
 .section-body > .card + .card, .section-body > .card + .mb-22 { margin-top: 0; }
@@ -149,7 +149,6 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 
 /* Project settings dialog. */
 .project-settings .tabs { margin-bottom: 16px; }
-.project-settings .card { box-shadow: none; }
 
 /* Calendar: action items and operational work. */
 .cal-ev.cyan { background: rgba(14, 165, 233, .14); color: #0284c7; }

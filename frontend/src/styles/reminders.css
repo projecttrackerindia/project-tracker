@@ -11,7 +11,7 @@
 .rp { display: grid; gap: 16px; }
 .rp .page-head b { color: var(--text); font-weight: 650; }
 
-.rp-quick { display: flex; align-items: flex-start; gap: 12px; padding: 14px 14px 12px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm), var(--hl); backdrop-filter: var(--glass-soft); transition: border-color .2s, box-shadow .2s; }
+.rp-quick { display: flex; align-items: flex-start; gap: 12px; padding: 14px 14px 12px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: none; transition: border-color .2s, box-shadow .2s; }
 .rp-quick > svg { margin-top: 9px; color: var(--primary); flex: none; }
 .rp-quick:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 4px var(--primary-soft), var(--shadow-sm); }
 .rp-quick.ready { border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
@@ -24,7 +24,7 @@
 .rp-quick .btn { margin-top: 3px; }
 
 .rp-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.rp-stat { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--hl); }
+.rp-stat { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); box-shadow: none; }
 .rp-stat-ico { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; flex: none; background: var(--primary-soft); color: var(--primary); }
 .rp-stat.tone-info .rp-stat-ico { background: var(--info-soft); color: var(--info); }
 .rp-stat.tone-success .rp-stat-ico { background: var(--success-soft); color: var(--success); }
@@ -56,11 +56,11 @@
 @keyframes rpPulse { 0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, .5); } 80% { box-shadow: 0 0 0 9px rgba(225, 29, 72, 0); } 100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); } }
 
 .rp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.rp-card { position: relative; z-index: 0; display: flex; align-items: flex-start; gap: 12px; padding: 12px 12px 12px 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm), var(--hl); overflow: visible; transition: border-color .2s, transform .2s, box-shadow .2s; }
+.rp-card { position: relative; z-index: 0; display: flex; align-items: flex-start; gap: 12px; padding: 12px 12px 12px 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); box-shadow: none; overflow: visible; transition: border-color .2s, transform .2s, box-shadow .2s; }
 /* Its own open dropdown (.rp-menu) is z-index 30, but that only wins against the row's own siblings if the row itself also outranks
    its neighbours - otherwise the next row (also position: relative) paints over the menu's lower half regardless of the menu's z-index. */
 .rp-card.menu-open { z-index: 20; }
-.rp-card:hover { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow), var(--hl); }
+.rp-card:hover { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: none; }
 .rp-card.is-fired { background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 9%, var(--surface)) 0%, var(--surface) 55%); border-color: color-mix(in srgb, var(--danger) 28%, transparent); }
 .rp-card.is-fired::before { content: ''; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: linear-gradient(180deg, #f59e0b, #ef4444); }
 .rp-card.src-duedate::after, .rp-card.src-overdue::after, .rp-card.src-escalation::after { content: none; }
@@ -251,7 +251,7 @@
 
 /* ---- this device: notifications outside the app */
 .rp-device { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 14%, var(--surface)), var(--surface)); box-shadow: var(--hl); animation: rmMenu .2s ease-out; }
+  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 14%, var(--surface)), var(--surface)); box-shadow: none; animation: rmMenu .2s ease-out; }
 .rp-device.is-blocked, .rp-device.is-unsupported { border-color: color-mix(in srgb, var(--warning) 35%, transparent); background: linear-gradient(90deg, var(--warning-soft), var(--surface)); }
 .rp-device-ico { width: 36px; height: 36px; flex: none; border-radius: 11px; display: grid; place-items: center; color: #fff; background: var(--primary-fill); animation: raRing 1.2s ease-in-out 1s 2; }
 .rp-device.is-blocked .rp-device-ico, .rp-device.is-unsupported .rp-device-ico { background: var(--warning); }
