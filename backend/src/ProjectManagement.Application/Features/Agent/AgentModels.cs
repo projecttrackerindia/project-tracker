@@ -18,8 +18,10 @@ public class AgentOptions
     public int InboxScanMinutes { get; set; } = 30;
     /// <summary>The local hour each person's daily update goes out (workspace time zone).</summary>
     public int DailyUpdateHour { get; set; } = 9;
-    /// <summary>Recall.ai's API host pattern ({region} is replaced); tests point it elsewhere.</summary>
-    public string RecallBaseUrl { get; set; } = "https://{region}.recall.ai";
+    /// <summary>Our own meeting-bot service (apps/meetbot), e.g. https://meetbot.internal:8080. Empty: no live bot on this installation.</summary>
+    public string? MeetingBotUrl { get; set; }
+    /// <summary>The secret the bot service expects (its MEETBOT_SECRET), 16 characters or more.</summary>
+    public string? MeetingBotSecret { get; set; }
 }
 
 public record AgentRunDto(Guid Id, string Trigger, string Status, int SignalCount, int FindingCount, int Credits, string? Summary, string? Error,
@@ -31,8 +33,9 @@ public record ProjectAgentDto(Guid ProjectId, bool Enabled, bool ReadMailbox, bo
 
 public record SaveProjectAgentRequest(bool Enabled, bool? ReadMailbox, bool? ReadChat, bool? ReadMeetings, bool? LiveBot, bool? DailyUpdates);
 
-public record AgentWorkspaceDto(bool RecallConfigured, string RecallRegion, string BotName, bool InCallReminders, bool CanManage, int EnabledProjects);
-public record SaveAgentWorkspaceRequest(string? RecallApiKey, bool? ClearRecallKey, string? RecallRegion, string? BotName, bool? InCallReminders);
+/// <summary>BotAvailable: the installation runs the built-in meeting bot.</summary>
+public record AgentWorkspaceDto(bool BotAvailable, string BotName, bool InCallReminders, bool CanManage, int EnabledProjects);
+public record SaveAgentWorkspaceRequest(string? BotName, bool? InCallReminders);
 
 public record AgentInboxOptInDto(bool GoogleAvailable, bool MicrosoftAvailable, string? Provider, bool Enabled, DateTime? ScannedUntil, int Found, string? LastError);
 public record SaveAgentInboxOptInRequest(string? Provider, bool Enabled);

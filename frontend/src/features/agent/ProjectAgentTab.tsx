@@ -157,7 +157,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
               return (
                 <li key={s.key}>
                   <Icon name={s.icon} size={15} />
-                  <span><b>{s.title}</b><small>{blocked ? 'Needs the meeting-bot key (Project agent › Meeting bot)' : s.text}</small></span>
+                  <span><b>{s.title}</b><small>{blocked ? 'The meeting bot is not running on this installation yet' : s.text}</small></span>
                   <button type="button" className={`switch ${on && !blocked ? 'on' : ''}`} role="switch" aria-checked={on && !blocked} aria-label={s.title}
                     disabled={!manage || busy !== null || blocked} onClick={() => void save({ [s.key]: !on })} />
                 </li>

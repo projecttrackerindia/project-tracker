@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Meet - synthetic</title>
+<!-- A stand-in for the Google Meet page with the same accessible structure the bot relies on (src/meet.mjs). No Google code. -->
+<style>body{font-family:sans-serif}#call,#waiting,#ended{display:none}</style>
+</head>
+<body>
+<section id="prejoin">
+  <h1>Ready to join?</h1>
+  <input type="text" aria-label="Your name" placeholder="Your name">
+  <button type="button" aria-label="Turn off microphone">mic</button>
+  <button type="button" aria-label="Turn off camera">cam</button>
+  <button type="button" id="ask"><span>Ask to join</span></button>
+</section>
+<p id="waiting">Asking to be let in...</p>
+<section id="call">
+  <button type="button" aria-label="Leave call" id="leave">leave</button>
+  <button type="button" aria-label="Turn on captions" id="cc">cc</button>
+  <button type="button" aria-label="Chat with everyone" id="chat">chat</button>
+  <div id="panel" hidden><textarea aria-label="Send a message"></textarea><ul id="messages"></ul></div>
+</section>
+<p id="ended"></p>
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (id, on = true) => { $(id).style.display = on ? 'block' : 'none'; };
+$('ask').onclick = () => {
+  if (!document.querySelector('[aria-label="Your name"]').value) return;
+  show('prejoin', false); show('waiting');
+  setTimeout(() => { show('waiting', false); show('call'); }, 400);   // the host lets the bot in
+};
+$('leave').onclick = () => { show('call', false); $('ended').textContent = 'You left the meeting'; show('ended'); };
+$('chat').onclick = () => { $('panel').hidden = false; };
+document.querySelector('textarea').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const t = e.target.value; e.target.value = '';
+  const li = document.createElement('li'); li.textContent = t; $('messages').appendChild(li);
+  fetch('/chat-log', { method: 'POST', body: t });
+});
+// Captions: two people speak, word by word, each in their own block, like Meet's caption region.
+const speak = async (region, name, words) => {
+  const block = document.createElement('div');
+  const who = document.createElement('div'); who.innerHTML = '<img alt=""><span></span>'; who.querySelector('span').textContent = name;
+  const said = document.createElement('div');
+  block.append(who, said); region.appendChild(block);
+  for (const w of words.split(' ')) { said.textContent = (said.textContent + ' ' + w).trim(); await new Promise((r) => setTimeout(r, 60)); }
+};
+$('cc').onclick = async () => {
+  $('cc').setAttribute('aria-label', 'Turn off captions');
+  const region = document.createElement('div'); region.setAttribute('role', 'region'); region.setAttribute('aria-label', 'Captions');
+  $('call').appendChild(region);
+  await new Promise((r) => setTimeout(r, 300));
+  await speak(region, 'Ravi Kumar', 'I finished the gateway sandbox yesterday and today I start the settlement report');
+  await new Promise((r) => setTimeout(r, 2500));
+  await speak(region, 'Priya', 'Who is doing the refund flow? Nobody has picked it up');
+};
+// The test ends the call from outside.
+setInterval(async () => {
+  const r = await fetch('/control').then((x) => x.json()).catch(() => ({}));
+  if (r.ended && $('ended').style.display !== 'block') { show('call', false); $('ended').textContent = 'The call has ended'; show('ended'); }
+}, 300);
+</script>
+</body>
+</html>

@@ -176,6 +176,19 @@ needed for the setup in this guide. If you put **your own** proxy or load balanc
 close idle connections sooner than a few minutes (the app sends a keep-alive every 15 seconds). Who is online and who is typing are held
 in the API's memory, so run **one API container**: several would each see only their own connections.
 
+## Project agent: live meeting bot (optional)
+
+The project agent can join Google Meet stand-ups with its own bot (`apps/meetbot`, a small Node service running Chromium). It is not a
+third-party service: nothing to buy, no per-meeting fees.
+
+- **Docker Compose:** set `MEETBOT_SECRET` (any random string of 16+ characters) in `.env`, then `docker compose --profile meetbot up -d`.
+  The API already points at it (`http://meetbot:8080`).
+- **Railway (or any container host):** add a service from this repository with root directory `apps/meetbot` (it has its own Dockerfile),
+  set `MEETBOT_SECRET` on it (optionally `MEETBOT_WEBHOOK_HOSTS=<your API host>`), give it at least 2 GB of memory, and on the API service set
+  `Agent__MeetingBotUrl=<the bot service's private URL, e.g. http://meetbot.railway.internal:8080>` and `Agent__MeetingBotSecret=<same secret>`.
+- Each meeting is one Chromium (about 400 MB); `MEETBOT_MAX_BOTS` (default 4) caps how many at a time.
+- Without the bot, the agent still reads Google Meet transcripts after each meeting and anything pasted into a project's Agent tab.
+
 ## Not covered here
 
 Load balancing several API servers (live chat would also need a shared backplane), a managed database, object storage for files (only local disk is built in), single sign-on,

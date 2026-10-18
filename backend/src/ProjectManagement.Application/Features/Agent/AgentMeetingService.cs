@@ -24,7 +24,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// when the session ends its transcript is read like any other source. Without a bot, the session's Google Meet transcript is fetched with the
 /// organizer's own Google account once Meet has produced it.
 /// </summary>
-public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtector secrets, RecallClient recall, GoogleMeetingClient google,
+public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtector secrets, MeetingBotClient botService, GoogleMeetingClient google,
     AgentSignalService signals, AgentSettingsService settings, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, IOptions<AppOptions> app,
     ILogger<AgentMeetingService> log)
 {
@@ -55,29 +55,29 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     /// <summary>Sends the bot to every session starting in the next few minutes.</summary>
     public async Task<int> ScheduleBotsAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, CancellationToken ct)
     {
-        if (!s.Enabled || !s.LiveBot || !s.ReadMeetings || w.RecallApiKeyProtected is null) return 0;
+        if (!s.Enabled || !s.LiveBot || !s.ReadMeetings || !botService.Configured) return 0;
         var now = clock.Now;
         var sent = 0;
         foreach (var session in await SessionsAsync(s.ProjectId, now.AddMinutes(-5), now.AddMinutes(10), ct))
         {
             if (session.Start < now.AddMinutes(-5) || session.Start > now.AddMinutes(10)) continue;
-            if (await db.AgentMeetingBots.AnyAsync(b => b.MeetingId == session.Meeting.Id && b.SessionStartUtc == session.Start && b.Kind == "recall", ct)) continue;
+            if (await db.AgentMeetingBots.AnyAsync(b => b.MeetingId == session.Meeting.Id && b.SessionStartUtc == session.Start && b.Kind == "bot", ct)) continue;
             var bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = s.ProjectId, MeetingId = session.Meeting.Id, SessionStartUtc = session.Start, SessionEndUtc = session.End,
-                Kind = "recall", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now };
+                Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now };
             db.AgentMeetingBots.Add(bot);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; continue; }   // another server sent it
             var project = await db.Projects.AsNoTracking().Where(p => p.Id == s.ProjectId).Select(p => p.Name).FirstAsync(ct);
             try
             {
-                var webhook = $"{PublicUrls.Api(app.Value)}/api/v1/agent/recall/{bot.WebhookToken}";
+                var webhook = $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{bot.WebhookToken}";
                 var intro = $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
                     "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen.";
-                bot.BotId = await recall.CreateBotAsync(secrets.Unprotect(w.RecallApiKeyProtected), w.RecallRegion, session.Meeting.GoogleMeetUri, w.BotName, session.Start, webhook, intro, ct);
+                bot.BotId = await botService.CreateBotAsync(session.Meeting.GoogleMeetUri, w.BotName, session.Start, session.End.AddMinutes(30), webhook, intro, ct);
                 bot.Attempts = 1; bot.LastAttemptAt = now;
                 sent++;
             }
-            catch (RecallApiException ex)
+            catch (MeetingBotException ex)
             {
                 bot.Status = "failed"; bot.Error = AgentAnalysisService.Cut(ex.Message, 500);
                 s.LastError = bot.Error;
@@ -91,22 +91,22 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     public async Task<int> FinishBotsAsync(ProjectAgentSettings s, AgentWorkspaceSettings? w, CancellationToken ct)
     {
         var now = clock.Now;
-        var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "recall" && (b.Status == "scheduled" || b.Status == "in_call")
+        var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call")
             && b.SessionEndUtc < now.AddMinutes(-3)).Take(10).ToListAsync(ct);
         var added = 0;
         foreach (var bot in bots)
         {
             var over = now > bot.SessionEndUtc.AddMinutes(90);
-            if (!over && w?.RecallApiKeyProtected is not null && bot.BotId.Length > 0)
+            if (!over && botService.Configured && bot.BotId.Length > 0)
             {
                 if (bot.LastAttemptAt is { } last && now - last < TimeSpan.FromMinutes(2)) continue;
                 bot.LastAttemptAt = now; bot.Attempts++;
                 try
                 {
-                    var status = await recall.StatusAsync(secrets.Unprotect(w.RecallApiKeyProtected), w.RecallRegion, bot.BotId, ct);
-                    over = status is "call_ended" or "done" or "fatal" or "analysis_done" or "recording_done";
+                    var status = await botService.StatusAsync(bot.BotId, ct);
+                    over = status is "call_ended" or "done" or "fatal" or "gone";
                 }
-                catch (RecallApiException ex) { bot.Error = AgentAnalysisService.Cut(ex.Message, 500); }
+                catch (MeetingBotException ex) { bot.Error = AgentAnalysisService.Cut(ex.Message, 500); }
             }
             if (!over) { await db.SaveChangesAsync(ct); continue; }
             bot.EndedAt = now;
@@ -116,7 +116,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             {
                 var meeting = await db.ProjectMeetings.AsNoTracking().FirstOrDefaultAsync(m => m.Id == bot.MeetingId, ct);
                 var title = $"{meeting?.Title ?? "Meeting"} · {bot.SessionStartUtc:dd MMM}";
-                if (await signals.AddAsync(s.TenantId, s.ProjectId, AgentSourceKind.LiveMeeting, $"recall:{bot.Id}", title, null, secrets.Unprotect(protectedText),
+                if (await signals.AddAsync(s.TenantId, s.ProjectId, AgentSourceKind.LiveMeeting, $"bot:{bot.Id}", title, null, secrets.Unprotect(protectedText),
                         bot.SessionEndUtc, null, bot.MeetingId, ct) is not null) added++;
             }
             await db.SaveChangesAsync(ct);
@@ -127,9 +127,9 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     /// <summary>While a session is going on: when enough new has been said, ask whether anything important is being missed and say so in the chat.</summary>
     public async Task<int> NudgeAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, CancellationToken ct)
     {
-        if (!w.InCallReminders || w.RecallApiKeyProtected is null) return 0;
+        if (!w.InCallReminders || !botService.Configured) return 0;
         var now = clock.Now;
-        var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "recall" && b.Status == "in_call" && b.BotId != ""
+        var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && b.Status == "in_call" && b.BotId != ""
             && b.NudgeCount < MaxNudges && b.TranscriptLength - b.CheckedLength >= 800 && b.SessionEndUtc > now).Take(3).ToListAsync(ct);
         var posted = 0;
         foreach (var candidate in bots)
@@ -153,12 +153,12 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
                 if (bot.NudgeCount >= MaxNudges) break;
                 try
                 {
-                    await recall.SendChatAsync(secrets.Unprotect(w.RecallApiKeyProtected), w.RecallRegion, bot.BotId, $"🤖 {n}", ct);
+                    await botService.SendChatAsync(bot.BotId, $"🤖 {n}", ct);
                     bot.NudgeCount++; posted++;
                     bot.NudgesSent = string.Join('\n', said.Append(n).TakeLast(20));
                     said.Add(n);
                 }
-                catch (RecallApiException ex) { bot.Error = AgentAnalysisService.Cut(ex.Message, 500); break; }
+                catch (MeetingBotException ex) { bot.Error = AgentAnalysisService.Cut(ex.Message, 500); break; }
             }
             await db.SaveChangesAsync(ct);
         }
@@ -205,7 +205,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     /// Real-time transcript from the bot service (anonymous webhook; the token in the address picks the bot). Appends "Name: words" to the
     /// session's transcript; concurrent deliveries are merged without losing any (the update only lands on the length it read).
     /// </summary>
-    public static async Task ReceiveRecallAsync(IServiceProvider sp, string token, string body, CancellationToken ct)
+    public static async Task ReceiveBotAsync(IServiceProvider sp, string token, string body, CancellationToken ct)
     {
         if (token.Length != 32 || !token.All(Uri.IsHexDigit)) throw new NotFoundException("Unknown bot.");
         var db = sp.GetRequiredService<IAppDbContext>();
@@ -256,7 +256,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         {
             if (session.End > now.AddMinutes(-10)) continue;
             var rows = await db.AgentMeetingBots.Where(b => b.MeetingId == session.Meeting.Id && b.SessionStartUtc == session.Start).ToListAsync(ct);
-            if (rows.Any(b => b.Kind == "recall" && b.Status != "failed")) continue;   // the bot has it
+            if (rows.Any(b => b.Kind == "bot" && b.Status != "failed")) continue;   // the bot has it
             var row = rows.FirstOrDefault(b => b.Kind == "meet");
             if (row is { Status: "done" or "failed" }) continue;
             if (row is null)

@@ -99,7 +99,7 @@ public static class DependencyInjection
         services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
-        services.AddHttpClient("recall", c => c.Timeout = TimeSpan.FromSeconds(20))
+        services.AddHttpClient("meetbot", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });

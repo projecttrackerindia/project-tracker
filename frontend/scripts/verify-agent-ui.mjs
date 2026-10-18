@@ -24,7 +24,7 @@ let findings=[
 ];
 let agent={projectId:pid,enabled:false,readMailbox:true,readChat:true,readMeetings:true,liveBot:false,dailyUpdates:true,mailboxAddress:'agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in',liveBotAvailable:true,aiAvailable:true,
   pending:0,lastRunAt:null,lastError:null,runsThisMonth:0,monthlyRunLimit:300,canManage:true,actingUserName:'Alex Morgan',runs:[],transcriptAccess:false};
-let workspace={recallConfigured:false,recallRegion:'us-west-2',botName:'Project Tracker Agent',inCallReminders:true,canManage:true,enabledProjects:1};
+let workspace={botAvailable:true,botName:'Project Tracker Agent',inCallReminders:true,canManage:true,enabledProjects:1};
 let optIn={googleAvailable:true,microsoftAvailable:false,provider:null,enabled:false,scannedUntil:null,found:0,lastError:null};
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
@@ -52,7 +52,7 @@ try{
   else if(ep==='/api/v1/agent/inbox'){const items=findings.filter(f=>f.status==='Proposed');data={items,pending:items.length,canDecide:true};}
   else if(ep==='/api/v1/agent/my-inbox'&&method==='PUT'){const b=body();writes.push({ep,b});optIn={...optIn,provider:b.provider??optIn.provider,enabled:b.enabled,scannedUntil:'2030-01-06T05:30:00Z'};data=optIn;}
   else if(ep==='/api/v1/agent/my-inbox')data=optIn;
-  else if(ep==='/api/v1/agent/workspace'&&method==='PUT'){const b=body();writes.push({ep,b});workspace={...workspace,recallConfigured:b.clearRecallKey?false:workspace.recallConfigured||!!b.recallApiKey,recallRegion:b.recallRegion??workspace.recallRegion,botName:b.botName??workspace.botName,inCallReminders:b.inCallReminders??workspace.inCallReminders};data=workspace;}
+  else if(ep==='/api/v1/agent/workspace'&&method==='PUT'){const b=body();writes.push({ep,b});workspace={...workspace,botName:b.botName??workspace.botName,inCallReminders:b.inCallReminders??workspace.inCallReminders};data=workspace;}
   else if(ep==='/api/v1/agent/workspace')data=workspace;
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
@@ -133,10 +133,10 @@ try{
  await page.getByRole('link',{name:'My inbox'}).click();await page.getByRole('switch',{name:'Use Gmail'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{provider:'google',enabled:true});
  await page.screenshot({path:path.join(out,'agent-page-inbox.png'),animations:'disabled'});checks.push('inbox-opt-in');
- await page.getByRole('link',{name:'Meeting bot'}).click();await page.getByLabel('Recall.ai API key').fill('rk_test_0123456789abcdefghij');
+ await page.getByRole('link',{name:'Meeting bot'}).click();await page.getByText(/Ready ·/).waitFor();
+ await page.getByLabel('Bot name').fill('Tracker Bot');
  await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForTimeout(300);
- assert.equal(writes.at(-1).b.recallApiKey,'rk_test_0123456789abcdefghij');
- await page.getByText(/Set up ·/).waitFor();
+ assert.deepEqual(writes.at(-1).b,{botName:'Tracker Bot'});
  await page.screenshot({path:path.join(out,'agent-page-bot.png'),animations:'disabled'});checks.push('meeting-bot');
  await noOverflow(page,'agent page');
  await page.close();

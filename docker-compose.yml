@@ -65,6 +65,9 @@ services:
       # Shared cache and rate limits for running several API servers: set REDIS_URL=redis:6379 and start with `--profile redis`. Empty = in-process memory.
       Redis__ConnectionString: ${REDIS_URL:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-projectmanagement-api}
+      # The project agent's own meeting bot (apps/meetbot): set MEETBOT_SECRET (16+ characters) and start with `--profile meetbot`.
+      Agent__MeetingBotUrl: http://meetbot:8080
+      Agent__MeetingBotSecret: ${MEETBOT_SECRET:-}
     volumes: ["files:/app/data/files", "backups:/backups:ro"]   # uploaded files survive a rebuild; backups are only *read* (System health shows the newest)
     expose: ["8080"]
 
@@ -93,6 +96,18 @@ services:
     profiles: ["redis"]
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
     restart: unless-stopped
+
+  # Optional: the project agent's live meeting bot - joins Google Meet stand-ups as a guest and reads the captions.
+  #   set MEETBOT_SECRET in .env, then:  docker compose --profile meetbot up -d
+  meetbot:
+    build: ./apps/meetbot
+    profiles: ["meetbot"]
+    restart: unless-stopped
+    shm_size: "1gb"                 # Chromium needs more shared memory than Docker's 64 MB default
+    environment:
+      MEETBOT_SECRET: ${MEETBOT_SECRET:-}
+      MEETBOT_MAX_BOTS: ${MEETBOT_MAX_BOTS:-4}
+    expose: ["8080"]
 
   web:
     build: ./frontend

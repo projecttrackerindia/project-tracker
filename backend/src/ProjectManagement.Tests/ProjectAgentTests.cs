@@ -293,16 +293,18 @@ public class ProjectAgentTests(ApiFactory factory)
     public async Task The_live_bot_joins_listens_reminds_the_team_and_hands_over_the_transcript()
     {
         AnswerAsAgent();
-        factory.Recall.Reset();
+        factory.MeetingBot.Reset();
         try
         {
             var (owner, project, ravi, _, _) = await SetupAsync("Live Desk");
             await owner.CreateTaskAsync(project, "Gateway certification", new { title = "Gateway certification", priority = "High", dueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2)) });
-            Assert.Equal(HttpStatusCode.Forbidden, (await ravi.Put("/api/v1/agent/workspace", new { recallApiKey = "rk_live_0123456789abcdefghijkl" })).Status);
-            var w = await owner.Put("/api/v1/agent/workspace", new { recallApiKey = "rk_live_0123456789abcdefghijkl", recallRegion = "ap-northeast-1", botName = "Tracker Bot" });
+            // The bot is the installation's own: nothing to buy or set up per workspace. Admins only name it and choose whether it reminds people.
+            Assert.True((await owner.Get("/api/v1/agent/workspace")).Data!["botAvailable"]!.GetValue<bool>());
+            Assert.Equal(HttpStatusCode.Forbidden, (await ravi.Put("/api/v1/agent/workspace", new { botName = "Ravi Bot" })).Status);
+            var w = await owner.Put("/api/v1/agent/workspace", new { botName = "Tracker Bot", inCallReminders = true });
             Assert.True(w.Ok, w.ToString());
-            Assert.True(w.Data!["recallConfigured"]!.GetValue<bool>());
-            Assert.DoesNotContain("rk_live", w.ToString());
+            Assert.Equal("Tracker Bot", w.Data!["botName"]!.GetValue<string>());
+            Assert.True((await owner.Get($"/api/v1/projects/{project}/agent")).Data!["liveBotAvailable"]!.GetValue<bool>());
 
             await ConnectGoogleAsync(owner, transcripts: false);
             var start = DateTime.UtcNow.AddMinutes(3); var end = DateTime.UtcNow.AddMinutes(18);
@@ -310,14 +312,15 @@ public class ProjectAgentTests(ApiFactory factory)
             Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true })).Ok);
 
             await TickAsync();
-            var create = Assert.Single(factory.Recall.Requests, r => r.Path == "/api/v1/bot/" && r.Body.Contains("meet.google.com"));
+            var create = Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots" && r.Body.Contains("meet.google.com"));
             Assert.Contains("Tracker Bot", create.Body);
-            Assert.Contains("/api/v1/agent/recall/", create.Body);
-            var token = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Single(b => b.MeetingId == meeting && b.Kind == "recall").WebhookToken);
+            Assert.Contains("/api/v1/agent/bot/", create.Body);
+            Assert.Contains("leaveAt", create.Body);
+            var token = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Single(b => b.MeetingId == meeting && b.Kind == "bot").WebhookToken);
 
             using var anon = factory.CreateClient();
             async Task Say(string who, string words) =>
-                Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/recall/{token}", new
+                Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/bot/{token}", new
                 {
                     @event = "transcript.data",
                     data = new { data = new { words = words.Split(' ').Select(w => new { text = w }).ToArray(), participant = new { id = 1, name = who } }, bot = new { id = "bot" } },
@@ -327,10 +330,10 @@ public class ProjectAgentTests(ApiFactory factory)
                 await Say("Ravi", "Yesterday I worked on the settlement report and the merchant onboarding screens, today I continue with the onboarding flow and reviews.");
                 await Say("Priya", "I am testing the refund screens and found two layout problems on small phones which I will log as tickets after this call today.");
             }
-            Assert.Equal(HttpStatusCode.NotFound, (await anon.PostAsJsonAsync("/api/v1/agent/recall/00000000000000000000000000000000", new { @event = "transcript.data" })).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await anon.PostAsJsonAsync("/api/v1/agent/bot/00000000000000000000000000000000", new { @event = "transcript.data" })).StatusCode);
             // Odd deliveries are ignored, never an error.
-            Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/recall/{token}", new[] { 1, 2 })).StatusCode);
-            Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/recall/{token}", new { @event = 5, data = "text" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/bot/{token}", new[] { 1, 2 })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/bot/{token}", new { @event = 5, data = "text" })).StatusCode);
 
             // Ten minutes in: the bot points out what is being missed, in the meeting chat.
             var began = DateTime.UtcNow.AddMinutes(-10); var finish = DateTime.UtcNow.AddMinutes(5);
@@ -344,7 +347,7 @@ public class ProjectAgentTests(ApiFactory factory)
                 return 0;
             });
             await TickAsync();
-            Assert.Contains(factory.Recall.Chat, m => m.Contains("overdue gateway work"));
+            Assert.Contains(factory.MeetingBot.Chat, m => m.Contains("overdue gateway work"));
             Assert.Contains(factory.Ai.Prompts, p => p.System.Contains("live stand-up") && p.User.Contains("Gateway certification") && p.User.Contains("Priya: I am testing"));
 
             // The session ends: the transcript is read like any other meeting.
@@ -355,7 +358,7 @@ public class ProjectAgentTests(ApiFactory factory)
                 db.SaveChanges();
                 return 0;
             });
-            factory.Recall.Status = "done";
+            factory.MeetingBot.Status = "done";
             await TickAsync();
             factory.WithDb(db =>
             {
@@ -364,9 +367,9 @@ public class ProjectAgentTests(ApiFactory factory)
                 Assert.Contains(db.AgentRuns.IgnoreQueryFilters().Where(r => r.ProjectId == project).ToList(), r => r.Trigger == "meeting" && r.Status == "done");
                 return 0;
             });
-            Assert.Single(factory.Recall.Requests, r => r.Path == "/api/v1/bot/");   // one bot for the session
+            Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots");   // one bot for the session
         }
-        finally { factory.Ai.Reset(); factory.Recall.Reset(); }
+        finally { factory.Ai.Reset(); factory.MeetingBot.Reset(); }
     }
 
     [Fact]

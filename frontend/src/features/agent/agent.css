@@ -110,3 +110,6 @@
 .ag-provider small { font-size: 12px; color: var(--text-3); }
 .ag-bot-form { align-items: start; }
 .ag-bot-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.ag-bot-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.ag-bot-notes li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.ag-bot-notes svg { flex: none; margin-top: 2px; color: var(--primary); }

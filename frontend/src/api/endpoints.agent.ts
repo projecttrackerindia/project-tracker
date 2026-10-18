@@ -15,7 +15,7 @@ export const agentApi = {
   approve: (id: string, edits?: AgentApproveEdits) => post<AgentFinding>(`/agent/findings/${id}/approve`, edits ?? {}),
   dismiss: (id: string) => post<AgentFinding>(`/agent/findings/${id}/dismiss`),
   workspace: () => get<AgentWorkspace>('/agent/workspace'),
-  saveWorkspace: (b: { recallApiKey?: string; clearRecallKey?: boolean; recallRegion?: string; botName?: string; inCallReminders?: boolean }) => put<AgentWorkspace>('/agent/workspace', b),
+  saveWorkspace: (b: { botName?: string; inCallReminders?: boolean }) => put<AgentWorkspace>('/agent/workspace', b),
   myInbox: () => get<AgentInboxOptIn>('/agent/my-inbox'),
   saveMyInbox: (b: { provider?: 'google' | 'microsoft'; enabled: boolean }) => put<AgentInboxOptIn>('/agent/my-inbox', b),
 };
