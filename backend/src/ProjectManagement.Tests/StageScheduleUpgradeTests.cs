@@ -18,6 +18,7 @@ public class StageScheduleUpgradeTests
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder); builder.Entity<Project>().Ignore(p => p.StageScheduleMode); builder.Entity<ProjectStage>().Ignore(s => s.DurationDays);
+            builder.Entity<Tenant>().Ignore(t => t.TimeZone);   // added later by 20261018000050_WorkspaceTimeZone
         }
     }
     private static async Task<(Guid Project, Guid Stage)> SeedOldAsync(AppDbContext db, CurrentContext context)
