@@ -113,3 +113,14 @@
 .ag-bot-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
 .ag-bot-notes li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-2); line-height: 1.5; }
 .ag-bot-notes svg { flex: none; margin-top: 2px; color: var(--primary); }
+
+/* accuracy: a quote not found in its source, an owner's answer, the tuning dialog */
+.ag-unchecked { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 700; }
+.ag-unchecked + .ag-conf { margin-left: 0; }
+.ag-declined { color: var(--danger-text) !important; font-weight: 600; }
+.ag-tune { display: grid; gap: 4px; }
+.ag-tune dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; font-size: 12.5px; }
+.ag-tune dt { color: var(--text-3); }
+.ag-tune dd { margin: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-mine-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.ag-mine-actions .input { flex: 1 1 220px; min-width: 0; }

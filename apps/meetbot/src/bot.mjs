@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { askToJoin, captionWatcher, enableCaptions, leave, pageText, SEL, sendChat, TEXT, waitUntilAdmitted } from './meet.mjs';
+import { askToJoin, captionWatcher, enableCaptions, leave, pageText, SEL, sendChat, setCaptionLanguage, TEXT, waitUntilAdmitted } from './meet.mjs';
 
 /**
  * One bot in one meeting: waits until its start time, joins as a guest, turns on captions and streams who-said-what to the webhook, posts
@@ -8,7 +8,7 @@ import { askToJoin, captionWatcher, enableCaptions, leave, pageText, SEL, sendCh
  * Statuses: scheduled → joining → waiting_admission → in_call_recording → call_ended → done (or fatal, with an error).
  */
 export class MeetBot {
-  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage }, deps) {
+  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage }, deps) {
     this.id = randomUUID();
     this.meetingUrl = meetingUrl;
     this.botName = botName;
@@ -16,6 +16,8 @@ export class MeetBot {
     this.leaveAt = leaveAt ? new Date(leaveAt) : new Date(Math.max(Date.now(), this.joinAt.getTime()) + 3 * 3600_000);
     this.webhookUrl = webhookUrl;
     this.introMessage = introMessage;
+    this.agendaMessage = agendaMessage || null;
+    this.captionLanguage = captionLanguage || null;
     this.deps = deps;   // { launch(): Promise<Browser>, admitTimeoutMs, aloneMs, log }
     this.status = 'scheduled';
     this.error = null;
@@ -68,9 +70,11 @@ export class MeetBot {
       if (admitted !== 'admitted') throw new Error(admitted === 'denied' ? 'The bot was not let into the meeting.' : 'Nobody let the bot into the meeting.');
       this.log('in the call');
       if (!(await enableCaptions(page))) this.log('captions could not be switched on');
+      else if (this.captionLanguage && !(await setCaptionLanguage(page, this.captionLanguage))) this.log(`captions stay in the meeting's default language (${this.captionLanguage} not offered)`);
       await page.evaluate(captionWatcher, SEL.captionsRegion);
       this.setStatus('in_call_recording');
-      if (this.introMessage) this.chatQueue.unshift(this.introMessage);
+      // Hello first, then the agenda, then anything the agent asked to say meanwhile.
+      this.chatQueue.unshift(...[this.introMessage, this.agendaMessage].filter(Boolean));
       await this.stayInCall(page);
       await page.evaluate(() => window.ptFlushCaptions?.()).catch(() => undefined);
       await page.waitForTimeout(500);

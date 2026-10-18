@@ -9,6 +9,9 @@ public sealed class FakeSlack : HttpMessageHandler
 {
     private readonly ConcurrentDictionary<string, (string Team, string App)> _codes = new();
     public ConcurrentBag<string> RevokedTokens { get; } = [];
+    /// <summary>What conversations.history returns (newest first, like Slack), for any channel.</summary>
+    public ConcurrentQueue<(string Ts, string User, string Text)> History { get; } = new();
+    public ConcurrentQueue<string> HistoryReads { get; } = new();
     public string IssueCode(string team, string app = "A_TEST")
     {
         var code = Guid.NewGuid().ToString("N"); _codes[code] = (team, app); return code;
@@ -25,6 +28,18 @@ public sealed class FakeSlack : HttpMessageHandler
         else if (request.RequestUri.AbsolutePath == "/api/auth.revoke")
         {
             RevokedTokens.Add(request.Headers.Authorization!.Parameter!); result = new { ok = true };
+        }
+        else if (request.RequestUri.AbsolutePath == "/api/conversations.history")
+        {
+            HistoryReads.Enqueue(request.RequestUri.Query);
+            var oldest = decimal.Parse(System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["oldest"] ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+            result = new { ok = true, has_more = false, messages = History.Where(m => decimal.Parse(m.Ts, System.Globalization.CultureInfo.InvariantCulture) > oldest)
+                .OrderByDescending(m => m.Ts).Select(m => new { type = "message", ts = m.Ts, user = m.User, text = m.Text }).ToArray() };
+        }
+        else if (request.RequestUri.AbsolutePath == "/api/users.info")
+        {
+            var user = System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["user"];
+            result = new { ok = true, user = new { id = user, name = "ravi", profile = new { real_name = user == "U1" ? "Ravi Kumar" : "Priya" } } };
         }
         else throw new InvalidOperationException("Unexpected Slack call; no real network requests are allowed in these tests.");
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(result)) };

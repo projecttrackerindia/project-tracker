@@ -19,7 +19,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// What the project agent reads, kept until it has read it: mail to the project's address, a stretch of project chat, a meeting transcript,
 /// mail from a person's own inbox (only theirs, only when they opted in). The text is stored encrypted and never logged.
 /// </summary>
-public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, ProjectAccess access,
+public class AgentSignalService(IAppDbContext db, AppClock clock, ISecretProtector secrets, ProjectAccess access,
     AgentSettingsService settings, Recorder recorder, IOptions<AgentOptions> options)
 {
     public const int MaxContent = 60_000;
@@ -74,7 +74,60 @@ public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock 
         return first;
     }
 
-    public string Read(AgentSignal s) => secrets.Unprotect(s.ContentProtected);
+    /// <summary>The text of a signal ("" once it was erased after the retention period).</summary>
+    public string Read(AgentSignal s) => s.ContentProtected.Length == 0 ? "" : secrets.Unprotect(s.ContentProtected);
+
+    // ---------------------------------------------------------------- WhatsApp
+
+    private static readonly Regex ProjectAddress = new(@"^\s*([A-Za-z][A-Za-z0-9]{1,9})\s*[:\-–]\s*(\S[\s\S]*)$", RegexOptions.CultureInvariant);
+    private const int WhatsAppPerDay = 200;
+
+    /// <summary>"PAY: refunds are blocked" - a message that starts with what looks like a project key.</summary>
+    public static bool AddressedToProject(string text) => ProjectAddress.IsMatch(text);
+
+    /// <summary>
+    /// A WhatsApp text from a member's verified number that starts with a project key: kept (encrypted) for that project's agent, when the agent
+    /// reads WhatsApp there and the member works on the project. Called inside the WhatsApp gateway's signed tenant transaction; the caller saves.
+    /// </summary>
+    public async Task<bool> AddWhatsAppAsync(Guid tenantId, Guid userId, string messageId, string text, DateTime at, CancellationToken ct)
+    {
+        var m = ProjectAddress.Match(text);
+        if (!m.Success) return false;
+        var key = m.Groups[1].Value.ToUpperInvariant();
+        var project = await db.Projects.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.TenantId == tenantId && !p.IsDeleted && p.Status != ProjectStatus.Archived && p.Key == key).Select(p => new { p.Id, p.OwnerId }).FirstOrDefaultAsync(ct);
+        if (project is null) return false;
+        if (!await db.ProjectAgentSettings.IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.ProjectId == project.Id && x.Enabled && x.ReadWhatsApp, ct)) return false;
+        // Only from people who work on the project: its owner, its members, or someone with work in it.
+        var works = project.OwnerId == userId
+            || await db.ProjectMembers.IgnoreQueryFilters().AnyAsync(x => x.ProjectId == project.Id && x.UserId == userId, ct)
+            || await db.Tasks.IgnoreQueryFilters().AnyAsync(t => t.ProjectId == project.Id && t.AssigneeId == userId, ct);
+        if (!works) return false;
+        var since = clock.Now.AddHours(-24);
+        if (await db.AgentSignals.IgnoreQueryFilters().CountAsync(x => x.ProjectId == project.Id && x.Source == AgentSourceKind.WhatsApp && x.CreatedAt >= since, ct) >= WhatsAppPerDay) return false;
+        var name = await db.Users.IgnoreQueryFilters().AsNoTracking().Where(u => u.Id == userId && u.IsActive).Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
+        if (name is null) return false;
+        var said = m.Groups[2].Value.Trim();
+        return await AddAsync(tenantId, project.Id, AgentSourceKind.WhatsApp, $"wa:{Hash(messageId)}", $"WhatsApp from {name}", name,
+            $"{name} (WhatsApp, from their verified number): {said}", at, null, null, ct) is not null;
+    }
+
+    // ---------------------------------------------------------------- retention
+
+    /// <summary>
+    /// Erases what the agent read once it was read long enough ago (mail, chat, transcripts - in every workspace); the proposals, with their short
+    /// quotes, stay. Returns how many were erased.
+    /// </summary>
+    public static async Task<int> PurgeAsync(IAppDbContext db, DateTime now, int days, CancellationToken ct)
+    {
+        if (days <= 0) return 0;
+        var cutoff = now.AddDays(-days);
+        var signals = await db.AgentSignals.IgnoreQueryFilters().Where(x => x.ProcessedAt != null && x.ProcessedAt < cutoff && x.ContentProtected != "")
+            .OrderBy(x => x.ProcessedAt).Take(500).ExecuteUpdateAsync(u => u.SetProperty(x => x.ContentProtected, ""), ct);
+        var bots = await db.AgentMeetingBots.IgnoreQueryFilters().Where(x => x.EndedAt != null && x.EndedAt < cutoff && x.TranscriptProtected != null)
+            .OrderBy(x => x.EndedAt).Take(200).ExecuteUpdateAsync(u => u.SetProperty(x => x.TranscriptProtected, (string?)null), ct);
+        return signals + bots;
+    }
 
     // ---------------------------------------------------------------- a transcript or notes pasted by a person
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { agentApi, integrationsApi, meetingApi } from '../../api/endpoints';
+import { agentApi, CAPTION_LANGUAGES, integrationsApi, meetingApi, type AgentSettingsPatch } from '../../api/endpoints';
 import type { ProjectAgent } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, Field, Modal, PageLoader } from '../../components/ui';
@@ -17,14 +17,18 @@ type View = 'proposed' | 'applied' | 'dismissed' | 'all';
 const VIEWS: { id: View; label: string }[] = [{ id: 'proposed', label: 'To review' }, { id: 'applied', label: 'Approved' }, { id: 'dismissed', label: 'Dismissed' }, { id: 'all', label: 'All' }];
 const TRIGGER: Record<string, string> = { schedule: 'New chat', meeting: 'Meeting', mail: 'Email', manual: 'Run by hand' };
 
-type Source = 'readMailbox' | 'readChat' | 'readMeetings' | 'liveBot' | 'dailyUpdates';
-const SOURCES: { key: Source; icon: IconName; title: string; text: string }[] = [
+type Source = 'readMailbox' | 'readChat' | 'readMeetings' | 'liveBot' | 'autoJoinCalendar' | 'readWhatsApp' | 'sendMinutes' | 'dailyUpdates';
+const SOURCES: { key: Source; icon: IconName; title: string; text: string; show?: (a: ProjectAgent) => boolean }[] = [
   { key: 'readMailbox', icon: 'mail', title: 'Project mailbox', text: 'Mail sent or copied to the project address' },
   { key: 'readChat', icon: 'message', title: 'Project chat', text: 'Read once a conversation goes quiet' },
   { key: 'readMeetings', icon: 'video', title: 'Meetings', text: 'Google Meet transcripts after each session' },
-  { key: 'liveBot', icon: 'agent', title: 'Live meeting bot', text: 'Joins stand-ups and reminds the team in the chat' },
+  { key: 'liveBot', icon: 'agent', title: 'Live meeting bot', text: 'Joins stand-ups, posts the agenda and reminds the team in the chat' },
+  { key: 'autoJoinCalendar', icon: 'calendar', title: 'Calls on my calendar', text: 'The bot also joins Meet calls on your calendar that name the project', show: (a) => a.liveBot && a.liveBotAvailable },
+  { key: 'readWhatsApp', icon: 'phone', title: 'WhatsApp', text: 'Messages starting with the project key, from members\' verified numbers', show: (a) => a.whatsAppAvailable },
+  { key: 'sendMinutes', icon: 'note', title: 'Meeting minutes', text: 'Sent to the people in a meeting once everything from it is decided' },
   { key: 'dailyUpdates', icon: 'bell', title: 'Morning updates', text: 'Each person gets their own update at 9:00' },
 ];
+const LANGUAGE = Object.fromEntries(CAPTION_LANGUAGES);
 
 /** The Agent tab of a project: switch the agent on, choose what it reads, give it a transcript, and review what it found. */
 export function ProjectAgentTab({ projectId, archived }: { projectId: string; archived: boolean }) {
@@ -34,6 +38,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
   const findings = useWsQuery(['agent', 'findings', projectId, view], () => agentApi.findings(projectId, view), { enabled: !!q.data });
   const [busy, setBusy] = useState<string | null>(null);
   const [transcript, setTranscript] = useState(false);
+  const [tuning, setTuning] = useState(false);
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); };
 
   if (q.isLoading) return <PageLoader />;
@@ -41,10 +46,10 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
   const a = q.data;
   const manage = a.canManage && !archived;
 
-  const save = async (patch: Partial<Pick<ProjectAgent, Source | 'enabled'>>) => {
+  const save = async (patch: AgentSettingsPatch & { enabled?: boolean }) => {
     setBusy(Object.keys(patch)[0]);
     try {
-      await agentApi.save(projectId, { enabled: a.enabled, readMailbox: a.readMailbox, readChat: a.readChat, readMeetings: a.readMeetings, liveBot: a.liveBot, dailyUpdates: a.dailyUpdates, ...patch });
+      await agentApi.save(projectId, { enabled: a.enabled, ...patch });
       refresh();
       if (patch.enabled) toast('The project agent is on. It reads new mail, chat and meetings from now on.');
     } catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
@@ -151,7 +156,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
         <div className="card ag-panel">
           <h4 className="ag-panel-title"><Icon name="layers" size={14} /> What it reads</h4>
           <ul className="ag-sources">
-            {SOURCES.map((s) => {
+            {SOURCES.filter((s) => !s.show || s.show(a)).map((s) => {
               const on = a[s.key];
               const blocked = s.key === 'liveBot' && !a.liveBotAvailable;
               return (
@@ -171,6 +176,18 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
           <p className="ag-hint"><Link to="/project-agent/my-inbox">Let it look in my own inbox too</Link></p>
         </div>
 
+        <div className="card ag-panel ag-tune">
+          <h4 className="ag-panel-title"><Icon name="target" size={14} /> Accuracy</h4>
+          <dl>
+            <dt>Notes</dt><dd>{a.instructions ? a.instructions.split('\n')[0] : manage ? 'None yet' : 'Set by the lead'}</dd>
+            <dt>Names</dt><dd>{a.speakerAliases ? `${a.speakerAliases.split('\n').length} matched to people` : 'None yet'}</dd>
+            <dt>Language</dt><dd>{a.captionLanguage ? LANGUAGE[a.captionLanguage] ?? a.captionLanguage : 'Meeting default'}</dd>
+            {a.slackAvailable && <><dt>Slack</dt><dd>{a.slackChannelId ?? 'No channel'}</dd></>}
+          </dl>
+          <p className="ag-hint">Tell it your project's words and who is who in calls; it also learns from what you approve, change and dismiss.</p>
+          {manage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTuning(true)}><Icon name="edit" size={14} />Notes and names</button>}
+        </div>
+
         {a.runs.length > 0 && (
           <div className="card ag-panel">
             <h4 className="ag-panel-title"><Icon name="clock" size={14} /> Recent readings</h4>
@@ -187,8 +204,52 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
         )}
       </aside>
 
+      {tuning && <TuneModal a={a} onClose={() => setTuning(false)} onSave={async (patch) => { await agentApi.save(projectId, { enabled: a.enabled, ...patch }); refresh(); setTuning(false); toast('Saved. The next reading uses it.'); }} />}
       {transcript && <TranscriptModal projectId={projectId} onClose={() => setTranscript(false)} onDone={() => { setTranscript(false); setView('proposed'); refresh(); }} />}
     </div>
+  );
+}
+
+/** The lead's notes for the agent, who is who in calls, the meetings' language and the Slack channel. */
+function TuneModal({ a, onClose, onSave }: { a: ProjectAgent; onClose: () => void; onSave: (patch: AgentSettingsPatch) => Promise<void> }) {
+  const [instructions, setInstructions] = useState(a.instructions ?? '');
+  const [aliases, setAliases] = useState(a.speakerAliases ?? '');
+  const [language, setLanguage] = useState(a.captionLanguage ?? '');
+  const [slack, setSlack] = useState(a.slackChannelId ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    setBusy(true); setError(null);
+    try { await onSave({ instructions, speakerAliases: aliases, captionLanguage: language, ...(a.slackAvailable ? { slackChannelId: slack.trim() } : {}) }); }
+    catch (e) { setError(errText(e, 'Could not save.')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Notes and names" subtitle="What the agent should know about this project. Only people who can edit the project see this." size="lg" onClose={onClose}
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void submit()}>{busy && <span className="spinner" />}Save</button></>}>
+      {error && <div className="form-error" role="alert">{error}</div>}
+      <div className="form-grid">
+        <Field label="Notes for the agent" full hint="Abbreviations and terms, who usually owns what, what to ignore. Up to 4,000 characters.">
+          <textarea className="input" aria-label="Notes for the agent" rows={5} maxLength={4000} value={instructions} onChange={(e) => setInstructions(e.target.value)}
+            placeholder={'UAT = the bank\'s test environment.\nRefunds belong to Priya unless someone says otherwise.\nIgnore talk about the office move.'} />
+        </Field>
+        <Field label="Names in calls and chat" full hint="One per line: the name as captions or chat show it = the person's email. Helps when people use nicknames or captions misspell a name.">
+          <textarea className="input ag-textarea" aria-label="Names in calls and chat" rows={4} maxLength={4000} value={aliases} onChange={(e) => setAliases(e.target.value)}
+            placeholder={'RK = ravi.kumar@company.com\nPriya S = priya@company.com'} />
+        </Field>
+        <Field label="Meeting language" hint="The bot switches Meet's captions to it; captions in the wrong language are gibberish.">
+          <select className="input" aria-label="Meeting language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <option value="">Meeting default</option>
+            {CAPTION_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+        </Field>
+        {a.slackAvailable && (
+          <Field label="Slack channel ID" hint="In Slack: the channel's name › About (at the bottom, starts with C). Invite the app to the channel.">
+            <input className="input" aria-label="Slack channel ID" value={slack} maxLength={24} placeholder="C0123ABCD" onChange={(e) => setSlack(e.target.value)} />
+          </Field>
+        )}
+      </div>
+    </Modal>
   );
 }
 

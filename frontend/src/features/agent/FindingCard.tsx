@@ -23,7 +23,7 @@ const KIND: Record<AgentFindingKind, { label: string; icon: IconName; tone: stri
 };
 
 const SOURCE_ICON: Record<AgentSourceKind, IconName> = {
-  ProjectMailbox: 'mail', PersonalMail: 'mail', Chat: 'message', MeetingTranscript: 'video', LiveMeeting: 'video', Manual: 'note',
+  ProjectMailbox: 'mail', PersonalMail: 'mail', Chat: 'message', MeetingTranscript: 'video', LiveMeeting: 'video', Manual: 'note', Slack: 'message', WhatsApp: 'phone',
 };
 
 const STATUS_LABEL: Record<string, string> = { todo: 'To do', in_progress: 'In progress', done: 'Done', fixed: 'Fixed', resolved: 'Resolved' };
@@ -66,6 +66,7 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
       <header className="ag-card-head">
         <span className="ag-kind"><Icon name={meta.icon} size={13} />{meta.label}</span>
         {showProject && <Link className="ag-project" to={`/projects/${f.projectId}?tab=agent`}>{f.projectKey} · {f.projectName}</Link>}
+        {!f.grounded && <span className="ag-unchecked" title="The quoted words were not found in the source - check it before approving"><Icon name="alert" size={12} />Check the source</span>}
         <span className="ag-conf" title="How sure the agent is">{f.confidence}%</span>
       </header>
       <h4 className="ag-title">{edits.title ?? f.title}</h4>
@@ -148,6 +149,9 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
           <span className="ag-when">
             {f.status === 'Applied' ? <><Icon name="checkCircle" size={13} /> {f.appliedKey ? <>Done as <b>{f.appliedKey}</b></> : 'Noted'}</> : <><Icon name="xCircle" size={13} /> Dismissed</>}
             {f.decidedBy && ` by ${f.decidedBy.name}`}{f.decidedAt && ` · ${formatDateTime(f.decidedAt)}`}
+            {f.edits && <> · changed {f.edits}</>}
+            {f.ownerResponse === 'accepted' && <> · <Icon name="tick" size={12} /> {f.assignee?.name ?? 'The owner'} accepted</>}
+            {f.ownerResponse === 'declined' && <> · <b className="ag-declined">{f.assignee?.name ?? 'The owner'} says it is not theirs{f.ownerNote ? `: ${f.ownerNote}` : ''}</b></>}
           </span>
         )}
       </footer>

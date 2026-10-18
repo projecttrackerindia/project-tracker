@@ -21,11 +21,13 @@ public class MeetingBotClient(IHttpClientFactory http, IOptions<AgentOptions> op
     public bool Configured => Uri.TryCreate(options.Value.MeetingBotUrl, UriKind.Absolute, out _) && (options.Value.MeetingBotSecret?.Length ?? 0) >= 16;
     private string Base => options.Value.MeetingBotUrl!.TrimEnd('/');
 
-    public async Task<string> CreateBotAsync(string meetingUrl, string botName, DateTime joinAtUtc, DateTime leaveAtUtc, string webhookUrl, string introMessage, CancellationToken ct)
+    /// <summary>Sends a bot. The agenda is posted after the hello; the caption language (Meet's own name for it, e.g. "Hindi") is set when Meet offers it.</summary>
+    public async Task<string> CreateBotAsync(string meetingUrl, string botName, DateTime joinAtUtc, DateTime leaveAtUtc, string webhookUrl, string introMessage, CancellationToken ct,
+        string? agendaMessage = null, string? captionLanguage = null)
     {
         var doc = await SendAsync(HttpMethod.Post, $"{Base}/bots", new
         {
-            meetingUrl, botName, webhookUrl, introMessage,
+            meetingUrl, botName, webhookUrl, introMessage, agendaMessage, captionLanguage,
             joinAt = joinAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ"), leaveAt = leaveAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ"),
         }, "send the bot", ct);
         return doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } s

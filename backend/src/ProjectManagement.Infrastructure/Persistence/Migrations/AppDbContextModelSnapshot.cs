@@ -31,6 +31,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ActingUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AutoJoinCalendar")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("CaptionLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<DateTime?>("ChatReadUntil")
                         .HasColumnType("timestamp with time zone");
 
@@ -49,6 +56,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(500)
@@ -83,12 +94,30 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("ReadMeetings")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("ReadWhatsApp")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("RunMonth")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
 
                     b.Property<int>("RunsThisMonth")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("SendMinutes")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SlackChannelId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SlackReadUntil")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SpeakerAliases")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -213,6 +242,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("MeetingId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("MinutesSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -294,6 +326,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("Edits")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Error")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -301,6 +337,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("Evidence")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("Grounded")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid?>("IssueId")
                         .HasColumnType("uuid");
@@ -313,6 +352,21 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("NewStatus")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("OriginalTitle")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("OwnerNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("OwnerRespondedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OwnerResponse")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("Priority")
                         .HasMaxLength(32)
@@ -356,6 +410,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId", "Status", "CreatedAt");
+
+                    b.HasIndex("AssigneeId");
 
                     b.HasIndex("RunId");
 
@@ -421,6 +477,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("CalendarEventId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int>("CheckedLength")
                         .HasColumnType("integer");
 
@@ -451,6 +511,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("MeetingId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("MeetUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<int>("NudgeCount")
                         .HasColumnType("integer");
 
@@ -473,6 +537,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
 
                     b.Property<int>("TranscriptLength")
                         .HasColumnType("integer");

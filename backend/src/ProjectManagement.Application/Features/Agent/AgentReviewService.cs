@@ -3,6 +3,7 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Issues;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Tasks;
 using ProjectManagement.Application.Services;
@@ -16,7 +17,8 @@ namespace ProjectManagement.Application.Features.Agent;
 /// use) or dismissed by someone who may edit the project. Notes - delays, missed points, suggestions, decisions - are recorded when approved.
 /// </summary>
 public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access, AgentSettingsService settings,
-    TaskService tasks, ActionItemService actionItems, IssueService issues)
+    TaskService tasks, ActionItemService actionItems, IssueService issues, NotificationService notifications, AgentMinutesService minutes,
+    Microsoft.Extensions.Logging.ILogger<AgentReviewService> log)
 {
     private const int PageSize = 100;
 
@@ -53,6 +55,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         f.Status = AgentFindingStatus.Dismissed; f.DecidedBy = ctx.RequireUserId(); f.DecidedAt = clock.Now; f.UpdatedAt = clock.Now;
         recorder.Audit("agent.finding_dismissed", "AgentFinding", f.Id, null, new { f.Kind });
         await db.SaveChangesAsync(ct);
+        await MinutesAsync([f.RunId], ct);
         return (await DtosAsync([f], ct))[0];
     }
 
@@ -61,6 +64,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var f = await DecidableAsync(id, ct);
         if (edits is not null) await EditAsync(f, edits, ct);
         await ApplyAsync(f, ct);
+        await MinutesAsync([f.RunId], ct);
         return (await DtosAsync([await db.AgentFindings.AsNoTracking().FirstAsync(x => x.Id == id, ct)], ct))[0];
     }
 
@@ -81,7 +85,67 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             if (f.Status == AgentFindingStatus.Applied) applied++; else failed++;
         }
         var rows = await db.AgentFindings.AsNoTracking().Where(f => ids.Contains(f.Id)).OrderBy(f => f.CreatedAt).ToListAsync(ct);
+        await MinutesAsync(rows.Select(r => r.RunId), ct);
         return new ApproveAllResult(applied, failed, await DtosAsync(rows, ct), skipped);
+    }
+
+    /// <summary>Minutes go out once a meeting is fully decided; a failure there never undoes the decision.</summary>
+    private async Task MinutesAsync(IEnumerable<Guid> runIds, CancellationToken ct)
+    {
+        try { await minutes.SendIfDecidedAsync(runIds, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Project agent minutes could not be sent"); }
+    }
+
+    // ---------------------------------------------------------------- the assignee's answer
+
+    private static readonly AgentFindingKind[] Gives = [AgentFindingKind.CreateTask, AgentFindingKind.CreateActionItem, AgentFindingKind.CreateIssue];
+
+    /// <summary>Work the agent gave me in the last month (approved by someone else), so I can say it is mine - or that it is not.</summary>
+    public async Task<AgentFindingPageDto> AssignedAsync(CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId(); ctx.RequireTenantId();
+        var since = clock.Now.AddDays(-30);
+        var rows = await db.AgentFindings.AsNoTracking().Where(f => f.AssigneeId == me && f.Status == AgentFindingStatus.Applied && Gives.Contains(f.Kind)
+                && f.DecidedAt >= since && f.DecidedBy != me)
+            .OrderBy(f => f.OwnerResponse != null).ThenByDescending(f => f.DecidedAt).Take(PageSize).ToListAsync(ct);
+        var waiting = await db.AgentFindings.CountAsync(f => f.AssigneeId == me && f.Status == AgentFindingStatus.Applied && Gives.Contains(f.Kind)
+            && f.DecidedAt >= since && f.DecidedBy != me && f.OwnerResponse == null, ct);
+        // Only the short quote it came from; nothing else of what the agent read.
+        var dtos = (await DtosAsync(rows, ct)).Select(d => d with { Evidence = AgentAnalysisService.Cut(d.Evidence, 200) }).ToList();
+        return new AgentFindingPageDto(dtos, waiting, false);
+    }
+
+    /// <summary>The assignee accepts the work the agent gave them, or says it is not theirs (the approver and the project owner hear why).</summary>
+    public async Task<AgentFindingDto> RespondAsync(Guid id, AgentOwnerResponseRequest req, CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
+        var f = await db.AgentFindings.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("That item was not found.");
+        if (f.AssigneeId != me || f.Status != AgentFindingStatus.Applied || !Gives.Contains(f.Kind))
+            throw new ForbiddenException("Only the person the agent gave this to can answer.", "PERMISSION_DENIED");
+        var answer = req.Response?.Trim().ToLowerInvariant();
+        if (answer is not ("accepted" or "declined")) throw new ValidationException("response", "Answer accepted or declined.");
+        var note = req.Note?.Trim();
+        if (note is { Length: > 500 }) throw new ValidationException("note", "Keep the note to 500 characters.");
+        if (answer == "declined" && string.IsNullOrEmpty(note)) throw new ValidationException("note", "Say why, or whose it is, so the lead can pass it on.");
+        f.OwnerResponse = answer; f.OwnerNote = string.IsNullOrEmpty(note) ? null : note; f.OwnerRespondedAt = clock.Now; f.UpdatedAt = clock.Now;
+        recorder.Audit(answer == "accepted" ? "agent.owner_accepted" : "agent.owner_declined", "AgentFinding", f.Id, null, new { f.AppliedKey });
+        if (answer == "declined")
+        {
+            var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == f.ProjectId, ct);
+            var who = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstAsync(ct);
+            var what = f.AppliedKey ?? f.Title;
+            foreach (var uid in new[] { f.DecidedBy ?? project.OwnerId, project.OwnerId }.Distinct())
+                await notifications.AddAsync(uid, NotificationType.ProjectUpdated, Text.Truncate($"{who} says {what} is not theirs", 200)!, $"{f.Title}: {note}",
+                    $"/projects/{project.Id}?tab=agent", $"agent-declined:{f.Id}:{uid}", ct: ct);
+            // On the task too, so whoever looks at it sees the question.
+            if (f.Kind == AgentFindingKind.CreateTask && f.AppliedEntityId is { } taskId)
+            {
+                try { await tasks.AddCommentAsync(taskId, new CreateCommentRequest(AgentAnalysisService.Cut($"Not mine: {note}", 4000)!, null, null), ct); }
+                catch (AppException) { /* they may not be allowed to comment; the notice is enough */ }
+            }
+        }
+        await db.SaveChangesAsync(ct);
+        return (await DtosAsync([f], ct))[0];
     }
 
     // ---------------------------------------------------------------- deciding
@@ -97,6 +161,9 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
 
     private async Task EditAsync(AgentFinding f, ApproveFindingRequest e, CancellationToken ct)
     {
+        // What the approver changed is kept, so the agent learns how this team wants things written and given out.
+        var changed = new List<string>();
+        var before = (f.Title, f.Detail, f.AssigneeId, f.DueDate, f.Priority, f.NewStatus, f.Comment);
         if (e.Title is { } title)
         {
             title = title.Trim();
@@ -108,6 +175,15 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         else if (e.AssigneeId is { } who) { await access.EnsureTenantMemberAsync(who, "assigneeId", ct); f.AssigneeId = who; }
         if (e.ClearDueDate == true) f.DueDate = null; else if (e.DueDate is { } due) f.DueDate = due;
         if (e.Priority is { } p) f.Priority = p;
+        Changes();
+        void Changes()
+        {
+            if (f.Title != before.Title) { f.OriginalTitle ??= before.Title; changed.Add("title"); }
+            if (f.Detail != before.Detail) changed.Add("description");
+            if (f.AssigneeId != before.AssigneeId) changed.Add("owner");
+            if (f.DueDate != before.DueDate) changed.Add("date");
+            if (f.Priority != before.Priority) changed.Add("priority");
+        }
         if (e.NewStatus is { } st)
         {
             var ok = f.Kind == AgentFindingKind.UpdateTask ? st is "todo" or "in_progress" or "done" : f.Kind == AgentFindingKind.UpdateIssue && st is "in_progress" or "fixed" or "resolved";
@@ -115,6 +191,9 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             f.NewStatus = st.Length == 0 ? null : st;
         }
         if (e.Comment is not null) f.Comment = e.Comment.Trim().Length == 0 ? null : AgentAnalysisService.Cut(e.Comment.Trim(), 4000);
+        if (f.NewStatus != before.NewStatus) changed.Add("status");
+        if (f.Comment != before.Comment) changed.Add("comment");
+        if (changed.Count > 0) f.Edits = AgentAnalysisService.Cut(string.Join(", ", changed.Distinct()), 500);
     }
 
     /// <summary>Carries the proposal out as the person approving it. A failure is kept on the proposal (they can edit it and try again).</summary>
@@ -143,6 +222,11 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         recorder.Audit("agent.finding_applied", "AgentFinding", row.Id, null, new { row.Kind, entity, key });
         if (row.Kind is AgentFindingKind.Delay or AgentFindingKind.Missed or AgentFindingKind.Suggestion or AgentFindingKind.Decision)
             recorder.Activity("agent.note", "Project", row.ProjectId, $"{Noun(row.Kind)} noted by the project agent: {row.Title}", row.ProjectId);
+        // Work given to someone else: they are asked to confirm it is theirs (one tap), so a wrong owner is caught the same day.
+        if (row.AssigneeId is { } owner && owner != me && Gives.Contains(row.Kind))
+            await notifications.AddAsync(owner, NotificationType.TaskAssigned, Text.Truncate($"Is {(key ?? row.Title)} yours? The project agent gave it to you", 200)!,
+                $"{row.Title}{(row.SourceLabel is null ? "" : $" - from {row.SourceLabel}")}. Accept it, or say whose it is.", "/project-agent/assigned",
+                $"agent-owner:{row.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
         f.Status = row.Status;
     }
@@ -150,7 +234,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
     private static void Copy(AgentFinding from, AgentFinding to)
     {
         to.Title = from.Title; to.Detail = from.Detail; to.AssigneeId = from.AssigneeId; to.DueDate = from.DueDate; to.Priority = from.Priority;
-        to.NewStatus = from.NewStatus; to.Comment = from.Comment;
+        to.NewStatus = from.NewStatus; to.Comment = from.Comment; to.Edits = from.Edits; to.OriginalTitle = from.OriginalTitle;
     }
 
     private static string Noun(AgentFindingKind k) => k switch
@@ -277,7 +361,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 r.SignalId is { } sid && sources.TryGetValue(sid, out var src) ? src : null,
                 r.TaskId, t is null ? null : $"{p?.Key}-{t.Number}", t?.Title, r.IssueId, i is null ? null : $"{p?.Key}-I{i.Number}",
                 Person(r.AssigneeId), r.DueDate, r.Priority, r.NewStatus, r.Comment, r.Confidence, r.CreatedAt, Person(r.DecidedBy), r.DecidedAt,
-                r.AppliedEntityId, r.AppliedKey, r.Error);
+                r.AppliedEntityId, r.AppliedKey, r.Error, r.Grounded, r.Edits, r.OwnerResponse, r.OwnerNote, r.OwnerRespondedAt);
         }).ToList();
     }
 }

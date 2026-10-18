@@ -11,7 +11,7 @@ const until = async (check, ms = 30_000) => { const end = Date.now() + ms; for (
 
 test('a bot joins, reports who said what, posts in the chat and leaves when the call ends', { timeout: 90_000 }, async () => {
   const page = await fs.readFile(new URL('./fake-meet.html', import.meta.url), 'utf8');
-  const events = [], chat = [];
+  const events = [], chat = [], languages = [];
   let ended = false;
   const fake = http.createServer((req, res) => {
     let body = '';
@@ -19,6 +19,7 @@ test('a bot joins, reports who said what, posts in the chat and leaves when the 
     req.on('end', () => {
       if (req.url === '/hook') { events.push(JSON.parse(body)); res.end('{}'); return; }
       if (req.url === '/chat-log') { chat.push(body); res.end(); return; }
+      if (req.url === '/lang-log') { languages.push(body); res.end(); return; }
       if (req.url === '/control') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ ended })); return; }
       res.setHeader('content-type', 'text/html'); res.end(page);
     });
@@ -34,7 +35,7 @@ test('a bot joins, reports who said what, posts in the chat and leaves when the 
     assert.equal((await api('POST', '/bots', { meetingUrl: 'https://evil.example/abc', webhookUrl: `http://127.0.0.1:${fakePort}/hook` })).status, 422);
 
     const created = await api('POST', '/bots', { meetingUrl: `http://127.0.0.1:${fakePort}/abc-defg-hij`, botName: 'Tracker Bot', webhookUrl: `http://127.0.0.1:${fakePort}/hook`,
-      introMessage: "Hi, I'm the Tracker Bot taking notes." });
+      introMessage: "Hi, I'm the Tracker Bot taking notes.", agendaMessage: '📋 For today: overdue PAY-9 (Asha, 2d).', captionLanguage: 'Hindi' });
     assert.equal(created.status, 201);
     const { id } = await created.json();
 
@@ -43,9 +44,11 @@ test('a bot joins, reports who said what, posts in the chat and leaves when the 
 
     const lines = () => events.filter((e) => e.event === 'transcript.data').map((e) => `${e.data.data.participant.name}: ${e.data.data.words.map((w) => w.text).join(' ')}`);
     await until(() => lines().some((l) => l.startsWith('Ravi Kumar: I finished the gateway sandbox')));
-    await until(() => chat.length >= 2);
+    await until(() => chat.length >= 3);
     assert.equal(chat[0], "Hi, I'm the Tracker Bot taking notes.");
-    assert.equal(chat[1], 'PAY-9 is overdue - who owns it?');
+    assert.equal(chat[1], '📋 For today: overdue PAY-9 (Asha, 2d).');
+    assert.equal(chat[2], 'PAY-9 is overdue - who owns it?');
+    assert.deepEqual(languages, ['Hindi (India)'], 'captions switched to the meeting language');
 
     await until(() => lines().some((l) => l.startsWith('Priya: Who is doing the refund flow?')));
     ended = true;

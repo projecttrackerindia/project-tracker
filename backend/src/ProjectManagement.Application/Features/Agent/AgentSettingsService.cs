@@ -17,10 +17,34 @@ namespace ProjectManagement.Application.Features.Agent;
 /// Switching the project agent on for a project (anyone who may edit the project), the workspace's meeting-bot key (Owners and Admins), and a
 /// person's own opt-in to let the agent look in their inbox.
 /// </summary>
-public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access, ISecretProtector secrets,
+public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access,
     IAiClient ai, EntitlementService entitlements, IOptions<InboundEmailOptions> inbound, IOptions<GoogleCalendarOptions> google,
-    IOptions<MicrosoftProductivityOptions> microsoft, MeetingBotClient bot)
+    IOptions<MicrosoftProductivityOptions> microsoft, IOptions<WhatsAppOptions> whatsApp, MeetingBotClient bot)
 {
+    /// <summary>The languages Google Meet captions people in (the bot switches captions to the project's).</summary>
+    public static readonly IReadOnlyDictionary<string, string> CaptionLanguages = new Dictionary<string, string>
+    {
+        ["en"] = "English", ["hi"] = "Hindi", ["bn"] = "Bengali", ["gu"] = "Gujarati", ["kn"] = "Kannada", ["ml"] = "Malayalam", ["mr"] = "Marathi",
+        ["ta"] = "Tamil", ["te"] = "Telugu", ["ur"] = "Urdu", ["es"] = "Spanish", ["fr"] = "French", ["de"] = "German", ["pt"] = "Portuguese",
+        ["it"] = "Italian", ["nl"] = "Dutch", ["ja"] = "Japanese", ["ko"] = "Korean", ["zh"] = "Chinese", ["ar"] = "Arabic", ["ru"] = "Russian",
+        ["id"] = "Indonesian", ["th"] = "Thai", ["vi"] = "Vietnamese", ["tr"] = "Turkish", ["pl"] = "Polish", ["sv"] = "Swedish",
+    };
+
+    /// <summary>Slack can be read when the workspace's Slack app was installed with channel reading.</summary>
+    public async Task<bool> SlackReadableAsync(CancellationToken ct) =>
+        await db.SlackConnections.AsNoTracking().Where(c => c.Active).Select(c => c.Scopes).FirstOrDefaultAsync(ct) is { } scopes
+        && scopes.Split(',', StringSplitOptions.TrimEntries).Contains("channels:history");
+
+    public async Task<bool> WhatsAppReadableAsync(CancellationToken ct) =>
+        whatsApp.Value.AgentMessagesEnabled && whatsApp.Value.Configured && whatsApp.Value.WebhookReceptionEnabled
+        && await db.WhatsAppConnections.AsNoTracking().AnyAsync(c => c.Active, ct);
+
+    /// <summary>"Ravi K = ravi@x.in" lines: who a name heard in a call or chat is. Lines that do not have that shape are ignored.</summary>
+    public static IReadOnlyList<(string Heard, string Who)> Aliases(string? text) =>
+        (text ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.Split('=', 2, StringSplitOptions.TrimEntries)).Where(p => p.Length == 2 && p[0].Length is > 0 and <= 80 && p[1].Length is > 0 and <= 200)
+            .Select(p => (p[0], p[1])).Take(100).ToList();
+
     private bool IsAdmin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
 
     internal static string NewToken(int bytes) => Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes)).ToLowerInvariant();
@@ -64,7 +88,18 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             s?.DailyUpdates ?? true, s is null || !canManage ? null : MailboxAddress(s.MailboxToken), botReady, await AiAvailableAsync(ct), pending, s?.LastRunAt,
             s?.LastError, s?.RunMonth == month ? s.RunsThisMonth : 0, s?.MonthlyRunLimit ?? 300, canManage, acting,
             // Summaries describe what was read (mail, meetings, members' inboxes): only for the people who decide on it.
-            runs.Select(Run).Select(r => canManage ? r : r with { Summary = null }).ToList(), transcripts);
+            runs.Select(Run).Select(r => canManage ? r : r with { Summary = null }).ToList(), transcripts,
+            // The lead's notes and who-is-who are for the people who set the agent up.
+            canManage ? s?.Instructions : null, canManage ? s?.SpeakerAliases : null, s?.CaptionLanguage, s?.AutoJoinCalendar ?? false, s?.SendMinutes ?? true,
+            canManage ? s?.SlackChannelId : null, await SlackReadableAsync(ct), s?.ReadWhatsApp ?? true, await WhatsAppReadableAsync(ct));
+    }
+
+    private static string? Clip(string? value, int max, string field, string label)
+    {
+        if (value is null) return null;
+        var t = value.Replace("\r\n", "\n").Trim();
+        if (t.Length > max) throw new ValidationException(field, $"Keep {label} to {max} characters.");
+        return t;
     }
 
     public async Task<ProjectAgentDto> SaveAsync(Guid projectId, SaveProjectAgentRequest req, CancellationToken ct = default)
@@ -87,8 +122,38 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         s.Enabled = req.Enabled;
         s.ReadMailbox = req.ReadMailbox ?? s.ReadMailbox; s.ReadChat = req.ReadChat ?? s.ReadChat; s.ReadMeetings = req.ReadMeetings ?? s.ReadMeetings;
         s.LiveBot = req.LiveBot ?? s.LiveBot; s.DailyUpdates = req.DailyUpdates ?? s.DailyUpdates;
+        if (Clip(req.Instructions, 4000, "instructions", "the notes for the agent") is { } notes) s.Instructions = notes.Length == 0 ? null : notes;
+        if (Clip(req.SpeakerAliases, 4000, "speakerAliases", "the names") is { } names)
+        {
+            var lines = names.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (lines.Length > 100) throw new ValidationException("speakerAliases", "Keep it to 100 names.");
+            if (lines.FirstOrDefault(l => !l.Contains('=')) is { } bad)
+                throw new ValidationException("speakerAliases", $"Write each name as \"name heard = person's email\" (\"{AgentAnalysisService.Cut(bad, 40)}\").");
+            s.SpeakerAliases = names.Length == 0 ? null : string.Join('\n', lines);
+        }
+        if (req.CaptionLanguage is { } lang)
+        {
+            lang = lang.Trim().ToLowerInvariant();
+            if (lang.Length > 0 && !CaptionLanguages.ContainsKey(lang)) throw new ValidationException("captionLanguage", "Choose one of the listed languages.");
+            s.CaptionLanguage = lang.Length == 0 ? null : lang;
+        }
+        s.AutoJoinCalendar = req.AutoJoinCalendar ?? s.AutoJoinCalendar;
+        s.SendMinutes = req.SendMinutes ?? s.SendMinutes;
+        if (req.SlackChannelId is { } channel)
+        {
+            channel = channel.Trim().ToUpperInvariant();
+            if (channel.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(channel, "^[CG][A-Z0-9]{6,20}$"))
+                throw new ValidationException("slackChannelId", "Paste the channel ID (Slack: channel name › About, at the bottom - it starts with C).");
+            if (channel.Length > 0 && !await SlackReadableAsync(ct))
+                throw new ConflictException("Connect the Slack app with channel reading first (Settings › Slack).", "SLACK_CHANNELS_UNAVAILABLE");
+            // A new channel is read from now on, not from its beginning.
+            if (channel != (s.SlackChannelId ?? "")) s.SlackReadUntil = null;
+            s.SlackChannelId = channel.Length == 0 ? null : channel;
+        }
+        s.ReadWhatsApp = req.ReadWhatsApp ?? s.ReadWhatsApp;
         s.UpdatedAt = clock.Now; s.UpdatedBy = uid;
-        recorder.Audit("agent.settings_saved", "Project", projectId, null, new { s.Enabled, s.ReadMailbox, s.ReadChat, s.ReadMeetings, s.LiveBot, s.DailyUpdates });
+        recorder.Audit("agent.settings_saved", "Project", projectId, null, new { s.Enabled, s.ReadMailbox, s.ReadChat, s.ReadMeetings, s.LiveBot, s.DailyUpdates,
+            s.CaptionLanguage, s.AutoJoinCalendar, s.SendMinutes, Slack = s.SlackChannelId is not null, s.ReadWhatsApp, Notes = s.Instructions?.Length ?? 0 });
         recorder.Activity(req.Enabled ? "agent.enabled" : "agent.disabled", "Project", projectId, req.Enabled ? $"Project agent switched on for \"{project.Name}\"" : $"Project agent switched off for \"{project.Name}\"", projectId);
         await db.SaveChangesAsync(ct);
         return await GetAsync(projectId, ct);

@@ -22,6 +22,12 @@ public class AgentOptions
     public string? MeetingBotUrl { get; set; }
     /// <summary>The secret the bot service expects (its MEETBOT_SECRET), 16 characters or more.</summary>
     public string? MeetingBotSecret { get; set; }
+    /// <summary>After each reading, a second, quick look checks every proposal against its source and drops what the source does not support.</summary>
+    public bool VerifyFindings { get; set; } = true;
+    /// <summary>What the agent read (mail, chat, transcripts) is erased this many days after it was read; the proposals and their short quotes stay.</summary>
+    public int SignalRetentionDays { get; set; } = 30;
+    /// <summary>How often a project's Slack channel is looked at (Slack limits how often history may be read).</summary>
+    public int SlackPollMinutes { get; set; } = 2;
 }
 
 public record AgentRunDto(Guid Id, string Trigger, string Status, int SignalCount, int FindingCount, int Credits, string? Summary, string? Error,
@@ -29,9 +35,14 @@ public record AgentRunDto(Guid Id, string Trigger, string Status, int SignalCoun
 
 public record ProjectAgentDto(Guid ProjectId, bool Enabled, bool ReadMailbox, bool ReadChat, bool ReadMeetings, bool LiveBot, bool DailyUpdates,
     string? MailboxAddress, bool LiveBotAvailable, bool AiAvailable, int Pending, DateTime? LastRunAt, string? LastError, int RunsThisMonth,
-    int MonthlyRunLimit, bool CanManage, string? ActingUserName, IReadOnlyList<AgentRunDto> Runs, bool TranscriptAccess);
+    int MonthlyRunLimit, bool CanManage, string? ActingUserName, IReadOnlyList<AgentRunDto> Runs, bool TranscriptAccess,
+    string? Instructions = null, string? SpeakerAliases = null, string? CaptionLanguage = null, bool AutoJoinCalendar = false, bool SendMinutes = true,
+    string? SlackChannelId = null, bool SlackAvailable = false, bool ReadWhatsApp = true, bool WhatsAppAvailable = false);
 
-public record SaveProjectAgentRequest(bool Enabled, bool? ReadMailbox, bool? ReadChat, bool? ReadMeetings, bool? LiveBot, bool? DailyUpdates);
+/// <summary>Anything left out (null) keeps its current value; an empty string clears a text setting.</summary>
+public record SaveProjectAgentRequest(bool Enabled, bool? ReadMailbox, bool? ReadChat, bool? ReadMeetings, bool? LiveBot, bool? DailyUpdates,
+    string? Instructions = null, string? SpeakerAliases = null, string? CaptionLanguage = null, bool? AutoJoinCalendar = null, bool? SendMinutes = null,
+    string? SlackChannelId = null, bool? ReadWhatsApp = null);
 
 /// <summary>BotAvailable: the installation runs the built-in meeting bot.</summary>
 public record AgentWorkspaceDto(bool BotAvailable, string BotName, bool InCallReminders, bool CanManage, int EnabledProjects);
@@ -47,7 +58,11 @@ public record AgentPersonRef(Guid Id, string Name);
 public record AgentFindingDto(Guid Id, Guid ProjectId, string ProjectKey, string ProjectName, Guid RunId, AgentFindingKind Kind, AgentFindingStatus Status,
     string Title, string? Detail, string? Evidence, string? SourceLabel, AgentSourceKind? Source, Guid? TaskId, string? TaskKey, string? TaskTitle,
     Guid? IssueId, string? IssueKey, AgentPersonRef? Assignee, DateOnly? DueDate, Priority? Priority, string? NewStatus, string? Comment, int Confidence,
-    DateTime CreatedAt, AgentPersonRef? DecidedBy, DateTime? DecidedAt, Guid? AppliedEntityId, string? AppliedKey, string? Error);
+    DateTime CreatedAt, AgentPersonRef? DecidedBy, DateTime? DecidedAt, Guid? AppliedEntityId, string? AppliedKey, string? Error,
+    bool Grounded = true, string? Edits = null, string? OwnerResponse = null, string? OwnerNote = null, DateTime? OwnerRespondedAt = null);
+
+/// <summary>The assignee's answer to work the agent gave them: "accepted" or "declined" (with a note: why, or who it belongs to).</summary>
+public record AgentOwnerResponseRequest(string? Response, string? Note);
 
 public record AgentFindingPageDto(IReadOnlyList<AgentFindingDto> Items, int Pending, bool CanDecide);
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi } from '../../api/endpoints';
-import type { AgentInboxOptIn, AgentWorkspace } from '../../api/types';
+import type { AgentFinding, AgentInboxOptIn, AgentWorkspace } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, Field, PageHead, PageLoader, RouteTabs } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
@@ -14,13 +14,15 @@ import './agent.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 /** Project agent: everything waiting for my decision across projects, my own inbox opt-in, and the workspace's meeting bot. */
-export function AgentPage({ section }: { section: 'review' | 'my-inbox' | 'meeting-bot' }) {
+export function AgentPage({ section }: { section: 'review' | 'assigned' | 'my-inbox' | 'meeting-bot' }) {
   const inbox = useWsQuery(['agent', 'inbox'], agentApi.inbox, { enabled: section === 'review' });
+  const assigned = useWsQuery(['agent', 'assigned'], agentApi.assigned);
   return (
     <>
       <PageHead title="Project agent" sub="Proposals from your projects' email, chat and meetings, waiting for a decision." />
       <RouteTabs label="Project agent" tabs={[
         { to: '/project-agent', label: 'To review', icon: 'checks', badge: inbox.data?.pending },
+        { to: '/project-agent/assigned', label: 'Given to me', icon: 'user', badge: assigned.data?.pending },
         { to: '/project-agent/my-inbox', label: 'My inbox', icon: 'mail' },
         { to: '/project-agent/meeting-bot', label: 'Meeting bot', icon: 'video' },
       ]} />
@@ -29,10 +31,56 @@ export function AgentPage({ section }: { section: 'review' | 'my-inbox' | 'meeti
           : (inbox.data?.items.length ?? 0) === 0
             ? <EmptyState icon="checkCircle" title="Nothing waiting for you" text="Switch the agent on in a project (its Agent tab). What it finds in the project's email, chat and meetings appears here for the people who can edit that project." action={<Link className="btn btn-ghost" to="/projects">Open projects</Link>} />
             : <div className="ag-list">{inbox.data!.items.map((f) => <FindingCard key={f.id} f={f} canDecide showProject />)}</div>)}
+        {section === 'assigned' && (assigned.isLoading ? <PageLoader /> : assigned.isError ? <ErrorState error={assigned.error} retry={() => assigned.refetch()} />
+          : (assigned.data?.items.length ?? 0) === 0
+            ? <EmptyState icon="user" title="Nothing given to you" text="When someone approves work the agent found for you - from a meeting, an email or the chat - it shows here so you can accept it, or say whose it is." />
+            : <div className="ag-list">{assigned.data!.items.map((f) => <GivenCard key={f.id} f={f} />)}</div>)}
         {section === 'my-inbox' && <MyInbox />}
         {section === 'meeting-bot' && <MeetingBot />}
       </div>
     </>
+  );
+}
+
+/** Work the agent gave me: accept it, or say it is not mine (and whose it is). */
+function GivenCard({ f }: { f: AgentFinding }) {
+  const wid = useWorkspaceId();
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const answer = async (response: 'accepted' | 'declined') => {
+    setBusy(true);
+    try {
+      await agentApi.respond(f.id, { response, note: response === 'declined' ? note.trim() : undefined });
+      toast(response === 'accepted' ? 'Thanks - it is yours.' : 'The project lead has been told.');
+      await invalidateWorkspace(wid, 'agent', 'assigned');
+    } catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  const link = f.kind === 'CreateTask' && f.appliedEntityId ? `/projects/${f.projectId}?task=${f.appliedEntityId}` : `/projects/${f.projectId}`;
+  return (
+    <article className={`ag-card ${f.ownerResponse ? 'ag-closed' : ''}`} data-given={f.id}>
+      <header className="ag-card-head">
+        <span className="ag-kind"><Icon name="user" size={13} />{f.kind === 'CreateIssue' ? 'Ticket' : f.kind === 'CreateActionItem' ? 'Action item' : 'Task'}</span>
+        <Link className="ag-project" to={link}>{f.appliedKey ?? f.projectKey} · {f.projectName}</Link>
+      </header>
+      <h4 className="ag-title">{f.title}</h4>
+      {f.evidence && <blockquote className="ag-quote"><p>“{f.evidence}”</p><footer>{f.sourceLabel ?? 'Source'}{f.decidedBy && ` · approved by ${f.decidedBy.name}`}</footer></blockquote>}
+      {f.ownerResponse ? (
+        <p className="ag-meta">{f.ownerResponse === 'accepted' ? 'You accepted it.' : `You said it is not yours${f.ownerNote ? `: ${f.ownerNote}` : ''}.`}</p>
+      ) : declining ? (
+        <div className="ag-mine-actions">
+          <input className="input" aria-label="Whose is it, or why not you" value={note} maxLength={500} placeholder="Priya owns refunds" onChange={(e) => setNote(e.target.value)} />
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !note.trim()} onClick={() => void answer('declined')}>{busy && <span className="spinner" />}Send</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeclining(false)}>Cancel</button>
+        </div>
+      ) : (
+        <div className="ag-mine-actions">
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void answer('accepted')}><Icon name="tick" size={14} />It's mine</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setDeclining(true)}><Icon name="close" size={14} />Not mine</button>
+        </div>
+      )}
+    </article>
   );
 }
 

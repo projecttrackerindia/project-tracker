@@ -18,6 +18,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/People/MemberProfile.cs",
         "ProjectManagement.Application/Features/Resumes/PersonalFileCleanup.cs", // trusted storage-key existence checks only, across owners and deleted records; no content is retrieved
         "ProjectManagement.Application/Features/Admin/GoLiveService.cs",
+        "ProjectManagement.Application/Features/Admin/DeployAlertService.cs", // anonymous hosting webhook (token in the address): only the platform administrators' e-mail addresses are read
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",
         "ProjectManagement.Application/Features/Ai/AiPortfolio.cs",
         "ProjectManagement.Application/Features/Ai/AiOperationsProcessor.cs", // scheduling metadata and atomic leases; retrieval uses fresh current requester scope
@@ -59,7 +60,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingSyncEngine.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/StandupSummaryService.cs", // background: finds stand-up meetings across active tenants (ids and times only); each summary is built in that tenant's own scope
         "ProjectManagement.Application/Features/Agent/AgentEngine.cs", // background: finds projects with the agent on and inbox opt-ins across active tenants (ids only); each is handled in that tenant's own scope as its acting person
-        "ProjectManagement.Application/Features/Agent/AgentSignalService.cs", // anonymous project-mailbox webhook: the token picks the project before a tenant is known; de-duplication by exact project/source reference
+        "ProjectManagement.Application/Features/Agent/AgentSignalService.cs", // anonymous project-mailbox webhook: the token picks the project before a tenant is known; de-duplication by exact project/source reference; WhatsApp texts inside the gateway's signed tenant transaction with an explicit tenant id; retention clean-up of what was read, in every tenant
         "ProjectManagement.Application/Features/Agent/AgentMeetingService.cs", // anonymous meeting-bot webhook: the token picks the bot before a tenant is known; only that row's transcript is appended
         "ProjectManagement.Application/Features/Projects/ProjectGroupService.cs",
         "ProjectManagement.Application/Features/Projects/ProjectService.cs", // project-key uniqueness only, scoped to the current tenant; no data is read

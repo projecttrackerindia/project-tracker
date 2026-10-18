@@ -14,16 +14,20 @@ const pid='00000000-0000-0000-0000-000000000003';
 const project={id:pid,key:'PAY',name:'Payments Core',description:'Payment gateway and settlement.',status:'Active',priority:'High',health:'OnTrack',progress:40,active:2,startDate:'2030-01-01',dueDate:'2030-03-01',version:3,stageScheduleMode:'Manual',projectType:'NewProject',deliveryMethod:'Agile',owner:{id:user.id,name:user.displayName},stats:{total:6,done:2,inProgress:2,cancelled:0,todo:2,overdue:1}};
 const detail={project,stages:[],statuses:[{id:pid,name:'To Do',order:0,category:'Todo',color:'#4f46e5'}],members:[{userId:user.id,name:user.displayName,email:user.email,role:'Owner'}]};
 const finding=(id,kind,title,extra={})=>({id,projectId:pid,projectKey:'PAY',projectName:'Payments Core',runId:'run-1',kind,status:'Proposed',title,detail:null,evidence:null,sourceLabel:'Stand-up · 18 Oct',source:'MeetingTranscript',
-  taskId:null,taskKey:null,taskTitle:null,issueId:null,issueKey:null,assignee:null,dueDate:null,priority:null,newStatus:null,comment:null,confidence:82,createdAt:'2030-01-06T05:00:00Z',decidedBy:null,decidedAt:null,appliedEntityId:null,appliedKey:null,error:null,...extra});
+  taskId:null,taskKey:null,taskTitle:null,issueId:null,issueKey:null,assignee:null,dueDate:null,priority:null,newStatus:null,comment:null,confidence:82,createdAt:'2030-01-06T05:00:00Z',decidedBy:null,decidedAt:null,appliedEntityId:null,appliedKey:null,error:null,
+  grounded:true,edits:null,ownerResponse:null,ownerNote:null,ownerRespondedAt:null,...extra});
 let findings=[
   finding('f1','CreateTask','Prepare the go-live checklist',{detail:'The client asked for the checklist before UAT sign-off.',evidence:'can you send the go-live checklist by Friday?',assignee:{id:ravi.userId,name:ravi.displayName},dueDate:'2030-01-10',priority:'High',source:'ProjectMailbox',sourceLabel:'Email from client@bank.example · 06 Jan'}),
   finding('f2','UpdateTask','Gateway integration is in progress',{evidence:'I started the gateway integration, sandbox keys are in',taskId:'t-12',taskKey:'PAY-12',taskTitle:'Payment gateway integration',newStatus:'in_progress',comment:'Integration started; sandbox keys received.'}),
   finding('f3','Delay','Settlement report will slip by a week',{detail:'Waiting on the bank\'s file format.',evidence:'we still do not have the settlement file spec',taskId:'t-9',taskKey:'PAY-9',taskTitle:'Settlement report',dueDate:'2030-01-17'}),
-  finding('f4','Missed','Nobody owns the refund flow',{detail:'Raised twice in the call, no owner or date.',evidence:'who is doing refunds?',confidence:74}),
+  finding('f4','Missed','Nobody owns the refund flow',{detail:'Raised twice in the call, no owner or date.',evidence:'who is doing refunds?',confidence:34,grounded:false}),
   finding('f5','Suggestion','Add a retry queue for failed payments',{evidence:'we should retry failed payments automatically',source:'Chat',sourceLabel:'Project chat · 06 Jan',confidence:66}),
 ];
 let agent={projectId:pid,enabled:false,readMailbox:true,readChat:true,readMeetings:true,liveBot:false,dailyUpdates:true,mailboxAddress:'agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in',liveBotAvailable:true,aiAvailable:true,
-  pending:0,lastRunAt:null,lastError:null,runsThisMonth:0,monthlyRunLimit:300,canManage:true,actingUserName:'Alex Morgan',runs:[],transcriptAccess:false};
+  pending:0,lastRunAt:null,lastError:null,runsThisMonth:0,monthlyRunLimit:300,canManage:true,actingUserName:'Alex Morgan',runs:[],transcriptAccess:false,
+  instructions:null,speakerAliases:null,captionLanguage:null,autoJoinCalendar:false,sendMinutes:true,slackChannelId:null,slackAvailable:true,readWhatsApp:true,whatsAppAvailable:true};
+let given=[finding('g1','CreateTask','Send the go-live checklist',{status:'Applied',assignee:{id:user.id,name:user.displayName},appliedKey:'PAY-31',appliedEntityId:'t-31',
+  evidence:'can you send the go-live checklist by Friday?',decidedBy:{id:ravi.userId,name:ravi.displayName},decidedAt:'2030-01-06T06:00:00Z'})];
 let workspace={botAvailable:true,botName:'Project Tracker Agent',inCallReminders:true,canManage:true,enabledProjects:1};
 let optIn={googleAvailable:true,microsoftAvailable:false,provider:null,enabled:false,scannedUntil:null,found:0,lastError:null};
 const writes=[],errors=[],checks=[];
@@ -41,6 +45,8 @@ try{
   if(ep===`/api/v1/projects/${pid}/agent`&&method==='PUT'){const b=body();writes.push({ep,b});agent={...agent,...b};if(b.enabled&&agent.runs.length===0){agent.runs=[{id:'run-1',trigger:'meeting',status:'done',signalCount:3,findingCount:5,credits:4,summary:'The gateway work is moving; the client wants the go-live checklist and nobody owns refunds yet.',error:null,startedAt:'2030-01-06T05:00:00Z',finishedAt:'2030-01-06T05:00:20Z'}];agent.lastRunAt='2030-01-06T05:00:20Z';}data=agent;}
   else if(ep===`/api/v1/projects/${pid}/agent`){data={...agent,pending:agent.enabled?findings.filter(f=>f.status==='Proposed').length:0};}
   else if(ep===`/api/v1/projects/${pid}/agent/findings`){const s=url.searchParams.get('status')||'proposed';const items=agent.enabled?findings.filter(f=>s==='all'||f.status.toLowerCase()===(s==='applied'?'applied':s)):[];data={items,pending:findings.filter(f=>f.status==='Proposed').length,canDecide:true};}
+  else if(ep==='/api/v1/agent/assigned')data={items:given,pending:given.filter(g=>!g.ownerResponse).length,canDecide:false};
+  else if(ep.startsWith('/api/v1/agent/findings/')&&ep.endsWith('/respond')&&method==='POST'){const b=body();writes.push({ep,b});const g=given.find(x=>x.id===ep.split('/')[5]);assert.ok(g,'known given item');Object.assign(g,{ownerResponse:b.response,ownerNote:b.note??null});data=g;}
   else if(ep.startsWith('/api/v1/agent/findings/')&&method==='POST'){
    const id=ep.split('/')[5],act=ep.split('/')[6],b=body();writes.push({ep,b});
    const f=findings.find(x=>x.id===id);assert.ok(f,'known finding');
@@ -85,6 +91,7 @@ try{
  assert.equal(writes.at(-1).b.enabled,true);checks.push('switch-on');
  assert.ok(await page.getByText('agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in').isVisible());
  assert.ok(await page.getByText('“who is doing refunds?”').isVisible());
+ assert.ok(await page.locator('[data-finding=f4]').getByText('Check the source').isVisible());assert.equal(await page.locator('[data-finding=f1]').getByText('Check the source').count(),0);checks.push('ungrounded-flag');
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-queue-1440.png'),animations:'disabled',fullPage:true});
  await noOverflow(page,'queue 1440');
 
@@ -116,6 +123,20 @@ try{
  // The source switches save the whole setting.
  await page.getByRole('switch',{name:'Live meeting bot'}).click();await page.waitForTimeout(300);
  assert.equal(writes.at(-1).b.liveBot,true);assert.equal(writes.at(-1).b.enabled,true);checks.push('source-switch');
+ await page.getByRole('switch',{name:'Calls on my calendar'}).click();await page.waitForTimeout(300);
+ assert.deepEqual(writes.at(-1).b,{enabled:true,autoJoinCalendar:true});checks.push('calendar-switch');
+
+ // Notes, names, the meeting language and the Slack channel.
+ await page.getByRole('button',{name:'Notes and names'}).click();
+ const tune=page.getByRole('dialog');await tune.getByRole('heading',{name:'Notes and names'}).waitFor();
+ await tune.getByLabel('Notes for the agent').fill('UAT means the bank test environment.');
+ await tune.getByLabel('Names in calls and chat').fill('RK = ravi@example.test');
+ await tune.getByLabel('Meeting language').selectOption('hi');
+ await tune.getByLabel('Slack channel ID').fill('C0PAYMENTS1');
+ await page.screenshot({path:path.join(out,'agent-tune-1440.png'),animations:'disabled'});
+ await tune.getByRole('button',{name:'Save',exact:true}).click();await tune.waitFor({state:'detached'});
+ assert.deepEqual(writes.at(-1).b,{enabled:true,instructions:'UAT means the bank test environment.',speakerAliases:'RK = ravi@example.test',captionLanguage:'hi',slackChannelId:'C0PAYMENTS1'});
+ await page.getByText('Hindi',{exact:true}).waitFor();checks.push('notes-and-names');
  await page.close();
 
  // Phone width: the same tab fits.
@@ -130,6 +151,12 @@ try{
  await page.goto(origin+'/preview-org/project-agent');await page.getByRole('heading',{name:'Project agent',exact:true}).waitFor();
  await page.locator('.ag-card').first().waitFor();assert.ok(await page.getByRole('link',{name:'PAY · Payments Core'}).first().isVisible());
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-page-review.png'),animations:'disabled'});checks.push('agent-page');
+ await page.getByRole('link',{name:/Given to me/}).click();
+ const g=page.locator('[data-given=g1]');await g.getByRole('button',{name:'Not mine'}).click();
+ await g.getByLabel('Whose is it, or why not you').fill('Priya owns go-live');
+ await page.screenshot({path:path.join(out,'agent-page-given.png'),animations:'disabled'});
+ await g.getByRole('button',{name:'Send'}).click();await g.getByText('You said it is not yours: Priya owns go-live.').waitFor();
+ assert.deepEqual(writes.at(-1).b,{response:'declined',note:'Priya owns go-live'});checks.push('not-mine');
  await page.getByRole('link',{name:'My inbox'}).click();await page.getByRole('switch',{name:'Use Gmail'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{provider:'google',enabled:true});
  await page.screenshot({path:path.join(out,'agent-page-inbox.png'),animations:'disabled'});checks.push('inbox-opt-in');

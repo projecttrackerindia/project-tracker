@@ -18,12 +18,22 @@ namespace ProjectManagement.Application.Features.Agent;
 /// what is new, send the morning updates, and look in the inboxes people opted in. Each project is handled in its own scope, acting as the
 /// person who switched its agent on.
 /// </summary>
-public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, ILogger<AgentEngine> log)
+public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock clock, IOptions<AgentOptions> options, ILogger<AgentEngine> log)
 {
-    public record TickResult(int Projects, int Runs, int Signals, int Bots, int Updates, int Inboxes);
+    public record TickResult(int Projects, int Runs, int Signals, int Bots, int Updates, int Inboxes, int Erased = 0);
+
+    private static DateTime _lastPurge;
 
     public async Task<TickResult> TickAsync(CancellationToken ct = default)
     {
+        // What was read is erased after the retention period (hourly is plenty).
+        var erased = 0;
+        if (clock.Now - _lastPurge > TimeSpan.FromHours(1))
+        {
+            _lastPurge = clock.Now;
+            try { erased = await AgentSignalService.PurgeAsync(db, clock.Now, options.Value.SignalRetentionDays, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { log.LogWarning(ex, "Project agent retention clean-up failed"); }
+        }
         var projects = await db.ProjectAgentSettings.IgnoreQueryFilters().AsNoTracking()
             .Where(s => s.Enabled && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == s.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted)
                 && db.Projects.IgnoreQueryFilters().Any(p => p.Id == s.ProjectId && !p.IsDeleted && p.Status != ProjectStatus.Archived))
@@ -66,13 +76,13 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, ILogger<
             catch (ForbiddenException) { await db.AgentInboxOptIns.IgnoreQueryFilters().Where(x => x.Id == o.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Enabled, false), ct); }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { log.LogWarning(ex, "Project agent inbox scan failed for {OptIn}", o.Id); }
         }
-        return new TickResult(projects.Count, runs, signals, bots, updates, inboxes);
+        return new TickResult(projects.Count, runs, signals, bots, updates, inboxes, erased);
     }
 }
 
 /// <summary>Everything the agent does for one project in one tick, inside that project's workspace context.</summary>
 public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalService signals, AgentMeetingService meetings, AgentAnalysisService analysis,
-    AgentDailyUpdateService daily, IOptions<AgentOptions> options, ILogger<AgentProjectTick> log)
+    AgentDailyUpdateService daily, AgentSlackReader slack, IOptions<AgentOptions> options, ILogger<AgentProjectTick> log)
 {
     public record Result(int Runs, int Signals, int Bots, int Updates);
 
@@ -87,7 +97,7 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
         if (s.ReadChat && await signals.CollectChatAsync(s, ct)) added++;
         await db.SaveChangesAsync(ct);
 
-        // Each meeting step on its own: one failing (a bot service down, credits used up) never stops the others.
+        // Each step on its own: one failing (a bot service down, Slack unreachable, credits used up) never stops the others.
         async Task<int> Step(string name, Func<Task<int>> work)
         {
             try { return await work(); }
@@ -97,11 +107,14 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
                 return 0;
             }
         }
+        if (s.SlackChannelId is not null)
+            added += await Step("slack", async () => { var got = await slack.CollectAsync(s, ct); await db.SaveChangesAsync(ct); return got ? 1 : 0; });
         if (s.ReadMeetings)
         {
             if (s.LiveBot)
             {
                 bots += await Step("schedule bots", () => meetings.ScheduleBotsAsync(s, w, ct));
+                if (s.AutoJoinCalendar) bots += await Step("calendar calls", () => meetings.ScheduleCalendarBotsAsync(s, w, ct));
                 await Step("live reminders", () => meetings.NudgeAsync(s, w, ct));
             }
             added += await Step("finish bots", () => meetings.FinishBotsAsync(s, w, ct));

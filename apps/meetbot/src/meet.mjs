@@ -14,6 +14,7 @@ export const SEL = {
   chatOpen: /chat with everyone|open chat|^chat$/i,
   chatInput: ['textarea[aria-label="Send a message"]', 'textarea[aria-label^="Send a message"]', 'textarea[placeholder^="Send a message"]', 'div[contenteditable="true"][aria-label^="Send a message"]'],
   captionsRegion: 'div[role="region"][aria-label="Captions"], div[role="region"][aria-label^="Captions"]',
+  captionLanguage: /(meeting language|caption(s)? language|spoken language|language of the meeting)/i,
 };
 
 /** Words on the page that say the bot's attempt to join failed or the meeting is over. */
@@ -80,6 +81,33 @@ export async function enableCaptions(page) {
     if (await page.getByRole('button', { name: SEL.captionsOff }).count()) return true;
   }
   return (await page.locator(SEL.captionsRegion).count()) > 0;
+}
+
+/**
+ * Sets the language Meet captions people in (its "meeting language"), when Meet offers that language - captions in the wrong language are
+ * gibberish. Best effort: false when the control or the language is not there.
+ */
+export async function setCaptionLanguage(page, language) {
+  const escaped = language.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&');
+  const wanted = new RegExp('^' + escaped + '\\b', 'i');
+  for (const role of ['combobox', 'button']) {
+    const control = page.getByRole(role, { name: SEL.captionLanguage }).first();
+    if (!(await control.count()) || !(await control.isVisible().catch(() => false))) continue;
+    if (wanted.test(((await control.innerText().catch(() => '')) || '').trim())) return true;
+    await control.click({ timeout: 5000 }).catch(() => undefined);
+    await page.waitForTimeout(600);
+    for (const optionRole of ['option', 'menuitemradio', 'radio', 'menuitem']) {
+      const option = page.getByRole(optionRole, { name: wanted }).first();
+      if (await option.count() && await option.isVisible().catch(() => false)) {
+        await option.click({ timeout: 5000 }).catch(() => undefined);
+        await page.waitForTimeout(400);
+        await page.keyboard.press('Escape').catch(() => undefined);
+        return true;
+      }
+    }
+    await page.keyboard.press('Escape').catch(() => undefined);
+  }
+  return false;
 }
 
 /**

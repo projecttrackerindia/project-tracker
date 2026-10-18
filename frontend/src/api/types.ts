@@ -764,7 +764,7 @@ export interface MicrosoftCalendarAvailability { account: string; accessContext:
 // ------------------------------------------------------------------ project agent
 export type AgentFindingKind = 'CreateTask' | 'UpdateTask' | 'CreateActionItem' | 'CreateIssue' | 'UpdateIssue' | 'Delay' | 'Suggestion' | 'Missed' | 'Decision';
 export type AgentFindingStatus = 'Proposed' | 'Applied' | 'Dismissed' | 'Failed';
-export type AgentSourceKind = 'ProjectMailbox' | 'PersonalMail' | 'Chat' | 'MeetingTranscript' | 'LiveMeeting' | 'Manual';
+export type AgentSourceKind = 'ProjectMailbox' | 'PersonalMail' | 'Chat' | 'MeetingTranscript' | 'LiveMeeting' | 'Manual' | 'Slack' | 'WhatsApp';
 export interface AgentRun { id: string; trigger: 'schedule' | 'meeting' | 'mail' | 'manual'; status: 'running' | 'done' | 'failed'; signalCount: number; findingCount: number; credits: number; summary: string | null; error: string | null; startedAt: string; finishedAt: string | null }
 export interface ProjectAgent {
   projectId: string; enabled: boolean; readMailbox: boolean; readChat: boolean; readMeetings: boolean; liveBot: boolean; dailyUpdates: boolean;
@@ -773,6 +773,11 @@ export interface ProjectAgent {
   runsThisMonth: number; monthlyRunLimit: number; canManage: boolean; actingUserName: string | null; runs: AgentRun[];
   /** Whether *this* person allowed the agent to read their Google Meet transcripts (organizers need it). */
   transcriptAccess: boolean;
+  /** The lead's notes and who-is-who (only for people who may set the agent up). */
+  instructions: string | null; speakerAliases: string | null;
+  /** Meet's caption language for the bot, e.g. "hi". */
+  captionLanguage: string | null; autoJoinCalendar: boolean; sendMinutes: boolean;
+  slackChannelId: string | null; slackAvailable: boolean; readWhatsApp: boolean; whatsAppAvailable: boolean;
 }
 export interface AgentPerson { id: string; name: string }
 export interface AgentFinding {
@@ -781,6 +786,10 @@ export interface AgentFinding {
   taskId: string | null; taskKey: string | null; taskTitle: string | null; issueId: string | null; issueKey: string | null;
   assignee: AgentPerson | null; dueDate: string | null; priority: Priority | null; newStatus: string | null; comment: string | null; confidence: number;
   createdAt: string; decidedBy: AgentPerson | null; decidedAt: string | null; appliedEntityId: string | null; appliedKey: string | null; error: string | null;
+  /** False when the quote was not found in its source. */
+  grounded: boolean; edits: string | null;
+  /** The assignee's answer to work the agent gave them. */
+  ownerResponse: 'accepted' | 'declined' | null; ownerNote: string | null; ownerRespondedAt: string | null;
 }
 export interface AgentFindingPage { items: AgentFinding[]; pending: number; canDecide: boolean }
 export interface AgentApproveEdits { title?: string; detail?: string; assigneeId?: string; clearAssignee?: boolean; dueDate?: string; clearDueDate?: boolean; priority?: Priority; newStatus?: string; comment?: string }

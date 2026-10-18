@@ -309,13 +309,15 @@ public class ProjectAgentTests(ApiFactory factory)
             await ConnectGoogleAsync(owner, transcripts: false);
             var start = DateTime.UtcNow.AddMinutes(3); var end = DateTime.UtcNow.AddMinutes(18);
             var meeting = await MeetingAsync(owner, project, start, end);
-            Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true })).Ok);
+            Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true, captionLanguage = "hi" })).Ok);
 
             await TickAsync();
             var create = Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots" && r.Body.Contains("meet.google.com"));
             Assert.Contains("Tracker Bot", create.Body);
             Assert.Contains("/api/v1/agent/bot/", create.Body);
             Assert.Contains("leaveAt", create.Body);
+            Assert.Contains("Hindi", create.Body);   // Meet's captions in the meeting's language
+            Assert.Contains("overdue", create.Body);   // the agenda the bot posts after its hello
             var token = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Single(b => b.MeetingId == meeting && b.Kind == "bot").WebhookToken);
 
             using var anon = factory.CreateClient();

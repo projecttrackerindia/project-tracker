@@ -22,6 +22,9 @@ public class SlackOptions
     public string? SigningSecret { get; set; }
     public string? RedirectUri { get; set; }
     public string? AppId { get; set; }
+    /// <summary>Also ask Slack for channel reading at install (channels:history, groups:history), so project agents can read a linked channel.
+    /// Off by default; an existing installation has to be connected again to gain it.</summary>
+    public bool AgentChannels { get; set; }
     public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret)
         && !string.IsNullOrWhiteSpace(SigningSecret) && !string.IsNullOrWhiteSpace(AppId)
         && Uri.TryCreate(RedirectUri, UriKind.Absolute, out var uri) && uri.Scheme == "https";
@@ -37,6 +40,8 @@ public class SlackConnectionService(IAppDbContext db, CurrentContext ctx, Entitl
 {
     private readonly SlackOptions _o = options.Value;
     public const string Scopes = "chat:write,app_mentions:read,im:history,im:write,users:read";
+    /// <summary>What is asked for at install: the required scopes, plus channel reading for the project agent when that is switched on.</summary>
+    private string RequestedScopes => _o.AgentChannels ? Scopes + ",channels:history,groups:history" : Scopes;
     private static string Hash(string raw) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
     private static string Random() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
@@ -87,7 +92,7 @@ public class SlackConnectionService(IAppDbContext db, CurrentContext ctx, Entitl
             ReturnPath = $"/{slug}/settings/slack", ExpiresAt = clock.Now.AddMinutes(10) });
         await db.SaveChangesAsync(ct);
         var url = "https://slack.com/oauth/v2/authorize?client_id=" + Uri.EscapeDataString(_o.ClientId!)
-            + "&scope=" + Uri.EscapeDataString(Scopes) + "&redirect_uri=" + Uri.EscapeDataString(_o.RedirectUri!) + "&state=" + state;
+            + "&scope=" + Uri.EscapeDataString(RequestedScopes) + "&redirect_uri=" + Uri.EscapeDataString(_o.RedirectUri!) + "&state=" + state;
         return new(url, browser);
     }
 

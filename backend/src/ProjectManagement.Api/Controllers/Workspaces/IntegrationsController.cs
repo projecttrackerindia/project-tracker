@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Agent;
 using ProjectManagement.Application.Features.Compliance;
@@ -184,6 +185,16 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
         await AgentMeetingService.ReceiveBotAsync(services, token, await reader.ReadToEndAsync(ct), ct);
         return Ok(new { received = true });
+    }
+
+    /// <summary>The hosting platform reporting a failed deployment or a crash (Railway webhook); platform administrators are e-mailed.</summary>
+    [HttpPost("inbound/deploy/{token}")]
+    [RequestSizeLimit(256 * 1024)]
+    public async Task<IActionResult> DeployAlert(string token, CancellationToken ct)
+    {
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        var alerted = await services.GetRequiredService<ProjectManagement.Application.Features.Admin.DeployAlertService>().ReceiveAsync(token, await reader.ReadToEndAsync(ct), ct);
+        return Ok(new { alerted });
     }
 
     private async Task<InboundEmail?> ReadEmailAsync(CancellationToken ct)

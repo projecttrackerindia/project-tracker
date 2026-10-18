@@ -55,6 +55,13 @@ public class ProjectAgentController(AgentSettingsService settings, AgentSignalSe
     [HttpPost("agent/findings/{id:guid}/dismiss")]
     public async Task<IActionResult> Dismiss(Guid id, CancellationToken ct) => Ok(await review.DismissAsync(id, ct));
 
+    /// <summary>Work the agent gave me (approved by someone else), to accept or to say it is not mine.</summary>
+    [HttpGet("agent/assigned")]
+    public async Task<IActionResult> Assigned(CancellationToken ct) => Ok(await review.AssignedAsync(ct));
+
+    [HttpPost("agent/findings/{id:guid}/respond")]
+    public async Task<IActionResult> Respond(Guid id, [FromBody] AgentOwnerResponseRequest req, CancellationToken ct) => Ok(await review.RespondAsync(id, req, ct));
+
     [HttpGet("agent/workspace")]
     public async Task<IActionResult> Workspace(CancellationToken ct) => Ok(await settings.GetWorkspaceAsync(ct));
 

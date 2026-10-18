@@ -194,6 +194,20 @@ public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClo
         if (r is not null) { Clear(r); recorder.Audit("whatsapp.contact.unlinked", "WhatsAppContactLink", r.Id); await db.SaveChangesAsync(ct); }
         await tx.CommitAsync(ct);
     }
+    /// <summary>
+    /// The member whose current, verified link is this number, or null. Called only inside the gateway's signed, exact-installation, active-plan
+    /// tenant transaction; guests are never matched.
+    /// </summary>
+    internal async Task<Guid?> VerifiedUserAsync(WhatsAppConnection c, string? sender, CancellationToken ct)
+    {
+        if (!Enabled || !PhoneDigits(sender)) return null;
+        var ph = PhoneHash(c.TenantId, sender!);
+        var r = await db.WhatsAppContactLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == c.TenantId && x.PhoneHash == ph, ct);
+        if (r is null || !CurrentLink(r, c)) return null;
+        if (!await db.TenantMembers.AnyAsync(x => x.TenantId == c.TenantId && x.UserId == r.UserId && x.Role != TenantRole.Guest, ct)
+            || !await db.Users.AnyAsync(x => x.Id == r.UserId && x.IsActive, ct)) return null;
+        return r.UserId;
+    }
     // Called only inside the gateway's signed, exact-installation, active-plan tenant transaction.
     internal async Task TryVerifyAsync(WhatsAppConnection c, string? sender, string? message, DateTime stamp, CancellationToken ct)
     {

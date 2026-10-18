@@ -38,7 +38,8 @@ public static class SqliteEnterpriseUpgrade
         "20261018000050_WorkspaceTimeZone",
         "20261018000100_UniqueInvoiceReferences",
         "20261018000300_MeetingsQuietHoursInvoicesRequiredDocs",
-        "20261019000100_ProjectAgent"
+        "20261019000100_ProjectAgent",
+        "20261020000100_ProjectAgentAccuracy"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

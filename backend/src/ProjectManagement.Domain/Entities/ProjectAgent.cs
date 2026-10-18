@@ -3,7 +3,7 @@ using ProjectManagement.Domain.Common;
 namespace ProjectManagement.Domain.Enums
 {
     /// <summary>Where something the project agent read came from.</summary>
-    public enum AgentSourceKind { ProjectMailbox, PersonalMail, Chat, MeetingTranscript, LiveMeeting, Manual }
+    public enum AgentSourceKind { ProjectMailbox, PersonalMail, Chat, MeetingTranscript, LiveMeeting, Manual, Slack, WhatsApp }
 
     /// <summary>
     /// What the agent proposes. The first five change work when approved; Delay, Suggestion, Missed and Decision are notes for the team that are
@@ -47,6 +47,22 @@ namespace ProjectManagement.Domain.Entities
         public string? DailySentDay { get; set; }
         public int MailReceived { get; set; }
         public string? LastError { get; set; }
+        /// <summary>The project lead's notes for the agent: names, terms and abbreviations, how the team works, what to ignore.</summary>
+        public string? Instructions { get; set; }
+        /// <summary>Who is who in calls and chat: one "name heard = person's e-mail" per line (nicknames, short names, how captions spell them).</summary>
+        public string? SpeakerAliases { get; set; }
+        /// <summary>The language people speak in the meetings (BCP-47, e.g. en-IN, hi-IN); the bot sets Meet's captions to it.</summary>
+        public string? CaptionLanguage { get; set; }
+        /// <summary>Also send the bot to Google Meet calls on the acting person's calendar that name the project (key or name in the title).</summary>
+        public bool AutoJoinCalendar { get; set; }
+        /// <summary>When everything from a meeting has been decided, send the minutes to the people in it.</summary>
+        public bool SendMinutes { get; set; } = true;
+        /// <summary>The Slack channel (id, e.g. C0123ABCD) read like the project chat; needs the workspace's Slack app with channel reading.</summary>
+        public string? SlackChannelId { get; set; }
+        /// <summary>The Slack timestamp of the last channel message read.</summary>
+        public string? SlackReadUntil { get; set; }
+        /// <summary>Read WhatsApp messages that start with the project key ("PAY: ...") from members with a verified WhatsApp number.</summary>
+        public bool ReadWhatsApp { get; set; } = true;
     }
 
     /// <summary>Something the agent will read: an e-mail, a stretch of chat, a meeting transcript. The content is stored encrypted.</summary>
@@ -84,6 +100,8 @@ namespace ProjectManagement.Domain.Entities
         public DateTime StartedAt { get; set; }
         public DateTime? FinishedAt { get; set; }
         public Guid? MeetingId { get; set; }
+        /// <summary>When the minutes of the meeting this reading was about went out (once everything in it was decided).</summary>
+        public DateTime? MinutesSentAt { get; set; }
     }
 
     /// <summary>One proposal or note from the agent, with the words it came from; waits for a person's decision.</summary>
@@ -117,6 +135,16 @@ namespace ProjectManagement.Domain.Entities
         public Guid? AppliedEntityId { get; set; }
         public string? AppliedKey { get; set; }
         public string? Error { get; set; }
+        /// <summary>False when the quoted words were not found in the source (shown as "check the source"; confidence is lowered).</summary>
+        public bool Grounded { get; set; } = true;
+        /// <summary>What the approver changed before approving ("title, assignee"), so the agent learns how the team wants things.</summary>
+        public string? Edits { get; set; }
+        /// <summary>What the agent first proposed as the title, when the approver changed it.</summary>
+        public string? OriginalTitle { get; set; }
+        /// <summary>The assignee's answer to work the agent gave them: accepted or declined.</summary>
+        public string? OwnerResponse { get; set; }
+        public DateTime? OwnerRespondedAt { get; set; }
+        public string? OwnerNote { get; set; }
     }
 
     /// <summary>How the workspace's live meeting bot appears and behaves (the bot itself is the installation's own service, apps/meetbot).</summary>
@@ -124,7 +152,6 @@ namespace ProjectManagement.Domain.Entities
     {
         /// <summary>Unused: kept from when the bot was a third-party service, so no data migration was needed.</summary>
         public string? RecallApiKeyProtected { get; set; }
-        /// <summary>us-east-1, us-west-2, eu-central-1 or ap-northeast-1.</summary>
         /// <summary>Unused (see <see cref="RecallApiKeyProtected"/>).</summary>
         public string RecallRegion { get; set; } = "us-west-2";
         public string BotName { get; set; } = "Project Tracker Agent";
@@ -162,6 +189,10 @@ namespace ProjectManagement.Domain.Entities
         public string? NudgesSent { get; set; }
         public DateTime? EndedAt { get; set; }
         public string? Error { get; set; }
+        /// <summary>For a call found on the calendar (no project meeting): the calendar event, its title and Meet address.</summary>
+        public string? CalendarEventId { get; set; }
+        public string? Title { get; set; }
+        public string? MeetUrl { get; set; }
     }
 
     /// <summary>A person's own opt-in: the agent may look in their connected Gmail or Outlook for mail about their projects.</summary>

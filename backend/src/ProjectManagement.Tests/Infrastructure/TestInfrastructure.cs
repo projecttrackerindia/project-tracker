@@ -65,6 +65,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Agent__MeetingBotUrl", "https://meetbot.test");
         Environment.SetEnvironmentVariable("Agent__MeetingBotSecret", "test-meetbot-secret-0123");
         Environment.SetEnvironmentVariable("InboundEmail__Domain", "inbound.test");
+        Environment.SetEnvironmentVariable("Agent__SlackPollMinutes", "0"); // a test reads the channel tick after tick
+        Environment.SetEnvironmentVariable("Ops__DeployWebhookToken", "test-deploy-webhook-token-0123456789");
         Environment.SetEnvironmentVariable("Support__Workflows__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("WhatsApp__DeliveryEnabled", "false");
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly

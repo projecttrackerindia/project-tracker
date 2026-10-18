@@ -34,6 +34,8 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     /// <summary>The conference record Meet "has" for any meeting code (null: none yet) and the transcript said in it.</summary>
     public (DateTime Start, DateTime End)? MeetRecord { get; set; }
     public List<(string Who, string Text)> MeetTranscript { get; } = new();
+    /// <summary>Events the calendar list returns (for the project agent's look at upcoming calls).</summary>
+    public List<object> UpcomingEvents { get; } = new();
     public ConcurrentBag<string> MeetReads { get; } = new();
     public FakeSentMailbox Sent {get;}=new();
 
@@ -126,7 +128,7 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
         if(path=="/calendar/v3/calendars/primary/events"&&request.Method==HttpMethod.Get&&u.Query.Contains("singleEvents=true")){
             BeforePersonalCalendarList?.Invoke();
             if(PersonalCalendarPaged)return Json(new{items=Array.Empty<object>(),nextPageToken="more"});
-            return Json(new{items=PersonalCalendarBlocked?new object[]{new{status="confirmed",transparency="opaque"}}:Array.Empty<object>()});
+            return Json(new{items=PersonalCalendarBlocked?new object[]{new{status="confirmed",transparency="opaque"}}:UpcomingEvents.ToArray()});
         }
         if(path=="/calendar/v3/calendars/primary/events"&&request.Method==HttpMethod.Post){
             using var proposed=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));

@@ -15,6 +15,9 @@ public record GoogleAttendeeStatus(string Email, string ResponseStatus);
 /// Text null and Final true: the meeting ended without a transcript (transcription was not switched on).</summary>
 public record MeetTranscriptResult(string? Text, bool Final);
 
+/// <summary>A call on someone's Google Calendar with a Meet link.</summary>
+public record CalendarMeet(string EventId, string Title, DateTime Start, DateTime End, string MeetUrl);
+
 /// <summary>Google's own error response. Never shown to the person as-is - callers turn it into one of the plain-language messages the
 /// product requires (e.g. "We couldn't create the Google Meet right now. Please try again."); the technical detail stays server-side.</summary>
 public class GoogleApiException(string action, HttpStatusCode status) : Exception($"Google Calendar {action} failed: {(int)status}")
@@ -115,6 +118,34 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
         var body = await res.Content.ReadAsStringAsync(ct);
         log.LogWarning("Google Calendar cancel failed: {Status}", (int)res.StatusCode);
         throw new GoogleApiException("cancel", res.StatusCode);
+    }
+
+    /// <summary>The person's own calendar events with a Google Meet link that start in the window (cancelled and all-day events left out).</summary>
+    public async Task<IReadOnlyList<CalendarMeet>> ListUpcomingMeetsAsync(Guid userId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        var token = await auth.GetAccessTokenAsync(userId, ct);
+        var doc = await GetAsync($"{EventsUrl}?singleEvents=true&orderBy=startTime&maxResults=25&timeMin={Uri.EscapeDataString(fromUtc.ToString("o"))}&timeMax={Uri.EscapeDataString(toUtc.AddHours(1).ToString("o"))}",
+            token, ct);
+        var list = new List<CalendarMeet>();
+        if (!doc.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array) return list;
+        foreach (var e in items.EnumerateArray())
+        {
+            if (e.TryGetProperty("status", out var st) && st.GetString() == "cancelled") continue;
+            var id = e.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+            if (id is null || !e.TryGetProperty("start", out var start) || !start.TryGetProperty("dateTime", out var sdt) || !sdt.TryGetDateTime(out var s0)) continue;
+            if (!e.TryGetProperty("end", out var end) || !end.TryGetProperty("dateTime", out var edt) || !edt.TryGetDateTime(out var e0)) continue;
+            static DateTime Seconds(DateTime d) => new(d.Ticks - d.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc);
+            var starts = Seconds(s0.ToUniversalTime());
+            if (starts < fromUtc || starts > toUtc) continue;
+            string? meet = e.TryGetProperty("hangoutLink", out var hl) ? hl.GetString() : null;
+            if (meet is null && e.TryGetProperty("conferenceData", out var cd) && cd.TryGetProperty("entryPoints", out var eps))
+                foreach (var ep in eps.EnumerateArray())
+                    if (ep.TryGetProperty("entryPointType", out var t) && t.GetString() == "video" && ep.TryGetProperty("uri", out var u)) { meet = u.GetString(); break; }
+            if (meet is null || !Uri.TryCreate(meet, UriKind.Absolute, out var mu) || mu.Host != "meet.google.com") continue;
+            var title = e.TryGetProperty("summary", out var sum) ? sum.GetString() ?? "" : "";
+            list.Add(new CalendarMeet(id, title.Trim(), starts, Seconds(e0.ToUniversalTime()), meet));
+        }
+        return list;
     }
 
     private const string MeetApi = "https://meet.googleapis.com/v2";

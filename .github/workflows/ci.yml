@@ -242,3 +242,6 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: A real bot against a synthetic Google Meet page
         run: npm test
+      - name: Project agent evaluation scoring (self-test; the full evaluation runs by hand against a sandbox)
+        working-directory: .
+        run: node evaluation/project-agent/evaluate.mjs --self-test

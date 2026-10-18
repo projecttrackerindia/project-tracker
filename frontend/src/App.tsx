@@ -327,6 +327,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
         <Route path="agent-tracker" element={<AgentTrackerPage />} />
         <Route path="project-agent" element={<Guard allow={mProjects && !personal}><AgentPage section="review" /></Guard>} />
+        <Route path="project-agent/assigned" element={<Guard allow={mProjects && !personal}><AgentPage section="assigned" /></Guard>} />
         <Route path="project-agent/my-inbox" element={<Guard allow={mProjects && !personal && !isGuest}><AgentPage section="my-inbox" /></Guard>} />
         <Route path="project-agent/meeting-bot" element={<Guard allow={mProjects && !personal}><AgentPage section="meeting-bot" /></Guard>} />
         <Route path="ai" element={<AiPage />} />

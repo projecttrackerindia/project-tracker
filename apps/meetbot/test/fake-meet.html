@@ -20,6 +20,8 @@
   <button type="button" aria-label="Turn on captions" id="cc">cc</button>
   <button type="button" aria-label="Chat with everyone" id="chat">chat</button>
   <div id="panel" hidden><textarea aria-label="Send a message"></textarea><ul id="messages"></ul></div>
+  <div id="lang" hidden><button type="button" role="combobox" aria-label="Meeting language" aria-expanded="false" id="langbtn">English</button>
+    <ul role="listbox" id="langs" hidden><li role="option">English</li><li role="option">Hindi (India)</li><li role="option">Tamil (India)</li></ul></div>
 </section>
 <p id="ended"></p>
 <script>
@@ -47,8 +49,13 @@ const speak = async (region, name, words) => {
   block.append(who, said); region.appendChild(block);
   for (const w of words.split(' ')) { said.textContent = (said.textContent + ' ' + w).trim(); await new Promise((r) => setTimeout(r, 60)); }
 };
+$('langbtn').onclick = () => { $('langs').hidden = false; $('langbtn').setAttribute('aria-expanded', 'true'); };
+for (const li of document.querySelectorAll('#langs li')) li.onclick = () => {
+  $('langbtn').textContent = li.textContent; $('langs').hidden = true; fetch('/lang-log', { method: 'POST', body: li.textContent });
+};
 $('cc').onclick = async () => {
   $('cc').setAttribute('aria-label', 'Turn off captions');
+  $('lang').hidden = false;
   const region = document.createElement('div'); region.setAttribute('role', 'region'); region.setAttribute('aria-label', 'Captions');
   $('call').appendChild(region);
   await new Promise((r) => setTimeout(r, 300));

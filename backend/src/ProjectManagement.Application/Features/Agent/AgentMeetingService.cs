@@ -67,24 +67,115 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             db.AgentMeetingBots.Add(bot);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; continue; }   // another server sent it
-            var project = await db.Projects.AsNoTracking().Where(p => p.Id == s.ProjectId).Select(p => p.Name).FirstAsync(ct);
-            try
-            {
-                var webhook = $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{bot.WebhookToken}";
-                var intro = $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
-                    "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen.";
-                bot.BotId = await botService.CreateBotAsync(session.Meeting.GoogleMeetUri, w.BotName, session.Start, session.End.AddMinutes(30), webhook, intro, ct);
-                bot.Attempts = 1; bot.LastAttemptAt = now;
-                sent++;
-            }
-            catch (MeetingBotException ex)
-            {
-                bot.Status = "failed"; bot.Error = AgentAnalysisService.Cut(ex.Message, 500);
-                s.LastError = bot.Error;
-            }
-            await db.SaveChangesAsync(ct);
+            if (await SendAsync(s, w, bot, session.Meeting.GoogleMeetUri, ct)) sent++;
         }
         return sent;
+    }
+
+    /// <summary>Asks the bot service to send the bot (the row is saved first; a failure is kept on it).</summary>
+    private async Task<bool> SendAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, AgentMeetingBot bot, string meetUrl, CancellationToken ct)
+    {
+        var project = await db.Projects.AsNoTracking().Where(p => p.Id == s.ProjectId).Select(p => p.Name).FirstAsync(ct);
+        var ok = false;
+        try
+        {
+            var webhook = $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{bot.WebhookToken}";
+            var intro = $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
+                "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen.";
+            var agenda = await AgendaAsync(s, ct);
+            var language = s.CaptionLanguage is { } code && AgentSettingsService.CaptionLanguages.TryGetValue(code, out var name) ? name : null;
+            bot.BotId = await botService.CreateBotAsync(meetUrl, w.BotName, bot.SessionStartUtc, bot.SessionEndUtc.AddMinutes(30), webhook, intro, ct, agenda, language);
+            bot.Attempts = 1; bot.LastAttemptAt = clock.Now;
+            ok = true;
+        }
+        catch (MeetingBotException ex)
+        {
+            bot.Status = "failed"; bot.Error = AgentAnalysisService.Cut(ex.Message, 500);
+            s.LastError = bot.Error;
+        }
+        await db.SaveChangesAsync(ct);
+        return ok;
+    }
+
+    /// <summary>
+    /// What the bot posts after its hello: work due today, overdue work and what is still open from the last meeting - by key and first name only
+    /// (people from outside the company may be in the call). Null when there is nothing to say.
+    /// </summary>
+    public async Task<string?> AgendaAsync(ProjectAgentSettings s, CancellationToken ct)
+    {
+        var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == s.ProjectId, ct);
+        var zone = await db.Tenants.AsNoTracking().Where(t => t.Id == s.TenantId).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
+        var today = clock.TodayIn(zone);
+        var work = await db.Tasks.AsNoTracking().Where(t => t.ProjectId == s.ProjectId && t.ParentTaskId == null && t.DueDate != null && t.DueDate <= today
+                && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled)
+            .OrderBy(t => t.DueDate).Take(12).Select(t => new { t.Number, t.DueDate, Who = t.Assignee != null ? t.Assignee.DisplayName : null }).ToListAsync(ct);
+        string First(string? name) => name is null ? "no owner" : name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+        string Item(int n, string? who, string? extra = null) => $"{project.Key}-{n} ({First(who)}{extra})";
+        var parts = new List<string>();
+        var due = work.Where(t => t.DueDate == today).ToList();
+        var late = work.Where(t => t.DueDate < today).ToList();
+        if (due.Count > 0) parts.Add("due today " + string.Join(", ", due.Take(5).Select(t => Item(t.Number, t.Who))));
+        if (late.Count > 0) parts.Add("overdue " + string.Join(", ", late.Take(5).Select(t => Item(t.Number, t.Who, $", {today.DayNumber - t.DueDate!.Value.DayNumber}d"))));
+        // Open work that came out of the last meeting the agent read.
+        var lastRun = await db.AgentRuns.AsNoTracking().Where(r => r.ProjectId == s.ProjectId && r.Status == "done"
+                && db.AgentSignals.Any(x => x.RunId == r.Id && (x.Source == AgentSourceKind.MeetingTranscript || x.Source == AgentSourceKind.LiveMeeting || x.Source == AgentSourceKind.Manual)))
+            .OrderByDescending(r => r.StartedAt).Select(r => r.Id).FirstOrDefaultAsync(ct);
+        if (lastRun != Guid.Empty)
+        {
+            var made = await db.AgentFindings.AsNoTracking().Where(f => f.RunId == lastRun && f.Status == AgentFindingStatus.Applied && f.AppliedEntityId != null
+                    && (f.Kind == AgentFindingKind.CreateTask || f.Kind == AgentFindingKind.CreateActionItem))
+                .Select(f => f.AppliedEntityId!.Value).ToListAsync(ct);
+            var open = await db.Tasks.AsNoTracking().CountAsync(t => made.Contains(t.Id) && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled, ct)
+                + await db.WorkTasks.AsNoTracking().CountAsync(t => made.Contains(t.Id) && t.Status != WorkTaskStatus.Completed && t.Status != WorkTaskStatus.Cancelled, ct);
+            if (open > 0) parts.Add($"{open} item{(open == 1 ? "" : "s")} still open from the last meeting");
+        }
+        return parts.Count == 0 ? null : AgentAnalysisService.Cut("📋 For today: " + string.Join(" · ", parts) + ".", 480);
+    }
+
+    // ---------------------------------------------------------------- calls on the calendar
+
+    /// <summary>
+    /// Calls on the acting person's Google Calendar, starting in the next few minutes, with a Meet link and the project's key or name in the
+    /// title - and not already one of the project's meetings: the bot is sent to those too.
+    /// </summary>
+    public async Task<int> ScheduleCalendarBotsAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, CancellationToken ct)
+    {
+        if (!s.Enabled || !s.LiveBot || !s.ReadMeetings || !s.AutoJoinCalendar || !botService.Configured) return 0;
+        var now = clock.Now;
+        var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == s.ProjectId, ct);
+        IReadOnlyList<CalendarMeet> events;
+        try { events = await google.ListUpcomingMeetsAsync(s.ActingUserId, now.AddMinutes(-5), now.AddMinutes(10), ct); }
+        catch (ConflictException) { return 0; }   // no Google Calendar connected: nothing to look at
+        catch (GoogleApiException ex) { log.LogInformation("Calendar look-up failed for {Project}: {Reason}", s.ProjectId, ex.Message); return 0; }
+        var known = await db.ProjectMeetings.AsNoTracking().Where(m => m.ProjectId == s.ProjectId && m.GoogleMeetUri != "").Select(m => m.GoogleMeetUri).ToListAsync(ct);
+        var keyPattern = new System.Text.RegularExpressions.Regex($@"\b{System.Text.RegularExpressions.Regex.Escape(project.Key)}\b", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var sent = 0;
+        foreach (var e in events)
+        {
+            if (e.Start < now.AddMinutes(-5) || e.Start > now.AddMinutes(10) || e.End <= e.Start) continue;
+            var named = keyPattern.IsMatch(e.Title) || project.Name.Trim().Length >= 4 && e.Title.Contains(project.Name.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (!named || known.Any(k => SameMeet(k, e.MeetUrl))) continue;
+            var meetingId = CalendarMeetingId(s.ProjectId, e.EventId);
+            if (await db.AgentMeetingBots.AnyAsync(b => b.MeetingId == meetingId && b.SessionStartUtc == e.Start && b.Kind == "bot", ct)) continue;
+            var bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = s.ProjectId, MeetingId = meetingId, SessionStartUtc = e.Start, SessionEndUtc = e.End,
+                Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now,
+                CalendarEventId = AgentAnalysisService.Cut(e.EventId, 200), Title = AgentAnalysisService.Cut(e.Title, 300), MeetUrl = AgentAnalysisService.Cut(e.MeetUrl, 300) };
+            db.AgentMeetingBots.Add(bot);
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; continue; }
+            if (await SendAsync(s, w, bot, e.MeetUrl, ct)) sent++;
+        }
+        return sent;
+    }
+
+    private static bool SameMeet(string a, string b) =>
+        string.Equals(a.TrimEnd('/').Split('?')[0], b.TrimEnd('/').Split('?')[0], StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A stable id for a calendar call in a project (so it is sent once, and its transcript is filed under it).</summary>
+    public static Guid CalendarMeetingId(Guid projectId, string eventId)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes($"agent-calendar:{projectId}:{eventId}"));
+        return new Guid(hash.AsSpan(0, 16));
     }
 
     /// <summary>Bots whose session is over: read their transcript. Returns how many transcripts were added.</summary>
@@ -115,7 +206,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             if (bot.TranscriptProtected is { } protectedText && bot.TranscriptLength > 0)
             {
                 var meeting = await db.ProjectMeetings.AsNoTracking().FirstOrDefaultAsync(m => m.Id == bot.MeetingId, ct);
-                var title = $"{meeting?.Title ?? "Meeting"} · {bot.SessionStartUtc:dd MMM}";
+                var title = $"{meeting?.Title ?? bot.Title ?? "Meeting"} · {bot.SessionStartUtc:dd MMM}";
                 if (await signals.AddAsync(s.TenantId, s.ProjectId, AgentSourceKind.LiveMeeting, $"bot:{bot.Id}", title, null, secrets.Unprotect(protectedText),
                         bot.SessionEndUtc, null, bot.MeetingId, ct) is not null) added++;
             }
@@ -177,7 +268,8 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             .OrderBy(t => t.DueDate).Take(40)
             .Select(t => new { t.Number, t.Title, t.DueDate, Who = t.Assignee != null ? t.Assignee.DisplayName : "unassigned" }).ToListAsync(ct);
         var prompt = new StringBuilder();
-        prompt.AppendLine($"TODAY: {today:yyyy-MM-dd}. PROJECT: {project.Key} - {project.Name}. MEETING: {meeting?.Title}");
+        prompt.AppendLine($"TODAY: {today:yyyy-MM-dd}. PROJECT: {project.Key} - {project.Name}. MEETING: {meeting?.Title ?? bot.Title}");
+        if (!string.IsNullOrWhiteSpace(s.Instructions)) prompt.AppendLine($"TEAM NOTES: {AgentAnalysisService.Cut(s.Instructions.Trim(), 1500)}");
         if (!string.IsNullOrWhiteSpace(meeting?.Description)) prompt.AppendLine($"AGENDA: {meeting.Description}");
         prompt.AppendLine("WORK DUE OR OVERDUE (key | title | assignee | due):");
         foreach (var t in work) prompt.AppendLine($"{project.Key}-{t.Number} | {t.Title} | {t.Who} | {t.DueDate:yyyy-MM-dd}{(t.DueDate < today ? " OVERDUE" : "")}");

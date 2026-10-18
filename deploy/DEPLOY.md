@@ -188,6 +188,19 @@ third-party service: nothing to buy, no per-meeting fees.
   `Agent__MeetingBotUrl=<the bot service's private URL, e.g. http://meetbot.railway.internal:8080>` and `Agent__MeetingBotSecret=<same secret>`.
 - Each meeting is one Chromium (about 400 MB); `MEETBOT_MAX_BOTS` (default 4) caps how many at a time.
 - Without the bot, the agent still reads Google Meet transcripts after each meeting and anything pasted into a project's Agent tab.
+- The bot sets Meet's captions to each project's meeting language and posts the project's agenda after its hello (nothing to configure).
+
+## Project agent: mail, Slack, WhatsApp and alerts (optional)
+
+Everything about the project agent — its sources, accuracy settings, minutes, the evaluation set and every setting — is in
+[docs/PROJECT-AGENT.md](../docs/PROJECT-AGENT.md). For a deployment, the pieces to switch on are:
+
+- **Project mailbox addresses:** `InboundEmail__Domain` (a domain whose MX points at Mailgun, SendGrid or Postmark inbound) and
+  `InboundEmail__Key`; route all mail for that domain to `https://<api host>/api/v1/inbound/email?key=<key>`.
+- **Slack channels:** `Slack__AgentChannels=true`, the `channels:history` and `groups:history` scopes on the Slack app, then reconnect Slack.
+- **WhatsApp texts to a project key:** `WhatsApp__AgentMessagesEnabled=true` (reception and contact linking must already be on).
+- **Failed-deploy e-mails:** `Ops__DeployWebhookToken` (24+ random characters, optional `Ops__AlertEmail`) and a Railway webhook to
+  `https://<api host>/api/v1/inbound/deploy/<token>`.
 
 ## Not covered here
 

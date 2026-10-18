@@ -32,6 +32,12 @@ public class WhatsAppOptions
         && ApiVersion is { Length: <= 10 } && System.Text.RegularExpressions.Regex.IsMatch(ApiVersion, @"^v[0-9]{1,3}\.[0-9]{1,2}$")
         && SignupVersion is "v3" or "v4";
     public bool WebhookReceptionEnabled { get; set; } // Default off; sending has no implementation or activation switch.
+    /// <summary>
+    /// Default off. When on, a text from a member's verified number that starts with a project key ("PAY: refunds are blocked") is kept,
+    /// encrypted, for that project's agent to read as information. It never changes anything by itself: the agent only proposes, and a person
+    /// who may edit the project approves. Every other message's text is still discarded.
+    /// </summary>
+    public bool AgentMessagesEnabled { get; set; }
     public string? AppId { get; set; }
     public string? AppSecret { get; set; }
     public string? VerifyToken { get; set; }
@@ -45,7 +51,7 @@ public record WhatsAppReceiptDto(Guid Id, string MessageType, DateTimeOffset Pro
 
 /// <summary>Signed inbound receipts and explicit self-service contact proof. Messages never invoke AI or change business data.</summary>
 public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
-    AppClock clock, Recorder recorder, IOptions<WhatsAppOptions> options, WhatsAppContactService contacts)
+    AppClock clock, Recorder recorder, IOptions<WhatsAppOptions> options, WhatsAppContactService contacts, ProjectManagement.Application.Features.Agent.AgentSignalService agent)
 {
     private readonly WhatsAppOptions _o = options.Value;
     private static readonly HashSet<string> Types = ["text", "image", "video", "audio", "document", "sticker",
@@ -140,7 +146,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
         if (!CryptographicOperations.FixedTimeEquals(digest, HMACSHA256.HashData(Encoding.UTF8.GetBytes(_o.AppSecret!), body)))
             throw new UnauthorizedException("WhatsApp signature is invalid.", "WHATSAPP_SIGNATURE_INVALID");
     }
-    private sealed record Incoming(string BusinessId, string PhoneId, string MessageId, string Type, DateTime Timestamp, string? Sender, string? Proof);
+    private sealed record Incoming(string BusinessId, string PhoneId, string MessageId, string Type, DateTime Timestamp, string? Sender, string? Proof, string? AgentText = null);
     private static string? String(JsonElement obj, string key) =>
         obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static JsonElement Array(JsonElement obj, string key, int maximum)
@@ -151,7 +157,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
         return value;
     }
     private sealed record DeliveryStatus(string BusinessId,string PhoneId,string MessageId,string State,DateTime Timestamp,string? CallbackTag,string? Recipient);
-    private static (List<Incoming> Messages,List<DeliveryStatus> Statuses) Parse(ReadOnlyMemory<byte> body)
+    private static (List<Incoming> Messages,List<DeliveryStatus> Statuses) Parse(ReadOnlyMemory<byte> body, bool keepAgentText = false)
     {
         try
         {
@@ -197,16 +203,19 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
                             || !long.TryParse(String(message, "timestamp"), NumberStyles.None, CultureInfo.InvariantCulture, out var unix)
                             || unix < 0 || unix > 253402300799)
                             throw new ValidationException("body", "Invalid WhatsApp message receipt.");
-                        // Retain only a candidate link proof in memory; general message text is discarded.
-                        string? proof = null; string? sender = null;
+                        // Retain only a candidate link proof in memory - and, when the project agent may read messages, a text addressed to a project
+                        // ("PAY: ..."); all other message text is discarded.
+                        string? proof = null; string? sender = null; string? agentText = null;
                         if (type == "text" && message.TryGetProperty("text", out var text))
                         {
                             var candidate = String(text, "body");
                             if (candidate is { Length: 40 } && candidate.StartsWith("PT-LINK ", StringComparison.Ordinal))
                             { proof = candidate; sender = String(message, "from"); }
+                            else if (keepAgentText && candidate is { Length: >= 6 and <= 4000 } && ProjectManagement.Application.Features.Agent.AgentSignalService.AddressedToProject(candidate))
+                            { agentText = candidate; sender = String(message, "from"); }
                         }
                         messages.Add(new(business!, String(metadata, "phone_number_id")!, id, type,
-                            DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime, sender, proof));
+                            DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime, sender, proof, agentText));
                         if (messages.Count + statuses.Count > 100) throw new ValidationException("body", "Too many WhatsApp messages.");
                     }
                 }
@@ -219,7 +228,7 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
     {
         if (body.Length > 64 * 1024) throw new ValidationException("body", "WhatsApp payload is too large.");
         VerifySignature(signature, body.Span);
-        var (messages,statuses) = Parse(body); // Validate the entire batch before persisting any receipts.
+        var (messages,statuses) = Parse(body, _o.AgentMessagesEnabled); // Validate the entire batch before persisting any receipts.
         var originalTenant = ctx.TenantId; var originalUser = ctx.UserId;
         try
         {
@@ -255,6 +264,9 @@ public class WhatsAppGatewayService(IAppDbContext db, CurrentContext ctx,
                     if (await db.WhatsAppInboundReceipts.AnyAsync(x => x.AppId == _o.AppId
                             && x.PhoneNumberId == c.PhoneNumberId && x.ProviderMessageId == incoming.MessageId, ct)) continue;
                     await contacts.TryVerifyAsync(c, incoming.Sender, incoming.Proof, incoming.Timestamp, ct);
+                    // Only from a member's own verified number; the agent reads it as information and proposes, nothing more.
+                    if (incoming.AgentText is { } said && _o.AgentMessagesEnabled && await contacts.VerifiedUserAsync(c, incoming.Sender, ct) is { } member)
+                        await agent.AddWhatsAppAsync(c.TenantId, member, incoming.MessageId, said, incoming.Timestamp, ct);
                     if (remaining == 0) continue;
                     remaining--;
                     db.WhatsAppInboundReceipts.Add(new WhatsAppInboundReceipt

@@ -8,7 +8,7 @@ import { MeetBot } from './bot.mjs';
  * Project Tracker's own meeting bot service. The API calls it (with the shared secret) to send a bot into a Google Meet; the bot streams the
  * captions to the API's webhook and posts chat messages when asked.
  *
- *   POST   /bots            { meetingUrl, botName, joinAt?, leaveAt?, webhookUrl, introMessage? } -> 201 { id, status }
+ *   POST   /bots            { meetingUrl, botName, joinAt?, leaveAt?, webhookUrl, introMessage?, agendaMessage?, captionLanguage? } -> 201 { id, status }
  *   GET    /bots/:id        -> { id, status, error, lines }            (404 once forgotten - treat as ended)
  *   POST   /bots/:id/chat   { message }                                -> 202
  *   DELETE /bots/:id        -> 202 (leaves)
@@ -65,7 +65,9 @@ export function createServer(env = process.env) {
         if (!urlOk(b.webhookUrl, webhookHosts, ['https:', ...(env.MEETBOT_ALLOW_HTTP === 'true' ? ['http:'] : [])])) return send(res, 422, { error: 'webhookUrl is not allowed' });
         if (active() >= capacity) return send(res, 429, { error: `The bot service is in ${capacity} meetings already.` });
         const bot = new MeetBot({ meetingUrl: b.meetingUrl, botName: String(b.botName || 'Project Tracker Agent').slice(0, 60), joinAt: b.joinAt, leaveAt: b.leaveAt,
-          webhookUrl: b.webhookUrl, introMessage: b.introMessage ? String(b.introMessage).slice(0, 500) : null }, deps);
+          webhookUrl: b.webhookUrl, introMessage: b.introMessage ? String(b.introMessage).slice(0, 500) : null,
+          agendaMessage: b.agendaMessage ? String(b.agendaMessage).slice(0, 500) : null,
+          captionLanguage: typeof b.captionLanguage === 'string' && /^[\p{L} ()-]{2,40}$/u.test(b.captionLanguage) ? b.captionLanguage : null }, deps);
         bots.set(bot.id, bot);
         log(`bot ${bot.id.slice(0, 8)} scheduled for ${bot.joinAt.toISOString()}`);
         return send(res, 201, bot.summary);
