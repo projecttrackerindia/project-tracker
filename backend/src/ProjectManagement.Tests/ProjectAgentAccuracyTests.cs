@@ -357,10 +357,10 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
         var ok = await anon.PostAsync(url, new StringContent("""{"type":"DEPLOY","status":"SUCCESS","service":{"name":"API"}}"""));
         Assert.False((await ok.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("alerted").GetBoolean());
         var name = "Svc" + Guid.NewGuid().ToString("N")[..6];
-        var failed = await anon.PostAsync(url, new StringContent($$"""{"type":"DEPLOY","status":"FAILED","service":{"name":"{{name}}"},"environment":{"name":"production"}}"""));
+        var failed = await anon.PostAsync(url, new StringContent(JsonSerializer.Serialize(new { type = "DEPLOY", status = "FAILED", service = new { name }, environment = new { name = "production" } })));
         Assert.Equal(HttpStatusCode.OK, failed.StatusCode);
         Assert.True((await failed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("alerted").GetBoolean());
-        var again = await anon.PostAsync(url, new StringContent($$"""{"type":"DEPLOY","status":"FAILED","service":{"name":"{{name}}"}}"""));
+        var again = await anon.PostAsync(url, new StringContent(JsonSerializer.Serialize(new { type = "DEPLOY", status = "FAILED", service = new { name } })));
         Assert.False((await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("alerted").GetBoolean());
     }
 }
