@@ -13,7 +13,7 @@ const pid='00000000-0000-0000-0000-000000000003';
 const project={id:pid,key:'DEMO',name:'Connected delivery',description:'A connected timeline with protected history and clear allocations.',status:'Planning',priority:'Medium',health:'OnTrack',progress:0,active:0,startDate:'2030-01-01',dueDate:'2030-01-11',version:5,stageScheduleMode:'FollowSchedule',projectType:'NewProject',deliveryMethod:'Hybrid',owner:{id:user.id,name:user.displayName},stats:{total:0,done:0,inProgress:0,cancelled:0,todo:0,overdue:0}};
 const stages=['Created','Design','Build','Launch'].map((name,i)=>({id:`10000000-0000-0000-0000-00000000000${i+1}`,name,order:i,durationDays:[0,4,6,0][i],plannedStart:['2030-01-01','2030-01-01','2030-01-05','2030-01-11'][i],plannedEnd:['2030-01-01','2030-01-05','2030-01-11','2030-01-11'][i],actualStart:i?null:'2029-12-31',actualEnd:i?null:'2029-12-31',status:i?'Pending':'Completed',effectiveStatus:i?'Pending':'Completed',locked:i>1,lockedBy:i>1?['','','Design','Build'][i]:null,taskTotal:0,taskDone:0,openIssues:0,totalIssues:0}));
 const detail={project,stages,statuses:[{id:pid,name:'To Do',order:0,category:'Todo',color:'#4f46e5'}],members:[{userId:user.id,name:user.displayName,email:user.email,role:'Owner'}]};
-const errors=[],checks=[],saves=[],previews=[],stageAttempts=[];
+const errors=[],checks=[],saves=[],wsSaves=[],previews=[],stageAttempts=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
@@ -24,7 +24,10 @@ try{
   if(ep.endsWith('/avatar')){await route.fulfill({status:404,body:''});return;}
   if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp}});return;}
   let data=[];
-  if(ep===`/api/v1/projects/${pid}/meetings/schedule` && method==='POST'){
+  if(ep==='/api/v1/meetings/schedule' && method==='POST'){
+    const b=req.postDataJSON();wsSaves.push(b);data={title:b.title,meetUri:'https://meet.google.com/synthetic-team',calendarUrl:null,participantCount:2};
+  }else if(ep==='/api/v1/meetings/participants'){data=[{userId:user.id,name:user.displayName,email:user.email,role:'Owner',rsvpStatus:'NeedsAction'},{userId:'00000000-0000-0000-0000-000000000009',name:'Priya Shah',email:'priya@example.test',role:'Member',rsvpStatus:'NeedsAction'}];
+  }else if(ep===`/api/v1/projects/${pid}/meetings/schedule` && method==='POST'){
     const b=req.postDataJSON();saves.push(b);data={id:pid,title:b.title,meetUri:'https://meet.google.com/synthetic-call'};
   }else if(ep===`/api/v1/projects/${pid}/meetings/participants`){data=[{userId:user.id,name:user.displayName,email:user.email,role:'Owner',rsvpStatus:'Accepted'}];
   }else if(ep===`/api/v1/projects/${pid}/stages/${stages[1].id}`&&method==='PUT'){
@@ -59,9 +62,21 @@ try{
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});
   await page.goto(origin+'/preview-org/calendar');await page.getByRole('button',{name:'Scrum call',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0,'Header Ask Agent removed');
-  await page.getByRole('button',{name:'Scrum call',exact:true}).click();await page.getByRole('button',{name:'DEMO · Connected delivery',exact:true}).click();
-  const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule scrum call'}).waitFor();
-  assert.equal(await dialog.locator('input').first().inputValue(),'Connected delivery Scrum');
+  // Scrum call opens straight into the form with "No project" as the default: a workspace stand-up needs no project.
+  await page.getByRole('button',{name:'Scrum call',exact:true}).click();
+  let dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule scrum call'}).waitFor();
+  assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),'','No project is the default');
+  assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Preview Workspace Scrum');
+  await dialog.getByText('Priya Shah',{exact:true}).click();
+  await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
+  await dialog.getByRole('button',{name:'Send invitation'}).click();await dialog.getByText('Google Meet ready',{exact:true}).waitFor();
+  assert.deepEqual(wsSaves.at(-1).participantUserIds,['00000000-0000-0000-0000-000000000009']);assert.equal(wsSaves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
+  assert.equal(wsSaves.at(-1).repeat,undefined);checks.push(`scrum-no-project-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
+  // Choosing a project switches the invitees and the suggested title to that project's.
+  await page.getByRole('button',{name:'Scrum call',exact:true}).click();
+  dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule scrum call'}).waitFor();
+  await dialog.getByLabel('Project',{exact:true}).selectOption(pid);
+  assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery Scrum');
   await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
   await dialog.getByLabel('Repeat',{exact:true}).selectOption('Weekdays');await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,`scrum-${width}.png`),animations:'disabled'});

@@ -23,6 +23,9 @@ public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? Participan
 public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds, MeetingRepeat? Repeat = null);
 public record RescheduleMeetingRequest(DateTimeOffset StartTime, DateTimeOffset EndTime);
 public record AddMeetingParticipantRequest(Guid UserId);
+/// <summary>A meeting scheduled for the workspace as a whole (a team stand-up that belongs to no one project). Google Calendar holds it;
+/// Project Tracker keeps no project row for it, so this is just what the organizer needs right after creating it.</summary>
+public record WorkspaceMeetingDto(string Title, string MeetUri, string? CalendarUrl, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, string? RecurrenceRule, int ParticipantCount);
 
 /// <summary>
 /// Google Meet/Calendar meetings, scoped to a project. Project Tracker never implements its own conferencing, invitation e-mail or RSVP
@@ -122,6 +125,66 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         await chat.PostMeetingCardAsync(projectId, card, $"📹 {organizer.DisplayName} scheduled a Google Meet: {meetingTitle}", ct);
 
         return ToDto(meeting, organizer.DisplayName);
+    }
+
+    // ---------------------------------------------------------------- workspace meetings (no project)
+
+    /// <summary>Who a workspace-level meeting (no project) may invite: the workspace's active members, guests excluded - a guest only ever sees
+    /// the projects they were invited to, so a "whole workspace" picker must not offer (or reveal) them.</summary>
+    public async Task<IReadOnlyList<MeetingParticipantDto>> WorkspaceParticipantsAsync(CancellationToken ct = default)
+    {
+        RequireNotGuest();
+        var tid = ctx.RequireTenantId();
+        var rows = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
+            .OrderBy(m => m.User!.DisplayName).Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, m.Role }).ToListAsync(ct);
+        return rows.Select(u => new MeetingParticipantDto(u.UserId, u.DisplayName, u.Email, u.Role.ToString(), "NeedsAction")).ToList();
+    }
+
+    /// <summary>
+    /// "Schedule a scrum call" without choosing a project: the same Google Calendar + Meet event as a project meeting, but the attendees are
+    /// picked from the workspace's members and nothing is posted to a project's chat or meeting list (there is none). Everyone invited still
+    /// gets the Calendar invitation from Google and an in-app notification.
+    /// </summary>
+    public async Task<WorkspaceMeetingDto> ScheduleForWorkspaceAsync(ScheduleMeetingRequest req, CancellationToken ct = default)
+    {
+        RequireNotGuest();
+        if (string.IsNullOrWhiteSpace(req.Title)) throw new ValidationException("title", "Give the meeting a title.");
+        if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
+        if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
+        // Checked before anything reaches Google: an unknown or missing zone must never leave an invitation sent with nothing recorded here.
+        if (!ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(req.TimeZone)) throw new ValidationException("timeZone", "Choose a valid time zone for the meeting.");
+        var tid = ctx.RequireTenantId();
+        var organizerId = ctx.RequireUserId();
+        var invitedIds = (req.ParticipantUserIds ?? []).Where(id => id != organizerId).Distinct().ToList();
+        var members = await db.TenantMembers.AsNoTracking()
+            .Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive && (invitedIds.Contains(m.UserId) || m.UserId == organizerId))
+            .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email }).ToListAsync(ct);
+        if (invitedIds.Any(id => members.All(m => m.UserId != id)))
+            throw new ValidationException("participantUserIds", "Only active members of this workspace may be invited.");
+        var organizer = members.FirstOrDefault(m => m.UserId == organizerId) ?? throw new ForbiddenException("Only workspace members can schedule meetings.", "PERMISSION_DENIED");
+        var attendees = members.Where(m => m.UserId != organizerId).ToList();
+
+        var title = req.Title.Trim();
+        var rule = MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone);
+        CreatedGoogleMeeting created;
+        try { created = await google.CreateEventAsync(organizerId, title, req.Description, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, req.TimeZone, attendees.Select(a => new GoogleMeetingAttendee(a.Email)).ToList(), ct, rule); }
+        catch (GoogleApiException) { throw new ConflictException("We couldn't create the Google Meet right now. Please try again.", "GOOGLE_MEET_CREATE_FAILED"); }
+
+        recorder.Audit("meeting.scheduled", "WorkspaceMeeting", null, newValue: new { Title = title, StartTimeUtc = req.StartTime.UtcDateTime, EndTimeUtc = req.EndTime.UtcDateTime, Participants = attendees.Count, Recurrence = rule, created.EventId });
+        var when = InZone(req.StartTime, req.TimeZone);
+        foreach (var a in attendees)
+            await notifications.AddAsync(a.UserId, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a Google Meet", $"{title} · {when} — the invitation is in your Google Calendar", "/calendar", ct: ct);
+        await db.SaveChangesAsync(ct);
+        return new WorkspaceMeetingDto(title, created.MeetUri, string.IsNullOrEmpty(created.HtmlLink) ? null : created.HtmlLink, req.StartTime, req.EndTime, req.TimeZone, rule, attendees.Count + 1);
+    }
+
+    /// <summary>"07 Jan, 9:30 AM (Asia/Kolkata)" - the time as the organizer meant it, in the zone they scheduled in (validated before this is called).</summary>
+    private static string InZone(DateTimeOffset instant, string zone) =>
+        $"{ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(instant.UtcDateTime, ProjectManagement.Application.Features.Reminders.ZoneTime.Find(zone)):dd MMM, h:mm tt} ({zone})";
+
+    private void RequireNotGuest()
+    {
+        if (ctx.Role == TenantRole.Guest) throw new ForbiddenException("Guests can schedule meetings only from a project they were invited to.", "PERMISSION_DENIED");
     }
 
     // ---------------------------------------------------------------- reschedule

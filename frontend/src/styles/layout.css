@@ -29,7 +29,7 @@
 }
 .section-nav-item svg { flex-shrink: 0; color: var(--text-3); }
 .section-nav-item:hover { background: var(--hover-bg); color: var(--text); }
-.section-nav-item.active { background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(192, 132, 252, .14)); color: var(--primary); font-weight: 650; }
+.section-nav-item.active { background: linear-gradient(135deg, rgba(var(--accent-rgb), .22), rgba(var(--accent-rgb), .14)); color: var(--primary); font-weight: 650; }
 .section-nav-item.active svg { color: var(--primary); }
 .section-body { min-width: 0; }
 .section-body > .card + .card, .section-body > .card + .mb-22 { margin-top: 0; }
@@ -43,7 +43,7 @@
 }
 
 /* An explanation at the top of a section: what this screen decides and how it relates to the others. */
-.explainer { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(139, 92, 246, .08); border: 1px solid rgba(139, 92, 246, .22); margin-bottom: 18px; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+.explainer { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(var(--accent-rgb), .08); border: 1px solid rgba(var(--accent-rgb), .22); margin-bottom: 18px; font-size: 13px; line-height: 1.6; color: var(--text-2); }
 .explainer > svg { flex-shrink: 0; margin-top: 2px; color: var(--primary); }
 .explainer b { color: var(--text); }
 .explainer ol, .explainer ul { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 2px; }
@@ -61,7 +61,7 @@
 button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 .wi-kind { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
 .wi-kind svg { width: 14px; height: 14px; }
-.wi-kind.Task { background: rgba(139, 92, 246, .14); color: #7c3aed; }
+.wi-kind.Task { background: rgba(var(--accent-rgb), .14); color: var(--primary-fill); }
 .wi-kind.Issue { background: rgba(225, 29, 72, .12); color: #e11d48; }
 .wi-kind.ActionItem { background: rgba(14, 165, 233, .14); color: #0284c7; }
 .wi-kind.Operational { background: rgba(245, 158, 11, .16); color: #b45309; }
@@ -85,19 +85,19 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
   transition: background .14s, border-color .14s, color .14s;
 }
 .kind-chip svg { width: 14px; height: 14px; }
-.kind-chip b { font-size: 11px; font-weight: 700; background: rgba(139, 92, 246, .14); color: var(--text-2); border-radius: 99px; padding: 0 7px; line-height: 18px; }
+.kind-chip b { font-size: 11px; font-weight: 700; background: rgba(var(--accent-rgb), .14); color: var(--text-2); border-radius: 99px; padding: 0 7px; line-height: 18px; }
 .kind-chip:hover { border-color: var(--border-strong); color: var(--text); }
-.kind-chip.on { background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(192, 132, 252, .14)); color: var(--primary); border-color: rgba(139, 92, 246, .35); }
+.kind-chip.on { background: linear-gradient(135deg, rgba(var(--accent-rgb), .22), rgba(var(--accent-rgb), .14)); color: var(--primary); border-color: rgba(var(--accent-rgb), .35); }
 
 /* Day groups in My work. */
 .wi-group-title { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border); background: var(--surface-2); }
 .wi-group-title.late { color: var(--danger); }
 
 /* Open work by kind: one stacked bar per person (workload). */
-:root { --kind-Task: #8b5cf6; --kind-Issue: #fb7185; --kind-ActionItem: #38bdf8; --kind-Operational: #f59e0b; }
+:root { --kind-Task: var(--primary-fill); --kind-Issue: #fb7185; --kind-ActionItem: #38bdf8; --kind-Operational: #f59e0b; }
 .kind-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--surface-2); min-width: 120px; }
 .kind-bar span { height: 100%; }
-.kind-bar .Task { background: #8b5cf6; }
+.kind-bar .Task { background: var(--primary-fill); }
 .kind-bar .Issue { background: #fb7185; }
 .kind-bar .ActionItem { background: #38bdf8; }
 .kind-bar .Operational { background: #f59e0b; }
@@ -108,12 +108,12 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 .access-cell { display: inline-flex; min-width: 54px; justify-content: center; font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 99px; }
 .access-cell.l0 { color: var(--text-3); background: transparent; }
 .access-cell.l1 { color: #0369a1; background: rgba(14, 165, 233, .12); }
-.access-cell.l2 { color: #6d28d9; background: rgba(139, 92, 246, .14); }
+.access-cell.l2 { color: var(--primary-fill); background: rgba(var(--accent-rgb), .14); }
 .access-cell.l3 { color: #047857; background: rgba(16, 185, 129, .14); }
 [data-theme='dark'] .access-cell.l1 { color: #7dd3fc; }
-[data-theme='dark'] .access-cell.l2 { color: #c4b5fd; }
+[data-theme='dark'] .access-cell.l2 { color: var(--primary); }
 [data-theme='dark'] .access-cell.l3 { color: #6ee7b7; }
-[data-theme='dark'] .wi-kind.Task { color: #c4b5fd; }
+[data-theme='dark'] .wi-kind.Task { color: var(--primary); }
 [data-theme='dark'] .wi-kind.Issue { color: #fda4af; }
 [data-theme='dark'] .wi-kind.ActionItem { color: #7dd3fc; }
 [data-theme='dark'] .wi-kind.Operational { color: #fcd34d; }
@@ -133,7 +133,7 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 .method-option { display: grid; gap: 3px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface-2); text-align: left; transition: border-color .14s, background .14s; }
 .method-option b { font-size: 13px; }
 .method-option span { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
-.method-option.on { border-color: rgba(139, 92, 246, .55); background: linear-gradient(135deg, rgba(139, 92, 246, .16), rgba(192, 132, 252, .08)); }
+.method-option.on { border-color: rgba(var(--accent-rgb), .55); background: linear-gradient(135deg, rgba(var(--accent-rgb), .16), rgba(var(--accent-rgb), .08)); }
 .method-option.on b { color: var(--primary); }
 @media (max-width: 640px) { .method-picker { grid-template-columns: 1fr; } }
 
@@ -145,7 +145,7 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 /* Action items as a project tab (the same list as the Portfolio side panel). */
 .ai-card .ai-toolbar { padding-top: 12px; }
 .ai-card .ai-list { overflow: visible; }
-.ai-item.highlight { border-color: rgba(139, 92, 246, .6); box-shadow: 0 0 0 3px rgba(139, 92, 246, .16); }
+.ai-item.highlight { border-color: rgba(var(--accent-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .16); }
 
 /* Project settings dialog. */
 .project-settings .tabs { margin-bottom: 16px; }

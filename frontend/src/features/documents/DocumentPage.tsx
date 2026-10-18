@@ -7,7 +7,7 @@ import type { DocumentClassification, DocumentDetail, DocumentVisibility } from 
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Avatar, ErrorState, Field, Modal, PageLoader, SubmitButton } from '../../components/ui';
-import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
+import { formatDate, formatDateTime, labelize, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -27,7 +27,7 @@ import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
-import { CLASSIFICATION, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
+import { CLASSIFICATION, ClassificationBadge, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
 function hasContent(kind: string, value: string): boolean {
@@ -59,7 +59,7 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not save.'),
   });
   return (
-    <Modal title="Document details" onClose={onClose} className="doc-scope" onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
+    <Modal title="Document details" onClose={onClose} onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}
       footer={<><button className="btn btn-ghost" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={save.isPending}>Save</SubmitButton></>}>
       {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
       <Field label="Title" required><input className="input" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} /></Field>
@@ -82,6 +82,9 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
     </Modal>
   );
 }
+
+type DocTab = 'doc' | 'api' | 'artifact' | 'links' | 'requirements' | 'files' | 'secrets' | 'comments' | 'activity';
+const DOC_TABS: DocTab[] = ['doc', 'links', 'requirements', 'files', 'secrets', 'comments', 'activity'];
 
 /** One document: its sections (editable by people who may edit), who and where, and the work linked to it. */
 export function DocumentPage() {
@@ -151,8 +154,7 @@ export function DocumentPage() {
   // text, so the generic "what changed?" Publish/Submit flow below does not apply to it.
   const isArtifact = type?.code === 'ARTIFACT';
   const hasApi = type?.code === 'API' || (apiOverview.data?.definitions.length ?? 0) > 0;
-  const onApiTab = hasApi && params.get('tab') === 'api';
-  const setTab = (t: 'doc' | 'api') => setParams(t === 'api' ? { tab: 'api' } : {}, { replace: true });
+  const setTab = (t: DocTab) => setParams(t === 'doc' ? {} : { tab: t }, { replace: true });
   const shownSections = editable ? detail.sections : detail.sections.filter((s) => hasContent(s.kind, edits[s.key] ?? s.content));
   const set = (key: string, v: string) => setEdits((x) => {
     const orig = detail.sections.find((s) => s.key === key)?.content;
@@ -160,33 +162,60 @@ export function DocumentPage() {
     return { ...x, [key]: v };
   });
 
+  const tab: DocTab = (() => {
+    const t = params.get('tab') as DocTab | null;
+    if (t === 'api') return hasApi ? 'api' : 'doc';
+    if (t === 'artifact') return isArtifact ? 'artifact' : 'doc';
+    return t && (DOC_TABS as string[]).includes(t) ? t : 'doc';
+  })();
+  const place = d.projectId ? `${d.projectKey} · ${d.projectName}` : d.teamName ?? 'Organization';
+  const tabs: { id: DocTab; label: string; count?: number }[] = [
+    { id: 'doc', label: 'Document' },
+    ...(hasApi ? [{ id: 'api' as const, label: 'API reference', count: apiOverview.data?.endpoints || undefined }] : []),
+    ...(isArtifact ? [{ id: 'artifact' as const, label: 'Artifact' }] : []),
+    { id: 'links', label: 'Linked work', count: d.linkedCount || undefined },
+    { id: 'requirements', label: 'Requirements' },
+    { id: 'files', label: 'Files' },
+    { id: 'secrets', label: 'Secrets' },
+    { id: 'comments', label: 'Comments' },
+    { id: 'activity', label: 'Activity' },
+  ];
+
   return (
-    <div className="doc-page doc-scope" style={{ '--dc': d.typeColor } as CSSProperties}>
-      <nav className="ds-crumb" aria-label="Breadcrumb">
-        <Link to="/documents">documents</Link>
-        {d.projectId && <><i>/</i><Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectKey?.toLowerCase()}</Link></>}
-        <i>/</i><b>{d.key}</b>
-        <DocStatusBadge status={d.status} />
-        {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="ds-pill accent" title="The draft differs from the published version"><i />Draft ahead of v{detail.publishedLabel}</span>}
-        {dirty && <span className="ds-pill warn"><i />Unsaved changes</span>}
+    <div className="dv doc-scope" style={{ '--dc': d.typeColor } as CSSProperties}>
+      <nav className="dv-crumb" aria-label="Breadcrumb">
+        <Link to="/documents">Documents</Link>
+        <Icon name="chevronR" size={13} />
+        {d.projectId ? <Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectName}</Link> : <span>{d.teamName ?? 'General'}</span>}
+        <Icon name="chevronR" size={13} />
+        <span className="dv-crumb-key">{d.key}</span>
       </nav>
 
-      <header className="doc-head ds-doc-head">
-        <div className="ds-doc-titlerow">
-          <TypeCode doc={d} large />
+      <header className="dv-head">
+        <div className="dv-head-main">
+          <div className="dv-eyebrow"><TypeCode doc={d} /><span>{d.typeName}</span></div>
           <h1>{d.title}</h1>
+          <div className="dv-byline">
+            <span className="dv-by"><Avatar name={d.owner.name} userId={d.owner.id} /><b>{d.owner.name}</b></span>
+            <span title={formatDateTime(d.updatedAt)}>Updated {timeAgo(d.updatedAt)}</span>
+            <span>Version {detail.versionLabel}</span>
+            <DocStatusBadge status={d.status} />
+            {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="badge badge-info" title="The draft differs from the published version">Draft ahead of v{detail.publishedLabel}</span>}
+            {(d.classification === 'Confidential' || d.classification === 'Restricted') && <ClassificationBadge classification={d.classification} />}
+            {dirty && <span className="badge badge-warning">Unsaved changes</span>}
+          </div>
         </div>
-        <div className="doc-head-actions">
+        <div className="dv-actions">
           {canEdit && (
-            <div className="mode-switch" role="group" aria-label="Reading or editing">
-              <button type="button" className={mode === 'view' ? 'on' : ''} aria-pressed={mode === 'view'} aria-label="Read" title="Read" onClick={() => setMode('view')}><Icon name="eye" size={16} /></button>
-              <button type="button" className={mode === 'edit' ? 'on' : ''} aria-pressed={mode === 'edit'} aria-label="Edit" title="Edit" onClick={() => setMode('edit')}><Icon name="edit" size={16} /></button>
+            <div className="dv-mode" role="group" aria-label="Reading or editing">
+              <button type="button" className={mode === 'view' ? 'on' : ''} aria-pressed={mode === 'view'} aria-label="Read" title="Read" onClick={() => setMode('view')}><Icon name="eye" size={15} /><span>Read</span></button>
+              <button type="button" className={mode === 'edit' ? 'on' : ''} aria-pressed={mode === 'edit'} aria-label="Edit" title="Edit" onClick={() => { setMode('edit'); if (tab !== 'doc' && tab !== 'api') setTab('doc'); }}><Icon name="edit" size={15} /><span>Edit</span></button>
             </div>
           )}
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
           {canEdit && detail.can.publish && !workflow && !isArtifact && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}><Icon name="upload" size={15} /> Publish</button>}
           {canEdit && workflow && review.data?.canSubmit && !isArtifact && <button className="btn btn-ghost" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}><Icon name="send" size={15} /> Submit for review</button>}
-          <Menu label="Actions" icon="more" items={[
+          <Menu label="More" icon="more" items={[
             { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', hint: 'Secret values are never included. Once downloaded, this app can no longer control or protect the file.', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); }, hidden: isArtifact },
             { label: 'History', hint: 'Versions and changes', icon: 'clock', onSelect: () => setPanel('history'), hidden: isArtifact },
             { label: detail.can.share ? 'Share' : 'Access', hint: 'Who can open it', icon: 'users', onSelect: () => setPanel('access') },
@@ -202,50 +231,70 @@ export function DocumentPage() {
               catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
             } },
           ]} />
-          {detail.viewingPublished && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {detail.publishedLabel}, the latest published one.</div></div>}
         </div>
       </header>
 
-      <section className="ds-summary" style={{ '--dc': d.typeColor } as CSSProperties} aria-label="About this document">
-        <div className="ds-meta">
-          <span className="ds-meta-chip"><i style={{ background: d.typeColor }} />Type <b>{d.typeName}</b></span>
-          <span className="ds-meta-chip"><i />Version <b>{detail.versionLabel}</b>{detail.publishedLabel && detail.publishedLabel !== detail.versionLabel && <em>published {detail.publishedLabel}</em>}</span>
-          <span className="ds-meta-chip" title={VISIBILITY[d.visibility].hint}><i />Visible to <b>{VISIBILITY[d.visibility].label}</b></span>
-          <span className="ds-meta-chip" title={CLASSIFICATION[d.classification].hint}><i className={`cls-${d.classification.toLowerCase()}`} />Classification <b>{CLASSIFICATION[d.classification].label}</b></span>
-          <span className="ds-meta-chip"><i />Belongs to <b>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{d.projectKey} · {d.projectName}</Link> : d.teamName ?? 'The organization'}</b></span>
-          <span className="ds-meta-chip"><Avatar name={d.owner.name} userId={d.owner.id} />Owner <b>{d.owner.name}</b></span>
-          <span className="ds-meta-chip" title={formatDateTime(d.createdAt)}><i className="ok" />Added <b>{formatDate(d.createdAt)}</b></span>
-          <span className="ds-meta-chip" title={formatDateTime(d.updatedAt)}><i className="warn" />Modified <b>{timeAgo(d.updatedAt)}</b></span>
-          {d.tags.map((t) => <span className="ds-tag" key={t}>#{t}</span>)}
-        </div>
-      </section>
-
+      {detail.viewingPublished && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {detail.publishedLabel}, the latest published one.</div></div>}
       {stale && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>Someone else changed this document while you were editing. <button className="link-btn" onClick={() => { setStale(false); q.refetch(); }}>Reload to see their changes</button> (your unsaved words stay here until you save or leave).</div></div>}
       {d.status === 'Archived' && <div className="doc-alert info"><Icon name="info" size={16} /><div>This document is archived and read-only.</div></div>}
       {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={canEdit} onPublish={() => setPanel('publishApproved')} />}
 
-      {hasApi && (
-        <div className="seg doc-tabs" role="tablist" aria-label="Document view">
-          <button role="tab" aria-selected={!onApiTab} className={!onApiTab ? 'on' : ''} onClick={() => setTab('doc')}>Document</button>
-          <button role="tab" aria-selected={onApiTab} className={onApiTab ? 'on' : ''} onClick={() => setTab('api')}>API reference{(apiOverview.data?.endpoints ?? 0) > 0 && <span className="doc-count">{apiOverview.data!.endpoints.toLocaleString()}</span>}</button>
+      <div className="dv-tabs" role="tablist" aria-label="Document">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+            {t.label}{t.count ? <span className="dv-tab-count">{t.count.toLocaleString()}</span> : null}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'doc' && (
+        <div className={`dv-layout${editable ? ' editing' : ''}`}>
+          <article className="dv-paper doc-body" aria-label={d.title}>
+            {!editable && shownSections.length === 0 && <p className="dv-blank">Nothing has been written yet.{canEdit ? ' Choose Edit to start.' : ''}</p>}
+            <DocumentIdContext.Provider value={id}>
+              {shownSections.map((s) => (
+                <SectionEditor key={s.key} id={`sec-${s.key}`} section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} />
+              ))}
+            </DocumentIdContext.Provider>
+          </article>
+          <aside className="dv-aside" aria-label="About this document">
+            {shownSections.length > 1 && (
+              <nav className="dv-toc" aria-label="On this page">
+                <div className="dv-aside-title">On this page</div>
+                <ul>{shownSections.map((s) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{s.title}{edits[s.key] !== undefined && <i className="dot-dirty" />}</a></li>)}</ul>
+              </nav>
+            )}
+            <div className="dv-props">
+              <div className="dv-aside-title">Details{detail.can.edit && <button type="button" className="link" onClick={() => setDetails(true)}>Edit</button>}</div>
+              <dl>
+                <dt>Type</dt><dd><i className="dv-swatch" />{d.typeName}</dd>
+                <dt>Status</dt><dd>{labelize(d.status)}</dd>
+                <dt>Version</dt><dd>{detail.versionLabel}{detail.publishedLabel && detail.publishedLabel !== detail.versionLabel && <span className="dv-muted"> · published {detail.publishedLabel}</span>}</dd>
+                <dt>Belongs to</dt><dd>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{place}</Link> : place}</dd>
+                <dt>Visible to</dt><dd title={VISIBILITY[d.visibility].hint}>{VISIBILITY[d.visibility].label}</dd>
+                <dt>Sensitivity</dt><dd title={CLASSIFICATION[d.classification].hint}>{CLASSIFICATION[d.classification].label}</dd>
+                <dt>Owner</dt><dd>{d.owner.name}</dd>
+                <dt>Created</dt><dd title={formatDateTime(d.createdAt)}>{formatDate(d.createdAt)}</dd>
+                <dt>Updated</dt><dd title={formatDateTime(d.updatedAt)}>{timeAgo(d.updatedAt)}</dd>
+              </dl>
+              {d.tags.length > 0 && <div className="dv-tags">{d.tags.map((t) => <span className="dv-tag" key={t}>{t}</span>)}</div>}
+            </div>
+          </aside>
         </div>
       )}
-      {onApiTab ? <ApiReference detail={detail} editable={editable} /> : (
-      <div className={`doc-layout${editable ? '' : ' reading'}`}>
-        <aside className="doc-outline" aria-label="Sections">
-          <div className="ds-outline-title">On this page</div>
-          <ul>{shownSections.map((s, i) => <li key={s.key}><a href={`#sec-${s.key}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><span className="ds-outline-n">{String(i + 1).padStart(2, '0')}</span>{s.title}{edits[s.key] !== undefined && <i className="dot-dirty" />}</a></li>)}</ul>
-        </aside>
-        <main className="doc-body">
-          {!editable && shownSections.length === 0 && <p className="muted doc-blank">Nothing has been written yet.{canEdit ? ' Choose the pencil to start.' : ''}</p>}
-          <DocumentIdContext.Provider value={id}>
-            {shownSections.map((s) => (
-              <SectionEditor key={s.key} id={`sec-${s.key}`} section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} />
-            ))}
-          </DocumentIdContext.Provider>
-        </main>
-        <Inspector id={id} detail={detail} isArtifact={isArtifact} canEdit={canEdit} editable={editable} canLink={detail.can.link && canWrite} />
-      </div>
+      {tab === 'api' && <ApiReference detail={detail} editable={editable} />}
+      {tab !== 'doc' && tab !== 'api' && (
+        // These tabs are about the document, not its text, so anyone who may edit can manage them without switching to Edit mode;
+        // the server checks the same permission on every change.
+        <div className="dv-panel" role="tabpanel">
+          {tab === 'artifact' && <ArtifactCard detail={detail} canEdit={canEdit} />}
+          {tab === 'links' && <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />}
+          {tab === 'requirements' && <RequirementsCard documentId={id} canEdit={canEdit} />}
+          {tab === 'files' && <DocumentFiles documentId={id} canEdit={canEdit} />}
+          {tab === 'secrets' && <DocumentSecrets documentId={id} canEdit={canEdit} />}
+          {tab === 'comments' && <CommentsCard id={id} title={`${d.key} · ${d.title}`} />}
+          {tab === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
+        </div>
       )}
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
       {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}
@@ -254,49 +303,5 @@ export function DocumentPage() {
       {panel === 'submit' && review.data && <SubmitModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
       {panel === 'publishApproved' && review.data && <PublishApprovedModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
     </div>
-  );
-}
-
-type InspectorTab = 'artifact' | 'links' | 'requirements' | 'files' | 'secrets' | 'comments' | 'activity';
-
-/**
- * Everything around a document, in one tabbed panel instead of a column of separate cards: the build artifact (for artifact documents),
- * linked work, requirements, files, secrets, comments and activity. The open tab is remembered per browser.
- */
-function Inspector({ id, detail, isArtifact, canEdit, editable, canLink }: { id: string; detail: DocumentDetail; isArtifact: boolean; canEdit: boolean; editable: boolean; canLink: boolean }) {
-  const d = detail.item;
-  const tabs: { id: InspectorTab; label: string; icon: 'upload' | 'git' | 'checks' | 'paperclip' | 'key' | 'message' | 'activity' }[] = [
-    ...(isArtifact ? [{ id: 'artifact' as const, label: 'Artifact', icon: 'upload' as const }] : []),
-    { id: 'links', label: 'Linked work', icon: 'git' },
-    { id: 'requirements', label: 'Requirements', icon: 'checks' },
-    { id: 'files', label: 'Files', icon: 'paperclip' },
-    { id: 'secrets', label: 'Secrets', icon: 'key' },
-    { id: 'comments', label: 'Comments', icon: 'message' },
-    { id: 'activity', label: 'Activity', icon: 'activity' },
-  ];
-  const [tab, setTabState] = useState<InspectorTab>(() => {
-    try { const t = localStorage.getItem('pf_doc_inspector') as InspectorTab | null; return t && tabs.some((x) => x.id === t) ? t : tabs[0].id; } catch { return tabs[0].id; }
-  });
-  const setTab = (t: InspectorTab) => { setTabState(t); try { localStorage.setItem('pf_doc_inspector', t); } catch { /* storage unavailable */ } };
-  const current = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
-  return (
-    <aside className="doc-side ds-inspector" aria-label="Linked work, files and discussion">
-      <div className="ds-inspector-tabs" role="tablist">
-        {tabs.map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''} title={t.label} onClick={() => setTab(t.id)}>
-            <Icon name={t.icon} size={14} /><span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-      <div className="ds-inspector-body" role="tabpanel">
-        {current === 'artifact' && <ArtifactCard detail={detail} canEdit={canEdit} />}
-        {current === 'links' && <LinkedWork documentId={id} canLink={canLink} />}
-        {current === 'requirements' && <RequirementsCard documentId={id} canEdit={editable} />}
-        {current === 'files' && <DocumentFiles documentId={id} canEdit={editable} />}
-        {current === 'secrets' && <DocumentSecrets documentId={id} canEdit={editable} />}
-        {current === 'comments' && <CommentsCard id={id} title={`${d.key} · ${d.title}`} />}
-        {current === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
-      </div>
-    </aside>
   );
 }

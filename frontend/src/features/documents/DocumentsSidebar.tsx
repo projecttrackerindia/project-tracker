@@ -64,7 +64,7 @@ export function DocumentsSidebar({ view, onSelectView, waiting, activeProject, o
             <li key={g.id}>
               <button type="button" className={`ds-rail-row ds-rail-project${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined}
                 title={g.key ? `${g.key} · ${g.name}` : g.name} onClick={() => onSelectProject(active ? null : g.id)}>
-                <span className="ds-avatar" style={{ '--av': g.id === GENERAL_ID ? 'var(--ds-faint)' : avatarColor(g.id) } as CSSProperties}>{(g.key ?? g.name).charAt(0).toUpperCase()}</span>
+                <span className="ds-avatar" style={{ '--av': g.id === GENERAL_ID ? 'var(--text-3)' : avatarColor(g.id) } as CSSProperties}>{(g.key ?? g.name).charAt(0).toUpperCase()}</span>
                 <span className="ds-rail-label">{g.name}</span>
                 {g.key && <span className="ds-rail-key">{g.key}</span>}
               </button>

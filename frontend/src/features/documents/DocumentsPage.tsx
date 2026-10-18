@@ -43,7 +43,6 @@ export function DocumentsPage() {
     <div className="doc-scope ds-page">
       <header className="ds-head">
         <div className="ds-head-main">
-          <nav className="ds-crumb" aria-label="Breadcrumb"><span>documents</span><i>/</i><b>{here}</b>{waiting > 0 && <button type="button" className="ds-pill warn" onClick={() => setView('inbox')}><i />{waiting} waiting for you</button>}</nav>
           <h1>Documents</h1>
           <p>Requirements, API documentation, test plans and runbooks - linked to the projects and tasks that deliver them.</p>
         </div>
@@ -57,7 +56,7 @@ export function DocumentsPage() {
         <DocumentsSidebar view={view} onSelectView={(v) => setView(v)} waiting={waiting} activeProject={project} onSelectProject={setProject} />
         <div className="doc-shell-main">
           {view === 'all' && !inProject && <DocumentsControlCenter onView={setView} />}
-          <div className="ds-section-title ds-list-title">{here}<span>{view === 'inbox' && !inProject ? '— reviews and access requests that need you' : inProject ? '— documents in this project' : view === 'all' ? '— every document you can open' : ''}</span></div>
+          <div className="ds-list-head"><h2>{here}</h2><span>{view === 'inbox' && !inProject ? 'Reviews and access requests that need you' : inProject ? 'Documents in this project' : view === 'all' ? 'Every document you can open' : ''}</span></div>
           {view === 'inbox' && !inProject ? <InboxView /> : (
             <DocumentList canCreate={canCreate} onNew={() => setCreating(true)}
               fixedScope={!inProject && (view === 'recent' || view === 'shared' || view === 'trash') ? view : undefined}
