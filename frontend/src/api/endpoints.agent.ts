@@ -10,7 +10,7 @@ export const agentApi = {
   run: (projectId: string) => post<AgentRun | null>(`/projects/${projectId}/agent/run`),
   transcript: (projectId: string, b: { title?: string; text: string; meetingId?: string }) => post<{ signalId: string; run: AgentRun | null }>(`/projects/${projectId}/agent/transcript`, b),
   findings: (projectId: string, status = 'proposed') => get<AgentFindingPage>(`/projects/${projectId}/agent/findings`, { status }),
-  approveAll: (projectId: string) => post<{ applied: number; failed: number; items: AgentFinding[] }>(`/projects/${projectId}/agent/findings/approve-all`),
+  approveAll: (projectId: string) => post<{ applied: number; failed: number; skipped: number; items: AgentFinding[] }>(`/projects/${projectId}/agent/findings/approve-all`),
   inbox: () => get<AgentFindingPage>('/agent/inbox'),
   approve: (id: string, edits?: AgentApproveEdits) => post<AgentFinding>(`/agent/findings/${id}/approve`, edits ?? {}),
   dismiss: (id: string) => post<AgentFinding>(`/agent/findings/${id}/dismiss`),

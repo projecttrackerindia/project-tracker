@@ -33,7 +33,7 @@ public class RecallClient(IHttpClientFactory http, IOptions<AgentOptions> option
             ["chat"] = new { on_bot_join = new { send_to = "everyone", message = introMessage } },
         };
         var doc = await SendAsync(HttpMethod.Post, $"{Base(region)}/api/v1/bot/", apiKey, body, "create the bot", ct);
-        return doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("id", out var id) && id.GetString() is { Length: > 0 } s ? s : throw new RecallApiException("The meeting bot service did not return a bot.");
+        return doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } s ? s : throw new RecallApiException("The meeting bot service did not return a bot.");
     }
 
     public async Task SendChatAsync(string apiKey, string region, string botId, string message, CancellationToken ct) =>
@@ -60,7 +60,13 @@ public class RecallClient(IHttpClientFactory http, IOptions<AgentOptions> option
             req.Headers.TryAddWithoutValidation("Authorization", header);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             if (payload is not null) req.Content = new StringContent(JsonSerializer.Serialize(payload, Json), Encoding.UTF8, "application/json");
-            using var res = await http.CreateClient("recall").SendAsync(req, ct);
+            HttpResponseMessage response;
+            try { response = await http.CreateClient("recall").SendAsync(req, ct); }
+            catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                throw new RecallApiException($"The meeting bot service could not be reached to {action}. It will be tried again.");
+            }
+            using var res = response;
             if (res.StatusCode == System.Net.HttpStatusCode.Unauthorized && header == key) continue;
             var text = await res.Content.ReadAsStringAsync(ct);
             if (!res.IsSuccessStatusCode)

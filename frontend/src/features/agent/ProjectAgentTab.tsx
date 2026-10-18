@@ -60,11 +60,12 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
     finally { setBusy(null); }
   };
   const approveAll = async () => {
-    if (!(await confirmDialog({ title: `Approve all ${a.pending}?`, message: 'Each proposal is carried out as you: tasks and tickets are created or changed, and notes are recorded. Anything that cannot be done stays here with the reason.', confirmText: 'Approve all' }))) return;
+    if (!(await confirmDialog({ title: 'Approve the new items and notes?', message: 'New tasks, tickets and action items are created as you, and notes are recorded. Changes to existing work (status, owner, dates) stay here to approve one by one. Anything that cannot be done stays with the reason.', confirmText: 'Approve all' }))) return;
     setBusy('all');
     try {
       const r = await agentApi.approveAll(projectId);
-      toast(r.failed ? `${r.applied} done, ${r.failed} could not be done - see the reasons.` : `${r.applied} done.`, r.failed ? 'error' : undefined);
+      const rest = r.skipped ? ` ${r.skipped} change${r.skipped === 1 ? '' : 's'} to existing work left to approve one by one.` : '';
+      toast((r.failed ? `${r.applied} done, ${r.failed} could not be done - see the reasons.` : `${r.applied} done.`) + rest, r.failed ? 'error' : undefined);
       refresh(); void invalidateWorkspace(wid, 'project', projectId);
     } catch (e) { toast(errText(e, 'Could not approve them.'), 'error'); }
     finally { setBusy(null); }

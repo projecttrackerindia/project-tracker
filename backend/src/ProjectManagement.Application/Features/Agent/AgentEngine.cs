@@ -45,7 +45,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, ILogger<
                 await db.ProjectAgentSettings.IgnoreQueryFilters().Where(x => x.Id == p.Id)
                     .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastError, AgentAnalysisService.Cut($"The agent cannot act as the person who switched it on: {ex.Message} Switch it off and on again.", 500)), ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 log.LogWarning(ex, "Project agent tick failed for {Settings}", p.Id);
             }
@@ -64,7 +64,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, ILogger<
                 inboxes += await sp.GetRequiredService<AgentInboxScanner>().ScanAsync(o.Id, ct);
             }
             catch (ForbiddenException) { await db.AgentInboxOptIns.IgnoreQueryFilters().Where(x => x.Id == o.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Enabled, false), ct); }
-            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Project agent inbox scan failed for {OptIn}", o.Id); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { log.LogWarning(ex, "Project agent inbox scan failed for {OptIn}", o.Id); }
         }
         return new TickResult(projects.Count, runs, signals, bots, updates, inboxes);
     }
@@ -72,7 +72,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, ILogger<
 
 /// <summary>Everything the agent does for one project in one tick, inside that project's workspace context.</summary>
 public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalService signals, AgentMeetingService meetings, AgentAnalysisService analysis,
-    AgentDailyUpdateService daily, ILogger<AgentProjectTick> log)
+    AgentDailyUpdateService daily, IOptions<AgentOptions> options, ILogger<AgentProjectTick> log)
 {
     public record Result(int Runs, int Signals, int Bots, int Updates);
 
@@ -86,19 +86,25 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
         if (s.ReadChat && await signals.CollectChatAsync(s, ct)) added++;
         await db.SaveChangesAsync(ct);
 
+        // Each meeting step on its own: one failing (a bot service down, credits used up) never stops the others.
+        async Task<int> Step(string name, Func<Task<int>> work)
+        {
+            try { return await work(); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.LogWarning(ex, "Project agent step {Step} failed for {Project}", name, s.ProjectId);
+                return 0;
+            }
+        }
         if (s.ReadMeetings)
         {
-            try
+            if (s.LiveBot && w is not null)
             {
-                if (s.LiveBot && w is not null)
-                {
-                    bots += await meetings.ScheduleBotsAsync(s, w, ct);
-                    await meetings.NudgeAsync(s, w, ct);
-                }
-                added += await meetings.FinishBotsAsync(s, w, ct);
-                added += await meetings.FetchTranscriptsAsync(s, ct);
+                bots += await Step("schedule bots", () => meetings.ScheduleBotsAsync(s, w, ct));
+                await Step("live reminders", () => meetings.NudgeAsync(s, w, ct));
             }
-            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Project agent meetings step failed for {Project}", s.ProjectId); }
+            added += await Step("finish bots", () => meetings.FinishBotsAsync(s, w, ct));
+            added += await Step("meet transcripts", () => meetings.FetchTranscriptsAsync(s, ct));
         }
 
         // Read what is new: a meeting or mail right away, chat once it has settled; never retry a failed reading sooner than half an hour.
@@ -107,7 +113,10 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
         {
             var lastFailed = await db.AgentRuns.Where(r => r.ProjectId == s.ProjectId).OrderByDescending(r => r.StartedAt).Select(r => new { r.Status, r.StartedAt }).FirstOrDefaultAsync(ct);
             var cooling = lastFailed is { Status: "failed" } && clock.Now - lastFailed.StartedAt < TimeSpan.FromMinutes(30);
-            var urgent = unread.Any(x => x.Source is AgentSourceKind.MeetingTranscript or AgentSourceKind.LiveMeeting or AgentSourceKind.ProjectMailbox or AgentSourceKind.PersonalMail or AgentSourceKind.Manual);
+            // Meetings at once; mail once it has settled for a few minutes (a burst of mail is read together, not one reading each).
+            var mailSettled = clock.Now.AddMinutes(-Math.Max(0, options.Value.MailBatchMinutes));
+            var urgent = unread.Any(x => x.Source is AgentSourceKind.MeetingTranscript or AgentSourceKind.LiveMeeting or AgentSourceKind.Manual)
+                || unread.Any(x => x.Source is AgentSourceKind.ProjectMailbox or AgentSourceKind.PersonalMail && x.CreatedAt <= mailSettled);
             if (!cooling && (urgent || unread.Count >= 5 || unread.Min(x => x.CreatedAt) < clock.Now.AddMinutes(-30)))
             {
                 var trigger = unread.Any(x => x.Source is AgentSourceKind.MeetingTranscript or AgentSourceKind.LiveMeeting) ? "meeting"
@@ -138,7 +147,9 @@ public class AgentInboxScanner(IAppDbContext db, ICurrentContext ctx, AppClock c
             .Select(p => new { p.Id, p.TenantId, p.Key, p.Name }).Take(10).ToListAsync(ct);
         if (projects.Count == 0) { o.ScannedUntil = now; await db.SaveChangesAsync(ct); return 0; }
         var since = o.ScannedUntil is { } s0 && s0 > now.AddDays(-7) ? s0 : now.AddDays(-2);
-        var terms = projects.SelectMany(p => new[] { p.Name, p.Key }).ToList();
+        // Searched by project name; a bare key ("WEB", "APP") would match too much unrelated mail.
+        var terms = projects.Select(p => p.Name).Where(n => n.Trim().Length >= 4).ToList();
+        if (terms.Count == 0) { o.ScannedUntil = now; await db.SaveChangesAsync(ct); return 0; }
         int added = 0;
         try
         {
@@ -147,12 +158,13 @@ public class AgentInboxScanner(IAppDbContext db, ICurrentContext ctx, AppClock c
             {
                 var text = $"{mail.Subject}\n{mail.Body}";
                 var matched = projects.Where(p => text.Contains(p.Name, StringComparison.OrdinalIgnoreCase)
-                    || Regex.IsMatch(text, $@"\b{Regex.Escape(p.Key)}(-I?\d+)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)).Take(2);
+                    || Regex.IsMatch(text, $@"\b{Regex.Escape(p.Key)}-I?\d+\b", RegexOptions.CultureInvariant)).Take(2);
                 foreach (var p in matched)
                 {
                     var content = $"From: {mail.Sender}\nSubject: {mail.Subject}\n\n{mail.Body}";
-                    if (await signals.AddAsync(p.TenantId, p.Id, AgentSourceKind.PersonalMail, $"pm:{o.Provider}:{mail.Id}", mail.Subject.Length == 0 ? "(no subject)" : mail.Subject,
-                            mail.Sender, content, mail.ReceivedAt?.UtcDateTime ?? now, uid, null, ct) is not null) added++;
+                    // Subject and sender stay inside the encrypted content; the plain columns say no more than "an email".
+                    if (await signals.AddAsync(p.TenantId, p.Id, AgentSourceKind.PersonalMail, $"pm:{o.Provider}:{mail.Id}", "Email in a member's inbox",
+                            null, content, mail.ReceivedAt?.UtcDateTime ?? now, uid, null, ct) is not null) added++;
                 }
             }
             o.ScannedUntil = now; o.Found += added; o.LastError = null;

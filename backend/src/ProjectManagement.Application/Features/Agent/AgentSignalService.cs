@@ -23,6 +23,8 @@ public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock 
     AgentSettingsService settings, Recorder recorder, IOptions<AgentOptions> options)
 {
     public const int MaxContent = 60_000;
+    /// <summary>A long transcript is kept as up to this many consecutive parts, each read on its own.</summary>
+    public const int MaxParts = 4;
     private const int MailPerDay = 300;
 
     private static readonly Regex Space = new(@"[ \t]+", RegexOptions.CultureInvariant);
@@ -33,7 +35,7 @@ public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var t = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
         t = new string(t.Where(c => c == '\n' || c == '\t' || !char.IsControl(c)).ToArray());
         t = Lines.Replace(Space.Replace(t, " "), "\n\n").Trim();
-        return t.Length > MaxContent ? t[..MaxContent] + "\n[… cut here: the rest was too long]" : t;
+        return t.Length > MaxContent * MaxParts ? t[..(MaxContent * MaxParts)] + "\n[… cut here: the rest was too long]" : t;
     }
 
     public static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32].ToLowerInvariant();
@@ -47,14 +49,29 @@ public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock 
         sourceRef = sourceRef.Length > 300 ? sourceRef[..300] : sourceRef;
         if (await db.AgentSignals.IgnoreQueryFilters().AnyAsync(s => s.ProjectId == projectId && s.Source == source && s.SourceRef == sourceRef, ct)) return null;
         if (db.AgentSignals.Local.Any(s => s.ProjectId == projectId && s.Source == source && s.SourceRef == sourceRef)) return null;
-        var signal = new AgentSignal
+        // A long meeting is split at line breaks into consecutive parts, so nothing at its end is dropped.
+        var parts = new List<string>();
+        for (var rest = text; rest.Length > 0;)
         {
-            TenantId = tenantId, ProjectId = projectId, Source = source, SourceRef = sourceRef, Title = Text.Truncate(title.Trim(), 300) ?? "",
-            FromName = Text.Truncate(from?.Trim(), 200), ContentProtected = secrets.Protect(text), Length = text.Length, OccurredAt = occurredAt,
-            OwnerUserId = ownerUserId, MeetingId = meetingId, CreatedAt = clock.Now,
-        };
-        db.AgentSignals.Add(signal);
-        return signal;
+            if (rest.Length <= MaxContent) { parts.Add(rest); break; }
+            var cut = rest.LastIndexOf('\n', MaxContent - 1);
+            if (cut < MaxContent / 2) cut = MaxContent;
+            parts.Add(rest[..cut]); rest = rest[cut..].TrimStart();
+        }
+        AgentSignal? first = null;
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var signal = new AgentSignal
+            {
+                TenantId = tenantId, ProjectId = projectId, Source = source, SourceRef = i == 0 ? sourceRef : $"{sourceRef[..Math.Min(sourceRef.Length, 290)]}#{i + 1}",
+                Title = Text.Truncate(parts.Count == 1 ? title.Trim() : $"{title.Trim()} (part {i + 1} of {parts.Count})", 300) ?? "",
+                FromName = Text.Truncate(from?.Trim(), 200), ContentProtected = secrets.Protect(parts[i]), Length = parts[i].Length,
+                OccurredAt = occurredAt.AddTicks(i), OwnerUserId = ownerUserId, MeetingId = meetingId, CreatedAt = clock.Now,
+            };
+            db.AgentSignals.Add(signal);
+            first ??= signal;
+        }
+        return first;
     }
 
     public string Read(AgentSignal s) => secrets.Unprotect(s.ContentProtected);
@@ -145,6 +162,11 @@ public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock 
         if (await db.AgentSignals.IgnoreQueryFilters().CountAsync(x => x.ProjectId == s.ProjectId && x.Source == AgentSourceKind.ProjectMailbox && x.CreatedAt >= dayStart, ct) >= MailPerDay)
             throw new ConflictException($"The project's agent mailbox already received {MailPerDay} emails today.", "MAILBOX_LIMIT");
 
+        var sender0 = InboundEmailService.EmailOf(email.From) ?? email.From ?? "unknown sender";
+        // One sender cannot fill a project's day (or its AI budget): at most 30 mails a day each.
+        if (await db.AgentSignals.IgnoreQueryFilters().CountAsync(x => x.ProjectId == s.ProjectId && x.Source == AgentSourceKind.ProjectMailbox && x.CreatedAt >= dayStart
+                && x.FromName == sender0, ct) >= 30)
+            throw new ConflictException("This sender already wrote 30 emails to the project today.", "MAILBOX_SENDER_LIMIT");
         var cc = sp.GetRequiredService<CurrentContext>();
         cc.TenantId = s.TenantId; cc.UserId = s.ActingUserId; cc.WorkspaceType = tenant.Type; cc.IsPlatformAdmin = false;
         var signals = sp.GetRequiredService<AgentSignalService>();
@@ -153,11 +175,12 @@ public class AgentSignalService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var member = await db.Users.IgnoreQueryFilters().AsNoTracking()
             .Where(u => u.NormalizedEmail == normalized && db.TenantMembers.IgnoreQueryFilters().Any(m => m.TenantId == s.TenantId && m.UserId == u.Id))
             .Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
-        var from = member is null ? $"{sender} (outside the workspace)" : $"{member} <{sender}>";
+        // The From address is not proof of who wrote (it can be forged), so the model is told so; a member's name is only a match on the address.
+        var from = member is null ? $"{sender} (outside the workspace; address not verified)" : $"{member} <{sender}> (address not verified)";
         var subject = string.IsNullOrWhiteSpace(email.Subject) ? "(no subject)" : email.Subject.Trim();
         var body = $"From: {from}\nSubject: {subject}\n\n{email.Text}";
         var signal = await signals.AddAsync(s.TenantId, s.ProjectId, AgentSourceKind.ProjectMailbox, $"mail:{Hash(sender + "\n" + subject + "\n" + (email.Text ?? ""))}",
-            subject, member ?? sender, body, clock.Now, null, null, ct);
+            subject, sender, body, clock.Now, null, null, ct);
         if (signal is null) return Guid.Empty;
         await db.ProjectAgentSettings.IgnoreQueryFilters().Where(x => x.Id == s.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.MailReceived, x => x.MailReceived + 1), ct);
         await db.SaveChangesAsync(ct);

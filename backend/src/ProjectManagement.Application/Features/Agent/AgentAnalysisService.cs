@@ -55,7 +55,7 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
     /// </summary>
     public async Task<AgentRunDto?> RunAsync(ProjectAgentSettings s, string trigger, Guid? meetingId, CancellationToken ct)
     {
-        var pending = await db.AgentSignals.Where(x => x.ProjectId == s.ProjectId && x.ProcessedAt == null).OrderBy(x => x.OccurredAt).Take(40).ToListAsync(ct);
+        var pending = await db.AgentSignals.Where(x => x.ProjectId == s.ProjectId && x.ProcessedAt == null && x.RunId == null).OrderBy(x => x.OccurredAt).Take(40).ToListAsync(ct);
         if (pending.Count == 0) return null;
         var month = clock.Now.ToString("yyyy-MM");
         if (s.RunMonth != month) { s.RunMonth = month; s.RunsThisMonth = 0; }
@@ -86,7 +86,17 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             batch.Add((p, text)); size += text.Length;
         }
 
-        var run = new AgentRun { TenantId = s.TenantId, ProjectId = s.ProjectId, Trigger = trigger, Status = "running", SignalCount = batch.Count, StartedAt = clock.Now,
+        // Claim the batch first: with several servers (or a manual run next to the background one) only one reads each signal.
+        var runId = Guid.CreateVersion7();
+        var ids = batch.Select(b => b.Signal.Id).ToList();
+        var claimed = await db.AgentSignals.Where(x => ids.Contains(x.Id) && x.RunId == null && x.ProcessedAt == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.RunId, runId), ct);
+        if (claimed != ids.Count)
+        {
+            if (claimed > 0) await db.AgentSignals.Where(x => x.RunId == runId).ExecuteUpdateAsync(u => u.SetProperty(x => x.RunId, (Guid?)null), ct);
+            return null;
+        }
+        var run = new AgentRun { Id = runId, TenantId = s.TenantId, ProjectId = s.ProjectId, Trigger = trigger, Status = "running", SignalCount = batch.Count, StartedAt = clock.Now,
             MeetingId = meetingId, CreatedAt = clock.Now, CreatedBy = ctx.UserId };
         db.AgentRuns.Add(run);
         s.RunsThisMonth++; s.LastRunAt = clock.Now;
@@ -154,10 +164,19 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             var chars = prompt.Length;
             var tier = aiOptions.Value.Chat.Standard;
             var amount = Math.Clamp(tier.Credits * (int)Math.Ceiling(chars / 30_000.0), tier.Credits, 40);
-            await using var reservation = await credits.ReserveAsync(Guid.NewGuid(), amount, "project_agent", ct);
+            var reservation = await credits.ReserveAsync(Guid.NewGuid(), amount, "project_agent", ct);
             AiAnswer answer;
             try { answer = await ai.CompleteAsync(Instructions, prompt.ToString(), 6000, ct); }
-            catch (AppException ex) { throw new AgentRunException(ex.Message); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                await reservation.DisposeAsync();   // nothing answered: nothing charged
+                throw new AgentRunException(ex is AppException ? ex.Message : "The AI service did not answer. The agent will try again.");
+            }
+            // The model answered, which is what is paid for - whether or not the answer turns out to be usable.
+            await reservation.SettleAsync(reservation.Amount, ct);
+            run.Credits = reservation.Amount;
+            recorder.Audit("ai.used", "AiAssistant", null, null, new { feature = "project_agent", model = answer.Model, credits = reservation.Amount });
+            await db.SaveChangesAsync(ct);
             var j = AiAssistant.JsonIn(answer.Text) ?? throw new AgentRunException("The agent's answer could not be read. It will try again.");
 
             var keyed = openTasks.ToDictionary(t => $"{project.Key}-{t.Number}".ToUpperInvariant(), t => t.Id);
@@ -181,13 +200,15 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
                 var f = new AgentFinding
                 {
                     TenantId = s.TenantId, ProjectId = s.ProjectId, RunId = run.Id, Kind = kind.Value, Status = AgentFindingStatus.Proposed,
-                    Title = Cut(title, 300)!, Detail = Cut(Str(o["detail"]), 4000), Evidence = Cut(Str(o["evidence"]), 600), Comment = Cut(Str(o["comment"]), 4000),
+                    Title = Cut(title, 200)!, Detail = Cut(Str(o["detail"]), 1500), Evidence = Cut(Str(o["evidence"]), 400), Comment = Cut(Str(o["comment"]), 2000),
                     Confidence = o["confidence"] is JsonValue cv && cv.TryGetValue<int>(out var c) ? Math.Clamp(c, 0, 100) : 60, CreatedAt = clock.Now, CreatedBy = ctx.UserId,
                 };
                 if (Str(o["source"]) is { } src && Regex.Match(src, @"^S(\d{1,3})$") is { Success: true } sm && int.TryParse(sm.Groups[1].Value, out var si) && si >= 1 && si <= batch.Count)
                 {
                     var sig = batch[si - 1].Signal;
                     f.SignalId = sig.Id; f.SourceLabel = Cut(Label(sig, Local), 200);
+                    // From someone's own inbox, only a short quote is ever shown to the project's editors.
+                    if (sig.Source == AgentSourceKind.PersonalMail) f.Evidence = Cut(f.Evidence, 200);
                 }
                 if (Str(o["taskKey"])?.ToUpperInvariant() is { } tk && keyed.TryGetValue(tk, out var taskId)) f.TaskId = taskId;
                 if (Str(o["issueKey"])?.ToUpperInvariant() is { } ik && issueKeyed.TryGetValue(ik, out var issueId)) f.IssueId = issueId;
@@ -211,23 +232,32 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             }
             db.AgentFindings.AddRange(findings);
             foreach (var (sig, _) in batch) { sig.ProcessedAt = clock.Now; sig.RunId = run.Id; }
-            run.Status = "done"; run.FindingCount = findings.Count; run.Summary = Cut(Str(j["summary"]), 4000); run.FinishedAt = clock.Now; run.Credits = reservation.Amount;
+            run.Status = "done"; run.FindingCount = findings.Count; run.Summary = Cut(Str(j["summary"]), 4000); run.FinishedAt = clock.Now;
             s.LastError = null;
-            recorder.Audit("ai.used", "AiAssistant", null, null, new { feature = "project_agent", model = answer.Model, credits = reservation.Amount });
-            if (findings.Count > 0) await NotifyAsync(project, run, findings, trigger, ct);
-            await reservation.SettleAsync(reservation.Amount, ct);   // saves the run, the findings and the charge together
             await db.SaveChangesAsync(ct);
+            // Telling people is not part of the reading: if it fails, the findings stay.
+            if (findings.Count > 0)
+            {
+                try { await NotifyAsync(project, run, findings, trigger, ct); await db.SaveChangesAsync(ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Project agent could not notify about run {Run}", run.Id); }
+            }
             return new AgentRunDto(run.Id, run.Trigger, run.Status, run.SignalCount, run.FindingCount, run.Credits, run.Summary, run.Error, run.StartedAt, run.FinishedAt);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             log.LogWarning("Project agent run {Run} failed: {Reason}", run.Id, ex.Message);
             AgentDb.ClearTracking(db);
-            var saved = await db.AgentRuns.FirstAsync(r => r.Id == run.Id, ct);
-            saved.Status = "failed"; saved.Error = Cut(ex.Message, 500); saved.FinishedAt = clock.Now;
-            var again = await db.ProjectAgentSettings.FirstAsync(x => x.Id == s.Id, ct);
-            again.LastError = Cut(ex.Message, 500);
-            await db.SaveChangesAsync(ct);
+            var saved = await db.AgentRuns.FirstAsync(r => r.Id == run.Id, CancellationToken.None);
+            // The sources go back for the next try - unless this is the third reading in a row that failed: then they are set aside.
+            var before = await db.AgentRuns.Where(r => r.ProjectId == s.ProjectId && r.Id != run.Id).OrderByDescending(r => r.StartedAt).Take(2).Select(r => r.Status).ToListAsync(CancellationToken.None);
+            var giveUp = before.Count == 2 && before.All(x => x == "failed");
+            var message = ex.Message + (giveUp ? " These sources were set aside after three failed tries." : "");
+            saved.Status = "failed"; saved.Error = Cut(message, 500); saved.FinishedAt = clock.Now;
+            var again = await db.ProjectAgentSettings.FirstAsync(x => x.Id == s.Id, CancellationToken.None);
+            again.LastError = Cut(message, 500);
+            await db.SaveChangesAsync(CancellationToken.None);
+            if (giveUp) await db.AgentSignals.Where(x => x.RunId == run.Id && x.ProcessedAt == null).ExecuteUpdateAsync(u => u.SetProperty(x => x.ProcessedAt, clock.Now), CancellationToken.None);
+            else await db.AgentSignals.Where(x => x.RunId == run.Id && x.ProcessedAt == null).ExecuteUpdateAsync(u => u.SetProperty(x => x.RunId, (Guid?)null), CancellationToken.None);
             return new AgentRunDto(saved.Id, saved.Trigger, saved.Status, saved.SignalCount, 0, 0, null, saved.Error, saved.StartedAt, saved.FinishedAt);
         }
     }
@@ -269,7 +299,7 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
     private static string Label(AgentSignal s, Func<DateTime, string, string> local) => s.Source switch
     {
         AgentSourceKind.ProjectMailbox => $"Email from {s.FromName ?? "someone"} · {local(s.OccurredAt, "dd MMM")}",
-        AgentSourceKind.PersonalMail => $"Email · {s.Title} · {local(s.OccurredAt, "dd MMM")}",
+        AgentSourceKind.PersonalMail => $"Email in a member's inbox · {local(s.OccurredAt, "dd MMM")}",
         AgentSourceKind.Chat => $"Project chat · {local(s.OccurredAt, "dd MMM")}",
         _ => s.Title,
     };

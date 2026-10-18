@@ -153,7 +153,14 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
         if (email is null) return BadRequest();
         // One forwarding route can carry every mailbox: mail to a project agent's address (agent+token@) goes to that project's agent.
         if (token is null && AgentSignalService.TokenFromRecipients(email.To) is { } agentToken)
-            return Ok(new { agentSignal = await AgentSignalService.ReceiveMailAsync(services, agentToken, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct) });
+        {
+            var signal = await AgentSignalService.ReceiveMailAsync(services, agentToken, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
+            // The same mail can also be addressed to the work mailbox (work+token@): it still becomes a work task.
+            var workToken = System.Text.RegularExpressions.Regex.Match(email.To ?? "", @"work\+([0-9a-f]{24})@", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!workToken.Success) return Ok(new { agentSignal = signal });
+            var work = await InboundEmailService.ReceiveAsync(services, workToken.Groups[1].Value, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
+            return Ok(new { agentSignal = signal, workTask = work });
+        }
         var created = await InboundEmailService.ReceiveAsync(services, token, key ?? Request.Headers["X-Inbound-Key"].ToString(), email, ct);
         return Ok(new { workTask = created });
     }

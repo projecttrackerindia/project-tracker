@@ -150,6 +150,9 @@ public static class ServiceCollectionExtensions
                     var prefix = bearer.Length > 19 ? bearer.Substring(7, 12) : "none";
                     return Limited(http, $"scim:{prefix}", scim);
                 }
+                // The meeting bot's real-time transcript comes from the bot service's shared addresses, many lines a minute: its own allowance per bot.
+                if (http.Request.Path.StartsWithSegments("/api/v1/agent/recall", out var rest))
+                    return rest.Value is { Length: 33 } bot && bot.Skip(1).All(Uri.IsHexDigit) ? Limited(http, $"recall:{bot[1..]}", scim) : Limited(http, $"ip:{Ip(http)}", anon);
                 var uid = http.User.FindFirst("sub")?.Value;
                 var keyId = http.User.FindFirst("api_key")?.Value; // integrations get their own allowance, separate from the person's browser use
                 if (keyId is not null) return Limited(http, $"key:{keyId}", authed);

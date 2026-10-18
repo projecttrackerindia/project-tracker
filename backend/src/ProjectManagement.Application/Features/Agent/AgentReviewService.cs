@@ -26,9 +26,11 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var wanted = StatusOf(status);
         var q = db.AgentFindings.AsNoTracking().Where(f => f.ProjectId == projectId);
         q = wanted is { } w ? q.Where(f => f.Status == w) : q;
-        var rows = await q.OrderByDescending(f => f.CreatedAt).Take(PageSize).ToListAsync(ct);
         var pending = await db.AgentFindings.CountAsync(f => f.ProjectId == projectId && f.Status == AgentFindingStatus.Proposed, ct);
-        return new AgentFindingPageDto(await DtosAsync(rows, ct), pending, await settings.CanManageAsync(project, ct));
+        // What the agent read (quotes from mail, meetings and members' inboxes) is shown only to the people who decide on it.
+        if (!await settings.CanManageAsync(project, ct)) return new AgentFindingPageDto([], pending, false);
+        var rows = await q.OrderByDescending(f => f.CreatedAt).Take(PageSize).ToListAsync(ct);
+        return new AgentFindingPageDto(await DtosAsync(rows, ct), pending, true);
     }
 
     /// <summary>Everything waiting across the projects this person may decide on - the workspace's agent inbox.</summary>
@@ -66,7 +68,11 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
     {
         var project = await access.GetProjectAsync(projectId, ct);
         if (!await settings.CanManageAsync(project, ct)) throw new ForbiddenException("Only people who may edit this project can approve the agent's proposals.", "PERMISSION_DENIED");
-        var ids = await db.AgentFindings.Where(f => f.ProjectId == projectId && f.Status == AgentFindingStatus.Proposed).OrderBy(f => f.CreatedAt).Select(f => f.Id).Take(50).ToListAsync(ct);
+        // In one go only what adds: new tasks, tickets, action items and notes. Changes to existing work (status, owner, dates) are approved one by one.
+        var ids = await db.AgentFindings.Where(f => f.ProjectId == projectId && f.Status == AgentFindingStatus.Proposed
+                && f.Kind != AgentFindingKind.UpdateTask && f.Kind != AgentFindingKind.UpdateIssue && !(f.Kind == AgentFindingKind.Delay && f.DueDate != null))
+            .OrderBy(f => f.CreatedAt).Select(f => f.Id).Take(50).ToListAsync(ct);
+        var skipped = await db.AgentFindings.CountAsync(f => f.ProjectId == projectId && f.Status == AgentFindingStatus.Proposed, ct) - ids.Count;
         int applied = 0, failed = 0;
         foreach (var id in ids)
         {
@@ -75,7 +81,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             if (f.Status == AgentFindingStatus.Applied) applied++; else failed++;
         }
         var rows = await db.AgentFindings.AsNoTracking().Where(f => ids.Contains(f.Id)).OrderBy(f => f.CreatedAt).ToListAsync(ct);
-        return new ApproveAllResult(applied, failed, await DtosAsync(rows, ct));
+        return new ApproveAllResult(applied, failed, await DtosAsync(rows, ct), skipped);
     }
 
     // ---------------------------------------------------------------- deciding
@@ -94,10 +100,10 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         if (e.Title is { } title)
         {
             title = title.Trim();
-            if (title.Length is < 2 or > 300) throw new ValidationException("title", "Give it a title of 2 to 300 characters.");
+            if (title.Length is < 2 or > 200) throw new ValidationException("title", "Give it a title of 2 to 200 characters.");
             f.Title = title;
         }
-        if (e.Detail is not null) f.Detail = AgentAnalysisService.Cut(e.Detail.Trim(), 4000);
+        if (e.Detail is not null) f.Detail = AgentAnalysisService.Cut(e.Detail.Trim(), 1500);
         if (e.ClearAssignee == true) f.AssigneeId = null;
         else if (e.AssigneeId is { } who) { await access.EnsureTenantMemberAsync(who, "assigneeId", ct); f.AssigneeId = who; }
         if (e.ClearDueDate == true) f.DueDate = null; else if (e.DueDate is { } due) f.DueDate = due;
@@ -167,7 +173,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             }
             case AgentFindingKind.CreateActionItem:
             {
-                var created = await actionItems.CreateAsync(f.ProjectId, new CreateActionItemRequest(f.Title, Describe(f), f.AssigneeId, f.DueDate, f.Priority), ct);
+                var created = await actionItems.CreateAsync(f.ProjectId, new CreateActionItemRequest(f.Title, Describe(f, 2000), f.AssigneeId, f.DueDate, f.Priority), ct);
                 return (created.Id, null);
             }
             case AgentFindingKind.CreateIssue:
@@ -202,7 +208,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         }
     }
 
-    private string Describe(AgentFinding f) => AgentAnalysisService.Cut((f.Detail ?? "") + Footer(f), 3900)!.Trim();
+    private string Describe(AgentFinding f, int max = 3900) => AgentAnalysisService.Cut((f.Detail ?? "") + Footer(f), max)!.Trim();
 
     private async Task<string?> KeyOfAsync(Guid taskId, CancellationToken ct) =>
         await db.Tasks.Where(t => t.Id == taskId).Select(t => t.Project!.Key + "-" + t.Number).FirstOrDefaultAsync(ct);

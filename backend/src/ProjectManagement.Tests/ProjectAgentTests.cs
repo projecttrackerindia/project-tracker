@@ -94,7 +94,10 @@ public class ProjectAgentTests(ApiFactory factory)
             var page = (await owner.Get($"/api/v1/projects/{project}/agent/findings")).Data!;
             Assert.Equal(4, page["pending"]!.GetValue<int>());
             Assert.True(page["canDecide"]!.GetValue<bool>());
-            Assert.False((await ravi.Get($"/api/v1/projects/{project}/agent/findings")).Data!["canDecide"]!.GetValue<bool>());
+            var hidden = (await ravi.Get($"/api/v1/projects/{project}/agent/findings")).Data!;
+            Assert.False(hidden["canDecide"]!.GetValue<bool>());
+            Assert.Empty(hidden["items"]!.AsArray());   // quotes from what the agent read are for the people who decide
+            Assert.Null((await ravi.Get($"/api/v1/projects/{project}/agent")).Data!["runs"]![0]!["summary"]);
             var items = page["items"]!.AsArray();
             string Id(string kind) => items.First(i => i!["kind"]!.GetValue<string>() == kind)!["id"]!.GetValue<string>();
             Assert.Equal("Stand-up 18 Oct", items.First(i => i!["kind"]!.GetValue<string>() == "CreateTask")!["sourceLabel"]!.GetValue<string>());
@@ -325,6 +328,9 @@ public class ProjectAgentTests(ApiFactory factory)
                 await Say("Priya", "I am testing the refund screens and found two layout problems on small phones which I will log as tickets after this call today.");
             }
             Assert.Equal(HttpStatusCode.NotFound, (await anon.PostAsJsonAsync("/api/v1/agent/recall/00000000000000000000000000000000", new { @event = "transcript.data" })).StatusCode);
+            // Odd deliveries are ignored, never an error.
+            Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/recall/{token}", new[] { 1, 2 })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/recall/{token}", new { @event = 5, data = "text" })).StatusCode);
 
             // Ten minutes in: the bot points out what is being missed, in the meeting chat.
             var began = DateTime.UtcNow.AddMinutes(-10); var finish = DateTime.UtcNow.AddMinutes(5);

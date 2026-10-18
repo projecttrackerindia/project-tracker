@@ -189,7 +189,13 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using var res = await http.CreateClient("google-calendar").SendAsync(req, ct);
+        HttpResponseMessage response;
+        try { response = await http.CreateClient("google-calendar").SendAsync(req, ct); }
+        catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            throw new GoogleApiException("read meeting records", HttpStatusCode.GatewayTimeout);   // a timeout is a failure to retry, not a shutdown
+        }
+        using var res = response;
         var body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {

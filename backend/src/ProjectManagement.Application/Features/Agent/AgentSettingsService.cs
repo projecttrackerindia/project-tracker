@@ -63,7 +63,9 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var month = clock.Now.ToString("yyyy-MM");
         return new ProjectAgentDto(projectId, s?.Enabled ?? false, s?.ReadMailbox ?? true, s?.ReadChat ?? true, s?.ReadMeetings ?? true, s?.LiveBot ?? false,
             s?.DailyUpdates ?? true, s is null || !canManage ? null : MailboxAddress(s.MailboxToken), botReady, await AiAvailableAsync(ct), pending, s?.LastRunAt,
-            s?.LastError, s?.RunMonth == month ? s.RunsThisMonth : 0, s?.MonthlyRunLimit ?? 300, canManage, acting, runs.Select(Run).ToList(), transcripts);
+            s?.LastError, s?.RunMonth == month ? s.RunsThisMonth : 0, s?.MonthlyRunLimit ?? 300, canManage, acting,
+            // Summaries describe what was read (mail, meetings, members' inboxes): only for the people who decide on it.
+            runs.Select(Run).Select(r => canManage ? r : r with { Summary = null }).ToList(), transcripts);
     }
 
     public async Task<ProjectAgentDto> SaveAsync(Guid projectId, SaveProjectAgentRequest req, CancellationToken ct = default)
@@ -82,7 +84,7 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             db.ProjectAgentSettings.Add(s);
         }
         // Whoever switches it on is the person it acts as in the background (their rights; the workspace's AI credits).
-        if (req.Enabled && !s.Enabled) { s.ActingUserId = uid; s.ChatReadUntil ??= clock.Now; s.LastError = null; }
+        if (req.Enabled && !s.Enabled) { s.ActingUserId = uid; s.ChatReadUntil = clock.Now; s.LastError = null; }   // chat from while it was off is not read
         s.Enabled = req.Enabled;
         s.ReadMailbox = req.ReadMailbox ?? s.ReadMailbox; s.ReadChat = req.ReadChat ?? s.ReadChat; s.ReadMeetings = req.ReadMeetings ?? s.ReadMeetings;
         s.LiveBot = req.LiveBot ?? s.LiveBot; s.DailyUpdates = req.DailyUpdates ?? s.DailyUpdates;

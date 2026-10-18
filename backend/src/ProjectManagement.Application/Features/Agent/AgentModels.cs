@@ -12,6 +12,8 @@ public class AgentOptions
     public int IntervalSeconds { get; set; } = 60;
     /// <summary>New chat is read once the conversation has been quiet this long (so a discussion is read as a whole).</summary>
     public int ChatQuietMinutes { get; set; } = 10;
+    /// <summary>Mail to a project is read once it has settled this long, so a burst of mail is one reading.</summary>
+    public int MailBatchMinutes { get; set; } = 5;
     /// <summary>Opted-in personal inboxes are looked at this often.</summary>
     public int InboxScanMinutes { get; set; } = 30;
     /// <summary>The local hour each person's daily update goes out (workspace time zone).</summary>
@@ -50,7 +52,8 @@ public record AgentFindingPageDto(IReadOnlyList<AgentFindingDto> Items, int Pend
 public record ApproveFindingRequest(string? Title, string? Detail, Guid? AssigneeId, bool? ClearAssignee, DateOnly? DueDate, bool? ClearDueDate,
     Priority? Priority, string? NewStatus, string? Comment);
 
-public record ApproveAllResult(int Applied, int Failed, IReadOnlyList<AgentFindingDto> Items);
+/// <summary>Skipped: changes to existing work, which are approved one by one.</summary>
+public record ApproveAllResult(int Applied, int Failed, IReadOnlyList<AgentFindingDto> Items, int Skipped = 0);
 
 internal static class AgentDb
 {

@@ -26,7 +26,7 @@ public class ProjectAgentWorker(IServiceScopeFactory scopes, IOptions<AgentOptio
                     await scope.ServiceProvider.GetRequiredService<AgentEngine>().TickAsync(stoppingToken);
                     beats.Beat("Project agent", every);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)   // a timeout somewhere is not a shutdown
                 {
                     log.LogError(ex, "Project agent tick failed");
                     beats.Beat("Project agent", every, ex.GetType().Name);

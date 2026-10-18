@@ -132,13 +132,20 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "recall" && b.Status == "in_call" && b.BotId != ""
             && b.NudgeCount < MaxNudges && b.TranscriptLength - b.CheckedLength >= 800 && b.SessionEndUtc > now).Take(3).ToListAsync(ct);
         var posted = 0;
-        foreach (var bot in bots)
+        foreach (var candidate in bots)
         {
+            var bot = candidate;
             if (bot.LastNudgeAt is { } last && now - last < NudgeGap) continue;
             if (now - bot.SessionStartUtc < TimeSpan.FromMinutes(3)) continue;
             if (!await settings.AiAvailableAsync(ct)) return posted;
             var transcript = bot.TranscriptProtected is null ? "" : secrets.Unprotect(bot.TranscriptProtected);
-            bot.CheckedLength = bot.TranscriptLength; bot.LastNudgeAt = now;
+            // Claim this check: with several servers, only the one whose update lands asks and posts.
+            var checkedBefore = bot.CheckedLength;
+            var mine = await db.AgentMeetingBots.Where(b => b.Id == bot.Id && b.CheckedLength == checkedBefore)
+                .ExecuteUpdateAsync(u => u.SetProperty(b => b.CheckedLength, bot.TranscriptLength).SetProperty(b => b.LastNudgeAt, now), ct) == 1;
+            db.AgentMeetingBots.Entry(bot).State = EntityState.Detached;
+            if (!mine) continue;
+            bot = await db.AgentMeetingBots.FirstAsync(b => b.Id == bot.Id, ct);
             var nudges = await AskForNudgesAsync(s, bot, transcript, ct);
             var said = (bot.NudgesSent ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var n in nudges.Where(n => !said.Contains(n)).Take(2))
@@ -180,7 +187,8 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         prompt.AppendLine("""
             Is the team missing something important right now? Only these count: overdue or due-soon work above that nobody has mentioned yet, a commitment
             just made with no owner or no date, an agenda point not covered, a question asked and left unanswered. Write at most 2 short, friendly reminders
-            for the meeting chat (under 200 characters each, name the task key or person). Return {"nudges":["..."]} - an empty list when nothing is worth interrupting for.
+            for the meeting chat (under 200 characters each). People outside the company may be in the call: refer to work by its key (like PAY-12) and to
+            people by first name, never repeat task titles, figures, links or anything confidential. Return {"nudges":["..."]} - an empty list when nothing is worth interrupting for.
             """);
         var tier = aiOptions.Value.Chat.Quick;
         await using var reservation = await credits.ReserveAsync(Guid.NewGuid(), tier.Credits, "project_agent_live", ct);
@@ -190,7 +198,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         var j = AiAssistant.JsonIn(answer.Text);
         await reservation.SettleAsync(reservation.Amount, ct);
         return (j?["nudges"] as JsonArray ?? []).Select(n => n is JsonValue v && v.TryGetValue<string>(out var t) ? t.Trim() : null)
-            .Where(t => t is { Length: > 5 and <= 300 }).Select(t => t!).Take(2).ToList();
+            .Where(t => t is { Length: > 5 and <= 300 } && !t.Contains("://") && !t.Contains("www.")).Select(t => t!).Take(2).ToList();
     }
 
     /// <summary>
@@ -207,13 +215,18 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         if (bot.Status is "done" or "failed") return;
         JsonNode? j;
         try { j = JsonNode.Parse(body); } catch (JsonException) { throw new ValidationException("body", "Not JSON."); }
-        if (j?["event"]?.GetValue<string>() is { } ev && ev != "transcript.data") return;
-        var data = j?["data"]?["data"] ?? j?["data"];
+        if (j is not JsonObject) return;
+        if (j["event"] is JsonValue ev && ev.TryGetValue<string>(out var name) && name != "transcript.data") return;
+        var outer = j["data"] as JsonObject;
+        var data = outer?["data"] as JsonObject ?? outer;
         var words = data?["words"] as JsonArray;
-        var text = words is null ? data?["text"]?.ToString() : string.Join(" ", words.Select(w => w?["text"]?.ToString()).Where(w => !string.IsNullOrWhiteSpace(w)));
+        var text = words is null ? (data?["text"] as JsonValue)?.ToString() : string.Join(" ", words.Take(2000).Select(w => ((w as JsonObject)?["text"] as JsonValue)?.ToString()).Where(w => !string.IsNullOrWhiteSpace(w)));
         if (string.IsNullOrWhiteSpace(text)) return;
-        var who = data?["participant"]?["name"]?.ToString();
-        var line = $"{(string.IsNullOrWhiteSpace(who) ? "Someone" : who.Trim())}: {text.Trim()}";
+        var who = ((data?["participant"] as JsonObject)?["name"] as JsonValue)?.ToString();
+        var spoken = text.Trim(); if (spoken.Length > 2000) spoken = spoken[..2000];
+        var speakerName = string.IsNullOrWhiteSpace(who) ? "Someone" : who.Trim().Replace(":", "").Replace("\n", " ");
+        if (speakerName.Length > 80) speakerName = speakerName[..80];
+        var line = $"{speakerName}: {spoken}";
         for (var attempt = 0; attempt < 6; attempt++)
         {
             var current = attempt == 0 ? bot : await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().FirstAsync(b => b.Id == bot.Id, ct);
@@ -273,7 +286,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             catch (GoogleApiException ex) { row.Error = AgentAnalysisService.Cut(ex.Message, 500); if (row.Attempts >= 8) row.Status = "failed"; }
             catch (AppException ex) { row.Error = AgentAnalysisService.Cut(ex.Message, 500); if (row.Attempts >= 8) row.Status = "failed"; }
             try { await db.SaveChangesAsync(ct); }
-            catch (DbUpdateException) { AgentDb.ClearTracking(db); }
+            catch (DbUpdateException) { db.AgentMeetingBots.Entry(row).State = EntityState.Detached; }   // another server added it first
         }
         return added;
     }
