@@ -147,7 +147,10 @@ in it) and the project's *WhatsApp* source is on. At most 200 a day per project.
 
 ## Operations
 
-- **Meeting bot:** `apps/meetbot`, its own Railway service (see DEPLOY.md). Everything that depends on how the Meet page looks is in
+- **Meeting bot:** `apps/meetbot`, its own Railway service (see DEPLOY.md). It is a queue: each upcoming session is a job, bot workers ask
+  `POST /api/v1/agent/bot-workers/poll` (Bearer `Agent__MeetingBotSecret`) for as many as they have room for, report their bots every 5
+  seconds and collect chat messages; a session whose worker stops reporting is rejoined by another worker. Scale by adding replicas;
+  sessions wait in line when all workers are busy. Code: `MeetingBotQueue` (API) and `apps/meetbot/src/worker.mjs`. Everything that depends on how the Meet page looks is in
   `apps/meetbot/src/meet.mjs`; when Google changes Meet, update that file and `test/fake-meet.html`, and run `npm test` there.
 - **Failed deploys:** set `Ops__DeployWebhookToken` (24+ random characters) on the API and add a Railway webhook (project settings ›
   Webhooks) to `https://<api host>/api/v1/inbound/deploy/<token>`. A failed deployment or crash of any service e-mails the platform

@@ -193,6 +193,31 @@ namespace ProjectManagement.Domain.Entities
         public string? CalendarEventId { get; set; }
         public string? Title { get; set; }
         public string? MeetUrl { get; set; }
+        /// <summary>The bot worker (apps/meetbot) that holds this session, while it holds it (bot only).</summary>
+        public string? WorkerId { get; set; }
+        /// <summary>Until when the worker holds it: a worker that stops reporting loses the session and another worker joins instead.</summary>
+        public DateTime? LeaseUntil { get; set; }
+        /// <summary>What the worker last said about the bot: joining, waiting_admission, in_call_recording, call_ended, done or fatal.</summary>
+        public string? WorkerStatus { get; set; }
+        /// <summary>Messages waiting to be posted in the meeting chat (one per line), collected by the worker on its next report.</summary>
+        public string? PendingChat { get; set; }
+        /// <summary>What a worker needs to join (JSON: Meet address, bot name, hello, agenda, caption language), set when the session is queued.</summary>
+        public string? JoinPayload { get; set; }
+    }
+
+    /// <summary>
+    /// A meeting-bot worker (apps/meetbot) that reported recently: how many meetings it can attend at once and how many it is in. Workers ask
+    /// for sessions themselves, so any number of them (replicas) can run behind one address.
+    /// </summary>
+    public class AgentBotWorker : AuditableEntity
+    {
+        public string WorkerKey { get; set; } = "";
+        public string? Host { get; set; }
+        public string? Version { get; set; }
+        public int Capacity { get; set; }
+        public int Active { get; set; }
+        public bool Draining { get; set; }
+        public DateTime LastSeenAt { get; set; }
     }
 
     /// <summary>A person's own opt-in: the agent may look in their connected Gmail or Outlook for mail about their projects.</summary>

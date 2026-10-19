@@ -24,7 +24,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// when the session ends its transcript is read like any other source. Without a bot, the session's Google Meet transcript is fetched with the
 /// organizer's own Google account once Meet has produced it.
 /// </summary>
-public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtector secrets, MeetingBotClient botService, GoogleMeetingClient google,
+public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtector secrets, MeetingBotClient botService, MeetingBotQueue queue, GoogleMeetingClient google,
     AgentSignalService signals, AgentSettingsService settings, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, IOptions<AppOptions> app,
     ILogger<AgentMeetingService> log)
 {
@@ -72,29 +72,20 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         return sent;
     }
 
-    /// <summary>Asks the bot service to send the bot (the row is saved first; a failure is kept on it).</summary>
+    /// <summary>
+    /// Puts the session in the meeting-bot queue with what a worker needs to join (the row is saved first). A free worker picks it up shortly
+    /// before it starts; when all are busy it waits in line rather than failing.
+    /// </summary>
     private async Task<bool> SendAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, AgentMeetingBot bot, string meetUrl, CancellationToken ct)
     {
         var project = await db.Projects.AsNoTracking().Where(p => p.Id == s.ProjectId).Select(p => p.Name).FirstAsync(ct);
-        var ok = false;
-        try
-        {
-            var webhook = $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{bot.WebhookToken}";
-            var intro = $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
-                "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen.";
-            var agenda = await AgendaAsync(s, ct);
-            var language = s.CaptionLanguage is { } code && AgentSettingsService.CaptionLanguages.TryGetValue(code, out var name) ? name : null;
-            bot.BotId = await botService.CreateBotAsync(meetUrl, w.BotName, bot.SessionStartUtc, bot.SessionEndUtc.AddMinutes(30), webhook, intro, ct, agenda, language);
-            bot.Attempts = 1; bot.LastAttemptAt = clock.Now;
-            ok = true;
-        }
-        catch (MeetingBotException ex)
-        {
-            bot.Status = "failed"; bot.Error = AgentAnalysisService.Cut(ex.Message, 500);
-            s.LastError = bot.Error;
-        }
+        var intro = $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
+            "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen.";
+        var agenda = await AgendaAsync(s, ct);
+        var language = s.CaptionLanguage is { } code && AgentSettingsService.CaptionLanguages.TryGetValue(code, out var name) ? name : null;
+        bot.JoinPayload = MeetingBotQueue.PayloadJson(new MeetingBotJoin(meetUrl, w.BotName, intro, agenda, language));
         await db.SaveChangesAsync(ct);
-        return ok;
+        return true;
     }
 
     /// <summary>
@@ -187,22 +178,17 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         var added = 0;
         foreach (var bot in bots)
         {
-            var over = now > bot.SessionEndUtc.AddMinutes(90);
-            if (!over && botService.Configured && bot.BotId.Length > 0)
-            {
-                if (bot.LastAttemptAt is { } last && now - last < TimeSpan.FromMinutes(2)) continue;
-                bot.LastAttemptAt = now; bot.Attempts++;
-                try
-                {
-                    var status = await botService.StatusAsync(bot.BotId, ct);
-                    over = status is "call_ended" or "done" or "fatal" or "gone";
-                }
-                catch (MeetingBotException ex) { bot.Error = AgentAnalysisService.Cut(ex.Message, 500); }
-            }
-            if (!over) { await db.SaveChangesAsync(ct); continue; }
+            // Over when the worker says the call ended (or the bot failed), when no worker holds it any more (never picked up, or its worker
+            // went away after the session), or at the latest 90 minutes after the planned end (a meeting that overran).
+            var over = now > bot.SessionEndUtc.AddMinutes(90) || bot.WorkerStatus is "call_ended" or "done" or "fatal"
+                || bot.WorkerId is null || bot.LeaseUntil is null || bot.LeaseUntil < now;
+            if (!over) continue;
             bot.EndedAt = now;
             bot.Status = bot.TranscriptLength > 0 ? "done" : "failed";
-            if (bot.TranscriptLength == 0) bot.Error ??= "The bot heard nothing in this session.";
+            if (bot.TranscriptLength == 0)
+                bot.Error ??= bot.WorkerId is null
+                    ? (botService.Configured ? "No meeting bot was free for this session: add bot workers (Meeting bots in System health)." : "The meeting bot is not set up on this installation.")
+                    : "The bot heard nothing in this session.";
             if (bot.TranscriptProtected is { } protectedText && bot.TranscriptLength > 0)
             {
                 var meeting = await db.ProjectMeetings.AsNoTracking().FirstOrDefaultAsync(m => m.Id == bot.MeetingId, ct);
@@ -220,7 +206,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     {
         if (!w.InCallReminders || !botService.Configured) return 0;
         var now = clock.Now;
-        var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && b.Status == "in_call" && b.BotId != ""
+        var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && b.Status == "in_call" && b.WorkerId != null
             && b.NudgeCount < MaxNudges && b.TranscriptLength - b.CheckedLength >= 800 && b.SessionEndUtc > now).OrderBy(b => b.SessionStartUtc).Take(3).ToListAsync(ct);
         var posted = 0;
         foreach (var candidate in bots)
@@ -242,14 +228,10 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             foreach (var n in nudges.Where(n => !said.Contains(n)).Take(2))
             {
                 if (bot.NudgeCount >= MaxNudges) break;
-                try
-                {
-                    await botService.SendChatAsync(bot.BotId, $"🤖 {n}", ct);
-                    bot.NudgeCount++; posted++;
-                    bot.NudgesSent = string.Join('\n', said.Append(n).TakeLast(20));
-                    said.Add(n);
-                }
-                catch (MeetingBotException ex) { bot.Error = AgentAnalysisService.Cut(ex.Message, 500); break; }
+                if (!await queue.QueueChatAsync(bot.Id, $"🤖 {n}", ct)) break;   // the call is over
+                bot.NudgeCount++; posted++;
+                bot.NudgesSent = string.Join('\n', said.Append(n).TakeLast(20));
+                said.Add(n);
             }
             await db.SaveChangesAsync(ct);
         }

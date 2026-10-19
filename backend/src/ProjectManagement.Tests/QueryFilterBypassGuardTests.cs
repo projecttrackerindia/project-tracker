@@ -19,6 +19,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Resumes/PersonalFileCleanup.cs", // trusted storage-key existence checks only, across owners and deleted records; no content is retrieved
         "ProjectManagement.Application/Features/Admin/GoLiveService.cs",
         "ProjectManagement.Application/Features/Billing/UpiBillingService.cs", // platform administrators confirm UPI payments of every workspace (writes switch to that workspace); a UTR is unique across all workspaces; account health counts every workspace's payments
+        "ProjectManagement.Application/Features/Agent/MeetingBotClient.cs", // the meeting-bot queue: workers serve every workspace, so sessions are claimed, renewed and finished across workspaces (by id and lease only)
         "ProjectManagement.Application/Features/Admin/DeployAlertService.cs", // anonymous hosting webhook (token in the address): only the platform administrators' e-mail addresses are read
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",
         "ProjectManagement.Application/Features/Ai/AiPortfolio.cs",

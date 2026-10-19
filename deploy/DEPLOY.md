@@ -225,12 +225,18 @@ in the API's memory, so run **one API container**: several would each see only t
 The project agent can join Google Meet stand-ups with its own bot (`apps/meetbot`, a small Node service running Chromium). It is not a
 third-party service: nothing to buy, no per-meeting fees.
 
-- **Docker Compose:** set `MEETBOT_SECRET` (any random string of 16+ characters) in `.env`, then `docker compose --profile meetbot up -d`.
-  The API already points at it (`http://meetbot:8080`).
-- **Railway (or any container host):** add a service from this repository with root directory `apps/meetbot` (it has its own Dockerfile),
-  set `MEETBOT_SECRET` on it (optionally `MEETBOT_WEBHOOK_HOSTS=<your API host>`), give it at least 2 GB of memory, and on the API service set
-  `Agent__MeetingBotUrl=<the bot service's private URL, e.g. http://meetbot.railway.internal:8080>` and `Agent__MeetingBotSecret=<same secret>`.
-- Each meeting is one Chromium (about 400 MB); `MEETBOT_MAX_BOTS` (default 4) caps how many at a time.
+- **How it scales:** the bot service runs as **workers that ask the API for meetings** (every 5 seconds). Each worker attends as many meetings
+  at once as its memory and CPUs allow (about 550 MB and half a CPU per meeting; `MEETBOT_MAX_BOTS` overrides). To attend more meetings at
+  once, **add replicas** of the bot service: nothing else changes, because workers only ever call the API. When every worker is busy,
+  meetings wait in line and are joined as soon as one is free; a worker that stops (crash, redeploy) loses its meetings to another worker,
+  which rejoins them within about two minutes. On a redeploy a worker stops taking meetings and stays in the ones it has until they end.
+  Admin › System health › *Meeting bots* shows the workers, the meeting slots in use and any sessions waiting.
+- **Docker Compose:** set `MEETBOT_SECRET` (any random string of 16+ characters) in `.env`, then `docker compose --profile meetbot up -d`
+  (add `--scale meetbot=2` for two workers). The API reads the same secret.
+- **Railway (or any container host):** add a service from this repository with root directory `apps/meetbot` (it has its own Dockerfile). On
+  it set `MEETBOT_SECRET` and `MEETBOT_API_URL=https://<your site>` (the address the app is served from); on the API service set
+  `Agent__MeetingBotSecret=<same secret>`. Give each replica 2-4 GB of memory and 2 vCPUs, set its **draining time to a few hours**
+  (Settings › Deploy › Draining seconds, e.g. 10800) so redeploys never cut a meeting short, and raise the replica count for more meetings.
 - Without the bot, the agent still reads Google Meet transcripts after each meeting and anything pasted into a project's Agent tab.
 - The bot sets Meet's captions to each project's meeting language and posts the project's agenda after its hello (nothing to configure).
 

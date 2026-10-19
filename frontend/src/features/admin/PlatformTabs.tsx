@@ -407,6 +407,37 @@ function ConsentDocumentsCard() {
 const tone = (s: string) => (s === 'ok' ? 'success' : s === 'degraded' || s === 'stalled' ? 'warning' : 'danger');
 const uptime = (sec: number) => { const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
 
+/** The meeting-bot workers: how many meetings they can attend at once, how many they are in, and sessions waiting for a free bot. */
+function MeetingBotsCard() {
+  const q = useWsQuery(['admin', 'meeting-bots'], platformApi.meetingBots, { refetchInterval: 15_000 });
+  if (!q.data) return null;
+  const m = q.data;
+  const online = m.workers.filter((w) => w.online);
+  return (
+    <div className="card mb-18" data-meeting-bots>
+      <div className="card-head">
+        <div><h3>Meeting bots</h3><p>Workers ask for meetings themselves: add replicas of the bot service to attend more meetings at once.</p></div>
+        <Badge tone={!m.configured ? 'neutral' : online.length === 0 ? 'danger' : m.waiting > 0 ? 'warning' : 'success'}>
+          {!m.configured ? 'Not set up' : online.length === 0 ? 'No worker online' : m.waiting > 0 ? `${m.waiting} waiting` : 'Ready'}
+        </Badge>
+      </div>
+      <div className="card-body">
+        <p style={{ marginTop: 0 }}><b>{m.active}</b> of <b>{m.capacity}</b> meeting slots in use · {online.length} worker{online.length === 1 ? '' : 's'} online{m.failedToday > 0 ? ` · ${m.failedToday} session(s) without a bot in the last day` : ''}</p>
+        {m.workers.length === 0 ? <p className="muted" style={{ marginBottom: 0 }}>No worker has reported yet. Set MEETBOT_API_URL on the bot service (see DEPLOY.md).</p> : (
+          <div className="table-wrap"><table>
+            <thead><tr><th>Worker</th><th>State</th><th>Meetings</th><th>Last report</th><th>Version</th></tr></thead>
+            <tbody>{m.workers.map((w) => (
+              <tr key={w.workerId}><td>{w.workerId}</td>
+                <td>{!w.online ? <Badge tone="neutral">Offline</Badge> : w.draining ? <Badge tone="warning">Finishing</Badge> : <Badge tone="success">Online</Badge>}</td>
+                <td>{w.active} / {w.capacity}</td><td className="muted">{timeAgo(w.lastSeenAt)}</td><td className="muted">{w.version ?? '—'}</td></tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HealthTab() {
   const q = useWsQuery(['admin', 'health'], platformApi.health, { refetchInterval: 15_000 });
   if (q.isLoading) return <PageLoader />;
@@ -416,6 +447,7 @@ export function HealthTab() {
     <>
       <GoLiveCard />
       <EmailPanel />
+      <MeetingBotsCard />
       <div className="stat-grid">
         <StatCard icon="activity" tone={h.status === 'ok' ? 'green' : h.status === 'down' ? 'red' : 'amber'} value={h.status === 'ok' ? 'Healthy' : h.status === 'down' ? 'Down' : 'Degraded'} label="Overall" foot={`v${h.version} · ${h.runtime}`} />
         <StatCard icon="clock" tone="blue" value={uptime(h.uptimeSeconds)} label="Uptime" foot={`since ${formatDate(h.startedAt)}`} />

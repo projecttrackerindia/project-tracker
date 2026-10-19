@@ -187,6 +187,19 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
         return Ok(new { received = true });
     }
 
+    /// <summary>
+    /// A meeting-bot worker (apps/meetbot) reporting its bots and asking for sessions (Bearer Agent:MeetingBotSecret). Workers call this every
+    /// few seconds; any number of them can run.
+    /// </summary>
+    [HttpPost("agent/bot-workers/poll")]
+    [RequestSizeLimit(256 * 1024)]
+    public async Task<IActionResult> BotWorkerPoll([FromBody] BotWorkerReport report, CancellationToken ct)
+    {
+        var bearer = Request.Headers.Authorization.ToString();
+        bearer = bearer.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? bearer[7..].Trim() : "";
+        return Ok(await services.GetRequiredService<MeetingBotQueue>().PollAsync(bearer, report, ct));
+    }
+
     /// <summary>The hosting platform reporting a failed deployment or a crash (Railway webhook); platform administrators are e-mailed.</summary>
     [HttpPost("inbound/deploy/{token}")]
     [RequestSizeLimit(256 * 1024)]

@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { MeetBot } from './bot.mjs';
+import { startWorker } from './worker.mjs';
 
 /**
  * Project Tracker's own meeting bot service. The API calls it (with the shared secret) to send a bot into a Google Meet; the bot streams the
@@ -13,7 +14,9 @@ import { MeetBot } from './bot.mjs';
  *   GET    /bots/:id        -> { id, status, error, lines }            (404 once forgotten - treat as ended)
  *   POST   /bots/:id/chat   { message }                                -> 202
  *   DELETE /bots/:id        -> 202 (leaves)
- *   GET    /health          -> { ok, bots, capacity }
+ *   GET    /health          -> { ok, bots, capacity, worker? }
+ *
+ * With MEETBOT_API_URL set it also works as a queue worker (see worker.mjs): it asks the API for meetings itself, so several replicas can run.
  */
 export function createServer(env = process.env) {
   const secret = env.MEETBOT_SECRET ?? '';
@@ -58,7 +61,11 @@ export function createServer(env = process.env) {
     const url = new URL(req.url ?? '/', 'http://bot');
     const parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, bots: active(), capacity });
+      if (req.method === 'GET' && url.pathname === '/health') {
+        const w = server.worker;
+        return send(res, 200, { ok: true, bots: active(), capacity: w ? w.state.capacity : capacity,
+          ...(w ? { worker: { id: w.state.workerId, draining: w.state.draining, lastReport: w.state.lastOk, lastError: w.state.lastError } } : {}) });
+      }
       if (!authorized(req)) return send(res, 401, { error: 'unauthorized' });
       if (req.method === 'POST' && url.pathname === '/bots') {
         const b = await readJson(req);
@@ -88,6 +95,9 @@ export function createServer(env = process.env) {
     }
   });
   server.bots = bots;
+  if (env.MEETBOT_API_URL) server.worker = startWorker({ env, log, deps, bots, allowedHosts });
+  const close = server.close.bind(server);
+  server.close = (cb) => { server.worker?.stop(); return close(cb); };
   return server;
 }
 
@@ -125,4 +135,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   });
   server.on('listening', () => console.log(`meeting bot service on ${JSON.stringify(server.address())}`));
   server.listen(port, '::');
+  // A redeploy: stop taking meetings, stay in the current ones until they end (the platform's draining time), then exit.
+  let terminating = false;
+  process.on('SIGTERM', () => {
+    if (terminating) return; terminating = true;
+    if (!server.worker) { console.log('stopping'); process.exit(0); }
+    console.log('SIGTERM: finishing current meetings before exiting');
+    server.worker.drain(() => { console.log('all meetings finished; exiting'); process.exit(0); });
+  });
 }

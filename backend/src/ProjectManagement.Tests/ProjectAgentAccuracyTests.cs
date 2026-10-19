@@ -228,36 +228,35 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
     public async Task The_bot_also_joins_calendar_calls_that_name_the_project_and_posts_the_agenda_in_the_meeting_language()
     {
         factory.Ai.Reset(); factory.Ai.Configured = true;
-        factory.MeetingBot.Reset();
         try
         {
             var (owner, project, _, key) = await SetupAsync("Calendar Desk");
             await owner.CreateTaskAsync(project, "Bank certification", new { title = "Bank certification", priority = "High", dueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2)) });
             await ConnectGoogleAsync(owner);
             Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true, autoJoinCalendar = true, captionLanguage = "ta" })).Ok);
-            var start = DateTime.UtcNow.AddMinutes(4);
+            var start = DateTime.UtcNow.AddMinutes(1);
             factory.GoogleCalendar.UpcomingEvents.Add(new { id = "evt_cal_1", status = "confirmed", summary = "Calendar Desk sync with the client",
                 start = new { dateTime = start.ToString("o") }, end = new { dateTime = start.AddMinutes(30).ToString("o") }, hangoutLink = "https://meet.google.com/cal-desk-abc" });
             factory.GoogleCalendar.UpcomingEvents.Add(new { id = "evt_cal_2", status = "confirmed", summary = "Lunch",
                 start = new { dateTime = start.ToString("o") }, end = new { dateTime = start.AddMinutes(30).ToString("o") }, hangoutLink = "https://meet.google.com/lunch-xyz-abc" });
 
             await TickAsync();
-            var create = Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots");
-            Assert.Contains("cal-desk-abc", create.Body);
-            Assert.Contains("Tamil", create.Body);
-            Assert.Contains("agendaMessage", create.Body);
-            Assert.Contains($"overdue {key}-", create.Body);
-            factory.WithDb(db =>
+            var jobId = factory.WithDb(db =>
             {
                 var bot = db.AgentMeetingBots.IgnoreQueryFilters().Single(b => b.ProjectId == project);
                 Assert.Equal("evt_cal_1", bot.CalendarEventId);
                 Assert.Equal("Calendar Desk sync with the client", bot.Title);
-                return 0;
+                return bot.Id.ToString();
             });
+            var job = (await BotWorkerClient.PollAsync(factory, "worker-calendar", 3)).Job(jobId);
+            Assert.NotNull(job);
+            Assert.Contains("cal-desk-abc", job!["meetingUrl"]!.GetValue<string>());
+            Assert.Equal("Tamil", job["captionLanguage"]!.GetValue<string>());
+            Assert.Contains($"overdue {key}-", job["agendaMessage"]!.GetValue<string>());
             await TickAsync();
-            Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots");   // once per call
+            Assert.Equal(1, factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Count(b => b.ProjectId == project)));   // once per call
         }
-        finally { factory.Ai.Reset(); factory.MeetingBot.Reset(); factory.GoogleCalendar.UpcomingEvents.Clear(); }
+        finally { factory.Ai.Reset(); factory.GoogleCalendar.UpcomingEvents.Clear(); }
     }
 
     [Fact]

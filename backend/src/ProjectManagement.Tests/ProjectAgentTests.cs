@@ -293,7 +293,6 @@ public class ProjectAgentTests(ApiFactory factory)
     public async Task The_live_bot_joins_listens_reminds_the_team_and_hands_over_the_transcript()
     {
         AnswerAsAgent();
-        factory.MeetingBot.Reset();
         try
         {
             var (owner, project, ravi, _, _) = await SetupAsync("Live Desk");
@@ -307,18 +306,30 @@ public class ProjectAgentTests(ApiFactory factory)
             Assert.True((await owner.Get($"/api/v1/projects/{project}/agent")).Data!["liveBotAvailable"]!.GetValue<bool>());
 
             await ConnectGoogleAsync(owner, transcripts: false);
-            var start = DateTime.UtcNow.AddMinutes(3); var end = DateTime.UtcNow.AddMinutes(18);
+            var start = DateTime.UtcNow.AddMinutes(1); var end = DateTime.UtcNow.AddMinutes(18);
             var meeting = await MeetingAsync(owner, project, start, end);
             Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true, captionLanguage = "hi" })).Ok);
 
+            // The session goes into the queue; a worker with room picks it up. Only workers holding the shared secret may ask.
             await TickAsync();
-            var create = Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots" && r.Body.Contains("meet.google.com"));
-            Assert.Contains("Tracker Bot", create.Body);
-            Assert.Contains("/api/v1/agent/bot/", create.Body);
-            Assert.Contains("leaveAt", create.Body);
-            Assert.Contains("Hindi", create.Body);   // Meet's captions in the meeting's language
-            Assert.Contains("overdue", create.Body);   // the agenda the bot posts after its hello
-            var token = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Single(b => b.MeetingId == meeting && b.Kind == "bot").WebhookToken);
+            var (jobId, token) = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.MeetingId == meeting && b.Kind == "bot")
+                .Select(b => new { b.Id, b.WebhookToken }).AsEnumerable().Select(b => (b.Id.ToString(), b.WebhookToken)).Single());
+            Assert.Equal(HttpStatusCode.Unauthorized, (await BotWorkerClient.PollAsync(factory, "worker-live-a", 2, secret: "wrong-secret-0123456789")).Status);
+            Assert.Null((await BotWorkerClient.PollAsync(factory, "worker-live-full", 0)).Job(jobId));   // no room, nothing handed out
+            var first = await BotWorkerClient.PollAsync(factory, "worker-live-a", 2);
+            Assert.Equal(HttpStatusCode.OK, first.Status);
+            var job = first.Job(jobId);
+            Assert.NotNull(job);
+            Assert.Contains("meet.google.com", job!["meetingUrl"]!.GetValue<string>());
+            Assert.Equal("Tracker Bot", job["botName"]!.GetValue<string>());
+            Assert.Contains($"/api/v1/agent/bot/{token}", job["webhookUrl"]!.GetValue<string>());
+            Assert.True(job["leaveAt"]!.GetValue<DateTime>() > end);
+            Assert.Equal("Hindi", job["captionLanguage"]!.GetValue<string>());   // Meet's captions in the meeting's language
+            Assert.Contains("overdue", job["agendaMessage"]!.GetValue<string>());   // the agenda the bot posts after its hello
+            Assert.Contains("Tracker Bot", job["introMessage"]!.GetValue<string>());
+            Assert.False(job["rejoin"]!.GetValue<bool>());
+            // One worker per session.
+            Assert.Null((await BotWorkerClient.PollAsync(factory, "worker-live-b", 2)).Job(jobId));
 
             using var anon = factory.CreateClient();
             async Task Say(string who, string words) =>
@@ -336,42 +347,120 @@ public class ProjectAgentTests(ApiFactory factory)
             // Odd deliveries are ignored, never an error.
             Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/bot/{token}", new[] { 1, 2 })).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await anon.PostAsJsonAsync($"/api/v1/agent/bot/{token}", new { @event = 5, data = "text" })).StatusCode);
+            Assert.Empty((await BotWorkerClient.PollAsync(factory, "worker-live-a", 2, [(jobId, "in_call_recording")])).Bot(jobId)!["chat"]!.AsArray());
 
-            // Ten minutes in: the bot points out what is being missed, in the meeting chat.
+            // Ten minutes in: the bot points out what is being missed; its worker collects the message for the meeting chat, once.
             var began = DateTime.UtcNow.AddMinutes(-10); var finish = DateTime.UtcNow.AddMinutes(5);
             factory.WithDb(db =>
             {
                 var m = db.ProjectMeetings.IgnoreQueryFilters().Single(x => x.Id == meeting); m.StartTimeUtc = began; m.EndTimeUtc = finish;
                 var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.WebhookToken == token); b.SessionStartUtc = began; b.SessionEndUtc = finish;
                 Assert.Equal("in_call", b.Status);
+                Assert.Equal("worker-live-a", b.WorkerId);
                 Assert.True(b.TranscriptLength > 800);
                 db.SaveChanges();
                 return 0;
             });
             await TickAsync();
-            Assert.Contains(factory.MeetingBot.Chat, m => m.Contains("overdue gateway work"));
+            var report = await BotWorkerClient.PollAsync(factory, "worker-live-a", 2, [(jobId, "in_call_recording")]);
+            Assert.Contains(report.Bot(jobId)!["chat"]!.AsArray(), m => m!.GetValue<string>().Contains("overdue gateway work"));
+            Assert.False(report.Bot(jobId)!["stop"]!.GetValue<bool>());
+            Assert.Empty((await BotWorkerClient.PollAsync(factory, "worker-live-a", 2, [(jobId, "in_call_recording")])).Bot(jobId)!["chat"]!.AsArray());
             Assert.Contains(factory.Ai.Prompts, p => p.System.Contains("live stand-up") && p.User.Contains("Gateway certification") && p.User.Contains("Priya: I am testing"));
 
-            // The session ends: the transcript is read like any other meeting.
+            // Its worker goes away (crash, redeploy): once the lease runs out another worker rejoins the call, without saying hello again,
+            // and the first worker, if it comes back, is told to leave.
+            factory.WithDb(db => { var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.WebhookToken == token); b.LeaseUntil = DateTime.UtcNow.AddSeconds(-1); db.SaveChanges(); return 0; });
+            var rejoin = (await BotWorkerClient.PollAsync(factory, "worker-live-b", 2)).Job(jobId);
+            Assert.NotNull(rejoin);
+            Assert.True(rejoin!["rejoin"]!.GetValue<bool>());
+            Assert.Null(rejoin["introMessage"]);
+            Assert.True((await BotWorkerClient.PollAsync(factory, "worker-live-a", 2, [(jobId, "in_call_recording")])).Bot(jobId)!["stop"]!.GetValue<bool>());
+
+            // The session ends: the worker says so, and the transcript is read like any other meeting.
             factory.WithDb(db =>
             {
                 var m = db.ProjectMeetings.IgnoreQueryFilters().Single(x => x.Id == meeting); m.EndTimeUtc = DateTime.UtcNow.AddMinutes(-10);
-                var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.WebhookToken == token); b.SessionEndUtc = m.EndTimeUtc; b.LastAttemptAt = null;
+                var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.WebhookToken == token); b.SessionEndUtc = m.EndTimeUtc;
                 db.SaveChanges();
                 return 0;
             });
-            factory.MeetingBot.Status = "done";
+            await BotWorkerClient.PollAsync(factory, "worker-live-b", 2, [(jobId, "call_ended")]);
             await TickAsync();
             factory.WithDb(db =>
             {
-                Assert.Equal("done", db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.WebhookToken == token).Status);
+                var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.WebhookToken == token);
+                Assert.Equal("done", b.Status);
+                Assert.Equal("call_ended", b.WorkerStatus);
                 Assert.Contains(db.AgentSignals.IgnoreQueryFilters().Where(s => s.ProjectId == project).ToList(), s => s.Source == AgentSourceKind.LiveMeeting && s.ProcessedAt != null);
                 Assert.Contains(db.AgentRuns.IgnoreQueryFilters().Where(r => r.ProjectId == project).ToList(), r => r.Trigger == "meeting" && r.Status == "done");
+                Assert.Single(db.AgentMeetingBots.IgnoreQueryFilters().Where(x => x.MeetingId == meeting && x.Kind == "bot"));   // one bot for the session
                 return 0;
             });
-            Assert.Single(factory.MeetingBot.Requests, r => r.Path == "/bots");   // one bot for the session
+            Assert.True((await BotWorkerClient.PollAsync(factory, "worker-live-b", 2, [(jobId, "done")])).Bot(jobId)!["stop"]!.GetValue<bool>());
         }
-        finally { factory.Ai.Reset(); factory.MeetingBot.Reset(); }
+        finally { factory.Ai.Reset(); }
+    }
+
+    [Fact]
+    public async Task When_every_bot_worker_is_busy_sessions_wait_in_line_and_say_why_if_none_was_free()
+    {
+        AnswerAsAgent();
+        try
+        {
+            var (owner, project, _, _, _) = await SetupAsync("Queue Desk");
+            await ConnectGoogleAsync(owner, transcripts: false);
+            // Sessions other tests left waiting would otherwise be in the same line.
+            factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call"))
+                .ExecuteUpdate(u => u.SetProperty(b => b.Status, "failed")));
+            var first = await MeetingAsync(owner, project, DateTime.UtcNow.AddMinutes(1), DateTime.UtcNow.AddMinutes(30));
+            var second = await MeetingAsync(owner, project, DateTime.UtcNow.AddMinutes(1).AddSeconds(5), DateTime.UtcNow.AddMinutes(30));
+            Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true })).Ok);
+            await TickAsync();
+            var ids = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => (b.MeetingId == first || b.MeetingId == second) && b.Kind == "bot")
+                .OrderBy(b => b.SessionStartUtc).Select(b => b.Id.ToString()).ToList());
+            Assert.Equal(2, ids.Count);
+
+            // A worker with room for one takes the earlier session; the other waits instead of failing.
+            var one = await BotWorkerClient.PollAsync(factory, "worker-queue-a", 1);
+            Assert.NotNull(one.Job(ids[0]));
+            Assert.Null(one.Job(ids[1]));
+            var busy = await BotWorkerClient.PollAsync(factory, "worker-queue-a", 1, [(ids[0], "in_call_recording")]);
+            Assert.Empty(busy.Jobs);
+            // A worker that is shutting down takes nothing new.
+            Assert.Empty((await BotWorkerClient.PollAsync(factory, "worker-queue-b", 4, draining: true)).Jobs);
+            // A second worker comes up and takes the waiting session.
+            Assert.NotNull((await BotWorkerClient.PollAsync(factory, "worker-queue-b", 4)).Job(ids[1]));
+
+            // A session no worker ever took is closed with the reason once it is over.
+            var third = await MeetingAsync(owner, project, DateTime.UtcNow.AddMinutes(1).AddSeconds(10), DateTime.UtcNow.AddMinutes(30));
+            await TickAsync();
+            factory.WithDb(db =>
+            {
+                var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.MeetingId == third && x.Kind == "bot");
+                b.SessionStartUtc = DateTime.UtcNow.AddMinutes(-40); b.SessionEndUtc = DateTime.UtcNow.AddMinutes(-10);
+                db.SaveChanges();
+                return 0;
+            });
+            await TickAsync();
+            factory.WithDb(db =>
+            {
+                var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.MeetingId == third && x.Kind == "bot");
+                Assert.Equal("failed", b.Status);
+                Assert.Contains("No meeting bot was free", b.Error);
+                return 0;
+            });
+
+            // Platform administrators see the workers and the line.
+            var admin = await TestClient.RegisterAsync(factory, "Bot Admin");
+            factory.WithDb(db => { db.Users.First(u => u.Id == admin.UserId).IsPlatformAdmin = true; db.SaveChanges(); return 0; });
+            Assert.Equal(HttpStatusCode.Forbidden, (await owner.Get("/api/v1/admin/meeting-bots")).Status);
+            var overview = await admin.Get("/api/v1/admin/meeting-bots");
+            Assert.True(overview.Ok, overview.ToString());
+            Assert.Contains(overview.Data!["workers"]!.AsArray(), x => x!["workerId"]!.GetValue<string>() == "worker-queue-b" && x["online"]!.GetValue<bool>());
+            Assert.True(overview.Data["capacity"]!.GetValue<int>() >= 4);
+        }
+        finally { factory.Ai.Reset(); }
     }
 
     [Fact]

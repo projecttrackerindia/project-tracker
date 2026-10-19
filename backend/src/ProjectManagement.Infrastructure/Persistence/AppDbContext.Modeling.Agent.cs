@@ -79,6 +79,19 @@ public partial class AppDbContext
             e.Property(x => x.CalendarEventId).HasMaxLength(200);
             e.Property(x => x.Title).HasMaxLength(300);
             e.Property(x => x.MeetUrl).HasMaxLength(300);
+            e.Property(x => x.WorkerId).HasMaxLength(100);
+            e.Property(x => x.WorkerStatus).HasMaxLength(32);
+            e.Property(x => x.PendingChat).HasColumnType("text");
+            e.Property(x => x.JoinPayload).HasColumnType("text");
+            e.HasIndex(x => new { x.Kind, x.Status, x.SessionStartUtc });
+        });
+        b.Entity<AgentBotWorker>(e =>
+        {
+            e.HasIndex(x => x.WorkerKey).IsUnique();
+            e.HasIndex(x => x.LastSeenAt);
+            e.Property(x => x.WorkerKey).HasMaxLength(100);
+            e.Property(x => x.Host).HasMaxLength(200);
+            e.Property(x => x.Version).HasMaxLength(40);
         });
         b.Entity<AgentInboxOptIn>(e =>
         {

@@ -18,9 +18,9 @@ public class AgentOptions
     public int InboxScanMinutes { get; set; } = 30;
     /// <summary>The local hour each person's daily update goes out (workspace time zone).</summary>
     public int DailyUpdateHour { get; set; } = 9;
-    /// <summary>Our own meeting-bot service (apps/meetbot), e.g. https://meetbot.internal:8080. Empty: no live bot on this installation.</summary>
+    /// <summary>Not used any more: bot workers (apps/meetbot with MEETBOT_API_URL) ask the API for meetings themselves. Kept so old settings still load.</summary>
     public string? MeetingBotUrl { get; set; }
-    /// <summary>The secret the bot service expects (its MEETBOT_SECRET), 16 characters or more.</summary>
+    /// <summary>The secret shared with the meeting-bot workers (their MEETBOT_SECRET), 16 characters or more. Empty: no live bot on this installation.</summary>
     public string? MeetingBotSecret { get; set; }
     /// <summary>After each reading, a second, quick look checks every proposal against its source and drops what the source does not support.</summary>
     public bool VerifyFindings { get; set; } = true;

@@ -114,8 +114,9 @@ export class MeetBot {
     void this.post({ event: 'transcript.data', data: { data: { words: words.split(' ').map((w) => ({ text: w })), participant: { name: String(name || 'Someone').slice(0, 80) } }, bot: { id: this.id } } });
   }
 
+  /** Queues a chat message: sent at once in the call, or once the bot is in it (a message for a bot that has finished is refused). */
   chat(message) {
-    if (this.status !== 'in_call_recording') return false;
+    if (['call_ended', 'done', 'fatal'].includes(this.status) || this.stopping) return false;
     this.chatQueue.push(String(message).slice(0, 500));
     return true;
   }

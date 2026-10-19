@@ -106,7 +106,10 @@ services:
     shm_size: "1gb"                 # Chromium needs more shared memory than Docker's 64 MB default
     environment:
       MEETBOT_SECRET: ${MEETBOT_SECRET:-}
-      MEETBOT_MAX_BOTS: ${MEETBOT_MAX_BOTS:-4}
+      # Worker mode: the bot asks the API for meetings (any number of bot containers can run). Empty MEETBOT_MAX_BOTS = sized from memory/CPU.
+      MEETBOT_API_URL: ${MEETBOT_API_URL:-http://api:8080}
+      MEETBOT_ALLOW_HTTP: "true"
+      MEETBOT_MAX_BOTS: ${MEETBOT_MAX_BOTS:-}
     expose: ["8080"]
 
   web:

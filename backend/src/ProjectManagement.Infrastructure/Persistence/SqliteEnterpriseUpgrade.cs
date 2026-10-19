@@ -40,7 +40,8 @@ public static class SqliteEnterpriseUpgrade
         "20261018000300_MeetingsQuietHoursInvoicesRequiredDocs",
         "20261019000100_ProjectAgent",
         "20261020000100_ProjectAgentAccuracy",
-        "20261021000100_UpiPayments"
+        "20261021000100_UpiPayments",
+        "20261022000100_MeetingBotQueue"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

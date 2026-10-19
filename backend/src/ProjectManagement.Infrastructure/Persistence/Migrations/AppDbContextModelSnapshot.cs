@@ -584,6 +584,59 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("AgentWorkspaceSettings");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AgentBotWorker", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Active")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Draining")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Host")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Version")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("WorkerKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastSeenAt");
+
+                    b.HasIndex("WorkerKey")
+                        .IsUnique();
+
+                    b.ToTable("AgentBotWorkers");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AgentMeetingBot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -618,6 +671,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("JoinPayload")
+                        .HasColumnType("text");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -627,6 +683,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LastNudgeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LeaseUntil")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("MeetingId")
@@ -640,6 +699,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("NudgesSent")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PendingChat")
                         .HasColumnType("text");
 
                     b.Property<Guid>("ProjectId")
@@ -680,6 +742,14 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("WorkerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("WorkerStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MeetingId", "SessionStartUtc", "Kind")
@@ -689,6 +759,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("Kind", "Status", "SessionStartUtc");
 
                     b.ToTable("AgentMeetingBots");
                 });

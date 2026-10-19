@@ -221,6 +221,9 @@ export interface BillingOverview { plan: PlanSummary; usage: Usage[]; invoices: 
 export type UpiStatus = 'awaiting' | 'submitted' | 'confirmed' | 'rejected' | 'failed' | 'cancelled';
 export interface UpiPayment { id: string; reference: string; amount: number; currency: string; description: string; planCode: string; payeeName: string; upiId: string; bankLabel: string | null; upiUri: string; status: UpiStatus; utr: string | null; attempt: number; otherQrAvailable: boolean; expiresAt: string; createdAt: string; decisionNote: string | null }
 export interface AdminUpiPayment { id: string; tenantId: string; workspace: string; planCode: string; seats: number; period: string; amount: number; currency: string; reference: string; upiId: string; bankLabel: string | null; status: UpiStatus; utr: string | null; attempt: number; failureReason: string | null; createdAt: string; submittedAt: string | null; submittedByEmail: string | null; decidedAt: string | null; decisionNote: string | null }
+/** Meeting-bot workers (apps/meetbot) and the line of sessions waiting for one. */
+export interface MeetingBotWorker { workerId: string; host: string | null; version: string | null; capacity: number; active: number; draining: boolean; lastSeenAt: string; online: boolean }
+export interface MeetingBotOverview { configured: boolean; capacity: number; active: number; waiting: number; inCall: number; failedToday: number; workers: MeetingBotWorker[] }
 export interface UpiAccountHealth { upiId: string; bankLabel: string | null; enabled: boolean; inUse: boolean; recentFailures: number; confirmed: number; lastConfirmedAt: string | null; lastFailedAt: string | null }
 
 export interface AdminStats { deletedTenants: number; users: number; activeUsers: number; tenants: number; organizations: number; personalWorkspaces: number; suspendedTenants: number; subscriptions: { planCode: string; count: number }[]; activeSessions: number }

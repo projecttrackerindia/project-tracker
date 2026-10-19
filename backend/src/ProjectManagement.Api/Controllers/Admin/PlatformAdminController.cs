@@ -1,5 +1,6 @@
 using ProjectManagement.Application.Features.Billing;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Features.Admin;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Auth;
@@ -29,6 +30,12 @@ public class PlatformAdminController(AdminService admin, PlatformService platfor
 
     [HttpPost("upi-payments/{id:guid}/reject")]
     public async Task<IActionResult> RejectUpi(Guid id, [FromBody] UpiDecisionRequest req, CancellationToken ct) => Ok(await upi.RejectAsync(id, req, ct));
+
+    // ---------------------------------------------------------------- meeting bots
+    /// <summary>The meeting-bot workers, how many meetings they can attend at once, and sessions waiting for a free bot.</summary>
+    [HttpGet("meeting-bots")]
+    public async Task<IActionResult> MeetingBots(CancellationToken ct) =>
+        Ok(await HttpContext.RequestServices.GetRequiredService<ProjectManagement.Application.Features.Agent.MeetingBotQueue>().OverviewAsync(ct));
 
     // ---------------------------------------------------------------- organizations, users, plans, audit
     [HttpGet("stats")]
