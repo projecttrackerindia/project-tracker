@@ -14,8 +14,8 @@ public static class BotWorkerClient
     {
         public JsonArray Jobs => Data?["jobs"]?.AsArray() ?? [];
         public JsonArray Bots => Data?["bots"]?.AsArray() ?? [];
-        public JsonNode? Job(string jobId) => Jobs.FirstOrDefault(j => j!["jobId"]!.GetValue<string>() == jobId);
-        public JsonNode? Bot(string jobId) => Bots.FirstOrDefault(b => b!["jobId"]!.GetValue<string>() == jobId);
+        public JsonNode? Job(string jobId) => Jobs.FirstOrDefault(j => string.Equals(j!["jobId"]!.GetValue<string>(), jobId, StringComparison.OrdinalIgnoreCase));
+        public JsonNode? Bot(string jobId) => Bots.FirstOrDefault(b => string.Equals(b!["jobId"]!.GetValue<string>(), jobId, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <param name="bots">What the worker reports: (job id, status).</param>

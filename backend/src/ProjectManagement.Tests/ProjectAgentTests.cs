@@ -406,9 +406,11 @@ public class ProjectAgentTests(ApiFactory factory)
     public async Task When_every_bot_worker_is_busy_sessions_wait_in_line_and_say_why_if_none_was_free()
     {
         AnswerAsAgent();
+        var project = Guid.Empty;
         try
         {
-            var (owner, project, _, _, _) = await SetupAsync("Queue Desk");
+            var (owner, queueProject, _, _, _) = await SetupAsync("Queue Desk");
+            project = queueProject;
             await ConnectGoogleAsync(owner, transcripts: false);
             // Sessions other tests left waiting would otherwise be in the same line.
             factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call"))
@@ -423,7 +425,7 @@ public class ProjectAgentTests(ApiFactory factory)
                 .ExecuteUpdate(u => u.SetProperty(b => b.Status, "failed")));
             OnlyThisProject();
             var ids = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => (b.MeetingId == first || b.MeetingId == second) && b.Kind == "bot")
-                .OrderBy(b => b.SessionStartUtc).Select(b => b.Id.ToString()).ToList());
+                .OrderBy(b => b.SessionStartUtc).Select(b => b.Id).ToList().Select(x => x.ToString()).ToList());
             Assert.Equal(2, ids.Count);
 
             // A worker with room for one takes the earlier session; the other waits instead of failing.
@@ -468,13 +470,19 @@ public class ProjectAgentTests(ApiFactory factory)
             Assert.Contains(overview.Data!["workers"]!.AsArray(), x => x!["workerId"]!.GetValue<string>() == "worker-queue-b" && x["online"]!.GetValue<bool>());
             Assert.True(overview.Data["capacity"]!.GetValue<int>() >= 4);
 
-            // Leave nothing starting soon for other tests (meeting reminders look at every workspace).
-            factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project)
-                .ExecuteUpdate(u => u.SetProperty(m => m.StartTimeUtc, DateTime.UtcNow.AddDays(-2)).SetProperty(m => m.EndTimeUtc, DateTime.UtcNow.AddDays(-2).AddMinutes(30))));
-            factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.ProjectId == project && (b.Status == "scheduled" || b.Status == "in_call"))
-                .ExecuteUpdate(u => u.SetProperty(b => b.Status, "failed")));
         }
-        finally { factory.Ai.Reset(); }
+        finally
+        {
+            factory.Ai.Reset();
+            // Leave nothing starting soon for other tests (meeting reminders look at every workspace).
+            if (project != Guid.Empty)
+            {
+                factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project)
+                    .ExecuteUpdate(u => u.SetProperty(m => m.StartTimeUtc, DateTime.UtcNow.AddDays(-2)).SetProperty(m => m.EndTimeUtc, DateTime.UtcNow.AddDays(-2).AddMinutes(30))));
+                factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.ProjectId == project && (b.Status == "scheduled" || b.Status == "in_call"))
+                    .ExecuteUpdate(u => u.SetProperty(b => b.Status, "failed")));
+            }
+        }
     }
 
     [Fact]
