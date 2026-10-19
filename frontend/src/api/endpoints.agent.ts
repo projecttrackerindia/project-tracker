@@ -1,11 +1,15 @@
 import { get, post, put } from './client';
-import type { AgentApproveEdits, AgentFinding, AgentFindingPage, AgentInboxOptIn, AgentRun, AgentWorkspace, ProjectAgent } from './types';
+import type {
+  AgentApproveEdits, AgentAuditEntry, AgentCommitment, AgentDecision, AgentDelegation, AgentFinding, AgentFindingKind, AgentFindingPage, AgentImpact, AgentInboxOptIn,
+  AgentPersonalSettings, AgentRun, AgentWorkspace, CheckInAnswer, CommandCenter, MeetingBrief, MyMeeting, ProjectAgent, WhatIfTask,
+} from './types';
 
 /** Anything left out keeps its value; an empty string clears a text setting. */
 export interface AgentSettingsPatch {
   readMailbox?: boolean; readChat?: boolean; readMeetings?: boolean; liveBot?: boolean; dailyUpdates?: boolean;
   instructions?: string; speakerAliases?: string; captionLanguage?: string; autoJoinCalendar?: boolean; sendMinutes?: boolean;
   slackChannelId?: string; readWhatsApp?: boolean;
+  autonomyLevel?: number; autoApplyConfidence?: number; autoApplyKinds?: AgentFindingKind[]; followUps?: boolean; meetingBriefs?: boolean;
 }
 
 /** The languages Meet captions in, as the agent's settings offer them. */
@@ -37,4 +41,25 @@ export const agentApi = {
   saveWorkspace: (b: { botName?: string; inCallReminders?: boolean }) => put<AgentWorkspace>('/agent/workspace', b),
   myInbox: () => get<AgentInboxOptIn>('/agent/my-inbox'),
   saveMyInbox: (b: { provider?: 'google' | 'microsoft'; enabled: boolean }) => put<AgentInboxOptIn>('/agent/my-inbox', b),
+};
+
+/** The agent as a delegate: the Command Center, commitments and check-ins, sending it to a meeting, briefs, impact, decisions and the audit trail. */
+export const delegateApi = {
+  commandCenter: () => get<CommandCenter>('/agent/command-center'),
+  settings: () => get<AgentPersonalSettings>('/agent/me/settings'),
+  saveSettings: (b: Partial<Omit<AgentPersonalSettings, 'googleConnected'>>) => put<AgentPersonalSettings>('/agent/me/settings', b),
+  myCommitments: () => get<AgentCommitment[]>('/agent/commitments/mine'),
+  commitment: (id: string) => get<AgentCommitment>(`/agent/commitments/${id}`),
+  checkIn: (id: string, b: { answer: CheckInAnswer; note?: string; newDate?: string }) => post<AgentCommitment>(`/agent/commitments/${id}/check-in`, b),
+  meetings: (hours = 24 * 7) => get<MyMeeting[]>('/agent/meetings', { hours }),
+  delegations: () => get<AgentDelegation[]>('/agent/delegations'),
+  delegation: (id: string) => get<AgentDelegation>(`/agent/delegations/${id}`),
+  delegate: (b: { meetingId: string; sessionStartUtc: string; instructions?: string }) => post<AgentDelegation>('/agent/delegations', b),
+  cancelDelegation: (id: string) => post<AgentDelegation>(`/agent/delegations/${id}/cancel`),
+  brief: (meetingId: string, at?: string | null) => get<MeetingBrief>(`/agent/meetings/${meetingId}/brief`, at ? { at } : undefined),
+  findingImpact: (id: string) => get<AgentImpact | null>(`/agent/findings/${id}/impact`),
+  whatIf: (b: { taskId: string; newDue?: string; slipDays?: number }) => post<AgentImpact>('/agent/what-if', b),
+  whatIfTasks: (projectId: string) => get<WhatIfTask[]>(`/agent/what-if/projects/${projectId}/tasks`),
+  decisions: (q?: { projectId?: string; q?: string }) => get<AgentDecision[]>('/agent/decisions', q),
+  audit: (projectId?: string) => get<AgentAuditEntry[]>('/agent/audit', projectId ? { projectId } : undefined),
 };

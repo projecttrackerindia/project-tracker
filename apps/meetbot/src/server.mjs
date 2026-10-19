@@ -36,6 +36,7 @@ export function createServer(env = process.env) {
     launch, log,
     admitTimeoutMs: Number(env.MEETBOT_ADMIT_TIMEOUT_MS ?? 10 * 60_000),
     aloneMs: Number(env.MEETBOT_ALONE_MS ?? 5 * 60_000),
+    captionFlushMs: Number(env.MEETBOT_CAPTION_FLUSH_MS ?? 3000),
     // A finished bot is kept for an hour so the API can read how it ended, then forgotten.
     onFinished: (bot) => setTimeout(() => bots.delete(bot.id), Number(env.MEETBOT_KEEP_MS ?? 3600_000)).unref?.(),
   };

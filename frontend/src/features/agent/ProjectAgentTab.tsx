@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi, CAPTION_LANGUAGES, integrationsApi, meetingApi, type AgentSettingsPatch } from '../../api/endpoints';
-import type { ProjectAgent } from '../../api/types';
+import type { AgentFindingKind, ProjectAgent } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, Field, Modal, PageLoader } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
@@ -183,6 +183,8 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
           <p className="ag-hint"><Link to="/project-agent/my-inbox">Let it look in my own inbox too</Link></p>
         </div>
 
+        <AutonomyPanel a={a} manage={manage} busy={busy !== null} save={save} />
+
         <div className="card ag-panel ag-tune">
           <h4 className="ag-panel-title"><Icon name="target" size={14} /> Accuracy</h4>
           <dl>
@@ -307,5 +309,54 @@ function TranscriptModal({ projectId, onClose, onDone }: { projectId: string; on
         <label className="btn btn-ghost btn-sm ag-file"><Icon name="upload" size={14} />Open a file<input type="file" accept=".txt,.vtt,.srt,text/plain,text/vtt" hidden onChange={(e) => void open(e.target.files?.[0])} /></label>
       </div>
     </Modal>
+  );
+}
+
+const LEVELS: { n: number; name: string; text: string }[] = [
+  { n: 1, name: 'Observer', text: 'Takes notes, writes the minutes and proposes. Silent in meetings apart from its hello.' },
+  { n: 2, name: 'Assistant', text: 'Also reminds the team in the meeting chat when something important is being missed.' },
+  { n: 3, name: 'Participant', text: 'Also answers questions in the meeting chat from the tracker - status, owner, dates, what is late or blocked.' },
+  { n: 4, name: 'Delegate', text: 'Also carries out safe proposals itself when it is sure enough. Changes to existing work always wait for you.' },
+];
+const SAFE: { kind: AgentFindingKind; label: string }[] = [
+  { kind: 'CreateActionItem', label: 'Action items' }, { kind: 'CreateTask', label: 'New tasks' }, { kind: 'CreateIssue', label: 'Tickets' },
+  { kind: 'Decision', label: 'Decisions' }, { kind: 'Suggestion', label: 'Suggestions' }, { kind: 'Missed', label: 'Missed points' },
+];
+
+/** How much the agent may do by itself: a level, and at level 4 which safe kinds it may carry out and how sure it must be. */
+function AutonomyPanel({ a, manage, busy, save }: { a: ProjectAgent; manage: boolean; busy: boolean; save: (p: AgentSettingsPatch) => Promise<void> }) {
+  const level = LEVELS.find((l) => l.n === a.autonomyLevel) ?? LEVELS[1];
+  const kinds = a.autoApplyKinds ?? [];
+  const toggle = (k: AgentFindingKind) => void save({ autoApplyKinds: kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k] });
+  return (
+    <div className="card ag-panel">
+      <h4 className="ag-panel-title"><Icon name="shield" size={14} /> Autonomy</h4>
+      <div className="ag-levels" role="radiogroup" aria-label="Autonomy level">
+        {LEVELS.map((l) => (
+          <button key={l.n} type="button" role="radio" aria-checked={l.n === level.n} className={`ag-level ${l.n === level.n ? 'on' : ''}`} disabled={!manage || busy}
+            onClick={() => l.n !== level.n && void save({ autonomyLevel: l.n })}><b>{l.n}</b><span>{l.name}</span></button>
+        ))}
+      </div>
+      <p className="ag-level-text">{level.text}</p>
+      {level.n === 4 && (
+        <>
+          <div className="ag-kinds" aria-label="May carry out by itself">
+            {SAFE.map((k) => <button key={k.kind} type="button" className={kinds.includes(k.kind) ? 'on' : ''} aria-pressed={kinds.includes(k.kind)} disabled={!manage || busy} onClick={() => toggle(k.kind)}>{k.label}</button>)}
+          </div>
+          <Field label={`Only when at least ${a.autoApplyConfidence}% sure`}>
+            <input type="range" className="cmd-range" min={70} max={100} step={5} value={a.autoApplyConfidence} disabled={!manage || busy} aria-label="Confidence"
+              onChange={(e) => void save({ autoApplyConfidence: Number(e.target.value) })} />
+          </Field>
+          <p className="ag-hint"><Icon name="info" size={12} />Only proposals whose quote was found in the source, and new work with an owner. Every one is in the audit trail.</p>
+        </>
+      )}
+      <ul className="ag-sources">
+        <li><Icon name="flag" size={15} /><span><b>Check-ins</b><small>On the due day, ask owners of agreed work how it stands</small></span>
+          <button type="button" className={`switch ${a.followUps ? 'on' : ''}`} role="switch" aria-checked={a.followUps} aria-label="Check-ins" disabled={!manage || busy} onClick={() => void save({ followUps: !a.followUps })} /></li>
+        <li><Icon name="note" size={15} /><span><b>Briefs before meetings</b><small>What is late, stuck and waiting - to the people invited</small></span>
+          <button type="button" className={`switch ${a.meetingBriefs ? 'on' : ''}`} role="switch" aria-checked={a.meetingBriefs} aria-label="Briefs before meetings" disabled={!manage || busy} onClick={() => void save({ meetingBriefs: !a.meetingBriefs })} /></li>
+      </ul>
+      <p className="ag-hint"><Link to="/command-center?tab=audit">Audit trail</Link> · <Link to="/command-center?tab=decisions">Decisions</Link></p>
+    </div>
   );
 }

@@ -790,6 +790,10 @@ export interface ProjectAgent {
   slackChannelId: string | null; slackAvailable: boolean; readWhatsApp: boolean; whatsAppAvailable: boolean;
   /** This person let Google Meet transcribe their meetings automatically (their own Google account; no bot needed). */
   autoTranscriptAccess: boolean;
+  /** 1 observer, 2 assistant, 3 participant, 4 delegate (carries out safe items itself). */
+  autonomyLevel: number; autoApplyConfidence: number; autoApplyKinds: AgentFindingKind[];
+  /** Check-ins on commitments, and briefs before meetings. */
+  followUps: boolean; meetingBriefs: boolean;
 }
 export interface AgentPerson { id: string; name: string }
 export interface AgentFinding {
@@ -802,9 +806,73 @@ export interface AgentFinding {
   grounded: boolean; edits: string | null;
   /** The assignee's answer to work the agent gave them. */
   ownerResponse: 'accepted' | 'declined' | null; ownerNote: string | null; ownerRespondedAt: string | null;
+  /** Carried out by the agent itself (autonomy level 4). */
+  autoApplied?: boolean;
+  /** What the work looked like before the change (audit). */
+  before?: string | null;
+  /** It came from someone's check-in ("I need more time"). */
+  commitmentId?: string | null;
 }
 export interface AgentFindingPage { items: AgentFinding[]; pending: number; canDecide: boolean }
 export interface AgentApproveEdits { title?: string; detail?: string; assigneeId?: string; clearAssignee?: boolean; dueDate?: string; clearDueDate?: boolean; priority?: Priority; newStatus?: string; comment?: string }
 /** botAvailable: this installation runs Project Tracker's own meeting bot. */
 export interface AgentWorkspace { botAvailable: boolean; botName: string; inCallReminders: boolean; canManage: boolean; enabledProjects: number }
 export interface AgentInboxOptIn { googleAvailable: boolean; microsoftAvailable: boolean; provider: 'google' | 'microsoft' | null; enabled: boolean; scannedUntil: string | null; found: number; lastError: string | null }
+
+// ------------------------------------------------------------------ the agent as a delegate (Command Center)
+export type ImpactLevel = 'none' | 'low' | 'medium' | 'high';
+export interface ImpactTask { id: string; key: string; title: string; owner: string | null; oldDue: string | null; newDue: string | null; shiftDays: number; depth: number }
+export interface AgentImpact {
+  taskId: string; projectId: string; key: string; title: string; oldDue: string | null; newDue: string; slipDays: number; moves: ImpactTask[];
+  milestones: string[]; projectDue: string | null; newFinish: string | null; projectSlipDays: number | null; people: string[]; summary: string; level: ImpactLevel;
+}
+export interface WhatIfTask { id: string; key: string; title: string; due: string | null; owner: string | null; dependents: number }
+export type CommitmentStatus = 'open' | 'kept' | 'missed' | 'moved' | 'dropped';
+export type CheckInAnswer = 'on_track' | 'done' | 'more_time' | 'blocked';
+export interface AgentCommitment {
+  id: string; projectId: string; projectKey: string; projectName: string; entityKey: string | null; taskId: string | null; title: string; dueDate: string;
+  owner: AgentPerson; status: CommitmentStatus; quote: string | null; sourceLabel: string | null; checkInSentAt: string | null; checkInAnswer: CheckInAnswer | null;
+  checkInNote: string | null; proposedDate: string | null; answeredAt: string | null; awaitingAnswer: boolean;
+}
+export interface BriefItem { key: string; owner: string | null; due: string | null; state: 'done' | 'overdue' | 'due_today' | 'open' | 'blocked' }
+export interface MeetingBrief {
+  meetingId: string; projectId: string; projectKey: string; projectName: string; title: string; startUtc: string; endUtc: string; meetUrl: string | null;
+  headline: string; actionsSinceLast: number; done: number; overdue: number; blocked: number; open: number; items: BriefItem[]; blockers: string[];
+  commitments: string[]; agenda: string[]; pendingDecisions: number; maybeUnnecessary: boolean; lastMeetingAt: string | null; agentAttending: boolean;
+}
+export interface MyMeeting {
+  id: string; meetingId: string | null; projectId: string | null; projectKey: string | null; projectName: string | null; title: string; startUtc: string; endUtc: string;
+  meetUrl: string | null; organizer: boolean; project: boolean; agentEnabled: boolean; agentAttending: boolean; delegationId: string | null;
+  delegationStatus: 'requested' | 'attending' | 'reported' | 'cancelled' | null; overlapsWith: string[];
+}
+export interface AgentDelegation {
+  id: string; projectId: string; projectKey: string; projectName: string; meetingId: string; title: string; startUtc: string; endUtc: string;
+  status: 'requested' | 'attending' | 'reported' | 'cancelled'; instructions: string | null; automatic: boolean; botStatus: string | null; botError: string | null;
+  reportSentAt: string | null; summary: string | null; outcomes: string[]; toDecide: number; canDecide: boolean; note: string | null;
+}
+export interface AgentPersonalSettings { autoDelegate: boolean; meetingBriefs: boolean; briefMinutes: number; checkIns: boolean; googleConnected: boolean }
+export type AttentionKind = 'decide' | 'change_request' | 'check_in' | 'overdue' | 'blocking' | 'double_booked' | 'at_risk' | 'missed_commitments' | 'conflict' | 'unresolved';
+export type Severity = 'high' | 'medium' | 'low';
+export interface AttentionItem {
+  id: string; kind: AttentionKind; severity: Severity; title: string; detail: string | null; why: string[]; link: string | null;
+  projectId: string | null; projectKey: string | null; entityId: string | null; action: 'review' | 'decide' | 'check_in' | 'delegate' | 'open' | null; actionAt: string | null;
+}
+export interface CcCounts { attention: number; toDecide: number; dueToday: number; overdue: number; blocking: number; checkIns: number; meetingsToday: number; atRisk: number }
+export interface CcChange { kind: 'done' | 'assigned' | 'decision' | 'moved' | 'auto' | 'meeting'; text: string; link: string | null; at: string; projectKey: string | null }
+export interface CcHealth {
+  projectId: string; key: string; name: string; level: 'low' | 'medium' | 'high' | string; score: number; reasons: string[]; progress: number; overdueTasks: number;
+  dueDate: string | null; projectedFinish: string | null; slipDays: number | null; kept: number; missed: number;
+}
+export interface CcWork { id: string; projectId: string; key: string; title: string; due: string | null; state: 'overdue' | 'due_today' | 'open'; daysLate: number | null; waiting: string[] }
+export interface CommandCenter {
+  greeting: string; headline: string; since: string; counts: CcCounts; attention: AttentionItem[]; today: MyMeeting[]; changes: CcChange[]; health: CcHealth[];
+  reliability: { kept: number; missed: number; open: number; moved: number }; checkIns: AgentCommitment[]; owe: CcWork[]; delegations: AgentDelegation[];
+}
+export interface AgentDecision {
+  id: string; projectId: string; projectKey: string; projectName: string; title: string; detail: string | null; evidence: string | null; sourceLabel: string | null;
+  status: string; at: string; decidedBy: AgentPerson | null; decidedAt: string | null; taskKey: string | null;
+}
+export interface AgentAuditEntry {
+  id: string; projectId: string; projectKey: string; kind: AgentFindingKind; action: string; title: string; key: string | null; status: string; auto: boolean;
+  by: AgentPerson | null; at: string | null; confidence: number; before: string | null; after: string | null; evidence: string | null; sourceLabel: string | null; error: string | null;
+}

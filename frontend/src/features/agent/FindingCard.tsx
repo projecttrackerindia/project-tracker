@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { agentApi, workspaceApi } from '../../api/endpoints';
+import { agentApi, delegateApi, workspaceApi } from '../../api/endpoints';
 import type { AgentApproveEdits, AgentFinding, AgentFindingKind, AgentSourceKind, Priority } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { Field } from '../../components/ui';
@@ -9,6 +9,8 @@ import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { ImpactView } from '../command/Impact';
+import '../command/command.css';
 
 const KIND: Record<AgentFindingKind, { label: string; icon: IconName; tone: string; approve: string }> = {
   CreateTask: { label: 'New task', icon: 'plus', tone: 'primary', approve: 'Create task' },
@@ -41,6 +43,9 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<'approve' | 'dismiss' | null>(null);
   const [edits, setEdits] = useState<AgentApproveEdits>({});
+  const [showImpact, setShowImpact] = useState(false);
+  const movesDate = (f.kind === 'Delay' || f.kind === 'UpdateTask') && !!f.taskId && !!f.dueDate;
+  const impact = useWsQuery(['agent', 'impact', f.id], () => delegateApi.findingImpact(f.id), { enabled: showImpact && movesDate && canDecide, staleTime: 60_000 });
   const people = useWsQuery(['members'], () => workspaceApi.members(), { enabled: editing, staleTime: 300_000 });
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); void invalidateWorkspace(wid, 'project', f.projectId); void invalidateWorkspace(wid, 'tasks'); };
 
@@ -66,6 +71,8 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
       <header className="ag-card-head">
         <span className="ag-kind"><Icon name={meta.icon} size={13} />{meta.label}</span>
         {showProject && <Link className="ag-project" to={`/projects/${f.projectId}?tab=agent`}>{f.projectKey} · {f.projectName}</Link>}
+        {f.autoApplied && <span className="ag-auto" title="Carried out by the agent itself: a safe kind, grounded in the source and above the confidence the lead chose"><Icon name="sparkle" size={11} />Auto</span>}
+        {f.commitmentId && <span className="ag-auto" title="Asked for in a check-in by the person who owns the work"><Icon name="flag" size={11} />Check-in</span>}
         {!f.grounded && <span className="ag-unchecked" title="The quoted words were not found in the source - check it before approving"><Icon name="alert" size={12} />Check the source</span>}
         <span className="ag-conf" title="How sure the agent is">{f.confidence}%</span>
       </header>
@@ -90,6 +97,15 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
       )}
       {(edits.comment ?? f.comment) && <p className="ag-comment"><Icon name="message" size={13} />{edits.comment ?? f.comment}</p>}
       {f.error && open && <div className="form-error" role="alert">{f.error}</div>}
+      {movesDate && open && canDecide && (
+        <div className="ag-impact-toggle">
+          {!showImpact
+            ? <button type="button" className="ag-link" onClick={() => setShowImpact(true)}><Icon name="git" size={12} /> What would this move?</button>
+            : impact.isLoading ? <span className="ag-meta">Working out what moves…</span>
+            : impact.data ? <ImpactView impact={impact.data} compact /> : null}
+        </div>
+      )}
+      {!open && f.before && <p className="ag-meta">Before: {f.before}</p>}
 
       {editing && open && (
         <div className="ag-edit">

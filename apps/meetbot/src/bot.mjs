@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { askToJoin, captionWatcher, enableCaptions, leave, pageText, SEL, sendChat, setCaptionLanguage, TEXT, waitUntilAdmitted } from './meet.mjs';
+import { askToJoin, captionWatcher, chatWatcher, enableCaptions, leave, openChat, pageText, SEL, sendChat, setCaptionLanguage, TEXT, waitUntilAdmitted } from './meet.mjs';
 
 /**
  * One bot in one meeting: waits until its start time, joins as a guest, turns on captions and streams who-said-what to the webhook, posts
@@ -8,7 +8,7 @@ import { askToJoin, captionWatcher, enableCaptions, leave, pageText, SEL, sendCh
  * Statuses: scheduled → joining → waiting_admission → in_call_recording → call_ended → done (or fatal, with an error).
  */
 export class MeetBot {
-  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage }, deps) {
+  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage, raiseMessage, readChat }, deps) {
     this.id = randomUUID();
     this.meetingUrl = meetingUrl;
     this.botName = botName;
@@ -18,6 +18,12 @@ export class MeetBot {
     this.introMessage = introMessage;
     this.agendaMessage = agendaMessage || null;
     this.captionLanguage = captionLanguage || null;
+    this.raiseMessage = raiseMessage || null;
+    this.readChat = Boolean(readChat);
+    // Captions go out in batches (one request every few seconds, however much is said) so a thousand meetings stay cheap for the API.
+    this.captionBuffer = [];
+    this.flushMs = deps.captionFlushMs ?? 3000;
+    this.flushTimer = null;
     this.deps = deps;   // { launch(): Promise<Browser>, admitTimeoutMs, aloneMs, log }
     this.status = 'scheduled';
     this.error = null;
@@ -63,6 +69,7 @@ export class MeetBot {
       const page = await context.newPage();
       this.page = page;
       await page.exposeFunction('ptCaption', (name, text) => this.caption(name, text));
+      await page.exposeFunction('ptChat', (name, text) => this.heard(name, text));
       await page.goto(this.meetingUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       await askToJoin(page, this.botName, (m) => this.log(m));
       this.setStatus('waiting_admission');
@@ -72,18 +79,25 @@ export class MeetBot {
       if (!(await enableCaptions(page))) this.log('captions could not be switched on');
       else if (this.captionLanguage && !(await setCaptionLanguage(page, this.captionLanguage))) this.log(`captions stay in the meeting's default language (${this.captionLanguage} not offered)`);
       await page.evaluate(captionWatcher, SEL.captionsRegion);
+      if (this.readChat) {
+        if (await openChat(page)) await page.evaluate(chatWatcher, { messageSelector: SEL.chatMessage, senderSelector: SEL.chatSender, botName: this.botName });
+        else this.log('the meeting chat could not be opened: questions there will not be answered');
+      }
       this.setStatus('in_call_recording');
-      // Hello first, then the agenda, then anything the agent asked to say meanwhile.
-      this.chatQueue.unshift(...[this.introMessage, this.agendaMessage].filter(Boolean));
+      this.flushTimer = setInterval(() => this.flush(), this.flushMs);
+      // Hello first, then the agenda, then what the person who sent the agent asked it to raise, then anything the agent asked to say meanwhile.
+      this.chatQueue.unshift(...[this.introMessage, this.agendaMessage, this.raiseMessage].filter(Boolean));
       await this.stayInCall(page);
       await page.evaluate(() => window.ptFlushCaptions?.()).catch(() => undefined);
       await page.waitForTimeout(500);
+      clearInterval(this.flushTimer); this.flush();
       await leave(page).catch(() => undefined);
       this.setStatus('call_ended');
     } catch (e) {
       this.log(`failed: ${e.message}`);
       this.setStatus('fatal', String(e.message || e).slice(0, 300));
     } finally {
+      clearInterval(this.flushTimer); this.flush();
       await this.browser?.close().catch(() => undefined);
       await this.webhookChain;
       if (this.status !== 'fatal') this.setStatus('done');
@@ -111,7 +125,23 @@ export class MeetBot {
     const words = String(text).replace(/\s+/g, ' ').trim();
     if (!words) return;
     this.lines++;
-    void this.post({ event: 'transcript.data', data: { data: { words: words.split(' ').map((w) => ({ text: w })), participant: { name: String(name || 'Someone').slice(0, 80) } }, bot: { id: this.id } } });
+    this.captionBuffer.push({ name: String(name || 'Someone').slice(0, 80), text: words.slice(0, 2000), at: new Date().toISOString() });
+    if (this.captionBuffer.length >= 200) this.flush();
+  }
+
+  /** Sends what was heard since the last batch, in order (one webhook call). */
+  flush() {
+    if (!this.captionBuffer.length) return;
+    const lines = this.captionBuffer.splice(0, this.captionBuffer.length);
+    void this.post({ event: 'transcript.batch', data: { lines, bot: { id: this.id } } });
+  }
+
+  /** Someone wrote in the meeting chat: what was heard so far goes first, then the message (the agent may answer it). */
+  heard(name, text) {
+    const message = String(text).replace(/\s+/g, ' ').trim();
+    if (!message) return;
+    this.flush();
+    void this.post({ event: 'chat.message', data: { name: String(name || 'Someone').slice(0, 80), text: message.slice(0, 1000), bot: { id: this.id } } });
   }
 
   /** Queues a chat message: sent at once in the call, or once the bot is in it (a message for a bot that has finished is refused). */

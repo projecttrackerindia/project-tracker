@@ -37,6 +37,7 @@ const TwoStepRow = page(() => import('./features/settings/TwoStep'), 'TwoStepRow
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
 const AgentTrackerPage = page(() => import('./features/ai/AgentTrackerPage'), 'AgentTrackerPage');
 const AgentPage = page(() => import('./features/agent/AgentPage'), 'AgentPage');
+const CommandCenterPage = page(() => import('./features/command/CommandCenterPage'), 'CommandCenterPage');
 const AgentWorkflowsPage = page(() => import('./features/ai/AgentWorkflowsPage'), 'AgentWorkflowsPage');
 const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
 const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
@@ -326,6 +327,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="approve/:id" element={<ApprovePage />} />
         <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
         <Route path="agent-tracker" element={<AgentTrackerPage />} />
+        <Route path="command-center" element={<Guard allow={mProjects && !isGuest}><CommandCenterPage /></Guard>} />
         <Route path="project-agent" element={<Guard allow={mProjects && !personal}><AgentPage section="review" /></Guard>} />
         <Route path="project-agent/assigned" element={<Guard allow={mProjects && !personal}><AgentPage section="assigned" /></Guard>} />
         <Route path="project-agent/my-inbox" element={<Guard allow={mProjects && !personal && !isGuest}><AgentPage section="my-inbox" /></Guard>} />

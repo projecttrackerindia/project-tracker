@@ -37,7 +37,8 @@ test('a worker takes a meeting from the API, attends it, reports on it and drain
           handedOut = true;
           jobs.push({ jobId: '11111111-1111-1111-1111-111111111111', meetingUrl: `http://127.0.0.1:${port}/abc-defg-hij`, botName: 'Queue Bot',
             joinAt: new Date().toISOString(), leaveAt: new Date(Date.now() + 600_000).toISOString(), webhookUrl: `http://127.0.0.1:${port}/hook`,
-            introMessage: 'Hello from the queue.', agendaMessage: null, captionLanguage: null, rejoin: false });
+            introMessage: 'Hello from the queue.', agendaMessage: null, captionLanguage: null, rejoin: false,
+            raiseMessage: 'Asha asked me to raise: can refunds ship on Friday?', readChat: true });
         }
         const bots = (r.bots ?? []).map((b) => {
           const give = !chatSent && b.status === 'in_call_recording';
@@ -57,7 +58,7 @@ test('a worker takes a meeting from the API, attends it, reports on it and drain
   });
   port = await listen(fake);
   const server = createServer({ MEETBOT_SECRET: SECRET, MEETBOT_API_URL: `http://127.0.0.1:${port}`, MEETBOT_ALLOWED_HOSTS: '127.0.0.1', MEETBOT_ALLOW_HTTP: 'true',
-    MEETBOT_HEADLESS: 'true', MEETBOT_QUIET: 'true', MEETBOT_ALONE_MS: '600000', MEETBOT_POLL_MS: '300', MEETBOT_MAX_BOTS: '2', MEETBOT_WORKER_ID: 'worker-test-1',
+    MEETBOT_HEADLESS: 'true', MEETBOT_QUIET: 'true', MEETBOT_ALONE_MS: '600000', MEETBOT_POLL_MS: '300', MEETBOT_MAX_BOTS: '2', MEETBOT_CAPTION_FLUSH_MS: '400', MEETBOT_WORKER_ID: 'worker-test-1',
     ...(process.env.MEETBOT_CHROMIUM ? { MEETBOT_CHROMIUM: process.env.MEETBOT_CHROMIUM } : {}) });
   const botPort = await listen(server);
   try {
@@ -67,10 +68,16 @@ test('a worker takes a meeting from the API, attends it, reports on it and drain
     assert.equal(reports[0].capacity, 2);
     assert.equal(reports[0].draining, false);
     await until(() => reports.some((r) => r.bots.some((b) => b.jobId === '11111111-1111-1111-1111-111111111111' && b.status === 'in_call_recording')));
-    await until(() => chat.length >= 2);
+    await until(() => chat.length >= 3);
     assert.equal(chat[0], 'Hello from the queue.');
-    assert.equal(chat[1], 'PAY-9 is overdue - who owns it?');   // handed over by the API, posted in the meeting
-    await until(() => events.some((e) => e.event === 'transcript.data'));
+    assert.equal(chat[1], 'Asha asked me to raise: can refunds ship on Friday?');   // what the person who sent the agent wanted raised
+    assert.equal(chat[2], 'PAY-9 is overdue - who owns it?');   // handed over by the API, posted in the meeting
+    await until(() => events.some((e) => e.event === 'transcript.batch' && e.data.lines.length > 0));
+    // The chat is read: someone's question goes to the API (the bot's own messages do not).
+    const asked = await until(() => events.find((e) => e.event === 'chat.message'));
+    assert.equal(asked.data.name, 'Priya');
+    assert.equal(asked.data.text, 'agent, where is PAY-9?');
+    assert.ok(!events.some((e) => e.event === 'chat.message' && e.data.name === 'You'));
     const health = await (await fetch(`http://127.0.0.1:${botPort}/health`)).json();
     assert.equal(health.worker.id, 'worker-test-1');
     assert.equal(health.bots, 1);

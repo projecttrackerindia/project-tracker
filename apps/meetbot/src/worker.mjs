@@ -31,7 +31,7 @@ export function autoCapacity({ memoryMb, cpus }) {
   return Math.max(1, Math.min(20, Math.floor((memoryMb - 400) / 550), Math.floor(cpus * 2)));
 }
 
-export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.1.0' }) {
+export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2.0' }) {
   const api = env.MEETBOT_API_URL.replace(/\/+$/, '');
   const workerId = (env.MEETBOT_WORKER_ID || `${hostname()}-${randomUUID().slice(0, 8)}`).replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 100);
   const capacity = env.MEETBOT_MAX_BOTS ? Math.max(0, Number(env.MEETBOT_MAX_BOTS)) : autoCapacity(machine());
@@ -71,6 +71,8 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.1
       webhookUrl: job.webhookUrl, introMessage: job.introMessage ? String(job.introMessage).slice(0, 500) : null,
       agendaMessage: job.agendaMessage ? String(job.agendaMessage).slice(0, 500) : null,
       captionLanguage: typeof job.captionLanguage === 'string' && /^[\p{L} ()-]{2,40}$/u.test(job.captionLanguage) ? job.captionLanguage : null,
+      raiseMessage: job.raiseMessage ? String(job.raiseMessage).slice(0, 500) : null,
+      readChat: job.readChat === true,
     }, { ...deps, onFinished: (b) => { b.finishedAt = Date.now(); deps.onFinished?.(b); } });
     bot.jobId = job.jobId;
     jobs.set(job.jobId, bot);

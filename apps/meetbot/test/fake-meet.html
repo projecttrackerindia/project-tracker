@@ -38,7 +38,8 @@ document.querySelector('textarea').addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   const t = e.target.value; e.target.value = '';
-  const li = document.createElement('li'); li.textContent = t; $('messages').appendChild(li);
+  const li = document.createElement('li'); li.setAttribute('data-sender-name', 'You');
+  const m = document.createElement('div'); m.setAttribute('data-message-id', 'own-' + Date.now()); m.textContent = t; li.appendChild(m); $('messages').appendChild(li);
   fetch('/chat-log', { method: 'POST', body: t });
 });
 // Captions: two people speak, word by word, each in their own block, like Meet's caption region.
@@ -62,6 +63,9 @@ $('cc').onclick = async () => {
   await speak(region, 'Ravi Kumar', 'I finished the gateway sandbox yesterday and today I start the settlement report');
   await new Promise((r) => setTimeout(r, 2500));
   await speak(region, 'Priya', 'Who is doing the refund flow? Nobody has picked it up');
+  // Someone writes in the chat (like Meet: a group per sender, one element per message).
+  const li = document.createElement('li'); li.setAttribute('data-sender-name', 'Priya');
+  const m = document.createElement('div'); m.setAttribute('data-message-id', 'priya-1'); m.textContent = 'agent, where is PAY-9?'; li.appendChild(m); $('messages').appendChild(li);
 };
 // The test ends the call from outside.
 setInterval(async () => {

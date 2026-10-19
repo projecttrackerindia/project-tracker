@@ -189,8 +189,8 @@ export function TabBar() {
 
   const tabs: Tab[] = useMemo(() => {
     if (admin) return all.slice(0, 3).map((i) => ({ to: i.to, label: i.label === 'Organizations' ? 'Orgs' : i.label, icon: i.icon, end: i.end }));
-    const picks = ['/my-work', '/projects', '/chat', '/reminders', '/calendar'].map(find).filter(Boolean).slice(0, 2) as typeof all;
-    const label: Record<string, string> = { '/': 'Home' };
+    const picks = ['/command-center', '/my-work', '/projects', '/chat', '/reminders', '/calendar'].map(find).filter(Boolean).slice(0, 2) as typeof all;
+    const label: Record<string, string> = { '/': 'Home', '/command-center': 'Focus' };
     return [{ to: '/', label: 'Home', icon: 'dashboard' as IconName, end: true }, ...picks.map((i) => ({ to: i.to, label: label[i.to] ?? i.label, icon: i.icon, badge: badgeOf(i.to), match: i.match }))];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, admin, chat.data?.count, reminders.data?.now]);

@@ -228,12 +228,15 @@ public class AgentCommandCenterService(IAppDbContext db, ICurrentContext ctx, Ap
         var greeting = (localNow.Hour < 12 ? "Good morning" : localNow.Hour < 17 ? "Good afternoon" : "Good evening") + $", {AgentSessions.FirstName(name)}";
         var headline = ordered.Count == 0
             ? $"Nothing needs you right now.{(todays.Count > 0 ? $" {todays.Count} meeting{(todays.Count == 1 ? "" : "s")} today." : "")}"
-            : $"{ordered.Count} thing{(ordered.Count == 1 ? " needs" : "s need")} your attention{(ordered.Count(a => a.Severity == "high") is > 0 and var h ? $", {h} urgent" : "")}: {ordered[0].Title}" +
-              (ordered.Count > 1 ? $"; {ordered[1].Title}." : ".");
+            : $"{ordered.Count} thing{(ordered.Count == 1 ? " needs" : "s need")} your attention{(ordered.Count(a => a.Severity == "high") is > 0 and var h ? $", {h} urgent" : "")}: " +
+              Sentence(ordered[0].Title) + (ordered.Count > 1 ? " " + Sentence(ordered[1].Title) : "");
         var counts = new CcCountsDto(ordered.Count, waiting.Count + requests.Count, owe.Count(w => w.State == "due_today"), late.Count, owe.Count(w => w.Waiting.Count > 0),
             mine.Count(c => c.AwaitingAnswer), todays.Count, ranked.Count(r => r.Level == "high"));
         return new CommandCenterDto(greeting, headline, since, counts, ordered, todays, changes, health, reliability, mine, owe, mineDelegations);
     }
+
+    /// <summary>Ends a title as a sentence (a question keeps its question mark).</summary>
+    private static string Sentence(string text) => text.TrimEnd().EndsWith('?') || text.TrimEnd().EndsWith('.') || text.TrimEnd().EndsWith('!') ? text.TrimEnd() : text.TrimEnd() + ".";
 
     private static DateTime ZoneTimeLocal(DateTime utc, NodaTime.DateTimeZone zone) => Reminders.ZoneTime.ToLocal(utc, zone);
 

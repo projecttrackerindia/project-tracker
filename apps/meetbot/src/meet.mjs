@@ -14,6 +14,9 @@ export const SEL = {
   chatOpen: /chat with everyone|open chat|^chat$/i,
   chatInput: ['textarea[aria-label="Send a message"]', 'textarea[aria-label^="Send a message"]', 'textarea[placeholder^="Send a message"]', 'div[contenteditable="true"][aria-label^="Send a message"]'],
   captionsRegion: 'div[role="region"][aria-label="Captions"], div[role="region"][aria-label^="Captions"]',
+  // One chat message each; the sender is on the message or on the group of messages it belongs to.
+  chatMessage: '[data-message-id]',
+  chatSender: '[data-sender-name]',
   captionLanguage: /(meeting language|caption(s)? language|spoken language|language of the meeting)/i,
 };
 
@@ -156,11 +159,48 @@ export function captionWatcher(regionSelector) {
   window.ptFlushCaptions = () => { for (const b of blocks) flush(b, true); };
 }
 
+/** Opens the chat panel (to read what people write there). */
+export async function openChat(page) {
+  if (await firstVisible(page, SEL.chatInput)) return true;
+  await clickButton(page, SEL.chatOpen);
+  await page.waitForTimeout(800);
+  return Boolean(await firstVisible(page, SEL.chatInput));
+}
+
+/**
+ * Runs inside the Meet page: reports each new chat message (sender + text) through the exposed `ptChat` function, once. Messages that were
+ * already there when it started are not reported, and neither are the bot's own (its sender is "You", or it is something the bot just sent).
+ */
+export function chatWatcher({ messageSelector, senderSelector, botName }) {
+  const seen = new WeakSet();
+  for (const el of document.querySelectorAll(messageSelector)) seen.add(el);
+  const own = /^(you|me)$/i;
+  const scan = () => {
+    for (const el of document.querySelectorAll(messageSelector)) {
+      if (seen.has(el)) continue;
+      const text = (el.innerText || el.textContent || '').trim();
+      if (!text) continue;
+      seen.add(el);
+      const holder = el.closest(senderSelector);
+      let name = holder?.getAttribute('data-sender-name') || '';
+      if (!name) {
+        const group = el.parentElement?.closest('div');
+        name = (group?.firstElementChild?.innerText || '').split('\n')[0].trim();
+      }
+      if (own.test(name) || (botName && name === botName) || (window.ptSent && window.ptSent.has(text))) continue;
+      window.ptChat(name || 'Someone', text.slice(0, 1000));
+    }
+  };
+  new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true });
+  setInterval(scan, 1000);
+}
+
 /** Posts a message to everyone in the meeting chat (opens the chat panel if needed). */
 export async function sendChat(page, message) {
   let input = await firstVisible(page, SEL.chatInput);
   if (!input) { await clickButton(page, SEL.chatOpen); await page.waitForTimeout(800); input = await firstVisible(page, SEL.chatInput); }
   if (!input) throw new Error('The meeting chat is not available (the host may have switched it off).');
+  await page.evaluate((m) => { (window.ptSent ||= new Set()).add(m); }, message).catch(() => undefined);
   await input.fill(message);
   await input.press('Enter');
 }

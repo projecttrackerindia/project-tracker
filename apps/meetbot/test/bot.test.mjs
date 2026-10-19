@@ -26,7 +26,7 @@ test('a bot joins, reports who said what, posts in the chat and leaves when the 
   });
   const fakePort = await listen(fake);
   const bots = createServer({ MEETBOT_SECRET: SECRET, MEETBOT_ALLOWED_HOSTS: '127.0.0.1', MEETBOT_WEBHOOK_HOSTS: '127.0.0.1', MEETBOT_ALLOW_HTTP: 'true', MEETBOT_HEADLESS: 'true',
-    MEETBOT_QUIET: 'true', MEETBOT_ALONE_MS: '600000', ...(process.env.MEETBOT_CHROMIUM ? { MEETBOT_CHROMIUM: process.env.MEETBOT_CHROMIUM } : {}) });
+    MEETBOT_QUIET: 'true', MEETBOT_ALONE_MS: '600000', MEETBOT_CAPTION_FLUSH_MS: '500', ...(process.env.MEETBOT_CHROMIUM ? { MEETBOT_CHROMIUM: process.env.MEETBOT_CHROMIUM } : {}) });
   const botPort = await listen(bots);
   const api = (method, path, body, key = SECRET) => fetch(`http://127.0.0.1:${botPort}${path}`, { method, headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   try {
@@ -42,7 +42,8 @@ test('a bot joins, reports who said what, posts in the chat and leaves when the 
     await until(async () => (await (await api('GET', `/bots/${id}`)).json()).status === 'in_call_recording');
     assert.equal((await api('POST', `/bots/${id}/chat`, { message: 'PAY-9 is overdue - who owns it?' })).status, 202);
 
-    const lines = () => events.filter((e) => e.event === 'transcript.data').map((e) => `${e.data.data.participant.name}: ${e.data.data.words.map((w) => w.text).join(' ')}`);
+    // Captions arrive in batches: every few seconds, the lines heard since the last one.
+    const lines = () => events.filter((e) => e.event === 'transcript.batch').flatMap((e) => e.data.lines.map((l) => `${l.name}: ${l.text}`));
     await until(() => lines().some((l) => l.startsWith('Ravi Kumar: I finished the gateway sandbox')));
     await until(() => chat.length >= 3);
     assert.equal(chat[0], "Hi, I'm the Tracker Bot taking notes.");
