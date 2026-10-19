@@ -239,6 +239,13 @@ third-party service: nothing to buy, no per-meeting fees.
   (Settings › Deploy › Draining seconds, e.g. 10800) so redeploys never cut a meeting short, and raise the replica count for more meetings.
 - Without the bot, the agent still reads Google Meet transcripts after each meeting and anything pasted into a project's Agent tab.
 - The bot sets Meet's captions to each project's meeting language and posts the project's agenda after its hello (nothing to configure).
+- **Beyond a few hundred meetings at once** (1,000 meetings ≈ 250 workers, ~550 GB of memory and ~500 vCPUs): captions are already sent in
+  batches (`MEETBOT_CAPTION_FLUSH_MS`, default 3000) and appended in one write, and worker reports cost a few queries whatever their size.
+  The next steps are infrastructure, in this order: (1) run the bot workers on autoscaled machines (Kubernetes with KEDA scaling on the
+  *waiting* count from Admin › System health, scaled up ~15 minutes before the hour, when most meetings start); (2) put a connection pooler
+  (PgBouncer) in front of PostgreSQL and run several API replicas; (3) spread workers over several egress IPs, since Meet may limit many
+  guests from one address; (4) where the organizer's Google Workspace includes transcripts, prefer *Use my Google account* - Meet transcribes
+  the call itself and no bot or browser is needed - and keep the bot for meetings that need it in the call (answers, reminders, delegation).
 
 ## Project agent: mail, Slack, WhatsApp and alerts (optional)
 

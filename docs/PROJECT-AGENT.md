@@ -80,6 +80,94 @@ created (`--keep` leaves it). CI runs `--self-test` (the scoring only). Run the 
 - **One place to decide.** Project agent › To review shows what waits across all projects a person may edit; *Approve all* creates new
   items and notes in one go, while changes to existing work (status, owner, dates) are approved one by one.
 
+## The agent as a project delegate
+
+The agent does more than take minutes: it follows up between meetings, attends in someone's place and tells each person what needs them.
+Most of this is **rules over the tracker** (no model, no credits, instant and exact). A model is used only where language has to be
+understood: reading transcripts, mail and chat, the second look, and in-call reminders.
+
+| Part | What it does | Model? |
+|---|---|---|
+| Command Center (`/command-center`) | What needs me today, each item with its evidence; what I owe and who waits on it; what changed since my last visit; coming meetings; project health; how reliably commitments are kept | No |
+| Autonomy (project › Agent) | 1 observer · 2 assistant (reminders) · 3 participant (answers in the meeting chat) · 4 delegate (carries out safe items itself) | No |
+| Commitments and check-ins | Work agreed with an owner and a date becomes a commitment; on its due day the owner is asked: on track, done, need more time, blocked | No |
+| Change requests | "Need more time" or "blocked" becomes a proposal for the lead, with what the new date would move | No |
+| Impact and what-if | Follows task dependencies (finish-to-start, finish-to-finish) to show what moves, which milestones are missed, and the project's new finish | No |
+| Send the agent in my place | The bot joins as *your assistant* (never as you), raises what you asked, answers questions, notes what people need from you, and reports back | Only the usual reading |
+| Brief before a meeting | Done / late / blocked since the last meeting, what is stuck, commitments due, a suggested agenda - or "this meeting may not be needed" | No |
+| Answers in the meeting chat | "agent, PAY-12?" → status, owner, date, what it waits on; also overdue, due today, this week, blocked | No |
+| Decision registry, audit trail | Every decision with its source; every proposal decided - by whom or by the agent, before and after | No |
+
+### Autonomy
+
+Per project (Agent tab › Autonomy), by anyone who may edit the project:
+
+1. **Observer** - notes, minutes, proposals; silent in meetings apart from its hello.
+2. **Assistant** (default) - also posts reminders in the meeting chat when something important is missed.
+3. **Participant** - also answers questions in the meeting chat from the tracker, by key and first name only.
+4. **Delegate** - also carries out *safe* proposals by itself: only new items and notes (action items, tasks, tickets, decisions,
+   suggestions, missed points - the lead picks which), only when the quote was found in the source, only above the confidence the lead
+   chose (70-100%, default 90%), and new work only when it has an owner. **Changes to existing work - dates, status, owners, tickets -
+   always wait for a person**, at every level. The lead is told what was carried out; each one is marked *Auto* and is in the audit trail.
+
+### Commitments and check-ins
+
+When a proposal that gives someone work by a date is approved (a new task or action item, or a new date on a task), it becomes a commitment
+of the owner. The agent keeps its state honest - **kept** (done by its date), **missed** (its date passed), **moved** (a new date was approved
+or set on the task), **dropped** (the work went away). On the due day (an hour after the morning updates) the owner gets one notification:
+*Is PAY-31 on track for today?* The answer takes one tap in the Command Center:
+
+- **On track** / **Done** (done also completes the task or action item) - recorded.
+- **Need more time** (a later date and why) or **Blocked** (what it waits on) - becomes a proposal for whoever approved the work and the
+  project owner, with what the new date would move. Nothing changes until they approve it; the owner hears the decision either way.
+
+People can switch check-ins off for themselves (Command Center › Meetings › My agent); leads can switch them off per project.
+
+### Sending the agent in my place
+
+In the Command Center, any session of a project meeting you are invited to has **Send the agent** (and double-booked sessions are listed as
+things that need you). You can tell it what to raise. With *Go when I am double-booked* on, it goes by itself to the project meeting you do
+not organize when two of your sessions overlap in the next two hours (your Google Calendar calls count when Google is connected), and tells
+you - cancel it if you would rather go.
+
+The bot joins the session (even when the project's *live bot* is off) named "*Bot name* for *your first name*", says you could not make it,
+posts what you asked it to raise, answers factual questions, and keeps anything addressed to you by name ("Asha, can you review the spec?")
+for your report. When the transcript has been read you get the report: the summary, what came out of it and how many items wait for a
+decision. The project must have its agent on, with meetings; the installation needs bot workers.
+
+### Brief before a meeting
+
+A few minutes before each session (10 by default, each person chooses 5-60), the people invited get a brief: what came of the last
+meeting (done, late, blocked, open), what is stuck and on whom, commitments due, proposals waiting, and a suggested agenda - or a note that
+nothing needs discussing. Leads can switch briefs off per project; people for themselves.
+
+### Answers in the meeting chat
+
+At autonomy level 3 or 4 (or when the agent attends for someone), the bot reads the meeting chat. A message addressed to it - starting with
+*agent*, *bot*, *@*, *?* or containing its name - is answered from the tracker within seconds. Chat messages are also part of the transcript
+the agent reads afterwards. Meet's chat is read from the page (`apps/meetbot/src/meet.mjs`: `SEL.chatMessage`, `SEL.chatSender`); if Google
+changes it, the bot still takes notes and only stops answering.
+
+## Scaling
+
+Meetings are the expensive part (a browser per meeting). What is built for that:
+
+- **Bot workers are a queue** (see Operations): any number of replicas; sessions wait in line instead of failing.
+- **Captions are batched**: each bot sends what it heard every 3 seconds (`MEETBOT_CAPTION_FLUSH_MS`) as one `transcript.batch`, and the API
+  appends the whole batch in one write - not one encrypted rewrite per caption line.
+- **Worker reports are cheap**: lease renewals are one write per status for all of a worker's bots, and chat is only collected where some waits.
+- **Everything else is rules over the database** (Command Center, briefs, check-ins, impact, chat answers): no model calls, no credits.
+
+For more than a few hundred meetings at once, see *How it scales* in [DEPLOY.md](../deploy/DEPLOY.md): more bot workers on autoscaled
+machines, a connection pooler in front of PostgreSQL, several API replicas, and - where the organizer's Google Workspace allows it - Meet's
+own transcripts (no bot at all).
+
+### Not built yet
+
+- Microsoft Teams and Zoom calls (the bot joins Google Meet only; a Teams or Zoom transcript can be pasted or forwarded).
+- Speaking in the call (the bot writes in the chat; it does not talk).
+- Outlook calendars for spotting double-bookings (Google Calendar only).
+
 ## No account or mailbox for the bot
 
 The bot never needs a Google account or an e-mail address: it joins Meet as a guest with a name, and the host lets it in like any guest.
