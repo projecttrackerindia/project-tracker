@@ -388,8 +388,8 @@ public class PlatformService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     };
     private static readonly IReadOnlyDictionary<string, string> ConsentDefaults = new Dictionary<string, string>
     {
-        [Domain.ConsentTypes.TermsOfService] = "By using this service you agree to use it lawfully and in good faith. The organization that runs your workspace is responsible for the data it puts into it. This placeholder text should be replaced by an administrator with the platform's real terms.",
-        [Domain.ConsentTypes.PrivacyPolicy] = "We store the account and workspace data you give us in order to provide the service, and nothing more. This placeholder text should be replaced by an administrator with the platform's real privacy policy.",
+        [Domain.ConsentTypes.TermsOfService] = ConsentTexts.TermsOfService.Trim(),
+        [Domain.ConsentTypes.PrivacyPolicy] = ConsentTexts.PrivacyPolicy.Trim(),
     };
 
     /// <summary>Documents nobody has published yet read as version 0 with placeholder text, so sign-up still works out of the box;
