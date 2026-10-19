@@ -165,6 +165,45 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_grant_Google_refused_is_not_retried_until_the_person_reconnects()
+    {
+        var c = await TestClient.RegisterAsync(factory);
+        await c.CreateOrgAsync();
+        await ConnectAsync(c);
+        // The person revoked access at Google: the stored refresh token is no longer accepted.
+        factory.WithDb(db =>
+        {
+            var secrets = factory.Services.GetRequiredService<ISecretProtector>();
+            var g = db.GoogleConnections.IgnoreQueryFilters().First(x => x.UserId == c.UserId);
+            g.AccessTokenExpiresAt = DateTime.UtcNow.AddMinutes(-5);
+            g.RefreshTokenProtected = secrets.Protect("revoked-" + Guid.NewGuid().ToString("N"));
+            return db.SaveChanges();
+        });
+        var refreshes = 0;
+        factory.GoogleCalendar.BeforeRefresh = () => Interlocked.Increment(ref refreshes);
+        try
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                using var scope = AuthenticatedScope(c);
+                var auth = scope.ServiceProvider.GetRequiredService<GoogleCalendarAuthService>();
+                var ex = await Assert.ThrowsAsync<ConflictException>(() => auth.GetAccessTokenAsync(c.UserId));
+                Assert.Equal("GOOGLE_TOKEN_EXPIRED", ex.Code);
+            }
+            Assert.Equal(1, refreshes);   // asked Google once; the background work that runs every minute does not keep asking
+            Assert.Equal("Your Google connection needs to be renewed.", (await c.Get("/api/v1/integrations/google/status")).Data!["lastError"]!.GetValue<string>());
+
+            // Reconnecting clears it and the token works again.
+            await ConnectAsync(c);
+            factory.WithDb(db => { var g = db.GoogleConnections.IgnoreQueryFilters().First(x => x.UserId == c.UserId); g.AccessTokenExpiresAt = DateTime.UtcNow.AddMinutes(-5); return db.SaveChanges(); });
+            using var again = AuthenticatedScope(c);
+            Assert.False(string.IsNullOrEmpty(await again.ServiceProvider.GetRequiredService<GoogleCalendarAuthService>().GetAccessTokenAsync(c.UserId)));
+            Assert.Equal(2, refreshes);
+        }
+        finally { factory.GoogleCalendar.BeforeRefresh = null; }
+    }
+
+    [Fact]
     public async Task Creating_a_meeting_without_connecting_google_first_fails_with_a_clear_error()
     {
         var c = await TestClient.RegisterAsync(factory);

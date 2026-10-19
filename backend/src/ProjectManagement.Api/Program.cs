@@ -89,7 +89,9 @@ static void WarnAboutUnsafeSettings(WebApplication app)
     var log = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     if ((config["Email:Provider"] ?? "Log").Equals("Log", StringComparison.OrdinalIgnoreCase))
         log.LogCritical("Email:Provider is \"Log\" outside Development: no email (verification, password reset, invitations, security alerts) is delivered. Set Email:Provider to Smtp or Resend.");
-    if (!(config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
+    if (!(config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase) && config.GetValue<bool>("Billing:Upi:Enabled"))
+        log.LogInformation("Paid plans are paid by UPI QR (Billing:Upi) and switched on when a platform administrator confirms the payment.");
+    else if (!(config["Billing:Provider"] ?? "Mock").Equals("Razorpay", StringComparison.OrdinalIgnoreCase))
         log.LogCritical("Billing:Provider is the simulated (Mock) provider outside Development: every paid plan is granted without any payment. Set Billing:Provider=Razorpay.");
     if (string.IsNullOrWhiteSpace(config["Mfa:EncryptionKey"]))
         log.LogCritical("Mfa:EncryptionKey is empty outside Development: stored secrets (authenticator keys, single sign-on client secrets) are encrypted with a key derived from Jwt:SigningKey, so rotating the signing key makes them all unreadable. Set Mfa:EncryptionKey to the key currently in effect before rotating.");

@@ -191,6 +191,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
 
     /// <summary>A valid access token for this user's Google account, refreshing it first when it has expired or is about to. Used by
     /// <see cref="GoogleMeetingClient"/>; never returned to the browser.</summary>
+    private const string RenewMessage="Your Google connection needs to be renewed.";
     public async Task<string> GetAccessTokenAsync(Guid userId,CancellationToken ct=default,string? requiredScope=null)
         =>(await GetAccessGrantAsync(userId,ct,requiredScope)).AccessToken;
     public async Task<GoogleAccessGrant> GetAccessGrantAsync(Guid userId,CancellationToken ct=default,string? requiredScope=null)
@@ -201,6 +202,9 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         if(!c.Scopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains(scope))
             throw new ConflictException("Reconnect Google and grant the permission required for this action.","GOOGLE_SCOPE_REQUIRED");
         if(c.AccessTokenProtected!=null&&c.AccessTokenExpiresAt>clock.Now)return new(c.Id,Hash(c.RefreshTokenProtected),c.GoogleEmail??"",secrets.Unprotect(c.AccessTokenProtected),c.ConsentEpoch);
+        // Google already refused this grant (revoked, expired or password changed): only reconnecting helps, so the background work that runs every
+        // minute does not ask Google again and again. Reconnecting replaces the grant and clears the error.
+        if(c.LastError==RenewMessage)throw new ConflictException(RenewMessage,"GOOGLE_TOKEN_EXPIRED");
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(20));
         using var request=new HttpRequestMessage(HttpMethod.Post,"https://oauth2.googleapis.com/token"){
             Content=new FormUrlEncodedContent(new Dictionary<string,string>{
@@ -210,10 +214,13 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         };
         using var response=await http.CreateClient("google-calendar").SendAsync(request,HttpCompletionOption.ResponseHeadersRead,deadline.Token);
         if(!response.IsSuccessStatusCode){
-            await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected&&x.ConsentEpoch==c.ConsentEpoch&&x.GoogleEmail==c.GoogleEmail&&x.Scopes==c.Scopes)
-                .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.LastError,"Your Google connection needs to be renewed."),ct);
-            log.LogWarning("Google token refresh failed for user {User}: {Status}",userId,(int)response.StatusCode);
-            throw new ConflictException("Your Google connection needs to be renewed.","GOOGLE_TOKEN_EXPIRED");
+            // 400/401 (invalid_grant, invalid_client) are final until the person reconnects; anything else (Google busy or down) is tried again later.
+            var final=response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized;
+            if(final)
+                await db.GoogleConnections.Where(x=>x.Id==c.Id&&x.RefreshTokenProtected==c.RefreshTokenProtected&&x.ConsentEpoch==c.ConsentEpoch&&x.GoogleEmail==c.GoogleEmail&&x.Scopes==c.Scopes)
+                    .ExecuteUpdateAsync(s=>s.SetProperty(x=>x.LastError,RenewMessage),ct);
+            log.LogWarning("Google token refresh failed for user {User}: {Status}{Final}",userId,(int)response.StatusCode,final?" (stopped until they reconnect Google)":"");
+            throw new ConflictException(final?RenewMessage:"Google is not answering right now. Try again in a few minutes.","GOOGLE_TOKEN_EXPIRED");
         }
         await using var stream=await response.Content.ReadAsStreamAsync(deadline.Token);
         var buffer=new byte[65537];var length=0;int count;
