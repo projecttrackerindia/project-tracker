@@ -527,6 +527,25 @@ tr.clickable { cursor: pointer; }
 .switch.on::after { transform: translateX(20px); }
 
 /* ---------- billing / plans ---------- */
+/* UPI QR payment (until a payment gateway is connected) */
+.upi-card .mono { font-family: var(--mono, ui-monospace, monospace); overflow-wrap: anywhere; }
+.upi-body { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.upi-qr { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 248px; max-width: 100%; text-align: center; }
+.upi-qr img, .upi-qr-empty { width: 232px; height: 232px; max-width: 100%; border-radius: 12px; background: #fff; padding: 8px; border: 1px solid var(--border); box-sizing: border-box; }
+.upi-qr img { height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+.upi-qr-empty { display: grid; place-items: center; }
+.upi-info { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.upi-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 13.5px; }
+.upi-dl dt { color: var(--text-3); }
+.upi-dl dd { margin: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.btn.btn-icon-xs { padding: 0 6px; min-height: 0; height: 24px; line-height: 1; }
+.upi-open { align-self: flex-start; }
+.upi-utr { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.upi-utr .field { flex: 1 1 220px; margin: 0; }
+.upi-fail { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius); }
+.upi-fail .field { margin: 0; }
+@media (hover: hover) and (pointer: fine) { .upi-open { display: none; } }
+
 .plan-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .plan-card { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: none; position: relative; }
 .plan-card.current { border-color: var(--primary); box-shadow: none; }

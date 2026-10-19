@@ -31,6 +31,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/admin/tenants', label: 'Organizations', icon: 'building' },
       { to: '/admin/users', label: 'Users', icon: 'users' },
       { to: '/admin/billing', label: 'Billing', icon: 'chart' },
+      { to: '/admin/payments', label: 'UPI payments', icon: 'coin' },
       { to: '/admin/usage', label: 'Usage', icon: 'building' },
       { to: '/admin/ai', label: 'AI usage', icon: 'sparkle' },
       { to: '/admin/plans', label: 'Plans', icon: 'card' },

@@ -12,6 +12,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { DEFAULT_POLICY, quote, type Period, type PricingPolicy, type Quote } from '../../lib/pricing';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
+import { UpiPayCard } from './UpiPayCard';
 
 const STATUS_TONE: Record<SubscriptionStatus, 'success' | 'info' | 'warning' | 'danger' | 'neutral'> = {
   Active: 'success', Trial: 'info', PastDue: 'danger', Cancelled: 'warning', Expired: 'neutral',
@@ -145,10 +146,14 @@ function PlanChooser({ seats, setSeats, minSeats, period, setPeriod, policy }: {
 export function BillingPage() {
   const wid = useWorkspaceId();
   const reload = useAuth((s) => s.reloadContext);
-  const q = useWsQuery(['billing'], billingApi.overview);
+  // While a UPI payment is being confirmed, look again every minute so the new plan shows up without a reload.
+  const q = useWsQuery(['billing'], billingApi.overview, { refetchInterval: (query) => (query.state.data?.upi?.status === 'submitted' ? 60_000 : false) });
   const [busy, setBusy] = useState(false);
   const me = useAuth((s) => s.ctx?.user);
-  const hosted = (q.data?.paymentProvider ?? 'mock') !== 'mock';
+  const provider = q.data?.paymentProvider ?? 'mock';
+  // UPI QR: the person pays by scanning a QR and an administrator confirms it; a gateway (Razorpay) pays in its own secure window.
+  const upi = provider === 'upi';
+  const hosted = provider !== 'mock' && !upi;
   const [period, setPeriodState] = useState<Period | null>(null);
   const [seatsPick, setSeatsPick] = useState<number | null>(null);
 
@@ -187,10 +192,17 @@ export function BillingPage() {
       confirmText: trial ? 'Start trial' : price === 0 ? 'Switch to Free' : 'Confirm',
       message: trial ? `You get 14 days of ${target.name} for up to ${policy.trialSeats} people, with ${policy.trialAiCredits} AI credits. No payment is taken now.`
         : price === 0 ? 'Limits of the Free plan apply immediately (one person). Existing data is kept, but you may not be able to add more until you are within the limits.'
+        : upi ? `${target.name} for ${what}: ${formatMoney(qt.chargePerCycle, target.currency)} per ${per}${qt.savedPerCycle > 0 ? ` (you save ${formatMoney(qt.savedPerCycle, target.currency)})` : ''}. Next you pay this amount by scanning a UPI QR. Your plan is switched on once the payment is confirmed (usually within a few working hours). Nothing renews by itself: when the period ends you are asked to pay again.`
         : hosted ? `${target.name} for ${what}: ${formatMoney(qt.chargePerCycle, target.currency)} per ${per}${qt.savedPerCycle > 0 ? ` (you save ${formatMoney(qt.savedPerCycle, target.currency)})` : ''}. Next you pay in a secure window. ${target.code === plan.code && paid ? 'New seats are available right away and the new amount starts at your next renewal, so nothing is charged twice. ' : ''}You can cancel any time; your plan stays until the end of the paid period.`
         : `${target.name} for ${what}: you will be charged ${formatMoney(qt.chargePerCycle, target.currency)} per ${per}. (Demo mode: payments are simulated.)`,
     });
     if (!ok) return;
+    if (!trial && price > 0 && upi) {
+      if (b.upi?.status === 'submitted') { toast('A payment is already being confirmed. Wait for it before paying again.', 'info'); return; }
+      await run(() => billingApi.checkout(target.code, false, perSeat ? seats : undefined, chosenPeriod), 'Scan the QR to pay.');
+      requestAnimationFrame(() => document.querySelector('.upi-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      return;
+    }
     if (trial || price === 0 || !hosted) { await run(() => billingApi.checkout(target.code, trial, perSeat ? seats : undefined, chosenPeriod), trial ? 'Trial started.' : 'Plan updated.'); return; }
     // A real payment: the server opens it, the person pays in the provider's window, and the server confirms the signed result.
     setBusy(true);
@@ -211,6 +223,8 @@ export function BillingPage() {
   return (
     <>
       <PageHead title="Billing" sub="Your plan, people, usage and invoices for this workspace" />
+
+      {b.canManage && b.upi && <UpiPayCard pay={b.upi} onChanged={refresh} />}
 
       <div className="card mb-22">
         <div className="card-head">

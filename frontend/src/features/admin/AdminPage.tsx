@@ -1,5 +1,6 @@
 import { BillingTab, GoLiveNotice, HealthTab, SettingsTab, UsageTab } from './PlatformTabs';
 import { AiUsageTab } from './AiUsageTab';
+import { PaymentsTab } from './PaymentsTab';
 import { useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -14,7 +15,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { AuditPage } from '../activity/ActivityPages';
 import { Select } from '../../components/Select';
 
-type Tab = 'overview' | 'tenants' | 'users' | 'billing' | 'usage' | 'ai' | 'plans' | 'health' | 'settings' | 'audit';
+type Tab = 'overview' | 'tenants' | 'users' | 'billing' | 'payments' | 'usage' | 'ai' | 'plans' | 'health' | 'settings' | 'audit';
 
 const TITLES: Record<Tab, { title: string; sub: string }> = {
   overview: { title: 'Platform overview', sub: 'Organizations, users and subscriptions across the product. Customer projects and tasks are never shown here.' },
@@ -23,6 +24,7 @@ const TITLES: Record<Tab, { title: string; sub: string }> = {
   ai: { title: 'AI usage', sub: 'What each organization used of the AI assistant, by level, and an estimate of what it cost (counts only).' },
   plans: { title: 'Plans', sub: 'Prices, limits and feature flags. Changes apply immediately to every organization on the plan.' },
   billing: { title: 'Billing', sub: 'Recurring revenue, collections and trials across all organizations.' },
+  payments: { title: 'UPI payments', sub: 'Plans paid by UPI QR: match the UTR with the bank statement, then confirm or reject. Also which QR is shown.' },
   usage: { title: 'Usage', sub: 'How much each organization uses (counts only), who is near a plan limit, and plan exceptions.' },
   health: { title: 'System health', sub: 'Database, background workers, queues and traffic. Refreshes every 15 seconds.' },
   settings: { title: 'Platform settings', sub: 'Sign-ups, maintenance mode and the announcement banner.' },
@@ -35,7 +37,7 @@ export function AdminPage() {
   const isAdmin = useAuth((s) => s.ctx?.user.isPlatformAdmin);
   const { tab = 'overview' } = useParams();
   if (!isAdmin) return <Navigate to="/" replace />;
-  const t = (['overview', 'tenants', 'users', 'billing', 'usage', 'ai', 'plans', 'health', 'settings', 'audit'].includes(tab) ? tab : 'overview') as Tab;
+  const t = (['overview', 'tenants', 'users', 'billing', 'payments', 'usage', 'ai', 'plans', 'health', 'settings', 'audit'].includes(tab) ? tab : 'overview') as Tab;
   return (
     <>
       <PageHead title={TITLES[t].title} sub={TITLES[t].sub} />
@@ -43,6 +45,7 @@ export function AdminPage() {
       {t === 'tenants' && <Tenants />}
       {t === 'users' && <Users />}
       {t === 'billing' && <BillingTab />}
+      {t === 'payments' && <PaymentsTab />}
       {t === 'usage' && <UsageTab />}
       {t === 'ai' && <AiUsageTab />}
       {t === 'plans' && <Plans />}

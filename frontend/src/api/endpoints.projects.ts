@@ -1,5 +1,5 @@
 import { del, download, get, patch, post, put } from './client';
-import type { TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer } from './types';
+import type { TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
 export interface ProjectFilters { q?: string; status?: string; priority?: string; ownerId?: string; teamId?: string; projectGroupId?: string; projectType?: string; includeArchived?: boolean; sort?: string; page?: number; pageSize?: number; mineOnly?: boolean }
 export interface ProjectInput {
   stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
@@ -119,10 +119,18 @@ export const billingApi = {
   downloadInvoice: (id: string, number: string) => download(`/billing/invoices/${id}/pdf`, `Invoice-${number}.pdf`),
   cancel: () => post<BillingOverview>('/billing/cancel'),
   resume: () => post<BillingOverview>('/billing/resume'),
+  upiPaid: (id: string, utr: string) => post<UpiPayment>(`/billing/upi/${id}/paid`, { utr }),
+  /** Paying this QR failed: the next account's QR comes back (same amount). */
+  upiFailed: (id: string, reason?: string) => post<UpiPayment>(`/billing/upi/${id}/failed`, { reason }),
+  upiCancel: (id: string) => post<BillingOverview>(`/billing/upi/${id}/cancel`),
 };
 
 export const adminApi = {
   stats: () => get<AdminStats>('/admin/stats'),
+  upiPayments: (status?: string) => get<AdminUpiPayment[]>('/admin/upi-payments', { status }),
+  upiAccounts: () => get<UpiAccountHealth[]>('/admin/upi-accounts'),
+  confirmUpi: (id: string, note?: string) => post<AdminUpiPayment>(`/admin/upi-payments/${id}/confirm`, { note }),
+  rejectUpi: (id: string, note: string) => post<AdminUpiPayment>(`/admin/upi-payments/${id}/reject`, { note }),
   tenants: (q?: string, page = 1, type?: string, status?: string) => get<Paged<AdminTenant>>('/admin/tenants', { q, page, pageSize: 20, type, status }),
   tenant: (id: string) => get<AdminTenantDetail>(`/admin/tenants/${id}`),
   createTenant: (b: { name: string; description?: string; ownerEmail: string; planCode: string }) => post<AdminTenantDetail>('/admin/tenants', b),

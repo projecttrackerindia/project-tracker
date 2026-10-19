@@ -69,6 +69,42 @@ notified; **Cancel** stops the next charge and keeps the plan until the end of t
 (there is no proration). Prices shown are what Razorpay charges: if you must add GST, set the plan price accordingly or discuss tax invoicing with
 your accountant, because the app does not add tax on top.
 
+### Payments by UPI QR (until Razorpay is connected)
+
+While no payment gateway is connected, paid plans can be paid by scanning a **UPI QR** of one of your own bank accounts. It takes precedence
+over Razorpay while it is on, so switch it off (`Billing__Upi__Enabled=false`) when you move to Razorpay.
+
+Set on the API service (Railway variables or `.env`); the UPI IDs stay out of git:
+
+| Variable | What it is |
+|---|---|
+| `Billing__Upi__Enabled` | `true` to take payments by UPI QR |
+| `Billing__Upi__Accounts__0__Id` | the first account's UPI ID (VPA), e.g. `name@okbank`; `__1__`, `__2__` … for the next ones, **in the order they are tried** |
+| `Billing__Upi__Accounts__0__Name` | the payee name shown in the UPI app (as on the bank account) |
+| `Billing__Upi__Accounts__0__Label` | the bank's name shown to the payer and the administrator, e.g. `Kotak Mahindra Bank` |
+| `Billing__Upi__Accounts__0__Enabled` | `false` takes one account out without renumbering (default `true`) |
+| `Billing__Upi__FailureThreshold` / `__FailureWindowHours` | skip an account after this many failed payments in this many hours since its last confirmed payment (default 3 in 24) |
+| `Billing__Upi__ExpiryHours` | how long a QR stays valid (default 48) |
+| `Billing__Upi__NotifyEmail` | also e-mail this address when a payment waits for confirmation (platform administrators always get it) |
+
+How it behaves:
+
+1. The owner chooses a plan in **Settings → Billing** and gets **one QR**: the first account that is not failing. The QR is a standard
+   `upi://pay` link with the exact amount and a reference (`PT-XXXXXXX`) as the note, so any UPI app fills everything in.
+2. If paying fails, **Payment failed? Try another QR** records the failure against that account and shows the **next account's QR** for the same
+   amount. After `FailureThreshold` failures with no confirmed payment since, the account is skipped for new payments (a confirmed payment
+   puts it back). If every account is failing, the one with the fewest failures is shown.
+3. After paying, the owner enters the **UTR** (UPI transaction id). A UTR can be used once. Platform administrators (and `NotifyEmail`) get an e-mail.
+4. In **Admin → UPI payments** an administrator matches the UTR and amount with that bank account's statement and **confirms** (the plan is
+   switched on for the paid period, the invoice is recorded, the owner is notified) or **rejects** with a reason the owner sees. The same page
+   shows each account's recent failures and which QR is shown first.
+5. Nothing renews by itself: at the end of the paid period the workspace goes **Past due** and the owner is asked to pay again (a renewal of the
+   same plan extends from the old end date).
+
+A static personal UPI QR cannot be verified automatically, which is why an administrator confirms each payment. Personal accounts also have
+daily UPI limits (often ₹1 lakh) and banks may question many business receipts into a savings account; move to Razorpay (or a merchant UPI
+account) once volumes grow.
+
 ### A staging copy (recommended)
 
 Run a second copy next to production before big changes: clone the repository into another folder, give it its own `.env` (a different `PUBLIC_URL`, port,
