@@ -25,7 +25,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// organizer's own Google account once Meet has produced it.
 /// </summary>
 public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtector secrets, MeetingBotClient botService, MeetingBotQueue queue, GoogleMeetingClient google,
-    AgentSignalService signals, AgentSettingsService settings, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, IOptions<AppOptions> app,
+    AgentSignalService signals, AgentSettingsService settings, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions,
     ILogger<AgentMeetingService> log)
 {
     private const int MaxTranscript = 200_000;

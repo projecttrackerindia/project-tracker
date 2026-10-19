@@ -417,6 +417,11 @@ public class ProjectAgentTests(ApiFactory factory)
             var second = await MeetingAsync(owner, project, DateTime.UtcNow.AddMinutes(1).AddSeconds(5), DateTime.UtcNow.AddMinutes(30));
             Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true })).Ok);
             await TickAsync();
+            // The tick serves every workspace: keep only this project's sessions in the line.
+            void OnlyThisProject() => factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters()
+                .Where(b => b.ProjectId != project && b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call"))
+                .ExecuteUpdate(u => u.SetProperty(b => b.Status, "failed")));
+            OnlyThisProject();
             var ids = factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => (b.MeetingId == first || b.MeetingId == second) && b.Kind == "bot")
                 .OrderBy(b => b.SessionStartUtc).Select(b => b.Id.ToString()).ToList());
             Assert.Equal(2, ids.Count);
@@ -435,10 +440,13 @@ public class ProjectAgentTests(ApiFactory factory)
             // A session no worker ever took is closed with the reason once it is over.
             var third = await MeetingAsync(owner, project, DateTime.UtcNow.AddMinutes(1).AddSeconds(10), DateTime.UtcNow.AddMinutes(30));
             await TickAsync();
+            OnlyThisProject();
             factory.WithDb(db =>
             {
+                var m = db.ProjectMeetings.IgnoreQueryFilters().Single(x => x.Id == third);
+                m.StartTimeUtc = DateTime.UtcNow.AddMinutes(-40); m.EndTimeUtc = DateTime.UtcNow.AddMinutes(-10);
                 var b = db.AgentMeetingBots.IgnoreQueryFilters().Single(x => x.MeetingId == third && x.Kind == "bot");
-                b.SessionStartUtc = DateTime.UtcNow.AddMinutes(-40); b.SessionEndUtc = DateTime.UtcNow.AddMinutes(-10);
+                b.SessionStartUtc = m.StartTimeUtc; b.SessionEndUtc = m.EndTimeUtc;
                 db.SaveChanges();
                 return 0;
             });
@@ -459,6 +467,12 @@ public class ProjectAgentTests(ApiFactory factory)
             Assert.True(overview.Ok, overview.ToString());
             Assert.Contains(overview.Data!["workers"]!.AsArray(), x => x!["workerId"]!.GetValue<string>() == "worker-queue-b" && x["online"]!.GetValue<bool>());
             Assert.True(overview.Data["capacity"]!.GetValue<int>() >= 4);
+
+            // Leave nothing starting soon for other tests (meeting reminders look at every workspace).
+            factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project)
+                .ExecuteUpdate(u => u.SetProperty(m => m.StartTimeUtc, DateTime.UtcNow.AddDays(-2)).SetProperty(m => m.EndTimeUtc, DateTime.UtcNow.AddDays(-2).AddMinutes(30))));
+            factory.WithDb(db => db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.ProjectId == project && (b.Status == "scheduled" || b.Status == "in_call"))
+                .ExecuteUpdate(u => u.SetProperty(b => b.Status, "failed")));
         }
         finally { factory.Ai.Reset(); }
     }
