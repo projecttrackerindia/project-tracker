@@ -108,7 +108,8 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.1
     }
   };
 
-  log(`worker ${workerId}: up to ${capacity} meeting(s) at once, asking ${api}`);
+  const seen = machine();
+  log(`worker ${workerId}: up to ${capacity} meeting(s) at once (${env.MEETBOT_MAX_BOTS ? 'MEETBOT_MAX_BOTS' : 'sized'} from ${seen.memoryMb} MB, ${+seen.cpus.toFixed(2)} CPU), asking ${api}`);
   timer = setTimeout(() => void poll(), 100);
   return {
     state,
