@@ -74,7 +74,7 @@ public class AgentMinutesService(IAppDbContext db, AppClock clock, NotificationS
         to.Add(project.OwnerId);
         to.AddRange(owners);
         var active = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == project.TenantId && to.Contains(m.UserId) && m.User!.IsActive)
-            .Select(m => m.UserId).Distinct().Take(200).ToListAsync(ct);
+            .Select(m => m.UserId).Distinct().OrderBy(x => x).Take(200).ToListAsync(ct);
         foreach (var uid in active)
             await notifications.AddAsync(uid, NotificationType.Meeting, Text.Truncate($"Minutes: {title}", 200)!, string.Join(". ", parts),
                 $"/projects/{project.Id}?tab=agent", $"agent-minutes:{run.Id}:{uid}", toSelf: true, ct: ct);

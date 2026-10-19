@@ -37,7 +37,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
         var projects = await db.ProjectAgentSettings.IgnoreQueryFilters().AsNoTracking()
             .Where(s => s.Enabled && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == s.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted)
                 && db.Projects.IgnoreQueryFilters().Any(p => p.Id == s.ProjectId && !p.IsDeleted && p.Status != ProjectStatus.Archived))
-            .Select(s => new { s.Id, s.TenantId, s.ActingUserId }).Take(500).ToListAsync(ct);
+            .OrderBy(s => s.Id).Select(s => new { s.Id, s.TenantId, s.ActingUserId }).Take(500).ToListAsync(ct);
         int runs = 0, signals = 0, bots = 0, updates = 0, inboxes = 0;
         foreach (var p in projects)
         {
@@ -63,7 +63,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
 
         var optIns = await db.AgentInboxOptIns.IgnoreQueryFilters().AsNoTracking()
             .Where(o => o.Enabled && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == o.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted))
-            .Select(o => new { o.Id, o.TenantId, o.UserId }).Take(1000).ToListAsync(ct);
+            .OrderBy(o => o.Id).Select(o => new { o.Id, o.TenantId, o.UserId }).Take(1000).ToListAsync(ct);
         foreach (var o in optIns)
         {
             try
@@ -158,7 +158,7 @@ public class AgentInboxScanner(IAppDbContext db, ICurrentContext ctx, AppClock c
         var projects = await db.Projects.AsNoTracking()
             .Where(p => p.Status != ProjectStatus.Archived && db.ProjectAgentSettings.Any(s => s.ProjectId == p.Id && s.Enabled && s.ReadMailbox)
                 && (p.OwnerId == uid || db.ProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == uid) || db.Tasks.Any(t => t.ProjectId == p.Id && t.AssigneeId == uid)))
-            .Select(p => new { p.Id, p.TenantId, p.Key, p.Name }).Take(10).ToListAsync(ct);
+            .OrderBy(p => p.Name).Select(p => new { p.Id, p.TenantId, p.Key, p.Name }).Take(10).ToListAsync(ct);
         if (projects.Count == 0) { o.ScannedUntil = now; await db.SaveChangesAsync(ct); return 0; }
         var since = o.ScannedUntil is { } s0 && s0 > now.AddDays(-7) ? s0 : now.AddDays(-2);
         // Searched by project name; a bare key ("WEB", "APP") would match too much unrelated mail.

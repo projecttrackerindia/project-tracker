@@ -39,7 +39,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         var floor = fromUtc - MeetingRecurrence.LongestSeries;
         var meetings = await db.ProjectMeetings.AsNoTracking().Where(m => m.ProjectId == projectId && m.Status == MeetingStatus.Scheduled && m.GoogleMeetUri != ""
                 && m.StartTimeUtc < toUtc && (m.RecurrenceRule != null ? m.StartTimeUtc >= floor : m.StartTimeUtc >= fromUtc.AddDays(-1)))
-            .Take(100).ToListAsync(ct);
+            .OrderBy(m => m.StartTimeUtc).Take(100).ToListAsync(ct);
         var sessions = new List<Session>();
         foreach (var m in meetings)
         {
@@ -183,7 +183,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     {
         var now = clock.Now;
         var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call")
-            && b.SessionEndUtc < now.AddMinutes(-3)).Take(10).ToListAsync(ct);
+            && b.SessionEndUtc < now.AddMinutes(-3)).OrderBy(b => b.SessionEndUtc).Take(10).ToListAsync(ct);
         var added = 0;
         foreach (var bot in bots)
         {
@@ -221,7 +221,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         if (!w.InCallReminders || !botService.Configured) return 0;
         var now = clock.Now;
         var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && b.Status == "in_call" && b.BotId != ""
-            && b.NudgeCount < MaxNudges && b.TranscriptLength - b.CheckedLength >= 800 && b.SessionEndUtc > now).Take(3).ToListAsync(ct);
+            && b.NudgeCount < MaxNudges && b.TranscriptLength - b.CheckedLength >= 800 && b.SessionEndUtc > now).OrderBy(b => b.SessionStartUtc).Take(3).ToListAsync(ct);
         var posted = 0;
         foreach (var candidate in bots)
         {

@@ -40,7 +40,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
     public async Task<AgentFindingPageDto> InboxAsync(CancellationToken ct = default)
     {
         ctx.RequireTenantId();
-        var projectIds = await db.AgentFindings.AsNoTracking().Where(f => f.Status == AgentFindingStatus.Proposed).Select(f => f.ProjectId).Distinct().Take(200).ToListAsync(ct);
+        var projectIds = await db.AgentFindings.AsNoTracking().Where(f => f.Status == AgentFindingStatus.Proposed).Select(f => f.ProjectId).Distinct().OrderBy(x => x).Take(200).ToListAsync(ct);
         var mine = new List<Guid>();
         foreach (var p in await db.Projects.Where(p => projectIds.Contains(p.Id)).ToListAsync(ct))
             if (await settings.CanManageAsync(p, ct)) mine.Add(p.Id);

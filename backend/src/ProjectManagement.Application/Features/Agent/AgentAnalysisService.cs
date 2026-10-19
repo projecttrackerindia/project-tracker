@@ -105,7 +105,7 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
         try
         {
             var people = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == s.TenantId && m.Role != TenantRole.Guest && m.User!.IsActive)
-                .Select(m => new { id = m.UserId, name = m.User!.DisplayName, email = m.User.Email }).Take(300).ToListAsync(ct);
+                .OrderBy(m => m.User!.DisplayName).Select(m => new { id = m.UserId, name = m.User!.DisplayName, email = m.User.Email }).Take(300).ToListAsync(ct);
             var openTasks = await db.Tasks.AsNoTracking().Where(t => t.ProjectId == s.ProjectId && t.ParentTaskId == null
                     && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled)
                 .OrderBy(t => t.DueDate == null).ThenBy(t => t.DueDate).Take(150)
