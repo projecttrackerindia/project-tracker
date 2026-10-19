@@ -15,6 +15,9 @@ public static class EmailTemplates
 {
     private static string Enc(string s) => WebUtility.HtmlEncode(s);
 
+    /// <summary>Where people write with any question (App:SupportEmail): shown in every e-mail's footer and in messages that say "contact support".</summary>
+    public static string SupportEmail { get; set; } = "support@projecttracker.in";
+
     private static (string Label, string Accent) Look(EmailKind k) => k switch
     {
         EmailKind.Security => ("SECURITY", "#fbbf24"),
@@ -63,6 +66,9 @@ public static class EmailTemplates
         var stop = unsubscribeUrl is null ? "" : $"<p class=\"tx3\" style=\"margin:0 0 8px;font-size:12px;line-height:19px;color:#8a82a6\"><a href=\"{Enc(unsubscribeUrl)}\" style=\"color:#8a82a6;text-decoration:underline\">Stop emails like this</a></p>";
         var links = origin.Length == 0 ? "" :
             $"<p class=\"tx3\" style=\"margin:0 0 8px;font-size:12px;line-height:19px;color:#8a82a6\"><a href=\"{Enc(origin)}\" class=\"lnk\" style=\"color:#7c3aed;text-decoration:none\">Open Project Tracker</a> &nbsp;&middot;&nbsp; <a href=\"{Enc(origin)}/account/notifications\" class=\"lnk\" style=\"color:#7c3aed;text-decoration:none\">Notification settings</a> &nbsp;&middot;&nbsp; <a href=\"{Enc(origin)}/security\" class=\"lnk\" style=\"color:#7c3aed;text-decoration:none\">Security</a></p>";
+        var help = SupportEmail.Contains('@')
+            ? $"<p class=\"tx3\" style=\"margin:0 0 8px;font-size:12px;line-height:19px;color:#8a82a6\">Questions? Write to <a href=\"mailto:{Enc(SupportEmail)}\" class=\"lnk\" style=\"color:#7c3aed;text-decoration:none\">{Enc(SupportEmail)}</a></p>"
+            : "";
 
         return $$$"""
             <!doctype html><html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><meta http-equiv="X-UA-Compatible" content="IE=edge"><title>{{{Enc(title)}}}</title>
@@ -104,7 +110,7 @@ public static class EmailTemplates
                   <p class="tx3" style="margin:0 0 8px;font-size:12px;line-height:18px;color:#8a82a6">Button not working? Paste this link into your browser:</p>
                   <p class="mono" style="margin:0;padding:10px 12px;font-family:Consolas,Menlo,monospace;font-size:12px;line-height:18px;color:#6d28d9;background:#f7f4ff;border:1px solid #e7e1f7;border-radius:10px;word-break:break-all"><a class="lnk" href="{{{Enc(link)}}}" style="color:#6d28d9;text-decoration:none">{{{Enc(link)}}}</a></p>
                 </td></tr>
-                <tr><td class="pad" style="padding:20px 32px 0;font-family:Inter,'Segoe UI',Roboto,Arial,sans-serif;text-align:center">{{{foot}}}{{{stop}}}{{{links}}}
+                <tr><td class="pad" style="padding:20px 32px 0;font-family:Inter,'Segoe UI',Roboto,Arial,sans-serif;text-align:center">{{{foot}}}{{{stop}}}{{{links}}}{{{help}}}
                   <p class="tx3" style="margin:6px 0 0;font-size:11px;line-height:17px;color:#a59ec3">Sent by Project Tracker{{{(host.Length > 0 ? " · " + Enc(host) : "")}}}</p></td></tr>
               </table>
             </td></tr></table></body></html>

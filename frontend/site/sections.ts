@@ -22,7 +22,8 @@ export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><a class="brand" href="/">${logoMark('lg2')}${SITE.name}</a><p style="margin-top:14px;max-width:22em">${esc(SITE.tagline)}.</p></div>
 <div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
-<div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a></li></ul></div>
+<div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
+<div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li></ul></div>
 </div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Made for teams that deliver.</span></div></div></footer>`;
 
 const planCard = (p: (typeof PLANS)[number], i: number) => {
@@ -32,7 +33,7 @@ const planCard = (p: (typeof PLANS)[number], i: number) => {
 <div class="price">${p.perUser ? `<s class="was" data-was="${code}" hidden></s>` : ''}<span data-price="${code}">${p.price}</span>${p.price === 'Custom' || p.price === '₹0' ? '' : ` <small data-per="${code}">${p.perUser ? '/ user / month' : '/ month'}</small>`}</div>
 ${p.perUser ? `<p class="ptotal" data-total="${code}">Per person, billed monthly</p>` : p.price === '₹0' ? '<p class="ptotal">Free for good</p>' : '<p class="ptotal">Priced to your contract</p>'}
 <ul>${p.points.map((x) => `<li>${tick}<span>${esc(x)}</span></li>`).join('')}</ul>
-<a class="btn ${p.featured ? 'btn-primary' : 'btn-ghost'}" href="${p.name === 'Enterprise' ? `mailto:${SITE.securityEmail.replace('security@', 'sales@')}?subject=Enterprise%20plan` : '/register'}">${esc(p.cta)}</a></article>`;
+<a class="btn ${p.featured ? 'btn-primary' : 'btn-ghost'}" href="${p.name === 'Enterprise' ? `mailto:${SITE.supportEmail}?subject=Enterprise%20plan` : '/register'}">${esc(p.cta)}</a></article>`;
 };
 const plansNote = `<p class="note2">Pro and Business are priced per person per month, in Indian rupees, excluding GST; the price shown at checkout is the one that applies. Storage and AI credits are per person and shared by the whole team. A ${OFFERS.trialDays}-day trial of either plan needs no payment (up to ${OFFERS.trialPeople} people).</p>`;
 

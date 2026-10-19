@@ -7,7 +7,9 @@ export const SITE = {
     tagline: 'Project management for teams that deliver',
   description: 'Plan projects, track tasks and time, see portfolio risk at a glance and get answers from an AI assistant. Secure project management for every team.',
   alternateNames: ['ProjectTracker', 'projecttracker.in'],
-  securityEmail: 'security@projecttracker.in',
+  /** The one address for every question: sales, billing, help and security reports. */
+  supportEmail: 'support@projecttracker.in',
+  securityEmail: 'support@projecttracker.in',
   themeColor: '#7c3aed',
 };
 

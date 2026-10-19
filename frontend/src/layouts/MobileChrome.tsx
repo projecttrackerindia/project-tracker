@@ -19,6 +19,7 @@ import { useWorkspaceSections } from '../features/settings/sections';
 import { useAi, useAssistant } from '../features/ai/Assistant';
 import { useMainNav } from './navigation';
 import { CreateOrganizationModal, NOTIF_ICON } from './parts';
+import { SUPPORT_EMAIL, supportMailto } from '../lib/support';
 import { planStatus } from './AccountDock';
 
 const TaskModal = lazy(() => import('../features/tasks/TaskModal').then((m) => ({ default: m.TaskModal })));
@@ -290,6 +291,7 @@ function MoreSheet({ onClose, badgeOf }: { onClose: () => void; badgeOf: (to: st
           <li><button type="button" className="m-row" onClick={go('/account/security')}><span className="m-row-ico"><Icon name="lock" size={18} /></span><span className="m-row-main"><b>Sign-in &amp; security</b></span><Icon name="chevronR" size={16} /></button></li>
           {sections.length > 0 && <li><button type="button" className="m-row" onClick={go('/settings')}><span className="m-row-ico"><Icon name="settings" size={18} /></span><span className="m-row-main"><b>Workspace settings</b></span><Icon name="chevronR" size={16} /></button></li>}
           {seeBilling && plan && <li><button type="button" className="m-row" onClick={go('/settings/billing')}><span className="m-row-ico"><Icon name="card" size={18} /></span><span className="m-row-main"><b>Plan and billing</b><small>{plan.name}{status ? ` · ${status.long}` : ''}</small></span><Icon name="chevronR" size={16} /></button></li>}
+          <li><a className="m-row" href={supportMailto('Help with Project Tracker')} onClick={onClose}><span className="m-row-ico"><Icon name="mail" size={18} /></span><span className="m-row-main"><b>Help &amp; support</b><small>{SUPPORT_EMAIL}</small></span><Icon name="chevronR" size={16} /></a></li>
         </ul>
       </section>
       <button type="button" className="m-signout" onClick={() => { onClose(); void logout(); }}><Icon name="logout" size={18} /> Sign out</button>

@@ -12,6 +12,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { DEFAULT_POLICY, quote, type Period, type PricingPolicy, type Quote } from '../../lib/pricing';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
+import { supportMailto } from '../../lib/support';
 import { UpiPayCard } from './UpiPayCard';
 
 const STATUS_TONE: Record<SubscriptionStatus, 'success' | 'info' | 'warning' | 'danger' | 'neutral'> = {
@@ -101,7 +102,7 @@ function PlanCard({ plan, current, canManage, trialAvailable, busy, quote: q, se
       </ul>
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {sameAsNow ? <button className="btn btn-ghost" disabled>Your plan</button>
-          : price === null ? <a className="btn btn-ghost" href="mailto:sales@projecttracker.in?subject=Enterprise%20plan">Contact sales</a>
+          : price === null ? <a className="btn btn-ghost" href={supportMailto('Enterprise plan')}>Contact us</a>
           : (<>
             <button className="btn btn-primary" disabled={!canManage || busy} onClick={() => onChoose(plan, false)}>
               {price === 0 ? 'Switch to Free' : current ? `Update to ${seats} ${seats === 1 ? 'seat' : 'seats'}${period !== purchasedPeriod ? `, billed ${period}` : ''}` : `Choose ${plan.name}`}

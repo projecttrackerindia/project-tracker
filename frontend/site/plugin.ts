@@ -51,6 +51,8 @@ d.querySelectorAll('[data-per="'+p.code+'"]').forEach(function(e){e.style.displa
 const orgLd = {
   '@context': 'https://schema.org', '@type': 'Organization', '@id': abs('/#organization'), name: SITE.name, url: abs('/'),
   logo: { '@type': 'ImageObject', url: abs('/icons/icon-512.png'), width: 512, height: 512 },
+  email: SITE.supportEmail,
+  contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, availableLanguage: ['en'] },
 };
 const siteLd = { '@context': 'https://schema.org', '@type': 'WebSite', '@id': abs('/#website'), url: abs('/'), name: SITE.name, alternateName: SITE.alternateNames, description: SITE.description, publisher: { '@id': abs('/#organization') }, inLanguage: 'en' };
 const appLd = {

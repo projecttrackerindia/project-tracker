@@ -6,6 +6,7 @@ import type { UpiPayment } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge } from '../../components/ui';
 import { formatDate, formatMoney } from '../../lib/format';
+import { SUPPORT_EMAIL, supportMailto } from '../../lib/support';
 import { confirmDialog, toast } from '../../stores/ui';
 
 const REASONS = ['The app said the payment failed', 'The bank server is down', 'The QR could not be scanned', 'The payee could not be verified', 'Something else'];
@@ -43,7 +44,7 @@ export function UpiPayCard({ pay, onChanged }: { pay: UpiPayment; onChanged: () 
       <div className="card-body">
         <p>Thank you. We are matching UPI transaction <b className="mono">{pay.utr}</b> ({amount} to {pay.bankLabel ?? 'our account'}) with the bank statement.
           Your plan is switched on as soon as it is confirmed, usually within a few working hours, and you get a notification.</p>
-        <p className="muted" style={{ fontSize: 12.5 }}>Reference {pay.reference}. If the money left your account but this is not confirmed within a day, reply to the invoice e-mail or contact support with this reference.</p>
+        <p className="muted" style={{ fontSize: 12.5 }}>Reference {pay.reference}. If the money left your account but this is not confirmed within a day, write to <a href={supportMailto(`UPI payment ${pay.reference}`)}>{SUPPORT_EMAIL}</a> with this reference.</p>
       </div>
     </div>
   );
@@ -53,7 +54,7 @@ export function UpiPayCard({ pay, onChanged }: { pay: UpiPayment; onChanged: () 
       <div className="card-head"><div><h3>We could not confirm your payment</h3><p>{pay.description}</p></div><Badge tone="danger">Not confirmed</Badge></div>
       <div className="card-body">
         <p>UPI transaction <b className="mono">{pay.utr}</b> could not be matched{pay.decisionNote ? `: ${pay.decisionNote}` : '.'}</p>
-        <p className="muted" style={{ fontSize: 12.5 }}>Check the UTR in your payment app and choose the plan again below to pay with a fresh QR. If money was taken from your account, contact support with reference {pay.reference}.</p>
+        <p className="muted" style={{ fontSize: 12.5 }}>Check the UTR in your payment app and choose the plan again below to pay with a fresh QR. If money was taken from your account, write to <a href={supportMailto(`UPI payment ${pay.reference}`)}>{SUPPORT_EMAIL}</a> with reference {pay.reference}.</p>
         <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => billingApi.upiCancel(pay.id))}>Dismiss</button>
       </div>
     </div>

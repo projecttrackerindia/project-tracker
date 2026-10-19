@@ -285,7 +285,7 @@ public class UpiBillingService(IAppDbContext db, CurrentContext ctx, AppClock cl
         if (string.IsNullOrEmpty(note)) throw new ValidationException("note", "Say why, so the payer knows what to fix.");
         row.Status = "rejected"; row.DecidedAt = clock.Now; row.DecidedBy = ctx.UserId; row.DecisionNote = Cut(note, 300); row.UpdatedAt = clock.Now;
         recorder.Audit("billing.upi_rejected", "UpiPayment", row.Id, tenantId: row.TenantId, newValue: new { row.Reference, note });
-        Notify(row.TenantId, "We could not confirm your UPI payment", $"{note} Open Billing to pay again or contact support with reference {row.Reference}.", clock.Now);
+        Notify(row.TenantId, "We could not confirm your UPI payment", $"{note} Open Billing to pay again, or write to {EmailTemplates.SupportEmail} with reference {row.Reference}.", clock.Now);
         await db.SaveChangesAsync(ct);
     }
 

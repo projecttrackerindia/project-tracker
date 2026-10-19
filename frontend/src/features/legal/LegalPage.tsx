@@ -3,6 +3,7 @@ import { consentApi } from '../../api/endpoints';
 import { PageLoader } from '../../components/ui';
 import { BrandMark } from '../../components/BrandMark';
 import { usePageTitle } from '../../lib/title';
+import { SUPPORT_EMAIL, supportMailto } from '../../lib/support';
 
 const TITLES: Record<string, string> = { tos: 'Terms of Service', privacy: 'Privacy Policy' };
 
@@ -25,7 +26,7 @@ export function LegalPage({ type }: { type: 'tos' | 'privacy' }) {
         {q.isLoading ? <PageLoader /> : doc ? <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{doc.body}</p> : <p className="muted">This document is not available right now.</p>}
       </article>
       <footer className="sec-foot">
-        <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <a href="/security/">Security</a>
+        <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <a href="/security/">Security</a> · Questions: <a href={supportMailto(TITLES[type])}>{SUPPORT_EMAIL}</a>
       </footer>
     </div>
   );

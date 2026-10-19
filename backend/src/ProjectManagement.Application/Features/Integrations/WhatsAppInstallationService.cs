@@ -117,7 +117,7 @@ public class WhatsAppInstallationService(IAppDbContext db, CurrentContext ctx, A
         var row = await db.WhatsAppConnections.SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
         if (row is not null && (row.Active && (row.TokenExpiresAt == null || row.TokenExpiresAt > clock.Now) || row.AppId != Options.AppId
                 || row.BusinessAccountId != verified.BusinessAccountId || row.PhoneNumberId != verified.PhoneNumberId))
-            throw new ConflictException("This organization has a reserved business mapping. Reconnect the same account or contact support.", "WHATSAPP_INSTALLATION_CONFLICT");
+            throw new ConflictException($"This organization has a reserved business mapping. Reconnect the same account or write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail}.", "WHATSAPP_INSTALLATION_CONFLICT");
         // Exact installation metadata only: never inspect another organization's projects, contacts or messages.
         if (await db.WhatsAppConnections.IgnoreQueryFilters().AnyAsync(x => x.TenantId != tenant
                 && x.AppId == Options.AppId && x.PhoneNumberId == verified.PhoneNumberId, ct))

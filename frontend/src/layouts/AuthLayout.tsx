@@ -4,6 +4,7 @@ import { AuthVisual } from '../components/AuthVisual';
 import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { ThemeSwitch } from '../components/ThemeSwitch';
+import { SUPPORT_EMAIL, supportMailto } from '../lib/support';
 
 export function AuthLayout({ title, sub, children, footer, shake }: { title: string; sub?: string; children: ReactNode; footer?: ReactNode; shake?: boolean }) {
   return (
@@ -31,6 +32,7 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
           {sub && <p className="auth-sub">{sub}</p>}
           {children}
           {footer && <div className="auth-foot">{footer}</div>}
+          <p className="auth-help">Need help? <a href={supportMailto('Help with Project Tracker')}>{SUPPORT_EMAIL}</a></p>
         </div>
       </div>
       <ToastRoot />

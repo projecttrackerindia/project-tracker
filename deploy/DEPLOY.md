@@ -53,6 +53,14 @@ Open `https://<your domain>`. First start applies the database migrations automa
 Open **Admin → System health**. In the **Go-live checklist**, click **Send test email to me** and confirm it arrives. If it does not,
 look at `docker compose logs api` for the SMTP error.
 
+### Support address
+
+Every question goes to one address, **support@projecttracker.in**: the website (footer, Enterprise plan, security report, `security.txt`,
+structured data), the app (account menu › *Help & support*, sign-in pages, Billing, legal pages) and the footer of every e-mail. Set
+`App__SupportEmail` to change it on the API (e-mail footers and messages such as "write to … with the reference"), and `Email__ReplyTo` to the
+same address so replies to system e-mails reach it. The website and app use `SITE.supportEmail` (`frontend/site/content.ts`) and
+`SUPPORT_EMAIL` (`frontend/src/lib/support.ts`).
+
 ### Payments (before you charge anyone)
 
 Out of the box payments are **simulated**: choosing a paid plan succeeds and nothing real is charged. To take real money with Razorpay:

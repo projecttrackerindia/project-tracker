@@ -26,7 +26,7 @@ public class ResumePurchaseService(IAppDbContext db,ICurrentContext ctx,ResumeSe
         var existing=await Mine.FirstOrDefaultAsync(p=>p.ResumeVersionId==v.Id&&p.TemplateId==req.TemplateId&&p.Format==req.Format,ct);
         if(existing!=null)
         {
-            if(existing.Status is "refunded" or "deleted")throw new ConflictException("This purchase is no longer available. Contact support before attempting another payment.","RESUME_PURCHASE_UNAVAILABLE");
+            if(existing.Status is "refunded" or "deleted")throw new ConflictException($"This purchase is no longer available. Write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail} before attempting another payment.","RESUME_PURCHASE_UNAVAILABLE");
             if(existing.ProviderOrderId is null)throw new ConflictException("The original order is being prepared or needs reconciliation. Check purchase status before paying again.","RESUME_ORDER_RECONCILIATION_REQUIRED");
             await prepare.CommitIfOwnedAsync(ct);return Dto(existing);
         }
@@ -62,7 +62,7 @@ public class ResumePurchaseService(IAppDbContext db,ICurrentContext ctx,ResumeSe
             if(row.Status!="refunded"){row.Status="refunded";row.Version++;recorder.Audit("billing.resume_payment_refunded","ResumeExportPurchase",row.Id);await db.SaveChangesAsync(ct);}return;
         }
         if(payment.Status!="captured")throw new ConflictException("Payment is awaiting capture. Use Check payment status; do not pay again.","PAYMENT_NOT_CAPTURED");
-        if(row.Status=="refunded")throw new ConflictException("This purchase was refunded. Contact support.","PAYMENT_REFUNDED");
+        if(row.Status=="refunded")throw new ConflictException($"This purchase was refunded. Write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail} with any question.","PAYMENT_REFUNDED");
         if(row.Status=="paid")return;
         row.ProviderPaymentId=payment.Id;row.Status="paid";row.PaidAt=clock.Now;row.Version++;
         recorder.Audit("billing.resume_payment_captured","ResumeExportPurchase",row.Id,null,new{row.BaseMinor,row.TaxMinor,row.Currency,row.ProviderOrderId,row.ProviderPaymentId});await db.SaveChangesAsync(ct);
@@ -75,8 +75,8 @@ public class ResumePurchaseService(IAppDbContext db,ICurrentContext ctx,ResumeSe
         await ApplyAsync(row,await gateway.FetchAsync(row.ProviderPaymentId,ct),ct);if(row.Status!="paid")throw new ConflictException("This purchase was refunded.","PAYMENT_REFUNDED");
         var version=await db.ResumeVersions.AsNoTracking().FirstOrDefaultAsync(v=>v.Id==row.ResumeVersionId&&v.UserId==ctx.RequireUserId(),ct)??throw new NotFoundException("Resume version not found.");
         await resumes.RevalidateAsync(version,ct);
-        await using var stream=await storage.OpenReadAsync(row.ArtifactKey,ct)??throw new AppException(503,"RESUME_FILE_UNAVAILABLE","Your paid file is unavailable. Contact support with the purchase reference; do not pay again.");
-        using var ms=new MemoryStream();await stream.CopyToAsync(ms,ct);var bytes=ms.ToArray();if(Convert.ToHexString(SHA256.HashData(bytes))!=row.ArtifactSha256)throw new AppException(503,"RESUME_FILE_UNAVAILABLE","The paid file could not be verified. Contact support; do not pay again.");
+        await using var stream=await storage.OpenReadAsync(row.ArtifactKey,ct)??throw new AppException(503,"RESUME_FILE_UNAVAILABLE",$"Your paid file is unavailable. Write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail} with the purchase reference; do not pay again.");
+        using var ms=new MemoryStream();await stream.CopyToAsync(ms,ct);var bytes=ms.ToArray();if(Convert.ToHexString(SHA256.HashData(bytes))!=row.ArtifactSha256)throw new AppException(503,"RESUME_FILE_UNAVAILABLE",$"The paid file could not be verified. Write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail}; do not pay again.");
         row.FirstDownloadedAt??=clock.Now;await db.SaveChangesAsync(ct);return(bytes,row.Format=="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",$"resume-clean-v{version.Number}.{row.Format}");
     }
 }

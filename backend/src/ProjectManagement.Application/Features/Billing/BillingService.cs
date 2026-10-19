@@ -144,7 +144,7 @@ public class BillingService(
         }
         else if (plan.PriceMonthly is null)
         {
-            throw new ValidationException("planCode", "This plan has custom pricing. Contact sales to get started.");
+            throw new ValidationException("planCode", $"This plan has custom pricing. Write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail} to get started.");
         }
         else if (req.StartTrial)
         {

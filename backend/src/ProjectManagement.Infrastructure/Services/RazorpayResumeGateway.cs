@@ -23,7 +23,7 @@ public class RazorpayResumeGateway(HttpClient http,IOptions<RazorpayOptions> opt
     public async Task<string> CreateOrderAsync(Guid purchaseId,long amountMinor,CancellationToken ct)
     {
         var json=await SendAsync(HttpMethod.Post,"/orders",new{amount=amountMinor,currency="INR",receipt=purchaseId.ToString("N"),partial_payment=false,notes=new{purpose="resume-export",purchaseId=purchaseId.ToString("N")}},ct);
-        if(json.GetProperty("amount").GetInt64()!=amountMinor||json.GetProperty("currency").GetString()!="INR"||json.GetProperty("receipt").GetString()!=purchaseId.ToString("N"))throw new AppException(502,"PAYMENT_ORDER_MISMATCH","The payment order could not be verified. Please contact support.");
+        if(json.GetProperty("amount").GetInt64()!=amountMinor||json.GetProperty("currency").GetString()!="INR"||json.GetProperty("receipt").GetString()!=purchaseId.ToString("N"))throw new AppException(502,"PAYMENT_ORDER_MISMATCH",$"The payment order could not be verified. Please write to {ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail}.");
         return Id(json.GetProperty("id").GetString()!,"order");
     }
     public bool VerifyCheckout(string orderId,string paymentId,string signature)=>RazorpaySignature.Matches(RazorpaySignature.Hex(Opt.KeySecret??"",orderId+"|"+paymentId),signature);

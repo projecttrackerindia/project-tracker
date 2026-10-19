@@ -147,6 +147,8 @@ public static class DependencyInjection
         else
             services.AddSingleton<IEmailTransport, LogEmailSender>();
         services.Configure<EmailCommonOptions>(config.GetSection("Email"));
+        if (config["App:SupportEmail"] is { Length: > 3 } supportEmail && supportEmail.Contains('@'))
+            ProjectManagement.Application.Features.Auth.EmailTemplates.SupportEmail = supportEmail.Trim();
         // What the app sends through: the provider above, plus suppression of bad addresses, a delivery log and retries for important messages.
         services.AddSingleton<IEmailSender, ProjectManagement.Application.Features.Notifications.ReliableEmailSender>();
 

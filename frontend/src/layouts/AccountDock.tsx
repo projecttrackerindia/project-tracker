@@ -7,6 +7,7 @@ import { formatDate, initials } from '../lib/format';
 import { useAuth, useModule } from '../stores/auth';
 import { useUi } from '../stores/ui';
 import { useWorkspaceSections } from '../features/settings/sections';
+import { supportMailto } from '../lib/support';
 import { PRESENCE_LABEL, useChat } from '../features/chat/chatStore';
 
 type Tone = 'ok' | 'info' | 'warn' | 'bad';
@@ -127,6 +128,7 @@ export function AccountDock() {
             {!isAdmin && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/mobile')}><Icon name="bell" /> Mobile app</button>}
             <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/security')}><Icon name="lock" /> Sign-in &amp; security</button>
             {sections.length > 0 && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/settings')}><Icon name="settings" /> Workspace settings</button>}
+            <a role="menuitem" className="dp-menu-item" href={supportMailto('Help with Project Tracker')} onClick={() => close(false)}><Icon name="mail" /> Help &amp; support</a>
           </div>
           <div className="dp-sep" />
           <button type="button" role="menuitem" className="dp-menu-item danger" onClick={() => { close(false); void logout(); }}><Icon name="logout" /> Sign out</button>
