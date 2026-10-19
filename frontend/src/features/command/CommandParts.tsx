@@ -39,8 +39,8 @@ export function BriefModal({ meetingId, at, onClose, onDelegate }: { meetingId: 
                 {b.overdue > 0 && <i className="cmd-seg-missed" style={{ flexGrow: b.overdue / total }} />}
               </div>
               <ul className="cmd-legend">
-                <li><i className="cmd-seg-kept" />Done <b>{b.done}</b></li><li><i className="cmd-seg-open" />Open <b>{b.open}</b></li>
-                <li><i className="cmd-seg-moved" />Blocked <b>{b.blocked}</b></li><li><i className="cmd-seg-missed" />Late <b>{b.overdue}</b></li>
+                {([['kept', 'Done', b.done], ['open', 'Open', b.open], ['moved', 'Blocked', b.blocked], ['missed', 'Late', b.overdue]] as const).filter(([, , v]) => v > 0)
+                  .map(([k, label, v]) => <li key={k}><i className={`cmd-seg-${k}`} />{label} <b>{v}</b></li>)}
               </ul>
             </div>
           )}

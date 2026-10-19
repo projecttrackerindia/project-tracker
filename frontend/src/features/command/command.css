@@ -163,7 +163,7 @@
 .cmd-brief-headline svg { flex: none; margin-top: 2px; color: var(--primary); }
 .cmd-brief-headline.calm { background: var(--success-soft); } .cmd-brief-headline.calm svg { color: var(--success); }
 .cmd-brief-progress { display: grid; gap: 8px; }
-.cmd-agenda { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13.5px; line-height: 1.5; }
+.cmd-agenda { margin: 0; padding-left: 20px; list-style: decimal; display: grid; gap: 4px; font-size: 13.5px; line-height: 1.5; }
 .cmd-brief-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .cmd-brief-items li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .cmd-brief-items b { font-family: var(--mono); font-size: 12.5px; }
@@ -261,3 +261,5 @@
   .cmd-gantt-row { grid-template-columns: 56px minmax(0, 1fr) 40px; }
   .ag-levels span { font-size: 9.5px; }
 }
+
+.cmd-agenda li::marker { color: var(--text-3); font-weight: 700; }
