@@ -132,6 +132,9 @@ public interface IAppDbContext
     DbSet<AgentFinding> AgentFindings { get; }
     DbSet<AgentWorkspaceSettings> AgentWorkspaceSettings { get; }
     DbSet<AgentMeetingBot> AgentMeetingBots { get; }
+    DbSet<AgentCommitment> AgentCommitments { get; }
+    DbSet<AgentDelegation> AgentDelegations { get; }
+    DbSet<AgentPersonalSettings> AgentPersonalSettings { get; }
     DbSet<AgentBotWorker> AgentBotWorkers { get; }
     DbSet<AgentInboxOptIn> AgentInboxOptIns { get; }
     DbSet<UpiPayment> UpiPayments { get; }

@@ -28,7 +28,12 @@ public class ProjectAgentController(AgentSettingsService settings, AgentSignalSe
     public async Task<IActionResult> ResetMailbox(Guid projectId, CancellationToken ct) => Ok(await settings.ResetMailboxAsync(projectId, ct));
 
     [HttpPost("projects/{projectId:guid}/agent/run"), AiRequestLimit]
-    public async Task<IActionResult> Run(Guid projectId, CancellationToken ct) => Ok(await analysis.RunNowAsync(projectId, ct));
+    public async Task<IActionResult> Run(Guid projectId, CancellationToken ct)
+    {
+        var run = await analysis.RunNowAsync(projectId, ct);
+        if (run is { Status: "done" }) await review.AutoApplyRunAsync(projectId, run.Id, ct);
+        return Ok(run);
+    }
 
     /// <summary>A transcript or meeting notes, read straight away.</summary>
     [HttpPost("projects/{projectId:guid}/agent/transcript"), AiRequestLimit]
@@ -40,6 +45,7 @@ public class ProjectAgentController(AgentSettingsService settings, AgentSignalSe
         // Read at once when the agent is on; otherwise it waits until someone switches it on.
         try { if (await settings.AiAvailableAsync(ct)) run = await analysis.RunNowAsync(projectId, ct); }
         catch (ProjectManagement.Application.Exceptions.ConflictException ex) when (ex.Code is "AGENT_DISABLED" or "AGENT_NOTHING_NEW") { }
+        if (run is { Status: "done" }) await review.AutoApplyRunAsync(projectId, run.Id, ct);
         return Created(new { signalId = signal.Id, run });
     }
 

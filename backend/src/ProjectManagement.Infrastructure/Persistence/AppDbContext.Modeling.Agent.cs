@@ -21,6 +21,7 @@ public partial class AppDbContext
             e.Property(x => x.CaptionLanguage).HasMaxLength(16);
             e.Property(x => x.SlackChannelId).HasMaxLength(32);
             e.Property(x => x.SlackReadUntil).HasMaxLength(32);
+            e.Property(x => x.AutoApplyKinds).HasMaxLength(200);
         });
         b.Entity<AgentSignal>(e =>
         {
@@ -56,6 +57,34 @@ public partial class AppDbContext
             e.Property(x => x.OriginalTitle).HasMaxLength(300);
             e.Property(x => x.OwnerResponse).HasMaxLength(16);
             e.Property(x => x.OwnerNote).HasMaxLength(500);
+            e.Property(x => x.Before).HasMaxLength(500);
+            e.HasIndex(x => new { x.ProjectId, x.Kind, x.Status });
+        });
+        b.Entity<AgentCommitment>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.Status, x.DueDate });
+            e.HasIndex(x => new { x.OwnerUserId, x.Status });
+            e.HasIndex(x => x.FindingId);
+            e.Property(x => x.EntityKey).HasMaxLength(40);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Quote).HasMaxLength(400);
+            e.Property(x => x.SourceLabel).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.CheckInAnswer).HasMaxLength(16);
+            e.Property(x => x.CheckInNote).HasMaxLength(500);
+        });
+        b.Entity<AgentDelegation>(e =>
+        {
+            e.HasIndex(x => new { x.MeetingId, x.SessionStartUtc, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.SessionStartUtc });
+            e.HasIndex(x => new { x.ProjectId, x.Status });
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Instructions).HasMaxLength(1000);
+            e.Property(x => x.Note).HasMaxLength(500);
+        });
+        b.Entity<AgentPersonalSettings>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
         });
         b.Entity<AgentWorkspaceSettings>(e =>
         {

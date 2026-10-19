@@ -63,6 +63,20 @@ namespace ProjectManagement.Domain.Entities
         public string? SlackReadUntil { get; set; }
         /// <summary>Read WhatsApp messages that start with the project key ("PAY: ...") from members with a verified WhatsApp number.</summary>
         public bool ReadWhatsApp { get; set; } = true;
+        /// <summary>
+        /// How much the agent may do on its own (see <c>AgentAutonomy</c>): 1 observer (notes and minutes, silent in meetings), 2 assistant (also
+        /// reminders in the meeting chat), 3 participant (also answers questions in the meeting chat from the tracker), 4 delegate (also carries
+        /// out safe items by itself when it is sure enough). Changes to existing work - dates, status, owners - always wait for a person.
+        /// </summary>
+        public int AutonomyLevel { get; set; } = 2;
+        /// <summary>At level 4, the lowest confidence (0-100) at which a safe, grounded proposal is carried out without waiting.</summary>
+        public int AutoApplyConfidence { get; set; } = 90;
+        /// <summary>At level 4, which kinds of proposal are safe to carry out alone (comma-separated <see cref="AgentFindingKind"/> names).</summary>
+        public string? AutoApplyKinds { get; set; }
+        /// <summary>Ask owners of work agreed in meetings whether it is on track on its due day, and turn "I need more time" into a proposal.</summary>
+        public bool FollowUps { get; set; } = true;
+        /// <summary>A short brief to the people in a project meeting shortly before it starts.</summary>
+        public bool MeetingBriefs { get; set; } = true;
     }
 
     /// <summary>Something the agent will read: an e-mail, a stretch of chat, a meeting transcript. The content is stored encrypted.</summary>
@@ -145,6 +159,83 @@ namespace ProjectManagement.Domain.Entities
         public string? OwnerResponse { get; set; }
         public DateTime? OwnerRespondedAt { get; set; }
         public string? OwnerNote { get; set; }
+        /// <summary>Carried out by the agent itself (autonomy level 4: a safe kind, grounded, confident enough), not by a person's approval.</summary>
+        public bool AutoApplied { get; set; }
+        /// <summary>What the work looked like before the change was carried out ("due 2026-10-20 · In progress · Ravi"), for the audit trail.</summary>
+        public string? Before { get; set; }
+        /// <summary>The commitment check-in this proposal came from ("I need more time"), when it came from one.</summary>
+        public Guid? CommitmentId { get; set; }
+    }
+
+    /// <summary>
+    /// Something a person said they would do by a date - work agreed in a meeting or chat, approved into the project. On its due day the agent
+    /// asks the owner whether it is on track; "I need more time" becomes a proposal for the project lead, with what it would move.
+    /// </summary>
+    public class AgentCommitment : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        /// <summary>The proposal it was approved from.</summary>
+        public Guid? FindingId { get; set; }
+        /// <summary>The task (or action item) that carries it.</summary>
+        public Guid? TaskId { get; set; }
+        public Guid? WorkTaskId { get; set; }
+        public string? EntityKey { get; set; }
+        public Guid OwnerUserId { get; set; }
+        public string Title { get; set; } = "";
+        public DateOnly DueDate { get; set; }
+        public string? Quote { get; set; }
+        public string? SourceLabel { get; set; }
+        /// <summary>Who approved it (they hear about changes to it).</summary>
+        public Guid? ApprovedBy { get; set; }
+        /// <summary>open, kept (done by its date), missed (its date passed and it is not done), moved (a new date was approved), dropped.</summary>
+        public string Status { get; set; } = "open";
+        public DateTime? CheckInSentAt { get; set; }
+        /// <summary>The owner's answer: on_track, more_time, blocked, done.</summary>
+        public string? CheckInAnswer { get; set; }
+        public string? CheckInNote { get; set; }
+        public DateOnly? ProposedDate { get; set; }
+        public DateTime? AnsweredAt { get; set; }
+        public DateTime? ResolvedAt { get; set; }
+        /// <summary>The proposal the answer created (a new date, or a blocker) for the project lead.</summary>
+        public Guid? ChangeFindingId { get; set; }
+    }
+
+    /// <summary>
+    /// "Send the agent in my place": a person who cannot attend a session of a project meeting sends the agent instead. It joins as their
+    /// assistant (never as them), says why they are not there, raises what they asked it to, and reports back afterwards with what needs their decision.
+    /// </summary>
+    public class AgentDelegation : TenantEntity, ITenantScoped
+    {
+        public Guid ProjectId { get; set; }
+        public Guid MeetingId { get; set; }
+        public DateTime SessionStartUtc { get; set; }
+        public DateTime SessionEndUtc { get; set; }
+        public Guid UserId { get; set; }
+        /// <summary>requested, attending, reported, cancelled.</summary>
+        public string Status { get; set; } = "requested";
+        /// <summary>What to raise or ask in the meeting on the person's behalf.</summary>
+        public string? Instructions { get; set; }
+        /// <summary>Sent by the person's own rule (double-booked), not by hand.</summary>
+        public bool Automatic { get; set; }
+        /// <summary>The bot session that went.</summary>
+        public Guid? BotRowId { get; set; }
+        public DateTime? ReportSentAt { get; set; }
+        public string? Note { get; set; }
+    }
+
+    /// <summary>One person's own agent preferences: briefs before meetings, check-ins, sending the agent when double-booked, and the Command Center.</summary>
+    public class AgentPersonalSettings : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        /// <summary>When two of my meetings overlap, send the agent to the project meeting I do not organize.</summary>
+        public bool AutoDelegate { get; set; }
+        public bool MeetingBriefs { get; set; } = true;
+        /// <summary>How many minutes before a meeting its brief arrives (5-60).</summary>
+        public int BriefMinutes { get; set; } = 10;
+        public bool CheckIns { get; set; } = true;
+        /// <summary>When the person last opened the Command Center ("what changed while I was away" starts from the visit before).</summary>
+        public DateTime? LastVisitAt { get; set; }
+        public DateTime? PreviousVisitAt { get; set; }
     }
 
     /// <summary>How the workspace's live meeting bot appears and behaves (the bot itself is the installation's own service, apps/meetbot).</summary>

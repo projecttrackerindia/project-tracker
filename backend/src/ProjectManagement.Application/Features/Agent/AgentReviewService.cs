@@ -55,6 +55,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var f = await DecidableAsync(id, ct);
         f.Status = AgentFindingStatus.Dismissed; f.DecidedBy = ctx.RequireUserId(); f.DecidedAt = clock.Now; f.UpdatedAt = clock.Now;
         recorder.Audit("agent.finding_dismissed", "AgentFinding", f.Id, null, new { f.Kind });
+        await AnswerRequesterAsync(f, false, ct);
         await db.SaveChangesAsync(ct);
         await MinutesAsync([f.RunId], ct);
         return (await DtosAsync([f], ct))[0];
@@ -88,6 +89,43 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var rows = await db.AgentFindings.AsNoTracking().Where(f => ids.Contains(f.Id)).OrderBy(f => f.CreatedAt).ToListAsync(ct);
         await MinutesAsync(rows.Select(r => r.RunId), ct);
         return new ApproveAllResult(applied, failed, await DtosAsync(rows, ct), skipped);
+    }
+
+    /// <summary>
+    /// Autonomy level 4: carries out the safe proposals of a reading by itself (new items and notes that are grounded, confident enough and,
+    /// for new work, have an owner), acting as the person the agent acts for. Everything else keeps waiting. Returns how many were carried out.
+    /// </summary>
+    public async Task<int> AutoApplyRunAsync(ProjectAgentSettings s, Guid runId, CancellationToken ct = default)
+    {
+        if (AgentAutonomy.Level(s.AutonomyLevel) < AgentAutonomy.Delegate) return 0;
+        var candidates = await db.AgentFindings.Where(f => f.RunId == runId && f.ProjectId == s.ProjectId && f.Status == AgentFindingStatus.Proposed)
+            .OrderByDescending(f => f.Confidence).Take(25).ToListAsync(ct);
+        var done = new List<AgentFinding>();
+        foreach (var f in candidates.Where(f => AgentAutonomy.MayAutoApply(s, f)))
+        {
+            f.AutoApplied = true;
+            await ApplyAsync(f, ct);
+            if (f.Status == AgentFindingStatus.Applied) done.Add(f);
+        }
+        if (done.Count == 0) return 0;
+        recorder.Audit("agent.auto_applied", "Project", s.ProjectId, null, new { runId, count = done.Count, s.AutoApplyConfidence });
+        var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == s.ProjectId, ct);
+        var left = await db.AgentFindings.CountAsync(f => f.RunId == runId && f.Status == AgentFindingStatus.Proposed, ct);
+        await notifications.AddAsync(project.OwnerId, NotificationType.ProjectUpdated,
+            Text.Truncate($"The agent carried out {done.Count} safe item{(done.Count == 1 ? "" : "s")} in {project.Name}", 200)!,
+            Text.Truncate(string.Join(" · ", done.Take(4).Select(d => d.AppliedKey ?? d.Title)) + (left > 0 ? $". {left} more wait for you." : "."), 500),
+            $"/projects/{project.Id}?tab=agent", $"agent-auto:{runId:N}", toSelf: true, ct: ct);
+        await db.SaveChangesAsync(ct);
+        await MinutesAsync([runId], ct);
+        return done.Count;
+    }
+
+    /// <summary>After a reading someone started by hand: the same autonomy as in the background.</summary>
+    public async Task<int> AutoApplyRunAsync(Guid projectId, Guid? runId, CancellationToken ct = default)
+    {
+        if (runId is not { } id) return 0;
+        var s = await db.ProjectAgentSettings.AsNoTracking().FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
+        return s is null ? 0 : await AutoApplyRunAsync(s, id, ct);
     }
 
     /// <summary>Minutes go out once a meeting is fully decided; a failure there never undoes the decision.</summary>
@@ -202,6 +240,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
     {
         var id = f.Id; var me = ctx.RequireUserId();
         Guid? entity = null; string? key = null;
+        var before = await BeforeAsync(f, ct);
         try
         {
             (entity, key) = await CarryOutAsync(f, ct);
@@ -219,8 +258,11 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var row = await db.AgentFindings.FirstAsync(x => x.Id == id, ct);
         if (!ReferenceEquals(row, f)) Copy(f, row);
         row.Status = AgentFindingStatus.Applied; row.Error = null; row.DecidedBy = me; row.DecidedAt = clock.Now; row.UpdatedAt = clock.Now;
-        row.AppliedEntityId = entity; row.AppliedKey = key;
-        recorder.Audit("agent.finding_applied", "AgentFinding", row.Id, null, new { row.Kind, entity, key });
+        row.AppliedEntityId = entity; row.AppliedKey = key; row.Before = before; row.AutoApplied = f.AutoApplied;
+        recorder.Audit(f.AutoApplied ? "agent.finding_auto_applied" : "agent.finding_applied", "AgentFinding", row.Id,
+            before is null ? null : new { Before = before }, new { row.Kind, entity, key, row.DueDate, row.NewStatus, row.AssigneeId, row.Confidence });
+        await CommitAsync(row, me, ct);
+        await AnswerRequesterAsync(row, true, ct);
         if (row.Kind is AgentFindingKind.Delay or AgentFindingKind.Missed or AgentFindingKind.Suggestion or AgentFindingKind.Decision)
             recorder.Activity("agent.note", "Project", row.ProjectId, $"{Noun(row.Kind)} noted by the project agent: {row.Title}", row.ProjectId);
         // Work given to someone else: they are asked to confirm it is theirs (one tap), so a wrong owner is caught the same day.
@@ -327,6 +369,73 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         return (taskId, await KeyOfAsync(taskId, ct));
     }
 
+    // ---------------------------------------------------------------- audit, commitments, change requests
+
+    /// <summary>What existing work looked like before a change to it ("due 20 Oct · In progress · Ravi"), for the audit trail.</summary>
+    private async Task<string?> BeforeAsync(AgentFinding f, CancellationToken ct)
+    {
+        if (f.TaskId is { } taskId && f.Kind is AgentFindingKind.UpdateTask or AgentFindingKind.Delay)
+        {
+            var t = await db.Tasks.AsNoTracking().Where(x => x.Id == taskId)
+                .Select(x => new { x.DueDate, Status = x.Status!.Name, Owner = x.Assignee != null ? x.Assignee.DisplayName : null, x.Priority }).FirstOrDefaultAsync(ct);
+            if (t is null) return null;
+            return AgentAnalysisService.Cut(string.Join(" · ", new[] { t.DueDate is { } d ? $"due {d:yyyy-MM-dd}" : "no due date", t.Status, t.Owner ?? "no owner", t.Priority.ToString() }), 500);
+        }
+        if (f.IssueId is { } issueId && f.Kind == AgentFindingKind.UpdateIssue)
+        {
+            var i = await db.StageIssues.AsNoTracking().Where(x => x.Id == issueId).Select(x => new { x.Status, x.AssigneeId }).FirstOrDefaultAsync(ct);
+            if (i is null) return null;
+            var who = i.AssigneeId is { } a ? await db.Users.AsNoTracking().Where(u => u.Id == a).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) : null;
+            return AgentAnalysisService.Cut($"{i.Status} · {who ?? "no owner"}", 500);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Work someone agreed to by a date becomes a commitment the agent follows up on its due day. A new date for a task replaces the open
+    /// commitment on it (marked moved).
+    /// </summary>
+    private async Task CommitAsync(AgentFinding f, Guid approver, CancellationToken ct)
+    {
+        if (f.DueDate is not { } due) return;
+        Guid? taskId = null, workTaskId = null; Guid? owner = f.AssigneeId;
+        switch (f.Kind)
+        {
+            case AgentFindingKind.CreateTask when f.AppliedEntityId is { } t: taskId = t; break;
+            case AgentFindingKind.CreateActionItem when f.AppliedEntityId is { } w: workTaskId = w; break;
+            case AgentFindingKind.UpdateTask or AgentFindingKind.Delay when f.TaskId is { } t2:
+                taskId = t2;
+                owner ??= await db.Tasks.AsNoTracking().Where(x => x.Id == t2).Select(x => x.AssigneeId).FirstOrDefaultAsync(ct);
+                break;
+            default: return;
+        }
+        if (owner is not { } who) return;
+        if (taskId is { } tid)
+            await db.AgentCommitments.Where(c => c.TaskId == tid && (c.Status == "open" || c.Status == "missed") && c.ResolvedAt == null)
+                .ExecuteUpdateAsync(u => u.SetProperty(c => c.Status, "moved").SetProperty(c => c.ResolvedAt, clock.Now).SetProperty(c => c.UpdatedAt, clock.Now), ct);
+        db.AgentCommitments.Add(new AgentCommitment
+        {
+            TenantId = f.TenantId, ProjectId = f.ProjectId, FindingId = f.Id, TaskId = taskId, WorkTaskId = workTaskId, EntityKey = f.AppliedKey,
+            OwnerUserId = who, Title = AgentAnalysisService.Cut(f.Title, 300)!, DueDate = due, Quote = AgentAnalysisService.Cut(f.Evidence, 400),
+            SourceLabel = AgentAnalysisService.Cut(f.SourceLabel, 200), ApprovedBy = approver, Status = "open", CreatedAt = clock.Now, CreatedBy = approver,
+        });
+    }
+
+    /// <summary>A change asked for in a check-in ("I need more time"): the person who asked hears the decision.</summary>
+    private async Task AnswerRequesterAsync(AgentFinding f, bool approved, CancellationToken ct)
+    {
+        if (f.CommitmentId is not { } cid) return;
+        var c = await db.AgentCommitments.FirstOrDefaultAsync(x => x.Id == cid, ct);
+        if (c is null) return;
+        var what = c.EntityKey ?? c.Title;
+        var who = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "The lead";
+        var title = f.DueDate is { } d
+            ? approved ? $"{who} moved {what} to {d:d MMM}" : $"{who} kept {what} on {c.DueDate:d MMM}"
+            : approved ? $"{who} noted that {what} is blocked" : $"{who} looked at the blocker on {what}";
+        if (!approved && f.DueDate is not null) { c.ProposedDate = null; c.UpdatedAt = clock.Now; }
+        await notifications.AddAsync(c.OwnerUserId, NotificationType.TaskUpdated, Text.Truncate(title, 200)!, f.Detail, "/command-center", $"agent-cr:{f.Id:N}", ct: ct);
+    }
+
     // ---------------------------------------------------------------- shaping
 
     private static AgentFindingStatus? StatusOf(string? s) => s?.ToLowerInvariant() switch
@@ -362,7 +471,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 r.SignalId is { } sid && sources.TryGetValue(sid, out var src) ? src : null,
                 r.TaskId, t is null ? null : $"{p?.Key}-{t.Number}", t?.Title, r.IssueId, i is null ? null : $"{p?.Key}-I{i.Number}",
                 Person(r.AssigneeId), r.DueDate, r.Priority, r.NewStatus, r.Comment, r.Confidence, r.CreatedAt, Person(r.DecidedBy), r.DecidedAt,
-                r.AppliedEntityId, r.AppliedKey, r.Error, r.Grounded, r.Edits, r.OwnerResponse, r.OwnerNote, r.OwnerRespondedAt);
+                r.AppliedEntityId, r.AppliedKey, r.Error, r.Grounded, r.Edits, r.OwnerResponse, r.OwnerNote, r.OwnerRespondedAt, r.AutoApplied, r.Before, r.CommitmentId);
         }).ToList();
     }
 }

@@ -33,13 +33,14 @@ public class MeetingBotClient(IOptions<AgentOptions> options)
 }
 
 /// <summary>What a worker needs to join one session (stored on the session when it is queued).</summary>
-public record MeetingBotJoin(string MeetingUrl, string BotName, string? IntroMessage, string? AgendaMessage, string? CaptionLanguage);
+/// <summary>RaiseMessage: what the person who sent the agent asked it to raise. ReadChat: watch the meeting chat (to answer when addressed).</summary>
+public record MeetingBotJoin(string MeetingUrl, string BotName, string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, string? RaiseMessage = null, bool ReadChat = false);
 
 public record BotWorkerBotReport(string? JobId, string? Status, string? Error, int Lines = 0);
 /// <summary>A worker's report: who it is, how many meetings it can attend at once, whether it is shutting down, and its bots.</summary>
 public record BotWorkerReport(string? WorkerId, string? Host, string? Version, int Capacity, bool Draining, IReadOnlyList<BotWorkerBotReport>? Bots);
 public record BotJobDto(string JobId, string MeetingUrl, string BotName, DateTime JoinAt, DateTime LeaveAt, string WebhookUrl,
-    string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin);
+    string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin, string? RaiseMessage = null, bool ReadChat = false);
 public record BotInstructionDto(string JobId, IReadOnlyList<string> Chat, bool Stop);
 public record BotPollResponse(IReadOnlyList<BotJobDto> Jobs, IReadOnlyList<BotInstructionDto> Bots, int PollSeconds);
 
@@ -80,29 +81,33 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var running = reported.Count(b => !Finished.Contains(b.Status ?? ""));
         await SeenAsync(workerId, report, capacity, running, now, ct);
 
-        // 1. The bots it has: renew what it still holds, pass on chat, and tell it to stop what it no longer holds.
+        // 1. The bots it has: renew what it still holds (one write per status, not one per bot), pass on chat, and tell it to stop what it no
+        //    longer holds. Chat is only taken where some is waiting, so a busy worker costs a few queries per report, whatever its size.
         var ids = reported.Select(b => Guid.Parse(b.JobId!)).ToList();
-        var rows = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().Where(b => ids.Contains(b.Id)).ToListAsync(ct);
+        var rows = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().Where(b => ids.Contains(b.Id))
+            .Select(b => new { b.Id, b.WorkerId, b.Status, b.PendingChat }).ToListAsync(ct);
         var instructions = new List<BotInstructionDto>();
+        var held = new List<(BotWorkerBotReport Report, Guid Id, string? Status, bool Finished, bool Chat)>();
         foreach (var r in reported)
         {
             var row = rows.FirstOrDefault(x => x.Id == Guid.Parse(r.JobId!));
-            if (row is null || row.WorkerId != workerId || row.Status is "done" or "failed")
-            {
-                instructions.Add(new(r.JobId!, [], true));
-                continue;
-            }
-            var status = Cut(r.Status, 32) ?? row.WorkerStatus;
-            var error = status == "fatal" ? Cut(r.Error, 500) : null;
-            var finished = Finished.Contains(status ?? "");
-            await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Id == row.Id && b.WorkerId == workerId)
+            if (row is null || row.WorkerId != workerId || row.Status is "done" or "failed") { instructions.Add(new(r.JobId!, [], true)); continue; }
+            var status = Cut(r.Status, 32);
+            held.Add((r, row.Id, status, Finished.Contains(status ?? ""), !string.IsNullOrEmpty(row.PendingChat)));
+        }
+        foreach (var g in held.GroupBy(h => (h.Status, h.Finished, Error: h.Status == "fatal" ? Cut(h.Report.Error, 500) : null)))
+        {
+            var groupIds = g.Select(h => h.Id).ToList();
+            var (status, finished, error) = g.Key;
+            await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => groupIds.Contains(b.Id) && b.WorkerId == workerId)
                 .ExecuteUpdateAsync(u => u
-                    .SetProperty(b => b.WorkerStatus, status)
+                    .SetProperty(b => b.WorkerStatus, b => status ?? b.WorkerStatus)
                     .SetProperty(b => b.LeaseUntil, finished ? now : now + Lease)
                     .SetProperty(b => b.Error, b => error ?? b.Error)
                     .SetProperty(b => b.Status, b => status == "in_call_recording" && b.Status == "scheduled" ? "in_call" : b.Status), ct);
-            instructions.Add(new(r.JobId!, finished ? [] : await TakeChatAsync(row.Id, ct), false));
         }
+        foreach (var h in held)
+            instructions.Add(new(h.Report.JobId!, h.Finished || !h.Chat ? [] : await TakeChatAsync(h.Id, ct), false));
 
         // 2. New sessions, as many as it has room for (none while it is shutting down).
         var jobs = new List<BotJobDto>();
@@ -139,7 +144,7 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var rejoin = c.Attempts > 0;
                 jobs.Add(new BotJobDto(c.Id.ToString(), join.MeetingUrl, join.BotName, c.SessionStartUtc, c.SessionEndUtc.AddMinutes(30),
                     $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{c.WebhookToken}",
-                    rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin));
+                    rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin, rejoin ? null : join.RaiseMessage, join.ReadChat));
                 log.LogInformation("Meeting bot session {Session} handed to worker {Worker}{Rejoin}", c.Id, workerId, rejoin ? " (rejoining)" : "");
             }
         }

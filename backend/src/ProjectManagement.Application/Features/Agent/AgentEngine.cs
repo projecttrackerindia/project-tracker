@@ -61,6 +61,23 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
             }
         }
 
+        // People who asked the agent to go in their place when they are double-booked.
+        var people = await db.AgentPersonalSettings.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.AutoDelegate && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == p.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted))
+            .OrderBy(p => p.Id).Select(p => new { p.Id, p.TenantId, p.UserId }).Take(2000).ToListAsync(ct);
+        foreach (var person in people)
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var sp = scope.ServiceProvider;
+                await WorkspaceExecutionPrincipal.ConfigureAsync(sp, person.UserId, person.TenantId, null, ct);
+                await sp.GetRequiredService<AgentDelegationService>().AutoDelegateAsync(ct);
+            }
+            catch (ForbiddenException) { await db.AgentPersonalSettings.IgnoreQueryFilters().Where(x => x.Id == person.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.AutoDelegate, false), ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { log.LogWarning(ex, "Automatic delegation failed for {Settings}", person.Id); }
+        }
+
         var optIns = await db.AgentInboxOptIns.IgnoreQueryFilters().AsNoTracking()
             .Where(o => o.Enabled && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == o.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted))
             .OrderBy(o => o.Id).Select(o => new { o.Id, o.TenantId, o.UserId }).Take(1000).ToListAsync(ct);
@@ -82,7 +99,8 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
 
 /// <summary>Everything the agent does for one project in one tick, inside that project's workspace context.</summary>
 public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalService signals, AgentMeetingService meetings, AgentAnalysisService analysis,
-    AgentDailyUpdateService daily, AgentSlackReader slack, IOptions<AgentOptions> options, ILogger<AgentProjectTick> log)
+    AgentDailyUpdateService daily, AgentSlackReader slack, AgentReviewService review, AgentFollowUpService followUps, AgentBriefService briefs,
+    AgentDelegationService delegations, IOptions<AgentOptions> options, ILogger<AgentProjectTick> log)
 {
     public record Result(int Runs, int Signals, int Bots, int Updates);
 
@@ -111,12 +129,12 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
             added += await Step("slack", async () => { var got = await slack.CollectAsync(s, ct); await db.SaveChangesAsync(ct); return got ? 1 : 0; });
         if (s.ReadMeetings)
         {
-            if (s.LiveBot)
-            {
-                bots += await Step("schedule bots", () => meetings.ScheduleBotsAsync(s, w, ct));
-                if (s.AutoJoinCalendar) bots += await Step("calendar calls", () => meetings.ScheduleCalendarBotsAsync(s, w, ct));
-                await Step("live reminders", () => meetings.NudgeAsync(s, w, ct));
-            }
+            // With "live bot" on the bot goes to every session; otherwise only where someone sent the agent in their place.
+            bots += await Step("schedule bots", () => meetings.ScheduleBotsAsync(s, w, ct));
+            if (s.LiveBot && s.AutoJoinCalendar) bots += await Step("calendar calls", () => meetings.ScheduleCalendarBotsAsync(s, w, ct));
+            await Step("live reminders", () => meetings.NudgeAsync(s, w, ct));
+            await Step("meeting briefs", () => briefs.SendDueAsync(s, ct));
+            await Step("delegation reports", () => delegations.ReportAsync(s, ct));
             await Step("automatic transcripts", () => meetings.EnableAutoTranscriptsAsync(s, ct));
             added += await Step("finish bots", () => meetings.FinishBotsAsync(s, w, ct));
             added += await Step("meet transcripts", () => meetings.FetchTranscriptsAsync(s, ct));
@@ -136,10 +154,15 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
             {
                 var trigger = unread.Any(x => x.Source is AgentSourceKind.MeetingTranscript or AgentSourceKind.LiveMeeting) ? "meeting"
                     : unread.Any(x => x.Source is AgentSourceKind.ProjectMailbox or AgentSourceKind.PersonalMail) ? "mail" : "schedule";
-                if (await analysis.RunAsync(s, trigger, null, ct) is not null) runs++;
+                if (await analysis.RunAsync(s, trigger, null, ct) is { } run)
+                {
+                    runs++;
+                    if (run.Status == "done") await Step("autonomy", () => review.AutoApplyRunAsync(s, run.Id, ct));
+                }
             }
         }
 
+        await Step("follow-ups", () => followUps.RunAsync(s, ct));
         var zone = await db.Tenants.Where(t => t.Id == s.TenantId).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
         if (daily.Due(s, zone, out var day)) updates += await daily.SendAsync(s, day, ct);
         return new(runs, added, bots, updates);

@@ -98,7 +98,9 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             runs.Select(Run).Select(r => r with { Meeting = meetingRuns.Contains(r.Id) }).Select(r => canManage ? r : r with { Summary = null }).ToList(), transcripts,
             // The lead's notes and who-is-who are for the people who set the agent up.
             canManage ? s?.Instructions : null, canManage ? s?.SpeakerAliases : null, s?.CaptionLanguage, s?.AutoJoinCalendar ?? false, s?.SendMinutes ?? true,
-            canManage ? s?.SlackChannelId : null, await SlackReadableAsync(ct), s?.ReadWhatsApp ?? true, await WhatsAppReadableAsync(ct), autoTranscripts);
+            canManage ? s?.SlackChannelId : null, await SlackReadableAsync(ct), s?.ReadWhatsApp ?? true, await WhatsAppReadableAsync(ct), autoTranscripts,
+            AgentAutonomy.Level(s?.AutonomyLevel ?? AgentAutonomy.Assistant), s?.AutoApplyConfidence ?? 90,
+            AgentAutonomy.Kinds(s?.AutoApplyKinds).Select(k => k.ToString()).ToList(), s?.FollowUps ?? true, s?.MeetingBriefs ?? true);
     }
 
     private static string? Clip(string? value, int max, string field, string label)
@@ -158,9 +160,23 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             s.SlackChannelId = channel.Length == 0 ? null : channel;
         }
         s.ReadWhatsApp = req.ReadWhatsApp ?? s.ReadWhatsApp;
+        if (req.AutonomyLevel is { } level)
+        {
+            if (level is < AgentAutonomy.Observer or > AgentAutonomy.Delegate) throw new ValidationException("autonomyLevel", "Choose a level from 1 to 4.");
+            s.AutonomyLevel = level;
+        }
+        if (req.AutoApplyConfidence is { } confidence)
+        {
+            if (confidence is < 70 or > 100) throw new ValidationException("autoApplyConfidence", "Choose a confidence between 70% and 100%.");
+            s.AutoApplyConfidence = confidence;
+        }
+        if (req.AutoApplyKinds is { } kinds) s.AutoApplyKinds = AgentAutonomy.KindsCsv(kinds);
+        s.FollowUps = req.FollowUps ?? s.FollowUps;
+        s.MeetingBriefs = req.MeetingBriefs ?? s.MeetingBriefs;
         s.UpdatedAt = clock.Now; s.UpdatedBy = uid;
         recorder.Audit("agent.settings_saved", "Project", projectId, null, new { s.Enabled, s.ReadMailbox, s.ReadChat, s.ReadMeetings, s.LiveBot, s.DailyUpdates,
-            s.CaptionLanguage, s.AutoJoinCalendar, s.SendMinutes, Slack = s.SlackChannelId is not null, s.ReadWhatsApp, Notes = s.Instructions?.Length ?? 0 });
+            s.CaptionLanguage, s.AutoJoinCalendar, s.SendMinutes, Slack = s.SlackChannelId is not null, s.ReadWhatsApp, Notes = s.Instructions?.Length ?? 0,
+            s.AutonomyLevel, s.AutoApplyConfidence, s.AutoApplyKinds, s.FollowUps, s.MeetingBriefs });
         recorder.Activity(req.Enabled ? "agent.enabled" : "agent.disabled", "Project", projectId, req.Enabled ? $"Project agent switched on for \"{project.Name}\"" : $"Project agent switched off for \"{project.Name}\"", projectId);
         await db.SaveChangesAsync(ct);
         return await GetAsync(projectId, ct);

@@ -152,8 +152,18 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ActingUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AutoApplyConfidence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AutoApplyKinds")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<bool>("AutoJoinCalendar")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("AutonomyLevel")
+                        .HasColumnType("integer");
 
                     b.Property<string>("CaptionLanguage")
                         .HasMaxLength(16)
@@ -176,6 +186,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("FollowUps")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Instructions")
@@ -205,6 +218,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("MeetingBriefs")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("ReadChat")
                         .HasColumnType("boolean");
@@ -421,9 +437,19 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AutoApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Before")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Comment")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid?>("CommitmentId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Confidence")
                         .HasColumnType("integer");
@@ -536,7 +562,227 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RunId");
 
+                    b.HasIndex("ProjectId", "Kind", "Status");
+
                     b.ToTable("AgentFindings");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AgentCommitment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AnsweredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ApprovedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ChangeFindingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CheckInAnswer")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("CheckInNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("CheckInSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("EntityKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("FindingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("ProposedDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Quote")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WorkTaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FindingId");
+
+                    b.HasIndex("OwnerUserId", "Status");
+
+                    b.HasIndex("ProjectId", "Status", "DueDate");
+
+                    b.ToTable("AgentCommitments");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AgentDelegation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Automatic")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("BotRowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReportSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("SessionEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("SessionStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "Status");
+
+                    b.HasIndex("UserId", "SessionStartUtc");
+
+                    b.HasIndex("MeetingId", "SessionStartUtc", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("AgentDelegations");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AgentPersonalSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoDelegate")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("BriefMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CheckIns")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LastVisitAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("MeetingBriefs")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("PreviousVisitAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("AgentPersonalSettings");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AgentWorkspaceSettings", b =>

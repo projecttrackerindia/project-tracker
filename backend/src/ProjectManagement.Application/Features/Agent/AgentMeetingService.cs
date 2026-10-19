@@ -32,58 +32,69 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     private const int MaxNudges = 8;
     private static readonly TimeSpan NudgeGap = TimeSpan.FromMinutes(4);
 
-    private record Session(ProjectMeeting Meeting, DateTime Start, DateTime End);
-
-    private async Task<List<Session>> SessionsAsync(Guid projectId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
-    {
-        var floor = fromUtc - MeetingRecurrence.LongestSeries;
-        var meetings = await db.ProjectMeetings.AsNoTracking().Where(m => m.ProjectId == projectId && m.Status == MeetingStatus.Scheduled && m.GoogleMeetUri != ""
-                && m.StartTimeUtc < toUtc && (m.RecurrenceRule != null ? m.StartTimeUtc >= floor : m.StartTimeUtc >= fromUtc.AddDays(-1)))
-            .OrderBy(m => m.StartTimeUtc).Take(100).ToListAsync(ct);
-        var sessions = new List<Session>();
-        foreach (var m in meetings)
-        {
-            var length = m.EndTimeUtc - m.StartTimeUtc;
-            foreach (var at in MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc - length, toUtc))
-                if (at + length >= fromUtc && at < toUtc) sessions.Add(new Session(m, at, at + length));
-        }
-        return sessions;
-    }
+    private Task<List<MeetingSession>> SessionsAsync(Guid projectId, DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
+        AgentSessions.ListAsync(db.ProjectMeetings.Where(m => m.ProjectId == projectId), fromUtc, toUtc, ct);
 
     // ---------------------------------------------------------------- live bot
 
-    /// <summary>Sends the bot to every session starting in the next few minutes.</summary>
+    /// <summary>
+    /// Sends the bot to every session starting in the next few minutes - all of them with "live bot" on, otherwise the ones someone sent the
+    /// agent to in their place. Until a worker picks a session up, what it will say is refreshed each tick (a late "send the agent" still counts).
+    /// </summary>
     public async Task<int> ScheduleBotsAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, CancellationToken ct)
     {
-        if (!s.Enabled || !s.LiveBot || !s.ReadMeetings || !botService.Configured) return 0;
+        if (!s.Enabled || !s.ReadMeetings || !botService.Configured) return 0;
         var now = clock.Now;
         var sent = 0;
         foreach (var session in await SessionsAsync(s.ProjectId, now.AddMinutes(-5), now.AddMinutes(10), ct))
         {
             if (session.Start < now.AddMinutes(-5) || session.Start > now.AddMinutes(10)) continue;
-            if (await db.AgentMeetingBots.AnyAsync(b => b.MeetingId == session.Meeting.Id && b.SessionStartUtc == session.Start && b.Kind == "bot", ct)) continue;
-            var bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = s.ProjectId, MeetingId = session.Meeting.Id, SessionStartUtc = session.Start, SessionEndUtc = session.End,
-                Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now };
-            db.AgentMeetingBots.Add(bot);
-            try { await db.SaveChangesAsync(ct); }
-            catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; continue; }   // another server sent it
-            if (await SendAsync(s, w, bot, session.Meeting.GoogleMeetUri, ct)) sent++;
+            var delegations = await db.AgentDelegations.Where(d => d.MeetingId == session.Meeting.Id && d.SessionStartUtc == session.Start
+                && (d.Status == "requested" || d.Status == "attending")).OrderBy(d => d.CreatedAt).ToListAsync(ct);
+            if (!s.LiveBot && delegations.Count == 0) continue;
+            var bot = await db.AgentMeetingBots.FirstOrDefaultAsync(b => b.MeetingId == session.Meeting.Id && b.SessionStartUtc == session.Start && b.Kind == "bot", ct);
+            var created = false;
+            if (bot is null)
+            {
+                bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = s.ProjectId, MeetingId = session.Meeting.Id, SessionStartUtc = session.Start, SessionEndUtc = session.End,
+                    Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now };
+                db.AgentMeetingBots.Add(bot);
+                try { await db.SaveChangesAsync(ct); created = true; }
+                catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; continue; }   // another server sent it
+            }
+            foreach (var d in delegations.Where(d => d.Status == "requested" || d.BotRowId != bot.Id)) { d.Status = "attending"; d.BotRowId = bot.Id; d.UpdatedAt = now; }
+            if (bot.Status == "scheduled" && bot.WorkerId == null && await SendAsync(s, w, bot, session.Meeting.GoogleMeetUri, delegations, ct) && created) sent++;
+            else await db.SaveChangesAsync(ct);
         }
         return sent;
     }
 
     /// <summary>
     /// Puts the session in the meeting-bot queue with what a worker needs to join (the row is saved first). A free worker picks it up shortly
-    /// before it starts; when all are busy it waits in line rather than failing.
+    /// before it starts; when all are busy it waits in line rather than failing. Sent for someone, the bot is their assistant: it says so,
+    /// and raises what they asked it to.
     /// </summary>
-    private async Task<bool> SendAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, AgentMeetingBot bot, string meetUrl, CancellationToken ct)
+    private async Task<bool> SendAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, AgentMeetingBot bot, string meetUrl, IReadOnlyList<AgentDelegation> delegations, CancellationToken ct)
     {
         var project = await db.Projects.AsNoTracking().Where(p => p.Id == s.ProjectId).Select(p => p.Name).FirstAsync(ct);
-        var intro = $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
-            "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen.";
+        var ids = delegations.Select(d => d.UserId).ToList();
+        var firstNames = (await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.DisplayName }).ToListAsync(ct))
+            .ToDictionary(u => u.Id, u => AgentSessions.FirstName(u.DisplayName));
+        var names = ids.Where(firstNames.ContainsKey).Select(id => firstNames[id]).Distinct().ToList();
+        var forWhom = names.Count switch { 0 => null, 1 => names[0], 2 => $"{names[0]} and {names[1]}", _ => $"{names[0]}, {names[1]} and others" };
+        var botName = forWhom is null ? w.BotName : AgentAnalysisService.Cut($"{w.BotName} for {forWhom}", 60)!;
+        var intro = forWhom is null
+            ? $"Hi everyone - I'm the {w.BotName} for {project}. I take notes, track what is agreed and may post short reminders here. " +
+              "The project lead reviews everything before it changes the project. Ask the organizer to remove me if you would rather I didn't listen."
+            : $"Hi everyone - I'm {forWhom}'s assistant from Project Tracker. {forWhom} couldn't join, so I'm taking notes for them and will pass on anything you " +
+              $"need from them - just mention their name. I can also answer questions about {project}'s tasks here. Nothing changes in the project without the lead's " +
+              "approval. Ask the organizer to remove me if you would rather I didn't listen.";
+        var raise = delegations.Where(d => !string.IsNullOrWhiteSpace(d.Instructions))
+            .Select(d => $"{firstNames.GetValueOrDefault(d.UserId, "They")} asked me to raise: {d.Instructions!.Replace('\n', ' ').Trim()}").ToList();
         var agenda = await AgendaAsync(s, ct);
         var language = s.CaptionLanguage is { } code && AgentSettingsService.CaptionLanguages.TryGetValue(code, out var name) ? name : null;
-        bot.JoinPayload = MeetingBotQueue.PayloadJson(new MeetingBotJoin(meetUrl, w.BotName, intro, agenda, language));
+        bot.JoinPayload = MeetingBotQueue.PayloadJson(new MeetingBotJoin(meetUrl, botName, intro, agenda, language,
+            raise.Count == 0 ? null : AgentAnalysisService.Cut(string.Join(" · ", raise), 480), AgentAutonomy.Answers(s) || delegations.Count > 0));
         await db.SaveChangesAsync(ct);
         return true;
     }
@@ -154,7 +165,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             db.AgentMeetingBots.Add(bot);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; continue; }
-            if (await SendAsync(s, w, bot, e.MeetUrl, ct)) sent++;
+            if (await SendAsync(s, w, bot, e.MeetUrl, [], ct)) sent++;
         }
         return sent;
     }
@@ -204,7 +215,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     /// <summary>While a session is going on: when enough new has been said, ask whether anything important is being missed and say so in the chat.</summary>
     public async Task<int> NudgeAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, CancellationToken ct)
     {
-        if (!w.InCallReminders || !botService.Configured) return 0;
+        if (!w.InCallReminders || !botService.Configured || !AgentAutonomy.Reminds(s)) return 0;
         var now = clock.Now;
         var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && b.Status == "in_call" && b.WorkerId != null
             && b.NudgeCount < MaxNudges && b.TranscriptLength - b.CheckedLength >= 800 && b.SessionEndUtc > now).OrderBy(b => b.SessionStartUtc).Take(3).ToListAsync(ct);
@@ -276,8 +287,10 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     }
 
     /// <summary>
-    /// Real-time transcript from the bot service (anonymous webhook; the token in the address picks the bot). Appends "Name: words" to the
-    /// session's transcript; concurrent deliveries are merged without losing any (the update only lands on the length it read).
+    /// Real-time transcript from the bot service (anonymous webhook; the token in the address picks the bot): "transcript.batch" (the lines
+    /// heard in the last few seconds, one write for all of them), "transcript.data" (one line, older workers) or "chat.message" (someone wrote
+    /// in the meeting chat: it goes in the transcript, and the agent answers when it is addressed). Appends "Name: words" to the session's
+    /// transcript; concurrent deliveries are merged without losing any (the update only lands on the length it read).
     /// </summary>
     public static async Task ReceiveBotAsync(IServiceProvider sp, string token, string body, CancellationToken ct)
     {
@@ -290,31 +303,98 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         JsonNode? j;
         try { j = JsonNode.Parse(body); } catch (JsonException) { throw new ValidationException("body", "Not JSON."); }
         if (j is not JsonObject) return;
-        if (j["event"] is JsonValue ev && ev.TryGetValue<string>(out var name) && name != "transcript.data") return;
+        var name = j["event"] is JsonValue ev && ev.TryGetValue<string>(out var e) ? e : "transcript.data";
+        var lines = new List<(string Speaker, string Text)>();
         var outer = j["data"] as JsonObject;
-        var data = outer?["data"] as JsonObject ?? outer;
-        var words = data?["words"] as JsonArray;
-        var text = words is null ? (data?["text"] as JsonValue)?.ToString() : string.Join(" ", words.Take(2000).Select(w => ((w as JsonObject)?["text"] as JsonValue)?.ToString()).Where(w => !string.IsNullOrWhiteSpace(w)));
-        if (string.IsNullOrWhiteSpace(text)) return;
-        var who = ((data?["participant"] as JsonObject)?["name"] as JsonValue)?.ToString();
-        var spoken = text.Trim(); if (spoken.Length > 2000) spoken = spoken[..2000];
-        var speakerName = string.IsNullOrWhiteSpace(who) ? "Someone" : who.Trim().Replace(":", "").Replace("\n", " ");
-        if (speakerName.Length > 80) speakerName = speakerName[..80];
-        var line = $"{speakerName}: {spoken}";
+        switch (name)
+        {
+            case "transcript.data":
+            {
+                var data = outer?["data"] as JsonObject ?? outer;
+                var words = data?["words"] as JsonArray;
+                var text = words is null ? (data?["text"] as JsonValue)?.ToString() : string.Join(" ", words.Take(2000).Select(w => ((w as JsonObject)?["text"] as JsonValue)?.ToString()).Where(w => !string.IsNullOrWhiteSpace(w)));
+                var who = ((data?["participant"] as JsonObject)?["name"] as JsonValue)?.ToString();
+                if (!string.IsNullOrWhiteSpace(text)) lines.Add((Speaker(who), Spoken(text)));
+                break;
+            }
+            case "transcript.batch":
+                foreach (var l in (outer?["lines"] as JsonArray ?? []).Take(500).OfType<JsonObject>())
+                {
+                    var text = (l["text"] as JsonValue)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(text)) lines.Add((Speaker((l["name"] as JsonValue)?.ToString()), Spoken(text)));
+                }
+                break;
+            case "chat.message":
+            {
+                var text = (outer?["text"] as JsonValue)?.ToString();
+                if (string.IsNullOrWhiteSpace(text)) return;
+                var who = Speaker((outer?["name"] as JsonValue)?.ToString());
+                lines.Add(($"{who} (chat)", Spoken(text)));
+                await AppendAsync(db, secrets, bot, lines, ct);
+                await AnswerChatAsync(sp, bot, who, Spoken(text), ct);
+                return;
+            }
+            default: return;
+        }
+        if (lines.Count > 0) await AppendAsync(db, secrets, bot, lines, ct);
+    }
+
+    private static string Speaker(string? who)
+    {
+        var name = string.IsNullOrWhiteSpace(who) ? "Someone" : who.Trim().Replace(":", "").Replace("\n", " ");
+        return name.Length > 80 ? name[..80] : name;
+    }
+
+    private static string Spoken(string text)
+    {
+        var spoken = text.Replace('\n', ' ').Trim();
+        return spoken.Length > 2000 ? spoken[..2000] : spoken;
+    }
+
+    /// <summary>Adds lines to the transcript in one write; the same speaker carrying on is one line.</summary>
+    private static async Task AppendAsync(IAppDbContext db, ISecretProtector secrets, AgentMeetingBot bot, IReadOnlyList<(string Speaker, string Text)> lines, CancellationToken ct)
+    {
         for (var attempt = 0; attempt < 6; attempt++)
         {
             var current = attempt == 0 ? bot : await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().FirstAsync(b => b.Id == bot.Id, ct);
-            var existing = current.TranscriptProtected is null ? "" : secrets.Unprotect(current.TranscriptProtected);
-            if (existing.Length >= MaxTranscript) return;
-            // The same speaker carrying on is one line.
+            var text = new StringBuilder(current.TranscriptProtected is null ? "" : secrets.Unprotect(current.TranscriptProtected));
+            if (text.Length >= MaxTranscript) return;
+            var existing = text.ToString();
             var lastLine = existing.LastIndexOf('\n') is var i && i >= 0 ? existing[(i + 1)..] : existing;
-            var speaker = line[..(line.IndexOf(':') + 1)];
-            var next = existing.Length == 0 ? line : lastLine.StartsWith(speaker, StringComparison.Ordinal) ? existing + " " + line[(speaker.Length + 1)..] : existing + "\n" + line;
+            foreach (var (speaker, spoken) in lines)
+            {
+                var prefix = speaker + ":";
+                if (text.Length == 0) text.Append(prefix).Append(' ').Append(spoken);
+                else if (lastLine.StartsWith(prefix, StringComparison.Ordinal)) text.Append(' ').Append(spoken);
+                else text.Append('\n').Append(prefix).Append(' ').Append(spoken);
+                lastLine = prefix;
+            }
+            var next = text.ToString();
+            if (next.Length > MaxTranscript) next = next[..MaxTranscript];
             var length = current.TranscriptLength;
             var done = await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Id == bot.Id && b.TranscriptLength == length)
                 .ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, secrets.Protect(next)).SetProperty(b => b.TranscriptLength, next.Length)
                     .SetProperty(b => b.Status, b => b.Status == "scheduled" ? "in_call" : b.Status), ct);
             if (done == 1) return;
+        }
+    }
+
+    /// <summary>Lets the agent answer a chat message, acting as the person it acts for in that project (their view of the project).</summary>
+    private static async Task AnswerChatAsync(IServiceProvider sp, AgentMeetingBot bot, string who, string text, CancellationToken ct)
+    {
+        var db = sp.GetRequiredService<IAppDbContext>();
+        var s = await db.ProjectAgentSettings.IgnoreQueryFilters().AsNoTracking().Where(x => x.ProjectId == bot.ProjectId && x.Enabled)
+            .Select(x => new { x.TenantId, x.ActingUserId }).FirstOrDefaultAsync(ct);
+        if (s is null) return;
+        await using var scope = sp.GetRequiredService<IServiceScopeFactory>().CreateAsyncScope();
+        try
+        {
+            await WorkspaceExecutionPrincipal.ConfigureAsync(scope.ServiceProvider, s.ActingUserId, s.TenantId, null, ct);
+            await scope.ServiceProvider.GetRequiredService<AgentChatAnswerService>().HandleAsync(bot.Id, who, text, ct);
+        }
+        catch (Exception ex) when (ex is AppException or DbUpdateException)
+        {
+            sp.GetRequiredService<ILogger<AgentMeetingService>>().LogInformation("The agent did not answer in the meeting chat: {Reason}", ex.Message);
         }
     }
 

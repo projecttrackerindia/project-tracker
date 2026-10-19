@@ -41,7 +41,8 @@ public static class SqliteEnterpriseUpgrade
         "20261019000100_ProjectAgent",
         "20261020000100_ProjectAgentAccuracy",
         "20261021000100_UpiPayments",
-        "20261022000100_MeetingBotQueue"
+        "20261022000100_MeetingBotQueue",
+        "20261023000100_AgentCommandCenter"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

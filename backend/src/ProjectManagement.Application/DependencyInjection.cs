@@ -124,6 +124,12 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSlackReader>();
         services.AddScoped<ProjectManagement.Application.Features.Admin.DeployAlertService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentMinutesService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentImpactService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentFollowUpService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentBriefService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentDelegationService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentChatAnswerService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentCommandCenterService>();
         services.AddSingleton<ProjectManagement.Application.Features.Documents.IDocumentPdfRenderer, ProjectManagement.Application.Features.Documents.DocumentPdfRenderer>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfBuilder>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfJob>();
