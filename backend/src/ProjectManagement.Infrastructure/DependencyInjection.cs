@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.Configure<ResumeImportOptions>(config.GetSection(ResumeImportOptions.Section));
         services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumeDocumentExtractor,IsolatedResumeDocumentExtractor>();
         services.Configure<ProjectManagement.Application.Features.Billing.PricingOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.PricingOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Billing.UpiOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.UpiOptions.Section));
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
         services.Configure<ResendOptions>(config.GetSection(ResendOptions.Section));

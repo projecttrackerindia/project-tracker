@@ -133,6 +133,7 @@ public interface IAppDbContext
     DbSet<AgentWorkspaceSettings> AgentWorkspaceSettings { get; }
     DbSet<AgentMeetingBot> AgentMeetingBots { get; }
     DbSet<AgentInboxOptIn> AgentInboxOptIns { get; }
+    DbSet<UpiPayment> UpiPayments { get; }
     DbSet<InvoiceSequence> InvoiceSequences { get; }
     DbSet<MeetingParticipant> MeetingParticipants { get; }
     DbSet<DevLink> DevLinks { get; }

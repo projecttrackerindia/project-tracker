@@ -13,8 +13,23 @@ namespace ProjectManagement.Api.Controllers.Admin;
 /// services from the server-resolved user, never from anything the client sends.
 /// </summary>
 [Route("api/v1/admin")]
-public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage, ProjectManagement.Application.Features.Notifications.EmailAdminService emailAdmin, InvoiceService invoices) : ApiControllerBase
+public class PlatformAdminController(AdminService admin, PlatformService platform, GoLiveService goLive, AiUsageService aiUsage, ProjectManagement.Application.Features.Notifications.EmailAdminService emailAdmin, InvoiceService invoices,
+    UpiBillingService upi) : ApiControllerBase
 {
+    // ---------------------------------------------------------------- UPI payments waiting for confirmation
+    [HttpGet("upi-payments")]
+    public async Task<IActionResult> UpiPayments([FromQuery] string? status, CancellationToken ct) => Ok(await upi.ListAsync(status, ct));
+
+    [HttpGet("upi-accounts")]
+    public async Task<IActionResult> UpiAccounts(CancellationToken ct) => Ok(await upi.AccountsAsync(ct));
+
+    /// <summary>The money is in the bank: activates the plan and records a paid invoice.</summary>
+    [HttpPost("upi-payments/{id:guid}/confirm")]
+    public async Task<IActionResult> ConfirmUpi(Guid id, [FromBody] UpiDecisionRequest req, CancellationToken ct) => Ok(await upi.ConfirmAsync(id, req, ct));
+
+    [HttpPost("upi-payments/{id:guid}/reject")]
+    public async Task<IActionResult> RejectUpi(Guid id, [FromBody] UpiDecisionRequest req, CancellationToken ct) => Ok(await upi.RejectAsync(id, req, ct));
+
     // ---------------------------------------------------------------- organizations, users, plans, audit
     [HttpGet("stats")]
     public async Task<IActionResult> Stats(CancellationToken ct) => Ok(await admin.GetStatsAsync(ct));

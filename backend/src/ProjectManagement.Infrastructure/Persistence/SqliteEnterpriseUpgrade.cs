@@ -39,7 +39,8 @@ public static class SqliteEnterpriseUpgrade
         "20261018000100_UniqueInvoiceReferences",
         "20261018000300_MeetingsQuietHoursInvoicesRequiredDocs",
         "20261019000100_ProjectAgent",
-        "20261020000100_ProjectAgentAccuracy"
+        "20261020000100_ProjectAgentAccuracy",
+        "20261021000100_UpiPayments"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

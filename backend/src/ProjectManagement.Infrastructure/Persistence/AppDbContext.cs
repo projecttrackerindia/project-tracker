@@ -120,6 +120,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AgentWorkspaceSettings> AgentWorkspaceSettings => Set<AgentWorkspaceSettings>();
     public DbSet<AgentMeetingBot> AgentMeetingBots => Set<AgentMeetingBot>();
     public DbSet<AgentInboxOptIn> AgentInboxOptIns => Set<AgentInboxOptIn>();
+    public DbSet<UpiPayment> UpiPayments => Set<UpiPayment>();
     public DbSet<DevLink> DevLinks => Set<DevLink>();
     public DbSet<TenantDataPolicy> TenantDataPolicies => Set<TenantDataPolicy>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
@@ -262,6 +263,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureSupport(b);
         ConfigureSupportWorkflows(b);
         ConfigureAgent(b);
+        ConfigureUpi(b);
         ApplyQueryFilters(b);
     }
 }

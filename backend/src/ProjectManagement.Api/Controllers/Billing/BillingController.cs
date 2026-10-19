@@ -10,8 +10,20 @@ using ProjectManagement.Domain;
 namespace ProjectManagement.Api.Controllers.Billing;
 
 [Route("api/v1/billing"), RequireWorkspace, RequireModule(Modules.Billing)]
-public class BillingController(BillingService billing, InvoiceService invoices) : ApiControllerBase
+public class BillingController(BillingService billing, InvoiceService invoices, UpiBillingService upi) : ApiControllerBase
 {
+    // ---- paying by UPI QR (until a payment gateway is connected)
+    /// <summary>The payer has paid the QR and gives the UPI transaction id; a platform administrator confirms it.</summary>
+    [HttpPost("upi/{id:guid}/paid")]
+    public async Task<IActionResult> UpiPaid(Guid id, [FromBody] UpiSubmitRequest req, CancellationToken ct) => Ok(await upi.SubmitAsync(id, req, ct));
+
+    /// <summary>Paying this QR failed: the next QR is shown.</summary>
+    [HttpPost("upi/{id:guid}/failed")]
+    public async Task<IActionResult> UpiFailed(Guid id, [FromBody] UpiFailedRequest req, CancellationToken ct) => Ok(await upi.ReportFailureAsync(id, req, ct));
+
+    [HttpPost("upi/{id:guid}/cancel")]
+    public async Task<IActionResult> UpiCancel(Guid id, CancellationToken ct) { await upi.CancelAsync(id, ct); return Ok(await billing.GetOverviewAsync(ct)); }
+
     [HttpGet]
     public async Task<IActionResult> Overview(CancellationToken ct) => Ok(await billing.GetOverviewAsync(ct));
 

@@ -31,7 +31,8 @@ public record InvoiceDto(Guid Id, string Number, string PlanCode, decimal Amount
 /// <param name="PaymentProvider">"mock" (simulated) or "razorpay"; the screen words its buttons accordingly.</param>
 /// <param name="Payment">Set when the owner must now pay in the provider's window to finish choosing a plan.</param>
 public record BillingOverviewDto(PlanSummaryDto Plan, IReadOnlyList<UsageDto> Usage, IReadOnlyList<InvoiceDto> Invoices, bool TrialAvailable,
-    IReadOnlyList<PlanDto> Plans, bool CanManage, string PaymentProvider = "mock", HostedCheckout? Payment = null, SeatsDto? Seats = null, PricingPolicyDto? Policy = null);
+    IReadOnlyList<PlanDto> Plans, bool CanManage, string PaymentProvider = "mock", HostedCheckout? Payment = null, SeatsDto? Seats = null, PricingPolicyDto? Policy = null,
+    UpiPaymentDto? Upi = null);
 /// <param name="Seats">The people to pay for on a per-person plan (default: the people already in the workspace).</param>
 /// <param name="Period">"monthly" or "yearly".</param>
 public record CheckoutRequest(string PlanCode, bool StartTrial, int? Seats = null, string? Period = null);
@@ -40,7 +41,7 @@ public record ConfirmPaymentRequest(string PaymentId, string SubscriptionId, str
 public class BillingService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, IPaymentProvider payments, SubscriptionActivator activator, IOptions<AppOptions> options, IOptions<PricingOptions> pricing,
-    ILogger<BillingService> log)
+    ILogger<BillingService> log, UpiBillingService upi)
 {
     private readonly AppOptions _opt = options.Value;
     private readonly PricingOptions _pricing = pricing.Value;
@@ -80,7 +81,8 @@ public class BillingService(
             paying ? QuoteOf(plan.Plan, plan.Seats, plan.BillingPeriod) : null);
         return new BillingOverviewDto(
             new PlanSummaryDto(plan.Plan.Code, plan.Plan.Name, plan.Status, plan.TrialEnd, plan.PeriodEnd, plan.CancelAtPeriodEnd, plan.Downgraded),
-            usage, invoices, CanStartTrial(tenant.TrialUsed, plan, providerLinked), await GetPlansAsync(plan.Plan.Code, ct), canManage, payments.Name, null, seatInfo, Policy());
+            usage, invoices, CanStartTrial(tenant.TrialUsed, plan, providerLinked), await GetPlansAsync(plan.Plan.Code, ct), canManage, upi.Enabled ? UpiBillingService.ProviderName : payments.Name,
+            null, seatInfo, Policy(), canManage ? await upi.CurrentAsync(ct) : null);
     }
 
     /// <summary>The price and the pooled credits and storage of a choice, for the screen that lets the owner pick people and a billing period.</summary>
@@ -161,6 +163,13 @@ public class BillingService(
             if (seats < 1 || seats > _pricing.MaxSeats) throw new ValidationException("seats", $"Choose between 1 and {_pricing.MaxSeats} seats. For more, contact sales.");
             var quote = QuoteOf(plan, seats, req.Period);
             var description = DescribePurchase(plan, quote);
+
+            if (upi.Enabled)
+            {
+                // Paying by UPI QR: the plan changes when a platform administrator has confirmed the money arrived.
+                var started = await upi.StartAsync(plan, seats, quote, description, ct);
+                return (await GetOverviewAsync(ct)) with { Upi = started };
+            }
 
             if (payments.RequiresCheckout)
             {
@@ -431,6 +440,11 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
             var before = sub.Status;
             if (sub.Status is SubscriptionStatus.Trial or SubscriptionStatus.Cancelled)
                 sub.Status = SubscriptionStatus.Expired;
+            else if (sub.Status == SubscriptionStatus.Active && sub.Provider == UpiBillingService.ProviderName && sub.ProviderSubscriptionId is null)
+            {
+                // Paid by UPI QR: nothing renews by itself. The owner is told to pay for the next period; it lapses after the grace period.
+                sub.Status = sub.CancelAtPeriodEnd ? SubscriptionStatus.Expired : SubscriptionStatus.PastDue;
+            }
             else if (sub.Status == SubscriptionStatus.Active && sub.ProviderSubscriptionId is not null)
             {
                 // The provider charges each month and tells us by webhook. If the period ended and no news came for three days, treat it as a failed renewal.
@@ -465,8 +479,8 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
                 var note = new Notification
                 {
                     TenantId = sub.TenantId, UserId = owner, Type = NotificationType.Subscription, CreatedAt = now, Link = "/settings/billing",
-                    Title = sub.Status == SubscriptionStatus.PastDue ? "Payment failed — please update billing" : "Your subscription has ended",
-                    Body = sub.Status == SubscriptionStatus.PastDue ? "We could not renew your plan." : "The workspace is now on the Free plan.",
+                    Title = sub.Status == SubscriptionStatus.PastDue ? (sub.Provider == UpiBillingService.ProviderName ? "Time to renew your plan" : "Payment failed — please update billing") : "Your subscription has ended",
+                    Body = sub.Status == SubscriptionStatus.PastDue ? (sub.Provider == UpiBillingService.ProviderName ? "Your paid period has ended. Open Billing and pay by UPI to keep your plan." : "We could not renew your plan.") : "The workspace is now on the Free plan.",
                 };
                 if (await router.ApplyAsync(note, ct)) db.Notifications.Add(note);
             }
