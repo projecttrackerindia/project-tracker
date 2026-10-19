@@ -36,6 +36,8 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
     public List<(string Who, string Text)> MeetTranscript { get; } = new();
     /// <summary>Events the calendar list returns (for the project agent's look at upcoming calls).</summary>
     public List<object> UpcomingEvents { get; } = new();
+    /// <summary>Meet spaces whose automatic transcripts were switched on through the Meet API.</summary>
+    public ConcurrentBag<string> AutoTranscripts { get; } = new();
     public ConcurrentBag<string> MeetReads { get; } = new();
     public FakeSentMailbox Sent {get;}=new();
 
@@ -99,6 +101,22 @@ public sealed class FakeGoogleCalendar : HttpMessageHandler
             var auth = request.Headers.Authorization?.Parameter ?? "";
             _accessTokens.TryGetValue(auth, out var grant);
             return Json(new { email = grant?.Email ?? "owner@example.com" });
+        }
+        if (u.Host == "meet.googleapis.com" && path.StartsWith("/v2/spaces/", StringComparison.Ordinal))
+        {
+            var token = request.Headers.Authorization?.Parameter ?? "";
+            if (!_accessTokens.TryGetValue(token, out var grant) || !grant.Scope.Split(' ').Contains("https://www.googleapis.com/auth/meetings.space.settings"))
+                return Json(new { error = "permission" }, HttpStatusCode.Forbidden);
+            var id = path["/v2/spaces/".Length..];
+            if (request.Method == HttpMethod.Get)
+                return Json(new { name = "spaces/sp-" + id, meetingCode = id, config = new { artifactConfig = new { transcriptionConfig = new { autoTranscriptionGeneration = AutoTranscripts.Contains("spaces/sp-" + id) ? "ON" : "OFF" } } } });
+            if (request.Method == HttpMethod.Patch)
+            {
+                var body = await request.Content!.ReadAsStringAsync(ct);
+                if (!u.Query.Contains("autoTranscriptionGeneration") || !body.Contains("\"ON\"")) return Json(new { error = "bad patch" }, HttpStatusCode.BadRequest);
+                AutoTranscripts.Add("spaces/" + id);
+                return Json(new { name = "spaces/" + id });
+            }
         }
         if (u.Host == "meet.googleapis.com" && request.Method == HttpMethod.Get)
         {

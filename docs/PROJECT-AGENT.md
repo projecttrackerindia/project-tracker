@@ -66,9 +66,12 @@ created (`--keep` leaves it). CI runs `--self-test` (the scoring only). Run the 
   commitment with no owner or date, an unanswered question — the bot posts a short note in the chat (at most 8 per meeting, 4 minutes apart).
 - **Calls on the calendar.** With *Calls on my calendar* on, the bot also joins Google Meet calls on the acting person's calendar whose
   title has the project's key or name (and that are not already project meetings).
-- **Minutes.** When everything proposed from a meeting has been decided, the people in it (the meeting's invitees, or the project's
-  people) get the minutes: summary, decisions, actions with owners, updates, delays, points not picked up, ideas. Bell and e-mail, by
-  each person's notification settings. *Meeting minutes* switch in the Agent tab.
+- **Minutes of meeting (MOM) by e-mail.** When everything proposed from a meeting has been decided, the people in it (the meeting's
+  invitees - outside guests too - or the project's people, plus everyone given work) get an e-mail: summary, action items with owners
+  and dates, decisions, updates, delays, points not picked up, suggestions, and the **full transcript**. Someone who may edit the project
+  can also send it at any time from *Recent readings › E-mail MOM* (open items are marked "awaiting approval"). The e-mail goes out
+  through the installation's own mail, **in the organizer's name** ("Asha via Project Tracker") with **Reply-To set to the organizer's
+  own address** - no mailbox to set up for the bot. *Minutes by e-mail (MOM)* switch in the Agent tab.
 - **The owner confirms.** Work the agent found and someone approved for another person asks that person: *Is PAY-31 yours?*
   (Project agent › Given to me). *It's mine* closes it; *Not mine* needs a word on whose it is, tells the approver and the project
   owner, and comments on the task. The next reading learns from it.
@@ -76,6 +79,19 @@ created (`--keep` leaves it). CI runs `--self-test` (the scoring only). Run the 
   still open, and the team's delays and missed points approved since yesterday.
 - **One place to decide.** Project agent › To review shows what waits across all projects a person may edit; *Approve all* creates new
   items and notes in one go, while changes to existing work (status, owner, dates) are approved one by one.
+
+## No account or mailbox for the bot
+
+The bot never needs a Google account or an e-mail address: it joins Meet as a guest with a name, and the host lets it in like any guest.
+
+If you would rather not have a bot in the call at all, use **your own Google account** instead (Agent tab › *Use my Google account*). With
+one consent the organizer allows the agent to (1) switch on Google Meet's own **automatic transcripts** for the project's meetings
+(Meet API `meetings.space.settings`) and (2) read those transcripts afterwards (`meetings.space.readonly`). Meet then transcribes every
+session itself - nobody has to admit anything - and the agent reads the transcript when the meeting ends. It needs a Google Workspace
+plan that includes Meet transcripts; if Meet refuses, the reason is shown on the meeting and the bot (or a pasted transcript) still works.
+
+The agent does not sign in to Google as you: storing a person's Google password or browser session on a server is unsafe, Google blocks
+automated sign-ins, and everything the bot did would look like you.
 
 ## Setting it up
 

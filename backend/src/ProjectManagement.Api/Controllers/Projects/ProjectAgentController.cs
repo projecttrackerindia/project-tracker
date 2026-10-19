@@ -11,8 +11,13 @@ namespace ProjectManagement.Api.Controllers.Projects;
 /// edit and approve, dismiss). The workspace's meeting-bot key and a person's own inbox opt-in live here too.
 /// </summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Projects)]
-public class ProjectAgentController(AgentSettingsService settings, AgentSignalService signals, AgentAnalysisService analysis, AgentReviewService review) : ApiControllerBase
+public class ProjectAgentController(AgentSettingsService settings, AgentSignalService signals, AgentAnalysisService analysis, AgentReviewService review,
+    AgentMinutesService minutes) : ApiControllerBase
 {
+    /// <summary>E-mails the minutes of a meeting the agent read (MOM with the transcript) to the people in it, in the caller's name.</summary>
+    [HttpPost("projects/{projectId:guid}/agent/runs/{runId:guid}/minutes")]
+    public async Task<IActionResult> SendMinutes(Guid projectId, Guid runId, CancellationToken ct) => Ok(new { sent = await minutes.SendNowAsync(projectId, runId, ct) });
+
     [HttpGet("projects/{projectId:guid}/agent")]
     public async Task<IActionResult> Get(Guid projectId, CancellationToken ct) => Ok(await settings.GetAsync(projectId, ct));
 

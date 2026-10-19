@@ -30,14 +30,15 @@ public class AgentOptions
     public int SlackPollMinutes { get; set; } = 2;
 }
 
+/// <summary>Meeting: it read a meeting (minutes can be sent). MinutesSentAt: when its minutes were last e-mailed.</summary>
 public record AgentRunDto(Guid Id, string Trigger, string Status, int SignalCount, int FindingCount, int Credits, string? Summary, string? Error,
-    DateTime StartedAt, DateTime? FinishedAt);
+    DateTime StartedAt, DateTime? FinishedAt, bool Meeting = false, DateTime? MinutesSentAt = null);
 
 public record ProjectAgentDto(Guid ProjectId, bool Enabled, bool ReadMailbox, bool ReadChat, bool ReadMeetings, bool LiveBot, bool DailyUpdates,
     string? MailboxAddress, bool LiveBotAvailable, bool AiAvailable, int Pending, DateTime? LastRunAt, string? LastError, int RunsThisMonth,
     int MonthlyRunLimit, bool CanManage, string? ActingUserName, IReadOnlyList<AgentRunDto> Runs, bool TranscriptAccess,
     string? Instructions = null, string? SpeakerAliases = null, string? CaptionLanguage = null, bool AutoJoinCalendar = false, bool SendMinutes = true,
-    string? SlackChannelId = null, bool SlackAvailable = false, bool ReadWhatsApp = true, bool WhatsAppAvailable = false);
+    string? SlackChannelId = null, bool SlackAvailable = false, bool ReadWhatsApp = true, bool WhatsAppAvailable = false, bool AutoTranscriptAccess = false);
 
 /// <summary>Anything left out (null) keeps its current value; an empty string clears a text setting.</summary>
 public record SaveProjectAgentRequest(bool Enabled, bool? ReadMailbox, bool? ReadChat, bool? ReadMeetings, bool? LiveBot, bool? DailyUpdates,

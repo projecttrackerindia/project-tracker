@@ -9,7 +9,7 @@ using ProjectManagement.Application.Abstractions;
 
 namespace ProjectManagement.Infrastructure.Services;
 
-public record DevEmail(Guid Id, DateTime SentAt, string To, string Subject, string? Text, string Html);
+public record DevEmail(Guid Id, DateTime SentAt, string To, string Subject, string? Text, string Html, string? ReplyTo = null, string? FromName = null);
 
 /// <summary>In-memory outbox so verification / reset / invitation links are reachable during development.</summary>
 public class DevMailbox
@@ -32,7 +32,7 @@ public class LogEmailSender(ILogger<LogEmailSender> log, DevMailbox mailbox, Tim
 
     public Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
-        mailbox.Add(new DevEmail(Guid.NewGuid(), clock.GetUtcNow().UtcDateTime, message.To, message.Subject, message.Text, message.Html));
+        mailbox.Add(new DevEmail(Guid.NewGuid(), clock.GetUtcNow().UtcDateTime, message.To, message.Subject, message.Text, message.Html, message.ReplyTo, message.FromName));
         log.LogInformation("Email to {To}: {Subject}\n{Text}", message.To, message.Subject, message.Text);
         return Task.CompletedTask;
     }
@@ -44,8 +44,22 @@ public class EmailCommonOptions
     public string FromName { get; set; } = "Project Tracker";
     public string? ReplyTo { get; set; }
 
-    /// <summary>"Name &lt;address&gt;" unless the configured sender already carries a name.</summary>
-    public string Sender(string from) => from.Contains('<') ? from : $"{FromName} <{from}>";
+    /// <summary>"Name &lt;address&gt;" unless the configured sender already carries a name (a message's own name wins over both).</summary>
+    public string Sender(string from, string? name = null)
+    {
+        var clean = Clean(name);
+        if (clean is null) return from.Contains('<') ? from : $"{FromName} <{from}>";
+        var address = from.Contains('<') ? from[(from.IndexOf('<') + 1)..].TrimEnd('>', ' ') : from;
+        return $"\"{clean}\" <{address}>";
+    }
+
+    /// <summary>A display name safe to put in a From header: no quotes, angle brackets or line breaks.</summary>
+    public static string? Clean(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var t = new string(name.Where(c => !char.IsControl(c) && c is not ('"' or '<' or '>' or '\\')).ToArray()).Trim();
+        return t.Length == 0 ? null : t.Length > 80 ? t[..80] : t;
+    }
 }
 
 public class SmtpOptions
@@ -73,9 +87,10 @@ public class SmtpEmailSender(IOptions<SmtpOptions> options, IOptions<EmailCommon
         using var client = new SmtpClient(o.Host, o.Port) { EnableSsl = o.EnableSsl, Timeout = 15_000 };
         if (!string.IsNullOrEmpty(o.Username)) client.Credentials = new NetworkCredential(o.Username, o.Password);
         // Both a plain-text and an HTML version (mail without a text part scores worse with spam filters), a sender name, a reply address and the extra headers.
-        using var mail = new MailMessage { From = new MailAddress(o.From, common.Value.FromName), Subject = message.Subject };
+        using var mail = new MailMessage { From = new MailAddress(o.From, EmailCommonOptions.Clean(message.FromName) ?? common.Value.FromName), Subject = message.Subject };
         mail.To.Add(message.To);
-        if (!string.IsNullOrWhiteSpace(common.Value.ReplyTo)) mail.ReplyToList.Add(common.Value.ReplyTo);
+        if (!string.IsNullOrWhiteSpace(message.ReplyTo)) mail.ReplyToList.Add(message.ReplyTo);
+        else if (!string.IsNullOrWhiteSpace(common.Value.ReplyTo)) mail.ReplyToList.Add(common.Value.ReplyTo);
         mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(string.IsNullOrWhiteSpace(message.Text) ? System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(message.Html, "<[^>]+>", " ")) : message.Text, null, "text/plain"));
         mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.Html, null, "text/html"));
         foreach (var (name, value) in message.Headers ?? new Dictionary<string, string>()) mail.Headers.Add(name, value);
@@ -108,12 +123,12 @@ public class ResendEmailSender(HttpClient http, IOptions<ResendOptions> options,
         {
             Content = JsonContent.Create(new
             {
-                from = common.Value.Sender(o.From),
+                from = common.Value.Sender(o.From, message.FromName),
                 to = new[] { message.To },
                 subject = message.Subject,
                 html = message.Html,
                 text = message.Text,
-                reply_to = string.IsNullOrWhiteSpace(common.Value.ReplyTo) ? null : new[] { common.Value.ReplyTo },
+                reply_to = !string.IsNullOrWhiteSpace(message.ReplyTo) ? new[] { message.ReplyTo } : string.IsNullOrWhiteSpace(common.Value.ReplyTo) ? null : new[] { common.Value.ReplyTo },
                 headers = message.Headers is { Count: > 0 } ? message.Headers : null,
             }),
         };

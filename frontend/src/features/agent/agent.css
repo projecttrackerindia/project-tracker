@@ -76,6 +76,7 @@
 .ag-runs li small { grid-column: 1; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-runs li time { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--text-3); font-size: 11.5px; }
 .ag-runs li.bad small { color: var(--danger-text); }
+.ag-runs .ag-mom { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 4px; margin: 2px 0 0; font-size: 12px; }
 
 /* switched off */
 .ag-intro { display: flex; gap: 18px; padding: 24px; align-items: flex-start; }

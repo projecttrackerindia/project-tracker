@@ -279,7 +279,10 @@ public interface ISecretProtector
 
 /// <param name="Kind">What the message is for ("verify", "reset", "invite", "security" ...). Messages with a kind are kept and retried if the mail server is down; without one a failure is reported to the caller.</param>
 /// <param name="Headers">Extra headers, such as List-Unsubscribe.</param>
-public record EmailMessage(string To, string Subject, string Html, string? Text = null, string? Kind = null, IReadOnlyDictionary<string, string>? Headers = null);
+/// <param name="ReplyTo">Where replies go for this message (a person's own address), instead of the installation's default.</param>
+/// <param name="FromName">The sender name people see for this message ("Ravi Kumar via Project Tracker"); the address stays the installation's.</param>
+public record EmailMessage(string To, string Subject, string Html, string? Text = null, string? Kind = null, IReadOnlyDictionary<string, string>? Headers = null,
+    string? ReplyTo = null, string? FromName = null);
 
 /// <summary>A provider that really sends (SMTP, Resend, or the development log). The app talks to <see cref="IEmailSender"/>, which adds suppression, logging and retries around one of these.</summary>
 public interface IEmailTransport : IEmailSender { }

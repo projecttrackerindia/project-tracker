@@ -129,13 +129,18 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
             {
                 Assert.True(db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == ravi.UserId && n.Link == "/project-agent/assigned"));
                 Assert.True(db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title.Contains("is not theirs")));
-                // Everything from the meeting is decided: the minutes went out, once, to the people in it.
-                var minutes = db.Notifications.IgnoreQueryFilters().Where(n => n.Type == NotificationType.Meeting && n.Title == "Minutes: Stand-up 19 Oct").ToList();
-                Assert.Contains(minutes, n => n.UserId == owner.UserId && n.Body!.Contains("Send the go-live checklist"));
-                Assert.Contains(minutes, n => n.UserId == ravi.UserId);
                 Assert.Single(db.AgentRuns.IgnoreQueryFilters().Where(r => r.ProjectId == project && r.MinutesSentAt != null).ToList());
                 return 0;
             });
+            // Everything from the meeting is decided: the MOM, with the transcript, was e-mailed once to the people in it - in the lead's
+            // name, replies to the lead's own address (no mailbox for the bot).
+            var mom = (await owner.Get("/api/v1/dev/emails")).Data!.AsArray().Where(m => m!["subject"]!.GetValue<string>().StartsWith("MOM: Stand-up 19 Oct")).ToList();
+            var toOwner = Assert.Single(mom, m => string.Equals(m!["to"]!.GetValue<string>(), owner.Email, StringComparison.OrdinalIgnoreCase))!;
+            Assert.Contains("Send the go-live checklist", toOwner["text"]!.GetValue<string>());
+            Assert.Contains("Prasanna: who is doing refunds?", toOwner["text"]!.GetValue<string>());   // the transcript
+            Assert.Equal(owner.Email, toOwner["replyTo"]!.GetValue<string>(), ignoreCase: true);
+            Assert.Equal("Accuracy Desk Owner via Project Tracker", toOwner["fromName"]!.GetValue<string>());
+            Assert.Contains(mom, m => string.Equals(m!["to"]!.GetValue<string>(), ravi.Email, StringComparison.OrdinalIgnoreCase));
 
             // The next reading is told how the team decided.
             var again = await owner.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Stand-up 20 Oct", text = text + "\nPrasanna: and the settlement report is late." });
@@ -160,6 +165,63 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
         noRedirect.DefaultRequestHeaders.Add("Cookie", start.Headers!["Set-Cookie"].Split(';')[0]);
         using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?code={code}&state={state}");
         Assert.Equal(HttpStatusCode.Redirect, cb.StatusCode);
+    }
+
+    [Fact]
+    public async Task Meet_transcribes_with_the_organizers_own_account_and_the_MOM_can_be_sent_now()
+    {
+        factory.Ai.Reset(); factory.Ai.Configured = true;
+        factory.Ai.Answer = (_, _) => """{"summary":"Release slips a week.","findings":[{"kind":"decision","title":"Release moves to Friday","evidence":"we move the release to Friday","source":"S1","confidence":90}]}""";
+        try
+        {
+            var (owner, project, ravi, _) = await SetupAsync("Auto Desk");
+            // One consent with the organizer's own Google account: read Meet transcripts and switch them on. No account or mailbox for a bot.
+            var start = await owner.Get("/api/v1/integrations/google/connect?autoTranscripts=true");
+            Assert.True(start.Ok, start.ToString());
+            Assert.Contains("meetings.space.settings", Uri.UnescapeDataString(start.Data!["url"]!.GetValue<string>()));
+            var state = QueryValue(new Uri(start.Data["url"]!.GetValue<string>()), "state");
+            var code = factory.GoogleCalendar.IssueCode(owner.Email, "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created " +
+                "https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/meetings.space.settings");
+            using (var noRedirect = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false }))
+            {
+                noRedirect.DefaultRequestHeaders.Add("Cookie", start.Headers!["Set-Cookie"].Split(';')[0]);
+                using var cb = await noRedirect.GetAsync($"/api/v1/integrations/google/callback?code={code}&state={state}");
+                Assert.Equal(HttpStatusCode.Redirect, cb.StatusCode);
+            }
+            var at = DateTimeOffset.UtcNow.AddDays(1);
+            var scheduled = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new { title = "Daily stand-up", startTime = at, endTime = at.AddMinutes(15), timeZone = "Asia/Kolkata", scrum = true });
+            Assert.True(scheduled.Ok, scheduled.ToString());
+            var meeting = Guid.Parse(scheduled.Data!["id"]!.GetValue<string>());
+            Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true })).Ok);
+            Assert.True((await owner.Get($"/api/v1/projects/{project}/agent")).Data!["autoTranscriptAccess"]!.GetValue<bool>());
+
+            await TickAsync();
+            await TickAsync();
+            factory.WithDb(db =>
+            {
+                var row = Assert.Single(db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.MeetingId == meeting && b.Kind == "auto").ToList());
+                Assert.Equal("done", row.Status);
+                var uri = db.ProjectMeetings.IgnoreQueryFilters().Single(m => m.Id == meeting).GoogleMeetUri;
+                Assert.Contains("spaces/sp-" + uri.Split('/').Last(), factory.GoogleCalendar.AutoTranscripts);
+                return 0;
+            });
+            Assert.Single(factory.GoogleCalendar.AutoTranscripts.Where(x => x.EndsWith(factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Single(m => m.Id == meeting).GoogleMeetUri).Split('/').Last())));
+
+            // The MOM can be sent at any time by someone who may edit the project, in their name.
+            var read = await owner.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Release call", text = "Asha: we move the release to Friday.\nRavi: fine, I will update the plan today." });
+            var runId = read.Data!["run"]!["id"]!.GetValue<string>();
+            Assert.True((await owner.Get($"/api/v1/projects/{project}/agent")).Data!["runs"]![0]!["meeting"]!.GetValue<bool>());
+            Assert.Equal(HttpStatusCode.Forbidden, (await ravi.Post($"/api/v1/projects/{project}/agent/runs/{runId}/minutes", new { })).Status);
+            var sent = await owner.Post($"/api/v1/projects/{project}/agent/runs/{runId}/minutes", new { });
+            Assert.True(sent.Ok, sent.ToString());
+            Assert.True(sent.Data!["sent"]!.GetValue<int>() >= 1);
+            Assert.Equal(HttpStatusCode.Conflict, (await owner.Post($"/api/v1/projects/{project}/agent/runs/{runId}/minutes", new { })).Status);   // not twice in a row
+            var mail = (await owner.Get("/api/v1/dev/emails")).Data!.AsArray()
+                .First(m => m!["subject"]!.GetValue<string>().StartsWith("MOM: Release call") && string.Equals(m["to"]!.GetValue<string>(), owner.Email, StringComparison.OrdinalIgnoreCase))!;
+            Assert.Contains("Release moves to Friday - awaiting approval", mail["text"]!.GetValue<string>());
+            Assert.Contains("Ravi: fine, I will update the plan today.", mail["text"]!.GetValue<string>());
+        }
+        finally { factory.Ai.Reset(); }
     }
 
     [Fact]

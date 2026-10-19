@@ -25,7 +25,7 @@ const SOURCES: { key: Source; icon: IconName; title: string; text: string; show?
   { key: 'liveBot', icon: 'agent', title: 'Live meeting bot', text: 'Joins stand-ups, posts the agenda and reminds the team in the chat' },
   { key: 'autoJoinCalendar', icon: 'calendar', title: 'Calls on my calendar', text: 'The bot also joins Meet calls on your calendar that name the project', show: (a) => a.liveBot && a.liveBotAvailable },
   { key: 'readWhatsApp', icon: 'phone', title: 'WhatsApp', text: 'Messages starting with the project key, from members\' verified numbers', show: (a) => a.whatsAppAvailable },
-  { key: 'sendMinutes', icon: 'note', title: 'Meeting minutes', text: 'Sent to the people in a meeting once everything from it is decided' },
+  { key: 'sendMinutes', icon: 'note', title: 'Minutes by e-mail (MOM)', text: 'Summary, actions and the transcript, e-mailed to the people in the meeting once it is decided' },
   { key: 'dailyUpdates', icon: 'bell', title: 'Morning updates', text: 'Each person gets their own update at 9:00' },
 ];
 const LANGUAGE = Object.fromEntries(CAPTION_LANGUAGES);
@@ -84,8 +84,15 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
     try { await agentApi.resetMailbox(projectId); refresh(); } catch (e) { toast(errText(e, 'Could not change the address.'), 'error'); }
   };
   const allowTranscripts = async () => {
-    try { const { url } = await integrationsApi.googleConnectUrl(`/projects/${projectId}?tab=agent`, false, false, true); window.location.assign(url); }
+    try { const { url } = await integrationsApi.googleConnectUrl(`/projects/${projectId}?tab=agent`, false, false, false, true); window.location.assign(url); }
     catch (e) { toast(errText(e, 'Could not open Google.'), 'error'); }
+  };
+  const sendMinutes = async (runId: string, again: boolean) => {
+    if (!(await confirmDialog({ title: again ? 'Send the minutes again?' : 'E-mail the minutes?', message: 'The summary, action items and the full transcript go to the people in the meeting, in your name. Replies come to your own e-mail address.', confirmText: 'Send' }))) return;
+    setBusy(`mom-${runId}`);
+    try { const r = await agentApi.sendMinutes(projectId, runId); toast(`Minutes e-mailed to ${r.sent} ${r.sent === 1 ? 'person' : 'people'}.`); refresh(); }
+    catch (e) { toast(errText(e, 'Could not send the minutes.'), 'error'); }
+    finally { setBusy(null); }
   };
 
   if (!a.enabled) {
@@ -169,10 +176,10 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
               );
             })}
           </ul>
-          {a.readMeetings && !a.transcriptAccess && (
-            <p className="ag-hint"><Icon name="info" size={13} /> Meet transcripts are read with the organizer's Google account.
-              <button type="button" className="ag-link" onClick={() => void allowTranscripts()}>Allow for my meetings</button></p>
-          )}
+          {a.readMeetings && (a.autoTranscriptAccess
+            ? <p className="ag-hint"><Icon name="checkCircle" size={13} /> Google Meet transcribes your meetings automatically, with your own Google account - no bot or mailbox needed.</p>
+            : <p className="ag-hint"><Icon name="info" size={13} /> Let Google Meet transcribe your meetings itself, with your own Google account - no bot to let in, no mailbox for it.
+              <button type="button" className="ag-link" onClick={() => void allowTranscripts()}>Use my Google account</button></p>)}
           <p className="ag-hint"><Link to="/project-agent/my-inbox">Let it look in my own inbox too</Link></p>
         </div>
 
@@ -195,8 +202,13 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
               {a.runs.map((r) => (
                 <li key={r.id} className={r.status === 'failed' ? 'bad' : ''}>
                   <span>{TRIGGER[r.trigger] ?? r.trigger}</span>
-                  <small>{r.status === 'failed' ? r.error ?? 'Failed' : `${r.signalCount} source${r.signalCount === 1 ? '' : 's'} · ${r.findingCount} found`}</small>
+                  <small>{r.status === 'failed' ? r.error ?? 'Failed' : `${r.signalCount} source${r.signalCount === 1 ? '' : 's'} · ${r.findingCount} found`}
+                    {r.meeting && r.minutesSentAt && <> · MOM sent</>}</small>
                   <time>{timeAgo(r.startedAt)}</time>
+                  {r.meeting && r.status === 'done' && manage && (
+                    <button type="button" className="ag-link ag-mom" disabled={busy !== null} onClick={() => void sendMinutes(r.id, !!r.minutesSentAt)}>
+                      {busy === `mom-${r.id}` ? <span className="spinner" /> : <Icon name="mail" size={12} />}{r.minutesSentAt ? 'Resend MOM' : 'E-mail MOM'}</button>
+                  )}
                 </li>
               ))}
             </ul>

@@ -149,6 +149,24 @@ public class GoogleMeetingClient(IHttpClientFactory http, GoogleCalendarAuthServ
     }
 
     private const string MeetApi = "https://meet.googleapis.com/v2";
+
+    /// <summary>
+    /// Switches on Meet's own automatic transcript for a meeting the person organizes, with their Google account: Meet then transcribes it
+    /// whenever someone who may record joins, so no bot has to join. True when it is on (or already was).
+    /// </summary>
+    public async Task<bool> EnableAutoTranscriptsAsync(Guid organizerUserId, string meetUri, CancellationToken ct = default)
+    {
+        var code = Uri.TryCreate(meetUri, UriKind.Absolute, out var uri) && uri.Host == "meet.google.com" ? uri.AbsolutePath.Trim('/') : "";
+        if (!MeetingCode.IsMatch(code)) return false;
+        var token = await auth.GetAccessTokenAsync(organizerUserId, ct, GoogleCalendarAuthService.MeetSettingsScope);
+        var space = await GetAsync($"{MeetApi}/spaces/{Uri.EscapeDataString(code)}", token, ct);
+        if (!space.TryGetProperty("name", out var nameEl) || nameEl.GetString() is not { Length: > 0 } name || !name.StartsWith("spaces/", StringComparison.Ordinal)) return false;
+        if (space.TryGetProperty("config", out var cfg) && cfg.TryGetProperty("artifactConfig", out var art) && art.TryGetProperty("transcriptionConfig", out var tc)
+            && tc.TryGetProperty("autoTranscriptionGeneration", out var on) && on.GetString() == "ON") return true;
+        await SendAsync(HttpMethod.Patch, $"{MeetApi}/{name}?updateMask=config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration", token,
+            new { config = new { artifactConfig = new { transcriptionConfig = new { autoTranscriptionGeneration = "ON" } } } }, "switch on automatic transcripts", ct);
+        return true;
+    }
     private static readonly System.Text.RegularExpressions.Regex MeetingCode = new(@"^[A-Za-z0-9_-]{3,40}$");   // abc-mnop-xyz; nothing that could break out of the filter's quotes
 
     /// <summary>

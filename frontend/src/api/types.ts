@@ -765,7 +765,9 @@ export interface MicrosoftCalendarAvailability { account: string; accessContext:
 export type AgentFindingKind = 'CreateTask' | 'UpdateTask' | 'CreateActionItem' | 'CreateIssue' | 'UpdateIssue' | 'Delay' | 'Suggestion' | 'Missed' | 'Decision';
 export type AgentFindingStatus = 'Proposed' | 'Applied' | 'Dismissed' | 'Failed';
 export type AgentSourceKind = 'ProjectMailbox' | 'PersonalMail' | 'Chat' | 'MeetingTranscript' | 'LiveMeeting' | 'Manual' | 'Slack' | 'WhatsApp';
-export interface AgentRun { id: string; trigger: 'schedule' | 'meeting' | 'mail' | 'manual'; status: 'running' | 'done' | 'failed'; signalCount: number; findingCount: number; credits: number; summary: string | null; error: string | null; startedAt: string; finishedAt: string | null }
+export interface AgentRun { id: string; trigger: 'schedule' | 'meeting' | 'mail' | 'manual'; status: 'running' | 'done' | 'failed'; signalCount: number; findingCount: number; credits: number; summary: string | null; error: string | null; startedAt: string; finishedAt: string | null;
+  /** It read a meeting: its minutes (MOM) can be e-mailed. */
+  meeting?: boolean; minutesSentAt?: string | null }
 export interface ProjectAgent {
   projectId: string; enabled: boolean; readMailbox: boolean; readChat: boolean; readMeetings: boolean; liveBot: boolean; dailyUpdates: boolean;
   /** agent+token@... - only shown to people who may set the agent up. */
@@ -778,6 +780,8 @@ export interface ProjectAgent {
   /** Meet's caption language for the bot, e.g. "hi". */
   captionLanguage: string | null; autoJoinCalendar: boolean; sendMinutes: boolean;
   slackChannelId: string | null; slackAvailable: boolean; readWhatsApp: boolean; whatsAppAvailable: boolean;
+  /** This person let Google Meet transcribe their meetings automatically (their own Google account; no bot needed). */
+  autoTranscriptAccess: boolean;
 }
 export interface AgentPerson { id: string; name: string }
 export interface AgentFinding {

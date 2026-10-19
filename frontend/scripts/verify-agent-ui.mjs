@@ -25,7 +25,7 @@ let findings=[
 ];
 let agent={projectId:pid,enabled:false,readMailbox:true,readChat:true,readMeetings:true,liveBot:false,dailyUpdates:true,mailboxAddress:'agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in',liveBotAvailable:true,aiAvailable:true,
   pending:0,lastRunAt:null,lastError:null,runsThisMonth:0,monthlyRunLimit:300,canManage:true,actingUserName:'Alex Morgan',runs:[],transcriptAccess:false,
-  instructions:null,speakerAliases:null,captionLanguage:null,autoJoinCalendar:false,sendMinutes:true,slackChannelId:null,slackAvailable:true,readWhatsApp:true,whatsAppAvailable:true};
+  instructions:null,speakerAliases:null,autoTranscriptAccess:false,captionLanguage:null,autoJoinCalendar:false,sendMinutes:true,slackChannelId:null,slackAvailable:true,readWhatsApp:true,whatsAppAvailable:true};
 let given=[finding('g1','CreateTask','Send the go-live checklist',{status:'Applied',assignee:{id:user.id,name:user.displayName},appliedKey:'PAY-31',appliedEntityId:'t-31',
   evidence:'can you send the go-live checklist by Friday?',decidedBy:{id:ravi.userId,name:ravi.displayName},decidedAt:'2030-01-06T06:00:00Z'})];
 let workspace={botAvailable:true,botName:'Project Tracker Agent',inCallReminders:true,canManage:true,enabledProjects:1};
@@ -42,9 +42,10 @@ try{
   if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp}});return;}
   let data=[];
   const body=()=>{try{return req.postDataJSON();}catch{return null;}};
-  if(ep===`/api/v1/projects/${pid}/agent`&&method==='PUT'){const b=body();writes.push({ep,b});agent={...agent,...b};if(b.enabled&&agent.runs.length===0){agent.runs=[{id:'run-1',trigger:'meeting',status:'done',signalCount:3,findingCount:5,credits:4,summary:'The gateway work is moving; the client wants the go-live checklist and nobody owns refunds yet.',error:null,startedAt:'2030-01-06T05:00:00Z',finishedAt:'2030-01-06T05:00:20Z'}];agent.lastRunAt='2030-01-06T05:00:20Z';}data=agent;}
+  if(ep===`/api/v1/projects/${pid}/agent`&&method==='PUT'){const b=body();writes.push({ep,b});agent={...agent,...b};if(b.enabled&&agent.runs.length===0){agent.runs=[{id:'run-1',trigger:'meeting',meeting:true,minutesSentAt:null,status:'done',signalCount:3,findingCount:5,credits:4,summary:'The gateway work is moving; the client wants the go-live checklist and nobody owns refunds yet.',error:null,startedAt:'2030-01-06T05:00:00Z',finishedAt:'2030-01-06T05:00:20Z'}];agent.lastRunAt='2030-01-06T05:00:20Z';}data=agent;}
   else if(ep===`/api/v1/projects/${pid}/agent`){data={...agent,pending:agent.enabled?findings.filter(f=>f.status==='Proposed').length:0};}
   else if(ep===`/api/v1/projects/${pid}/agent/findings`){const s=url.searchParams.get('status')||'proposed';const items=agent.enabled?findings.filter(f=>s==='all'||f.status.toLowerCase()===(s==='applied'?'applied':s)):[];data={items,pending:findings.filter(f=>f.status==='Proposed').length,canDecide:true};}
+  else if(ep===`/api/v1/projects/${pid}/agent/runs/run-1/minutes`&&method==='POST'){writes.push({ep,b:null});agent.runs[0].minutesSentAt='2030-01-06T08:00:00Z';data={sent:3};}
   else if(ep==='/api/v1/agent/assigned')data={items:given,pending:given.filter(g=>!g.ownerResponse).length,canDecide:false};
   else if(ep.startsWith('/api/v1/agent/findings/')&&ep.endsWith('/respond')&&method==='POST'){const b=body();writes.push({ep,b});const g=given.find(x=>x.id===ep.split('/')[5]);assert.ok(g,'known given item');Object.assign(g,{ownerResponse:b.response,ownerNote:b.note??null});data=g;}
   else if(ep.startsWith('/api/v1/agent/findings/')&&method==='POST'){
@@ -137,6 +138,12 @@ try{
  await tune.getByRole('button',{name:'Save',exact:true}).click();await tune.waitFor({state:'detached'});
  assert.deepEqual(writes.at(-1).b,{enabled:true,instructions:'UAT means the bank test environment.',speakerAliases:'RK = ravi@example.test',captionLanguage:'hi',slackChannelId:'C0PAYMENTS1'});
  await page.getByText('Hindi',{exact:true}).waitFor();checks.push('notes-and-names');
+
+ // The MOM (minutes with the transcript) is e-mailed from a meeting reading.
+ assert.ok(await page.getByRole('button',{name:'Use my Google account'}).isVisible());
+ await page.getByRole('button',{name:'E-mail MOM'}).click();
+ const mom=page.getByRole('dialog');await mom.getByRole('button',{name:'Send',exact:true}).click();await mom.waitFor({state:'detached'});
+ assert.ok(writes.at(-1).ep.endsWith('/agent/runs/run-1/minutes'));await page.getByText('Minutes e-mailed to 3 people.').waitFor();checks.push('email-mom');
  await page.close();
 
  // Phone width: the same tab fits.

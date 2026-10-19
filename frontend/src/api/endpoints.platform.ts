@@ -100,7 +100,8 @@ export const integrationsApi = {
   googleStatus: () => get<GoogleConnectionStatus>('/integrations/google/status'),
   /** Returns Google's consent screen address; the caller navigates the whole page there itself (window.location.assign) - this call cannot
    * redirect there itself because only an ordinary authenticated fetch, not a bare page navigation, can carry the Authorization header. */
-  googleConnectUrl: (returnUrl?: string, mail = false, inbox = false, transcripts = false) => providerConnectionUrl('google', { returnUrl, mail: mail || undefined, inbox: inbox || undefined, transcripts: transcripts || undefined }),
+  googleConnectUrl: (returnUrl?: string, mail = false, inbox = false, transcripts = false, autoTranscripts = false) =>
+    providerConnectionUrl('google', { returnUrl, mail: mail || undefined, inbox: inbox || undefined, transcripts: transcripts || undefined, autoTranscripts: autoTranscripts || undefined }),
   googleDisconnect: () => post('/integrations/google/disconnect'),
 };
 

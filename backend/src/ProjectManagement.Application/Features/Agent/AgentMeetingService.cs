@@ -338,6 +338,52 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
 
     // ---------------------------------------------------------------- Google Meet's own transcript
 
+    /// <summary>
+    /// With the organizer's own Google account (they allowed it once): switch on Meet's automatic transcripts for the project's meetings, so
+    /// every session is transcribed by Meet itself - no bot to let in, no mailbox for a bot. Read after each session like any Meet transcript.
+    /// Returns how many meetings were switched on.
+    /// </summary>
+    public async Task<int> EnableAutoTranscriptsAsync(ProjectAgentSettings s, CancellationToken ct)
+    {
+        if (!s.Enabled || !s.ReadMeetings) return 0;
+        var now = clock.Now;
+        var meetings = await db.ProjectMeetings.AsNoTracking().Where(m => m.ProjectId == s.ProjectId && m.Status == MeetingStatus.Scheduled && m.GoogleMeetUri != ""
+                && (m.RecurrenceRule != null || m.EndTimeUtc > now))
+            .OrderBy(m => m.StartTimeUtc).Take(20).ToListAsync(ct);
+        var switched = 0;
+        foreach (var m in meetings)
+        {
+            var row = await db.AgentMeetingBots.FirstOrDefaultAsync(b => b.MeetingId == m.Id && b.Kind == "auto", ct);
+            if (row is { Status: "done" } || row?.LastAttemptAt is { } tried && now - tried < TimeSpan.FromHours(24)) continue;
+            var scopes = await db.GoogleConnections.AsNoTracking().Where(c => c.UserId == m.OrganizerUserId).Select(c => c.Scopes).FirstOrDefaultAsync(ct);
+            if (scopes is null || !scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(GoogleCalendarAuthService.MeetSettingsScope)) continue;
+            if (row is null)
+            {
+                row = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = s.ProjectId, MeetingId = m.Id, SessionStartUtc = m.StartTimeUtc, SessionEndUtc = m.EndTimeUtc,
+                    Kind = "auto", Status = "waiting", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now, Title = AgentAnalysisService.Cut(m.Title, 300) };
+                db.AgentMeetingBots.Add(row);
+            }
+            row.LastAttemptAt = now; row.Attempts++;
+            try
+            {
+                if (await google.EnableAutoTranscriptsAsync(m.OrganizerUserId, m.GoogleMeetUri, ct)) { row.Status = "done"; row.Error = null; switched++; }
+                else { row.Status = "failed"; row.Error = "This meeting has no Google Meet link the agent can configure."; }
+            }
+            catch (ConflictException ex) when (ex.Code is "GOOGLE_SCOPE_REQUIRED" or "GOOGLE_NOT_CONNECTED")
+            {
+                row.Status = "failed"; row.Error = "The organizer has not allowed automatic transcripts.";
+            }
+            catch (GoogleApiException ex)
+            {
+                row.Status = "failed";
+                row.Error = AgentAnalysisService.Cut($"Google Meet did not switch on automatic transcripts ({ex.Message}). The organizer's Google Workspace plan must include transcripts.", 500);
+            }
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException) { db.AgentMeetingBots.Entry(row).State = EntityState.Detached; }   // another server did it
+        }
+        return switched;
+    }
+
     /// <summary>Sessions that ended in the last day without a bot: fetch Meet's transcript (it takes Meet a little while to produce it).</summary>
     public async Task<int> FetchTranscriptsAsync(ProjectAgentSettings s, CancellationToken ct)
     {

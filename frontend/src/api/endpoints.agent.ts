@@ -22,6 +22,8 @@ export const agentApi = {
   save: (projectId: string, b: AgentSettingsPatch & { enabled: boolean }) => put<ProjectAgent>(`/projects/${projectId}/agent`, b),
   resetMailbox: (projectId: string) => post<ProjectAgent>(`/projects/${projectId}/agent/mailbox/reset`),
   run: (projectId: string) => post<AgentRun | null>(`/projects/${projectId}/agent/run`),
+  /** E-mails the minutes (MOM) of a meeting the agent read, with the transcript, to the people in it - in the caller's name. */
+  sendMinutes: (projectId: string, runId: string) => post<{ sent: number }>(`/projects/${projectId}/agent/runs/${runId}/minutes`),
   transcript: (projectId: string, b: { title?: string; text: string; meetingId?: string }) => post<{ signalId: string; run: AgentRun | null }>(`/projects/${projectId}/agent/transcript`, b),
   findings: (projectId: string, status = 'proposed') => get<AgentFindingPage>(`/projects/${projectId}/agent/findings`, { status }),
   approveAll: (projectId: string) => post<{ applied: number; failed: number; skipped: number; items: AgentFinding[] }>(`/projects/${projectId}/agent/findings/approve-all`),

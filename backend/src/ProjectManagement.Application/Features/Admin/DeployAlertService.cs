@@ -67,7 +67,7 @@ public class DeployAlertService(IAppDbContext db, IEmailSender email, IConfigura
         var subject = $"{alert.Service} {what}{(alert.Environment is null ? "" : $" ({alert.Environment})")}";
         var text = $"{alert.Service} {what}{(alert.Environment is null ? "" : $" in {alert.Environment}")}. Status: {alert.Status}." +
             (alert.Commit is null ? "" : $" Change: {alert.Commit}.") + " The previous deployment keeps running when a new one fails; a crash restarts the service.";
-        var html = EmailTemplates.Wrap(subject, "Hello,", WebUtility.HtmlEncode(text), "Open the hosting dashboard", alert.Url is { } u && u.StartsWith("https://", StringComparison.Ordinal) ? u : "https://railway.com/dashboard");
+        var html = EmailTemplates.Wrap(subject, "Hello,", text, "Open the hosting dashboard", alert.Url is { } u && u.StartsWith("https://", StringComparison.Ordinal) ? u : "https://railway.com/dashboard");
         foreach (var address in to.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             try { await email.SendAsync(new EmailMessage(address, subject, html, text, "ops-alert"), ct); }

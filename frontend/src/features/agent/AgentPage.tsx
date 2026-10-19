@@ -155,7 +155,9 @@ function MeetingBot() {
           <span>{w.botAvailable ? `Ready · ${w.enabledProjects} project${w.enabledProjects === 1 ? '' : 's'} with the agent on`
             : 'The meeting bot is not running on this installation yet. Until it is, the agent reads Google Meet transcripts after each meeting.'}</span></div>
         <ul className="ag-bot-notes">
-          <li><Icon name="users" size={14} />The meeting host lets the bot in when it asks to join, like any guest.</li>
+          <li><Icon name="users" size={14} />The bot needs no Google account or mailbox: it joins as a guest by name, and the host lets it in like any guest.</li>
+          <li><Icon name="video" size={14} />Rather not let a bot in? In a project's Agent tab choose "Use my Google account": Meet then transcribes your meetings itself.</li>
+          <li><Icon name="mail" size={14} />Minutes (MOM) with the transcript are e-mailed in the organizer's name; replies go to the organizer.</li>
           <li><Icon name="message" size={14} />Meet's captions must be available in the meeting's language; the bot switches them on itself.</li>
           <li><Icon name="shield" size={14} />Nothing it hears changes the project until someone who can edit the project approves it.</li>
         </ul>

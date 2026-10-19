@@ -66,7 +66,8 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         return !await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct);
     }
 
-    private static AgentRunDto Run(AgentRun r) => new(r.Id, r.Trigger, r.Status, r.SignalCount, r.FindingCount, r.Credits, r.Summary, r.Error, r.StartedAt, r.FinishedAt);
+    private static AgentRunDto Run(AgentRun r) => new(r.Id, r.Trigger, r.Status, r.SignalCount, r.FindingCount, r.Credits, r.Summary, r.Error, r.StartedAt, r.FinishedAt,
+        false, r.MinutesSentAt);
 
     // ---------------------------------------------------------------- one project
 
@@ -77,10 +78,16 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var canManage = await CanManageAsync(project, ct);
         var pending = await db.AgentFindings.CountAsync(f => f.ProjectId == projectId && f.Status == AgentFindingStatus.Proposed, ct);
         var runs = await db.AgentRuns.AsNoTracking().Where(r => r.ProjectId == projectId).OrderByDescending(r => r.StartedAt).Take(8).ToListAsync(ct);
+        var runIds = runs.Select(r => r.Id).ToList();
+        var meetingRuns = (await db.AgentSignals.AsNoTracking().Where(x => x.RunId != null && runIds.Contains(x.RunId.Value)
+                && (x.Source == AgentSourceKind.MeetingTranscript || x.Source == AgentSourceKind.LiveMeeting || x.Source == AgentSourceKind.Manual))
+            .Select(x => x.RunId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
         var botReady = bot.Configured;
         var uid = ctx.RequireUserId();
-        var transcripts = await db.GoogleConnections.AsNoTracking().Where(c => c.UserId == uid).Select(c => c.Scopes).FirstOrDefaultAsync(ct) is { } scopes
-            && scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(GoogleCalendarAuthService.TranscriptScope);
+        var granted = (await db.GoogleConnections.AsNoTracking().Where(c => c.UserId == uid).Select(c => c.Scopes).FirstOrDefaultAsync(ct) ?? "")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var transcripts = granted.Contains(GoogleCalendarAuthService.TranscriptScope);
+        var autoTranscripts = granted.Contains(GoogleCalendarAuthService.MeetSettingsScope);
         string? acting = null;
         if (s is not null) acting = await db.Users.AsNoTracking().Where(u => u.Id == s.ActingUserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
         var month = clock.Now.ToString("yyyy-MM");
@@ -88,10 +95,10 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             s?.DailyUpdates ?? true, s is null || !canManage ? null : MailboxAddress(s.MailboxToken), botReady, await AiAvailableAsync(ct), pending, s?.LastRunAt,
             s?.LastError, s?.RunMonth == month ? s.RunsThisMonth : 0, s?.MonthlyRunLimit ?? 300, canManage, acting,
             // Summaries describe what was read (mail, meetings, members' inboxes): only for the people who decide on it.
-            runs.Select(Run).Select(r => canManage ? r : r with { Summary = null }).ToList(), transcripts,
+            runs.Select(Run).Select(r => r with { Meeting = meetingRuns.Contains(r.Id) }).Select(r => canManage ? r : r with { Summary = null }).ToList(), transcripts,
             // The lead's notes and who-is-who are for the people who set the agent up.
             canManage ? s?.Instructions : null, canManage ? s?.SpeakerAliases : null, s?.CaptionLanguage, s?.AutoJoinCalendar ?? false, s?.SendMinutes ?? true,
-            canManage ? s?.SlackChannelId : null, await SlackReadableAsync(ct), s?.ReadWhatsApp ?? true, await WhatsAppReadableAsync(ct));
+            canManage ? s?.SlackChannelId : null, await SlackReadableAsync(ct), s?.ReadWhatsApp ?? true, await WhatsAppReadableAsync(ct), autoTranscripts);
     }
 
     private static string? Clip(string? value, int max, string field, string label)

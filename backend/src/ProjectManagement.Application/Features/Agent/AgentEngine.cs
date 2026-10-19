@@ -117,6 +117,7 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
                 if (s.AutoJoinCalendar) bots += await Step("calendar calls", () => meetings.ScheduleCalendarBotsAsync(s, w, ct));
                 await Step("live reminders", () => meetings.NudgeAsync(s, w, ct));
             }
+            await Step("automatic transcripts", () => meetings.EnableAutoTranscriptsAsync(s, ct));
             added += await Step("finish bots", () => meetings.FinishBotsAsync(s, w, ct));
             added += await Step("meet transcripts", () => meetings.FetchTranscriptsAsync(s, ct));
         }
