@@ -115,7 +115,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var url = (req.UrlTemplate ?? "").Trim();
         if (!Uri.TryCreate(Placeholder.Replace(url, "x"), UriKind.Absolute, out var u) || u.Scheme != "https" || url.Length > 500)
             throw new ValidationException("urlTemplate", "Enter an https address; put what the caller says in {braces}, like {loanNumber}.");
-        if (req.HeaderName is { Length: > 0 } h && !Regex.IsMatch(h, @"^[A-Za-z0-9-]{1,100}$")) throw new ValidationException("headerName", "Enter a header name like Authorization or client_id.");
+        if (req.HeaderName is { Length: > 0 } h && !Regex.IsMatch(h, @"^[A-Za-z0-9_-]{1,100}$")) throw new ValidationException("headerName", "Enter a header name like Authorization or client_id.");
         var row = id is { } existing ? await db.VoiceConnectors.FirstOrDefaultAsync(c => c.Id == existing, ct) ?? throw new NotFoundException("Connector not found.") : null;
         if (row is null)
         {
