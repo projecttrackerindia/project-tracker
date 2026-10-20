@@ -13,7 +13,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { mailboxApi } from '../mailbox/mailboxApi';
 import { minutesText, notetakerApi } from './notetakerApi';
-import type { Minutes, NotetakerSession } from './notetakerApi';
+import type { Minutes, NotetakerSession, NotetakerSettings } from './notetakerApi';
 import './notetaker.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -40,12 +40,14 @@ export function NotetakerPage() {
   const [raise, setRaise] = useState('');
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<string | null>(params.get('session'));
+  const [pending, setPending] = useState<NotetakerSettings | null>(null);
   const data = q.data;
   useEffect(() => { if (data && !project) setProject(data.settings.projectId ?? data.projects.find((p) => p.agentReady)?.id ?? data.projects[0]?.id ?? ''); }, [data, project]);
 
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
   const chosen = data.projects.find((p) => p.id === project);
+  const settings = pending ?? data.settings;
 
   const join = async () => {
     setBusy(true);
@@ -57,9 +59,12 @@ export function NotetakerPage() {
     } catch (e) { toast(errText(e, 'The notetaker could not be sent.'), 'error'); }
     finally { setBusy(false); }
   };
-  const save = async (patch: Partial<typeof data.settings>) => {
-    try { await notetakerApi.saveSettings({ ...data.settings, ...patch }); void invalidateWorkspace(wid, 'notetaker'); toast('Saved.'); }
+  const save = async (patch: Partial<NotetakerSettings>) => {
+    const next = { ...settings, ...patch };
+    setPending(next);   // the switch moves at once; the server's answer replaces it
+    try { await notetakerApi.saveSettings(next); toast('Saved.'); await q.refetch(); }
     catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
+    finally { setPending(null); }
   };
   const stop = async (s: NotetakerSession) => {
     if (!(await confirmDialog({ title: 'Call the notetaker back?', message: 'It leaves the call. What it heard so far is kept and written up.', confirmText: 'Leave the call' }))) return;
@@ -79,9 +84,9 @@ export function NotetakerPage() {
         <ul className="nt-checks" aria-label="Readiness">
           <li className={data.botReady ? 'ok' : 'bad'}><Icon name={data.botReady ? 'checkCircle' : 'alert'} size={15} />{data.botReady ? 'Meeting bot online' : 'Meeting bot not set up'}</li>
           <li className={data.signedInAccount ? 'ok' : 'warn'}><Icon name={data.signedInAccount ? 'checkCircle' : 'info'} size={15} />
-            {data.signedInAccount ? <>Joins as <b>{data.accountName}</b> — let in automatically in your company's calls</> : 'Joins as a guest — the host lets it in'}</li>
+            <span>{data.signedInAccount ? <>Joins as <b>{data.accountName}</b>, let in automatically in your company's calls</> : 'Joins as a guest: the host lets it in'}</span></li>
           <li className={data.calendarConnected ? 'ok' : 'warn'}><Icon name={data.calendarConnected ? 'checkCircle' : 'info'} size={15} />
-            {data.calendarConnected ? 'Google Calendar connected' : <>Connect Google in <Link to="/account/integrations">Connected accounts</Link> to join calendar calls</>}</li>
+            <span>{data.calendarConnected ? 'Google Calendar connected' : <>Connect Google in <Link to="/account/integrations">Connected accounts</Link> to join calendar calls</>}</span></li>
           <li className={data.aiAvailable ? 'ok' : 'warn'}><Icon name={data.aiAvailable ? 'checkCircle' : 'info'} size={15} />{data.aiAvailable ? 'Minutes written by AI' : 'AI is off: transcripts only'}</li>
         </ul>
       </header>
@@ -94,10 +99,10 @@ export function NotetakerPage() {
           <div className="nt-row">
             <label className="nt-field"><span>Name (optional)</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Client sync" /></label>
             <label className="nt-field nt-short"><span>Stay up to</span>
-              <Select aria-label="Stay up to" value={String(minutes)} onChange={(e) => setMinutes(Number(e.target.value))}>{DURATIONS.map((m) => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h${m % 60 ? ' 30' : ''}`}</option>)}</Select></label>
+              <Select className="select" aria-label="Stay up to" value={String(minutes)} onChange={(e) => setMinutes(Number(e.target.value))}>{DURATIONS.map((m) => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h${m % 60 ? ' 30' : ''}`}</option>)}</Select></label>
           </div>
           <label className="nt-field"><span>File notes under</span>
-            <Select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)}>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}{p.agentReady ? '' : ' (agent off)'}</option>)}</Select></label>
+            <Select className="select" aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)}>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}{p.agentReady ? '' : ' (agent off)'}</option>)}</Select></label>
           {chosen && !chosen.agentReady && <p className="nt-warn"><Icon name="alert" size={13} /> Switch on this project's agent with “read meetings” first (<Link to={`/projects/${chosen.id}?tab=agent`}>Project › Agent</Link>).</p>}
           <label className="nt-field"><span>Anything to raise for you? (optional)</span>
             <textarea rows={3} value={raise} onChange={(e) => setRaise(e.target.value)} placeholder="Ask when the UAT sign-off will happen. Tell them I'll send the estimate by Friday." /></label>
@@ -107,11 +112,11 @@ export function NotetakerPage() {
         <section className="nt-card" aria-labelledby="nt-auto-title">
           <h2 id="nt-auto-title"><Icon name="settings" size={17} /> Automatic</h2>
           <label className="nt-field"><span>File my notes under</span>
-            <Select aria-label="Default project" value={data.settings.projectId ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
+            <Select className="select" aria-label="Default project" value={settings.projectId ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
               <option value="">Choose a project</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
-          <label className="nt-toggle"><input type="checkbox" checked={data.settings.autoJoin} disabled={!data.settings.projectId} onChange={(e) => void save({ autoJoin: e.target.checked })} />
+          <label className="nt-toggle"><input type="checkbox" checked={settings.autoJoin} disabled={!settings.projectId} onChange={(e) => void save({ autoJoin: e.target.checked })} />
             <span><b>Join every call on my Google Calendar</b><small>It joins each Meet call a minute before it starts, in your name, even when you are there too.</small></span></label>
-          <label className="nt-toggle"><input type="checkbox" checked={data.settings.autoMinutes} onChange={(e) => void save({ autoMinutes: e.target.checked })} />
+          <label className="nt-toggle"><input type="checkbox" checked={settings.autoMinutes} onChange={(e) => void save({ autoMinutes: e.target.checked })} />
             <span><b>Write the minutes when a call ends</b><small>You get a notification to review and email them. One AI request per call.</small></span></label>
         </section>
       </div>
@@ -233,7 +238,7 @@ function SendMinutes({ sessionId, minutes, owner, onClose, onSent }: { sessionId
       <button className="btn btn-primary" disabled={busy || !account || !to.trim()} onClick={() => void send()}>{busy ? <Spinner /> : <Icon name="send" size={14} />} Send</button></>}>
       {accounts.length === 0 ? <p className="muted">Connect a mail account in <Link to="/mailbox">Mailbox</Link> first.</p> : (
         <div className="nt-mail">
-          <label className="nt-field"><span>From</span><Select aria-label="From" value={account} onChange={(e) => setFrom(e.target.value)}>{accounts.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}</Select></label>
+          <label className="nt-field"><span>From</span><Select className="select" aria-label="From" value={account} onChange={(e) => setFrom(e.target.value)}>{accounts.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}</Select></label>
           <label className="nt-field"><span>To</span><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="attendees@company.com, …" autoFocus /></label>
           <label className="nt-field"><span>Cc</span><input value={cc} onChange={(e) => setCc(e.target.value)} /></label>
           <label className="nt-field"><span>Subject</span><input value={subject} onChange={(e) => setSubject(e.target.value)} /></label>

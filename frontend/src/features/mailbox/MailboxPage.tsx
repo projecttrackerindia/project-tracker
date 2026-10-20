@@ -375,7 +375,7 @@ function TaskSuggestion({ s, wid }: { s: MailTaskSuggestion; wid: string | null 
         {s.detail && <p>{s.detail}</p>}
         {s.reason && <p className="mb-task-why">“{s.reason}”</p>}
         {s.kind === 'create' && state !== 'done' && (types.data?.length ?? 0) > 1 && (
-          <Select aria-label="Work type" value={type} onChange={e => setTypeId(e.target.value)}>{types.data!.filter(t => t.isActive !== false).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+          <Select className="select" aria-label="Work type" value={type} onChange={e => setTypeId(e.target.value)}>{types.data!.filter(t => t.isActive !== false).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
         )}
       </div>
       <div className="mb-task-actions">
@@ -479,7 +479,7 @@ function ComposeModal({ accounts, initial, agent, onClose, onSent }: { accounts:
     </>}>
       {accounts.length === 0 ? <p className="muted">Connect a mail account that can send first.</p> : <div className="mb-compose">
         <label className="mb-line"><span>From</span>
-          <Select aria-label="From" value={from} onChange={e => setFrom(e.target.value)}>{accounts.map(a => <option key={a.key} value={a.key}>{a.label} · {a.email}</option>)}</Select>
+          <Select className="select" aria-label="From" value={from} onChange={e => setFrom(e.target.value)}>{accounts.map(a => <option key={a.key} value={a.key}>{a.label} · {a.email}</option>)}</Select>
         </label>
         <label className="mb-line"><span>To</span><input value={to} onChange={e => setTo(e.target.value)} placeholder="name@example.com, …" autoFocus />
           {!showCc && <button type="button" className="mb-link" onClick={() => setShowCc(true)}>Cc</button>}</label>
