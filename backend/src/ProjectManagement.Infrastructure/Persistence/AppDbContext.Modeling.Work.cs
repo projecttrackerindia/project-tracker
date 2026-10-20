@@ -97,6 +97,11 @@ public partial class AppDbContext
             e.HasOne<AgentMeetingBot>().WithMany().HasForeignKey(x => x.BotRowId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<CompanyMailSettings>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.Provider).HasMaxLength(20); e.Property(x => x.Domains).HasMaxLength(500);
+        });
         b.Entity<MailAccount>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId });

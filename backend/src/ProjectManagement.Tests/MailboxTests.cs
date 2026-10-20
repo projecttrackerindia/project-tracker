@@ -33,6 +33,25 @@ public class MailboxTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Company_mail_is_set_once_by_an_administrator()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Olu Owner");
+        await owner.CreateOrgAsync();
+        var member = await owner.AddMemberAsync(factory, ProjectManagement.Domain.Enums.TenantRole.Member, "Mo Member");
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Put("/api/v1/me/mailbox/company", new { provider = "rediffpro", domains = "fivestar.test" })).Status);
+        Assert.Equal(422, (int)(await owner.Put("/api/v1/me/mailbox/company", new { provider = "rediffpro", domains = "not a domain" })).Status);
+        Assert.Equal(422, (int)(await owner.Put("/api/v1/me/mailbox/company", new { provider = "custom", domains = "fivestar.test" })).Status);
+        var saved = await owner.Put("/api/v1/me/mailbox/company", new { provider = "rediffpro", domains = "@FiveStar.test, fivestar.test" });
+        Assert.True(saved.Ok, saved.ToString());
+        Assert.Single(saved.Data!["domains"]!.AsArray());
+        var seen = (await member.Get("/api/v1/me/mailbox/accounts")).Data!;
+        Assert.Equal("rediffpro", seen["company"]!["provider"]!.GetValue<string>());
+        Assert.False(seen["canManageCompany"]!.GetValue<bool>());
+        Assert.True((await owner.Put("/api/v1/me/mailbox/company", new { provider = "rediffpro", domains = "" })).Ok);
+        Assert.Null((await member.Get("/api/v1/me/mailbox/accounts")).Data!["company"]);
+    }
+
+    [Fact]
     public void Html_mail_is_reduced_to_readable_text()
     {
         var text = MailboxService.HtmlToText("<style>p{}</style><p>Hello&nbsp;team,</p><div>Ship <b>Friday</b></div><script>x()</script>");

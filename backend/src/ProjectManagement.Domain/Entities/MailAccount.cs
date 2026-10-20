@@ -14,3 +14,12 @@ public class MailAccount : TenantEntity, ITenantScoped
     public DateTime? LastSyncedAt { get; set; }
     public string? LastError { get; set; }
 }
+
+/// <summary>The company's own mail system, set once by an administrator so each person connects their mailbox with just their password.</summary>
+public class CompanyMailSettings : TenantEntity, ITenantScoped
+{
+    /// <summary>A Mailbox preset (rediffpro, rediff, zoho, gmail, ...).</summary>
+    public string Provider { get; set; } = "rediffpro";
+    /// <summary>The company's mail domains, comma separated (fivestargroup.in).</summary>
+    public string Domains { get; set; } = "";
+}

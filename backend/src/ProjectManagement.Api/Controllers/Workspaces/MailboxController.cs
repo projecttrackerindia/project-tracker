@@ -8,6 +8,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 public class MailboxController(MailboxService mailbox, MailboxAgent agent) : ApiControllerBase
 {
     [HttpGet("accounts")] public async Task<IActionResult> Accounts(CancellationToken ct) => Ok(await mailbox.AccountsAsync(ct));
+    [HttpPut("company")] public async Task<IActionResult> Company([FromBody] SaveCompanyMailRequest req, CancellationToken ct) => Ok(await mailbox.SaveCompanyAsync(req, ct));
     [HttpPost("accounts/imap"), ExternalOperation] public async Task<IActionResult> Connect([FromBody] ConnectImapRequest req, CancellationToken ct) => Created(await mailbox.ConnectImapAsync(req, ct));
     [HttpDelete("accounts/imap/{id:guid}")] public async Task<IActionResult> Disconnect(Guid id, CancellationToken ct) { await mailbox.DisconnectImapAsync(id, ct); return NoContent(); }
     [HttpGet("messages")] public async Task<IActionResult> Messages([FromQuery] string account, [FromQuery] string? folder, [FromQuery] string? cursor, [FromQuery] string? q, CancellationToken ct)

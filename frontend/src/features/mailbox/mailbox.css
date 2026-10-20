@@ -195,3 +195,12 @@
 .mb-guide ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .mb-guide code { font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--surface-2); color: var(--text); overflow-wrap: anywhere; }
 div.mb-guide { padding-left: 0; }
+.mb-company { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; padding: 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--mb-accent) 30%, var(--border)); background: color-mix(in srgb, var(--mb-accent) 5%, var(--surface)); text-align: left; }
+.mb-providers .mb-company { max-width: none; }
+.mb-company small { color: var(--text-3); font-size: 12px; }
+.mb-company input { height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; }
+.mb-company-email { font-weight: 600; font-size: 13.5px; }
+.mb-company-setup { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.mb-company-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.mb-company-form small { color: var(--text-3); font-size: 12px; }
+.mb-company-form input { height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; }

@@ -14,7 +14,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { addressOf, displayName, mailboxApi } from './mailboxApi';
-import type { ComposeMode, MailAssist, MailFolder, MailMessage, MailTaskSuggestion } from './mailboxApi';
+import type { ComposeMode, MailAccounts, MailAssist, MailFolder, MailMessage, MailTaskSuggestion } from './mailboxApi';
 import './mailbox.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -180,8 +180,9 @@ export function MailboxPage() {
             <div className="mb-empty">
               <span className="mb-empty-art"><Icon name="mail" size={30} /></span>
               <h2>Bring your mail here</h2>
-              <p>Connect Gmail, Outlook or Rediffmail to read, reply and let the mail agent turn emails into tasks.</p>
-              <button className="btn btn-primary" onClick={() => setConnectOpen(true)}><Icon name="plus" size={15} /> Connect mail</button>
+              {imap.data?.company ? <CompanyConnect accounts={imap.data} onConnected={() => void invalidateWorkspace(wid, 'mailbox', 'accounts')} />
+                : <p>Connect Gmail, Outlook or Rediffmail to read, reply and let the mail agent turn emails into tasks.</p>}
+              <button className={imap.data?.company ? 'btn btn-ghost' : 'btn btn-primary'} onClick={() => setConnectOpen(true)}><Icon name="plus" size={15} /> {imap.data?.company ? 'Other mail accounts' : 'Connect mail'}</button>
             </div>
           ) : listLoading && rows.length === 0 ? <div className="mb-center"><Spinner /></div> : rows.length === 0 ? (
             <div className="mb-empty small"><Icon name="checkCircle" size={22} /><p>{query ? 'No messages match your search.' : 'Nothing here. You are all caught up.'}</p></div>
@@ -218,7 +219,7 @@ export function MailboxPage() {
         )}
       </section>
 
-      {connectOpen && <ConnectModal presets={imap.data?.presets ?? []} google={google.data} microsoft={ms.data} imapAccounts={imap.data?.imap ?? []}
+      {connectOpen && <ConnectModal accountsData={imap.data} presets={imap.data?.presets ?? []} google={google.data} microsoft={ms.data} imapAccounts={imap.data?.imap ?? []}
         guide={guide} onClose={() => { setConnectOpen(false); setGuide(null); }} onConnected={() => { void invalidateWorkspace(wid, 'mailbox', 'accounts'); }} />}
       {composeOpen && <ComposeModal accounts={accounts.filter(a => a.canSend)} initial={composeOpen} agent={!!agentOpts.data?.available}
         onClose={() => setComposeOpen(null)} onSent={refresh} />}
@@ -498,8 +499,8 @@ function ComposeModal({ accounts, initial, agent, onClose, onSent }: { accounts:
 
 /* ---------------- connecting ---------------- */
 
-function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onConnected, guide: initialGuide = null }: {
-  presets: { id: string; name: string; domain: string }[];
+function ConnectModal({ accountsData, presets, google, microsoft, imapAccounts, onClose, onConnected, guide: initialGuide = null }: {
+  accountsData?: MailAccounts; presets: { id: string; name: string; domain: string }[];
   google?: { connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailSendAccess?: boolean } | undefined;
   microsoft?: { enabled: boolean; configured: boolean; connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean } | undefined;
   imapAccounts: { id: string; name: string; email: string }[]; onClose: () => void; onConnected: () => void; guide?: 'gmail' | 'outlook' | null;
@@ -539,6 +540,7 @@ function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onCon
       footer={guide ? <button className="btn btn-ghost" onClick={() => setGuide(null)}>Back</button> : preset ? <><button className="btn btn-ghost" onClick={() => setPick(null)}>Back</button><button className="btn btn-primary" disabled={busy || !email || !password} onClick={() => void connectImap()}>{busy ? <Spinner /> : null} Connect</button></> : undefined}>
       {guide ? <SetupGuide kind={guide} canSetUp={canSetUp} /> : !preset ? (
         <div className="mb-providers">
+          {accountsData?.company && !accountsData.imap.some(a => accountsData.company!.domains.some(d => a.email.endsWith('@' + d))) && <CompanyConnect accounts={accountsData} onConnected={() => { onConnected(); onClose(); }} />}
           <button className="mb-provider" onClick={() => gmailAvailable ? void reconnect('gmail') : setGuide('gmail')}>
             <span className="mb-logo gmail">G</span><span><b>Gmail</b><small>{gmailReady ? 'Connected' : !gmailAvailable ? (canSetUp ? 'Not set up yet: see how to turn it on' : 'Not set up yet: ask your administrator') : google?.connected ? 'Allow reading and sending' : 'Google account'}</small></span>
             {gmailReady ? <Icon name="checkCircle" size={16} /> : <Icon name="chevronR" size={16} />}
@@ -552,6 +554,7 @@ function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onCon
               <span className={`mb-logo ${p.id === 'gmail' ? 'gmail' : p.id.startsWith('rediff') ? 'rediff' : 'other'}`}>{p.name[0]}</span><span><b>{p.name}</b><small>{p.id === 'gmail' ? 'No Google approval needed: sign in with an app password' : p.id.startsWith('rediff') ? 'Rediffmail account' : 'IMAP mailbox'}</small></span><Icon name="chevronR" size={16} />
             </button>
           ))}
+          {accountsData?.canManageCompany && <CompanyMailSetup accounts={accountsData} onSaved={onConnected} />}
           {(google?.connected || microsoft?.connected || imapAccounts.length > 0) && <div className="mb-connected">
             <h4>Connected</h4>
             {google?.connected && <div><span>Google</span><button className="mb-link" onClick={() => void disconnectProvider('gmail')}>Disconnect</button></div>}
@@ -604,5 +607,60 @@ function SetupGuide({ kind, canSetUp }: { kind: 'gmail' | 'outlook'; canSetUp: b
       <li><b>Railway › API service › Variables</b>: <code>MicrosoftProductivity__Enabled</code> = <code>true</code>, <code>MicrosoftProductivity__InboxEnabled</code> = <code>true</code>, <code>MicrosoftProductivity__ClientId</code> (Application ID), <code>MicrosoftProductivity__ClientSecret</code>, <code>MicrosoftProductivity__RedirectUri</code> (the address above), <code>MicrosoftProductivity__AuthorityTenant</code> = <code>common</code>.</li>
       <li>After the redeploy, choose <b>Outlook</b> here and sign in.</li>
     </ol>
+  );
+}
+
+/** For people on the company's own mail system: their address is known, so connecting is just the password. */
+function CompanyConnect({ accounts, onConnected }: { accounts: MailAccounts; onConnected: () => void }) {
+  const company = accounts.company!;
+  const mine = accounts.myEmail && company.domains.some(d => accounts.myEmail!.toLowerCase().endsWith('@' + d)) ? accounts.myEmail : '';
+  const [email, setEmail] = useState(mine ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const domainOk = company.domains.some(d => email.trim().toLowerCase().endsWith('@' + d));
+  const connect = async () => {
+    setBusy(true);
+    try { await mailboxApi.connectImap({ provider: company.provider, email: email.trim(), password }); setPassword(''); toast('Your company mail is connected.'); onConnected(); }
+    catch (e) { toast(errText(e, 'Your mailbox could not be connected.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <form className="mb-company" onSubmit={e => { e.preventDefault(); void connect(); }}>
+      <b>Connect your company mail</b>
+      <small>{company.name} · {company.domains.join(', ')} — just your mail password, the server is already set up.</small>
+      {!mine && <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={`you@${company.domains[0]}`} aria-label="Company email" autoComplete="username" />}
+      {mine && <span className="mb-company-email">{mine}</span>}
+      <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Mail password" aria-label="Mail password" autoComplete="current-password" />
+      <button className="btn btn-primary" disabled={busy || !password || !domainOk}>{busy ? <Spinner /> : <Icon name="mail" size={14} />} Connect</button>
+    </form>
+  );
+}
+
+/** Owners and admins: name the company's mail system once for everyone. */
+function CompanyMailSetup({ accounts, onSaved }: { accounts: MailAccounts; onSaved: () => void }) {
+  const [open, setOpen] = useState(!accounts.company);
+  const [provider, setProvider] = useState(accounts.company?.provider ?? 'rediffpro');
+  const [domains, setDomains] = useState(accounts.company?.domains.join(', ') ?? '');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try { const r = await mailboxApi.saveCompany({ provider, domains }); toast(r ? `Company mail set: ${r.name}.` : 'Company mail switched off.'); onSaved(); setOpen(false); }
+    catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mb-company-setup">
+      <button type="button" className="mb-link" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <Icon name="building" size={14} /> {accounts.company ? `Company mail: ${accounts.company.name} (${accounts.company.domains.join(', ')})` : 'Set your company mail for everyone'}
+      </button>
+      {open && <div className="mb-company-form">
+        <small>Everyone with an address on these domains connects with just their password.</small>
+        <Select className="select" aria-label="Company mail provider" value={provider} onChange={e => setProvider(e.target.value)}>
+          {accounts.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </Select>
+        <input value={domains} onChange={e => setDomains(e.target.value)} placeholder="fivestargroup.in" aria-label="Company mail domains" />
+        <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => void save()}>{busy ? <Spinner /> : null} Save for everyone</button>
+      </div>}
+    </div>
   );
 }

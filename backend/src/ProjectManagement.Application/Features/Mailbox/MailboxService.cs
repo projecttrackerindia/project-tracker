@@ -16,13 +16,16 @@ using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Integrations;
 using ProjectManagement.Application.Services;
+using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
 
 namespace ProjectManagement.Application.Features.Mailbox;
 
 public record MailPreset(string Id, string Name, string ImapHost, int ImapPort, string SmtpHost, int SmtpPort, string Domain);
 public record MailImapAccountDto(Guid Id, string Provider, string Name, string Email, DateTime ConnectedAt, DateTime? LastSyncedAt, string? LastError);
-public record MailAccountsDto(IReadOnlyList<MailImapAccountDto> Imap, IReadOnlyList<MailPreset> Presets);
+public record CompanyMailDto(string Provider, string Name, IReadOnlyList<string> Domains);
+public record MailAccountsDto(IReadOnlyList<MailImapAccountDto> Imap, IReadOnlyList<MailPreset> Presets, CompanyMailDto? Company = null, bool CanManageCompany = false, string? MyEmail = null);
+public record SaveCompanyMailRequest(string Provider, string Domains);
 public record ConnectImapRequest(string Provider, string Email, string Password);
 public record MailMessageDto(string Id, string ThreadId, string Subject, string From, string To, string Cc, DateTimeOffset? Date, bool Unread, bool HasAttachments, string? Body = null, bool BodyTruncated = false);
 public record MailListDto(string Account, string Email, string Folder, IReadOnlyList<MailMessageDto> Messages, string? Cursor);
@@ -35,7 +38,7 @@ public record MailSendResultDto(bool Accepted, string To, string Cc, string Subj
 /// IMAP/SMTP providers such as Rediffmail through a stored, encrypted app password. Mail content is never logged or audited.
 /// </summary>
 public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInboxService inbox, GoogleCalendarAuthService google,
-    MicrosoftProductivityAuthService microsoft, IHttpClientFactory http, ISecretProtector secrets, AppClock clock, Recorder recorder)
+    MicrosoftProductivityAuthService microsoft, IHttpClientFactory http, ISecretProtector secrets, AppClock clock, Recorder recorder, PermissionService permissions)
 {
     // Only well-known providers: the person never supplies a host, so the server cannot be pointed at internal addresses.
     public static readonly MailPreset[] Presets =
@@ -57,7 +60,38 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
     {
         ctx.RequireTenantId();
         var rows = await Mine.AsNoTracking().OrderBy(a => a.CreatedAt).ToListAsync(ct);
-        return new(rows.Select(Dto).ToArray(), Presets);
+        var company = await db.CompanyMailSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        var me = await db.Users.AsNoTracking().Where(u => u.Id == ctx.RequireUserId()).Select(u => u.Email).FirstOrDefaultAsync(ct);
+        return new(rows.Select(Dto).ToArray(), Presets, company is null ? null : CompanyDto(company), await permissions.HasAsync(Permissions.OrgManage, ct), me);
+    }
+
+    private static CompanyMailDto CompanyDto(CompanyMailSettings c) =>
+        new(c.Provider, Presets.FirstOrDefault(p => p.Id == c.Provider)?.Name ?? c.Provider, c.Domains.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>
+    /// An administrator names the company's mail system once (for example Rediffmail Pro on fivestargroup.in): everyone with an address on
+    /// those domains then connects with just their password, the server already chosen. Empty domains switch it off.
+    /// </summary>
+    public async Task<CompanyMailDto?> SaveCompanyAsync(SaveCompanyMailRequest req, CancellationToken ct)
+    {
+        await permissions.RequireAsync(Permissions.OrgManage, ct);
+        var tid = ctx.RequireTenantId();
+        var row = await db.CompanyMailSettings.FirstOrDefaultAsync(ct);
+        var domains = (req.Domains ?? "").Split([',', ' ', ';', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => d.Trim().TrimStart('@').ToLowerInvariant()).Distinct().ToList();
+        if (domains.Count == 0)
+        {
+            if (row is not null) { db.CompanyMailSettings.Remove(row); await db.SaveChangesAsync(ct); }
+            return null;
+        }
+        if (domains.Count > 10 || domains.Any(d => d.Length > 100 || !System.Text.RegularExpressions.Regex.IsMatch(d, @"^[a-z0-9-]+(\.[a-z0-9-]+)+$")))
+            throw new ValidationException("domains", "Enter your company's mail domains, like fivestargroup.in.");
+        if (Presets.All(p => p.Id != req.Provider)) throw new ValidationException("provider", "Choose your company's mail provider.");
+        if (row is null) { row = new CompanyMailSettings { TenantId = tid, CreatedAt = clock.Now, CreatedBy = ctx.UserId }; db.CompanyMailSettings.Add(row); }
+        row.Provider = req.Provider; row.Domains = string.Join(',', domains); row.UpdatedAt = clock.Now; row.UpdatedBy = ctx.UserId;
+        recorder.Audit("mailbox.company_set", "CompanyMailSettings", row.Id, null, new { provider = req.Provider, domains = row.Domains });
+        await db.SaveChangesAsync(ct);
+        return CompanyDto(row);
     }
 
     public async Task<MailImapAccountDto> ConnectImapAsync(ConnectImapRequest req, CancellationToken ct)

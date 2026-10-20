@@ -102,6 +102,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<StageAutoStart> StageAutoStarts => Set<StageAutoStart>();
     public DbSet<OperationsSettings> OperationsSettings => Set<OperationsSettings>();
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
+    public DbSet<CompanyMailSettings> CompanyMailSettings => Set<CompanyMailSettings>();
     public DbSet<MeetingBotIdentity> MeetingBotIdentities => Set<MeetingBotIdentity>();
     public DbSet<NotetakerSettings> NotetakerSettings => Set<NotetakerSettings>();
     public DbSet<MeetingMinutes> MeetingMinutes => Set<MeetingMinutes>();

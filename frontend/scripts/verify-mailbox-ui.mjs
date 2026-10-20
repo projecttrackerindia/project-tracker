@@ -53,7 +53,7 @@ try{
     else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
     else if(ep==='/api/v1/integrations/google/status')data={connected:true,googleEmail:'asha@example.test',connectedAt:iso(-9000),lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true};
     else if(ep==='/api/v1/integrations/microsoft/status')data={enabled:false,configured:false,connected:false,email:null,mailSendAccess:false,inboxEnabled:false,inboxAccess:false,calendarsEnabled:true,calendarAccess:false};
-    else if(ep==='/api/v1/me/mailbox/accounts')data={imap,presets};
+    else if(ep==='/api/v1/me/mailbox/accounts')data={imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['fivestar.test']},canManageCompany:true,myEmail:'asha@fivestar.test'};
     else if(ep==='/api/v1/me/mailbox/agent/options')data={available:true,credits:1};
     else if(ep==='/api/v1/me/mailbox/messages'){const acc=p.get('account');const list=p.get('folder')==='sent'?[]:acc==='google'?gmail:acc.startsWith('imap:')?rediff:[];data={account:acc,email:acc==='google'?'asha@example.test':'asha@rediffmail.com',folder:p.get('folder'),messages:list.map(({body,...m})=>m),cursor:null};}
     else if(ep==='/api/v1/me/mailbox/thread'){const acc=p.get('account');const m=[...gmail,...rediff].find(x=>x.id===p.get('messageId'));data={account:acc,email:'asha@example.test',folder:'inbox',threadId:m.id,messages:[m],truncated:false};}
@@ -119,6 +119,11 @@ try{
  await page.getByRole('dialog').getByRole('button',{name:'Connect',exact:true}).click();
  const con=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap');assert.deepEqual(Object.keys(con.b).sort(),['email','password','provider']);assert.equal(con.b.provider,'rediffpro');
  await page.locator('.mb-account-head',{hasText:'Rediffmail Pro'}).waitFor();checks.push('connect-rediff');
+ // Company mail: the address is known, just the password.
+ await page.getByRole('button',{name:'Connect mail'}).click();
+ await page.locator('.mb-company').waitFor();assert.match(await page.locator('.mb-company').innerText(),/asha@fivestar.test/);
+ await page.locator('.mb-company input[type=password]').fill('company-pass-for-test');await page.locator('.mb-company').getByRole('button',{name:'Connect'}).click();
+ const cc=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap'&&w.b.email==='asha@fivestar.test');assert.equal(cc.b.provider,'rediffpro');checks.push('company-mail');
  // New mail with the agent's help.
  await page.getByRole('button',{name:'New mail'}).click();
  await page.getByRole('dialog').locator('.mb-line',{hasText:'To'}).locator('input').fill('team@example.test');
