@@ -13,6 +13,10 @@ public sealed class AgentTrackerController(AgentTrackerService tracker, IAiDiagn
         [FromQuery] string? model, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default, [FromQuery] string? intent = null)
         => Ok(await tracker.ListAsync(from, to, status, model, page, pageSize, ct, intent));
 
+    /// <summary>Every agent in the workspace over a period: project agent readings and decisions, meeting bot sessions, follow-ups.</summary>
+    [HttpGet("fleet")]
+    public async Task<IActionResult> Fleet([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct) => Ok(await tracker.FleetAsync(from, to, ct));
+
     [HttpGet("health")]
     public async Task<IActionResult> Health(CancellationToken ct)
     { tracker.AuthorizeDiagnostics(); return Ok(await diagnostics.CheckAsync(ct)); }

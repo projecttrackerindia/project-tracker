@@ -63,6 +63,42 @@ public sealed class AgentTrackerTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Insights_chart_outcomes_latency_phases_tools_and_feedback_and_the_fleet_covers_every_agent()
+    {
+        var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync(); await owner.UpgradeAsync("BUSINESS");
+        var member = await owner.AddMemberAsync(factory, TenantRole.Member);
+        var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        Insert(owner, JsonSerializer.Serialize(Trace() with { DurationMs = 800, ContextMs = 100, IntentMs = 50, Models = [new(0, 500, 40, 10, "end_turn", CacheReadTokens: 30)],
+            Tools = [new("find_work", 100, true, "read"), new("find_work", 20, false, "failed")] }, web));
+        Insert(owner, JsonSerializer.Serialize(Trace() with { DurationMs = 12_000, Outcome = "failed", ErrorCode = "AI_TIMEOUT" }, web));
+        factory.WithDb(db => { db.AiMessages.IgnoreQueryFilters().Where(m => m.TenantId == owner.WorkspaceId).OrderBy(m => m.CreatedAt).First().Feedback = "up"; db.SaveChanges(); return 0; });
+
+        var data = (await owner.Get("/api/v1/ai/tracker")).Data!;
+        var insights = data["insights"]!;
+        Assert.Equal("day", insights["bucketUnit"]!.GetValue<string>());
+        Assert.Equal(1, insights["timeline"]!.AsArray().Sum(b => b!["succeeded"]!.GetValue<int>()));
+        Assert.Equal(1, insights["timeline"]!.AsArray().Sum(b => b!["failed"]!.GetValue<int>()));
+        Assert.Equal(1, insights["latency"]!.AsArray().First(b => b!["label"]!.GetValue<string>() == "< 1s")!["count"]!.GetValue<int>());
+        Assert.Equal(1, insights["latency"]!.AsArray().First(b => b!["label"]!.GetValue<string>() == "10-20s")!["count"]!.GetValue<int>());
+        var tool = insights["tools"]!.AsArray().First(t => t!["name"]!.GetValue<string>() == "find_work")!;
+        Assert.Equal(3, tool["calls"]!.GetValue<int>());
+        Assert.Equal(1, tool["failures"]!.GetValue<int>());
+        Assert.Equal(1, insights["feedbackUp"]!.GetValue<int>());
+        Assert.Equal(30, insights["cacheReadTokens"]!.GetValue<long>());
+        Assert.True(insights["phases"]!["modelMs"]!.GetValue<double>() > 0);
+        Assert.Equal("hour", (await owner.Get($"/api/v1/ai/tracker?from={Uri.EscapeDataString(DateTime.UtcNow.AddHours(-6).ToString("o"))}")).Data!["insights"]!["bucketUnit"]!.GetValue<string>());
+
+        var fleet = await owner.Get("/api/v1/ai/tracker/fleet");
+        fleet.CheckStatus(HttpStatusCode.OK);
+        Assert.Equal(8, fleet.Data!["days"]!.AsArray().Count);
+        Assert.Equal(0, fleet.Data["projectAgent"]!["readings"]!.GetValue<int>());
+        Assert.NotNull(fleet.Data["meetings"]);
+        Assert.NotNull(fleet.Data["followUps"]);
+        (await member.Get("/api/v1/ai/tracker/fleet")).CheckStatus(HttpStatusCode.Forbidden);
+        (await owner.Get($"/api/v1/ai/tracker/fleet?from={Uri.EscapeDataString(DateTime.UtcNow.AddDays(-200).ToString("o"))}")).CheckStatus(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
     public async Task Tracker_filters_paginates_and_tolerates_corrupt_optional_traces()
     {
         var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync();
