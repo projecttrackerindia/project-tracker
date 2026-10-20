@@ -13,7 +13,10 @@ builder.Host.UseSerilog((context, services, cfg) => cfg
     .ReadFrom.Configuration(context.Configuration)
     .Enrich.FromLogContext()
     .Enrich.With<TraceEnricher>()
-    .WriteTo.Console());
+    // Locally: readable text. Deployed: one JSON line per event with a real severity ("warn" is not "info").
+    .WriteTo.Console(context.HostingEnvironment.IsDevelopment() || context.Configuration["Logging:Format"] == "text"
+        ? new Serilog.Formatting.Display.MessageTemplateTextFormatter("[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+        : new ProjectManagement.Api.Logging.JsonLineFormatter()));
 
 builder.Services
     .AddApplication()

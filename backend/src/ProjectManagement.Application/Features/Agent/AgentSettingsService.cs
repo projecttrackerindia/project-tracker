@@ -121,6 +121,7 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             throw new ConflictException("The project agent needs the AI assistant, which is not available in this workspace.", "AI_UNAVAILABLE");
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
+        var isNew = s is null;
         if (s is null)
         {
             s = new ProjectAgentSettings { TenantId = tid, ProjectId = projectId, MailboxToken = NewToken(12), ActingUserId = uid, CreatedAt = clock.Now, CreatedBy = uid,
@@ -129,6 +130,7 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         }
         // Whoever switches it on is the person it acts as in the background (their rights; the workspace's AI credits).
         if (req.Enabled && !s.Enabled) { s.ActingUserId = uid; s.ChatReadUntil = clock.Now; s.LastError = null; }   // chat from while it was off is not read
+        var wasEnabled = s.Enabled;
         s.Enabled = req.Enabled;
         s.ReadMailbox = req.ReadMailbox ?? s.ReadMailbox; s.ReadChat = req.ReadChat ?? s.ReadChat; s.ReadMeetings = req.ReadMeetings ?? s.ReadMeetings;
         s.LiveBot = req.LiveBot ?? s.LiveBot; s.DailyUpdates = req.DailyUpdates ?? s.DailyUpdates;
@@ -183,7 +185,8 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         recorder.Audit("agent.settings_saved", "Project", projectId, null, new { s.Enabled, s.ReadMailbox, s.ReadChat, s.ReadMeetings, s.LiveBot, s.DailyUpdates,
             s.CaptionLanguage, s.AutoJoinCalendar, s.SendMinutes, Slack = s.SlackChannelId is not null, s.ReadWhatsApp, Notes = s.Instructions?.Length ?? 0,
             s.AutonomyLevel, s.AutoApplyConfidence, s.AutoApplyKinds, s.FollowUps, s.MeetingBriefs, s.MonthlyCreditCap });
-        recorder.Activity(req.Enabled ? "agent.enabled" : "agent.disabled", "Project", projectId, req.Enabled ? $"Project agent switched on for \"{project.Name}\"" : $"Project agent switched off for \"{project.Name}\"", projectId);
+        // Only a real switch is worth a line in the activity feed (saving other settings is not "switched on" again).
+        if (wasEnabled != req.Enabled || (isNew && req.Enabled)) recorder.Activity(req.Enabled ? "agent.enabled" : "agent.disabled", "Project", projectId, req.Enabled ? $"Project agent switched on for \"{project.Name}\"" : $"Project agent switched off for \"{project.Name}\"", projectId);
         await db.SaveChangesAsync(ct);
         return await GetAsync(projectId, ct);
     }

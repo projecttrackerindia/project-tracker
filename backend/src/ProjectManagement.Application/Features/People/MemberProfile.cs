@@ -99,6 +99,17 @@ public class UserAvatarService(IAppDbContext db, ICurrentContext ctx, IFileStora
     }
 
     /// <summary>The photo's bytes, for anyone who shares a workspace with that person - not for the whole platform.</summary>
+    /// <summary>Which members of this workspace have a photo (with a version that changes when it does), so the app only asks for the
+    /// photos that exist instead of one request per person that ends in "not found".</summary>
+    public async Task<IReadOnlyList<AvatarIndexDto>> IndexAsync(CancellationToken ct = default)
+    {
+        var tid = ctx.RequireTenantId();
+        return await (from m in db.TenantMembers.AsNoTracking()
+                      join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                      where m.TenantId == tid && u.AvatarKey != null
+                      select new AvatarIndexDto(u.Id, u.AvatarKey!)).Take(5000).ToListAsync(ct);
+    }
+
     public async Task<(byte[] Bytes, string ContentType)?> OpenForMemberAsync(Guid userId, CancellationToken ct = default)
     {
         var tid = ctx.RequireTenantId();
@@ -113,3 +124,5 @@ public class UserAvatarService(IAppDbContext db, ICurrentContext ctx, IFileStora
         return (ms.ToArray(), row.AvatarContentType ?? "image/png");
     }
 }
+
+public record AvatarIndexDto(Guid UserId, string Version);

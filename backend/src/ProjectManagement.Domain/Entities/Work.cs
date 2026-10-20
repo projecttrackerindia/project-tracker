@@ -80,6 +80,8 @@ public class ProjectStage : TenantEntity, ITenantScoped
     public DateOnly? ActualStart { get; set; }
     public DateOnly? ActualEnd { get; set; }
     public StageStatus Status { get; set; } = StageStatus.Pending;
+    /// <summary>The stage was started by its tasks, not by a person: it goes back to Pending (actual dates cleared) if those tasks go away.</summary>
+    public bool AutoStarted { get; set; }
     public Guid? OwnerId { get; set; }
     public Guid? AssigneeId { get; set; }
     public string? Description { get; set; }

@@ -79,6 +79,7 @@ public class MemberProfileTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, uploaded.Status);
         Assert.True((await dev.Get("/api/v1/me")).Data!["user"]!["hasAvatar"]!.GetValue<bool>());
         Assert.True((await owner.Get("/api/v1/workspace/members")).Data!.AsArray().First(m => S(m!["userId"]) == dev.UserId.ToString())!["hasAvatar"]!.GetValue<bool>());
+        Assert.Contains((await owner.Get("/api/v1/workspace/avatars")).Data!.AsArray(), a => S(a!["userId"]) == dev.UserId.ToString());
 
         // Anyone in the same workspace can see it (including the person themselves) - it is a profile photo, not a secret.
         var seen = await owner.Raw($"/api/v1/workspace/members/{dev.UserId}/avatar");
@@ -89,6 +90,7 @@ public class MemberProfileTests(ApiFactory factory)
         // Someone outside this workspace altogether cannot fetch it via this route (no shared workspace to allow it).
         await outsider.CreateOrgAsync();
         Assert.Equal(HttpStatusCode.NotFound, (await outsider.Raw($"/api/v1/workspace/members/{dev.UserId}/avatar")).StatusCode);
+        Assert.Empty((await outsider.Get("/api/v1/workspace/avatars")).Data!.AsArray());
 
         // A bad file, and one over the limit, are refused; the good photo already saved is untouched.
         Assert.Equal((HttpStatusCode)422, (await UploadAvatar(dev, "not a picture"u8.ToArray())).Status);

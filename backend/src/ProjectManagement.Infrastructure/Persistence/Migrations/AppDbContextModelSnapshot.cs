@@ -5169,6 +5169,28 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.DataProtectionKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FriendlyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Xml")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.OperationsSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6470,6 +6492,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoStarted")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");

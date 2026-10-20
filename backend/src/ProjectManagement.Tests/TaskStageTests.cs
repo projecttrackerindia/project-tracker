@@ -242,6 +242,29 @@ public class TaskStageTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_task_that_is_completed_reopened_and_deleted_leaves_its_stage_as_it_was()
+    {
+        var (c, project, s, stages) = await Setup();
+        var dev = stages["Development"];
+        var before = await Stage(c, project, dev);
+        Assert.Equal("Pending", StageStatus(before));
+        var task = await NewTask(c, project, "QA test", dev);
+        Assert.True((await Move(c, task, s["Done"])).Ok);
+        Assert.Equal("Completed", StageStatus(await Stage(c, project, dev)));
+        Assert.True((await Move(c, task, s["To Do"])).Ok);
+        var reopened = await Stage(c, project, dev);
+        Assert.Equal("Pending", StageStatus(reopened));                    // nothing is under way any more
+        Assert.Null(reopened["actualStart"]);
+        Assert.True((await Move(c, task, s["In Progress"])).Ok);
+        Assert.Equal("InProgress", StageStatus(await Stage(c, project, dev)));
+        Assert.True((await c.Delete($"/api/v1/tasks/{task}")).Ok);
+        var after = await Stage(c, project, dev);
+        Assert.Equal("Pending", StageStatus(after));
+        Assert.Null(after["actualStart"]);
+        Assert.Null(after["actualEnd"]);
+    }
+
+    [Fact]
     public async Task A_stage_cannot_be_completed_by_hand_while_tasks_under_it_are_open()
     {
         var (c, project, s, stages) = await Setup();

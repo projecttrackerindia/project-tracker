@@ -365,7 +365,16 @@ public class SecurityHeadersMiddleware(RequestDelegate next)
         h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
         if (!http.Request.Path.StartsWithSegments("/swagger") && !http.Request.Path.StartsWithSegments("/api/docs"))
             h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
-        if (http.Request.Path.StartsWithSegments("/api") && !http.Request.Path.StartsWithSegments("/api/docs") && !http.Request.Path.StartsWithSegments("/api/openapi")) h["Cache-Control"] = "no-store";
+        if (http.Request.Path.StartsWithSegments("/api") && !http.Request.Path.StartsWithSegments("/api/docs") && !http.Request.Path.StartsWithSegments("/api/openapi"))
+        {
+            h["Cache-Control"] = "no-store";
+            // Error handlers and file results may reset the headers: make sure every API answer still goes out as no-store.
+            http.Response.OnStarting(() =>
+            {
+                if (string.IsNullOrEmpty(http.Response.Headers.CacheControl)) http.Response.Headers.CacheControl = "no-store";
+                return Task.CompletedTask;
+            });
+        }
         return next(http);
     }
 }

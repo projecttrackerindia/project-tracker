@@ -125,17 +125,23 @@ public class TaskCompletionService(IAppDbContext db, AppClock clock, Recorder re
 
             var total = await CountedTasks(stage.Id).CountAsync(ct);
             var openIssues = await OpenIssueCountAsync(stage.Id, ct);
-            if (total == 0 && openIssues == 0) continue;
-            var open = await CountedTasks(stage.Id).CountAsync(t => t.Status!.Category != StatusCategory.Done, ct);
-            var started = await CountedTasks(stage.Id).CountAsync(t => t.Status!.Category != StatusCategory.Todo, ct);
+            var open = total == 0 ? 0 : await CountedTasks(stage.Id).CountAsync(t => t.Status!.Category != StatusCategory.Done, ct);
+            var started = total == 0 ? 0 : await CountedTasks(stage.Id).CountAsync(t => t.Status!.Category != StatusCategory.Todo, ct);
 
             var old = stage.Status;
-            if (total > 0 && open == 0 && openIssues == 0)
+            // Started only by its tasks, and no task is under way any more (all deleted, or all back to To Do): back to how it was.
+            if (stage.AutoStarted && openIssues == 0 && (total == 0 || (started == 0 && open > 0)) && old != StageStatus.Pending)
+            {
+                stage.Status = StageStatus.Pending;
+                stage.ActualStart = null; stage.ActualEnd = null; stage.AutoStarted = false;
+            }
+            else if (total == 0 && openIssues == 0) continue;
+            else if (total > 0 && open == 0 && openIssues == 0)
             {
                 if (!locked)
                 {
                     stage.Status = StageStatus.Completed;
-                    stage.ActualStart ??= today;
+                    if (stage.ActualStart is null) { stage.ActualStart = today; stage.AutoStarted = true; }
                     stage.ActualEnd ??= today;
                 }
             }
@@ -147,7 +153,7 @@ public class TaskCompletionService(IAppDbContext db, AppClock clock, Recorder re
             else if (old == StageStatus.Pending && started > 0 && !locked)
             {
                 stage.Status = StageStatus.InProgress;
-                stage.ActualStart ??= today;
+                if (stage.ActualStart is null) { stage.ActualStart = today; stage.AutoStarted = true; }
             }
 
             if (old == stage.Status) continue;

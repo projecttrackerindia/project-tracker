@@ -81,7 +81,11 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
     [HttpGet("members/{userId:guid}/profile")]
     public async Task<IActionResult> MemberProfile(Guid userId, CancellationToken ct) => Ok(await profiles.GetAsync(userId, ct));
 
-    /// <summary>A member's own profile photo, for anyone who shares this workspace with them.</summary>
+    /// <summary>The members who have a photo, so the app asks only for photos that exist.</summary>
+    [HttpGet("avatars")]
+    public async Task<IActionResult> AvatarIndex(CancellationToken ct) => Ok(await avatars.IndexAsync(ct));
+
+    /// <summary>A member's own profile photo, for anyone who shares this workspace with them. No photo: 404 (older apps expect it; the app now checks the avatar list first).</summary>
     [HttpGet("members/{userId:guid}/avatar")]
     public async Task<IActionResult> MemberAvatar(Guid userId, CancellationToken ct)
     {
