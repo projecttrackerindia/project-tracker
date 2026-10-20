@@ -40,6 +40,8 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
     // Only well-known providers: the person never supplies a host, so the server cannot be pointed at internal addresses.
     public static readonly MailPreset[] Presets =
     [
+        // Gmail with an app password: no Google app approval needed (Google account › Security › 2-Step Verification › App passwords).
+        new("gmail", "Gmail (app password)", "imap.gmail.com", 993, "smtp.gmail.com", 465, "gmail.com"),
         new("rediff", "Rediffmail", "imap.rediffmail.com", 993, "smtp.rediffmail.com", 465, "rediffmail.com"),
         new("rediffpro", "Rediffmail Pro", "imap.rediffmailpro.com", 993, "smtp.rediffmailpro.com", 465, ""),
         new("yahoo", "Yahoo Mail", "imap.mail.yahoo.com", 993, "smtp.mail.yahoo.com", 465, "yahoo.com"),
@@ -69,7 +71,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         if (await Mine.CountAsync(ct) >= 5) throw new ConflictException("You can connect up to five mail accounts.");
         if (await Mine.AnyAsync(a => a.Email == email, ct)) throw new ConflictException("This mailbox is already connected.");
         var account = new MailAccount { TenantId = tid, UserId = uid, Provider = preset.Id, Email = email, ImapHost = preset.ImapHost, ImapPort = preset.ImapPort,
-            SmtpHost = preset.SmtpHost, SmtpPort = preset.SmtpPort, SecretProtected = secrets.Protect(req.Password) };
+            SmtpHost = preset.SmtpHost, SmtpPort = preset.SmtpPort, SecretProtected = secrets.Protect(preset.Id == "gmail" ? req.Password.Replace(" ", "") : req.Password) };
         // Prove the sign-in works before keeping anything.
         using (var client = await ImapAsync(account, ct)) await client.DisconnectAsync(true, ct);
         account.LastSyncedAt = clock.Now;

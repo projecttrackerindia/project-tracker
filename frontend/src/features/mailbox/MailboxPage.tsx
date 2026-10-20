@@ -549,7 +549,7 @@ function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onCon
           </button>
           {presets.map(p => (
             <button key={p.id} className="mb-provider" onClick={() => { setPick(p.id); setEmail(''); }}>
-              <span className={`mb-logo ${p.id.startsWith('rediff') ? 'rediff' : 'other'}`}>{p.name[0]}</span><span><b>{p.name}</b><small>{p.id.startsWith('rediff') ? 'Rediffmail account' : 'IMAP mailbox'}</small></span><Icon name="chevronR" size={16} />
+              <span className={`mb-logo ${p.id === 'gmail' ? 'gmail' : p.id.startsWith('rediff') ? 'rediff' : 'other'}`}>{p.name[0]}</span><span><b>{p.name}</b><small>{p.id === 'gmail' ? 'No Google approval needed: sign in with an app password' : p.id.startsWith('rediff') ? 'Rediffmail account' : 'IMAP mailbox'}</small></span><Icon name="chevronR" size={16} />
             </button>
           ))}
           {(google?.connected || microsoft?.connected || imapAccounts.length > 0) && <div className="mb-connected">
@@ -563,7 +563,9 @@ function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onCon
         <form className="mb-imap" onSubmit={e => { e.preventDefault(); void connectImap(); }}>
           <label>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={preset.domain ? `you@${preset.domain}` : 'you@yourcompany.com'} autoFocus autoComplete="username" /></label>
           <label>Password<PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
-          <p className="mb-note"><Icon name="info" size={13} /> {preset.id.startsWith('rediff')
+          <p className="mb-note"><Icon name="info" size={13} /> {preset.id === 'gmail'
+            ? <>Turn on 2-Step Verification for your Google account, then create an app password at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">myaccount.google.com/apppasswords</a> and paste the 16 letters here (not your normal password).</>
+            : preset.id.startsWith('rediff')
             ? 'In Rediffmail, open Settings → POP/IMAP access and switch IMAP on first. Use your Rediffmail password.'
             : 'Switch IMAP on in your mail settings. If you use two-step sign-in, create an app password and use it here.'} The password is stored encrypted and used only to sync your mail.</p>
         </form>
