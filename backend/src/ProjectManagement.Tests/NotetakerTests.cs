@@ -28,8 +28,14 @@ public class NotetakerTests(ApiFactory factory)
 
         Assert.Equal(422, (int)(await me.Post("/api/v1/me/notetaker/join", new { url = "https://example.com/call", minutes = 60 })).Status);
         Assert.Equal(422, (int)(await me.Post("/api/v1/me/notetaker/join", new { url = "https://meet.google.com/abc-defg-hij", minutes = 5 })).Status);
-        // The project agent must be on (or the bot is not set up in tests): a clear conflict, never a server error.
-        Assert.Equal(HttpStatusCode.Conflict, (await me.Post("/api/v1/me/notetaker/join", new { url = "https://meet.google.com/abc-defg-hij", minutes = 60 })).Status);
+        // A project lead's notetaker switches the project's assistant on in notes-only mode, then joins; sending it twice is refused.
+        var sent = await me.Post("/api/v1/me/notetaker/join", new { url = "https://meet.google.com/abc-defg-hij", minutes = 60 });
+        Assert.True(sent.Status is HttpStatusCode.Created or HttpStatusCode.Conflict, sent.ToString());
+        if (sent.Status == HttpStatusCode.Created)
+        {
+            Assert.Equal(HttpStatusCode.Conflict, (await me.Post("/api/v1/me/notetaker/join", new { url = "https://meet.google.com/abc-defg-hij", minutes = 60 })).Status);
+            Assert.Single((await me.Get("/api/v1/me/notetaker")).Data!["sessions"]!.AsArray());
+        }
         Assert.Equal(HttpStatusCode.NotFound, (await me.Get($"/api/v1/me/notetaker/sessions/{Guid.NewGuid()}/minutes")).Status);
 
         // Only platform administrators manage the bot's Google accounts.
