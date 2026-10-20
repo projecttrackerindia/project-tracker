@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { platformFor } from './platform.mjs';
+import { AUDIO_HOOK, AudioFile, align, transcribe } from './audio.mjs';
 
 /**
  * One bot in one meeting (Google Meet or Microsoft Teams, from the link): waits until its start time, joins as a guest, turns on captions and streams who-said-what to the webhook, posts
@@ -25,6 +26,10 @@ export class MeetBot {
     this.identity = identity && Array.isArray(identity.cookies) && identity.cookies.length ? identity : null;
     // Captions go out in batches (one request every few seconds, however much is said) so a thousand meetings stay cheap for the API.
     this.captionBuffer = [];
+    // Who spoke when (from the captions), to name the speakers of the Whisper transcript after the call.
+    this.timeline = [];
+    this.recordAudio = (deps.env?.MEETBOT_WHISPER_MODEL ?? 'small') !== 'off';
+    this.audioFile = this.recordAudio ? new AudioFile(this.id) : null;
     this.flushMs = deps.captionFlushMs ?? 3000;
     this.flushTimer = null;
     this.deps = deps;   // { launch(): Promise<Browser>, admitTimeoutMs, aloneMs, log }
@@ -70,6 +75,11 @@ export class MeetBot {
       this.browser = await this.deps.launch();
       const context = await this.browser.newContext({ permissions: ['microphone', 'camera'], viewport: { width: 1280, height: 800 }, locale: 'en-US',
         ...(this.identity ? { storageState: { cookies: this.identity.cookies, origins: [] } } : {}) });
+      if (this.recordAudio) {
+        await context.addInitScript(AUDIO_HOOK);
+        await context.exposeFunction('ptAudio', (b64) => { try { this.audioFile.write(b64); } catch { /* disk full: captions still work */ } });
+        await context.exposeFunction('ptAudioStart', (t) => { this.audioFile.startedAt ??= Number(t) || Date.now(); });
+      }
       const page = await context.newPage();
       this.page = page;
       await page.exposeFunction('ptCaption', (name, text) => this.caption(name, text));
@@ -97,7 +107,9 @@ export class MeetBot {
       await page.evaluate(() => window.ptFlushCaptions?.()).catch(() => undefined);
       await page.waitForTimeout(500);
       clearInterval(this.flushTimer); this.flush();
+      if (this.recordAudio) await page.evaluate(() => window.ptStopAudio?.()).catch(() => undefined);
       await this.platform.leave(page).catch(() => undefined);
+      await this.finalTranscript();
       this.setStatus('call_ended');
     } catch (e) {
       this.log(`failed: ${e.message}`);
@@ -105,6 +117,7 @@ export class MeetBot {
     } finally {
       clearInterval(this.flushTimer); this.flush();
       await this.browser?.close().catch(() => undefined);
+      await this.audioFile?.remove();
       await this.webhookChain;
       if (this.status !== 'fatal') this.setStatus('done');
       this.deps.onFinished?.(this);
@@ -131,8 +144,27 @@ export class MeetBot {
     const words = String(text).replace(/\s+/g, ' ').trim();
     if (!words) return;
     this.lines++;
+    if (this.timeline.length < 20000) this.timeline.push({ name: String(name || 'Someone').slice(0, 80), at: new Date().toISOString() });
     this.captionBuffer.push({ name: String(name || 'Someone').slice(0, 80), text: words.slice(0, 2000), at: new Date().toISOString() });
     if (this.captionBuffer.length >= 200) this.flush();
+  }
+
+  /** After the call: Whisper on the recording, named from the captions, sent as the call's transcript (it replaces the live captions). */
+  async finalTranscript() {
+    const audio = this.audioFile;
+    if (!audio) return;
+    try {
+      await audio.close();
+      if (audio.bytes < 20_000 || !audio.startedAt) return;
+      this.setStatus('transcribing');
+      this.log(`transcribing ${Math.round(audio.bytes / 1024)} KB of audio`);
+      const segments = await transcribe(audio.file, this.deps.env ?? process.env, (m) => this.log(m));
+      if (!segments?.length) return;
+      const lines = align(segments, this.timeline, audio.startedAt);
+      await this.post({ event: 'transcript.final', data: { lines, bot: { id: this.id } } });
+      this.log(`transcript from audio: ${lines.length} lines`);
+    } catch (e) { this.log(`audio transcript skipped: ${e.message}`); }
+    finally { await audio.remove(); }
   }
 
   /** Sends what was heard since the last batch, in order (one webhook call). */

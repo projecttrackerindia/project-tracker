@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ApiError } from '../../api/client';
+import { ApiError, apiUrl } from '../../api/client';
+import './PersonalProductivity.css';
 import { apiKeyApi } from '../../api/endpoints';
 import type { ApiKey } from '../../api/types';
 import { Icon } from '../../components/Icon';
@@ -59,6 +60,7 @@ export function ApiKeySettings() {
           </div>
         )}
       </div>
+      {included && <McpHelp />}
       {creating && <CreateModal onClose={() => setCreating(false)} onCreated={(s) => { setCreating(false); setSecret(s); refresh(); }} />}
       {secret && <SecretModal secret={secret} onClose={() => setSecret(null)} />}
     </div>
@@ -109,5 +111,26 @@ function SecretModal({ secret, onClose }: { secret: string; onClose: () => void 
       <p className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Try it:</p>
       <pre className="secret-box" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5 }}>{example}</pre>
     </Modal>
+  );
+}
+
+/** How to plug ProjectTracker into Claude, ChatGPT or any other assistant that speaks MCP. */
+function McpHelp() {
+  const url = new URL(apiUrl('/mcp'), window.location.origin).href;
+  const [open, setOpen] = useState(false);
+  const desktop = JSON.stringify({ mcpServers: { projecttracker: { command: 'npx', args: ['-y', 'mcp-remote', url, '--header', 'Authorization: Bearer ${PT_KEY}'], env: { PT_KEY: 'pmk_your_key' } } } }, null, 2);
+  const copy = (text: string) => { void navigator.clipboard?.writeText(text).then(() => toast('Copied.')).catch(() => undefined); };
+  return (
+    <div className="mcp-help">
+      <button type="button" className="link" onClick={() => setOpen((o) => !o)} aria-expanded={open}><Icon name="sparkle" size={14} /> Connect an AI assistant (Claude, ChatGPT…) with MCP</button>
+      {open && <div className="mcp-help-body">
+        <p>Create a key above (read & write lets the assistant create and update tasks), then add ProjectTracker as an MCP server. The assistant can list projects and your work, create tasks, change status, comment, log time and create operational work, with the key owner's permissions.</p>
+        <p><b>Server address</b> <code>{url}</code> <button type="button" className="btn btn-ghost btn-sm" onClick={() => copy(url)}>Copy</button></p>
+        <p><b>Claude Code</b>: <code>{`claude mcp add --transport http projecttracker ${url} --header "Authorization: Bearer pmk_your_key"`}</code></p>
+        <p><b>Claude Desktop</b> (Settings › Developer › Edit config):</p>
+        <pre>{desktop}</pre>
+        <p className="muted">Anyone with the key acts as you. Use a separate key for each assistant so you can revoke it on its own.</p>
+      </div>}
+    </div>
   );
 }

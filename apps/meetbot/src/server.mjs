@@ -34,7 +34,7 @@ export function createServer(env = process.env) {
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required'],
   });
   const deps = {
-    launch, log,
+    launch, log, env,
     admitTimeoutMs: Number(env.MEETBOT_ADMIT_TIMEOUT_MS ?? 10 * 60_000),
     aloneMs: Number(env.MEETBOT_ALONE_MS ?? 5 * 60_000),
     captionFlushMs: Number(env.MEETBOT_CAPTION_FLUSH_MS ?? 3000),

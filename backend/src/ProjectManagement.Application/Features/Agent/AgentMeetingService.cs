@@ -411,6 +411,33 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
                     if (!string.IsNullOrWhiteSpace(text)) lines.Add((Speaker((l["name"] as JsonValue)?.ToString()), Spoken(text)));
                 }
                 break;
+            case "transcript.final":
+            {
+                // The whole call transcribed from its audio (Whisper) after it ended: more accurate than live captions, so it replaces them.
+                // What was written in the meeting chat is kept at the end.
+                var final = new List<(string Speaker, string Text)>();
+                foreach (var l in (outer?["lines"] as JsonArray ?? []).Take(20000).OfType<JsonObject>())
+                {
+                    var text = (l["text"] as JsonValue)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(text)) final.Add((Speaker((l["name"] as JsonValue)?.ToString()), Spoken(text)));
+                }
+                if (final.Count == 0) return;
+                var old = bot.TranscriptProtected is null ? "" : secrets.Unprotect(bot.TranscriptProtected);
+                var chat = old.Split('\n').Where(x => x.Contains(" (chat):", StringComparison.Ordinal)).ToList();
+                var sb = new StringBuilder();
+                string? last = null;
+                foreach (var (speaker, spoken) in final)
+                {
+                    if (speaker == last) sb.Append(' ').Append(spoken);
+                    else { if (sb.Length > 0) sb.Append('\n'); sb.Append(speaker).Append(": ").Append(spoken); last = speaker; }
+                }
+                foreach (var c in chat) sb.Append('\n').Append(c);
+                var next = sb.ToString();
+                if (next.Length > MaxTranscript) next = next[..MaxTranscript];
+                await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Id == bot.Id && b.Status != "done" && b.Status != "failed")
+                    .ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, secrets.Protect(next)).SetProperty(b => b.TranscriptLength, next.Length), ct);
+                return;
+            }
             case "chat.message":
             {
                 var text = (outer?["text"] as JsonValue)?.ToString();

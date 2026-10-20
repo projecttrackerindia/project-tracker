@@ -27,3 +27,16 @@ Then point the API at it: `Agent__MeetingBotUrl=https://<bot service>` and `Agen
 ## Test
 
 `npm test` runs a real bot against the synthetic Meet page (set `MEETBOT_CHROMIUM` to a Chromium binary, or `npx playwright install chromium`).
+
+## Transcripts from audio (Whisper)
+
+Besides the live captions, each bot records the call's incoming audio (WebRTC tracks mixed in the page, Opus/WebM on disk) and, when the
+call ends, transcribes it with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on the CPU. Speakers are named from the captions
+by time. The result is sent as `transcript.final` and replaces the caption transcript (meeting-chat lines are kept). The recording is
+deleted right after.
+
+| Variable | Meaning |
+| --- | --- |
+| `MEETBOT_WHISPER_MODEL` | `small` (default, built into the image), `base` (faster), `medium` (more accurate, slower), or `off`. |
+| `MEETBOT_WHISPER_LANGUAGE` | Force a language (`en`, `hi`, `te`); empty = detect. |
+| `MEETBOT_WHISPER_THREADS` | CPU threads for transcription (2). Calls are transcribed one at a time per worker. |
