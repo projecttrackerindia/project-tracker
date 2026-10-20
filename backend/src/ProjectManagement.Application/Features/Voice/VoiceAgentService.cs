@@ -27,6 +27,11 @@ public class VoiceOptions
     public string S3Region { get; set; } = "auto";
     public string? S3AccessKey { get; set; }
     public string? S3SecretKey { get; set; }
+    /// <summary>Sarvam AI key for speech (Indian languages). Without it the test call is typed only.</summary>
+    public string? SarvamApiKey { get; set; }
+    public string SarvamBaseUrl { get; set; } = "https://api.sarvam.ai";
+    public string SarvamTtsModel { get; set; } = "bulbul:v2";
+    public string SarvamSpeaker { get; set; } = "anushka";
     public bool ArchiveConfigured => !string.IsNullOrWhiteSpace(S3Endpoint) && !string.IsNullOrWhiteSpace(S3Bucket) && !string.IsNullOrWhiteSpace(S3AccessKey) && !string.IsNullOrWhiteSpace(S3SecretKey);
 }
 
@@ -36,7 +41,7 @@ public static class VoiceLanguages
 }
 
 public record VoiceSettingsDto(bool Enabled, string AgentName, string CompanyName, IReadOnlyList<string> Languages, string? Knowledge, bool RequireVerification, string VerificationRule,
-    string? TransferNumber, Guid? WorkTypeId, string StorageKeyPattern, bool ArchiveConfigured, bool CanManage, IReadOnlyDictionary<string, string> AvailableLanguages);
+    string? TransferNumber, Guid? WorkTypeId, string StorageKeyPattern, bool ArchiveConfigured, bool CanManage, IReadOnlyDictionary<string, string> AvailableLanguages, bool SpeechConfigured = false);
 public record SaveVoiceSettingsRequest(bool Enabled, string AgentName, string? CompanyName, IReadOnlyList<string> Languages, string? Knowledge, bool RequireVerification,
     string? VerificationRule, string? TransferNumber, Guid? WorkTypeId, string? StorageKeyPattern);
 public record VoiceConnectorDto(Guid Id, string Name, string Description, string Method, string UrlTemplate, string? HeaderName, bool HasSecret, bool Enabled, IReadOnlyList<string> Placeholders);
@@ -45,9 +50,10 @@ public record VoiceTurnDto(string Role, string Text, DateTime At, string? Tool =
 public record VoiceCallDto(Guid Id, string Channel, string Direction, string? CallerNumber, string Language, string Status, DateTime StartedAt, DateTime? EndedAt,
     IReadOnlyList<VoiceTurnDto> Turns, string? Summary, Guid? WorkTaskId, string? TicketKey, bool Verified, bool Transferred, string? ArchiveKey);
 public record VoiceCallListItem(Guid Id, string Channel, string? CallerNumber, string Language, string Status, DateTime StartedAt, DateTime? EndedAt, string? Summary, string? TicketKey, bool Transferred);
-public record StartVoiceCallRequest(string? CallerNumber, string? Language);
-public record VoiceSayRequest(string Text);
-public record VoiceReplyDto(VoiceCallDto Call, string Say, bool Ended);
+public record StartVoiceCallRequest(string? CallerNumber, string? Language, bool Speak = false);
+public record VoiceSayRequest(string Text, bool Speak = false);
+/// <summary>Audio is the agent's line as base64 WAV when speech was asked for; Heard is what speech-to-text understood from the caller.</summary>
+public record VoiceReplyDto(VoiceCallDto Call, string Say, bool Ended, string? Audio = null, string? Heard = null);
 
 /// <summary>
 /// The support voice agent's brain, shared by phone calls and the typed test: one turn at a time it reads what the caller said, may look things
@@ -56,7 +62,7 @@ public record VoiceReplyDto(VoiceCallDto Call, string Say, bool Ended);
 /// </summary>
 public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, PermissionService permissions, IAiClient ai,
     AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<VoiceOptions> voice, IHttpClientFactory http,
-    WorkTaskService workTasks, Recorder recorder, ILogger<VoiceAgentService> log)
+    WorkTaskService workTasks, Recorder recorder, VoiceSpeechService speech, ILogger<VoiceAgentService> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly Regex Placeholder = new(@"\{([A-Za-z][A-Za-z0-9_]{0,40})\}", RegexOptions.Compiled);
@@ -68,7 +74,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
     private async Task<VoiceSettingsDto> DtoAsync(VoiceAgentSettings s, CancellationToken ct) => new(s.Enabled, s.AgentName, s.CompanyName,
         s.Languages.Split(',', StringSplitOptions.RemoveEmptyEntries), s.Knowledge, s.RequireVerification, s.VerificationRule, s.TransferNumber, s.WorkTypeId,
-        s.StorageKeyPattern, voice.Value.ArchiveConfigured, await permissions.HasAsync(Permissions.WorkTypesManage, ct), VoiceLanguages.Names);
+        s.StorageKeyPattern, voice.Value.ArchiveConfigured, await permissions.HasAsync(Permissions.WorkTypesManage, ct), VoiceLanguages.Names, speech.Configured);
 
     public async Task<VoiceSettingsDto> SettingsAsync(CancellationToken ct) { ctx.RequireTenantId(); return await DtoAsync(await RowAsync(ct), ct); }
 
@@ -226,7 +232,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         call.TranscriptProtected = secrets.Protect(JsonSerializer.Serialize(new List<VoiceTurnDto> { new("agent", greeting, clock.Now) }, Json));
         db.VoiceCalls.Add(call);
         await db.SaveChangesAsync(ct);
-        return new(await CallDtoAsync(call, ct), greeting, false);
+        return new(await CallDtoAsync(call, ct), greeting, false, req.Speak ? await speech.SpeakAsync(greeting, lang, ct) : null);
     }
 
     private static string Brand(VoiceAgentSettings s) => string.IsNullOrWhiteSpace(s.CompanyName) ? "support" : s.CompanyName;
@@ -250,7 +256,31 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         call.UpdatedAt = clock.Now;
         if (ended) await EndAsync(call, s, turns, ct);
         await db.SaveChangesAsync(ct);
-        return new(await CallDtoAsync(call, ct), say, ended);
+        return new(await CallDtoAsync(call, ct), say, ended, req.Speak ? await speech.SpeakAsync(say, call.Language, ct) : null);
+    }
+
+    /// <summary>A spoken turn: the caller's recorded audio is turned into text (Sarvam), answered like a typed turn, and the answer comes back as audio.</summary>
+    public async Task<VoiceReplyDto> ListenAsync(Guid id, byte[] audio, string contentType, CancellationToken ct)
+    {
+        await permissions.RequireAsync(Permissions.WorkTypesManage, ct);
+        await RequireAiAsync(ct);
+        if (!speech.Configured) throw new ConflictException("Speech is not set up yet. Add the Sarvam key on the server (Voice__SarvamApiKey).");
+        if (audio.Length is < 200 or > 4_000_000) throw new ValidationException("audio", "Speak for up to about a minute.");
+        var heard = await speech.TranscribeAsync(audio, contentType, ct);
+        if (heard is not { } h)
+        {
+            var call = await db.VoiceCalls.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw new NotFoundException("Call not found.");
+            var again = call.Language switch { "hi" => "माफ़ कीजिए, मैं सुन नहीं पाई। क्या आप दोबारा कह सकते हैं?", "te" => "క్షమించండి, నాకు వినిపించలేదు. మళ్ళీ చెప్పగలరా?",
+                "ta" => "மன்னிக்கவும், எனக்குக் கேட்கவில்லை. மீண்டும் சொல்ல முடியுமா?", _ => "Sorry, I didn't catch that. Could you say it again?" };
+            return new(await CallDtoAsync(call, ct), again, false, await speech.SpeakAsync(again, call.Language, ct), "");
+        }
+        if (h.Language is { } lang)
+        {
+            var row = await db.VoiceCalls.FirstOrDefaultAsync(c => c.Id == id, ct);
+            if (row is { Status: "active" } && row.Language != lang) row.Language = lang;
+        }
+        var reply = await SayAsync(id, new VoiceSayRequest(h.Text, true), ct);
+        return reply with { Heard = h.Text };
     }
 
     public async Task<VoiceCallDto> HangUpAsync(Guid id, CancellationToken ct)

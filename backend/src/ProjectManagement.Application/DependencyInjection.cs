@@ -126,6 +126,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Agent.MeetingBotIdentityService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.NotetakerService>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceAgentService>();
+        services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceSpeechService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSlackReader>();
         services.AddScoped<ProjectManagement.Application.Features.Admin.DeployAlertService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentMinutesService>();

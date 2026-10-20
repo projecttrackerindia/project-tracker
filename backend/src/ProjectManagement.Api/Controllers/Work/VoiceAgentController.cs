@@ -17,5 +17,12 @@ public class VoiceAgentController(VoiceAgentService voice) : ApiControllerBase
     [HttpGet("calls/{id:guid}")] public async Task<IActionResult> Call(Guid id, CancellationToken ct) => Ok(await voice.CallAsync(id, ct));
     [HttpPost("calls/test"), AiRequestLimit] public async Task<IActionResult> StartTest([FromBody] StartVoiceCallRequest req, CancellationToken ct) => Ok(await voice.StartTestAsync(req, ct));
     [HttpPost("calls/{id:guid}/say"), AiRequestLimit] public async Task<IActionResult> Say(Guid id, [FromBody] VoiceSayRequest req, CancellationToken ct) => Ok(await voice.SayAsync(id, req, ct));
+    [HttpPost("calls/{id:guid}/listen"), AiRequestLimit, RequestSizeLimit(5_000_000)]
+    public async Task<IActionResult> Listen(Guid id, IFormFile file, CancellationToken ct)
+    {
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        return Ok(await voice.ListenAsync(id, ms.ToArray(), file.ContentType ?? "audio/webm", ct));
+    }
     [HttpPost("calls/{id:guid}/end"), AiRequestLimit] public async Task<IActionResult> End(Guid id, CancellationToken ct) => Ok(await voice.HangUpAsync(id, ct));
 }

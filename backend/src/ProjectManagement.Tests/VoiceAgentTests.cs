@@ -33,6 +33,7 @@ public class VoiceAgentTests(ApiFactory factory)
         Assert.Equal("loanNumber", c.Data!["placeholders"]![0]!.GetValue<string>());
         Assert.Equal(HttpStatusCode.Conflict, (await owner.Post("/api/v1/voice/connectors", new { name = "loan_details", description = "Again", urlTemplate = "https://api.example.com/x", enabled = true })).Status);
         Assert.Empty((await owner.Get("/api/v1/voice/calls")).Data!.AsArray());
+        Assert.False((await owner.Get("/api/v1/voice/settings")).Data!["speechConfigured"]!.GetValue<bool>());
     }
 
     [Fact]

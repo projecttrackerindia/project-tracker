@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, del, get, post, put } from '../../api/client';
+import { ApiError, del, get, post, put, uploadFile } from '../../api/client';
 import { workApi } from '../../api/endpoints.platform';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
@@ -13,23 +13,25 @@ import './voice.css';
 
 interface VoiceSettings {
   enabled: boolean; agentName: string; companyName: string; languages: string[]; knowledge: string | null; requireVerification: boolean; verificationRule: string;
-  transferNumber: string | null; workTypeId: string | null; storageKeyPattern: string; archiveConfigured: boolean; canManage: boolean; availableLanguages: Record<string, string>;
+  transferNumber: string | null; workTypeId: string | null; storageKeyPattern: string; archiveConfigured: boolean; canManage: boolean; availableLanguages: Record<string, string>; speechConfigured?: boolean;
 }
 interface Connector { id: string; name: string; description: string; method: string; urlTemplate: string; headerName: string | null; hasSecret: boolean; enabled: boolean; placeholders: string[] }
 interface Turn { role: 'agent' | 'caller' | 'tool'; text: string; at: string; tool?: string | null }
 interface Call { id: string; channel: string; direction: string; callerNumber: string | null; language: string; status: string; startedAt: string; endedAt: string | null; turns: Turn[]; summary: string | null; workTaskId: string | null; ticketKey: string | null; verified: boolean; transferred: boolean; archiveKey: string | null }
+interface Reply { call: Call; say: string; ended: boolean; audio?: string | null; heard?: string | null }
 interface CallItem { id: string; channel: string; callerNumber: string | null; language: string; status: string; startedAt: string; endedAt: string | null; summary: string | null; ticketKey: string | null; transferred: boolean }
 
 const voiceApi = {
   settings: () => get<VoiceSettings>('/voice/settings'),
-  save: (b: Omit<VoiceSettings, 'archiveConfigured' | 'canManage' | 'availableLanguages'>) => put<VoiceSettings>('/voice/settings', b),
+  save: (b: Omit<VoiceSettings, 'archiveConfigured' | 'canManage' | 'availableLanguages' | 'speechConfigured'>) => put<VoiceSettings>('/voice/settings', b),
   connectors: () => get<Connector[]>('/voice/connectors'),
   saveConnector: (b: Partial<Connector> & { secret?: string }, id?: string) => (id ? put<Connector>(`/voice/connectors/${id}`, b) : post<Connector>('/voice/connectors', b)),
   removeConnector: (id: string) => del(`/voice/connectors/${id}`),
   calls: () => get<CallItem[]>('/voice/calls'),
   call: (id: string) => get<Call>(`/voice/calls/${id}`),
-  start: (b: { callerNumber?: string; language?: string }) => post<{ call: Call; say: string; ended: boolean }>('/voice/calls/test', b),
-  say: (id: string, text: string) => post<{ call: Call; say: string; ended: boolean }>(`/voice/calls/${id}/say`, { text }),
+  start: (b: { callerNumber?: string; language?: string; speak?: boolean }) => post<Reply>('/voice/calls/test', b),
+  say: (id: string, text: string, speak = false) => post<Reply>(`/voice/calls/${id}/say`, { text, speak }),
+  listen: (id: string, audio: File) => uploadFile<Reply>(`/voice/calls/${id}/listen`, audio),
   end: (id: string) => post<Call>(`/voice/calls/${id}/end`, {}),
 };
 const errText = (e: unknown, f: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : f);
@@ -58,7 +60,7 @@ export function VoiceAgentPanel() {
       <ol className="va-steps">
         <li className="done"><b>1. Agent and languages</b><span>Below</span></li>
         <li className={s.archiveConfigured ? 'done' : ''}><b>2. Storage for recordings</b><span>{s.archiveConfigured ? 'S3 bucket connected' : 'Add the S3 bucket in Railway'}</span></li>
-        <li><b>3. Speech (Sarvam AI)</b><span>Add the key in Railway for real voice</span></li>
+        <li className={s.speechConfigured ? 'done' : ''}><b>3. Speech (Sarvam AI)</b><span>{s.speechConfigured ? 'Voice ready — try a spoken test call' : 'Add the key in Railway for real voice'}</span></li>
         <li><b>4. Phone number</b><span>Plivo or Exotel trial; calls your verified mobile</span></li>
       </ol>
       {s.canManage && <SettingsForm s={s} />}
@@ -215,33 +217,79 @@ function Transcript({ turns, typing }: { turns: Turn[]; typing?: boolean }) {
   );
 }
 
+/** Plays the agent's line (base64 WAV from Sarvam). Returns when it finishes so the mic is not opened over the agent's voice. */
+function play(audio: string | null | undefined, player: MutableRefObject<HTMLAudioElement | null>): Promise<void> {
+  if (!audio) return Promise.resolve();
+  player.current?.pause();
+  const a = new Audio(`data:audio/wav;base64,${audio}`);
+  player.current = a;
+  return new Promise((done) => { a.onended = () => done(); a.onerror = () => done(); void a.play().catch(() => done()); });
+}
+
 function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
   const wid = useWorkspaceId();
+  const canTalk = !!s.speechConfigured && typeof window !== 'undefined' && 'MediaRecorder' in window && !!navigator.mediaDevices?.getUserMedia;
   const [lang, setLang] = useState(s.languages[0] ?? 'en');
   const [phone, setPhone] = useState('');
+  const [talk, setTalk] = useState(canTalk);
   const [call, setCall] = useState<Call | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [rec, setRec] = useState<MediaRecorder | null>(null);
+  const player = useRef<HTMLAudioElement | null>(null);
+  const stream = useRef<MediaStream | null>(null);
+  useEffect(() => () => { player.current?.pause(); stream.current?.getTracks().forEach((t) => t.stop()); }, []);
+  const answered = async (r: Reply) => {
+    setCall(r.call); setEnded(r.ended);
+    if (r.ended) void invalidateWorkspace(wid, 'voice');
+    if (talk) await play(r.audio, player);
+  };
   const start = async () => {
     setBusy(true);
-    try { const r = await voiceApi.start({ language: lang, callerNumber: phone || undefined }); setCall(r.call); } catch (e) { toast(errText(e, 'Could not start.'), 'error'); } finally { setBusy(false); }
+    try { const r = await voiceApi.start({ language: lang, callerNumber: phone || undefined, speak: talk }); setBusy(false); await answered(r); }
+    catch (e) { toast(errText(e, 'Could not start.'), 'error'); } finally { setBusy(false); }
   };
   const send = async () => {
     if (!call || !text.trim()) return;
     const said = text.trim(); setText('');
     setCall({ ...call, turns: [...call.turns, { role: 'caller', text: said, at: new Date().toISOString() }] });
     setBusy(true);
-    try { const r = await voiceApi.say(call.id, said); setCall(r.call); setEnded(r.ended); if (r.ended) void invalidateWorkspace(wid, 'voice'); }
+    try { const r = await voiceApi.say(call.id, said, talk); setBusy(false); await answered(r); }
     catch (e) { toast(errText(e, 'The agent did not answer.'), 'error'); }
     finally { setBusy(false); }
   };
+  const record = async () => {
+    if (!call) return;
+    if (rec) { rec.stop(); return; }
+    player.current?.pause();
+    try {
+      stream.current ??= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+      const m = new MediaRecorder(stream.current, type ? { mimeType: type } : undefined);
+      const parts: Blob[] = [];
+      m.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+      m.onstop = async () => {
+        setRec(null);
+        const blob = new Blob(parts, { type: m.mimeType || 'audio/webm' });
+        if (blob.size < 800) { toast('That was too short — tap, speak, then tap again.', 'error'); return; }
+        setBusy(true);
+        try {
+          const r = await voiceApi.listen(call.id, new File([blob], 'speech.' + (blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'), { type: blob.type }));
+          setBusy(false); await answered(r);
+        } catch (e) { toast(errText(e, 'The agent did not hear that.'), 'error'); } finally { setBusy(false); }
+      };
+      m.start(); setRec(m);
+      window.setTimeout(() => { if (m.state === 'recording') m.stop(); }, 45_000);
+    } catch { toast('Allow the microphone to talk to the agent.', 'error'); setTalk(false); }
+  };
   const hangUp = async () => {
+    rec?.stop(); player.current?.pause();
     if (call && !ended) { try { await voiceApi.end(call.id); } catch { /* the call log shows it */ } }
     void invalidateWorkspace(wid, 'voice'); onClose();
   };
   return (
-    <Modal title="Test call" subtitle="Type as the caller would speak, in any of the agent's languages." onClose={() => void hangUp()} size="lg"
+    <Modal title="Test call" subtitle={talk ? 'Speak as a caller would, in any of the agent\'s languages — it answers out loud.' : 'Type as the caller would speak, in any of the agent\'s languages.'} onClose={() => void hangUp()} size="lg"
       footer={call ? <button className="btn btn-ghost" onClick={() => void hangUp()}>{ended ? 'Close' : 'Hang up'}</button> : undefined}>
       {!call ? (
         <div className="va-form">
@@ -249,15 +297,25 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
             <label className="va-field"><span>Greeting language</span><Select className="select" aria-label="Greeting language" value={lang} onChange={(e) => setLang(e.target.value)}>{s.languages.map((l) => <option key={l} value={l}>{s.availableLanguages[l] ?? l}</option>)}</Select></label>
             <label className="va-field"><span>Caller's number (optional)</span><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98…" /></label>
           </div>
+          {canTalk ? <label className="va-toggle inline"><input type="checkbox" checked={talk} onChange={(e) => setTalk(e.target.checked)} /><span>Talk with my voice<small>Uses your microphone; the agent replies in voice (Sarvam).</small></span></label>
+            : !s.speechConfigured ? <p className="va-muted">Typed test. Add the Sarvam key on the server to talk by voice.</p> : null}
           <button className="btn btn-primary" disabled={busy} onClick={() => void start()}>{busy ? <Spinner /> : <Icon name="phone" size={14} />} Start</button>
         </div>
       ) : (
         <div className="va-test">
           <Transcript turns={call.turns} typing={busy} />
-          {!ended ? <form className="va-say" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="नमस्ते, मेरी EMI कब है? / నా లోన్ బ్యాలెన్స్ ఎంత? / What is my loan balance?" aria-label="What the caller says" autoFocus disabled={busy} />
-            <button className="btn btn-primary" disabled={busy || !text.trim()}><Icon name="send" size={14} /></button>
-          </form> : <p className="va-muted">The call ended.{call.ticketKey ? ` Ticket ${call.ticketKey} was created.` : ''}</p>}
+          {ended ? <p className="va-muted">The call ended.{call.ticketKey ? ` Ticket ${call.ticketKey} was created.` : ''}</p>
+            : talk ? <div className="va-mic">
+              <button type="button" className={`va-mic-btn${rec ? ' on' : ''}`} disabled={busy} onClick={() => void record()} aria-label={rec ? 'Stop and send' : 'Speak'}>
+                {busy ? <Spinner /> : <Icon name={rec ? 'square' : 'mic'} size={22} />}
+              </button>
+              <span>{rec ? 'Listening… tap to send' : busy ? 'The agent is thinking…' : 'Tap and speak'}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTalk(false)}>Type instead</button>
+            </div>
+            : <form className="va-say" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="नमस्ते, मेरी EMI कब है? / నా లోన్ బ్యాలెన్స్ ఎంత? / What is my loan balance?" aria-label="What the caller says" autoFocus disabled={busy} />
+              <button className="btn btn-primary" disabled={busy || !text.trim()}><Icon name="send" size={14} /></button>
+            </form>}
         </div>
       )}
     </Modal>

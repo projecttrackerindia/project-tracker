@@ -53,3 +53,10 @@
 .va-say input { flex: 1; min-width: 0; }
 .va-form { display: flex; flex-direction: column; gap: 12px; }
 @media (max-width: 640px) { .va-hero { padding: 16px; } .va-bubble { max-width: 92%; } }
+.va-mic { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0 2px; }
+.va-mic > span { font-size: 13px; color: var(--text-3); }
+.va-mic-btn { width: 64px; height: 64px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; background: var(--primary); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 35%, transparent); }
+.va-mic-btn:disabled { opacity: .6; cursor: default; }
+.va-mic-btn.on { background: var(--danger); animation: va-pulse 1.2s ease-in-out infinite; }
+@keyframes va-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent); } 50% { box-shadow: 0 0 0 12px transparent; } }
+@media (prefers-reduced-motion: reduce) { .va-mic-btn.on { animation: none; } }
