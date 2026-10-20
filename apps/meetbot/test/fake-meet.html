@@ -27,7 +27,10 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => { $(id).style.display = on ? 'block' : 'none'; };
+// Like Meet while it is "getting ready": the first click on Ask to join does nothing, so the bot must notice and click again.
+let ignoredFirstClick = false;
 $('ask').onclick = () => {
+  if (!ignoredFirstClick) { ignoredFirstClick = true; return; }
   if (!document.querySelector('[aria-label="Your name"]').value) return;
   show('prejoin', false); show('waiting');
   setTimeout(() => { show('waiting', false); show('call'); }, 400);   // the host lets the bot in

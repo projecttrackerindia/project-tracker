@@ -24,7 +24,7 @@ export const SEL = {
 export const TEXT = {
   denied: /(someone in the call denied your request|no one responded to your request|you can't join this video call|you cannot join this video call|this meeting has been locked|your request to join was declined)/i,
   ended: /(you left the meeting|the call has ended|you've been removed from the meeting|you have been removed from the meeting|this call has ended|meeting has ended)/i,
-  waiting: /(asking to be let in|you'll join the call when someone lets you in|waiting for the host|please wait until a meeting host brings you into the call)/i,
+  waiting: /(asking to be let in|asking to join|you'll join the call when someone lets you in|waiting for the host|please wait until a meeting host brings you into the call)/i,
   alone: /(you're the only one here|you are the only one here|no one else is here)/i,
 };
 
@@ -36,11 +36,26 @@ const firstVisible = async (page, selectors) => {
   return null;
 };
 
+/** Clicks the first visible button with this name. True only when the click went through (a disabled or covered button is not clicked). */
 const clickButton = async (page, name) => {
   const b = page.getByRole('button', { name }).first();
-  if (await b.count() && await b.isVisible().catch(() => false)) { await b.click({ timeout: 5000 }).catch(() => undefined); return true; }
-  return false;
+  if (!(await b.count()) || !(await b.isVisible().catch(() => false))) return false;
+  return b.click({ timeout: 5000 }).then(() => true, () => false);
 };
+const visibleButton = async (page, name) => {
+  const b = page.getByRole('button', { name }).first();
+  return (await b.count()) > 0 && await b.isVisible().catch(() => false);
+};
+
+/** What the page shows right now, for the bot's log: in the call, waiting in the lobby, refused, or still on the join screen. */
+export async function lobbyState(page) {
+  if (await visibleButton(page, SEL.leave)) return 'in the call';
+  const text = await pageText(page);
+  if (TEXT.denied.test(text)) return 'refused';
+  if (TEXT.waiting.test(text)) return 'waiting in the lobby';
+  if (await visibleButton(page, SEL.join)) return 'still on the join screen';
+  return 'unknown: ' + text.replace(/\s+/g, ' ').trim().slice(0, 160);
+}
 
 export const name = 'meet';
 
@@ -62,7 +77,20 @@ export async function askToJoin(page, botName, log) {
     if (input) { await input.fill(botName); }
     await clickButton(page, SEL.micOff);
     await clickButton(page, SEL.camOff);
-    if (await clickButton(page, SEL.join)) { log('asked to join'); return; }
+    if (await clickButton(page, SEL.join)) {
+      // Meet only shows the request to the host once the lobby says "Asking to join…". A click that did not register (the button was not
+      // ready yet) leaves the join screen up; then try again instead of waiting in front of a request nobody can see.
+      const settle = Date.now() + 10_000;
+      while (Date.now() < settle) {
+        await page.waitForTimeout(700);
+        const state = await lobbyState(page);
+        if (state === 'refused') throw new Error('Google Meet does not let the bot join this meeting.');
+        if (state === 'in the call' || state === 'waiting in the lobby') { log(state === 'in the call' ? 'joined' : 'asked to join (waiting in the lobby)'); return; }
+        if (state.startsWith('unknown') && !(await visibleButton(page, SEL.join))) { log('asked to join (' + state + ')'); return; }
+      }
+      log('the join request did not register; trying again');
+      continue;
+    }
     if (TEXT.denied.test(await pageText(page))) throw new Error('Google Meet does not let the bot join this meeting.');
     await page.waitForTimeout(1000);
   }
@@ -70,8 +98,9 @@ export async function askToJoin(page, botName, log) {
 }
 
 /** Waits until someone admits the bot (the call controls appear), the request is refused, or time runs out. */
-export async function waitUntilAdmitted(page, timeoutMs) {
+export async function waitUntilAdmitted(page, timeoutMs, log = () => undefined) {
   const deadline = Date.now() + timeoutMs;
+  let report = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const leave = page.getByRole('button', { name: SEL.leave }).first();
     if (await leave.count() && await leave.isVisible().catch(() => false)) return 'admitted';
@@ -79,6 +108,9 @@ export async function waitUntilAdmitted(page, timeoutMs) {
     if (TEXT.denied.test(text)) return 'denied';
     if (TEXT.ended.test(text)) return 'denied';
     await clickButton(page, SEL.dismiss);
+    // Back on the join screen (the request lapsed or the page reloaded): ask again so the host sees it.
+    if (!TEXT.waiting.test(text) && await visibleButton(page, SEL.join) && await clickButton(page, SEL.join)) log('asked to join again');
+    if (Date.now() > report) { log('lobby: ' + await lobbyState(page)); report = Date.now() + 120_000; }
     await page.waitForTimeout(1500);
   }
   return 'timeout';
