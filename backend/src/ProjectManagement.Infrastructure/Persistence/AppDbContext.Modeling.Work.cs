@@ -74,6 +74,18 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.WorkTypeId, x.Priority });
             e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<OperationsSettings>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.TimeZone).HasMaxLength(64);
+        });
+        b.Entity<WorkRoutingRule>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.WorkTypeId });
+            e.Property(x => x.Mode).HasMaxLength(20);
+            e.Property(x => x.MemberIds).HasMaxLength(4000);
+            e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<WorkTaskComment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.Body).HasMaxLength(4000); });
         b.Entity<WorkTaskAttachment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.FileName).HasMaxLength(200); e.Property(x => x.ContentType).HasMaxLength(120); e.Property(x => x.StorageKey).HasMaxLength(200); e.Property(x => x.Sha256).HasMaxLength(64); });
         b.Entity<ProjectGroup>(e =>

@@ -98,6 +98,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
     public DbSet<TimesheetApproval> TimesheetApprovals => Set<TimesheetApproval>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+    public DbSet<OperationsSettings> OperationsSettings => Set<OperationsSettings>();
+    public DbSet<WorkRoutingRule> WorkRoutingRules => Set<WorkRoutingRule>();
     public DbSet<CalendarFeed> CalendarFeeds => Set<CalendarFeed>();
     public DbSet<InboundMailbox> InboundMailboxes => Set<InboundMailbox>();
     public DbSet<GitConnection> GitConnections => Set<GitConnection>();

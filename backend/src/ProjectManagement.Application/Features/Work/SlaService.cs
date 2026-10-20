@@ -111,33 +111,55 @@ public class SlaService(IAppDbContext db, ICurrentContext ctx, AppClock clock, R
         return (pick?.ResponseMinutes, pick?.ResolutionMinutes);
     }
 
-    /// <summary>Fixes the due times from the targets for the task's type and priority, measured from when it was raised.</summary>
+    private BusinessCalendar? _calendar;
+    private bool _calendarLoaded;
+
+    /// <summary>The workspace's working hours when its clocks count business hours only; null for calendar hours.</summary>
+    public async Task<BusinessCalendar?> CalendarAsync(CancellationToken ct = default)
+    {
+        if (_calendarLoaded) return _calendar;
+        var s = await db.OperationsSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        _calendar = s is { BusinessHoursOnly: true } ? new BusinessCalendar(s.WorkDays, s.DayStartMinutes, s.DayEndMinutes, ProjectManagement.Application.Features.Reminders.ZoneTime.Find(s.TimeZone ?? clock.ZoneId)) : null;
+        if (_calendar is { Valid: false }) _calendar = null;
+        _calendarLoaded = true;
+        return _calendar;
+    }
+
+    /// <summary>Forgets the loaded working hours (after they are changed).</summary>
+    public void ResetCalendar() { _calendarLoaded = false; _calendar = null; }
+
+    private static DateTime Plus(BusinessCalendar? cal, DateTime from, int minutes) => cal is null ? from.AddMinutes(minutes) : cal.Add(from, minutes);
+
+    /// <summary>Fixes the due times from the targets for the task's type and priority, measured from when it was raised - in working
+    /// minutes when the workspace counts business hours only.</summary>
     public async Task ApplyTargetsAsync(WorkTask t, CancellationToken ct = default)
     {
         if (t.Kind != WorkTaskKind.Operational) return;
         var (response, resolution) = await TargetsAsync(t.WorkTypeId, t.Priority, ct);
+        var cal = await CalendarAsync(ct);
         t.SlaAlerted = 0;
-        t.ResponseDueAt = response is { } r ? t.CreatedAt.AddMinutes(r) : null;
+        t.ResponseDueAt = response is { } r ? Plus(cal, t.CreatedAt, r) : null;
         if (resolution is { } s)
         {
-            t.ResolutionDueAt = t.CreatedAt.AddMinutes(s + t.SlaPausedMinutes);
-            t.ResolutionRiskAt = t.CreatedAt.AddMinutes((double)(s * RiskShare) + t.SlaPausedMinutes);
+            t.ResolutionDueAt = Plus(cal, t.CreatedAt, s + t.SlaPausedMinutes);
+            t.ResolutionRiskAt = Plus(cal, t.CreatedAt, (int)(s * RiskShare) + t.SlaPausedMinutes);
         }
         else { t.ResolutionDueAt = null; t.ResolutionRiskAt = null; }
     }
 
     /// <summary>Keeps the clocks right when the status changes: response on leaving To Do, pause on hold, resume when it comes back.</summary>
-    public void OnStatusChanged(WorkTask t, WorkTaskStatus from, WorkTaskStatus to)
+    public async Task OnStatusChangedAsync(WorkTask t, WorkTaskStatus from, WorkTaskStatus to, CancellationToken ct = default)
     {
         var now = clock.Now;
         if (from == WorkTaskStatus.ToDo && to != WorkTaskStatus.ToDo && t.RespondedAt is null) t.RespondedAt = now;
         if (to == WorkTaskStatus.OnHold && t.SlaPausedAt is null) t.SlaPausedAt = now;
         else if (from == WorkTaskStatus.OnHold && to != WorkTaskStatus.OnHold && t.SlaPausedAt is { } since)
         {
-            var paused = (int)Math.Ceiling((now - since).TotalMinutes);
+            var cal = t.Kind == WorkTaskKind.Operational ? await CalendarAsync(ct) : null;
+            var paused = cal?.Between(since, now) ?? (int)Math.Ceiling((now - since).TotalMinutes);
             t.SlaPausedMinutes += paused;
-            if (t.ResolutionDueAt is { } due) t.ResolutionDueAt = due.AddMinutes(paused);
-            if (t.ResolutionRiskAt is { } risk) t.ResolutionRiskAt = risk.AddMinutes(paused);
+            if (t.ResolutionDueAt is { } due) t.ResolutionDueAt = Plus(cal, due, paused);
+            if (t.ResolutionRiskAt is { } risk) t.ResolutionRiskAt = Plus(cal, risk, paused);
             t.SlaPausedAt = null;
             // The resolution clock moved: its at-risk and missed alerts belong to the new due time.
             t.SlaAlerted &= SlaAlerts.Response;

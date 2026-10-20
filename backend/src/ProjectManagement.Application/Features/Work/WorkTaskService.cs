@@ -334,7 +334,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var retarget = task.Priority != req.Priority || task.WorkTypeId != type.Id;
         task.Title = title; task.Description = description; task.WorkTypeId = type.Id; task.RelatedProjectId = req.RelatedProjectId;
         task.AssigneeId = req.AssigneeId; task.Priority = req.Priority; task.StartDate = req.StartDate; task.DueDate = req.DueDate;
-        ApplyStatus(task, req.Status);
+        await ApplyStatusAsync(task, req.Status, ct);
         // A new priority or type brings its own targets, still measured from when the task was raised.
         if (retarget && IsOpen(task.Status)) await sla.ApplyTargetsAsync(task, ct);
         task.Version++;
@@ -360,7 +360,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var was = task.Status;
         if (was != req.Status)
         {
-            ApplyStatus(task, req.Status);
+            await ApplyStatusAsync(task, req.Status, ct);
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
             await db.SaveChangesAsync(ct);
@@ -368,10 +368,10 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         return await GetAsync(id, ct);
     }
 
-    private void ApplyStatus(WorkTask task, WorkTaskStatus status)
+    private async Task ApplyStatusAsync(WorkTask task, WorkTaskStatus status, CancellationToken ct)
     {
         if (task.Status == status) return;
-        sla.OnStatusChanged(task, task.Status, status);
+        await sla.OnStatusChangedAsync(task, task.Status, status, ct);
         var done = status == WorkTaskStatus.Completed;
         task.CompletedAt = done ? clock.Now : null;
         task.CompletedBy = done ? ctx.UserId : null;

@@ -44,3 +44,41 @@ namespace ProjectManagement.Domain.Entities
         public int? ResolutionMinutes { get; set; }
     }
 }
+
+namespace ProjectManagement.Domain.Entities
+{
+    /// <summary>
+    /// How the workspace runs Operations: whether service-level clocks count business hours only (and which hours and days, in which time
+    /// zone), and who hears about it when a resolution target is missed. One row per workspace; none means calendar hours and no escalation.
+    /// </summary>
+    public class OperationsSettings : TenantEntity, ITenantScoped
+    {
+        public bool BusinessHoursOnly { get; set; }
+        /// <summary>Minutes after midnight the working day starts and ends (09:00 to 18:00 by default).</summary>
+        public int DayStartMinutes { get; set; } = 9 * 60;
+        public int DayEndMinutes { get; set; } = 18 * 60;
+        /// <summary>Working days as bits, Monday = 1 ... Sunday = 64 (Monday to Friday = 31).</summary>
+        public int WorkDays { get; set; } = 31;
+        /// <summary>The zone business hours are in; empty = the workspace's default zone.</summary>
+        public string? TimeZone { get; set; }
+        public bool EscalateOnBreach { get; set; }
+        /// <summary>Who is told when a resolution target is missed (a team lead); a routing rule's own contact wins for its work type.</summary>
+        public Guid? EscalateToUserId { get; set; }
+    }
+
+    /// <summary>
+    /// Who new operational work goes to when it is raised without an assignee: for one work type (or, without a type, for every type that has
+    /// no rule of its own), taking turns (round_robin) or picking whoever has the least open work (least_loaded) among the chosen people.
+    /// </summary>
+    public class WorkRoutingRule : TenantEntity, ITenantScoped
+    {
+        public Guid? WorkTypeId { get; set; }
+        public string Mode { get; set; } = "round_robin";
+        /// <summary>The people work is shared between, as a JSON array of user ids, in turn order.</summary>
+        public string MemberIds { get; set; } = "[]";
+        public Guid? LastAssignedUserId { get; set; }
+        /// <summary>Who hears about a missed resolution target on this type (overrides the workspace's escalation contact).</summary>
+        public Guid? EscalateToUserId { get; set; }
+        public bool Enabled { get; set; } = true;
+    }
+}

@@ -9,6 +9,8 @@ namespace ProjectManagement.Application.Abstractions;
 public interface IAppDbContext
 {
     DbSet<PlannedLeave> PlannedLeaves { get; }
+    DbSet<OperationsSettings> OperationsSettings { get; }
+    DbSet<WorkRoutingRule> WorkRoutingRules { get; }
     DbSet<PersonalFileDeletion> PersonalFileDeletions { get; }
     DbSet<PersonalResume> PersonalResumes { get; }
     DbSet<ResumeExportPurchase> ResumeExportPurchases { get; }

@@ -5169,6 +5169,57 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.OperationsSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("BusinessHoursOnly")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("DayEndMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DayStartMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("EscalateOnBreach")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("EscalateToUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TimeZone")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WorkDays")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("OperationsSettings");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.OrgRole", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10162,6 +10213,58 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("WhatsAppInboundReceipts");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkRoutingRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("EscalateToUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("LastAssignedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MemberIds")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WorkTypeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkTypeId");
+
+                    b.HasIndex("TenantId", "WorkTypeId");
+
+                    b.ToTable("WorkRoutingRules");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11744,6 +11847,14 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasForeignKey("WebhookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkRoutingRule", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.WorkType", null)
+                        .WithMany()
+                        .HasForeignKey("WorkTypeId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkTask", b =>
