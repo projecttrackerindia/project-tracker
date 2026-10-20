@@ -45,6 +45,13 @@
 @media (max-width: 640px) { .ag-edit { grid-template-columns: 1fr; } }
 .ag-card-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
 .ag-dismiss { color: var(--text-3); }
+.ag-reasons { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); animation: ag-in .18s ease-out; }
+.ag-reasons > span { font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: 2px; }
+.ag-reason { height: 28px; padding: 0 11px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.ag-reason:hover:not(:disabled) { border-color: var(--danger, #e34948); color: var(--danger, #e34948); }
+.ag-reason-skip { color: var(--text-3); border-style: dashed; }
+@keyframes ag-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (max-width: 640px) { .ag-reason { height: 34px; padding: 0 13px; } }
 .ag-when { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); }
 .ag-when b { color: var(--text); font-weight: 650; }
 .ag-closed .ag-when { margin-left: 0; }
@@ -125,3 +132,37 @@
 .ag-tune dd { margin: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-mine-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .ag-mine-actions .input { flex: 1 1 220px; min-width: 0; }
+
+/* Credits this month against the project's cap. */
+.ag-credits { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: grid; gap: 6px; }
+.ag-credits-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.ag-credits-head b { color: var(--text); font-variant-numeric: tabular-nums; }
+.ag-credits-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.ag-credits-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #4f46e5, #7c3aed); transition: width .4s ease; }
+.ag-credits-bar.warn i { background: linear-gradient(90deg, #eda100, #eb6834); }
+.ag-credits-bar.bad i { background: linear-gradient(90deg, #eb6834, #e34948); }
+.ag-hint-bad { color: var(--danger, #e34948); }
+.ag-credits-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ag-credits-form .input { width: 120px; }
+.ag-credits-form small { flex-basis: 100%; color: var(--text-3); font-size: 11.5px; }
+
+/* How the team decides, and earned autonomy. */
+.ag-earned { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; padding: 10px 12px; margin-bottom: 10px; border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, #7c3aed 12%, var(--surface)), color-mix(in srgb, #1baf7a 10%, var(--surface)));
+  border: 1px solid color-mix(in srgb, #7c3aed 25%, var(--border)); }
+.ag-earned-mark { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #7c3aed, #4f46e5); }
+.ag-earned p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+.ag-earned > div { grid-column: 2; display: flex; gap: 6px; flex-wrap: wrap; }
+.ag-trust-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.ag-trust-list li > div:first-child { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.ag-trust-list li > div:first-child span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
+.ag-trust-list li > div:first-child b { font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.ag-trust-list small { font-size: 11.5px; color: var(--text-3); }
+.ag-trust-bar { display: flex; gap: 2px; height: 7px; margin: 4px 0 2px; border-radius: 99px; overflow: hidden; background: var(--surface-2); }
+.ag-trust-bar i { display: block; min-width: 0; }
+.ag-trust-bar .ok, .ag-dot.ok { background: #1baf7a; }
+.ag-trust-bar .edit, .ag-dot.edit { background: #eda100; }
+.ag-trust-bar .no, .ag-dot.no { background: #e34948; }
+.ag-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin: 0 3px 0 6px; vertical-align: middle; }
+.ag-dot:first-child { margin-left: 0; }
+.ag-credits-head svg { display: inline-block; vertical-align: -2px; color: #7c3aed; }

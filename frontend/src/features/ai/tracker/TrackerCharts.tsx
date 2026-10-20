@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ReactNode } from 'react';
-import { series, STATUS } from './types';
+import { COST_GROUPS, series, STATUS } from './types';
 
 /**
  * The Agent Tracker's charts. Colour follows the thing it stands for and is never the only cue: outcomes use the status colours with their
@@ -35,6 +35,24 @@ export function ActivityChart({ data, unit }: { data: { label: string; succeeded
         {STATUS.map((s, i) => (
           <Bar key={s.key} dataKey={s.key} name={s.label} stackId="o" fill={s.color} stroke="var(--surface)" strokeWidth={1}
             radius={i === STATUS.length - 1 ? [4, 4, 0, 0] : 0} animationDuration={600} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** AI credits per day, stacked by the agent that used them (categorical slots in fixed order). */
+export function CostChart({ data }: { data: { label: string; assistant: number; agent: number; meetings: number; other: number }[] }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
+        <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+        <XAxis dataKey="label" {...axis} axisLine={{ stroke: 'var(--border)' }} minTickGap={14} />
+        <YAxis allowDecimals={false} {...axis} axisLine={false} width={40} />
+        <Tooltip content={<VizTip format={(v) => `${v} credit${v === 1 ? '' : 's'}`} />} cursor={{ fill: 'var(--hover-bg)' }} />
+        {COST_GROUPS.map((g, i) => (
+          <Bar key={g.key} dataKey={g.key} name={g.label} stackId="c" fill={series(i)} stroke="var(--surface)" strokeWidth={1}
+            radius={i === COST_GROUPS.length - 1 ? [4, 4, 0, 0] : 0} animationDuration={600} />
         ))}
       </BarChart>
     </ResponsiveContainer>

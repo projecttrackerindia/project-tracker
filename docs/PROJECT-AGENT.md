@@ -162,11 +162,49 @@ For more than a few hundred meetings at once, see *How it scales* in [DEPLOY.md]
 machines, a connection pooler in front of PostgreSQL, several API replicas, and - where the organizer's Google Workspace allows it - Meet's
 own transcripts (no bot at all).
 
+### Microsoft Teams
+
+The same bot joins **Microsoft Teams** meetings as an anonymous guest in the browser: *Continue on this browser*, its name, microphone and
+camera off, *Join now*, then it waits in the lobby until someone admits it. It switches on Teams' live captions (More › Language and speech)
+and reads and writes the meeting chat like in Meet. Everything that depends on the Teams page is in `apps/meetbot/src/teams.mjs`, mirrored by
+`test/fake-teams.html`; the link decides which page the bot drives (`src/platform.mjs`).
+
+- **Send to a call** (project › Agent): paste any Google Meet or Teams link and the bot joins within a minute (10 minutes to 4 hours; it leaves
+  when the call ends). The transcript is read as soon as the call is over.
+- **Calls on my calendar** also looks at the acting person's **Outlook** calendar when they connected it (Settings › Connected accounts,
+  calendar reading): online meetings in the next minutes whose subject names the project. Only subject, times and the join link are read.
+- The organizer's Teams policy must allow anonymous users to join; guests may not have the chat.
+
+The Teams selectors are tested against the synthetic page only: check them in a real Teams meeting before relying on them.
+
 ### Not built yet
 
-- Microsoft Teams and Zoom calls (the bot joins Google Meet only; a Teams or Zoom transcript can be pasted or forwarded).
+- Zoom calls (a Zoom transcript can be pasted or forwarded).
 - Speaking in the call (the bot writes in the chat; it does not talk).
-- Outlook calendars for spotting double-bookings (Google Calendar only).
+- Outlook calendars for spotting double-bookings in *Send the agent in my place* (Google Calendar only).
+
+## Watching the agents (Agent Tracker)
+
+Owners and admins see every agent in **Agent Tracker** (Insights › Agent Tracker): the assistant, the project agent, the meeting bot and
+follow-ups, plus:
+
+- **Alerts** - rules over the last 24 hours, no model: the assistant's success rate below a threshold (with at least 10 answers), its slowest
+  answers (p95) too slow, the meeting bot missing sessions or having no free worker for a meeting starting now, failed readings, AI credits
+  running out before they renew (at the last week's pace), and project agents stopped at their cap. The thresholds are set on the *Alerts*
+  tab. Every 15 minutes the API checks each workspace whose agents are in use; owners and admins get each problem **once a day** as an
+  *Agent alerts* notification (in-app, e-mail and push by their own notification settings).
+- **Monday summary** - each Monday morning (each person's briefing time and zone) a short *Weekly agent summary*: readings, proposals and
+  decisions, meetings, commitments kept and missed, answers, credits used and when they run out, and any kind of work the agent has earned the
+  right to do alone. Skipped when the agents did nothing. *Preview* and *Send me one now* are on the Alerts tab.
+- **Credits** - AI credits this month by agent (the credit ledger's feature) and by project, the last 14 days stacked by agent, and the
+  forecast. A **monthly credit cap** per project agent (project › Agent › *Set a cap*) stops its readings and live reminders for the rest of
+  the month once reached; 0 = no cap. Credits are shown, not rupees: they are the workspace's AI allowance; the provider cost in rupees
+  stays in the platform's Admin › AI usage.
+- **Earned autonomy** - for each kind of proposal, how often the team approved it unchanged in the last 90 days, how often it was changed
+  first, and why it was dismissed. When a *safe* kind (new items and notes, never changes to existing work) is approved unchanged at least
+  95% of at least 30 times, the project's Agent tab offers *Yes, let it* (the project goes to level 4 for that kind only) or *Not now*.
+- **Why dismissed** - dismissing a proposal offers one-tap reasons (not needed, got it wrong, duplicate, already done, not this project,
+  other). The next readings are told what was dismissed and why, so the agent stops proposing it.
 
 ## No account or mailbox for the bot
 

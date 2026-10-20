@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi, CAPTION_LANGUAGES, integrationsApi, meetingApi, type AgentSettingsPatch } from '../../api/endpoints';
-import type { AgentFindingKind, ProjectAgent } from '../../api/types';
+import type { AgentAutonomyReport, AgentFindingKind, ProjectAgent } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, Field, Modal, PageLoader } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
@@ -23,7 +23,7 @@ const SOURCES: { key: Source; icon: IconName; title: string; text: string; show?
   { key: 'readChat', icon: 'message', title: 'Project chat', text: 'Read once a conversation goes quiet' },
   { key: 'readMeetings', icon: 'video', title: 'Meetings', text: 'Google Meet transcripts after each session' },
   { key: 'liveBot', icon: 'agent', title: 'Live meeting bot', text: 'Joins stand-ups, posts the agenda and reminds the team in the chat' },
-  { key: 'autoJoinCalendar', icon: 'calendar', title: 'Calls on my calendar', text: 'The bot also joins Meet calls on your calendar that name the project', show: (a) => a.liveBot && a.liveBotAvailable },
+  { key: 'autoJoinCalendar', icon: 'calendar', title: 'Calls on my calendar', text: 'The bot also joins Meet or Teams calls on your Google or Outlook calendar that name the project', show: (a) => a.liveBot && a.liveBotAvailable },
   { key: 'readWhatsApp', icon: 'phone', title: 'WhatsApp', text: 'Messages starting with the project key, from members\' verified numbers', show: (a) => a.whatsAppAvailable },
   { key: 'sendMinutes', icon: 'note', title: 'Minutes by e-mail (MOM)', text: 'Summary, actions and the transcript, e-mailed to the people in the meeting once it is decided' },
   { key: 'dailyUpdates', icon: 'bell', title: 'Morning updates', text: 'Each person gets their own update at 9:00' },
@@ -39,6 +39,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
   const [busy, setBusy] = useState<string | null>(null);
   const [transcript, setTranscript] = useState(false);
   const [tuning, setTuning] = useState(false);
+  const [joining, setJoining] = useState(false);
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); };
 
   if (q.isLoading) return <PageLoader />;
@@ -146,9 +147,11 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
           <div className="ag-actions">
             {manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setTranscript(true)}><Icon name="note" size={14} />Add transcript</button>}
             {manage && <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void run()}>{busy === 'run' ? <span className="spinner" /> : <Icon name="refresh" size={14} />}Read new now</button>}
+            {manage && a.liveBotAvailable && a.readMeetings && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setJoining(true)}><Icon name="video" size={14} />Send to a call</button>}
           </div>
           <p className="ag-meta">{a.lastRunAt ? `Last read ${timeAgo(a.lastRunAt)}` : 'Has not read anything yet'} · {a.runsThisMonth}/{a.monthlyRunLimit} readings this month
             {a.actingUserName && <> · acts as {a.actingUserName}</>}</p>
+          <CreditMeter a={a} manage={manage} save={save} />
         </div>
 
         {a.mailboxAddress && (
@@ -184,6 +187,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
         </div>
 
         <AutonomyPanel a={a} manage={manage} busy={busy !== null} save={save} />
+        {manage && <TrustPanel projectId={projectId} onChanged={refresh} />}
 
         <div className="card ag-panel ag-tune">
           <h4 className="ag-panel-title"><Icon name="target" size={14} /> Accuracy</h4>
@@ -219,6 +223,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
       </aside>
 
       {tuning && <TuneModal a={a} onClose={() => setTuning(false)} onSave={async (patch) => { await agentApi.save(projectId, { enabled: a.enabled, ...patch }); refresh(); setTuning(false); toast('Saved. The next reading uses it.'); }} />}
+      {joining && <JoinCallModal projectId={projectId} onClose={() => setJoining(false)} onDone={() => { setJoining(false); refresh(); }} />}
       {transcript && <TranscriptModal projectId={projectId} onClose={() => setTranscript(false)} onDone={() => { setTranscript(false); setView('proposed'); refresh(); }} />}
     </div>
   );
@@ -358,5 +363,127 @@ function AutonomyPanel({ a, manage, busy, save }: { a: ProjectAgent; manage: boo
       </ul>
       <p className="ag-hint"><Link to="/command-center?tab=audit">Audit trail</Link> · <Link to="/command-center?tab=decisions">Decisions</Link></p>
     </div>
+  );
+}
+
+/** AI credits the agent used for this project this month, against the lead's monthly cap (0 = none). */
+function CreditMeter({ a, manage, save }: { a: ProjectAgent; manage: boolean; save: (p: AgentSettingsPatch) => Promise<void> }) {
+  const used = a.creditsThisMonth ?? 0;
+  const cap = a.monthlyCreditCap ?? 0;
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(cap || ''));
+  const share = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : null;
+  const tone = share == null ? '' : share >= 100 ? 'bad' : share >= 80 ? 'warn' : '';
+  return (
+    <div className="ag-credits">
+      <div className="ag-credits-head">
+        <span><Icon name="bolt" size={13} /> <b>{used.toLocaleString()}</b> AI credits this month{cap > 0 && <> of <b>{cap.toLocaleString()}</b></>}</span>
+        {manage && !editing && <button type="button" className="ag-link" onClick={() => { setValue(String(cap || '')); setEditing(true); }}>{cap > 0 ? 'Change cap' : 'Set a cap'}</button>}
+      </div>
+      {share != null && <div className={`ag-credits-bar ${tone}`} role="meter" aria-label="Credits used of the monthly cap" aria-valuemin={0} aria-valuemax={100} aria-valuenow={share}><i style={{ width: `${share}%` }} /></div>}
+      {share != null && share >= 100 && <p className="ag-hint ag-hint-bad"><Icon name="alert" size={12} />The cap is reached: the agent reads again on the 1st, or raise the cap.</p>}
+      {editing && (
+        <form className="ag-credits-form" onSubmit={(e) => { e.preventDefault(); void save({ monthlyCreditCap: Math.max(0, Math.round(Number(value) || 0)) }).then(() => setEditing(false)); }}>
+          <input className="input" type="number" min={0} max={100000} step={10} inputMode="numeric" aria-label="Monthly credit cap" placeholder="No cap" value={value} onChange={(e) => setValue(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-sm">Save</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+          <small>0 or empty = no cap; the workspace's own credits still apply.</small>
+        </form>
+      )}
+    </div>
+  );
+}
+
+const KIND_NAME: Record<AgentFindingKind, string> = {
+  CreateTask: 'New tasks', UpdateTask: 'Task updates', CreateActionItem: 'Action items', CreateIssue: 'Tickets', UpdateIssue: 'Ticket updates',
+  Delay: 'Delays', Missed: 'Missed points', Suggestion: 'Suggestions', Decision: 'Decisions',
+};
+
+/**
+ * Earned trust: for each kind of proposal, how often the team approved it unchanged (last 90 days) and why it dismissed the rest - and, once a
+ * safe kind is approved unchanged 95% of at least 30 times, the offer to let the agent do it alone.
+ */
+function TrustPanel({ projectId, onChanged }: { projectId: string; onChanged: () => void }) {
+  const wid = useWorkspaceId();
+  const q = useWsQuery(['agent', 'autonomy', projectId], () => agentApi.autonomy(projectId), { staleTime: 60_000 });
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!q.data?.kinds) return null;
+  const r: AgentAutonomyReport = q.data;
+  const act = async (kind: AgentFindingKind, accept: boolean) => {
+    setBusy(kind);
+    try {
+      if (accept) await agentApi.acceptAutonomy(projectId, kind); else await agentApi.dismissAutonomy(projectId, kind);
+      toast(accept ? `The agent now creates ${KIND_NAME[kind].toLowerCase()} by itself (level 4 for this kind only).` : 'Not now - it will not ask again for this kind.');
+      void invalidateWorkspace(wid, 'agent'); onChanged();
+    } catch (e) { toast(errText(e, 'Could not save that.'), 'error'); }
+    finally { setBusy(null); }
+  };
+  const shown = r.kinds.filter((k) => k.decided > 0).slice(0, 7);
+  return (
+    <div className="card ag-panel ag-trust">
+      <h4 className="ag-panel-title"><Icon name="target" size={14} /> How the team decides</h4>
+      {r.hints.map((h) => (
+        <div key={h.kind} className="ag-earned" role="status">
+          <span className="ag-earned-mark"><Icon name="sparkle" size={14} /></span>
+          <p>{h.message}</p>
+          <div>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => void act(h.kind, true)}>{busy === h.kind ? <span className="spinner" /> : <Icon name="tick" size={13} />}Yes, let it</button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void act(h.kind, false)}>Not now</button>
+          </div>
+        </div>
+      ))}
+      {shown.length === 0 ? <p className="ag-hint">Once the team has decided on some proposals, you see here how often each kind is approved as proposed.</p> : (
+        <ul className="ag-trust-list">
+          {shown.map((k) => (
+            <li key={k.kind} title={`${k.approvedAsIs} approved as proposed, ${k.edited} changed first, ${k.dismissed} dismissed`}>
+              <div><span>{KIND_NAME[k.kind]}</span>{k.automatic && <em className="ag-auto"><Icon name="sparkle" size={10} />Auto</em>}<b>{k.rate ?? 0}%</b></div>
+              <div className="ag-trust-bar" aria-hidden>
+                <i className="ok" style={{ flexGrow: k.approvedAsIs }} /><i className="edit" style={{ flexGrow: k.edited }} /><i className="no" style={{ flexGrow: k.dismissed }} />
+              </div>
+              <small>{k.decided} decided{k.reasons.length > 0 && <> · dismissed: {k.reasons.slice(0, 2).map((x) => `${x.label} ${x.count}`).join(', ')}</>}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="ag-hint"><i className="ag-dot ok" />as proposed <i className="ag-dot edit" />changed <i className="ag-dot no" />dismissed · last 90 days. Suggested after {r.minRate}% of {r.minDecisions}+.</p>
+    </div>
+  );
+}
+
+/** Sends the meeting bot to a Google Meet or Microsoft Teams call now, by its link. */
+function JoinCallModal({ projectId, onClose, onDone }: { projectId: string; onClose: () => void; onDone: () => void }) {
+  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState('');
+  const [minutes, setMinutes] = useState(60);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const platform = /teams\.(microsoft|live)\.com|teams\.cloud\.microsoft/i.test(url) ? 'Microsoft Teams' : /meet\.google\.com/i.test(url) ? 'Google Meet' : null;
+  const submit = async () => {
+    if (!platform) { setError('Paste a Google Meet or Microsoft Teams meeting link.'); return; }
+    setBusy(true); setError(null);
+    try {
+      const r = await agentApi.joinLink(projectId, { url: url.trim(), title: title.trim() || undefined, minutes });
+      toast(`The agent is joining the ${r.platform} call - let it in from the lobby.`);
+      onDone();
+    } catch (e) { setError(errText(e, 'Could not send the agent.')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Send the agent to a call" subtitle="Any Google Meet or Microsoft Teams meeting - a customer's call, an ad-hoc sync. It takes notes like in your stand-ups." onClose={onClose}
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void submit()}>{busy && <span className="spinner" />}<Icon name="video" size={14} />Send it now</button></>}>
+      {error && <div className="form-error" role="alert">{error}</div>}
+      <div className="form-grid">
+        <Field label="Meeting link" full hint={platform ? `${platform} - someone in the call lets the agent in from the lobby.` : 'meet.google.com/… or teams.microsoft.com/l/meetup-join/…'}>
+          <input className="input" aria-label="Meeting link" inputMode="url" value={url} placeholder="https://teams.microsoft.com/l/meetup-join/…" onChange={(e) => setUrl(e.target.value)} />
+        </Field>
+        <Field label="Name (optional)"><input className="input" aria-label="Name" value={title} maxLength={200} placeholder="Customer sync" onChange={(e) => setTitle(e.target.value)} /></Field>
+        <Field label="Stays at most">
+          <select className="input" aria-label="Stays at most" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+            {[30, 60, 90, 120, 180, 240].map((m) => <option key={m} value={m}>{m < 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>)}
+          </select>
+        </Field>
+      </div>
+      <p className="ag-hint"><Icon name="info" size={12} />It leaves when the call ends. The organizer may need to allow guests (Teams: anonymous users can join).</p>
+    </Modal>
   );
 }

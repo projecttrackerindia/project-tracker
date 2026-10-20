@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AgentMark } from '../../components/AgentMark';
@@ -9,12 +9,15 @@ import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { ActivityChart, BarList, FleetTrend, Histogram, LatencyTrend, Ring, Spark, StackBar } from './tracker/TrackerCharts';
 import { compact, KIND_LABEL, KIND_ORDER, pct, secs, series, SOURCE_LABEL, STATUS, trackerApi, words, type Fleet, type Run, type Tracker } from './tracker/types';
+import { AlertList, AlertsView, CostView, TrustPanels } from './tracker/TrackerWatch';
+import type { Alerts } from './tracker/types';
 import './tracker/tracker.css';
 
-type Tab = 'overview' | 'assistant' | 'agent' | 'meetings' | 'runs';
+type Tab = 'overview' | 'assistant' | 'agent' | 'meetings' | 'costs' | 'alerts' | 'runs';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' }, { id: 'assistant', label: 'Assistant', icon: 'agent' }, { id: 'agent', label: 'Project agent', icon: 'sparkle' },
-  { id: 'meetings', label: 'Meetings & follow-ups', icon: 'video' }, { id: 'runs', label: 'Runs', icon: 'list' },
+  { id: 'meetings', label: 'Meetings & follow-ups', icon: 'video' }, { id: 'costs', label: 'Credits', icon: 'bolt' }, { id: 'alerts', label: 'Alerts', icon: 'radar' },
+  { id: 'runs', label: 'Runs', icon: 'list' },
 ];
 const PERIODS = [{ days: 1, label: '24 hours' }, { days: 7, label: '7 days' }, { days: 30, label: '30 days' }];
 const statusLabel = (s: string) => (s === 'awaiting_confirmation' ? 'awaiting approval' : words(s));
@@ -43,6 +46,10 @@ export function AgentTrackerPage() {
   const q = useWsQuery(['ai', 'tracker', page, status, model, intent, from], () => trackerApi.list({ page, status: status || undefined, model: model || undefined, intent: intent || undefined, from }),
     { enabled: authorized, staleTime: 15_000 });
   const fleet = useWsQuery(['ai', 'tracker', 'fleet', from], () => trackerApi.fleet(from), { enabled: authorized, staleTime: 30_000 });
+  const alerts = useWsQuery(['ai', 'tracker', 'alerts'], () => trackerApi.alerts(), { enabled: authorized, staleTime: 60_000 });
+  // On a phone the tab row scrolls: keep the open tab in view.
+  const tabsRef = useRef<HTMLElement>(null);
+  useEffect(() => { tabsRef.current?.querySelector<HTMLElement>('button.on')?.scrollIntoView?.({ inline: 'center', block: 'nearest' }); }, [tab]);
   const toggle = useMutation({ mutationFn: (enabled: boolean) => trackerApi.setEnabled(enabled), onSuccess: () => { void q.refetch(); void client.invalidateQueries({ predicate: (x) => x.queryKey.includes('ai') }); } });
   const health = useMutation({ mutationFn: () => trackerApi.health() });
   const filter = (f: { status?: string; intent?: string; model?: string }) => {
@@ -90,17 +97,20 @@ export function AgentTrackerPage() {
         {(toggle.isError || health.isError) && <ErrorState error={toggle.error ?? health.error} retry={() => { toggle.reset(); health.reset(); }} />}
       </header>
 
-      <nav className="trk-tabs" aria-label="Agent Tracker">
-        {TABS.map((t) => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => setTab(t.id)}><Icon name={t.icon} size={15} /><span>{t.label}</span></button>)}
+      <nav className="trk-tabs" aria-label="Agent Tracker" ref={tabsRef}>
+        {TABS.map((t) => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => setTab(t.id)}><Icon name={t.icon} size={15} /><span>{t.label}</span>
+          {t.id === 'alerts' && !!alerts.data?.active.length && <em className={`trk-tab-count sev-${alerts.data.active.some((a) => a.severity === 'critical') ? 'critical' : 'warning'}`} aria-label={`${alerts.data.active.length} active`}>{alerts.data.active.length}</em>}</button>)}
       </nav>
 
       {q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <>
           {d.sampleLimited && <p className="trk-note"><Icon name="info" size={13} />Figures cover the latest 10,000 matching runs - choose a shorter period for complete results.</p>}
-          {tab === 'overview' && <Overview d={d} fleet={fleet.data} onFilter={filter} goTo={setTab} />}
+          {tab === 'overview' && <Overview d={d} fleet={fleet.data} alerts={alerts.data} onFilter={filter} goTo={setTab} />}
           {tab === 'assistant' && <AssistantView d={d} onFilter={filter} />}
           {tab === 'agent' && (fleet.isLoading ? <PageLoader /> : fleet.data ? <ProjectAgentView f={fleet.data} /> : <ErrorState error={fleet.error} retry={() => fleet.refetch()} />)}
           {tab === 'meetings' && (fleet.isLoading ? <PageLoader /> : fleet.data ? <MeetingsView f={fleet.data} /> : <ErrorState error={fleet.error} retry={() => fleet.refetch()} />)}
+          {tab === 'costs' && <CostView />}
+          {tab === 'alerts' && (alerts.isError ? <ErrorState error={alerts.error} retry={() => alerts.refetch()} /> : <AlertsView alerts={alerts.data} onOpen={(t) => setTab(t as Tab)} />)}
           {tab === 'runs' && <RunsView d={d} page={page} setPage={setPage} status={status} model={model} intent={intent} onFilter={(f) => { filter(f); }} />}
         </>
       )}
@@ -136,7 +146,7 @@ function Kpi({ label, value, sub, tone, icon }: { label: string; value: string |
 
 // ------------------------------------------------------------------ overview
 
-function Overview({ d, fleet, onFilter, goTo }: { d: Tracker; fleet?: Fleet; onFilter: (f: { status?: string; intent?: string }) => void; goTo: (t: Tab) => void }) {
+function Overview({ d, fleet, alerts, onFilter, goTo }: { d: Tracker; fleet?: Fleet; alerts?: Alerts; onFilter: (f: { status?: string; intent?: string }) => void; goTo: (t: Tab) => void }) {
   const ins = d.insights;
   const timeline = (ins?.timeline ?? []).map((b) => ({ label: bucketLabel(b.at, ins!.bucketUnit), succeeded: b.succeeded, partial: b.partial, awaiting: b.awaiting, failed: b.failed }));
   const runsSpark = (ins?.timeline ?? []).map((b) => b.succeeded + b.partial + b.awaiting + b.failed);
@@ -154,6 +164,12 @@ function Overview({ d, fleet, onFilter, goTo }: { d: Tracker; fleet?: Fleet; onF
   ];
   return (
     <div className="trk-stack-page">
+      {!!alerts?.active.length && (
+        <section className="trk-panel trk-attention" aria-label="Needs attention">
+          <header><h3><Icon name="radar" size={15} />Needs attention</h3><button type="button" className="trk-link" onClick={() => goTo('alerts')}>Alert settings<Icon name="arrowRight" size={12} /></button></header>
+          <AlertList alerts={alerts.active.slice(0, 3)} compactView onOpen={(t) => goTo(t as Tab)} />
+        </section>
+      )}
       <div className="trk-agents">
         {cards.map((c) => (
           <button key={c.name} type="button" className={`trk-agent trk-accent-${c.accent}`} onClick={() => goTo(c.id)}>
@@ -364,6 +380,8 @@ function ProjectAgentView({ f }: { f: Fleet }) {
           </>
         )}
       </Panel>
+
+      <TrustPanels f={f} />
 
       {f.projects.length > 0 && (
         <Panel title="Projects" icon="folder">

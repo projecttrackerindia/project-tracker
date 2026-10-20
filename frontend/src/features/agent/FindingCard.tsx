@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi, delegateApi, workspaceApi } from '../../api/endpoints';
-import type { AgentApproveEdits, AgentFinding, AgentFindingKind, AgentSourceKind, Priority } from '../../api/types';
+import { DISMISS_REASONS } from '../../api/endpoints.agent';
+import type { AgentApproveEdits, AgentFinding, AgentFindingKind, AgentSourceKind, DismissReason, Priority } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { Field } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
@@ -44,18 +45,19 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
   const [busy, setBusy] = useState<'approve' | 'dismiss' | null>(null);
   const [edits, setEdits] = useState<AgentApproveEdits>({});
   const [showImpact, setShowImpact] = useState(false);
+  const [asking, setAsking] = useState(false);
   const movesDate = (f.kind === 'Delay' || f.kind === 'UpdateTask') && !!f.taskId && !!f.dueDate;
   const impact = useWsQuery(['agent', 'impact', f.id], () => delegateApi.findingImpact(f.id), { enabled: showImpact && movesDate && canDecide, staleTime: 60_000 });
   const people = useWsQuery(['members'], () => workspaceApi.members(), { enabled: editing, staleTime: 300_000 });
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); void invalidateWorkspace(wid, 'project', f.projectId); void invalidateWorkspace(wid, 'tasks'); };
 
-  const decide = async (what: 'approve' | 'dismiss') => {
+  const decide = async (what: 'approve' | 'dismiss', reason?: DismissReason) => {
     setBusy(what);
     try {
-      const r = what === 'approve' ? await agentApi.approve(f.id, editing ? edits : undefined) : await agentApi.dismiss(f.id);
+      const r = what === 'approve' ? await agentApi.approve(f.id, editing ? edits : undefined) : await agentApi.dismiss(f.id, reason);
       if (r.status === 'Failed') toast(r.error ?? 'That could not be done.', 'error');
-      else toast(what === 'dismiss' ? 'Dismissed.' : r.appliedKey ? `Done - ${r.appliedKey}.` : 'Done.');
-      setEditing(false);
+      else toast(what === 'dismiss' ? (reason ? 'Dismissed - the agent will learn from that.' : 'Dismissed.') : r.appliedKey ? `Done - ${r.appliedKey}.` : 'Done.');
+      setEditing(false); setAsking(false);
       refresh();
     } catch (e) { toast(errText(e, 'Could not save that.'), 'error'); }
     finally { setBusy(null); }
@@ -154,16 +156,23 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
               {busy === 'approve' ? <span className="spinner" /> : <Icon name="tick" size={14} />}{meta.approve}
             </button>
             <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => setEditing((v) => !v)}><Icon name="edit" size={14} />{editing ? 'Close' : 'Edit'}</button>
-            <button type="button" className="btn btn-ghost btn-sm ag-dismiss" disabled={busy !== null} onClick={() => void decide('dismiss')}>
+            <button type="button" className="btn btn-ghost btn-sm ag-dismiss" disabled={busy !== null} aria-expanded={asking} onClick={() => setAsking((v) => !v)}>
               {busy === 'dismiss' ? <span className="spinner" /> : <Icon name="close" size={14} />}Dismiss
             </button>
             <span className="ag-when">{formatDateTime(f.createdAt)}</span>
+            {asking && (
+              <div className="ag-reasons" role="group" aria-label="Why dismiss it">
+                <span>Why?</span>
+                {DISMISS_REASONS.map((r) => <button key={r.id} type="button" className="ag-reason" disabled={busy !== null} onClick={() => void decide('dismiss', r.id)}>{r.label}</button>)}
+                <button type="button" className="ag-reason ag-reason-skip" disabled={busy !== null} onClick={() => void decide('dismiss')}>Just dismiss</button>
+              </div>
+            )}
           </>
         ) : open ? (
           <span className="ag-when">Waiting for someone who can edit this project · {formatDateTime(f.createdAt)}</span>
         ) : (
           <span className="ag-when">
-            {f.status === 'Applied' ? <><Icon name="checkCircle" size={13} /> {f.appliedKey ? <>Done as <b>{f.appliedKey}</b></> : 'Noted'}</> : <><Icon name="xCircle" size={13} /> Dismissed</>}
+            {f.status === 'Applied' ? <><Icon name="checkCircle" size={13} /> {f.appliedKey ? <>Done as <b>{f.appliedKey}</b></> : 'Noted'}</> : <><Icon name="xCircle" size={13} /> Dismissed{f.dismissReason ? ` (${DISMISS_REASONS.find((r) => r.id === f.dismissReason)?.label.toLowerCase() ?? f.dismissReason})` : ''}</>}
             {f.decidedBy && ` by ${f.decidedBy.name}`}{f.decidedAt && ` · ${formatDateTime(f.decidedAt)}`}
             {f.edits && <> · changed {f.edits}</>}
             {f.ownerResponse === 'accepted' && <> · <Icon name="tick" size={12} /> {f.assignee?.name ?? 'The owner'} accepted</>}

@@ -1,4 +1,4 @@
-import { get, put } from '../../../api/client';
+import { get, post, put } from '../../../api/client';
 
 export interface Trace {
   agent: string; version: string; correlationId: string; provider: string; model: string; startedAt: string;
@@ -41,14 +41,43 @@ export interface Fleet {
   followUps: { commitments: number; kept: number; missed: number; moved: number; open: number; checkInsSent: number; answered: number; changeRequests: number };
   days: { day: string; readings: number; findings: number; decided: number; meetings: number }[];
   projects: { projectId: string; key: string; name: string; level: number; readings: number; findings: number; approved: number; dismissed: number; pending: number }[];
+  dismissReasons?: { reason: string; count: number }[];
 }
+export interface Cost {
+  month: string; limit: number; spent: number; reserved: number; available: number; unlimited: boolean; dailyAverage: number; daysLeft: number | null;
+  runsOutOn: string | null; runsOutBeforeReset: boolean; resetsOn: string;
+  features: { group: string; label: string; credits: number }[];
+  days: { day: string; assistant: number; agent: number; meetings: number; other: number }[];
+  projects: { projectId: string; key: string; name: string; credits: number; cap: number; readings: number }[];
+}
+export interface AlertSettings { enabled: boolean; minSuccessRate: number; maxP95Seconds: number; botFailures: number; readingFailures: number; creditDays: number; weeklyDigest: boolean }
+export interface AgentAlert { key: string; severity: 'critical' | 'warning' | 'info'; agent: string; title: string; detail: string; link: string; value: number | null; threshold: number | null }
+export interface Alerts { settings: AlertSettings; active: AgentAlert[]; checkedAt: string; lastNotifiedCheck: string | null }
+export interface Digest { title: string; lines: string[]; from: string; to: string; quiet: boolean }
+export interface AutonomyHint { projectId: string; projectKey: string; projectName: string; kind: string; decided: number; rate: number; level: number; message: string }
 
 export const trackerApi = {
   list: (q: { page: number; status?: string; model?: string; intent?: string; from: string }) => get<Tracker>('/ai/tracker', q),
   fleet: (from: string) => get<Fleet>('/ai/tracker/fleet', { from }),
   health: () => get<Health>('/ai/tracker/health'),
   setEnabled: (enabled: boolean) => put('/ai/tracker/agent', { enabled }),
+  cost: () => get<Cost>('/ai/tracker/cost'),
+  alerts: () => get<Alerts>('/ai/tracker/alerts'),
+  saveAlerts: (b: AlertSettings) => put<Alerts>('/ai/tracker/alerts', b),
+  digest: () => get<Digest>('/ai/tracker/digest'),
+  sendDigest: () => post<{ sent: number }>('/ai/tracker/digest/send'),
+  autonomyHints: () => get<AutonomyHint[]>('/ai/tracker/autonomy-hints'),
 };
+
+/** Why proposals were dismissed, in words. */
+export const REASON_LABEL: Record<string, string> = {
+  not_needed: 'Not needed', wrong: 'Got it wrong', duplicate: 'Duplicate', already_done: 'Already done', not_ours: 'Not this project', other: 'Other', unspecified: 'No reason given',
+};
+
+/** Which agent spent the credits: the categorical slots in fixed order. */
+export const COST_GROUPS = [
+  { key: 'assistant', label: 'Assistant' }, { key: 'agent', label: 'Project agent' }, { key: 'meetings', label: 'Meeting bot' }, { key: 'other', label: 'Other AI' },
+] as const;
 
 export const secs = (ms: number) => (ms >= 10_000 ? `${Math.round(ms / 1000)}s` : `${(ms / 1000).toFixed(1)}s`);
 export const compact = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));

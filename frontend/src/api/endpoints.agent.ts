@@ -1,6 +1,6 @@
 import { get, post, put } from './client';
 import type {
-  AgentApproveEdits, AgentAuditEntry, AgentCommitment, AgentDecision, AgentDelegation, AgentFinding, AgentFindingKind, AgentFindingPage, AgentImpact, AgentInboxOptIn,
+  AgentApproveEdits, AgentAuditEntry, AgentAutonomyReport, AgentLinkJoin, DismissReason, AgentCommitment, AgentDecision, AgentDelegation, AgentFinding, AgentFindingKind, AgentFindingPage, AgentImpact, AgentInboxOptIn,
   AgentPersonalSettings, AgentRun, AgentWorkspace, CheckInAnswer, CommandCenter, MeetingBrief, MyMeeting, ProjectAgent, WhatIfTask,
 } from './types';
 
@@ -10,7 +10,14 @@ export interface AgentSettingsPatch {
   instructions?: string; speakerAliases?: string; captionLanguage?: string; autoJoinCalendar?: boolean; sendMinutes?: boolean;
   slackChannelId?: string; readWhatsApp?: boolean;
   autonomyLevel?: number; autoApplyConfidence?: number; autoApplyKinds?: AgentFindingKind[]; followUps?: boolean; meetingBriefs?: boolean;
+  monthlyCreditCap?: number;
 }
+
+/** Why a proposal is dismissed: one tap, and the agent learns what to stop proposing. */
+export const DISMISS_REASONS: { id: DismissReason; label: string }[] = [
+  { id: 'not_needed', label: 'Not needed' }, { id: 'wrong', label: 'Got it wrong' }, { id: 'duplicate', label: 'Duplicate' },
+  { id: 'already_done', label: 'Already done' }, { id: 'not_ours', label: 'Not this project' }, { id: 'other', label: 'Other' },
+];
 
 /** The languages Meet captions in, as the agent's settings offer them. */
 export const CAPTION_LANGUAGES: [string, string][] = [
@@ -33,7 +40,13 @@ export const agentApi = {
   approveAll: (projectId: string) => post<{ applied: number; failed: number; skipped: number; items: AgentFinding[] }>(`/projects/${projectId}/agent/findings/approve-all`),
   inbox: () => get<AgentFindingPage>('/agent/inbox'),
   approve: (id: string, edits?: AgentApproveEdits) => post<AgentFinding>(`/agent/findings/${id}/approve`, edits ?? {}),
-  dismiss: (id: string) => post<AgentFinding>(`/agent/findings/${id}/dismiss`),
+  dismiss: (id: string, reason?: DismissReason) => post<AgentFinding>(`/agent/findings/${id}/dismiss`, reason ? { reason } : {}),
+  /** How the team decided on each kind of proposal, and what the agent has earned the right to do alone. */
+  autonomy: (projectId: string) => get<AgentAutonomyReport>(`/projects/${projectId}/agent/autonomy`),
+  acceptAutonomy: (projectId: string, kind: AgentFindingKind) => post<AgentAutonomyReport>(`/projects/${projectId}/agent/autonomy/${kind}/accept`),
+  dismissAutonomy: (projectId: string, kind: AgentFindingKind) => post<AgentAutonomyReport>(`/projects/${projectId}/agent/autonomy/${kind}/dismiss`),
+  /** Sends the meeting bot to a Google Meet or Microsoft Teams call now. */
+  joinLink: (projectId: string, b: { url: string; title?: string; minutes: number }) => post<AgentLinkJoin>(`/projects/${projectId}/agent/join-link`, b),
   /** Work the agent gave me, to accept or to say it is not mine. */
   assigned: () => get<AgentFindingPage>('/agent/assigned'),
   respond: (id: string, b: { response: 'accepted' | 'declined'; note?: string }) => post<AgentFinding>(`/agent/findings/${id}/respond`, b),

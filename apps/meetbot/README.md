@@ -1,6 +1,6 @@
 # Meeting bot
 
-Project Tracker's own bot for the project agent's live meetings. The API asks it to join a project's Google Meet; it joins as a guest
+Project Tracker's own bot for the project agent's live meetings. The API asks it to join a project's Google Meet or Microsoft Teams meeting; it joins as a guest
 ("Project Tracker Agent"), switches on Meet's live captions, sends who-said-what to the API as it is spoken, and posts the agent's
 reminders in the meeting chat. It leaves when the call ends, when it has been alone for five minutes, or at the meeting's end + 30 minutes.
 
@@ -8,6 +8,9 @@ reminders in the meeting chat. It leaves when the call ends, when it has been al
 - The transcript comes from Meet's captions, in the language the meeting's captions are set to.
 - Everything that depends on the Meet page is in `src/meet.mjs`; `test/fake-meet.html` mirrors what it relies on. If Google changes the
   Meet screen, update the selectors there and the synthetic page with them.
+- Microsoft Teams works the same way from `src/teams.mjs` and `test/fake-teams.html` (browser join as a guest, lobby, live captions from
+  More › Language and speech, chat). `src/platform.mjs` picks the page from the link. `MEETBOT_ALLOWED_HOSTS` defaults to Meet and Teams
+  (`meet.google.com,teams.microsoft.com,teams.live.com,teams.cloud.microsoft`); if you set it, include the Teams hosts.
 
 ## Run
 

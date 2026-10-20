@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -794,7 +794,16 @@ export interface ProjectAgent {
   autonomyLevel: number; autoApplyConfidence: number; autoApplyKinds: AgentFindingKind[];
   /** Check-ins on commitments, and briefs before meetings. */
   followUps: boolean; meetingBriefs: boolean;
+  /** The most AI credits the agent may use for this project a month (0 = no cap), and what it used this month. */
+  monthlyCreditCap?: number; creditsThisMonth?: number;
 }
+export type DismissReason = 'not_needed' | 'wrong' | 'duplicate' | 'already_done' | 'not_ours' | 'other';
+export interface AgentReasonCount { reason: string; label: string; count: number }
+export interface AgentKindStat { kind: AgentFindingKind; decided: number; approved: number; approvedAsIs: number; edited: number; dismissed: number; rate: number | null;
+  safe: boolean; automatic: boolean; suggested: boolean; reasons: AgentReasonCount[] }
+export interface AgentAutonomyHint { projectId: string; projectKey: string; projectName: string; kind: AgentFindingKind; decided: number; rate: number; level: number; message: string }
+export interface AgentAutonomyReport { projectId: string; level: number; minDecisions: number; minRate: number; kinds: AgentKindStat[]; hints: AgentAutonomyHint[] }
+export interface AgentLinkJoin { id: string; platform: string; title: string; startUtc: string; endUtc: string; status: string }
 export interface AgentPerson { id: string; name: string }
 export interface AgentFinding {
   id: string; projectId: string; projectKey: string; projectName: string; runId: string; kind: AgentFindingKind; status: AgentFindingStatus;
@@ -812,6 +821,8 @@ export interface AgentFinding {
   before?: string | null;
   /** It came from someone's check-in ("I need more time"). */
   commitmentId?: string | null;
+  /** Why it was dismissed. */
+  dismissReason?: DismissReason | null;
 }
 export interface AgentFindingPage { items: AgentFinding[]; pending: number; canDecide: boolean }
 export interface AgentApproveEdits { title?: string; detail?: string; assigneeId?: string; clearAssignee?: boolean; dueDate?: string; clearDueDate?: boolean; priority?: Priority; newStatus?: string; comment?: string }

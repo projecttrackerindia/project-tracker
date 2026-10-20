@@ -23,13 +23,17 @@ let findings=[
   finding('f4','Missed','Nobody owns the refund flow',{detail:'Raised twice in the call, no owner or date.',evidence:'who is doing refunds?',confidence:34,grounded:false}),
   finding('f5','Suggestion','Add a retry queue for failed payments',{evidence:'we should retry failed payments automatically',source:'Chat',sourceLabel:'Project chat · 06 Jan',confidence:66}),
 ];
-let agent={projectId:pid,enabled:false,readMailbox:true,readChat:true,readMeetings:true,liveBot:false,dailyUpdates:true,mailboxAddress:'agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in',liveBotAvailable:true,aiAvailable:true,
+let agent={projectId:pid,enabled:false,readMailbox:true,readChat:true,readMeetings:true,liveBot:false,dailyUpdates:true,mailboxAddress:'agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in',liveBotAvailable:true,aiAvailable:true,monthlyCreditCap:120,creditsThisMonth:96,
   pending:0,lastRunAt:null,lastError:null,runsThisMonth:0,monthlyRunLimit:300,canManage:true,actingUserName:'Alex Morgan',runs:[],transcriptAccess:false,
   instructions:null,speakerAliases:null,autoTranscriptAccess:false,captionLanguage:null,autoJoinCalendar:false,sendMinutes:true,slackChannelId:null,slackAvailable:true,readWhatsApp:true,whatsAppAvailable:true};
 let given=[finding('g1','CreateTask','Send the go-live checklist',{status:'Applied',assignee:{id:user.id,name:user.displayName},appliedKey:'PAY-31',appliedEntityId:'t-31',
   evidence:'can you send the go-live checklist by Friday?',decidedBy:{id:ravi.userId,name:ravi.displayName},decidedAt:'2030-01-06T06:00:00Z'})];
 let workspace={botAvailable:true,botName:'Project Tracker Agent',inCallReminders:true,canManage:true,enabledProjects:1};
 let optIn={googleAvailable:true,microsoftAvailable:false,provider:null,enabled:false,scannedUntil:null,found:0,lastError:null};
+let autonomy={projectId:pid,level:2,minDecisions:30,minRate:95,
+ kinds:[{kind:'CreateActionItem',decided:41,approved:40,approvedAsIs:40,edited:0,dismissed:1,rate:97,safe:true,automatic:false,suggested:true,reasons:[{reason:'duplicate',label:'already proposed or exists',count:1}]},
+  {kind:'UpdateTask',decided:22,approved:15,approvedAsIs:11,edited:4,dismissed:7,rate:50,safe:false,automatic:false,suggested:false,reasons:[{reason:'wrong',label:'the agent got it wrong',count:4},{reason:'unspecified',label:'no reason given',count:3}]}],
+ hints:[{projectId:pid,projectKey:'PAY',projectName:'Payments Core',kind:'CreateActionItem',decided:41,rate:97,level:2,message:"The team approved 97% of the agent's action items unchanged (41 decisions in 90 days). Let it create them by itself? The project goes to level 4 (Delegate) for this kind only."}]};
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
@@ -45,6 +49,9 @@ try{
   if(ep===`/api/v1/projects/${pid}/agent`&&method==='PUT'){const b=body();writes.push({ep,b});agent={...agent,...b};if(b.enabled&&agent.runs.length===0){agent.runs=[{id:'run-1',trigger:'meeting',meeting:true,minutesSentAt:null,status:'done',signalCount:3,findingCount:5,credits:4,summary:'The gateway work is moving; the client wants the go-live checklist and nobody owns refunds yet.',error:null,startedAt:'2030-01-06T05:00:00Z',finishedAt:'2030-01-06T05:00:20Z'}];agent.lastRunAt='2030-01-06T05:00:20Z';}data=agent;}
   else if(ep===`/api/v1/projects/${pid}/agent`){data={...agent,pending:agent.enabled?findings.filter(f=>f.status==='Proposed').length:0};}
   else if(ep===`/api/v1/projects/${pid}/agent/findings`){const s=url.searchParams.get('status')||'proposed';const items=agent.enabled?findings.filter(f=>s==='all'||f.status.toLowerCase()===(s==='applied'?'applied':s)):[];data={items,pending:findings.filter(f=>f.status==='Proposed').length,canDecide:true};}
+  else if(ep===`/api/v1/projects/${pid}/agent/autonomy`)data=autonomy;
+  else if(ep===`/api/v1/projects/${pid}/agent/autonomy/CreateActionItem/accept`&&method==='POST'){writes.push({ep,b:null});agent={...agent,autonomyLevel:4,autoApplyKinds:['CreateActionItem']};autonomy={...autonomy,level:4,hints:[],kinds:autonomy.kinds.map(k=>k.kind==='CreateActionItem'?{...k,automatic:true,suggested:false}:k)};data=autonomy;}
+  else if(ep===`/api/v1/projects/${pid}/agent/join-link`&&method==='POST'){const b=body();writes.push({ep,b});data={id:'bot-1',platform:'Microsoft Teams',title:b.title??'Microsoft Teams call',startUtc:'2030-01-06T08:00:00Z',endUtc:'2030-01-06T09:00:00Z',status:'scheduled'};}
   else if(ep===`/api/v1/projects/${pid}/agent/runs/run-1/minutes`&&method==='POST'){writes.push({ep,b:null});agent.runs[0].minutesSentAt='2030-01-06T08:00:00Z';data={sent:3};}
   else if(ep==='/api/v1/agent/assigned')data={items:given,pending:given.filter(g=>!g.ownerResponse).length,canDecide:false};
   else if(ep.startsWith('/api/v1/agent/findings/')&&ep.endsWith('/respond')&&method==='POST'){const b=body();writes.push({ep,b});const g=given.find(x=>x.id===ep.split('/')[5]);assert.ok(g,'known given item');Object.assign(g,{ownerResponse:b.response,ownerNote:b.note??null});data=g;}
@@ -52,7 +59,7 @@ try{
    const id=ep.split('/')[5],act=ep.split('/')[6],b=body();writes.push({ep,b});
    const f=findings.find(x=>x.id===id);assert.ok(f,'known finding');
    if(act==='approve'){Object.assign(f,{status:'Applied',decidedBy:{id:user.id,name:user.displayName},decidedAt:'2030-01-06T06:00:00Z',appliedKey:f.kind==='CreateTask'?'PAY-31':f.taskKey,title:b?.title??f.title});}
-   else{Object.assign(f,{status:'Dismissed',decidedBy:{id:user.id,name:user.displayName},decidedAt:'2030-01-06T06:00:00Z'});}
+   else{Object.assign(f,{status:'Dismissed',dismissReason:b?.reason??null,decidedBy:{id:user.id,name:user.displayName},decidedAt:'2030-01-06T06:00:00Z'});}
    data=f;
   }
   else if(ep===`/api/v1/projects/${pid}/agent/transcript`&&method==='POST'){const b=body();writes.push({ep,b});data={signalId:'s-9',run:{id:'run-2',trigger:'manual',status:'done',signalCount:1,findingCount:2,credits:4,summary:null,error:null,startedAt:'2030-01-06T07:00:00Z',finishedAt:'2030-01-06T07:00:10Z'}};}
@@ -110,8 +117,33 @@ try{
  const edit=writes.find(w=>w.ep.endsWith('/f2/approve'));assert.equal(edit.b.title,'Gateway integration started');assert.equal(edit.b.newStatus,'done');checks.push('edit-and-approve');
 
  card=page.locator('[data-finding=f5]');
- await card.getByRole('button',{name:'Dismiss'}).click();await page.waitForTimeout(300);
- assert.ok(writes.some(w=>w.ep.endsWith('/f5/dismiss')));checks.push('dismiss');
+ await card.getByRole('button',{name:'Dismiss'}).click();await card.getByRole('group',{name:'Why dismiss it'}).waitFor();
+ await page.screenshot({path:path.join(out,'agent-dismiss-why-1440.png'),animations:'disabled'});
+ await card.getByRole('button',{name:'Duplicate'}).click();await page.waitForTimeout(300);
+ assert.deepEqual(writes.find(w=>w.ep.endsWith('/f5/dismiss')).b,{reason:'duplicate'});checks.push('dismiss-with-reason');
+
+ // Credits: the month's use against the cap, and changing the cap.
+ assert.ok(await page.getByRole('meter',{name:'Credits used of the monthly cap'}).isVisible());
+ await page.getByRole('button',{name:'Change cap'}).click();await page.getByLabel('Monthly credit cap').fill('200');
+ await page.locator('.ag-credits-form').getByRole('button',{name:'Save'}).click();await page.waitForTimeout(300);
+ assert.deepEqual(writes.at(-1).b,{enabled:true,monthlyCreditCap:200});checks.push('credit-cap');
+
+ // Earned autonomy: how the team decides, and "let it" for the kind it has earned.
+ const trust=page.locator('.ag-trust');await trust.getByText('How the team decides').waitFor();
+ assert.ok(await trust.getByText(/approved 97% of the agent's action items/).isVisible());
+ await trust.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,'agent-trust-1440.png'),animations:'disabled'});
+ await trust.getByRole('button',{name:'Yes, let it'}).click();await page.waitForTimeout(300);
+ assert.ok(writes.at(-1).ep.endsWith('/autonomy/CreateActionItem/accept'));await trust.locator('.ag-earned').waitFor({state:'detached'});checks.push('earned-autonomy');
+
+ // Send the bot to a Teams call by its link.
+ await page.getByRole('button',{name:'Send to a call'}).click();
+ const call=page.getByRole('dialog');await call.getByRole('heading',{name:'Send the agent to a call'}).waitFor();
+ await call.getByLabel('Meeting link').fill('https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0');
+ await call.getByText('Microsoft Teams - someone in the call lets the agent in').waitFor();
+ await call.getByLabel('Name',{exact:true}).fill('Customer sync');
+ await page.screenshot({path:path.join(out,'agent-join-call-1440.png'),animations:'disabled'});
+ await call.getByRole('button',{name:'Send it now'}).click();await call.waitFor({state:'detached'});
+ assert.deepEqual(writes.at(-1).b,{url:'https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0',title:'Customer sync',minutes:60});checks.push('join-teams-link');
 
  await page.getByRole('button',{name:'Add transcript'}).click();
  const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Add a transcript'}).waitFor();

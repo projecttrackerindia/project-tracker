@@ -47,6 +47,16 @@ const fleet={from:new Date(now-7*day).toISOString(),to:new Date(now).toISOString
  followUps:{commitments:46,kept:31,missed:5,moved:4,open:6,checkInsSent:28,answered:24,changeRequests:6},
  days:days7.map((d,i)=>({day:d.toISOString().slice(0,10),readings:3+(i*7)%5,findings:12+(i*11)%14,decided:9+(i*5)%12,meetings:2+(i*3)%4})),
  projects:[{projectId:pid,key:'PAY',name:'Payments Core',level:4,readings:16,findings:64,approved:44,dismissed:9,pending:11},{projectId:'p2',key:'WEB',name:'Website relaunch',level:2,readings:12,findings:46,approved:31,dismissed:11,pending:4},{projectId:'p3',key:'MOB',name:'Mobile app',level:3,readings:10,findings:32,approved:21,dismissed:7,pending:4}]};
+fleet.dismissReasons=[{reason:'duplicate',count:9},{reason:'not_needed',count:7},{reason:'wrong',count:5},{reason:'unspecified',count:6}];
+const costDays=Array.from({length:14},(_,i)=>({day:new Date(now-(13-i)*day).toISOString().slice(0,10),assistant:20+(i*7)%15,agent:12+(i*5)%18,meetings:(i*3)%5,other:i%4}));
+const cost={month:'2030-01',limit:1000,spent:640,reserved:12,available:348,unlimited:false,dailyAverage:58,daysLeft:6,runsOutOn:'2030-01-14',runsOutBeforeReset:true,resetsOn:'2030-02-01',
+ features:[{group:'assistant',label:'Project Assistant',credits:330},{group:'agent',label:'Project agent',credits:260},{group:'meetings',label:'Meeting bot (live reminders)',credits:30},{group:'other',label:'Mail',credits:20}],
+ days:costDays,projects:[{projectId:pid,key:'PAY',name:'Payments Core',credits:150,cap:160,readings:16},{projectId:'p2',key:'WEB',name:'Website relaunch',credits:80,cap:0,readings:12},{projectId:'p3',key:'MOB',name:'Mobile app',credits:30,cap:100,readings:10}]};
+let alertSettings={enabled:true,minSuccessRate:80,maxP95Seconds:30,botFailures:2,readingFailures:3,creditDays:5,weeklyDigest:true};
+const activeAlerts=[{key:'credits_low',severity:'warning',agent:'credits',title:'AI credits run out in about 6 days',detail:'348 of 1,000 left; the last week used about 58 a day, so they run out around 14 Jan, before they renew on 1 Feb.',link:'/agent-tracker?tab=costs',value:6,threshold:5},
+ {key:'bot_failures',severity:'critical',agent:'meetings',title:'The meeting bot missed 3 sessions today',detail:'Most often: Nobody let the bot into the meeting. Your alert is 2 or more a day.',link:'/agent-tracker?tab=meetings',value:3,threshold:2}];
+const digest={title:'Agents last week: 142 proposals, 96 approved, 21 meetings',lines:['Project agent: 38 readings, 142 proposals - 96 approved (21 by itself), 27 dismissed, 19 waiting.','Meetings: 21 of 24 attended by the bot, 18 sets of minutes sent.','AI credits: 406 used; at this pace they run out around 14 Jan, before they renew on 1 Feb.'],from:new Date(now-7*day).toISOString(),to:new Date(now).toISOString(),quiet:false};
+const hints=[{projectId:pid,projectKey:'PAY',projectName:'Payments Core',kind:'CreateActionItem',decided:41,rate:98,level:2,message:'x'}];
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
@@ -62,6 +72,12 @@ try{
    if(ep==='/api/v1/ai/tracker'){const st=url.searchParams.get('status');const items=st?runs.filter(r=>r.status===st):runs;data={...tracker,total:items.length,runs:items.slice(0,25)};}
    else if(ep==='/api/v1/ai/tracker/fleet')data=fleet;
    else if(ep==='/api/v1/ai/tracker/health')data={configured:true,reachable:true,modelAvailable:true,provider:'Anthropic',model:'claude-sonnet-5-5',queueDepth:0,errorCode:null};
+   else if(ep==='/api/v1/ai/tracker/cost')data=cost;
+   else if(ep==='/api/v1/ai/tracker/alerts'&&method==='PUT'){writes.push({ep,b:req.postDataJSON()});alertSettings=req.postDataJSON();data={settings:alertSettings,active:activeAlerts,checkedAt:new Date(now).toISOString(),lastNotifiedCheck:null};}
+   else if(ep==='/api/v1/ai/tracker/alerts')data={settings:alertSettings,active:activeAlerts,checkedAt:new Date(now).toISOString(),lastNotifiedCheck:null};
+   else if(ep==='/api/v1/ai/tracker/digest/send'&&method==='POST'){writes.push({ep});data={sent:1};}
+   else if(ep==='/api/v1/ai/tracker/digest')data=digest;
+   else if(ep==='/api/v1/ai/tracker/autonomy-hints')data=hints;
    else if(ep==='/api/v1/ai/tracker/agent'&&method==='PUT'){writes.push({ep,b:req.postDataJSON()});tracker.agent.enabled=req.postDataJSON().enabled;data={enabled:tracker.agent.enabled};}
    else{
     assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
@@ -81,7 +97,12 @@ try{
   return ctx;};
  const noOverflow=async(page,what)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`${what}: no sideways scroll`);
  const tab=(page,name)=>page.locator('.trk-tabs button',{hasText:name}).click();
- const shot=async(page,name,full=true)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(1600);await page.screenshot({path:path.join(out,name),fullPage:full});};
+ // A full-page capture by growing the window to the page's height (Playwright's fullPage capture briefly re-lays the page out, which remounts it).
+ const shot=async(page,name,full=true)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(1600);
+  if(!full){await page.screenshot({path:path.join(out,name)});return;}
+  const vp=page.viewportSize();const h=await page.evaluate(()=>document.documentElement.scrollHeight);
+  await page.setViewportSize({width:vp.width,height:Math.min(6000,Math.max(vp.height,h))});await page.waitForTimeout(700);
+  await page.screenshot({path:path.join(out,name)});await page.setViewportSize(vp);};
 
  let ctx=await make('light');
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
@@ -91,16 +112,28 @@ try{
  assert.equal(await page.locator('.trk-agent').count(),4);
  await page.locator('.recharts-bar-rectangle').first().waitFor({timeout:8000});checks.push('overview');
  await shot(page,'overview-1440.png');await noOverflow(page,'overview 1440');
+ assert.equal(await page.locator('.trk-attention .trk-alert').count(),2);assert.ok(await page.locator('.trk-tab-count.sev-critical').isVisible());checks.push('attention');
  await page.getByRole('button',{name:'Check model health'}).click();await page.getByText('Model service reachable').waitFor();checks.push('health');
 
  await tab(page,'Assistant');await page.getByText('Where the time goes').waitFor();
  assert.ok(await page.getByText('find work').first().isVisible());checks.push('assistant');
  await shot(page,'assistant-1440.png');
  await tab(page,'Project agent');await page.getByText('Proposals by kind').waitFor();
- assert.ok(await page.getByText('Payments Core').isVisible());checks.push('project-agent');
+ assert.ok(await page.getByText('Payments Core').first().isVisible());checks.push('project-agent');
+ await page.getByText('Ready for more autonomy').waitFor();assert.ok(await page.locator('.trk-hints li',{hasText:'98%'}).isVisible());
+ assert.ok(await page.getByText('Duplicate').isVisible());checks.push('trust');
  await shot(page,'project-agent-1440.png');
  await tab(page,'Meetings & follow-ups');await page.getByText('Commitments',{exact:true}).first().waitFor();checks.push('meetings');
  await shot(page,'meetings-1440.png');
+ await tab(page,'Credits');await page.getByText('At this pace the credits run out').waitFor();await page.locator('.recharts-bar-rectangle').first().waitFor();
+ assert.ok(await page.locator('.trk-cap.warn').first().isVisible());checks.push('costs');
+ await shot(page,'costs-1440.png');
+ await tab(page,'Alerts');await page.getByText('Needs attention now').waitFor();
+ await page.locator('#thr-botFailures').fill('4');await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForTimeout(300);
+ assert.equal(writes.find(w=>w.ep.endsWith('/alerts'))?.b.botFailures,4);checks.push('alert-settings');
+ await page.getByRole('button',{name:'Preview',exact:true}).click();await page.getByText('Meetings: 21 of 24 attended').waitFor();
+ await page.getByRole('button',{name:'Send me one now'}).click();await page.waitForTimeout(300);assert.ok(writes.some(w=>w.ep.endsWith('/digest/send')));checks.push('digest');
+ await shot(page,'alerts-1440.png',false);
  await tab(page,'Runs');await page.locator('.trk-run').first().waitFor();
  await page.locator('.trk-run-head').first().click();await page.locator('.trk-waterfall li').nth(2).waitFor();checks.push('trace-waterfall');
  await page.locator('.trk-run.open').scrollIntoViewIfNeeded();await shot(page,'runs-1440.png',false);
@@ -118,6 +151,8 @@ try{
   else{
    await tab(page,'Assistant');await page.getByText('Where the time goes').waitFor();await shot(page,'assistant-390.png');await noOverflow(page,'assistant 390');
    await tab(page,'Runs');await page.locator('.trk-run-head').first().click();await page.locator('.trk-waterfall li').first().waitFor();await shot(page,'runs-390.png');await noOverflow(page,'runs 390');
+   await tab(page,'Credits');await page.getByText('At this pace the credits run out').waitFor();await shot(page,'costs-390.png');await noOverflow(page,'costs 390');
+   await tab(page,'Alerts');await page.getByText('Needs attention now').waitFor();await shot(page,'alerts-390.png');await noOverflow(page,'alerts 390');
   }
   checks.push(`phone-${theme}`);await page.close();await ctx.close();
  }
