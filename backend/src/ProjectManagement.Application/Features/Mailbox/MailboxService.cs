@@ -63,7 +63,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         var preset = Presets.FirstOrDefault(p => p.Id == req.Provider) ?? throw new ValidationException("provider", "Choose a supported mail provider.");
         var email = (req.Email ?? "").Trim().ToLowerInvariant();
-        if (!MailboxAddress.TryParse(email, out var parsed) || parsed.Address != email || email.Length > 254)
+        if (email.Length > 254 || email.Count(c => c == '@') != 1 || email.StartsWith('@') || !email[(email.IndexOf('@') + 1)..].Contains('.') || !System.Net.Mail.MailAddress.TryCreate(email, out var parsed) || parsed.Address != email)
             throw new ValidationException("email", "Enter your full email address.");
         if (string.IsNullOrEmpty(req.Password) || req.Password.Length > 500) throw new ValidationException("password", "Enter the mailbox password or app password.");
         if (await Mine.CountAsync(ct) >= 5) throw new ConflictException("You can connect up to five mail accounts.");
@@ -91,10 +91,11 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
     // ---------- reading ----------
 
     private static string Folder(string? folder) => folder switch { null or "" or "inbox" => "inbox", "sent" => "sent", _ => throw new ValidationException("folder", "Choose Inbox or Sent.") };
-    private static string? OAuth(string account) => account is "google" or "microsoft" ? account : null;
+    private static string? OAuth(string? account) => account is "google" or "microsoft" ? account : null;
 
     private async Task<MailAccount> ImapAccountAsync(string account, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(account)) throw new ValidationException("account", "Choose a connected mail account.");
         if (!account.StartsWith("imap:", StringComparison.Ordinal) || !Guid.TryParse(account[5..], out var id))
             throw new ValidationException("account", "Choose a connected mail account.");
         ctx.RequireTenantId();
@@ -140,6 +141,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
     public async Task<MailThreadDto> ThreadAsync(string account, string? folder, string messageId, CancellationToken ct)
     {
         var f = Folder(folder);
+        if (string.IsNullOrWhiteSpace(messageId)) throw new ValidationException("messageId", "Choose a message.");
         if (OAuth(account) is { } provider)
         {
             var t = await inbox.ThreadAsync(provider, messageId, ct);
