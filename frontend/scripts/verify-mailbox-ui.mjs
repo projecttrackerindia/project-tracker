@@ -52,7 +52,7 @@ try{
     else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','projects.edit','tasks.view','tasks.edit','org.manage','reports.view','work.view','work.create','work.edit'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
     else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
     else if(ep==='/api/v1/integrations/google/status')data={connected:true,googleEmail:'asha@example.test',connectedAt:iso(-9000),lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true};
-    else if(ep==='/api/v1/integrations/microsoft/status')data={enabled:true,configured:true,connected:false,email:null,mailSendAccess:false,inboxEnabled:true,inboxAccess:false,calendarsEnabled:true,calendarAccess:false};
+    else if(ep==='/api/v1/integrations/microsoft/status')data={enabled:false,configured:false,connected:false,email:null,mailSendAccess:false,inboxEnabled:false,inboxAccess:false,calendarsEnabled:true,calendarAccess:false};
     else if(ep==='/api/v1/me/mailbox/accounts')data={imap,presets};
     else if(ep==='/api/v1/me/mailbox/agent/options')data={available:true,credits:1};
     else if(ep==='/api/v1/me/mailbox/messages'){const acc=p.get('account');const list=p.get('folder')==='sent'?[]:acc==='google'?gmail:acc.startsWith('imap:')?rediff:[];data={account:acc,email:acc==='google'?'asha@example.test':'asha@rediffmail.com',folder:p.get('folder'),messages:list.map(({body,...m})=>m),cursor:null};}
@@ -110,6 +110,9 @@ try{
  checks.push('reply-all');
  // Connecting Rediffmail Pro: preset only, never a host.
  await page.getByRole('button',{name:'Connect mail'}).click();
+ await page.locator('.mb-provider',{hasText:'Outlook'}).click();
+ await page.locator('.mb-guide').waitFor();assert.match(await page.locator('.mb-guide').innerText(),/MicrosoftProductivity__ClientId/);assert.match(await page.locator('.mb-guide').innerText(),/integrations\/microsoft\/callback/);
+ await shot(page,'setup-guide-1440.png');await page.getByRole('dialog').getByRole('button',{name:'Back'}).click();checks.push('setup-guide');
  await page.locator('.mb-provider',{hasText:'Rediffmail Pro'}).click();
  await page.getByLabel('Email address').fill('asha@company.in');await page.locator('.mb-imap input[type=password]').fill('app-password-for-test');
  await shot(page,'connect-1440.png');

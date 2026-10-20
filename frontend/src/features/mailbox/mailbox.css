@@ -191,3 +191,7 @@
   .mb-task { flex-wrap: wrap; }
   .mb-task-actions { flex-direction: row; width: 100%; justify-content: flex-end; }
 }
+.mb-guide { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.55; color: var(--text-2); }
+.mb-guide ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.mb-guide code { font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--surface-2); color: var(--text); overflow-wrap: anywhere; }
+div.mb-guide { padding-left: 0; }

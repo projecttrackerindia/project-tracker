@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { ApiError } from '../../api/client';
+import { ApiError, apiUrl } from '../../api/client';
 import { integrationsApi } from '../../api/endpoints';
 import { microsoftApi, workApi } from '../../api/endpoints.platform';
 import { taskApi } from '../../api/endpoints.projects';
@@ -51,6 +51,7 @@ export function MailboxPage() {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<{ account: string; id: string } | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [guide, setGuide] = useState<'gmail' | 'outlook' | null>(null);
   const [composeOpen, setComposeOpen] = useState<null | { to?: string; subject?: string; body?: string }>(null);
   const [cursors, setCursors] = useState<Record<string, string | null>>({});
   const [extra, setExtra] = useState<Record<string, MailMessage[]>>({});
@@ -147,7 +148,10 @@ export function MailboxPage() {
                   <Icon name={f === 'inbox' ? 'inbox' : 'send'} size={15} /><span>{f === 'inbox' ? 'Inbox' : 'Sent'}</span>
                   {f === 'inbox' && scope === a.key && unreadCount(a.key) > 0 && <em>{unreadCount(a.key)}</em>}
                 </button>
-              )) : <button className="mb-needs" onClick={() => void reconnect(a.kind)}><Icon name="lock" size={14} /><span>{a.needs}</span></button>}
+              )) : <button className="mb-needs" onClick={() => {
+                const ready = a.kind === 'gmail' ? google.data?.inboxEnabled !== false : ms.data?.enabled && ms.data.configured && ms.data.inboxEnabled !== false;
+                if (ready) void reconnect(a.kind); else { setGuide(a.kind === 'gmail' ? 'gmail' : 'outlook'); setConnectOpen(true); }
+              }}><Icon name="lock" size={14} /><span>{a.needs}</span></button>}
               {a.error && <p className="mb-account-error">{a.error}</p>}
             </div>
           ))}
@@ -215,7 +219,7 @@ export function MailboxPage() {
       </section>
 
       {connectOpen && <ConnectModal presets={imap.data?.presets ?? []} google={google.data} microsoft={ms.data} imapAccounts={imap.data?.imap ?? []}
-        onClose={() => setConnectOpen(false)} onConnected={() => { void invalidateWorkspace(wid, 'mailbox', 'accounts'); }} />}
+        guide={guide} onClose={() => { setConnectOpen(false); setGuide(null); }} onConnected={() => { void invalidateWorkspace(wid, 'mailbox', 'accounts'); }} />}
       {composeOpen && <ComposeModal accounts={accounts.filter(a => a.canSend)} initial={composeOpen} agent={!!agentOpts.data?.available}
         onClose={() => setComposeOpen(null)} onSent={refresh} />}
     </div>
@@ -494,14 +498,18 @@ function ComposeModal({ accounts, initial, agent, onClose, onSent }: { accounts:
 
 /* ---------------- connecting ---------------- */
 
-function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onConnected }: {
+function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onConnected, guide: initialGuide = null }: {
   presets: { id: string; name: string; domain: string }[];
   google?: { connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailSendAccess?: boolean } | undefined;
   microsoft?: { enabled: boolean; configured: boolean; connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean } | undefined;
-  imapAccounts: { id: string; name: string; email: string }[]; onClose: () => void; onConnected: () => void;
+  imapAccounts: { id: string; name: string; email: string }[]; onClose: () => void; onConnected: () => void; guide?: 'gmail' | 'outlook' | null;
 }) {
   const wid = useWorkspaceId();
   const [pick, setPick] = useState<string | null>(null);
+  const [guide, setGuide] = useState<'gmail' | 'outlook' | null>(initialGuide);
+  const role = useAuth(s => s.ctx?.current?.role);
+  const canSetUp = role === 'Owner' || role === 'Admin' || !!useAuth.getState().ctx?.user.isPlatformAdmin;
+  const gmailAvailable = google?.inboxEnabled !== false;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -527,16 +535,16 @@ function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onCon
   };
 
   return (
-    <Modal title={preset ? `Connect ${preset.name}` : 'Connect mail'} subtitle={preset ? 'Signs in over secure IMAP and SMTP.' : 'Your mail stays private to you.'} onClose={onClose} size="sm"
-      footer={preset ? <><button className="btn btn-ghost" onClick={() => setPick(null)}>Back</button><button className="btn btn-primary" disabled={busy || !email || !password} onClick={() => void connectImap()}>{busy ? <Spinner /> : null} Connect</button></> : undefined}>
-      {!preset ? (
+    <Modal title={guide ? `Set up ${guide === 'gmail' ? 'Gmail' : 'Outlook'}` : preset ? `Connect ${preset.name}` : 'Connect mail'} subtitle={guide ? (canSetUp ? 'A one-time setup for your whole workspace.' : 'Your administrator turns this on once.') : preset ? 'Signs in over secure IMAP and SMTP.' : 'Your mail stays private to you.'} onClose={onClose} size={guide ? undefined : 'sm'}
+      footer={guide ? <button className="btn btn-ghost" onClick={() => setGuide(null)}>Back</button> : preset ? <><button className="btn btn-ghost" onClick={() => setPick(null)}>Back</button><button className="btn btn-primary" disabled={busy || !email || !password} onClick={() => void connectImap()}>{busy ? <Spinner /> : null} Connect</button></> : undefined}>
+      {guide ? <SetupGuide kind={guide} canSetUp={canSetUp} /> : !preset ? (
         <div className="mb-providers">
-          <button className="mb-provider" onClick={() => void reconnect('gmail')} disabled={google?.inboxEnabled === false}>
-            <span className="mb-logo gmail">G</span><span><b>Gmail</b><small>{gmailReady ? 'Connected' : google?.connected ? 'Allow reading and sending' : google?.inboxEnabled === false ? 'Awaiting administrator setup' : 'Google account'}</small></span>
+          <button className="mb-provider" onClick={() => gmailAvailable ? void reconnect('gmail') : setGuide('gmail')}>
+            <span className="mb-logo gmail">G</span><span><b>Gmail</b><small>{gmailReady ? 'Connected' : !gmailAvailable ? (canSetUp ? 'Not set up yet: see how to turn it on' : 'Not set up yet: ask your administrator') : google?.connected ? 'Allow reading and sending' : 'Google account'}</small></span>
             {gmailReady ? <Icon name="checkCircle" size={16} /> : <Icon name="chevronR" size={16} />}
           </button>
-          <button className="mb-provider" onClick={() => void reconnect('outlook')} disabled={!outlookAvailable}>
-            <span className="mb-logo outlook">O</span><span><b>Outlook</b><small>{outlookReady ? 'Connected' : microsoft?.connected ? 'Allow reading your inbox' : !outlookAvailable ? 'Awaiting administrator setup' : 'Microsoft 365, Outlook.com, Hotmail'}</small></span>
+          <button className="mb-provider" onClick={() => outlookAvailable ? void reconnect('outlook') : setGuide('outlook')}>
+            <span className="mb-logo outlook">O</span><span><b>Outlook</b><small>{outlookReady ? 'Connected' : !outlookAvailable ? (canSetUp ? 'Not set up yet: see how to turn it on' : 'Not set up yet: ask your administrator') : microsoft?.connected ? 'Allow reading your inbox' : 'Microsoft 365, Outlook.com, Hotmail'}</small></span>
             {outlookReady ? <Icon name="checkCircle" size={16} /> : <Icon name="chevronR" size={16} />}
           </button>
           {presets.map(p => (
@@ -561,5 +569,38 @@ function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onCon
         </form>
       )}
     </Modal>
+  );
+}
+
+/** What an administrator does once so people can connect Gmail or Outlook here (server settings and the provider's app registration). */
+function SetupGuide({ kind, canSetUp }: { kind: 'gmail' | 'outlook'; canSetUp: boolean }) {
+  const callback = new URL(apiUrl('/integrations/microsoft/callback'), window.location.origin).href;
+  if (!canSetUp) return (
+    <div className="mb-guide">
+      <p>{kind === 'gmail' ? 'Gmail' : 'Outlook'} reading has not been switched on for this installation yet. Ask your workspace owner or administrator to open <b>Mailbox › Connect mail › {kind === 'gmail' ? 'Gmail' : 'Outlook'}</b>: the steps are shown to them here.</p>
+      <p className="muted">Meanwhile you can connect Rediffmail, Yahoo or Zoho with an app password.</p>
+    </div>
+  );
+  return kind === 'gmail' ? (
+    <ol className="mb-guide">
+      <li><b>Google Cloud Console</b> › the project that holds your Google sign-in (the one already used for Calendar &amp; Meet) › <b>APIs &amp; Services › Library</b> › enable <b>Gmail API</b>.</li>
+      <li><b>OAuth consent screen › Data access</b> › add the scopes <code>…/auth/gmail.readonly</code> and <code>…/auth/gmail.send</code>.</li>
+      <li><b>Who may use it:</b>
+        <ul>
+          <li>Only accounts in your Google Workspace domain: set the audience to <b>Internal</b>. No Google review is needed.</li>
+          <li>Personal <b>@gmail.com</b> accounts: keep it <b>External › Testing</b> and add each person under <b>Test users</b> (up to 100). They will see an “unverified app” notice and can continue. Opening it to everyone needs Google's verification of the Gmail scopes.</li>
+        </ul></li>
+      <li><b>Railway › API service › Variables</b>: set <code>GoogleCalendar__InboxEnabled</code> = <code>true</code> and <code>GoogleCalendar__MailEnabled</code> = <code>true</code>, then let it redeploy.</li>
+      <li>Come back here and choose <b>Gmail</b>. Google asks once to allow reading and sending; the mail then appears in your inbox list.</li>
+    </ol>
+  ) : (
+    <ol className="mb-guide">
+      <li><b>Azure portal › Microsoft Entra ID › App registrations › New registration</b>. Supported accounts: <b>any organizational directory and personal Microsoft accounts</b> (so Outlook.com and Hotmail work too).</li>
+      <li>Redirect URI (Web): <code>{callback}</code> (your API's public address).</li>
+      <li><b>API permissions › Microsoft Graph › Delegated</b>: <code>User.Read</code>, <code>Mail.Read</code>, <code>Mail.Send</code>, <code>offline_access</code>. For a work tenant, choose <b>Grant admin consent</b>.</li>
+      <li><b>Certificates &amp; secrets › New client secret</b>, and copy the value.</li>
+      <li><b>Railway › API service › Variables</b>: <code>MicrosoftProductivity__Enabled</code> = <code>true</code>, <code>MicrosoftProductivity__InboxEnabled</code> = <code>true</code>, <code>MicrosoftProductivity__ClientId</code> (Application ID), <code>MicrosoftProductivity__ClientSecret</code>, <code>MicrosoftProductivity__RedirectUri</code> (the address above), <code>MicrosoftProductivity__AuthorityTenant</code> = <code>common</code>.</li>
+      <li>After the redeploy, choose <b>Outlook</b> here and sign in.</li>
+    </ol>
   );
 }
