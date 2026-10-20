@@ -4,7 +4,8 @@ import { ApiError } from '../../api/client';
 import { agentApi } from '../../api/endpoints';
 import type { AgentFinding, AgentInboxOptIn, AgentWorkspace } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, Field, PageHead, PageLoader, RouteTabs } from '../../components/ui';
+import { EmptyState, ErrorState, Field, PageLoader, RouteTabs } from '../../components/ui';
+import { AgentsHubNav } from '../agents/AgentsHubNav';
 import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -19,7 +20,7 @@ export function AgentPage({ section }: { section: 'review' | 'assigned' | 'my-in
   const assigned = useWsQuery(['agent', 'assigned'], agentApi.assigned);
   return (
     <>
-      <PageHead title="Project agent" sub="Proposals from your projects' email, chat and meetings, waiting for a decision." />
+      <AgentsHubNav sub="Proposals from your projects' email, chat and meetings, waiting for a decision" />
       <RouteTabs label="Project agent" tabs={[
         { to: '/project-agent', label: 'To review', icon: 'checks', badge: inbox.data?.pending },
         { to: '/project-agent/assigned', label: 'Given to me', icon: 'user', badge: assigned.data?.pending },

@@ -1,3 +1,4 @@
+import { AgentsHubNav } from '../agents/AgentsHubNav';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -367,7 +368,7 @@ export function AiPage() {
           </div>
           <div className="ai-head-controls">
             <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
-            <Link className="btn ai-workflows-link" to="/ai/operations" aria-label="Proactive workflows"><Icon name="workflow" size={15} />Workflows</Link>
+            <AgentsHubNav compact />
             <CreditMeter usage={usage} />
           </div>
         </header>

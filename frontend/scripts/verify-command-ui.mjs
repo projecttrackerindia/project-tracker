@@ -147,6 +147,9 @@ try{
  await shot(page,'brief-1440.png');
  await page.keyboard.press('Escape');
 
+ await page.locator('.cmd-tabs button',{hasText:'My work'}).click();await page.locator('.cmd-mywork').waitFor();await page.waitForTimeout(300);
+ assert.ok(new URL(page.url()).searchParams.get('tab')==='work');checks.push('my-work-tab');
+ await page.goto(origin+'/preview-org/my-work');await page.waitForURL(/command-center\?tab=work/);await page.locator('.cmd-mywork').waitFor();checks.push('my-work-redirect');
  await page.getByRole('button',{name:'Decisions'}).click();await page.getByRole('heading',{name:'Launch in two phases'}).waitFor();
  await shot(page,'decisions-1440.png');checks.push('decisions');
  await page.getByRole('button',{name:'Audit trail'}).click();await page.getByText('Carried out by the agent',{exact:true}).waitFor();

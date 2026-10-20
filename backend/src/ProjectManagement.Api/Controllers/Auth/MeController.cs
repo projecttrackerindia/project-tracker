@@ -12,6 +12,17 @@ namespace ProjectManagement.Api.Controllers.Auth;
 public class MeController(AuthService auth, WorkspaceService workspaces, NotificationPreferenceService preferences, MfaService mfa,
     ProjectManagement.Application.Features.Sso.SsoLoginService logins, ProjectManagement.Application.Features.People.UserAvatarService avatars) : ApiControllerBase
 {
+    /// <summary>My own app layout (the sidebar: order, pinned, hidden, collapsed sections), saved with my account.</summary>
+    [HttpGet("ui/{key}")]
+    public async Task<IActionResult> GetUi(string key, [FromServices] UiPreferenceService ui, CancellationToken ct) => Ok(await ui.GetAsync(key, ct));
+
+    public record UiPreferenceRequest(System.Text.Json.JsonElement? Value);
+
+    /// <summary>Saves my layout; a null value goes back to the default.</summary>
+    [HttpPut("ui/{key}")]
+    public async Task<IActionResult> SaveUi(string key, [FromBody] UiPreferenceRequest req, [FromServices] UiPreferenceService ui, CancellationToken ct) =>
+        Ok(await ui.SaveAsync(key, req.Value, ct));
+
     /// <summary>Outside accounts connected to mine (Google, Microsoft, GitHub, Apple, an organization's single sign-on).</summary>
     [HttpGet("logins")]
     public async Task<IActionResult> Logins(CancellationToken ct) => Ok(await logins.MyLoginsAsync(ct));

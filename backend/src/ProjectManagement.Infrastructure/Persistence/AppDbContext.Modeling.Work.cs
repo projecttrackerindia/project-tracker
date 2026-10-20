@@ -650,6 +650,13 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.UserId, x.Type }).IsUnique();
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<UserUiPreference>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Key }).IsUnique();
+            e.Property(x => x.Key).HasMaxLength(40);
+            e.Property(x => x.Value).HasColumnType("text");
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<AuditLog>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.CreatedAt });

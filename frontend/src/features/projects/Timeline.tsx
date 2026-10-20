@@ -91,28 +91,47 @@ export function Timeline({ projectId, projectName, project, stages, canEdit, can
   const open = stages.length - done;
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <div><h3>Project timeline</h3><p>{stages.length ? `${done} of ${stages.length} stages completed${canReorder ? ' · drag a stage to reorder' : ''}` : 'No stages defined yet'}<span className="htl-sub"> · tracks phase sign-off, separately from task completion above</span></p></div>
-        <div className="row">
-          {project && canEdit && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduling(true)}><Icon name="calendar" size={14} /> Schedule studio</button>}
-          <div className="legend"><span>✓ Completed</span><span>● In progress</span><span>○ Pending</span><span><Icon name="lock" size={11} /> Locked</span><span>! Delayed</span></div>
-          {canEdit && <button className="btn-icon" title="Timeline templates" aria-label="Timeline templates" onClick={() => setManager(true)}><Icon name="layers" /></button>}
-          {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" /> Add stage</button>}
+    <div className="card tl-card">
+      <div className="card-head tl-head">
+        <div className="tl-head-main">
+          <h3>Project timeline</h3>
+          <p>Phase sign-off, tracked separately from task completion{canReorder ? ' · drag a stage to reorder' : ''}</p>
         </div>
+        {canEdit && (
+          <div className="tl-actions">
+            {project && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduling(true)}><Icon name="calendar" size={14} /> Schedule studio</button>}
+            <button type="button" className="btn btn-ghost btn-sm" title="Timeline templates" onClick={() => setManager(true)}><Icon name="layers" size={14} /><span className="tl-hide-sm">Templates</span></button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> Add stage</button>
+          </div>
+        )}
       </div>
       <div className="card-body">
-        {project && <p className="schedule-mode-label">{project.stageScheduleMode === 'FixedDeadline' ? 'Automatic · fixed project end · allocated calendar days' : project.stageScheduleMode === 'FollowSchedule' ? 'Automatic · project end follows the final stage' : 'Manual stage dates · open Schedule studio to calculate a connected timeline'}</p>}
+        {stages.length > 0 && (
+          <div className="tl-summary">
+            <div className="tl-progress">
+              <div className="tl-progress-top"><b>{done} of {stages.length}</b><span>stages completed</span>
+                {project && <em className="tl-mode" title={project.stageScheduleMode === 'Manual' || !project.stageScheduleMode ? 'Open Schedule studio to calculate a connected timeline' : undefined}>
+                  <Icon name={project.stageScheduleMode && project.stageScheduleMode !== 'Manual' ? 'repeat' : 'edit'} size={11} />
+                  {project.stageScheduleMode === 'FixedDeadline' ? 'Automatic · fixed end' : project.stageScheduleMode === 'FollowSchedule' ? 'Automatic · end follows stages' : 'Manual dates'}</em>}
+              </div>
+              <div className="tl-segments" role="img" aria-label={`${done} of ${stages.length} stages completed`}>
+                {ordered.map((s) => <i key={s.id} className={`seg-${CLASS[displayOf(s)]}`} title={`${s.name}: ${labelize(displayOf(s))}`} />)}
+              </div>
+            </div>
+            <ul className="tl-legend" aria-label="Legend">
+              <li><i className="seg-done" />Completed</li><li><i className="seg-active" />In progress</li><li><i className="seg-pending" />Pending</li>
+              <li><i className="seg-locked" />Locked</li><li><i className="seg-delayed" />Delayed</li>
+            </ul>
+          </div>
+        )}
         {showNudge && (
-          <div className="form-info" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Icon name="info" size={14} />
-            <span style={{ flex: 1 }}>
-              All tasks are done, but {open} {open === 1 ? 'stage is' : 'stages are'} still open below. Walk {open === 1 ? 'it' : 'them'} through to Completed to close out the timeline too - it will not do that on its own.
-            </span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModal({ stage: ordered.find((s) => displayOf(s) !== 'Completed' && displayOf(s) !== 'Locked') ?? ordered.find((s) => displayOf(s) !== 'Completed') })}>
-              Review
-            </button>
-            <button type="button" className="btn-icon" aria-label="Dismiss" onClick={dismissNudge}><Icon name="close" size={13} /></button>
+          <div className="tl-nudge" role="status">
+            <span className="tl-nudge-icon"><Icon name="info" size={15} /></span>
+            <p>All tasks are done, but {open} {open === 1 ? 'stage is' : 'stages are'} still open. Walk {open === 1 ? 'it' : 'them'} through to Completed to close out the timeline - it does not do that on its own.</p>
+            <div className="tl-nudge-actions">
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({ stage: ordered.find((s) => displayOf(s) !== 'Completed' && displayOf(s) !== 'Locked') ?? ordered.find((s) => displayOf(s) !== 'Completed') })}>Review stages</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={dismissNudge}>Not now</button>
+            </div>
           </div>
         )}
         {stages.length === 0 ? <EmptyState icon="flag" title="No stages yet" text="Add lifecycle stages such as Planning, Development and UAT." /> : (

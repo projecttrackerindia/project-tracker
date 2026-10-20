@@ -263,3 +263,5 @@
 }
 
 .cmd-agenda li::marker { color: var(--text-3); font-weight: 700; }
+.cmd-mywork { margin-top: 2px; }
+.mywork-embedded-actions { display: flex; justify-content: flex-end; margin: 0 0 12px; }

@@ -167,6 +167,7 @@ public interface IAppDbContext
     DbSet<Activity> Activities { get; }
     DbSet<Notification> Notifications { get; }
     DbSet<NotificationPreference> NotificationPreferences { get; }
+    DbSet<UserUiPreference> UserUiPreferences { get; }
     DbSet<Attachment> Attachments { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<Plan> Plans { get; }

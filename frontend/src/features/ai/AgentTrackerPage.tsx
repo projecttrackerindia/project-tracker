@@ -11,6 +11,7 @@ import { ActivityChart, BarList, FleetTrend, Histogram, LatencyTrend, Ring, Spar
 import { compact, KIND_LABEL, KIND_ORDER, pct, secs, series, SOURCE_LABEL, STATUS, trackerApi, words, type Fleet, type Run, type Tracker } from './tracker/types';
 import { AlertList, AlertsView, CostView, TrustPanels } from './tracker/TrackerWatch';
 import type { Alerts } from './tracker/types';
+import { AgentsHubNav } from '../agents/AgentsHubNav';
 import './tracker/tracker.css';
 
 type Tab = 'overview' | 'assistant' | 'agent' | 'meetings' | 'costs' | 'alerts' | 'runs';
@@ -61,6 +62,7 @@ export function AgentTrackerPage() {
   const d = q.data;
   return (
     <div className="trk">
+      <AgentsHubNav sub="How every agent in the workspace is doing" />
       <header className="trk-hero">
         <div className="trk-hero-glow" aria-hidden />
         <div className="trk-hero-row">

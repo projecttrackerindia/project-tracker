@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, notificationApi } from '../api/endpoints';
 import { Icon, type IconName } from '../components/Icon';
@@ -24,8 +24,9 @@ import { MobileTopBar, TabBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
 import { useConversationViewport } from '../lib/conversationViewport';
-import { AgentMark } from '../components/AgentMark';
 import { useMainNav } from './navigation';
+import { SidebarNav } from './SidebarNav';
+import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
 import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
 import { AssistantPanel } from '../features/ai/Assistant';
@@ -54,7 +55,6 @@ function Sidebar() {
   const ctx = useAuth((s) => s.ctx);
   const personal = useIsPersonal();
   const canChat = !personal && ctx?.current?.role !== 'Guest' && !ctx?.user.isPlatformAdmin;
-  const { pathname } = useLocation();
   const wid = ctx?.current?.id;
   // Unread messages: kept current by live events; the slow refresh is only a safety net.
   const unread = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
@@ -80,24 +80,7 @@ function Sidebar() {
           <div className="brand-mark"><BrandMark /></div>
           <div className="brand-text"><strong title={brandTitle}>{brandTitle}</strong><span>{brandSub}</span></div>
         </div>
-        <nav className="sidebar-nav" aria-label="Main navigation">
-          {groups.map((g) => {
-            const items = g.items.filter((i) => i.show !== false);
-            if (!items.length) return null;
-            return (
-              <div className="nav-section" key={g.title}>
-                <div className="nav-section-title">{g.title}</div>
-                {items.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.end} title={i.label} onClick={closeSidebar}
-                    className={({ isActive }) => `nav-item ${(i.match ? i.match(pathname) : isActive) ? 'active' : ''}`}>
-                    {i.to === '/ai' ? <AgentMark size={20} animated /> : <Icon name={i.icon} />}<span>{i.label}</span>
-                    {!!i.badge && <em className={`nav-count ${i.to === '/reminders' ? 'nav-count-alarm' : ''}`} aria-label={i.to === '/reminders' ? `${i.badge} need attention` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
-                  </NavLink>
-                ))}
-              </div>
-            );
-          })}
-        </nav>
+        <SidebarNav groups={groups} collapsed={sidebarCollapsed} onNavigate={closeSidebar} />
         {ctx && <AccountDock />}
       </aside>
       <div className={`sidebar-overlay ${sidebarOpen ? 'show' : ''}`} onClick={closeSidebar} />
@@ -365,6 +348,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
         </>
       )}
       <SignInIsland />
+      <NetworkPill />
       <ToastRoot />
       <ConfirmRoot />
       <DesktopNotifier />

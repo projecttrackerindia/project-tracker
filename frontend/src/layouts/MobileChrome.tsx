@@ -17,7 +17,8 @@ import { chatKeys } from '../features/chat/chatStore';
 import { openReminderComposer, useReminderCounts } from '../features/reminders/store';
 import { useWorkspaceSections } from '../features/settings/sections';
 import { useAi, useAssistant } from '../features/ai/Assistant';
-import { useMainNav } from './navigation';
+import { inSidebar, useMainNav } from './navigation';
+import { usePinned } from './navPrefs';
 import { CreateOrganizationModal, NOTIF_ICON } from './parts';
 import { SUPPORT_EMAIL, supportMailto } from '../lib/support';
 import { planStatus } from './AccountDock';
@@ -183,17 +184,20 @@ export function TabBar() {
   const [more, setMore] = useState(false);
   const [create, setCreate] = useState(false);
 
-  const all = useMemo(() => groups.flatMap((g) => g.items).filter((i) => i.show !== false), [groups]);
+  const all = useMemo(() => groups.flatMap((g) => g.items).filter(inSidebar), [groups]);
+  const pins = usePinned(groups);
   const find = (to: string) => all.find((i) => i.to === to);
   const badgeOf = (to: string) => (to === '/chat' ? chat.data?.count : to === '/reminders' ? reminders.data?.now : undefined);
 
   const tabs: Tab[] = useMemo(() => {
     if (admin) return all.slice(0, 3).map((i) => ({ to: i.to, label: i.label === 'Organizations' ? 'Orgs' : i.label, icon: i.icon, end: i.end }));
-    const picks = ['/command-center', '/my-work', '/projects', '/chat', '/reminders', '/calendar'].map(find).filter(Boolean).slice(0, 2) as typeof all;
+    // The person's own pins come first (from Customize in the sidebar), then the usual places.
+    const usual = ['/command-center', '/projects', '/chat', '/reminders', '/calendar'].map(find).filter(Boolean) as typeof all;
+    const picks = [...pins.filter((p) => p.to !== '/'), ...usual].filter((x, i, list) => list.findIndex((y) => y.to === x.to) === i).slice(0, 2);
     const label: Record<string, string> = { '/': 'Home', '/command-center': 'Focus' };
     return [{ to: '/', label: 'Home', icon: 'dashboard' as IconName, end: true }, ...picks.map((i) => ({ to: i.to, label: label[i.to] ?? i.label, icon: i.icon, badge: badgeOf(i.to), match: i.match }))];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, admin, chat.data?.count, reminders.data?.now]);
+  }, [all, admin, pins, chat.data?.count, reminders.data?.now]);
 
   // Something in the menu needs attention that no tab shows: a dot on More says so.
   const hidden = !admin && ['/chat', '/reminders'].filter((to) => !tabs.some((t) => t.to === to) && find(to) && (badgeOf(to) ?? 0) > 0).length > 0;
@@ -221,7 +225,7 @@ export function TabBar() {
         <div className="m-pill">
           {[...left, ...right].map(tab)}
           <button type="button" className={`m-tab ${lastOn ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
-            <span className="m-tab-ico">{lastOn && here?.to === '/ai' ? <AgentMark size={26} animated /> : lastOn && here ? <Icon name={here.icon} size={22} /> : <Icon name="more" size={22} />}{hidden && <i className="m-dot top" />}</span>
+            <span className="m-tab-ico">{lastOn && here?.id === 'agents' ? <AgentMark size={26} animated /> : lastOn && here ? <Icon name={here.icon} size={22} /> : <Icon name="more" size={22} />}{hidden && <i className="m-dot top" />}</span>
             <span className="m-tab-label">{more || inTabs ? 'More' : hereLabel}</span>
           </button>
         </div>
@@ -261,7 +265,7 @@ function MoreSheet({ onClose, badgeOf }: { onClose: () => void; badgeOf: (to: st
       </button>
 
       {groups.map((g) => {
-        const items = g.items.filter((i) => i.show !== false);
+        const items = g.items.filter(inSidebar);
         if (!items.length) return null;
         return (
           <section key={g.title} className="m-group">

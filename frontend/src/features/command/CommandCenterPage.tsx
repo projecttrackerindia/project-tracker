@@ -13,6 +13,7 @@ import { haptic } from '../../lib/mobile';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { BriefModal, DecisionsView, AuditView, WhatIfModal, SettingsCard } from './CommandParts';
+import { MyWorkPage } from '../workitems/MyWorkPage';
 import { errText } from './shared';
 import '../agent/agent.css';
 import './command.css';
@@ -31,9 +32,9 @@ const KIND: Record<AttentionKind, { icon: IconName; label: string }> = {
   unresolved: { icon: 'repeat', label: 'Keeps coming up' },
 };
 
-type Tab = 'today' | 'meetings' | 'decisions' | 'audit';
+type Tab = 'today' | 'work' | 'meetings' | 'decisions' | 'audit';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: 'today', label: 'Today', icon: 'target' }, { id: 'meetings', label: 'Meetings', icon: 'video' },
+  { id: 'today', label: 'Today', icon: 'target' }, { id: 'work', label: 'My work', icon: 'inbox' }, { id: 'meetings', label: 'Meetings', icon: 'video' },
   { id: 'decisions', label: 'Decisions', icon: 'checks' }, { id: 'audit', label: 'Audit trail', icon: 'shield' },
 ];
 
@@ -78,6 +79,7 @@ export function CommandCenterPage() {
             ))}
           </nav>
           {tab === 'today' && <TodayView c={q.data} onCheckIn={setCheckIn} onDelegate={setDelegate} onBrief={setBrief} onReport={setReport} />}
+          {tab === 'work' && <div className="cmd-mywork"><MyWorkPage embedded /></div>}
           {tab === 'meetings' && <MeetingsView onDelegate={setDelegate} onBrief={setBrief} onReport={setReport} />}
           {tab === 'decisions' && <DecisionsView />}
           {tab === 'audit' && <AuditView />}

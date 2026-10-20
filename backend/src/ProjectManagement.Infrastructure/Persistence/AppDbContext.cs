@@ -152,6 +152,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+    public DbSet<UserUiPreference> UserUiPreferences => Set<UserUiPreference>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SsoGroupMapping> SsoGroupMappings => Set<SsoGroupMapping>();

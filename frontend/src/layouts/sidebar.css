@@ -1,0 +1,48 @@
+/* The sidebar's own layout: sections that fold, places that drag, and Customize (pin, hide, reset). */
+.sidebar-nav { display: flex; flex-direction: column; }
+.nav-section { transition: margin .2s ease; }
+.nav-section.folded { margin-bottom: 10px; }
+.nav-section-toggle { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; cursor: pointer; text-align: left; border-radius: 6px; font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); padding: 2px 10px 8px; }
+.nav-section-toggle:hover { color: var(--text-2); }
+.nav-section-toggle > span { flex: 1; }
+.nav-section-toggle > svg:last-of-type { opacity: 0; transition: opacity .15s, transform .2s ease; }
+.nav-section-toggle:hover > svg:last-of-type, .nav-section-toggle:focus-visible > svg:last-of-type, .folded .nav-section-toggle > svg:last-of-type { opacity: .8; }
+.folded .nav-section-toggle > svg:last-of-type { transform: rotate(-90deg); }
+.nav-section-toggle em { font-style: normal; font-size: 10px; letter-spacing: 0; padding: 0 6px; border-radius: 99px; background: var(--surface-2); color: var(--text-3); }
+.nav-pinned .nav-section-toggle { color: var(--primary); }
+.nav-pinned .nav-section-toggle svg:first-child { color: #eda100; }
+
+.nav-row { position: relative; display: flex; align-items: center; border-radius: 10px; touch-action: manipulation; }
+.nav-row + .nav-row { margin-top: 1px; }
+.nav-row .nav-item { flex: 1; min-width: 0; }
+.nav-grip { position: absolute; left: -10px; top: 50%; transform: translateY(-50%); z-index: 2; width: 14px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--text-3); cursor: grab; opacity: 0; transition: opacity .15s, background .15s; touch-action: none; }
+.nav-row:hover .nav-grip, .nav-grip:focus-visible, .editing .nav-grip { opacity: 1; }
+.nav-grip:hover { background: var(--hover-bg); color: var(--text); }
+.nav-grip:active { cursor: grabbing; }
+.nav-row.dragging { opacity: .35; }
+.nav-row.dragging .nav-item { background: var(--surface-2); }
+.nav-drag-ghost { background: var(--surface); color: var(--text); box-shadow: 0 14px 34px -14px rgba(15, 23, 42, .45), 0 0 0 1px var(--border); cursor: grabbing; transform: scale(1.02); }
+.nav-drag-ghost > svg:last-child { margin-left: auto; color: var(--text-3); }
+
+.editing .nav-row .nav-item { padding-right: 62px; }
+.nav-tools { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
+.nav-tool { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--text-3); cursor: pointer; }
+.nav-tool:hover { background: var(--hover-bg); color: var(--text); }
+.nav-tool.on { color: #eda100; }
+.nav-tool.on svg { fill: currentColor; }
+.nav-tool.off { color: var(--danger, #e34948); }
+.nav-row.is-hidden .nav-item { opacity: .45; text-decoration: line-through; text-decoration-color: var(--text-3); }
+
+.nav-customize { display: flex; gap: 6px; padding: 6px 4px 2px; margin-top: auto; }
+.nav-customize-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.nav-customize-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.nav-customize-btn.ghost { border-color: transparent; background: none; color: var(--text-3); justify-content: flex-start; }
+.nav-customize-btn.ghost:hover { background: var(--hover-bg); color: var(--text); }
+.nav-customize-btn.primary { background: var(--primary-fill); border-color: transparent; color: #fff; }
+.nav-customize-tip { margin: 6px 6px 0; font-size: 11px; line-height: 1.5; color: var(--text-3); }
+.nav-customize-tip svg { display: inline-block; vertical-align: -2px; }
+.sidebar-nav.editing .nav-section { margin-bottom: 14px; }
+
+.sidebar.collapsed .nav-grip, .sidebar.collapsed .nav-customize, .sidebar.collapsed .nav-customize-tip { display: none; }
+@media (prefers-reduced-motion: reduce) { .nav-section-toggle > svg:last-of-type, .nav-grip { transition: none; } }
+@media (hover: none) { .nav-grip { opacity: .55; } }

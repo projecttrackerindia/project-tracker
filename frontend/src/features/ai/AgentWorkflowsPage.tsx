@@ -4,6 +4,7 @@ import { del, get, post } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { PageLoader } from '../../components/ui';
 import { Markdown } from './Markdown';
+import { AgentsHubNav } from '../agents/AgentsHubNav';
 import { formatDateTime } from '../../lib/format';
 
 type Kind = 'portfolio' | 'workload' | 'history';
@@ -35,6 +36,7 @@ export function AgentWorkflowsPage() {
   const picked = jobs.data?.find(j => j.id === selected) ?? selectedJob.data;
   if (jobs.isLoading) return <PageLoader />;
   return <div className="page">
+    <AgentsHubNav sub="Background reviews of delivery, capacity and recurring blockers" />
     <div className="page-header"><div><h1>Proactive agent workflows</h1><p>Review delivery, capacity and recurring blockers before you need to ask.</p></div><Link to="/ai" className="btn">Open AI workspace</Link></div>
     {(error || jobs.error || schedules.error) && <div className="alert alert-error" role="alert">{error || jobs.error?.message || schedules.error?.message}</div>}
     <section className="card" style={{ padding: 20, marginBottom: 20 }}>

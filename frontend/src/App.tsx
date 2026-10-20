@@ -11,6 +11,8 @@ import { SuccessCurtain } from './components/SuccessCurtain';
 import { UpdateBanner } from './components/UpdateBanner';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
+import { useAi } from './features/ai/Assistant';
+import { AppSplash } from './components/AppSplash';
 import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
 
@@ -221,7 +223,7 @@ function RequireAuth() {
   const status = useAuth((s) => s.status);
   const ctx = useAuth((s) => s.ctx);
   const loc = useLocation();
-  if (status === 'loading') return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
+  if (status === 'loading') return <AppSplash />;
   if (status === 'offline') return <OfflineWork />;
   if (status === 'anonymous') {
     // Someone signed out who opened the home address sees the public page (index.html), not the sign-in form.
@@ -305,6 +307,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
   const canReports = permReports && mReports;
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
   const kinds = useVisibleKinds();
+  const ai = useAi();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -325,7 +328,9 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         {/* Home */}
         <Route index element={<DashboardPage />} />
         <Route path="approve/:id" element={<ApprovePage />} />
-        <Route path="my-work" element={<Guard allow={kinds.length > 0}><MyWorkPage /></Guard>} />
+        {/* My work lives in the Command Center now (its own tab); without the Command Center the page stands alone. */}
+        <Route path="my-work" element={<Guard allow={kinds.length > 0}>{mProjects && !isGuest ? <Moved to="/command-center?tab=work" /> : <MyWorkPage />}</Guard>} />
+        <Route path="agents" element={<Navigate to={ai ? '/ai' : '/project-agent'} replace />} />
         <Route path="agent-tracker" element={<AgentTrackerPage />} />
         <Route path="command-center" element={<Guard allow={mProjects && !isGuest}><CommandCenterPage /></Guard>} />
         <Route path="project-agent" element={<Guard allow={mProjects && !personal}><AgentPage section="review" /></Guard>} />
@@ -426,12 +431,12 @@ function OrgRouter() {
       .catch(() => { window.location.replace(`/${ctx!.current!.slug}/`); })   // no longer a member, or the organization is blocked for them
       .finally(() => { activating.current = null; });
   }, [mine, other, ctx]);
-  if (other) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>;
+  if (other) return <AppSplash message="Opening the organization" />;
 
   return (
     <OrgGateContext.Provider value={refresh}>
       <BrowserRouter key={mine?.slug ?? 'root'} basename={mine ? `/${mine.slug}` : undefined}>
-        <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><PageLoader /></div>}>
+        <Suspense fallback={<AppSplash />}>
           <AppRoutes scoped={!!mine} />
         </Suspense>
       </BrowserRouter>

@@ -1114,3 +1114,51 @@ tr.row-deleted .td-title { font-style: italic; }
 .gm-chat-card.cancelled { opacity: .7; }
 .gm-chat-card-head { display: flex; align-items: center; gap: 8px; }
 .gm-chat-card-head b { font-size: 13.5px; }
+
+/* ------------------------------------------------------------------ project timeline: header, progress, nudge, and a vertical timeline on phones */
+.tl-head { align-items: flex-start; }
+.tl-head-main { min-width: 0; flex: 1 1 260px; }
+.tl-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.tl-summary { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; margin-bottom: 14px; }
+.tl-progress { flex: 1 1 280px; min-width: 0; display: grid; gap: 7px; }
+.tl-progress-top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; font-size: 13px; color: var(--text-2); }
+.tl-progress-top b { font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+.tl-mode { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 2px 9px; border-radius: 99px; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--primary); background: var(--primary-soft); white-space: nowrap; }
+.tl-segments { display: flex; gap: 3px; height: 8px; }
+.tl-segments i { flex: 1; border-radius: 99px; min-width: 6px; }
+.tl-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--text-3); }
+.tl-legend li { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tl-legend i { width: 9px; height: 9px; border-radius: 3px; }
+.seg-done { background: var(--primary-fill); }
+.seg-active { background: color-mix(in srgb, var(--primary) 55%, var(--surface)); box-shadow: inset 0 0 0 1.5px var(--primary); }
+.seg-pending { background: color-mix(in srgb, var(--text-3) 22%, var(--surface)); }
+.seg-locked { background: repeating-linear-gradient(135deg, var(--border-strong) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.seg-delayed { background: var(--danger); }
+.tl-nudge { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; margin-bottom: 14px; padding: 12px 14px; border-radius: 12px;
+  background: var(--info-soft); border: 1px solid color-mix(in srgb, var(--info) 25%, transparent); }
+.tl-nudge-icon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; background: var(--info); }
+.tl-nudge p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+.tl-nudge-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .tl-actions { width: 100%; justify-content: flex-start; }
+  .tl-actions .btn-primary { margin-left: auto; }
+  .tl-hide-sm { display: none; }
+  .tl-mode { margin-left: 0; }
+  .tl-nudge { grid-template-columns: auto minmax(0, 1fr); }
+  .tl-nudge-actions { grid-column: 1 / -1; }
+  .tl-nudge-actions .btn { flex: 1; }
+  /* Stages run down the screen on a phone: dot, then the card beside it, with the line between the dots. */
+  .tl-card .htl { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; gap: 0; padding: 4px 0 0; }
+  .tl-card .htl-item { flex-direction: row; gap: 12px; padding-bottom: 14px; }
+  .tl-card .htl-item::before { left: 18px; right: auto; top: 40px; bottom: 2px; width: 2px; height: auto; }
+  .tl-card .htl-item.locked::before { background: repeating-linear-gradient(180deg, var(--border-strong) 0 6px, transparent 6px 11px); }
+  .tl-card .htl-body { min-width: 0; }
+  .tl-card .htl-top { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .tl-card .htl-move svg { transform: rotate(90deg); }
+  .tl-card .htl-item.drop-before::after, .tl-card .htl-item.drop-after::after { left: 50px; right: 0; width: auto; height: 3px; top: auto; bottom: auto; }
+  .tl-card .htl-item.drop-before::after { top: -2px; }
+  .tl-card .htl-item.drop-after::after { bottom: 6px; }
+}
+/* Anywhere: actions in a card header wrap instead of squeezing into each other. */
+.card-head > .row { flex-wrap: wrap; justify-content: flex-end; }
+.legend { flex-direction: row; }

@@ -29,7 +29,7 @@ const BUCKETS = ['Overdue', 'Due today', 'Next 7 days', 'Later', 'No due date'];
  * My work: everything assigned to me in one list, whatever kind it is (project tasks, issues, action items, operational work),
  * grouped by when it is due. Project tasks and operational work open in place; issues and action items open on their project.
  */
-export function MyWorkPage() {
+export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const visible = useVisibleKinds();
@@ -81,9 +81,13 @@ export function MyWorkPage() {
 
   return (
     <>
-      <PageHead title="My work" sub="Everything assigned to you, whatever kind of work it is, in the order it is due.">
-        {canCreateWork && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
-      </PageHead>
+      {embedded ? (
+        canCreateWork && <div className="mywork-embedded-actions"><button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New work task</button></div>
+      ) : (
+        <PageHead title="My work" sub="Everything assigned to you, whatever kind of work it is, in the order it is due.">
+          {canCreateWork && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
+        </PageHead>
+      )}
 
       {view === 'open' && !list.isLoading && (
         <div className="stat-grid">
