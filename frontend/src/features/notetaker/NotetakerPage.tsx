@@ -1,0 +1,245 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ApiError } from '../../api/client';
+import { integrationsApi } from '../../api/endpoints';
+import { microsoftApi } from '../../api/endpoints.platform';
+import { taskApi } from '../../api/endpoints.projects';
+import { Icon } from '../../components/Icon';
+import { Select } from '../../components/Select';
+import { Modal, PageLoader, ErrorState, Spinner } from '../../components/ui';
+import { formatDateTime, timeAgo } from '../../lib/format';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useAuth, useWorkspaceId } from '../../stores/auth';
+import { confirmDialog, toast } from '../../stores/ui';
+import { mailboxApi } from '../mailbox/mailboxApi';
+import { minutesText, notetakerApi } from './notetakerApi';
+import type { Minutes, NotetakerSession } from './notetakerApi';
+import './notetaker.css';
+
+const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
+const DURATIONS = [30, 45, 60, 90, 120, 180];
+
+function statusOf(s: NotetakerSession): { label: string; tone: 'live' | 'wait' | 'ok' | 'bad' | 'idle' } {
+  if (s.status === 'failed') return { label: 'Did not record', tone: 'bad' };
+  if (s.status === 'done') return { label: s.minutesStatus === 'sent' ? 'Minutes sent' : s.hasMinutes ? 'Minutes ready' : 'Recorded', tone: 'ok' };
+  if (s.workerStatus === 'in_call_recording' || s.status === 'in_call') return { label: 'In the call · taking notes', tone: 'live' };
+  if (s.workerStatus === 'waiting_admission') return { label: 'Waiting to be let in', tone: 'wait' };
+  if (s.workerStatus === 'joining') return { label: 'Joining…', tone: 'wait' };
+  if (s.workerStatus === 'fatal') return { label: 'Could not join', tone: 'bad' };
+  return { label: new Date(s.start) > new Date() ? 'Scheduled' : 'Waiting for a free bot', tone: 'idle' };
+}
+
+export function NotetakerPage() {
+  const wid = useWorkspaceId();
+  const [params, setParams] = useSearchParams();
+  const q = useWsQuery(['notetaker'], notetakerApi.overview, { refetchInterval: 10_000 });
+  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState('');
+  const [minutes, setMinutes] = useState(60);
+  const [project, setProject] = useState('');
+  const [raise, setRaise] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<string | null>(params.get('session'));
+  const data = q.data;
+  useEffect(() => { if (data && !project) setProject(data.settings.projectId ?? data.projects.find((p) => p.agentReady)?.id ?? data.projects[0]?.id ?? ''); }, [data, project]);
+
+  if (q.isLoading) return <PageLoader />;
+  if (q.isError || !data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
+  const chosen = data.projects.find((p) => p.id === project);
+
+  const join = async () => {
+    setBusy(true);
+    try {
+      await notetakerApi.join({ url: url.trim(), title: title.trim() || undefined, minutes, projectId: project || null, instructions: raise.trim() || undefined });
+      toast('Your notetaker is on its way. It joins within a minute.');
+      setUrl(''); setTitle(''); setRaise('');
+      void invalidateWorkspace(wid, 'notetaker');
+    } catch (e) { toast(errText(e, 'The notetaker could not be sent.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  const save = async (patch: Partial<typeof data.settings>) => {
+    try { await notetakerApi.saveSettings({ ...data.settings, ...patch }); void invalidateWorkspace(wid, 'notetaker'); toast('Saved.'); }
+    catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
+  };
+  const stop = async (s: NotetakerSession) => {
+    if (!(await confirmDialog({ title: 'Call the notetaker back?', message: 'It leaves the call. What it heard so far is kept and written up.', confirmText: 'Leave the call' }))) return;
+    try { await notetakerApi.stop(s.id); void invalidateWorkspace(wid, 'notetaker'); } catch (e) { toast(errText(e, 'Could not stop it.'), 'error'); }
+  };
+  const live = data.sessions.filter((s) => ['scheduled', 'in_call'].includes(s.status));
+  const past = data.sessions.filter((s) => !['scheduled', 'in_call'].includes(s.status));
+
+  return (
+    <div className="nt">
+      <header className="nt-hero">
+        <div>
+          <span className="nt-eyebrow"><Icon name="sparkle" size={13} /> AI notetaker</span>
+          <h1>Your notetaker</h1>
+          <p>Send it to any Google Meet or Teams call. It joins in your name, takes notes, answers questions about your project in the chat, writes the minutes and proposes task updates.</p>
+        </div>
+        <ul className="nt-checks" aria-label="Readiness">
+          <li className={data.botReady ? 'ok' : 'bad'}><Icon name={data.botReady ? 'checkCircle' : 'alert'} size={15} />{data.botReady ? 'Meeting bot online' : 'Meeting bot not set up'}</li>
+          <li className={data.signedInAccount ? 'ok' : 'warn'}><Icon name={data.signedInAccount ? 'checkCircle' : 'info'} size={15} />
+            {data.signedInAccount ? <>Joins as <b>{data.accountName}</b> — let in automatically in your company's calls</> : 'Joins as a guest — the host lets it in'}</li>
+          <li className={data.calendarConnected ? 'ok' : 'warn'}><Icon name={data.calendarConnected ? 'checkCircle' : 'info'} size={15} />
+            {data.calendarConnected ? 'Google Calendar connected' : <>Connect Google in <Link to="/account/integrations">Connected accounts</Link> to join calendar calls</>}</li>
+          <li className={data.aiAvailable ? 'ok' : 'warn'}><Icon name={data.aiAvailable ? 'checkCircle' : 'info'} size={15} />{data.aiAvailable ? 'Minutes written by AI' : 'AI is off: transcripts only'}</li>
+        </ul>
+      </header>
+
+      <div className="nt-grid">
+        <section className="nt-card nt-send" aria-labelledby="nt-send-title">
+          <h2 id="nt-send-title"><Icon name="video" size={17} /> Join a call for me</h2>
+          <label className="nt-field"><span>Meeting link</span>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://meet.google.com/abc-defg-hij" inputMode="url" /></label>
+          <div className="nt-row">
+            <label className="nt-field"><span>Name (optional)</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Client sync" /></label>
+            <label className="nt-field nt-short"><span>Stay up to</span>
+              <Select aria-label="Stay up to" value={String(minutes)} onChange={(e) => setMinutes(Number(e.target.value))}>{DURATIONS.map((m) => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h${m % 60 ? ' 30' : ''}`}</option>)}</Select></label>
+          </div>
+          <label className="nt-field"><span>File notes under</span>
+            <Select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)}>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}{p.agentReady ? '' : ' (agent off)'}</option>)}</Select></label>
+          {chosen && !chosen.agentReady && <p className="nt-warn"><Icon name="alert" size={13} /> Switch on this project's agent with “read meetings” first (<Link to={`/projects/${chosen.id}?tab=agent`}>Project › Agent</Link>).</p>}
+          <label className="nt-field"><span>Anything to raise for you? (optional)</span>
+            <textarea rows={3} value={raise} onChange={(e) => setRaise(e.target.value)} placeholder="Ask when the UAT sign-off will happen. Tell them I'll send the estimate by Friday." /></label>
+          <button className="btn btn-primary" disabled={busy || !url.trim() || !project || !data.botReady} onClick={() => void join()}>{busy ? <Spinner /> : <Icon name="play" size={14} />} Join now</button>
+        </section>
+
+        <section className="nt-card" aria-labelledby="nt-auto-title">
+          <h2 id="nt-auto-title"><Icon name="settings" size={17} /> Automatic</h2>
+          <label className="nt-field"><span>File my notes under</span>
+            <Select aria-label="Default project" value={data.settings.projectId ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
+              <option value="">Choose a project</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
+          <label className="nt-toggle"><input type="checkbox" checked={data.settings.autoJoin} disabled={!data.settings.projectId} onChange={(e) => void save({ autoJoin: e.target.checked })} />
+            <span><b>Join every call on my Google Calendar</b><small>It joins each Meet call a minute before it starts, in your name, even when you are there too.</small></span></label>
+          <label className="nt-toggle"><input type="checkbox" checked={data.settings.autoMinutes} onChange={(e) => void save({ autoMinutes: e.target.checked })} />
+            <span><b>Write the minutes when a call ends</b><small>You get a notification to review and email them. One AI request per call.</small></span></label>
+        </section>
+      </div>
+
+      <section className="nt-card" aria-labelledby="nt-sessions-title">
+        <h2 id="nt-sessions-title"><Icon name="list" size={17} /> Calls</h2>
+        {data.sessions.length === 0 ? <p className="muted">No calls yet. Send the notetaker to one above.</p> : (
+          <ul className="nt-sessions">
+            {[...live, ...past].map((s) => {
+              const st = statusOf(s);
+              return (
+                <li key={s.id} className={`nt-session ${st.tone}`}>
+                  <span className={`nt-dot ${st.tone}`} aria-hidden />
+                  <div className="nt-session-main">
+                    <b>{s.title}</b>
+                    <small>{formatDateTime(s.start)} · {s.projectName}{s.automatic ? ' · from your calendar' : ''}{s.transcriptLength > 0 ? ` · ${Math.round(s.transcriptLength / 6)} words heard` : ''}</small>
+                    <span className={`nt-status ${st.tone}`}>{st.label}</span>
+                    {s.error && st.tone === 'bad' && <small className="nt-error">{s.error.replace(/^NOTETAKER_SIGNED_OUT:\s*/, '')}</small>}
+                  </div>
+                  <div className="nt-session-actions">
+                    {['scheduled', 'in_call'].includes(s.status) && s.mine && <button className="btn btn-sm btn-ghost" onClick={() => void stop(s)}>Leave call</button>}
+                    {(s.status === 'done' || s.hasMinutes) && <button className="btn btn-sm" onClick={() => { setOpen(s.id); setParams({ session: s.id }, { replace: true }); }}><Icon name="note" size={14} /> {s.hasMinutes ? 'Minutes' : 'Write minutes'}</button>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {open && <MinutesModal sessionId={open} session={data.sessions.find((s) => s.id === open)} ai={data.aiAvailable}
+        onClose={() => { setOpen(null); setParams({}, { replace: true }); void invalidateWorkspace(wid, 'notetaker'); }} />}
+    </div>
+  );
+}
+
+function MinutesModal({ sessionId, session, ai, onClose }: { sessionId: string; session?: NotetakerSession; ai: boolean; onClose: () => void }) {
+  const wid = useWorkspaceId();
+  const me = useAuth((s) => s.ctx?.user.displayName ?? '');
+  const m = useWsQuery(['notetaker', 'minutes', sessionId], () => notetakerApi.minutes(sessionId));
+  const [writing, setWriting] = useState(false);
+  const [mail, setMail] = useState(false);
+  const [created, setCreated] = useState<Set<number>>(new Set());
+  const write = async () => {
+    setWriting(true);
+    try { await notetakerApi.writeMinutes(sessionId); await m.refetch(); }
+    catch (e) { toast(errText(e, 'The minutes could not be written.'), 'error'); }
+    finally { setWriting(false); }
+  };
+  const minutes = m.data;
+  const createTask = async (i: number, minutesRow: Minutes) => {
+    const a = minutesRow.content.actionItems[i];
+    const due = a.due && /^\d{4}-\d{2}-\d{2}$/.test(a.due) ? a.due : null;
+    try {
+      await taskApi.create(minutesRow.projectId, { title: a.task.slice(0, 200), description: `From the minutes of ${minutesRow.title}${a.owner ? `\nOwner named in the call: ${a.owner}` : ''}${a.due && !due ? `\nDue as said: ${a.due}` : ''}`, priority: 'Medium', dueDate: due });
+      setCreated((c) => new Set(c).add(i)); toast('Task created.'); void invalidateWorkspace(wid, 'tasks');
+    } catch (e) { toast(errText(e, 'Could not create the task.'), 'error'); }
+  };
+  return (
+    <Modal title={minutes?.title ?? session?.title ?? 'Minutes'} subtitle={session ? `${formatDateTime(session.start)} · ${session.projectName}` : undefined} onClose={onClose} size="lg"
+      footer={minutes ? <>
+        <button className="btn btn-ghost" disabled={writing || !ai} onClick={() => void write()}>{writing ? <Spinner /> : <Icon name="refresh" size={14} />} Rewrite</button>
+        <button className="btn btn-primary" onClick={() => setMail(true)}><Icon name="mail" size={14} /> Email minutes</button>
+      </> : undefined}>
+      {m.isLoading ? <PageLoader /> : !minutes ? (
+        <div className="nt-empty">
+          <Icon name="note" size={28} />
+          <p>{ai ? 'The notetaker can write the minutes from what it heard: summary, decisions, action items with owners, risks.' : 'AI is off for this workspace, so minutes cannot be written.'}</p>
+          <button className="btn btn-primary" disabled={writing || !ai} onClick={() => void write()}>{writing ? <Spinner /> : <Icon name="sparkle" size={14} />} Write the minutes</button>
+        </div>
+      ) : (
+        <div className="nt-minutes">
+          {minutes.sentAt && <p className="nt-sent"><Icon name="checkCircle" size={14} /> Emailed {timeAgo(minutes.sentAt)}</p>}
+          {minutes.content.attendees.length > 0 && <p className="nt-attendees"><b>Attendees:</b> {minutes.content.attendees.join(', ')}</p>}
+          <h3>Summary</h3><p>{minutes.content.summary}</p>
+          {minutes.content.decisions.length > 0 && <><h3>Decisions</h3><ul>{minutes.content.decisions.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
+          {minutes.content.actionItems.length > 0 && <><h3>Action items</h3>
+            <ul className="nt-actions">{minutes.content.actionItems.map((a, i) => (
+              <li key={i}><span><b>{a.task}</b><small>{[a.owner, a.due && `by ${a.due}`].filter(Boolean).join(' · ') || 'No owner named'}</small></span>
+                {created.has(i) ? <span className="nt-done"><Icon name="check" size={13} /> Task created</span> : <button className="btn btn-sm" onClick={() => void createTask(i, minutes)}><Icon name="plus" size={13} /> Create task</button>}</li>
+            ))}</ul></>}
+          {minutes.content.discussion.length > 0 && <><h3>Discussion</h3><ul>{minutes.content.discussion.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
+          {minutes.content.risks.length > 0 && <><h3>Risks and blockers</h3><ul>{minutes.content.risks.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
+          {minutes.content.nextMeeting && <p><b>Next meeting:</b> {minutes.content.nextMeeting}</p>}
+          <p className="nt-foot">The project agent also reads this call and proposes task updates in <Link to={`/projects/${minutes.projectId}?tab=agent`}>the project's agent</Link> for you to approve.</p>
+        </div>
+      )}
+      {mail && minutes && <SendMinutes sessionId={sessionId} minutes={minutes} owner={me} onClose={() => setMail(false)} onSent={() => { setMail(false); void m.refetch(); }} />}
+    </Modal>
+  );
+}
+
+function SendMinutes({ sessionId, minutes, owner, onClose, onSent }: { sessionId: string; minutes: Minutes; owner: string; onClose: () => void; onSent: () => void }) {
+  const google = useWsQuery(['account', 'google-status'], integrationsApi.googleStatus);
+  const ms = useWsQuery(['account', 'microsoft-status'], microsoftApi.status);
+  const imap = useWsQuery(['mailbox', 'accounts'], mailboxApi.accounts);
+  const accounts = useMemo(() => [
+    ...(google.data?.connected && google.data.mailSendAccess ? [{ key: 'google', label: `Gmail · ${google.data.googleEmail ?? ''}` }] : []),
+    ...(ms.data?.connected && ms.data.mailSendAccess ? [{ key: 'microsoft', label: `Outlook · ${ms.data.email ?? ''}` }] : []),
+    ...(imap.data?.imap ?? []).map((a) => ({ key: `imap:${a.id}`, label: `${a.name} · ${a.email}` })),
+  ], [google.data, ms.data, imap.data]);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [subject, setSubject] = useState(`Minutes of meeting: ${minutes.title}`);
+  const [body, setBody] = useState(() => minutesText(minutes.content, owner));
+  const [busy, setBusy] = useState(false);
+  const account = from || accounts[0]?.key || '';
+  const send = async () => {
+    if (!(await confirmDialog({ title: 'Email the minutes?', message: `To ${to}${cc ? `, cc ${cc}` : ''}.`, confirmText: 'Send' }))) return;
+    setBusy(true);
+    try { await notetakerApi.sendMinutes(sessionId, { account, to, cc, subject, body, confirmed: true }); toast('Minutes sent.'); onSent(); }
+    catch (e) { toast(errText(e, 'The minutes could not be sent.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Email the minutes" onClose={onClose} size="lg" footer={<>
+      <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+      <button className="btn btn-primary" disabled={busy || !account || !to.trim()} onClick={() => void send()}>{busy ? <Spinner /> : <Icon name="send" size={14} />} Send</button></>}>
+      {accounts.length === 0 ? <p className="muted">Connect a mail account in <Link to="/mailbox">Mailbox</Link> first.</p> : (
+        <div className="nt-mail">
+          <label className="nt-field"><span>From</span><Select aria-label="From" value={account} onChange={(e) => setFrom(e.target.value)}>{accounts.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}</Select></label>
+          <label className="nt-field"><span>To</span><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="attendees@company.com, …" autoFocus /></label>
+          <label className="nt-field"><span>Cc</span><input value={cc} onChange={(e) => setCc(e.target.value)} /></label>
+          <label className="nt-field"><span>Subject</span><input value={subject} onChange={(e) => setSubject(e.target.value)} /></label>
+          <label className="nt-field"><span>Message</span><textarea rows={14} value={body} onChange={(e) => setBody(e.target.value)} /></label>
+        </div>
+      )}
+    </Modal>
+  );
+}

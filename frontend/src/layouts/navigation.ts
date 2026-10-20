@@ -69,6 +69,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat },
       { to: '/mailbox', label: 'Mailbox', icon: 'mail', hint: 'Gmail, Outlook and Rediffmail in one inbox, with the mail agent' },
+      { to: '/notetaker', label: 'Notetaker', icon: 'video', show: lv('projects') > 0 && !isGuest, hint: 'Sends an AI notetaker to your calls: notes, minutes and task updates' },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
     ] },
     { title: 'Work', items: [

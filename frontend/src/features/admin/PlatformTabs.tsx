@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { invoiceSellerApi, platformApi } from '../../api/endpoints';
 import { EmailPanel } from './EmailPanel';
+import { NotetakerAccountsCard } from '../notetaker/NotetakerAccounts';
+import '../notetaker/notetaker.css';
 import type { AdminUsage, BillingSettings, InvoiceSeller, ConsentDocument, GoLive, PasswordPolicy, PlatformSettings } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, EmptyState, ErrorState, Field, Modal, PageLoader, StatCard } from '../../components/ui';
@@ -448,6 +450,7 @@ export function HealthTab() {
       <GoLiveCard />
       <EmailPanel />
       <MeetingBotsCard />
+      <NotetakerAccountsCard />
       <div className="stat-grid">
         <StatCard icon="activity" tone={h.status === 'ok' ? 'green' : h.status === 'down' ? 'red' : 'amber'} value={h.status === 'ok' ? 'Healthy' : h.status === 'down' ? 'Down' : 'Degraded'} label="Overall" foot={`v${h.version} · ${h.runtime}`} />
         <StatCard icon="clock" tone="blue" value={uptime(h.uptimeSeconds)} label="Uptime" foot={`since ${formatDate(h.startedAt)}`} />

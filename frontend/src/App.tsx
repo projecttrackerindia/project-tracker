@@ -56,6 +56,7 @@ const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'Report
 const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
 const UserMailboxPage = page(() => import('./features/mailbox/MailboxPage'), 'MailboxPage');
+const NotetakerPage = page(() => import('./features/notetaker/NotetakerPage'), 'NotetakerPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
 const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
@@ -349,6 +350,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
         <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         <Route path="mailbox" element={<UserMailboxPage />} />
+        <Route path="notetaker" element={<Guard allow={mProjects && !isGuest}><NotetakerPage /></Guard>} />
         <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         {/* Delivery */}
         <Route path="projects" element={<Guard allow={mProjects}><ProjectsPage /></Guard>} />
