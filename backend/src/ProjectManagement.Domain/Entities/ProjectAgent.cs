@@ -77,6 +77,10 @@ namespace ProjectManagement.Domain.Entities
         public bool FollowUps { get; set; } = true;
         /// <summary>A short brief to the people in a project meeting shortly before it starts.</summary>
         public bool MeetingBriefs { get; set; } = true;
+        /// <summary>The most AI credits the agent may use for this project in a calendar month (0 = no cap beyond the workspace's own credits).</summary>
+        public int MonthlyCreditCap { get; set; }
+        /// <summary>Kinds of proposal the lead said "not now" to when the agent suggested carrying them out by itself (comma-separated).</summary>
+        public string? AutonomyHintsDismissed { get; set; }
     }
 
     /// <summary>Something the agent will read: an e-mail, a stretch of chat, a meeting transcript. The content is stored encrypted.</summary>
@@ -165,6 +169,8 @@ namespace ProjectManagement.Domain.Entities
         public string? Before { get; set; }
         /// <summary>The commitment check-in this proposal came from ("I need more time"), when it came from one.</summary>
         public Guid? CommitmentId { get; set; }
+        /// <summary>Why it was dismissed (not_needed, wrong, duplicate, already_done, not_ours, other), so the agent learns what to stop proposing.</summary>
+        public string? DismissReason { get; set; }
     }
 
     /// <summary>
@@ -248,6 +254,22 @@ namespace ProjectManagement.Domain.Entities
         public string BotName { get; set; } = "Project Tracker Agent";
         /// <summary>Post short reminders in the meeting chat while people talk.</summary>
         public bool InCallReminders { get; set; } = true;
+        /// <summary>Tell the owners and admins when an agent needs attention (the thresholds below), at most once a day per problem.</summary>
+        public bool AlertsEnabled { get; set; } = true;
+        /// <summary>Alert when fewer than this share (%) of the assistant's answers succeed in a day (with at least 10 answers).</summary>
+        public int AlertMinSuccessRate { get; set; } = 80;
+        /// <summary>Alert when the slow end (p95) of the assistant's answers takes longer than this many seconds.</summary>
+        public int AlertMaxP95Seconds { get; set; } = 30;
+        /// <summary>Alert when the meeting bot could not attend this many sessions in a day.</summary>
+        public int AlertBotFailures { get; set; } = 2;
+        /// <summary>Alert when the project agent failed this many readings in a day.</summary>
+        public int AlertReadingFailures { get; set; } = 3;
+        /// <summary>Alert when, at the current pace, the AI credits run out within this many days (before they renew).</summary>
+        public int AlertCreditDays { get; set; } = 5;
+        /// <summary>Every Monday morning, a short summary to the owners and admins of what the agents did last week.</summary>
+        public bool WeeklyDigest { get; set; } = true;
+        /// <summary>When the alerts were last checked (one server checks at a time).</summary>
+        public DateTime? AlertsCheckedAt { get; set; }
     }
 
     /// <summary>

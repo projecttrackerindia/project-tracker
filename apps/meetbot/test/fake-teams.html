@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Teams - synthetic</title>
+<!-- A stand-in for the Microsoft Teams web meeting with the structure the bot relies on (src/teams.mjs): launcher, pre-join, lobby, live captions
+     under More > Language and speech, chat. No Microsoft code. -->
+<style>body{font-family:sans-serif}#prejoin,#lobby,#call,#ended{display:none}</style>
+</head>
+<body>
+<section id="launcher">
+  <h1>How do you want to join your Teams meeting?</h1>
+  <button type="button" id="web">Continue on this browser</button>
+</section>
+<section id="prejoin">
+  <h1>Choose your audio and video settings</h1>
+  <input type="text" data-tid="prejoin-display-name-input" placeholder="Type your name" aria-label="Type your name">
+  <div role="switch" aria-label="Microphone" aria-checked="true" tabindex="0" id="mic">mic</div>
+  <div role="switch" aria-label="Camera" aria-checked="true" tabindex="0" id="cam">cam</div>
+  <button type="button" id="join">Join now</button>
+</section>
+<p id="lobby">Hi, someone in the meeting should let you in soon.</p>
+<section id="call">
+  <button type="button" aria-label="Leave (Ctrl+Shift+H)" id="leave">Leave</button>
+  <button type="button" aria-label="More" id="more">...</button>
+  <div role="menu" id="menu" hidden>
+    <div role="menuitem" id="lang">Language and speech</div>
+    <div role="menu" id="langmenu" hidden><div role="menuitem" id="cc">Turn on live captions</div></div>
+  </div>
+  <button type="button" aria-label="Chat" id="chat">Chat</button>
+  <div id="panel" hidden><div data-tid="ckeditor" contenteditable="true" role="textbox" aria-label="Type a message"></div><div id="messages"></div></div>
+</section>
+<p id="ended"></p>
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (id, on = true) => { $(id).style.display = on ? 'block' : 'none'; };
+for (const sw of [$('mic'), $('cam')]) sw.onclick = () => sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+$('web').onclick = () => { show('launcher', false); show('prejoin'); };
+$('join').onclick = () => {
+  if (!document.querySelector('[data-tid="prejoin-display-name-input"]').value) return;
+  if ($('mic').getAttribute('aria-checked') === 'true' || $('cam').getAttribute('aria-checked') === 'true') fetch('/chat-log', { method: 'POST', body: 'MEDIA STILL ON' });
+  show('prejoin', false); show('lobby');
+  setTimeout(() => { show('lobby', false); show('call'); }, 500);   // someone admits the bot from the lobby
+};
+$('leave').onclick = () => { show('call', false); $('ended').textContent = 'You left the meeting'; show('ended'); };
+$('more').onclick = () => { $('menu').hidden = false; };
+$('lang').onclick = () => { $('langmenu').hidden = false; };
+$('chat').onclick = () => { $('panel').hidden = false; };
+const message = (who, text) => {
+  const m = document.createElement('div'); m.setAttribute('data-tid', 'chat-pane-message');
+  const a = document.createElement('span'); a.setAttribute('data-tid', 'message-author-name'); a.textContent = who;
+  const c = document.createElement('div'); c.id = 'content-' + Date.now() + Math.random(); c.textContent = text;
+  m.append(a, c); $('messages').appendChild(m);
+};
+document.querySelector('[data-tid="ckeditor"]').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const t = e.target.textContent; e.target.textContent = '';
+  message('Tracker Bot (Guest)', t);
+  fetch('/chat-log', { method: 'POST', body: t });
+});
+const speak = async (box, who, words) => {
+  const item = document.createElement('div'); item.className = 'fui-ChatMessageCompact';
+  const a = document.createElement('span'); a.setAttribute('data-tid', 'author'); a.textContent = who;
+  const said = document.createElement('span'); said.setAttribute('data-tid', 'closed-caption-text');
+  item.append(a, said); box.appendChild(item);
+  for (const w of words.split(' ')) { said.textContent = (said.textContent + ' ' + w).trim(); await new Promise((r) => setTimeout(r, 60)); }
+};
+$('cc').onclick = async () => {
+  $('menu').hidden = true;
+  $('cc').textContent = 'Turn off live captions';
+  const box = document.createElement('div'); box.setAttribute('data-tid', 'closed-caption-v2-window-wrapper');
+  $('call').appendChild(box);
+  await new Promise((r) => setTimeout(r, 300));
+  await speak(box, 'Ravi Kumar', 'The payment gateway is live in staging and I will finish the settlement report tomorrow');
+  await new Promise((r) => setTimeout(r, 2500));
+  await speak(box, 'Priya', 'Who owns the refund flow? Nobody has picked it up');
+  message('Priya', 'agent, where is PAY-9?');
+};
+setInterval(async () => {
+  const r = await fetch('/control').then((x) => x.json()).catch(() => ({}));
+  if (r.ended && $('ended').style.display !== 'block') { show('call', false); $('ended').textContent = 'The meeting has ended'; show('ended'); }
+}, 300);
+</script>
+</body>
+</html>

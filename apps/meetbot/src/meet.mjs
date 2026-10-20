@@ -42,6 +42,8 @@ const clickButton = async (page, name) => {
   return false;
 };
 
+export const name = 'meet';
+
 export const pageText = (page) => page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
 
 /** The pre-join screen: type the bot's name, switch off camera and microphone, ask to join. */
@@ -159,6 +161,8 @@ export function captionWatcher(regionSelector) {
   window.ptFlushCaptions = () => { for (const b of blocks) flush(b, true); };
 }
 
+export const watchCaptions = (page) => page.evaluate(captionWatcher, SEL.captionsRegion);
+
 /** Opens the chat panel (to read what people write there). */
 export async function openChat(page) {
   if (await firstVisible(page, SEL.chatInput)) return true;
@@ -195,6 +199,8 @@ export function chatWatcher({ messageSelector, senderSelector, botName }) {
   setInterval(scan, 1000);
 }
 
+export const watchChat = (page, botName) => page.evaluate(chatWatcher, { messageSelector: SEL.chatMessage, senderSelector: SEL.chatSender, botName });
+
 /** Posts a message to everyone in the meeting chat (opens the chat panel if needed). */
 export async function sendChat(page, message) {
   let input = await firstVisible(page, SEL.chatInput);
@@ -204,6 +210,13 @@ export async function sendChat(page, message) {
   await input.fill(message);
   await input.press('Enter');
 }
+
+/** Whether the call is over for the bot: the end page, or no Leave button any more. */
+export async function isOver(page, text) {
+  return TEXT.ended.test(text) || !(await page.getByRole('button', { name: SEL.leave }).count());
+}
+
+export const isAlone = (text) => TEXT.alone.test(text);
 
 export async function leave(page) {
   await clickButton(page, SEL.leave);

@@ -31,7 +31,9 @@ public record AgentActionStatDto(string Kind, int Count, int Failed, int Confirm
 /// (sessions attended, transcripts, minutes, delegations) and follow-ups (commitments kept, check-ins answered, change requests).
 /// </summary>
 public record AgentFleetDto(DateTime From, DateTime To, AgentFleetProjectAgentDto ProjectAgent, AgentFleetMeetingsDto Meetings, AgentFleetFollowUpsDto FollowUps,
-    IReadOnlyList<AgentFleetDayDto> Days, IReadOnlyList<AgentFleetProjectDto> Projects);
+    IReadOnlyList<AgentFleetDayDto> Days, IReadOnlyList<AgentFleetProjectDto> Projects, IReadOnlyList<AgentFleetReasonDto>? DismissReasons = null);
+/// <summary>Why proposals were dismissed (reason code, or "unspecified").</summary>
+public record AgentFleetReasonDto(string Reason, int Count);
 public record AgentFleetProjectAgentDto(int ProjectsOn, int Readings, int FailedReadings, int Findings, int Approved, int AutoApplied, int Dismissed, int Pending, int Credits,
     double? AverageDecisionHours, IReadOnlyList<AgentFleetKindDto> Kinds, IReadOnlyList<AgentFleetSourceDto> Sources, int AtLevel1, int AtLevel2, int AtLevel3, int AtLevel4);
 public record AgentFleetKindDto(string Kind, int Found, int Approved, int Dismissed, int Pending, int Auto);
@@ -158,7 +160,7 @@ public sealed class AgentTrackerService(IAppDbContext db, ICurrentContext ctx, A
         var runs = await db.AgentRuns.AsNoTracking().Where(r => r.StartedAt >= start && r.StartedAt <= end)
             .Select(r => new { r.Id, r.ProjectId, r.Status, r.FindingCount, r.Credits, r.StartedAt, r.MinutesSentAt, r.Trigger }).Take(20_000).ToListAsync(ct);
         var findings = await db.AgentFindings.AsNoTracking().Where(f => f.CreatedAt >= start && f.CreatedAt <= end)
-            .Select(f => new { f.ProjectId, f.Kind, f.Status, f.AutoApplied, f.CreatedAt, f.DecidedAt }).Take(50_000).ToListAsync(ct);
+            .Select(f => new { f.ProjectId, f.Kind, f.Status, f.AutoApplied, f.CreatedAt, f.DecidedAt, f.DismissReason }).Take(50_000).ToListAsync(ct);
         var signals = await db.AgentSignals.AsNoTracking().Where(x => x.CreatedAt >= start && x.CreatedAt <= end).GroupBy(x => x.Source)
             .Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
         var sessions = await db.AgentMeetingBots.AsNoTracking().Where(b => b.SessionStartUtc >= start && b.SessionStartUtc <= end)
@@ -199,7 +201,9 @@ public sealed class AgentTrackerService(IAppDbContext db, ICurrentContext ctx, A
                 runs.Count(r => r.ProjectId == p.Id), findings.Count(f => f.ProjectId == p.Id), findings.Count(f => f.ProjectId == p.Id && f.Status == AgentFindingStatus.Applied),
                 findings.Count(f => f.ProjectId == p.Id && f.Status == AgentFindingStatus.Dismissed), findings.Count(f => f.ProjectId == p.Id && f.Status == AgentFindingStatus.Proposed)))
             .OrderByDescending(p => p.Findings).ThenBy(p => p.Name, StringComparer.Ordinal).Take(12).ToList();
-        return new AgentFleetDto(start, end, agent, meetings, follow, days, perProject);
+        var reasons = findings.Where(f => f.Status == AgentFindingStatus.Dismissed).GroupBy(f => f.DismissReason ?? "unspecified")
+            .Select(g => new AgentFleetReasonDto(g.Key, g.Count())).OrderByDescending(r => r.Count).ToList();
+        return new AgentFleetDto(start, end, agent, meetings, follow, days, perProject, reasons);
     }
 
     private static int AgentLevel(int value) => value == 0 ? 0 : Math.Clamp(value, 1, 4);

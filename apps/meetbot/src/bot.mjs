@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { askToJoin, captionWatcher, chatWatcher, enableCaptions, leave, openChat, pageText, SEL, sendChat, setCaptionLanguage, TEXT, waitUntilAdmitted } from './meet.mjs';
+import { platformFor } from './platform.mjs';
 
 /**
- * One bot in one meeting: waits until its start time, joins as a guest, turns on captions and streams who-said-what to the webhook, posts
+ * One bot in one meeting (Google Meet or Microsoft Teams, from the link): waits until its start time, joins as a guest, turns on captions and streams who-said-what to the webhook, posts
  * chat messages on request, and leaves when the call ends, when it has been alone for a while, or at its time limit.
  *
  * Statuses: scheduled → joining → waiting_admission → in_call_recording → call_ended → done (or fatal, with an error).
@@ -11,6 +11,7 @@ export class MeetBot {
   constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage, raiseMessage, readChat }, deps) {
     this.id = randomUUID();
     this.meetingUrl = meetingUrl;
+    this.platform = platformFor(meetingUrl);
     this.botName = botName;
     this.joinAt = joinAt ? new Date(joinAt) : new Date();
     this.leaveAt = leaveAt ? new Date(leaveAt) : new Date(Math.max(Date.now(), this.joinAt.getTime()) + 3 * 3600_000);
@@ -71,16 +72,17 @@ export class MeetBot {
       await page.exposeFunction('ptCaption', (name, text) => this.caption(name, text));
       await page.exposeFunction('ptChat', (name, text) => this.heard(name, text));
       await page.goto(this.meetingUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await askToJoin(page, this.botName, (m) => this.log(m));
+      const p = this.platform;
+      await p.askToJoin(page, this.botName, (m) => this.log(m));
       this.setStatus('waiting_admission');
-      const admitted = await waitUntilAdmitted(page, this.deps.admitTimeoutMs);
+      const admitted = await p.waitUntilAdmitted(page, this.deps.admitTimeoutMs);
       if (admitted !== 'admitted') throw new Error(admitted === 'denied' ? 'The bot was not let into the meeting.' : 'Nobody let the bot into the meeting.');
-      this.log('in the call');
-      if (!(await enableCaptions(page))) this.log('captions could not be switched on');
-      else if (this.captionLanguage && !(await setCaptionLanguage(page, this.captionLanguage))) this.log(`captions stay in the meeting's default language (${this.captionLanguage} not offered)`);
-      await page.evaluate(captionWatcher, SEL.captionsRegion);
+      this.log(`in the call (${p.name})`);
+      if (!(await p.enableCaptions(page))) this.log('captions could not be switched on');
+      else if (this.captionLanguage && !(await p.setCaptionLanguage(page, this.captionLanguage))) this.log(`captions stay in the meeting's default language (${this.captionLanguage} not offered)`);
+      await p.watchCaptions(page);
       if (this.readChat) {
-        if (await openChat(page)) await page.evaluate(chatWatcher, { messageSelector: SEL.chatMessage, senderSelector: SEL.chatSender, botName: this.botName });
+        if (await p.openChat(page)) await p.watchChat(page, this.botName);
         else this.log('the meeting chat could not be opened: questions there will not be answered');
       }
       this.setStatus('in_call_recording');
@@ -91,7 +93,7 @@ export class MeetBot {
       await page.evaluate(() => window.ptFlushCaptions?.()).catch(() => undefined);
       await page.waitForTimeout(500);
       clearInterval(this.flushTimer); this.flush();
-      await leave(page).catch(() => undefined);
+      await this.platform.leave(page).catch(() => undefined);
       this.setStatus('call_ended');
     } catch (e) {
       this.log(`failed: ${e.message}`);
@@ -111,11 +113,11 @@ export class MeetBot {
     while (!this.stopping && Date.now() < this.leaveAt.getTime()) {
       while (this.chatQueue.length) {
         const message = this.chatQueue.shift();
-        try { await sendChat(page, message); } catch (e) { this.log(`chat: ${e.message}`); }
+        try { await this.platform.sendChat(page, message); } catch (e) { this.log(`chat: ${e.message}`); }
       }
-      const text = await pageText(page);
-      if (TEXT.ended.test(text) || !(await page.getByRole('button', { name: SEL.leave }).count())) { this.log('the call ended'); return; }
-      if (TEXT.alone.test(text)) { aloneSince ||= Date.now(); if (Date.now() - aloneSince > this.deps.aloneMs) { this.log('alone in the call'); return; } }
+      const text = await this.platform.pageText(page);
+      if (await this.platform.isOver(page, text)) { this.log('the call ended'); return; }
+      if (this.platform.isAlone(text)) { aloneSince ||= Date.now(); if (Date.now() - aloneSince > this.deps.aloneMs) { this.log('alone in the call'); return; } }
       else aloneSince = 0;
       await page.waitForTimeout(1000);
     }

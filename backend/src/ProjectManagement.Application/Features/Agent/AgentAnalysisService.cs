@@ -65,6 +65,12 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             await db.SaveChangesAsync(ct);
             return null;
         }
+        if (await AgentCredits.CapReachedAsync(db, s, clock.Now, ct))
+        {
+            s.LastError = AgentCredits.CapMessage(s);
+            await db.SaveChangesAsync(ct);
+            return null;
+        }
         if (!await settings.AiAvailableAsync(ct))
         {
             s.LastError = "The AI assistant is not available in this workspace, so the agent cannot read anything.";
@@ -122,7 +128,7 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             // How the team decided on earlier proposals: what it did not want, and what it changed before approving.
             var feedbackSince = clock.Now.AddDays(-45);
             var dismissed = await db.AgentFindings.AsNoTracking().Where(f => f.ProjectId == s.ProjectId && f.Status == AgentFindingStatus.Dismissed && f.DecidedAt >= feedbackSince)
-                .OrderByDescending(f => f.DecidedAt).Take(15).Select(f => new { f.Kind, f.Title }).ToListAsync(ct);
+                .OrderByDescending(f => f.DecidedAt).Take(15).Select(f => new { f.Kind, f.Title, f.DismissReason }).ToListAsync(ct);
             var edited = await db.AgentFindings.AsNoTracking().Where(f => f.ProjectId == s.ProjectId && f.Status == AgentFindingStatus.Applied && f.Edits != null && f.DecidedAt >= feedbackSince)
                 .OrderByDescending(f => f.DecidedAt).Take(10).Select(f => new { f.Kind, f.Title, f.OriginalTitle, f.Edits }).ToListAsync(ct);
             var declined = await db.AgentFindings.AsNoTracking().Where(f => f.ProjectId == s.ProjectId && f.OwnerResponse == "declined" && f.OwnerRespondedAt >= feedbackSince)
@@ -173,7 +179,7 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             if (dismissed.Count > 0 || edited.Count > 0 || declined.Count > 0)
             {
                 prompt.AppendLine("HOW THE TEAM DECIDED BEFORE (learn from it; do not propose things like the dismissed ones):");
-                foreach (var d in dismissed) prompt.AppendLine($"- dismissed {d.Kind}: {d.Title}");
+                foreach (var d in dismissed) prompt.AppendLine($"- dismissed {d.Kind}{(d.DismissReason is { } why ? $" ({AgentCredits.ReasonText(why)})" : "")}: {d.Title}");
                 foreach (var e in edited) prompt.AppendLine($"- approved after changing the {e.Edits}: {(e.OriginalTitle is { } o && o != e.Title ? $"\"{o}\" became \"{e.Title}\"" : e.Title)}");
                 foreach (var d in declined)
                     prompt.AppendLine($"- {people.FirstOrDefault(p => p.id == d.AssigneeId)?.name ?? "the assignee"} said it was not theirs: {d.Title}{(d.OwnerNote is { } n ? $" ({n})" : "")}");

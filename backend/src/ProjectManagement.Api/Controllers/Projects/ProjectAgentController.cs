@@ -12,8 +12,23 @@ namespace ProjectManagement.Api.Controllers.Projects;
 /// </summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Projects)]
 public class ProjectAgentController(AgentSettingsService settings, AgentSignalService signals, AgentAnalysisService analysis, AgentReviewService review,
-    AgentMinutesService minutes) : ApiControllerBase
+    AgentMinutesService minutes, AgentAutonomyHintService hints, AgentMeetingService meetings) : ApiControllerBase
 {
+    /// <summary>Sends the agent's meeting bot to a Google Meet or Microsoft Teams call now, by its link.</summary>
+    [HttpPost("projects/{projectId:guid}/agent/join-link")]
+    public async Task<IActionResult> JoinLink(Guid projectId, [FromBody] AgentJoinLinkRequest req, CancellationToken ct) =>
+        Ok(await meetings.JoinLinkAsync(projectId, req.Url, req.Title, req.Minutes, ct));
+
+    /// <summary>How the team decided on each kind of proposal, and the kinds the agent has earned the right to carry out by itself.</summary>
+    [HttpGet("projects/{projectId:guid}/agent/autonomy")]
+    public async Task<IActionResult> Autonomy(Guid projectId, CancellationToken ct) => Ok(await hints.ProjectAsync(projectId, ct));
+
+    [HttpPost("projects/{projectId:guid}/agent/autonomy/{kind}/accept")]
+    public async Task<IActionResult> AcceptAutonomy(Guid projectId, string kind, CancellationToken ct) => Ok(await hints.AcceptAsync(projectId, kind, ct));
+
+    [HttpPost("projects/{projectId:guid}/agent/autonomy/{kind}/dismiss")]
+    public async Task<IActionResult> DismissAutonomy(Guid projectId, string kind, CancellationToken ct) => Ok(await hints.DismissAsync(projectId, kind, ct));
+
     /// <summary>E-mails the minutes of a meeting the agent read (MOM with the transcript) to the people in it, in the caller's name.</summary>
     [HttpPost("projects/{projectId:guid}/agent/runs/{runId:guid}/minutes")]
     public async Task<IActionResult> SendMinutes(Guid projectId, Guid runId, CancellationToken ct) => Ok(new { sent = await minutes.SendNowAsync(projectId, runId, ct) });
@@ -64,7 +79,8 @@ public class ProjectAgentController(AgentSettingsService settings, AgentSignalSe
         Ok(await review.ApproveAsync(id, req, ct));
 
     [HttpPost("agent/findings/{id:guid}/dismiss")]
-    public async Task<IActionResult> Dismiss(Guid id, CancellationToken ct) => Ok(await review.DismissAsync(id, ct));
+    public async Task<IActionResult> Dismiss(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DismissFindingRequest? req, CancellationToken ct) =>
+        Ok(await review.DismissAsync(id, ct, req?.Reason));
 
     /// <summary>Work the agent gave me (approved by someone else), to accept or to say it is not mine.</summary>
     [HttpGet("agent/assigned")]

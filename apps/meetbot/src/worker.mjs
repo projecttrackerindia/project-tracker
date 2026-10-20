@@ -63,7 +63,7 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
 
   const take = (job) => {
     if (jobs.has(job.jobId)) return;
-    if (!hostOk(job.meetingUrl, allowedHosts, protocols)) { rejected.set(job.jobId, 'The meeting address is not a Google Meet link.'); return; }
+    if (!hostOk(job.meetingUrl, allowedHosts, protocols)) { rejected.set(job.jobId, 'The meeting address is not a Google Meet or Microsoft Teams link.'); return; }
     // The job comes from the API we authenticated to; MEETBOT_WEBHOOK_HOSTS narrows where captions may go when set.
     if (webhookHosts.length ? !hostOk(job.webhookUrl, webhookHosts, protocols) : !/^https?:\/\//.test(job.webhookUrl ?? '')) { rejected.set(job.jobId, 'The webhook address is not allowed.'); return; }
     const bot = new MeetBot({

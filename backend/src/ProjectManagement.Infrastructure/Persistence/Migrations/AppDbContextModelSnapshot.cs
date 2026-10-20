@@ -162,6 +162,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AutoJoinCalendar")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("AutonomyHintsDismissed")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int>("AutonomyLevel")
                         .HasColumnType("integer");
 
@@ -214,6 +218,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(24)");
 
                     b.Property<int>("MonthlyRunLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MonthlyCreditCap")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("ProjectId")
@@ -459,6 +466,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("DismissReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<DateTime?>("DecidedAt")
                         .HasColumnType("timestamp with time zone");
@@ -791,6 +802,27 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AlertBotFailures")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("AlertCreditDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("AlertMaxP95Seconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("AlertMinSuccessRate")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("AlertReadingFailures")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("AlertsCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("AlertsEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("BotName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -821,6 +853,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("WeeklyDigest")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 

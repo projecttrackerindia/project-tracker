@@ -23,6 +23,8 @@ public static class NotificationCatalog
         new(NotificationType.Overdue, "Overdue work", "Work assigned to you, or that you oversee, is past its due date.", true, true, true, false),
         new(NotificationType.Briefing, "Morning briefing", "Once a day: what is due, overdue and coming up.", true, false, false, false),
         new(NotificationType.PortfolioDigest, "Weekly portfolio brief", "Every Monday: which projects are at risk or delayed, and why. Sent to organization owners and admins.", true, true, false, false),
+        new(NotificationType.AgentAlert, "Agent alerts", "An agent needs attention: answers failing or slow, the meeting bot missing meetings, readings failing, or AI credits running out. Sent to organization owners and admins.", true, true, true, false),
+        new(NotificationType.AgentDigest, "Weekly agent summary", "Every Monday: what the agents did last week, what was decided, what slipped and the AI credits used. Sent to organization owners and admins.", true, true, false, false),
         new(NotificationType.Invitation, "Invitations", "You are invited to join an organization.", true, true, true, false),
         new(NotificationType.Subscription, "Billing and subscription", "Plan changes, payment problems and expiry (sent to organization owners).", true, true, false, false),
         new(NotificationType.Issue, "Test issues", "A test issue is reported, assigned to you, fixed, reopened or resolved on a project you work on.", true, false, false, false),

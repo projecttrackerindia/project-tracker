@@ -50,11 +50,15 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         return new AgentFindingPageDto(await DtosAsync(rows, ct), pending, true);
     }
 
-    public async Task<AgentFindingDto> DismissAsync(Guid id, CancellationToken ct = default)
+    /// <summary>Dismisses a proposal; the reason (optional, one of <see cref="AgentCredits.Reasons"/>) teaches the agent what to stop proposing.</summary>
+    public async Task<AgentFindingDto> DismissAsync(Guid id, CancellationToken ct = default, string? reason = null)
     {
+        if (reason is { Length: > 0 } && !AgentCredits.Reasons.ContainsKey(reason))
+            throw new ValidationException("reason", "Choose not_needed, wrong, duplicate, already_done, not_ours or other.");
         var f = await DecidableAsync(id, ct);
         f.Status = AgentFindingStatus.Dismissed; f.DecidedBy = ctx.RequireUserId(); f.DecidedAt = clock.Now; f.UpdatedAt = clock.Now;
-        recorder.Audit("agent.finding_dismissed", "AgentFinding", f.Id, null, new { f.Kind });
+        f.DismissReason = reason is { Length: > 0 } ? reason : null;
+        recorder.Audit("agent.finding_dismissed", "AgentFinding", f.Id, null, new { f.Kind, f.DismissReason });
         await AnswerRequesterAsync(f, false, ct);
         await db.SaveChangesAsync(ct);
         await MinutesAsync([f.RunId], ct);
@@ -471,7 +475,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 r.SignalId is { } sid && sources.TryGetValue(sid, out var src) ? src : null,
                 r.TaskId, t is null ? null : $"{p?.Key}-{t.Number}", t?.Title, r.IssueId, i is null ? null : $"{p?.Key}-I{i.Number}",
                 Person(r.AssigneeId), r.DueDate, r.Priority, r.NewStatus, r.Comment, r.Confidence, r.CreatedAt, Person(r.DecidedBy), r.DecidedAt,
-                r.AppliedEntityId, r.AppliedKey, r.Error, r.Grounded, r.Edits, r.OwnerResponse, r.OwnerNote, r.OwnerRespondedAt, r.AutoApplied, r.Before, r.CommitmentId);
+                r.AppliedEntityId, r.AppliedKey, r.Error, r.Grounded, r.Edits, r.OwnerResponse, r.OwnerNote, r.OwnerRespondedAt, r.AutoApplied, r.Before, r.CommitmentId, r.DismissReason);
         }).ToList();
     }
 }

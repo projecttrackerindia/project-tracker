@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { MeetBot } from './bot.mjs';
 import { startWorker } from './worker.mjs';
+import { DEFAULT_HOSTS } from './platform.mjs';
 
 /**
  * Project Tracker's own meeting bot service. The API calls it (with the shared secret) to send a bot into a Google Meet; the bot streams the
@@ -21,7 +22,7 @@ import { startWorker } from './worker.mjs';
 export function createServer(env = process.env) {
   const secret = env.MEETBOT_SECRET ?? '';
   const capacity = Number(env.MEETBOT_MAX_BOTS ?? 4);
-  const allowedHosts = (env.MEETBOT_ALLOWED_HOSTS ?? 'meet.google.com').split(',').map((s) => s.trim()).filter(Boolean);
+  const allowedHosts = (env.MEETBOT_ALLOWED_HOSTS ?? DEFAULT_HOSTS.join(',')).split(',').map((s) => s.trim()).filter(Boolean);
   const webhookHosts = (env.MEETBOT_WEBHOOK_HOSTS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const log = (m) => { if (env.MEETBOT_QUIET !== 'true') console.log(`${new Date().toISOString()} ${m}`); };
   const bots = new Map();
@@ -70,7 +71,7 @@ export function createServer(env = process.env) {
       if (!authorized(req)) return send(res, 401, { error: 'unauthorized' });
       if (req.method === 'POST' && url.pathname === '/bots') {
         const b = await readJson(req);
-        if (!urlOk(b.meetingUrl, allowedHosts, ['https:', ...(env.MEETBOT_ALLOW_HTTP === 'true' ? ['http:'] : [])])) return send(res, 422, { error: 'meetingUrl must be a Google Meet link' });
+        if (!urlOk(b.meetingUrl, allowedHosts, ['https:', ...(env.MEETBOT_ALLOW_HTTP === 'true' ? ['http:'] : [])])) return send(res, 422, { error: 'meetingUrl must be a Google Meet or Microsoft Teams link' });
         if (!urlOk(b.webhookUrl, webhookHosts, ['https:', ...(env.MEETBOT_ALLOW_HTTP === 'true' ? ['http:'] : [])])) return send(res, 422, { error: 'webhookUrl is not allowed' });
         if (active() >= capacity) return send(res, 429, { error: `The bot service is in ${capacity} meetings already.` });
         const bot = new MeetBot({ meetingUrl: b.meetingUrl, botName: String(b.botName || 'Project Tracker Agent').slice(0, 60), joinAt: b.joinAt, leaveAt: b.leaveAt,

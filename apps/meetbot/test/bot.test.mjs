@@ -63,3 +63,48 @@ test('a bot joins, reports who said what, posts in the chat and leaves when the 
     bots.close(); fake.close();
   }
 });
+
+test('the same bot attends a Microsoft Teams meeting: browser join, lobby, live captions from the More menu, chat both ways', { timeout: 90_000 }, async () => {
+  const { chromium } = await import('playwright');
+  const { MeetBot } = await import('../src/bot.mjs');
+  const { platformFor } = await import('../src/platform.mjs');
+  assert.equal(platformFor('https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d').name, 'teams');
+  assert.equal(platformFor('https://teams.live.com/meet/9381234567?p=abc').name, 'teams');
+  assert.equal(platformFor('https://meet.google.com/abc-defg-hij').name, 'meet');
+
+  const page = await fs.readFile(new URL('./fake-teams.html', import.meta.url), 'utf8');
+  const events = [], chat = [];
+  let ended = false;
+  const fake = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      if (req.url === '/hook') { events.push(JSON.parse(body)); res.end('{}'); return; }
+      if (req.url === '/chat-log') { chat.push(body); res.end(); return; }
+      if (req.url === '/control') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ ended })); return; }
+      res.setHeader('content-type', 'text/html'); res.end(page);
+    });
+  });
+  const port = await listen(fake);
+  let finished = false;
+  const bot = new MeetBot({ meetingUrl: `http://127.0.0.1:${port}/l/meetup-join/19%3ameeting_abc%40thread.v2/0`, botName: 'Tracker Bot', webhookUrl: `http://127.0.0.1:${port}/hook`,
+    introMessage: "Hi, I'm the Tracker Bot taking notes.", readChat: true }, {
+    launch: () => chromium.launch({ headless: true, ...(process.env.MEETBOT_CHROMIUM ? { executablePath: process.env.MEETBOT_CHROMIUM } : {}), args: ['--no-sandbox'] }),
+    log: () => undefined, admitTimeoutMs: 20_000, aloneMs: 600_000, captionFlushMs: 500, onFinished: () => { finished = true; } });
+  try {
+    assert.equal(bot.platform.name, 'teams');
+    await until(() => bot.status === 'in_call_recording');
+    const lines = () => events.filter((e) => e.event === 'transcript.batch').flatMap((e) => e.data.lines.map((l) => `${l.name}: ${l.text}`));
+    await until(() => lines().some((l) => l.startsWith('Ravi Kumar: The payment gateway is live in staging')));
+    await until(() => lines().some((l) => l.startsWith('Priya: Who owns the refund flow?')));
+    await until(() => chat.includes("Hi, I'm the Tracker Bot taking notes."));
+    assert.ok(!chat.includes('MEDIA STILL ON'), 'microphone and camera were switched off before joining');
+    const heard = () => events.filter((e) => e.event === 'chat.message').map((e) => `${e.data.name}: ${e.data.text}`);
+    await until(() => heard().includes('Priya: agent, where is PAY-9?'));
+    assert.ok(!heard().some((h) => h.includes('taking notes')), 'the bot does not hear its own messages');
+    ended = true;
+    await until(() => finished && bot.status === 'done');
+  } finally {
+    bot.stop(); fake.close();
+  }
+});

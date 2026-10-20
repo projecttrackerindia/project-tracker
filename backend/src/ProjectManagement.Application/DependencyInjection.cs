@@ -130,6 +130,11 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentDelegationService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentChatAnswerService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentCommandCenterService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentCostService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentAutonomyHintService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentAlertService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.AgentDigestService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.MicrosoftOnlineMeetings>();
         services.AddSingleton<ProjectManagement.Application.Features.Documents.IDocumentPdfRenderer, ProjectManagement.Application.Features.Documents.DocumentPdfRenderer>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfBuilder>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentPdfJob>();

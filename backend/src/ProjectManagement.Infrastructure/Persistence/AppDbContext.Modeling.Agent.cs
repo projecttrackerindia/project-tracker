@@ -22,6 +22,7 @@ public partial class AppDbContext
             e.Property(x => x.SlackChannelId).HasMaxLength(32);
             e.Property(x => x.SlackReadUntil).HasMaxLength(32);
             e.Property(x => x.AutoApplyKinds).HasMaxLength(200);
+            e.Property(x => x.AutonomyHintsDismissed).HasMaxLength(200);
         });
         b.Entity<AgentSignal>(e =>
         {
@@ -58,6 +59,7 @@ public partial class AppDbContext
             e.Property(x => x.OwnerResponse).HasMaxLength(16);
             e.Property(x => x.OwnerNote).HasMaxLength(500);
             e.Property(x => x.Before).HasMaxLength(500);
+            e.Property(x => x.DismissReason).HasMaxLength(32);
             e.HasIndex(x => new { x.ProjectId, x.Kind, x.Status });
         });
         b.Entity<AgentCommitment>(e =>

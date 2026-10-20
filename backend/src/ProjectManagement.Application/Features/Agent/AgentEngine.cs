@@ -93,7 +93,48 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
             catch (ForbiddenException) { await db.AgentInboxOptIns.IgnoreQueryFilters().Where(x => x.Id == o.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Enabled, false), ct); }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { log.LogWarning(ex, "Project agent inbox scan failed for {OptIn}", o.Id); }
         }
+        await WatchAsync(ct);
         return new TickResult(projects.Count, runs, signals, bots, updates, inboxes, erased);
+    }
+
+    private static DateTime _lastWatch;
+
+    /// <summary>
+    /// Every few minutes: agent alerts and the Monday summary for each organization whose agents are in use (the agent on in a project, or the
+    /// assistant used in the last two days). Each runs in that organization's own scope, as one of its owners.
+    /// </summary>
+    private async Task WatchAsync(CancellationToken ct)
+    {
+        if (clock.Now - _lastWatch < TimeSpan.FromMinutes(5)) return;
+        _lastWatch = clock.Now;
+        var since = clock.Now.AddDays(-2);
+        List<Guid> tenantIds;
+        try
+        {
+            tenantIds = await db.ProjectAgentSettings.IgnoreQueryFilters().Where(s => s.Enabled).Select(s => s.TenantId)
+                .Union(db.AiMessages.IgnoreQueryFilters().Where(m => m.Role == "assistant" && m.CreatedAt >= since).Select(m => m.TenantId))
+                .Distinct().Take(2000).ToListAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { log.LogWarning(ex, "Agent alerts: could not list workspaces"); return; }
+        var owners = await db.TenantMembers.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => tenantIds.Contains(m.TenantId) && m.Role == TenantRole.Owner && m.User!.IsActive
+                && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active && !t.IsDeleted && t.Type == WorkspaceType.Organization))
+            .OrderBy(m => m.CreatedAt).Select(m => new { m.TenantId, m.UserId }).ToListAsync(ct);
+        foreach (var o in owners.GroupBy(x => x.TenantId).Select(g => g.First()))
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var sp = scope.ServiceProvider;
+                await WorkspaceExecutionPrincipal.ConfigureAsync(sp, o.UserId, o.TenantId, null, ct);
+                await sp.GetRequiredService<AgentAlertService>().NotifyAsync(ct);
+                await sp.GetRequiredService<AgentDigestService>().SendDueAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.LogWarning(ex, "Agent alerts or summary failed for {Tenant}", o.TenantId);
+            }
+        }
     }
 }
 

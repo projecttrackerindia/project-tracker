@@ -26,7 +26,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtector secrets, MeetingBotClient botService, MeetingBotQueue queue, GoogleMeetingClient google,
     AgentSignalService signals, AgentSettingsService settings, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions,
-    ILogger<AgentMeetingService> log)
+    ILogger<AgentMeetingService> log, MicrosoftOnlineMeetings outlook, ProjectAccess access, ICurrentContext ctx)
 {
     private const int MaxTranscript = 200_000;
     private const int MaxNudges = 8;
@@ -137,18 +137,23 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     // ---------------------------------------------------------------- calls on the calendar
 
     /// <summary>
-    /// Calls on the acting person's Google Calendar, starting in the next few minutes, with a Meet link and the project's key or name in the
-    /// title - and not already one of the project's meetings: the bot is sent to those too.
+    /// Calls on the acting person's Google Calendar (Meet) or Outlook calendar (Microsoft Teams or Meet), starting in the next few minutes, with the
+    /// project's key or name in the title - and not already one of the project's meetings: the bot is sent to those too.
     /// </summary>
     public async Task<int> ScheduleCalendarBotsAsync(ProjectAgentSettings s, AgentWorkspaceSettings w, CancellationToken ct)
     {
         if (!s.Enabled || !s.LiveBot || !s.ReadMeetings || !s.AutoJoinCalendar || !botService.Configured) return 0;
         var now = clock.Now;
         var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == s.ProjectId, ct);
-        IReadOnlyList<CalendarMeet> events;
-        try { events = await google.ListUpcomingMeetsAsync(s.ActingUserId, now.AddMinutes(-5), now.AddMinutes(10), ct); }
-        catch (ConflictException) { return 0; }   // no Google Calendar connected: nothing to look at
-        catch (GoogleApiException ex) { log.LogInformation("Calendar look-up failed for {Project}: {Reason}", s.ProjectId, ex.Message); return 0; }
+        // Google Calendar (Meet links) and Outlook (Teams or Meet links), whichever the acting person connected.
+        var events = new List<CalendarMeet>();
+        try { events.AddRange(await google.ListUpcomingMeetsAsync(s.ActingUserId, now.AddMinutes(-5), now.AddMinutes(10), ct)); }
+        catch (ConflictException) { }   // no Google Calendar connected: nothing to look at there
+        catch (GoogleApiException ex) { log.LogInformation("Calendar look-up failed for {Project}: {Reason}", s.ProjectId, ex.Message); }
+        try { events.AddRange((await outlook.ListUpcomingAsync(now.AddMinutes(-5), now.AddMinutes(10), ct)).Where(e => !events.Any(g => SameMeet(g.MeetUrl, e.MeetUrl)))); }
+        catch (Exception ex) when (ex is AppException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        { log.LogInformation("Outlook calendar look-up failed for {Project}: {Reason}", s.ProjectId, ex.Message); }
+        if (events.Count == 0) return 0;
         var known = await db.ProjectMeetings.AsNoTracking().Where(m => m.ProjectId == s.ProjectId && m.GoogleMeetUri != "").Select(m => m.GoogleMeetUri).ToListAsync(ct);
         var keyPattern = new System.Text.RegularExpressions.Regex($@"\b{System.Text.RegularExpressions.Regex.Escape(project.Key)}\b", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
         var sent = 0;
@@ -170,6 +175,42 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         return sent;
     }
 
+    /// <summary>
+    /// "Send the agent to this call now": any Google Meet or Microsoft Teams link (a customer's Teams call, an ad-hoc Meet), for the people who may
+    /// set up the project's agent. The bot joins within a minute, stays up to <paramref name="minutes"/> (or until the call ends) and its transcript
+    /// is read like any other meeting.
+    /// </summary>
+    public async Task<AgentLinkJoinDto> JoinLinkAsync(Guid projectId, string? url, string? title, int minutes, CancellationToken ct)
+    {
+        var project = await access.GetProjectAsync(projectId, ct);
+        if (!await settings.CanManageAsync(project, ct)) throw new ForbiddenException("Only people who may edit this project can send its agent to a call.", "PERMISSION_DENIED");
+        ProjectAccess.EnsureNotArchived(project, "send its agent to a call");
+        url = url?.Trim();
+        if (!MicrosoftOnlineMeetings.Joinable(url)) throw new ValidationException("url", "Paste a Google Meet (meet.google.com) or Microsoft Teams (teams.microsoft.com) meeting link.");
+        if (minutes is < 10 or > 240) throw new ValidationException("minutes", "Choose from 10 minutes to 4 hours.");
+        if (!botService.Configured) throw new ConflictException("The meeting bot is not set up on this installation.", "MEETBOT_UNAVAILABLE");
+        var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
+        if (s is not { Enabled: true }) throw new ConflictException("Switch the project agent on first.", "AGENT_OFF");
+        if (!s.ReadMeetings) throw new ConflictException("Let the agent read meetings first (Project agent › Sources).", "AGENT_MEETINGS_OFF");
+        var w = await db.AgentWorkspaceSettings.FirstOrDefaultAsync(ct) ?? new AgentWorkspaceSettings { TenantId = s.TenantId };
+        var now = clock.Now;
+        var start = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Utc);
+        var link = url!;
+        var shown = AgentAnalysisService.Cut(link, 300);
+        if (await db.AgentMeetingBots.AnyAsync(b => b.ProjectId == projectId && b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call")
+                && b.SessionEndUtc > now && b.MeetUrl == shown, ct))
+            throw new ConflictException("The agent is already on its way to this call.", "AGENT_ALREADY_SENT");
+        var meetingId = CalendarMeetingId(projectId, $"link:{link}:{start:yyyyMMddHHmm}");
+        var bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = projectId, MeetingId = meetingId, SessionStartUtc = start, SessionEndUtc = start.AddMinutes(minutes),
+            Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now, CreatedBy = ctx.UserId,
+            Title = AgentAnalysisService.Cut(string.IsNullOrWhiteSpace(title) ? $"{MicrosoftOnlineMeetings.Platform(link)} call" : title.Trim(), 300),
+            MeetUrl = shown };
+        db.AgentMeetingBots.Add(bot);
+        await db.SaveChangesAsync(ct);
+        await SendAsync(s, w, bot, link, [], ct);
+        return new AgentLinkJoinDto(bot.Id, MicrosoftOnlineMeetings.Platform(link), bot.Title!, bot.SessionStartUtc, bot.SessionEndUtc, bot.Status);
+    }
+
     private static bool SameMeet(string a, string b) =>
         string.Equals(a.TrimEnd('/').Split('?')[0], b.TrimEnd('/').Split('?')[0], StringComparison.OrdinalIgnoreCase);
 
@@ -184,8 +225,9 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     public async Task<int> FinishBotsAsync(ProjectAgentSettings s, AgentWorkspaceSettings? w, CancellationToken ct)
     {
         var now = clock.Now;
+        // After the planned end - or earlier, once the bot's worker says the call is over (a call that ended early is read at once).
         var bots = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call")
-            && b.SessionEndUtc < now.AddMinutes(-3)).OrderBy(b => b.SessionEndUtc).Take(10).ToListAsync(ct);
+            && (b.SessionEndUtc < now.AddMinutes(-3) || b.WorkerStatus == "call_ended" || b.WorkerStatus == "done")).OrderBy(b => b.SessionEndUtc).Take(10).ToListAsync(ct);
         var added = 0;
         foreach (var bot in bots)
         {
@@ -225,7 +267,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             var bot = candidate;
             if (bot.LastNudgeAt is { } last && now - last < NudgeGap) continue;
             if (now - bot.SessionStartUtc < TimeSpan.FromMinutes(3)) continue;
-            if (!await settings.AiAvailableAsync(ct)) return posted;
+            if (!await settings.AiAvailableAsync(ct) || await AgentCredits.CapReachedAsync(db, s, now, ct)) return posted;
             var transcript = bot.TranscriptProtected is null ? "" : secrets.Unprotect(bot.TranscriptProtected);
             // Claim this check: with several servers, only the one whose update lands asks and posts.
             var checkedBefore = bot.CheckedLength;

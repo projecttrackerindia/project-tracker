@@ -100,7 +100,8 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
             canManage ? s?.Instructions : null, canManage ? s?.SpeakerAliases : null, s?.CaptionLanguage, s?.AutoJoinCalendar ?? false, s?.SendMinutes ?? true,
             canManage ? s?.SlackChannelId : null, await SlackReadableAsync(ct), s?.ReadWhatsApp ?? true, await WhatsAppReadableAsync(ct), autoTranscripts,
             AgentAutonomy.Level(s?.AutonomyLevel ?? AgentAutonomy.Assistant), s?.AutoApplyConfidence ?? 90,
-            AgentAutonomy.Kinds(s?.AutoApplyKinds).Select(k => k.ToString()).ToList(), s?.FollowUps ?? true, s?.MeetingBriefs ?? true);
+            AgentAutonomy.Kinds(s?.AutoApplyKinds).Select(k => k.ToString()).ToList(), s?.FollowUps ?? true, s?.MeetingBriefs ?? true,
+            s?.MonthlyCreditCap ?? 0, s is null ? 0 : await AgentCredits.UsedThisMonthAsync(db, projectId, clock.Now, ct));
     }
 
     private static string? Clip(string? value, int max, string field, string label)
@@ -173,10 +174,15 @@ public class AgentSettingsService(IAppDbContext db, ICurrentContext ctx, AppCloc
         if (req.AutoApplyKinds is { } kinds) s.AutoApplyKinds = AgentAutonomy.KindsCsv(kinds);
         s.FollowUps = req.FollowUps ?? s.FollowUps;
         s.MeetingBriefs = req.MeetingBriefs ?? s.MeetingBriefs;
+        if (req.MonthlyCreditCap is { } cap)
+        {
+            if (cap is < 0 or > 100_000) throw new ValidationException("monthlyCreditCap", "Choose a cap from 0 (none) to 100,000 credits a month.");
+            s.MonthlyCreditCap = cap;
+        }
         s.UpdatedAt = clock.Now; s.UpdatedBy = uid;
         recorder.Audit("agent.settings_saved", "Project", projectId, null, new { s.Enabled, s.ReadMailbox, s.ReadChat, s.ReadMeetings, s.LiveBot, s.DailyUpdates,
             s.CaptionLanguage, s.AutoJoinCalendar, s.SendMinutes, Slack = s.SlackChannelId is not null, s.ReadWhatsApp, Notes = s.Instructions?.Length ?? 0,
-            s.AutonomyLevel, s.AutoApplyConfidence, s.AutoApplyKinds, s.FollowUps, s.MeetingBriefs });
+            s.AutonomyLevel, s.AutoApplyConfidence, s.AutoApplyKinds, s.FollowUps, s.MeetingBriefs, s.MonthlyCreditCap });
         recorder.Activity(req.Enabled ? "agent.enabled" : "agent.disabled", "Project", projectId, req.Enabled ? $"Project agent switched on for \"{project.Name}\"" : $"Project agent switched off for \"{project.Name}\"", projectId);
         await db.SaveChangesAsync(ct);
         return await GetAsync(projectId, ct);

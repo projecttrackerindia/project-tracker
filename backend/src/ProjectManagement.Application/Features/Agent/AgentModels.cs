@@ -39,13 +39,14 @@ public record ProjectAgentDto(Guid ProjectId, bool Enabled, bool ReadMailbox, bo
     int MonthlyRunLimit, bool CanManage, string? ActingUserName, IReadOnlyList<AgentRunDto> Runs, bool TranscriptAccess,
     string? Instructions = null, string? SpeakerAliases = null, string? CaptionLanguage = null, bool AutoJoinCalendar = false, bool SendMinutes = true,
     string? SlackChannelId = null, bool SlackAvailable = false, bool ReadWhatsApp = true, bool WhatsAppAvailable = false, bool AutoTranscriptAccess = false,
-    int AutonomyLevel = 2, int AutoApplyConfidence = 90, IReadOnlyList<string>? AutoApplyKinds = null, bool FollowUps = true, bool MeetingBriefs = true);
+    int AutonomyLevel = 2, int AutoApplyConfidence = 90, IReadOnlyList<string>? AutoApplyKinds = null, bool FollowUps = true, bool MeetingBriefs = true,
+    int MonthlyCreditCap = 0, int CreditsThisMonth = 0);
 
 /// <summary>Anything left out (null) keeps its current value; an empty string clears a text setting.</summary>
 public record SaveProjectAgentRequest(bool Enabled, bool? ReadMailbox, bool? ReadChat, bool? ReadMeetings, bool? LiveBot, bool? DailyUpdates,
     string? Instructions = null, string? SpeakerAliases = null, string? CaptionLanguage = null, bool? AutoJoinCalendar = null, bool? SendMinutes = null,
     string? SlackChannelId = null, bool? ReadWhatsApp = null, int? AutonomyLevel = null, int? AutoApplyConfidence = null, IReadOnlyList<string>? AutoApplyKinds = null,
-    bool? FollowUps = null, bool? MeetingBriefs = null);
+    bool? FollowUps = null, bool? MeetingBriefs = null, int? MonthlyCreditCap = null);
 
 /// <summary>BotAvailable: the installation runs the built-in meeting bot.</summary>
 public record AgentWorkspaceDto(bool BotAvailable, string BotName, bool InCallReminders, bool CanManage, int EnabledProjects);
@@ -63,7 +64,14 @@ public record AgentFindingDto(Guid Id, Guid ProjectId, string ProjectKey, string
     Guid? IssueId, string? IssueKey, AgentPersonRef? Assignee, DateOnly? DueDate, Priority? Priority, string? NewStatus, string? Comment, int Confidence,
     DateTime CreatedAt, AgentPersonRef? DecidedBy, DateTime? DecidedAt, Guid? AppliedEntityId, string? AppliedKey, string? Error,
     bool Grounded = true, string? Edits = null, string? OwnerResponse = null, string? OwnerNote = null, DateTime? OwnerRespondedAt = null,
-    bool AutoApplied = false, string? Before = null, Guid? CommitmentId = null);
+    bool AutoApplied = false, string? Before = null, Guid? CommitmentId = null, string? DismissReason = null);
+
+/// <summary>The bot sent to a call by its link (Platform: Google Meet or Microsoft Teams).</summary>
+public record AgentLinkJoinDto(Guid Id, string Platform, string Title, DateTime StartUtc, DateTime EndUtc, string Status);
+public record AgentJoinLinkRequest(string? Url, string? Title, int Minutes = 60);
+
+/// <summary>Why the proposal is dismissed (optional): not_needed, wrong, duplicate, already_done, not_ours, other.</summary>
+public record DismissFindingRequest(string? Reason);
 
 /// <summary>The assignee's answer to work the agent gave them: "accepted" or "declined" (with a note: why, or who it belongs to).</summary>
 public record AgentOwnerResponseRequest(string? Response, string? Note);
