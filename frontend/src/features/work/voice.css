@@ -1,0 +1,55 @@
+.va { display: flex; flex-direction: column; gap: 16px; }
+.va-hero { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; padding: 20px 22px; border-radius: var(--radius-lg); border: 1px solid var(--border);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, var(--surface)), color-mix(in srgb, var(--purple) 7%, var(--surface))); }
+.va-hero h2 { margin: 6px 0; font-size: 21px; }
+.va-hero p { margin: 0; color: var(--text-2); max-width: 620px; line-height: 1.5; }
+.va-eyebrow { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--primary-text); }
+.va-hero-actions { display: flex; gap: 10px; align-items: center; }
+.va-state { padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: var(--surface-2); color: var(--text-3); }
+.va-state.on { background: var(--success-soft); color: var(--success); }
+.va-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.va-steps li { padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--border); display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.va-steps li span { color: var(--text-3); font-size: 12px; }
+.va-steps li.done { border-style: solid; border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+.va-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.va-card h3 { display: flex; gap: 8px; align-items: center; margin: 0; font-size: 15px; }
+.va-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.va-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.va-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.va-field input, .va-field textarea, .va-toggle input:not([type=checkbox]), .va-say input { padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 400; }
+.va-field small { color: var(--text-3); font-weight: 400; font-size: 12px; }
+.va-short { max-width: 140px; }
+.va-langs { display: flex; flex-wrap: wrap; gap: 6px; }
+.va-langs button { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer; font: inherit; font-size: 13px; }
+.va-langs button.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-text); font-weight: 600; }
+.va-order { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 11px; }
+.va-toggle { display: flex; gap: 10px; align-items: flex-start; }
+.va-toggle > input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--primary); }
+.va-toggle span { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.va-toggle small { color: var(--text-3); }
+.va-toggle.inline { align-items: center; }
+.va-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.va-muted { color: var(--text-3); font-size: 13px; margin: 0; }
+.va-conns, .va-calls { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.va-conns li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.va-conns li small { color: var(--text-3); overflow-wrap: anywhere; }
+.va-conns li p { margin: 2px 0 0; font-size: 13px; color: var(--text-2); }
+.va-conn-actions { display: flex; gap: 4px; align-items: flex-start; }
+.va-calls li button { display: flex; gap: 12px; width: 100%; text-align: left; padding: 10px 4px; border: 0; border-bottom: 1px solid var(--border); background: none; cursor: pointer; color: var(--text); font: inherit; }
+.va-calls li button:hover { background: var(--tint); }
+.va-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--success); }
+.va-dot.active { background: var(--danger); }
+.va-call-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.va-call-main small { color: var(--text-3); font-size: 12.5px; }
+.va-sum { font-size: 13px; color: var(--text-2); }
+.va-summary { margin: 0 0 8px; line-height: 1.5; }
+.va-transcript { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; padding: 4px 2px; }
+.va-bubble { max-width: 80%; padding: 9px 13px; border-radius: 14px; line-height: 1.45; font-size: 14.5px; white-space: pre-wrap; }
+.va-bubble.agent { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; }
+.va-bubble.caller { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+.va-tool { align-self: center; font-size: 11.5px; color: var(--text-3); display: flex; gap: 4px; align-items: center; max-width: 90%; overflow-wrap: anywhere; }
+.va-test { display: flex; flex-direction: column; gap: 10px; }
+.va-say { display: flex; gap: 8px; }
+.va-say input { flex: 1; min-width: 0; }
+.va-form { display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 640px) { .va-hero { padding: 16px; } .va-bubble { max-width: 92%; } }

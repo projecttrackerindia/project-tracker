@@ -23,6 +23,7 @@ const insights={days:90,open:4,unassigned:1,breached:1,atRisk:1,compliance:0.86,
  byType:[B('Production Support',3,52,1,0.84,7.2),B('Analysis',1,18,0,0.94,30),B('Bug Fix',0,11,0,0.73,14)],byPriority:[B('Critical',1,6,0,1,2.1),B('High',1,22,1,0.8,6),B('Medium',1,40,0,0.88,12),B('Low',1,13,0,0.92,40)],byPerson:[B('Upendra Rao',2,40,1,0.83,8),B('Jyothsna Reddy',1,35,0,0.9,9),B('Unassigned',1,0,0,null,null)],businessHours:false};
 const writes=[],errors=[],checks=[];
 let saved=null;
+let voice={enabled:false,agentName:'Asha',companyName:'FiveStar',languages:['te','hi','en','ta'],knowledge:null,requireVerification:true,verificationRule:'date of birth and the last 4 digits of the loan number',transferNumber:null,workTypeId:null,storageKeyPattern:'{yyyy}/{MM}/{dd}/{callId}',archiveConfigured:false,canManage:true,availableLanguages:{en:'English',hi:'Hindi',te:'Telugu',ta:'Tamil',kn:'Kannada'}};let vcall=null;
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const make=async()=>{
@@ -42,6 +43,10 @@ try{
    else if(ep==='/api/v1/operations/triage'&&method==='POST'){writes.push({ep});data={workTypeId:'t1',workType:'Production Support',typeReason:'3 similar work items were this type',priority:'High',priorityReason:'it mentions “urgent”',assignee:{id:'u2',name:'Upendra Rao'},assigneeReason:'resolved 4 similar items · 2 open now',duplicates:[{id:'w1',key:'WT-1',title:'Printer queue stuck on floor 3',status:'ToDo',assignee:null,score:71}],routed:'to the next person on the rota'};}
    else if(ep==='/api/v1/operations/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});settings={...settings,...b};data=settings;}
    else if(ep==='/api/v1/agent/inbox')data={items:[],pending:0,canDecide:true};
+   else if(ep==='/api/v1/voice/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});voice={...voice,...b};data=voice;}
+   else if(ep==='/api/v1/voice/calls/test'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});vcall={id:'c1',channel:'test',direction:'inbound',callerNumber:null,language:'te',status:'active',startedAt:iso(0),endedAt:null,turns:[{role:'agent',text:'నమస్కారం, FiveStar కి స్వాగతం. నేను Asha.',at:iso(0)}],summary:null,workTaskId:null,ticketKey:null,verified:false,transferred:false,archiveKey:null};data={call:vcall,say:vcall.turns[0].text,ended:false};}
+   else if(ep==='/api/v1/voice/calls/c1/say'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});vcall={...vcall,turns:[...vcall.turns,{role:'caller',text:b.text,at:iso(0)},{role:'tool',tool:'create_ticket',text:'Created ticket WT-9.',at:iso(0)},{role:'agent',text:'మీ అభ్యర్థన నమోదు చేయబడింది: WT-9.',at:iso(0)}],ticketKey:'WT-9',workTaskId:'w9'};data={call:vcall,say:'ok',ended:false};}
+   else if(ep==='/api/v1/voice/calls/c1/end'&&method==='POST'){writes.push({ep});data={...vcall,status:'ended'};}
    else{
     assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
     if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
@@ -51,6 +56,9 @@ try{
     else if(ep==='/api/v1/work-types')data=[{id:'t1',name:'Production Support',description:null,order:0,isActive:true,taskCount:3},{id:'t2',name:'Analysis',description:null,order:1,isActive:true,taskCount:1}];
     else if(ep==='/api/v1/workspace/members')data=members;
     else if(ep==='/api/v1/operations/settings')data=settings;
+    else if(ep==='/api/v1/voice/settings')data=voice;
+    else if(ep==='/api/v1/voice/connectors')data=[];
+    else if(ep==='/api/v1/voice/calls')data=vcall?[{id:'c1',channel:'test',callerNumber:null,language:'te',status:'ended',startedAt:iso(0),endedAt:iso(0),summary:'Caller asked about EMI date; ticket WT-9 created.',ticketKey:'WT-9',transferred:false}]:[];
     else if(ep==='/api/v1/operations/insights')data=insights;
     else if(ep==='/api/v1/work/sla')data={entitled:true,canManage:true,defaults:[{priority:'Critical',responseMinutes:30,resolutionMinutes:240},{priority:'High',responseMinutes:120,resolutionMinutes:1440},{priority:'Medium',responseMinutes:480,resolutionMinutes:4320},{priority:'Low',responseMinutes:1440,resolutionMinutes:10080}],overrides:[]};
     else if(ep.endsWith('/projects')||ep.endsWith('/tasks')||ep.endsWith('/work-tasks'))data={items:[],page:1,totalPages:0,totalItems:0};
@@ -67,7 +75,7 @@ try{
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(500);await page.screenshot({path:path.join(out,name)});};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/operations');await page.locator('.work-table').waitFor();
- const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Queue','Board','Insights','Settings']);
+ const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Queue','Board','Insights','Voice agent','Settings']);
  // Views and saving one.
  await page.locator('.ops-view',{hasText:'Unassigned'}).click();await page.waitForTimeout(400);
  assert.equal(await page.locator('.work-table tbody tr').count(),1);assert.ok(await page.locator('.ops-view.on',{hasText:'Unassigned'}).isVisible());
@@ -106,6 +114,18 @@ try{
  await page.getByPlaceholder('e.g. Fix production issue in payment calculation').fill('Printer stuck urgent on floor 3');
  await page.locator('.ops-triage').waitFor({timeout:5000});assert.ok(await page.locator('.ops-dupe',{hasText:'WT-1'}).isVisible());
  await page.locator('.ops-sug',{hasText:'High priority'}).click();await shot(page,'triage-1440.png');checks.push('triage');
+ // Voice agent: settings, then a typed test call in Telugu that creates a ticket.
+ await page.goto(origin+'/preview-org/operations?view=voice');await page.locator('.va-hero').waitFor();
+ await page.locator('.va-langs button',{hasText:'Kannada'}).click();
+ await page.getByRole('button',{name:'Save',exact:true}).click();
+ for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/settings');i++)await page.waitForTimeout(100);
+ assert.deepEqual(writes.find(w=>w.ep==='/api/v1/voice/settings').b.languages,['te','hi','en','ta','kn']);
+ await page.getByRole('button',{name:'Try a test call'}).click();await page.getByRole('dialog').getByRole('button',{name:'Start'}).click();
+ await page.locator('.va-bubble.agent').first().waitFor();
+ await page.getByLabel('What the caller says').fill('నా EMI ఎప్పుడు?');await page.getByLabel('What the caller says').press('Enter');
+ await page.locator('.va-tool',{hasText:'create_ticket'}).waitFor();await shot(page,'voice-test-1440.png');
+ await page.getByRole('button',{name:'Hang up'}).click();
+ for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/calls/c1/end');i++)await page.waitForTimeout(100);checks.push('voice');
  await page.close();await ctx.close();
  // Phone.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
