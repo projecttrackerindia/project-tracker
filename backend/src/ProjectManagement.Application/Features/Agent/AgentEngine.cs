@@ -139,7 +139,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
 }
 
 /// <summary>Everything the agent does for one project in one tick, inside that project's workspace context.</summary>
-public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalService signals, AgentMeetingService meetings, AgentAnalysisService analysis,
+public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalService signals, AgentMeetingService meetings, NotetakerService notetaker, AgentAnalysisService analysis,
     AgentDailyUpdateService daily, AgentSlackReader slack, AgentReviewService review, AgentFollowUpService followUps, AgentBriefService briefs,
     AgentDelegationService delegations, IOptions<AgentOptions> options, ILogger<AgentProjectTick> log)
 {
@@ -179,6 +179,7 @@ public class AgentProjectTick(IAppDbContext db, AppClock clock, AgentSignalServi
             await Step("automatic transcripts", () => meetings.EnableAutoTranscriptsAsync(s, ct));
             added += await Step("finish bots", () => meetings.FinishBotsAsync(s, w, ct));
             added += await Step("meet transcripts", () => meetings.FetchTranscriptsAsync(s, ct));
+            bots += await Step("notetaker", () => notetaker.TickAsync(s, ct));
         }
 
         // Read what is new: a meeting or mail right away, chat once it has settled; never retry a failed reading sooner than half an hour.

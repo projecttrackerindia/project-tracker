@@ -46,6 +46,13 @@ export const name = 'meet';
 
 export const pageText = (page) => page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
 
+/** With a signed-in account: true when Google shows a sign-in prompt or the guest name field instead (the cookies have expired). */
+export async function signedOut(page) {
+  await page.waitForTimeout(2500);
+  if (/accounts\.google\.com/.test(page.url())) return true;
+  return Boolean(await firstVisible(page, SEL.nameInput));
+}
+
 /** The pre-join screen: type the bot's name, switch off camera and microphone, ask to join. */
 export async function askToJoin(page, botName, log) {
   const deadline = Date.now() + 60_000;

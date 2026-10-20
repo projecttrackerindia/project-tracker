@@ -76,6 +76,27 @@ public partial class AppDbContext
         });
         b.Entity<StageAutoStart>(e => { e.HasIndex(x => x.StageId).IsUnique(); e.HasOne<ProjectStage>().WithMany().HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.Cascade); });
         b.Entity<DataProtectionKey>(e => { e.Property(x => x.FriendlyName).HasMaxLength(200); });
+        b.Entity<MeetingBotIdentity>(e =>
+        {
+            e.HasIndex(x => x.Email).IsUnique();
+            e.Property(x => x.Email).HasMaxLength(254); e.Property(x => x.DisplayName).HasMaxLength(100);
+            e.Property(x => x.CookiesProtected).HasMaxLength(400000); e.Property(x => x.LastError).HasMaxLength(500);
+        });
+        b.Entity<NotetakerSettings>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<MeetingMinutes>(e =>
+        {
+            e.HasIndex(x => x.BotRowId).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId });
+            e.Property(x => x.Title).HasMaxLength(300); e.Property(x => x.Status).HasMaxLength(20); e.Property(x => x.Model).HasMaxLength(200);
+            e.Property(x => x.ContentProtected).HasMaxLength(200000);
+            e.HasOne<AgentMeetingBot>().WithMany().HasForeignKey(x => x.BotRowId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<MailAccount>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId });

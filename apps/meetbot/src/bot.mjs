@@ -8,7 +8,7 @@ import { platformFor } from './platform.mjs';
  * Statuses: scheduled → joining → waiting_admission → in_call_recording → call_ended → done (or fatal, with an error).
  */
 export class MeetBot {
-  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage, raiseMessage, readChat }, deps) {
+  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage, raiseMessage, readChat, identity }, deps) {
     this.id = randomUUID();
     this.meetingUrl = meetingUrl;
     this.platform = platformFor(meetingUrl);
@@ -21,6 +21,8 @@ export class MeetBot {
     this.captionLanguage = captionLanguage || null;
     this.raiseMessage = raiseMessage || null;
     this.readChat = Boolean(readChat);
+    // A signed-in notetaker account (its browser cookies): the bot joins as that account instead of as a guest.
+    this.identity = identity && Array.isArray(identity.cookies) && identity.cookies.length ? identity : null;
     // Captions go out in batches (one request every few seconds, however much is said) so a thousand meetings stay cheap for the API.
     this.captionBuffer = [];
     this.flushMs = deps.captionFlushMs ?? 3000;
@@ -66,13 +68,15 @@ export class MeetBot {
     this.setStatus('joining');
     try {
       this.browser = await this.deps.launch();
-      const context = await this.browser.newContext({ permissions: ['microphone', 'camera'], viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+      const context = await this.browser.newContext({ permissions: ['microphone', 'camera'], viewport: { width: 1280, height: 800 }, locale: 'en-US',
+        ...(this.identity ? { storageState: { cookies: this.identity.cookies, origins: [] } } : {}) });
       const page = await context.newPage();
       this.page = page;
       await page.exposeFunction('ptCaption', (name, text) => this.caption(name, text));
       await page.exposeFunction('ptChat', (name, text) => this.heard(name, text));
       await page.goto(this.meetingUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       const p = this.platform;
+      if (this.identity && p.signedOut && await p.signedOut(page)) throw new Error('NOTETAKER_SIGNED_OUT: the notetaker account is signed out - sign it in again.');
       await p.askToJoin(page, this.botName, (m) => this.log(m));
       this.setStatus('waiting_admission');
       const admitted = await p.waitUntilAdmitted(page, this.deps.admitTimeoutMs);

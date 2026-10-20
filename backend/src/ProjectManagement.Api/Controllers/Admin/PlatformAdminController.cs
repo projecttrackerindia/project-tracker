@@ -37,6 +37,20 @@ public class PlatformAdminController(AdminService admin, PlatformService platfor
     public async Task<IActionResult> MeetingBots(CancellationToken ct) =>
         Ok(await HttpContext.RequestServices.GetRequiredService<ProjectManagement.Application.Features.Agent.MeetingBotQueue>().OverviewAsync(ct));
 
+    /// <summary>The Google accounts the bot joins calls as (cookies are write-only).</summary>
+    [HttpGet("meeting-bots/identities")]
+    public async Task<IActionResult> BotIdentities(CancellationToken ct) => Ok(await Identities.ListAsync(ct));
+    [HttpPost("meeting-bots/identities")]
+    public async Task<IActionResult> SaveBotIdentity([FromBody] ProjectManagement.Application.Features.Agent.SaveMeetingBotIdentityRequest req, CancellationToken ct) => Ok(await Identities.SaveAsync(null, req, ct));
+    [HttpPut("meeting-bots/identities/{id:guid}")]
+    public async Task<IActionResult> UpdateBotIdentity(Guid id, [FromBody] ProjectManagement.Application.Features.Agent.SaveMeetingBotIdentityRequest req, CancellationToken ct) => Ok(await Identities.SaveAsync(id, req, ct));
+    [HttpPut("meeting-bots/identities/{id:guid}/active")]
+    public async Task<IActionResult> BotIdentityActive(Guid id, [FromBody] BotIdentityActiveRequest req, CancellationToken ct) => Ok(await Identities.SetActiveAsync(id, req.Active, ct));
+    [HttpDelete("meeting-bots/identities/{id:guid}")]
+    public async Task<IActionResult> DeleteBotIdentity(Guid id, CancellationToken ct) { await Identities.DeleteAsync(id, ct); return NoContent(); }
+    private ProjectManagement.Application.Features.Agent.MeetingBotIdentityService Identities =>
+        HttpContext.RequestServices.GetRequiredService<ProjectManagement.Application.Features.Agent.MeetingBotIdentityService>();
+
     // ---------------------------------------------------------------- organizations, users, plans, audit
     [HttpGet("stats")]
     public async Task<IActionResult> Stats(CancellationToken ct) => Ok(await admin.GetStatsAsync(ct));
@@ -203,3 +217,5 @@ public class PlatformAdminController(AdminService admin, PlatformService platfor
     [HttpPut("consent")]
     public async Task<IActionResult> PublishConsentDocument([FromBody] SetConsentDocumentRequest req, CancellationToken ct) => Ok(await platform.PublishConsentDocumentAsync(req, ct));
 }
+
+public record BotIdentityActiveRequest(bool Active);

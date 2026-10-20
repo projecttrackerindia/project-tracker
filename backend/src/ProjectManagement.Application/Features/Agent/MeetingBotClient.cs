@@ -36,11 +36,11 @@ public class MeetingBotClient(IOptions<AgentOptions> options)
 /// <summary>RaiseMessage: what the person who sent the agent asked it to raise. ReadChat: watch the meeting chat (to answer when addressed).</summary>
 public record MeetingBotJoin(string MeetingUrl, string BotName, string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, string? RaiseMessage = null, bool ReadChat = false);
 
-public record BotWorkerBotReport(string? JobId, string? Status, string? Error, int Lines = 0);
+public record BotWorkerBotReport(string? JobId, string? Status, string? Error, int Lines = 0, string? IdentityId = null);
 /// <summary>A worker's report: who it is, how many meetings it can attend at once, whether it is shutting down, and its bots.</summary>
 public record BotWorkerReport(string? WorkerId, string? Host, string? Version, int Capacity, bool Draining, IReadOnlyList<BotWorkerBotReport>? Bots);
 public record BotJobDto(string JobId, string MeetingUrl, string BotName, DateTime JoinAt, DateTime LeaveAt, string WebhookUrl,
-    string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin, string? RaiseMessage = null, bool ReadChat = false);
+    string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin, string? RaiseMessage = null, bool ReadChat = false, BotIdentityDto? Identity = null);
 public record BotInstructionDto(string JobId, IReadOnlyList<string> Chat, bool Stop);
 public record BotPollResponse(IReadOnlyList<BotJobDto> Jobs, IReadOnlyList<BotInstructionDto> Bots, int PollSeconds);
 
@@ -56,7 +56,7 @@ public record MeetingBotOverviewDto(bool Configured, int Capacity, int Active, i
 /// - chat messages for a bot wait on its row until its worker collects them.
 /// Workers only ever call the API, so they can run as any number of replicas behind one address.
 /// </summary>
-public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clock, MeetingBotClient bots, IOptions<AppOptions> app, ILogger<MeetingBotQueue> log)
+public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clock, MeetingBotClient bots, IOptions<AppOptions> app, ILogger<MeetingBotQueue> log, MeetingBotIdentityService identities)
 {
     public static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
     /// <summary>A session can be picked up from shortly before it starts until a few minutes before it ends.</summary>
@@ -106,6 +106,8 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
                     .SetProperty(b => b.Error, b => error ?? b.Error)
                     .SetProperty(b => b.Status, b => status == "in_call_recording" && b.Status == "scheduled" ? "in_call" : b.Status), ct);
         }
+        foreach (var h in held.Where(h => h.Status == "fatal" && (h.Report.Error ?? "").StartsWith(MeetingBotIdentityService.SignedOut, StringComparison.Ordinal)))
+            await identities.MarkSignedOutAsync(h.Report.IdentityId, ct);
         foreach (var h in held)
             instructions.Add(new(h.Report.JobId!, h.Finished || !h.Chat ? [] : await TakeChatAsync(h.Id, ct), false));
 
@@ -144,7 +146,7 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var rejoin = c.Attempts > 0;
                 jobs.Add(new BotJobDto(c.Id.ToString(), join.MeetingUrl, join.BotName, c.SessionStartUtc, c.SessionEndUtc.AddMinutes(30),
                     $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{c.WebhookToken}",
-                    rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin, rejoin ? null : join.RaiseMessage, join.ReadChat));
+                    rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin, rejoin ? null : join.RaiseMessage, join.ReadChat, await identities.PickAsync(join.MeetingUrl, ct)));
                 log.LogInformation("Meeting bot session {Session} handed to worker {Worker}{Rejoin}", c.Id, workerId, rejoin ? " (rejoining)" : "");
             }
         }

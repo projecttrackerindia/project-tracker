@@ -11,6 +11,9 @@ public interface IAppDbContext
     DbSet<PlannedLeave> PlannedLeaves { get; }
     DbSet<OperationsSettings> OperationsSettings { get; }
     DbSet<MailAccount> MailAccounts { get; }
+    DbSet<MeetingBotIdentity> MeetingBotIdentities { get; }
+    DbSet<NotetakerSettings> NotetakerSettings { get; }
+    DbSet<MeetingMinutes> MeetingMinutes { get; }
     DbSet<StageAutoStart> StageAutoStarts { get; }
     DbSet<WorkRoutingRule> WorkRoutingRules { get; }
     DbSet<PersonalFileDeletion> PersonalFileDeletions { get; }

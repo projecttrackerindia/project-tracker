@@ -54,7 +54,7 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
     for (const [jobId, b] of jobs) {
       // A finished bot is reported for a little while (so its end is seen), then dropped.
       if (['done', 'fatal'].includes(b.status) && b.finishedAt && now - b.finishedAt > 120_000) { jobs.delete(jobId); continue; }
-      list.push({ jobId, status: b.status, error: b.error, lines: b.lines });
+      list.push({ jobId, status: b.status, error: b.error, lines: b.lines, identityId: b.identity?.id ?? null });
     }
     for (const [jobId, error] of rejected) list.push({ jobId, status: 'fatal', error });
     rejected.clear();
@@ -73,6 +73,7 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
       captionLanguage: typeof job.captionLanguage === 'string' && /^[\p{L} ()-]{2,40}$/u.test(job.captionLanguage) ? job.captionLanguage : null,
       raiseMessage: job.raiseMessage ? String(job.raiseMessage).slice(0, 500) : null,
       readChat: job.readChat === true,
+      identity: job.identity && typeof job.identity === 'object' ? { id: String(job.identity.id ?? ''), cookies: Array.isArray(job.identity.cookies) ? job.identity.cookies.slice(0, 400) : [] } : null,
     }, { ...deps, onFinished: (b) => { b.finishedAt = Date.now(); deps.onFinished?.(b); } });
     bot.jobId = job.jobId;
     jobs.set(job.jobId, bot);

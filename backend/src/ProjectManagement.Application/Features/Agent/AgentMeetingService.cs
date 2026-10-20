@@ -211,6 +211,44 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         return new AgentLinkJoinDto(bot.Id, MicrosoftOnlineMeetings.Platform(link), bot.Title!, bot.SessionStartUtc, bot.SessionEndUtc, bot.Status);
     }
 
+    /// <summary>
+    /// The person's own notetaker: sends the bot to a call in their name ("Prasanna's assistant"), filed under one of their projects. Unlike
+    /// <see cref="JoinLinkAsync"/> this needs only access to the project (not the right to set up its agent). <paramref name="start"/>
+    /// null = now. Returns null when the bot is already going to that call.
+    /// </summary>
+    public async Task<AgentMeetingBot?> JoinForAsync(Guid projectId, Guid userId, string url, string? title, DateTime? start, DateTime end, string? instructions, string? calendarEventId, CancellationToken ct)
+    {
+        url = url.Trim();
+        if (!MicrosoftOnlineMeetings.Joinable(url)) throw new ValidationException("url", "Paste a Google Meet (meet.google.com) or Microsoft Teams (teams.microsoft.com) meeting link.");
+        if (!botService.Configured) throw new ConflictException("The meeting bot is not set up on this installation.", "MEETBOT_UNAVAILABLE");
+        var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
+        if (s is not { Enabled: true }) throw new ConflictException("Switch the project agent on for this project first (Project › Agent).", "AGENT_OFF");
+        if (!s.ReadMeetings) throw new ConflictException("Let the project agent read meetings first (Project › Agent › Sources).", "AGENT_MEETINGS_OFF");
+        var w = await db.AgentWorkspaceSettings.FirstOrDefaultAsync(ct) ?? new AgentWorkspaceSettings { TenantId = s.TenantId };
+        var now = clock.Now;
+        var from = start ?? new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Utc);
+        if (end <= from) end = from.AddMinutes(60);
+        var shown = AgentAnalysisService.Cut(url, 300);
+        if (await db.AgentMeetingBots.AnyAsync(b => b.ProjectId == projectId && b.Kind == "bot" && (b.Status == "scheduled" || b.Status == "in_call")
+                && b.SessionEndUtc > now && b.MeetUrl == shown, ct)) return null;
+        var meetingId = CalendarMeetingId(projectId, calendarEventId is { } ev ? $"notetaker:{ev}" : $"notetaker:{url}:{from:yyyyMMddHHmm}");
+        if (await db.AgentMeetingBots.AnyAsync(b => b.MeetingId == meetingId && b.SessionStartUtc == from && b.Kind == "bot", ct)) return null;
+        var bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = projectId, MeetingId = meetingId, SessionStartUtc = from, SessionEndUtc = end,
+            Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now, CreatedBy = userId,
+            CalendarEventId = calendarEventId is null ? null : AgentAnalysisService.Cut(calendarEventId, 200),
+            Title = AgentAnalysisService.Cut(string.IsNullOrWhiteSpace(title) ? $"{MicrosoftOnlineMeetings.Platform(url)} call" : title.Trim(), 300), MeetUrl = shown };
+        db.AgentMeetingBots.Add(bot);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.AgentMeetingBots.Entry(bot).State = EntityState.Detached; return null; }
+        var delegation = new AgentDelegation { TenantId = s.TenantId, ProjectId = projectId, MeetingId = meetingId, SessionStartUtc = from, SessionEndUtc = end, UserId = userId,
+            Status = "attending", BotRowId = bot.Id, Instructions = string.IsNullOrWhiteSpace(instructions) ? null : AgentAnalysisService.Cut(instructions.Trim(), 1000),
+            Automatic = calendarEventId is not null, CreatedAt = now, CreatedBy = userId };
+        db.AgentDelegations.Add(delegation);
+        await db.SaveChangesAsync(ct);
+        await SendAsync(s, w, bot, url, [delegation], ct);
+        return bot;
+    }
+
     private static bool SameMeet(string a, string b) =>
         string.Equals(a.TrimEnd('/').Split('?')[0], b.TrimEnd('/').Split('?')[0], StringComparison.OrdinalIgnoreCase);
 
