@@ -53,9 +53,9 @@ try{
  await page.goto(origin+'/preview-org/project-agent');await page.locator('.agh').waitFor();
  // Hubs: one Agents place; My work, Project agent and Agent Tracker are not listed twice.
  const first=await labels(page);
- assert.ok(first.includes('Agents'));assert.ok(first.includes('Command Center'));
+ assert.ok(first.includes('Assistant'));assert.ok(first.includes('Home'));
  for(const gone of ['My work','Project agent','Agent Tracker'])assert.ok(!first.includes(gone),`${gone} is inside a hub`);
- assert.ok(await page.locator('.sidebar .nav-item.active',{hasText:'Agents'}).isVisible(),'Agents is the open place on a proposals page');
+ assert.ok(await page.locator('.sidebar .nav-item.active',{hasText:'Assistant'}).isVisible(),'Assistant is the open place on a proposals page');
  assert.deepEqual(await titles(page),['Home','Work','Insights']);
  const hub=await page.locator('.agh-tabs a').allInnerTexts();
  assert.ok(hub.some(t=>t.startsWith('Proposals'))&&hub.some(t=>t.startsWith('Tracker'))&&hub.some(t=>t.startsWith('Workflows')));
@@ -83,24 +83,23 @@ try{
  await shot(page,'dragging-1440.png');
  await page.mouse.up();await page.waitForTimeout(800);
  const home=(await labels(page)).slice(0,6);
- assert.ok(home.indexOf('Calendar')<home.indexOf('Command Center'),`dragged: ${home}`);
+ assert.ok(home.indexOf('Calendar')<home.indexOf('Home'),`dragged: ${home}`);
  assert.ok(saved.order.Home.indexOf('/calendar')<saved.order.Home.indexOf('/command-center'));checks.push('drag-mouse');
 
  // And with the keyboard: Space, Arrow down, Space.
  await page.locator('[data-nav="/projects"] .nav-grip').focus();await page.keyboard.press('Space');await page.waitForTimeout(150);
  await page.keyboard.press('ArrowDown');await page.waitForTimeout(150);await page.keyboard.press('Space');await page.waitForTimeout(800);
- assert.equal(saved.order.Work[0],'/portfolio');checks.push('drag-keyboard');
+ assert.equal(saved.order.Work[0],'/operations');checks.push('drag-keyboard');
 
  // Customize: pin Timesheet to the top, hide Activity, then Done.
  await page.getByRole('button',{name:'Customize'}).click();
  await page.getByRole('button',{name:'Pin Timesheet'}).click();
- await page.locator('.nav-section-toggle',{hasText:'Insights'}).click();   // unfold to reach Activity
- await page.getByRole('button',{name:'Hide Activity'}).click();await page.waitForTimeout(300);
+ await page.getByRole('button',{name:'Hide Documents'}).click();   // Activity is already hidden in the lean defaultawait page.waitForTimeout(300);
  await shot(page,'customize-1440.png');
  await page.getByRole('button',{name:'Done'}).click();await page.waitForTimeout(800);
  assert.equal((await titles(page))[0],'Pinned');assert.equal((await labels(page))[0],'Timesheet');
- assert.ok(!(await labels(page)).includes('Activity'));
- assert.deepEqual(saved.pinned,['/timesheet']);assert.deepEqual(saved.hidden,['/activity']);checks.push('pin-hide');
+ assert.ok(!(await labels(page)).includes('Documents'));assert.ok(!(await labels(page)).includes('Activity'));
+ assert.deepEqual(saved.pinned,['/timesheet']);assert.ok(saved.hidden.includes('/documents')&&saved.hidden.includes('/activity'));checks.push('pin-hide');
  await shot(page,'customized-1440.png');
 
  // The layout is the account's: a new page (another device) gets it.

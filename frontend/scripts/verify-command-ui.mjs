@@ -109,7 +109,7 @@ try{
  await page.getByRole('heading',{name:'Good morning, Asha'}).waitFor();
  assert.equal(await page.locator('[data-attention]').count(),5);
  assert.ok(await page.getByText('moves 3 dependent tasks',{exact:false}).isVisible());checks.push('attention-with-evidence');
- assert.ok(await page.getByRole('link',{name:'Command Center'}).first().isVisible());checks.push('nav-entry');
+ assert.ok(await page.getByRole('link',{name:'Home'}).first().isVisible());checks.push('nav-entry');
  await shot(page,'command-1440.png',true);await noOverflow(page,'command 1440');
 
  await page.locator('[data-attention=check_in]').getByRole('button',{name:'Answer'}).click();
@@ -175,7 +175,7 @@ try{
   await page.goto(origin+'/preview-org/command-center');await page.locator('[data-attention]').first().waitFor();
   await shot(page,`command-390-${theme}.png`,true);await noOverflow(page,`command 390 ${theme}`);
   if(theme==='light'){
-   assert.ok(await page.getByRole('link',{name:'Focus'}).isVisible(),'Command Center is a phone tab');checks.push('phone-tab');
+   assert.ok(await page.locator('.m-tabs').getByRole('link',{name:'Home'}).isVisible(),'Home (the Command Center) is a phone tab');checks.push('phone-tab');
    await page.locator('[data-attention=check_in]').getByRole('button',{name:'Answer'}).click();
    dialog=page.getByRole('dialog');await dialog.getByRole('radio',{name:/On track/}).waitFor();
    await shot(page,'checkin-390.png');await noOverflow(page,'check-in 390');

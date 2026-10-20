@@ -192,7 +192,7 @@ export function TabBar() {
   const tabs: Tab[] = useMemo(() => {
     if (admin) return all.slice(0, 3).map((i) => ({ to: i.to, label: i.label === 'Organizations' ? 'Orgs' : i.label, icon: i.icon, end: i.end }));
     // The person's own pins come first (from Customize in the sidebar), then the usual places.
-    const usual = ['/command-center', '/projects', '/chat', '/reminders', '/calendar'].map(find).filter(Boolean) as typeof all;
+    const usual = ['/projects', '/mailbox', '/chat', '/calendar'].map(find).filter(Boolean) as typeof all;
     const picks = [...pins.filter((p) => p.to !== '/'), ...usual].filter((x, i, list) => list.findIndex((y) => y.to === x.to) === i).slice(0, 2);
     const label: Record<string, string> = { '/': 'Home', '/command-center': 'Focus' };
     return [{ to: '/', label: 'Home', icon: 'dashboard' as IconName, end: true }, ...picks.map((i) => ({ to: i.to, label: label[i.to] ?? i.label, icon: i.icon, badge: badgeOf(i.to), match: i.match }))];
