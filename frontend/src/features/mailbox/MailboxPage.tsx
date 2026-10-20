@@ -566,11 +566,13 @@ function ConnectModal({ accountsData, presets, google, microsoft, imapAccounts, 
         <form className="mb-imap" onSubmit={e => { e.preventDefault(); void connectImap(); }}>
           <label>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={preset.domain ? `you@${preset.domain}` : 'you@yourcompany.com'} autoFocus autoComplete="username" /></label>
           <label>Password<PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
-          <p className="mb-note"><Icon name="info" size={13} /> {preset.id === 'gmail'
-            ? <>Turn on 2-Step Verification for your Google account, then create an app password at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">myaccount.google.com/apppasswords</a> and paste the 16 letters here (not your normal password).</>
-            : preset.id.startsWith('rediff')
-            ? 'In Rediffmail, open Settings → POP/IMAP access and switch IMAP on first. Use your Rediffmail password.'
-            : 'Switch IMAP on in your mail settings. If you use two-step sign-in, create an app password and use it here.'} The password is stored encrypted and used only to sync your mail.</p>
+          <p className="mb-note"><Icon name="info" size={13} /> {{
+            gmail: <>Turn on 2-Step Verification, then create an app password at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">myaccount.google.com/apppasswords</a> and paste its 16 letters here.</>,
+            rediff: <>In Rediffmail open <b>Settings › POP/IMAP access</b>, switch IMAP on, then use your normal Rediffmail password.</>,
+            rediffpro: <>Use your normal Rediffmail Pro password. If it fails, ask your mail admin to allow <b>IMAP</b> for your account.</>,
+            yahoo: <>In Yahoo open <b>Account security › Generate app password</b> and paste that password here (not your normal one).</>,
+            zoho: <>In Zoho Mail open <b>Settings › Mail Accounts › IMAP Access</b> and switch it on; with 2-factor sign-in, use an app password.</>,
+          }[preset.id] ?? 'Switch IMAP on in your mail settings; with two-step sign-in, use an app password.'}{' '}The password is stored encrypted and used only to sync your mail.</p>
         </form>
       )}
     </Modal>
@@ -627,7 +629,7 @@ function CompanyConnect({ accounts, onConnected }: { accounts: MailAccounts; onC
   return (
     <form className="mb-company" onSubmit={e => { e.preventDefault(); void connect(); }}>
       <b>Connect your company mail</b>
-      <small>{company.name} · {company.domains.join(', ')} — just your mail password, the server is already set up.</small>
+      <small>{company.name} · {company.domains.join(', ')}. Enter your normal mail password; the server is already set up. If it fails, ask your mail admin to allow IMAP for you.</small>
       {!mine && <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={`you@${company.domains[0]}`} aria-label="Company email" autoComplete="username" />}
       {mine && <span className="mb-company-email">{mine}</span>}
       <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Mail password" aria-label="Mail password" autoComplete="current-password" />
