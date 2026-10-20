@@ -10,7 +10,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "test:ui": "node scripts/verify-enterprise-ui.mjs && node scripts/verify-workspace-ui.mjs && node scripts/verify-email-ui.mjs && node scripts/verify-conversation-ui.mjs && node scripts/verify-layout-ui.mjs && node scripts/verify-stage-schedule-ui.mjs && node scripts/verify-scrum-ui.mjs && node scripts/verify-update-ui.mjs && node scripts/verify-agent-ui.mjs && node scripts/verify-command-ui.mjs && node scripts/verify-tracker-ui.mjs && node scripts/verify-sidebar-ui.mjs && node scripts/verify-billing-upi.mjs"
+    "test:ui": "node scripts/verify-enterprise-ui.mjs && node scripts/verify-workspace-ui.mjs && node scripts/verify-email-ui.mjs && node scripts/verify-conversation-ui.mjs && node scripts/verify-layout-ui.mjs && node scripts/verify-stage-schedule-ui.mjs && node scripts/verify-scrum-ui.mjs && node scripts/verify-update-ui.mjs && node scripts/verify-agent-ui.mjs && node scripts/verify-command-ui.mjs && node scripts/verify-tracker-ui.mjs && node scripts/verify-sidebar-ui.mjs && node scripts/verify-timesheet-ui.mjs && node scripts/verify-billing-upi.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

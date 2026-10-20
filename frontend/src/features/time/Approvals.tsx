@@ -133,6 +133,7 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
   const q = useWsQuery(['approvals', week ?? ''], () => timeApi.approvals(week));
   const [asking, setAsking] = useState<{ row: ApprovalRow; kind: 'approve' | 'reject' } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
   const me = useAuth((s) => s.ctx?.user.id);
 
   if (q.isLoading) return <PageLoader />;
@@ -144,16 +145,22 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
   const otherWeeks = d.pending.filter((r) => r.weekStart !== shown);
   const thisMonday = mondayOf();
 
-  const approveAll = async () => {
+  const approveAll = async (ids: string[]) => {
     setBusy(true);
-    let done = 0;
-    try { for (const r of waiting) { await timeApi.approve(r.id!); done++; } toast(`Approved ${done} timesheet${done === 1 ? '' : 's'}.`); }
-    catch (e) { toast(errText(e, 'Some timesheets could not be approved.'), 'error'); }
+    try {
+      const res = await timeApi.approveMany(ids);
+      toast(res.failed.length ? `Approved ${res.approved}; ${res.failed.length} could not be: ${res.failed[0].message}` : `Approved ${res.approved} timesheet${res.approved === 1 ? '' : 's'}.`, res.failed.length ? 'error' : undefined);
+      setPicked([]);
+    }
+    catch (e) { toast(errText(e, 'The timesheets could not be approved.'), 'error'); }
     finally { setBusy(false); refresh(); }
   };
+  const pickable = (r: ApprovalRow) => d.entitled && !!r.id && r.status === 'Submitted' && r.user.id !== me;
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const row = (r: ApprovalRow, withWeek = false) => (
-    <tr key={`${r.user.id}:${r.weekStart}`}>
+    <tr key={`${r.user.id}:${r.weekStart}`} className={r.id && picked.includes(r.id) ? 'picked' : ''}>
+      <td className="ts-pick">{pickable(r) && <input type="checkbox" aria-label={`Select ${r.user.name}'s week`} checked={picked.includes(r.id!)} onChange={() => toggle(r.id!)} />}</td>
       <td><span className="row" style={{ gap: 8 }}><Avatar name={r.user.name} size="sm" userId={r.user.id} /><b>{r.user.name}</b></span></td>
       {withWeek && <td className="cell-muted">{weekLabel(r.weekStart)}</td>}
       <td className="num">{formatMinutes(r.totalMinutes)}</td>
@@ -180,7 +187,9 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
         <b className="ts-weeknav-label">Week of {weekLabel(shown)}</b>
         <button type="button" className="btn-icon" aria-label="Next week" disabled={shown >= thisMonday} onClick={() => setWeek(addDaysIso(shown, 7))}><Icon name="chevronR" /></button>
         {shown !== addDaysIso(thisMonday, -7) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setWeek(addDaysIso(thisMonday, -7))}>Last week</button>}
-        {d.entitled && waiting.length > 1 && <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }} disabled={busy} onClick={() => void approveAll()}><Icon name="checks" size={14} /> Approve all {waiting.length}</button>}
+        <span style={{ marginLeft: 'auto' }} />
+        {picked.length > 0 && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void approveAll(picked)}><Icon name="tick" size={14} /> Approve {picked.length} selected</button>}
+        {d.entitled && waiting.length > 1 && picked.length === 0 && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void approveAll(waiting.map((r) => r.id!))}><Icon name="checks" size={14} /> Approve all {waiting.length}</button>}
       </div>
 
       <div className="stat-grid">
@@ -196,7 +205,7 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
         {d.week.length === 0 ? <div className="card-body"><EmptyState icon="users" title="Nobody to review" text="People who report to you in the org chart appear here." /></div> : (
           <div className="table-wrap">
             <table className="ts-table">
-              <thead><tr><th>Person</th><th className="num">Logged</th><th className="num">Billable</th><th>Status</th><th>Sent</th><th /></tr></thead>
+              <thead><tr><th className="ts-pick"><span className="sr-only">Select</span></th><th>Person</th><th className="num">Logged</th><th className="num">Billable</th><th>Status</th><th>Sent</th><th /></tr></thead>
               <tbody>{d.week.map((r) => row(r))}</tbody>
             </table>
           </div>
@@ -208,7 +217,7 @@ export function ApprovalsPanel({ initialWeek }: { initialWeek?: string }) {
           <div className="card-head"><div><h3>Still waiting from other weeks</h3><p>Oldest first</p></div></div>
           <div className="table-wrap">
             <table className="ts-table">
-              <thead><tr><th>Person</th><th>Week</th><th className="num">Logged</th><th className="num">Billable</th><th>Status</th><th>Sent</th><th /></tr></thead>
+              <thead><tr><th className="ts-pick"><span className="sr-only">Select</span></th><th>Person</th><th>Week</th><th className="num">Logged</th><th className="num">Billable</th><th>Status</th><th>Sent</th><th /></tr></thead>
               <tbody>{otherWeeks.map((r) => row(r, true))}</tbody>
             </table>
           </div>

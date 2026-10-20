@@ -47,6 +47,7 @@ try{
    else if(ep==='/api/v1/time')data={from:url.searchParams.get('from'),to:url.searchParams.get('to'),user:{id:user.id,name:user.displayName},entries:[],byDay:[],totalMinutes:0,billableMinutes:0};
    else if(ep==='/api/v1/time/leave'){const from=url.searchParams.get('from'),to=url.searchParams.get('to');leaveQueries.push({from,to});data=leaves.filter(l=>l.date>=from&&l.date<=to);}
    else if(ep==='/api/v1/time/approvals')data={pending:[],people:[]};
+   else if(ep==='/api/v1/time/grid'){const t=new Date(`${today}T00:00:00Z`),mon=url.searchParams.get('weekStart')??new Date(t.getTime()-((t.getUTCDay()+6)%7)*864e5).toISOString().slice(0,10);const days=[0,1,2,3,4,5,6].map(i=>{const d=new Date(new Date(`${mon}T00:00:00Z`).getTime()+i*864e5).toISOString().slice(0,10);return {date:d,minutes:0,targetMinutes:i<5?480:0,weekend:i>=5,leave:false,leaveNote:null,future:d>today,meetings:0,meetingMinutes:0};});data={weekStart:mon,weekEnd:days[6].date,user:{id:user.id,name:user.displayName},mine:true,editable:true,locked:false,status:'NotSubmitted',days,rows:[],suggestions:[],totalMinutes:0,billableMinutes:0,targetMinutes:2400,overtimeMinutes:0,missingDays:0,running:null};}
    else if(ep==='/api/v1/time/week')data={weekStart:url.searchParams.get('weekStart'),weekEnd:today,userId:user.id,totalMinutes:0,billableMinutes:0,status:'NotSubmitted',locked:false,canSubmit:false,canWithdraw:false,canReview:false,entitled:true};
    else if(ep==='/api/v1/timer')data=null;
    else if(ep.endsWith('/workspace/logo'))data={hasLogo:false};

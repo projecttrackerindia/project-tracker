@@ -27,7 +27,7 @@ export type NotificationSection = 'inbox' | 'preferences' | 'devices' | 'schedul
 
 type Category = 'work' | 'reminders' | 'messages' | 'account';
 const CATEGORY: Record<Category, { label: string; icon: IconName; types: NotificationType[] }> = {
-  work: { label: 'Work', icon: 'kanban', types: ['TaskAssigned', 'TaskUpdated', 'Comment', 'Issue', 'Approval', 'ServiceLevel', 'ProjectUpdated', 'Document', 'Meeting', 'ReportReady', 'AgentAlert', 'AgentDigest'] },
+  work: { label: 'Work', icon: 'kanban', types: ['TaskAssigned', 'TaskUpdated', 'Comment', 'Issue', 'Approval', 'ServiceLevel', 'ProjectUpdated', 'Document', 'Meeting', 'ReportReady', 'AgentAlert', 'AgentDigest', 'TimesheetReminder'] },
   reminders: { label: 'Reminders & due dates', icon: 'alarm', types: ['DueSoon', 'Overdue', 'Reminder', 'Nudge', 'Briefing', 'PortfolioDigest', 'CertificationExpiry'] },
   messages: { label: 'Messages & mentions', icon: 'message', types: ['Message', 'Mention'] },
   account: { label: 'Account & workspace', icon: 'shield', types: ['Invitation', 'Subscription', 'Security'] },
@@ -39,7 +39,7 @@ const TYPE_ICON: Partial<Record<NotificationType, IconName>> = {
   TaskAssigned: 'userPlus', TaskUpdated: 'edit', Comment: 'message', Mention: 'message', Message: 'message', DueSoon: 'clock', Overdue: 'alert',
   Reminder: 'alarm', Nudge: 'alarm', Briefing: 'sun', PortfolioDigest: 'chart', Invitation: 'mail', Subscription: 'card', Security: 'lock',
   ReportReady: 'download', Issue: 'bug', Approval: 'checks', ServiceLevel: 'gauge', Document: 'note', Meeting: 'video', ProjectUpdated: 'folder',
-  CertificationExpiry: 'star', AgentAlert: 'radar', AgentDigest: 'sparkle',
+  CertificationExpiry: 'star', AgentAlert: 'radar', AgentDigest: 'sparkle', TimesheetReminder: 'timer',
 };
 
 // ------------------------------------------------------------------ page

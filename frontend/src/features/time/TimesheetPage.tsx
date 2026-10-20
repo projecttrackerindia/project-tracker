@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
@@ -13,6 +13,18 @@ import { formatMinutes } from './time';
 import { Select } from '../../components/Select';
 import { ApprovalsPanel, WeekApprovalBar, addDaysIso, mondayOf } from './Approvals';
 import { PlannedLeavePanel } from './PlannedLeavePanel';
+import { WeekGrid } from './WeekGrid';
+import { TimesheetInsights } from './TimesheetInsights';
+import { downloadText, hoursDecimal } from './grid';
+import './timesheet.css';
+
+/** Entries as CSV, one line each. */
+function entriesCsv(entries: TimeEntry[]) {
+  const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const lines = [['Date', 'Key', 'Title', 'Kind', 'Hours', 'Billable', 'Note'].join(',')];
+  for (const e of entries) if (!e.isRunning) lines.push([e.workDate, e.taskKey, e.taskTitle, e.kind === 'work' ? 'Operational' : 'Project task', hoursDecimal(e.minutes), e.billable ? 'yes' : 'no', e.note ?? ''].map(esc).join(','));
+  return lines.join('\n');
+}
 
 type Mode = 'single' | 'range' | 'multiple';
 const TASK_COLORS = ['#8b5cf6', '#38bdf8', '#fb7185', '#34d399', '#f59e0b', '#22d3ee', '#a78bfa', '#f472b6'];
@@ -29,38 +41,63 @@ function MinutesTooltip({ active, payload, label }: { active?: boolean; payload?
   return <div className="chart-tip"><b>{label}</b><span>{formatMinutes(payload[0].value)}</span></div>;
 }
 
+type Section = 'week' | 'insights' | 'entries' | 'approvals';
+
 /**
- * Timesheet: "My time" - time logged for a chosen date, range or scattered set of dates, with the week's approval (managers and admins can
- * look at someone else's time too) - and, for people who review others, "Approvals".
+ * Timesheet: the week as a grid you type into (the default), Insights over the last weeks, every entry over any dates, and - for people
+ * who review others - Approvals. Managers and admins can open someone else's time from the person picker.
  */
-export function TimesheetPage({ section = 'mine' }: { section?: 'mine' | 'approvals' }) {
-  const [params] = useSearchParams();
+export function TimesheetPage({ section = 'week' }: { section?: Section | 'mine' }) {
+  const [params, setParams] = useSearchParams();
+  const me = useAuth((s) => s.ctx!.user);
   const reportCount = useAuth((s) => s.ctx?.current?.reportCount) ?? 0;
   const broad = useCan('reports.broad');
   const personal = useIsPersonal();
   const canReview = !personal && (reportCount > 0 || broad);
   const pending = useWsQuery(['approvals', ''], () => timeApi.approvals(), { enabled: canReview, staleTime: 60_000 });
   const waiting = pending.data?.pending.length ?? 0;
-  const tabs = canReview ? [
-    { to: '/timesheet', label: 'My time', icon: 'clock' as const },
-    { to: '/timesheet/approvals', label: 'Approvals', icon: 'checks' as const, badge: waiting },
-  ] : [];
-  if (section === 'approvals') return (
+  const { canPick, choices } = usePersonPicker();
+  const navigate = useNavigate();
+  const userId = params.get('user') ?? '';
+  const week = mondayOf(params.get('week') ?? undefined);
+  const set = (k: string, v: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set(k, v); else n.delete(k); return n; }, { replace: true });
+  const keep = (to: string) => { const n = new URLSearchParams(); if (userId) n.set('user', userId); if (params.get('week')) n.set('week', week); const s = n.toString(); return s ? `${to}?${s}` : to; };
+  const tabs = [
+    { to: keep('/timesheet'), label: 'Week', icon: 'grid' as const },
+    { to: keep('/timesheet/insights'), label: 'Insights', icon: 'chart' as const },
+    { to: keep('/timesheet/entries'), label: 'Entries', icon: 'list' as const },
+    ...(canReview ? [{ to: '/timesheet/approvals', label: 'Approvals', icon: 'checks' as const, badge: waiting }] : []),
+  ];
+  const current: Section = section === 'mine' ? 'week' : section;
+  const picker = canPick && current !== 'approvals' && (
+    <Select className="select" style={{ maxWidth: 230 }} value={userId} onChange={(e) => set('user', e.target.value || null)} aria-label="Whose time">
+      <option value="">{me.displayName} (me)</option>
+      {choices.filter((m) => m.id !== me.id).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+    </Select>
+  );
+  const sub = {
+    week: 'Type the time for each task and day; it saves as you go. Suggestions, meetings and your normal day sit alongside.',
+    insights: 'Your last weeks against a normal week: overtime, billable share, where the time went and the days still empty.',
+    entries: 'Every entry over a date, a range or scattered dates, with charts.',
+    approvals: 'Review the weeks of the people who report to you: approve them, or return them with a note.',
+  }[current];
+  return (
     <>
-      <PageHead title="Timesheet" sub="Review the weeks of the people who report to you: approve them, or return them with a note." />
-      {tabs.length > 0 && <RouteTabs label="Timesheet" tabs={tabs} />}
-      {canReview ? <ApprovalsPanel initialWeek={params.get('week') ?? undefined} /> : <EmptyState icon="users" title="Nobody's timesheet is yours to review" />}
+      <PageHead title="Timesheet" sub={sub}>{picker}</PageHead>
+      <RouteTabs label="Timesheet" tabs={tabs} />
+      {current === 'week' && <WeekGrid week={week} onWeek={(w) => set('week', w === mondayOf() ? null : w)} userId={userId} />}
+      {current === 'insights' && <TimesheetInsights userId={userId} onOpenWeek={(w) => { const n = new URLSearchParams(); if (userId) n.set('user', userId); n.set('week', w); navigate(`/timesheet?${n}`); }} />}
+      {current === 'entries' && <MyTime userId={userId} />}
+      {current === 'approvals' && (canReview ? <ApprovalsPanel initialWeek={params.get('week') ?? undefined} /> : <EmptyState icon="users" title="Nobody's timesheet is yours to review" />)}
     </>
   );
-  return <MyTime tabs={tabs} />;
 }
 
-function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | 'checks'; badge?: number }[] }) {
+/** Timesheet → Entries: time over a chosen date, range or scattered set of dates, with the week's approval when it is one week. */
+function MyTime({ userId }: { userId: string }) {
   const me = useAuth((s) => s.ctx!.user);
   const workspaceId = useWorkspaceId();
   const [params] = useSearchParams();
-  const [userId, setUserId] = useState<string>(params.get('user') ?? '');
-  const { canPick, choices } = usePersonPicker();
 
   const [mode, setMode] = useState<Mode>('range');
   const [single, setSingle] = useState(todayISO());
@@ -110,8 +147,6 @@ function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | '
 
   return (
     <>
-      <PageHead title="Timesheet" sub={userId && d ? `${d.user.name}’s time on project tasks and operational work` : 'The time you logged on project tasks and operational work, by day.'} />
-      {tabs.length > 0 && <RouteTabs label="Timesheet" tabs={tabs} />}
       <div className="toolbar" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <div className="seg" role="group" aria-label="Date selection mode">
           {([['single', 'calendar', 'Date'], ['range', 'arrowRight', 'Range'], ['multiple', 'grid', 'Dates']] as const).map(([m, icon, label]) => (
@@ -138,12 +173,7 @@ function MyTime({ tabs }: { tabs: { to: string; label: string; icon: 'clock' | '
             </div>
           </>
         )}
-        {canPick && (
-          <Select className="select" style={{ maxWidth: 220, marginLeft: 'auto' }} value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Person">
-            <option value="">{me.displayName} (me)</option>
-            {choices.filter((m) => m.id !== me.id).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </Select>
-        )}
+        {d && entries.length > 0 && <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => downloadText(`time-entries-${fetchFrom}-to-${fetchTo}.csv`, entriesCsv(entries))}><Icon name="download" size={14} />Export</button>}
       </div>
 
       {rangeInvalid ? <div className="card"><div className="card-body"><p className="muted" style={{ fontSize: 13 }}>The end date must not be before the start date.</p></div></div> :

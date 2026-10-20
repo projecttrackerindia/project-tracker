@@ -343,6 +343,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />
         <Route path="timesheet/approvals" element={<Guard allow={mTasks || mWork}><TimesheetPage section="approvals" /></Guard>} />
+        <Route path="timesheet/insights" element={<Guard allow={mTasks || mWork}><TimesheetPage section="insights" /></Guard>} />
+        <Route path="timesheet/entries" element={<Guard allow={mTasks || mWork}><TimesheetPage section="entries" /></Guard>} />
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
         <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />

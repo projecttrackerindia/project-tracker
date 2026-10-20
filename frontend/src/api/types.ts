@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest' | 'TimesheetReminder';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -319,6 +319,28 @@ export interface ApprovalRow {
   submittedAt: string | null; reviewer: UserRef | null; reviewedAt: string | null; reviewNote: string | null;
 }
 export interface Approvals { weekStart: string; entitled: boolean; week: ApprovalRow[]; pending: ApprovalRow[] }
+
+// ---- the week grid
+export type GridKind = 'task' | 'work';
+export interface GridCell { date: string; minutes: number; entries: number; running: boolean; note: string | null }
+export interface GridRow { kind: GridKind; targetId: string; key: string; title: string; projectId: string | null; projectName: string | null; billable: boolean; cells: GridCell[]; totalMinutes: number }
+export interface GridDay { date: string; minutes: number; targetMinutes: number; weekend: boolean; leave: boolean; leaveNote: string | null; future: boolean; meetings: number; meetingMinutes: number }
+export type GridSuggestionReason = 'lastWeek' | 'assigned' | 'touched' | 'timer';
+export interface GridSuggestion { kind: GridKind; targetId: string; key: string; title: string; projectId: string | null; projectName: string | null; reason: GridSuggestionReason }
+export interface TimesheetGrid {
+  weekStart: string; weekEnd: string; user: UserRef; mine: boolean; editable: boolean; locked: boolean; status: TimesheetStatus; days: GridDay[]; rows: GridRow[];
+  suggestions: GridSuggestion[]; totalMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; missingDays: number; running: TimeEntry | null;
+}
+export interface GridCellChange { kind: GridKind; targetId: string; date: string; minutes: number; note?: string | null }
+export interface GridCellError { kind: GridKind; targetId: string; date: string; message: string }
+export interface SaveGridResult { grid: TimesheetGrid; saved: number; errors: GridCellError[] }
+export interface InsightWeek { weekStart: string; loggedMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; leaveDays: number; missingDays: number; status: TimesheetStatus }
+export interface TimesheetInsights {
+  user: UserRef; from: string; to: string; weeks: InsightWeek[]; byProject: { label: string; projectId: string | null; minutes: number }[]; byWeekday: { day: number; averageMinutes: number }[];
+  loggedMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; utilisation: number | null; billableShare: number | null; sameDayShare: number | null;
+  streak: number; missingDays: string[];
+}
+export interface BulkReviewResult { approved: number; failed: { id: string; message: string }[] }
 
 // ---- capacity and cost
 export interface MemberRate { userId: string; name: string; email: string; role: Role; weeklyCapacityHours: number; standardCapacity: boolean; costRate: number | null; billRate: number | null }
