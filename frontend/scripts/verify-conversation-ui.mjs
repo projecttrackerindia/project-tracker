@@ -46,7 +46,7 @@ try {
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height});
    await page.goto(origin+url);await page.locator(composer).waitFor({state:'visible'});await page.evaluate(()=>document.fonts.ready);
    const geometry=await page.evaluate(selector=>{
-    const input=document.querySelector(selector).getBoundingClientRect();const tabs=document.querySelector('.m-tabs').getBoundingClientRect();
+    const i0=document.querySelector(selector),t0=document.querySelector(".m-tabs");if(!i0||!t0)return {missing:[!!i0,!!t0,location.pathname,document.body.innerText.slice(0,200)]};const input=i0.getBoundingClientRect();const tabs=t0.getBoundingClientRect();
     return {inputBottom:input.bottom,tabsTop:tabs.top,tabsBottom:tabs.bottom,height:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth+1};
    },composer);
    assert.ok(geometry.inputBottom<=geometry.tabsTop+1,JSON.stringify(geometry));assert.ok(geometry.tabsBottom<=height+1);assert.equal(geometry.overflow,false);

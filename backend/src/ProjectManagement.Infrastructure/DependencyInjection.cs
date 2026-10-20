@@ -81,7 +81,7 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Services.EntitlementCache>();
 
         // Data-protection keys live in the database: cookies and protected tokens survive redeploys and work across servers.
-        services.AddDataProtection().SetApplicationName("projecttracker");
+        Microsoft.AspNetCore.DataProtection.DataProtectionBuilderExtensions.SetApplicationName(services.AddDataProtection(), "projecttracker");
         services.AddSingleton<Microsoft.Extensions.Options.IConfigureOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>>(sp =>
             new Microsoft.Extensions.Options.ConfigureOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>(o =>
                 o.XmlRepository = new ProjectManagement.Infrastructure.Services.DbXmlRepository(sp.GetRequiredService<IServiceScopeFactory>())));
