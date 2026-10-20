@@ -11,7 +11,8 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Time;
 
 /// <summary>One day of one row: the minutes logged there, how many entries make them up, and whether a timer is running in it.</summary>
-public record GridCellDto(DateOnly Date, int Minutes, int Entries, bool Running, string? Note);
+/// <summary><see cref="Note"/>: the newest entry's note (what editing the note changes); <see cref="AllNotes"/>: every entry's note, for reading.</summary>
+public record GridCellDto(DateOnly Date, int Minutes, int Entries, bool Running, string? Note, string? AllNotes = null);
 /// <summary>One thing time goes to in the week (a project task, "task", or a piece of operational work / an action item, "work").</summary>
 public record GridRowDto(string Kind, Guid TargetId, string Key, string Title, Guid? ProjectId, string? ProjectName, bool Billable, IReadOnlyList<GridCellDto> Cells, int TotalMinutes);
 /// <summary>A day of the week: what was logged, what the person normally works that day (0 at weekends and on planned leave) and their meetings.</summary>
@@ -22,7 +23,8 @@ public record TimesheetGridDto(DateOnly WeekStart, DateOnly WeekEnd, UserRefDto 
     IReadOnlyList<GridRowDto> Rows, IReadOnlyList<GridSuggestionDto> Suggestions, int TotalMinutes, int BillableMinutes, int TargetMinutes, int OvertimeMinutes, int MissingDays,
     TimeEntryDto? Running);
 /// <summary>The total a cell should hold. 0 removes the time in it; <see cref="Note"/> null leaves the notes as they are.</summary>
-public record GridCellChange(string Kind, Guid TargetId, DateOnly Date, int Minutes, string? Note = null);
+/// <summary><see cref="AddAsNew"/>: time added with a note of its own goes in as a separate entry (quick add), so other notes are kept. <see cref="Billable"/> applies to new entries only.</summary>
+public record GridCellChange(string Kind, Guid TargetId, DateOnly Date, int Minutes, string? Note = null, bool AddAsNew = false, bool? Billable = null);
 public record SaveGridRequest(DateOnly WeekStart, IReadOnlyList<GridCellChange> Cells);
 public record GridCellError(string Kind, Guid TargetId, DateOnly Date, string Message);
 public record SaveGridResult(TimesheetGridDto Grid, int Saved, IReadOnlyList<GridCellError> Errors);
@@ -84,7 +86,8 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
                     var d = week.AddDays(i);
                     var here = g.Where(e => e.WorkDate == d).ToList();
                     var notes = string.Join(" · ", here.Where(e => !string.IsNullOrWhiteSpace(e.Note)).Select(e => e.Note));
-                    return new GridCellDto(d, here.Where(e => !e.IsRunning).Sum(e => e.Minutes), here.Count(e => !e.IsRunning), here.Any(e => e.IsRunning), notes.Length == 0 ? null : notes);
+                    var newestNote = here.Where(e => !e.IsRunning).OrderBy(e => e.Id).LastOrDefault()?.Note;
+                    return new GridCellDto(d, here.Where(e => !e.IsRunning).Sum(e => e.Minutes), here.Count(e => !e.IsRunning), here.Any(e => e.IsRunning), newestNote, notes.Length == 0 ? null : notes);
                 }).ToList();
                 return new GridRowDto(g.Key.Kind, g.Key.Target, first.TaskKey, first.TaskTitle, first.ProjectId,
                     first.ProjectId is { } p ? projectNames.GetValueOrDefault(p) : null, g.Any(e => e.Billable), cells, cells.Sum(c => c.Minutes));
@@ -204,11 +207,17 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         }
         if (newest is null)
         {
-            var log = new LogTimeRequest(c.Minutes, c.Date, string.IsNullOrEmpty(note) ? null : note);
+            var log = new LogTimeRequest(c.Minutes, c.Date, string.IsNullOrEmpty(note) ? null : note, c.Billable);
             if (c.Kind == "work") await time.LogOnWorkTaskAsync(c.TargetId, log, ct); else await time.LogAsync(c.TargetId, log, ct);
             return true;
         }
         var delta = c.Minutes - current;
+        if (delta > 0 && c.AddAsNew)
+        {
+            var log = new LogTimeRequest(delta, c.Date, string.IsNullOrEmpty(note) ? null : note, c.Billable);
+            if (c.Kind == "work") await time.LogOnWorkTaskAsync(c.TargetId, log, ct); else await time.LogAsync(c.TargetId, log, ct);
+            return true;
+        }
         if (delta >= 0)
         {
             await time.UpdateAsync(newest.Id, new UpdateTimeRequest(newest.Minutes + delta, c.Date, note ?? newest.Note), ct);
@@ -220,7 +229,17 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         {
             var e = entries[i];
             if (e.Minutes <= cut) { await time.DeleteAsync(e.Id, ct); cut -= e.Minutes; }
-            else { await time.UpdateAsync(e.Id, new UpdateTimeRequest(e.Minutes - cut, c.Date, i == entries.Count - 1 ? note ?? e.Note : e.Note), ct); cut = 0; }
+            else
+            {
+                // The new note belongs to whichever entry is now the newest one left.
+                await time.UpdateAsync(e.Id, new UpdateTimeRequest(e.Minutes - cut, c.Date, note ?? e.Note), ct); cut = 0; note = null;
+            }
+        }
+        if (note is not null && entries.Count > 0)
+        {
+            var left = await db.TimeEntries.AsNoTracking().Where(e => e.UserId == me && e.WorkDate == date && ((onWork && e.WorkTaskId == target) || (!onWork && e.TaskId == target)))
+                .OrderByDescending(e => e.CreatedAt).Select(e => new { e.Id, e.Minutes }).FirstOrDefaultAsync(ct);
+            if (left is not null) await time.UpdateAsync(left.Id, new UpdateTimeRequest(left.Minutes, c.Date, note), ct);
         }
         return true;
     }
@@ -240,7 +259,8 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var changes = previous.Entries.Where(e => !e.IsRunning)
             .GroupBy(e => (e.Kind, Target: e.Kind == "work" ? e.WorkTaskId!.Value : e.TaskId!.Value, Date: e.WorkDate.AddDays(7)))
             .Where(g => g.Key.Date <= today && g.Key.Date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && !leave.Contains(g.Key.Date) && !filled.Contains(g.Key))
-            .Select(g => new GridCellChange(g.Key.Kind, g.Key.Target, g.Key.Date, Math.Min(24 * 60, g.Sum(e => e.Minutes))))
+            .Select(g => new GridCellChange(g.Key.Kind, g.Key.Target, g.Key.Date, Math.Min(24 * 60, g.Sum(e => e.Minutes)),
+                g.Select(e => e.Note).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)), Billable: g.All(e => e.Billable)))
             .Take(MaxCells).ToList();
         if (changes.Count == 0) return new SaveGridResult(await GridAsync(week, null, ct), 0, []);
         return await SaveAsync(new SaveGridRequest(week, changes), ct);

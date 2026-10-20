@@ -364,7 +364,9 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
 }) {
   const wid = useWorkspaceId();
   const [picking, setPicking] = useState(false);
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheetState] = useState(false);
+  const sheetAt = useRef(0);
+  const setSheet = (open: boolean) => { if (open) sheetAt.current = performance.now(); setSheetState(open); };
   const [swipe, setSwipe] = useState(0);
   const pickRef = useRef<HTMLDivElement>(null);
   const touch = useRef<{ x: number; y: number; timer: number; horizontal: boolean | null; long: boolean } | null>(null);
@@ -393,10 +395,11 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
     if (s.horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) { s.horizontal = Math.abs(dx) > Math.abs(dy) && dx > 0; window.clearTimeout(s.timer); }
     if (s.horizontal) { const v = Math.max(0, Math.min(72, dx * 0.6)); if (v >= 48 && swipe < 48) haptic(8); setSwipe(v); }
   };
-  const onTouchEnd = () => {
+  const onTouchEnd = (e: React.TouchEvent) => {
     const s = touch.current;
     if (!s) return;
     window.clearTimeout(s.timer);
+    if (s.long && e.cancelable) e.preventDefault();   // the finger lifting after a long press is not a tap on the sheet
     if (s.horizontal && swipe >= 48) onReply();
     setSwipe(0);
     touch.current = null;
@@ -469,8 +472,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
         )}
       </div>
       {sheet && createPortal(
-        <div className="msg-sheet-scrim" onClick={() => setSheet(false)}>
-          <div className="msg-sheet" role="dialog" aria-label="Message actions" onClick={(e) => e.stopPropagation()}>
+        <div className="msg-sheet-scrim" onClick={() => { if (performance.now() - sheetAt.current > 350) setSheet(false); }}>
+          <div className="msg-sheet" role="dialog" aria-label="Message actions" onClickCapture={(e) => { if (performance.now() - sheetAt.current < 350) { e.preventDefault(); e.stopPropagation(); } }} onClick={(e) => e.stopPropagation()}>
             <div className="msg-sheet-preview">{plainText(m.body).replace(/\*\*|__/g, '').slice(0, 140) || 'Attachment'}</div>
             <div className="msg-sheet-reacts">
               {REACTIONS.slice(0, 6).map((emoji) => (

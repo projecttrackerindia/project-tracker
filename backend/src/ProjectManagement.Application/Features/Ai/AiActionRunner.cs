@@ -103,18 +103,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(from):yyyy-MM-dd}", saved[0].Id);
             }
             case "log_time":
-            {
-                Guid? first = null; DateOnly? day = null;
-                foreach (var e in a.GetProperty("entries").EnumerateArray())
-                {
-                    var id = Guid(e, "id") ?? throw new ValidationException("entries", "An entry has no work item.");
-                    var date = Date(e, "date") ?? throw new ValidationException("entries", "An entry has no day.");
-                    var req = new ProjectManagement.Application.Features.Time.LogTimeRequest(e.GetProperty("minutes").GetInt32(), date, Str(e, "note"));
-                    var saved = Str(e, "kind") == "work" ? await time.LogOnWorkTaskAsync(id, req, ct) : await time.LogAsync(id, req, ct);
-                    first ??= saved.Id; day ??= date;
-                }
-                return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(day ?? DateOnly.FromDateTime(DateTime.UtcNow)):yyyy-MM-dd}", first);
-            }
+                // All or nothing: one entry that cannot be logged (a full day, a closed week) rolls back the others.
+                return await RunScheduleActionAsync(() => LogTimeAsync(a, ct), ct);
             case "create_task":
             {
                 var projectId = await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null);
@@ -210,6 +200,20 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         var found = await db.Projects.AsNoTracking().Where(p => p.Name.ToLower() == name.ToLower()).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
         return found ?? throw new ValidationException("project", $"The project “{name}” does not exist yet. Confirm its creation first.");
     }
+
+    private async Task<AiActionResult> LogTimeAsync(JsonElement a, CancellationToken ct)
+    {
+                Guid? first = null; DateOnly? day = null;
+                foreach (var e in a.GetProperty("entries").EnumerateArray())
+                {
+                    var id = Guid(e, "id") ?? throw new ValidationException("entries", "An entry has no work item.");
+                    var date = Date(e, "date") ?? throw new ValidationException("entries", "An entry has no day.");
+                    var req = new ProjectManagement.Application.Features.Time.LogTimeRequest(e.GetProperty("minutes").GetInt32(), date, Str(e, "note"));
+                    var saved = Str(e, "kind") == "work" ? await time.LogOnWorkTaskAsync(id, req, ct) : await time.LogAsync(id, req, ct);
+                    first ??= saved.Id; day ??= date;
+                }
+                return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(day ?? DateOnly.FromDateTime(DateTime.UtcNow)):yyyy-MM-dd}", first);
+                }
 
     private async Task<AiActionResult> RunScheduleActionAsync(Func<Task<AiActionResult>> action, CancellationToken ct)
     {

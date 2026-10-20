@@ -63,11 +63,21 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
 
   const put = useCallback((g: TimesheetGrid) => qc.setQueryData([wid, ...key], g), [qc, wid, key]);
 
-  const flush = useCallback(async () => {
+  // One save at a time: a second flush waits for the one in flight, so a cell is never written twice at once.
+  const inflight = useRef<Promise<void>>(Promise.resolve());
+  const sending = useRef<Set<string>>(new Set());
+  const flush = useCallback((): Promise<void> => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    const run = inflight.current.then(() => saveNow());
+    inflight.current = run.catch(() => undefined);
+    return run;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week, put, wid]);
+  const saveNow = async () => {
     const cells = [...pending.current.values()];
     if (!cells.length) return;
     pending.current.clear();
+    for (const c of cells) sending.current.add(cellKey(c.kind, c.targetId, c.date));
     setSaving('saving');
     try {
       const res = await timeApi.saveGrid(week, cells);
@@ -75,30 +85,40 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
       const failed: Record<string, string> = {};
       for (const e of res.errors) failed[cellKey(e.kind, e.targetId, e.date)] = e.message;
       setErrors((old) => { const next = { ...old }; for (const c of cells) delete next[cellKey(c.kind, c.targetId, c.date)]; return { ...next, ...failed }; });
-      setDrafts((old) => { const next = { ...old }; for (const c of cells) { const k = cellKey(c.kind, c.targetId, c.date); if (!failed[k]) delete next[k]; } return next; });
+      // Only clear a draft that still shows what was sent: something typed since stays.
+      setDrafts((old) => { const next = { ...old }; for (const c of cells) { const k = cellKey(c.kind, c.targetId, c.date); if (!failed[k] && !pending.current.has(k) && parseCell(next[k] ?? '') === c.minutes) delete next[k]; } return next; });
       setSaving(res.errors.length ? 'error' : 'saved');
       if (res.errors.length) toast(res.errors[0].message, 'error');
       void invalidateWorkspace(wid, 'timesheet', 'week');
       void invalidateWorkspace(wid, 'timer');
     } catch (e) {
-      for (const c of cells) pending.current.set(cellKey(c.kind, c.targetId, c.date), c);   // keep them for the next try
+      for (const c of cells) { const k = cellKey(c.kind, c.targetId, c.date); if (!pending.current.has(k)) pending.current.set(k, c); }   // keep them for the next try; newer edits win
       setSaving('error');
       toast(errText(e, 'Could not save your timesheet. Your changes are kept; try again.'), 'error');
+    } finally {
+      for (const c of cells) sending.current.delete(cellKey(c.kind, c.targetId, c.date));
     }
-  }, [week, put, wid]);
+  };
 
   useEffect(() => () => { void flush(); }, [flush]);   // leaving the week saves what is waiting
+  // Closing or hiding the tab: save now, and warn before closing while something is still unsaved.
+  useEffect(() => {
+    const hide = () => { if (document.visibilityState === 'hidden') void flush(); };
+    const leave = (e: BeforeUnloadEvent) => { if (pending.current.size || sending.current.size) { void flush(); e.preventDefault(); e.returnValue = ''; } };
+    document.addEventListener('visibilitychange', hide); window.addEventListener('beforeunload', leave);
+    return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('beforeunload', leave); };
+  }, [flush]);
   const schedule = () => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => void flush(), 700); setSaving('saving'); };
 
   /** Commits what was typed into one cell. */
-  const commit = (r: GridRow, date: string, text: string, note?: string | null) => {
+  const commit = (r: GridRow, date: string, text: string, note?: string | null, addAsNew = false) => {
     const k = cellKey(r.kind, r.targetId, date);
     const minutes = parseCell(text);
     if (minutes === null || minutes > 24 * 60) { setErrors((e) => ({ ...e, [k]: 'Type hours like 1.5, 1:30 or 45m (up to 24 h).' })); return; }
     const current = r.cells.find((c) => c.date === date)?.minutes ?? 0;
-    if (minutes === current && note === undefined) { setDrafts((d) => { const n = { ...d }; delete n[k]; return n; }); setErrors((e) => { const n = { ...e }; delete n[k]; return n; }); return; }
+    if (minutes === current && note === undefined && !sending.current.has(k)) { pending.current.delete(k); setDrafts((d) => { const n = { ...d }; delete n[k]; return n; }); setErrors((e) => { const n = { ...e }; delete n[k]; return n; }); return; }
     setDrafts((d) => ({ ...d, [k]: minutes ? hm(minutes) : '' }));
-    pending.current.set(k, { kind: r.kind, targetId: r.targetId, date, minutes, note });
+    pending.current.set(k, { kind: r.kind, targetId: r.targetId, date, minutes, note, addAsNew: addAsNew || pending.current.get(k)?.addAsNew });
     haptic();
     schedule();
   };
@@ -136,7 +156,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
           const current = r.cells.find((c) => c.date === date)?.minutes ?? 0;
           const k = cellKey(r.kind, r.targetId, date);
           const typed = drafts[k] !== undefined ? parseCell(drafts[k]) ?? current : current;
-          addStub(r); commit(r, date, hm(typed + minutes), note || undefined);
+          addStub(r); commit(r, date, hm(typed + minutes), note || undefined, !!note);
         }} />}
         <div className="tsg-tool-btns">
           {editable && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding((a) => !a)} aria-expanded={adding}><Icon name="plus" size={14} />Add row</button>}
@@ -179,7 +199,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
                       const day = days[ci];
                       return (
                         <td key={c.date} className={`tsg-cell ${day.weekend ? 'weekend' : ''} ${day.leave ? 'leave' : ''} ${c.date === today ? 'today' : ''} ${errors[k] ? 'bad' : ''} ${drafts[k] !== undefined ? 'dirty' : ''}`}>
-                          <Cell r={r} ri={ri} ci={ci} value={drafts[k] ?? hm(c.minutes)} note={c.note} running={c.running} error={errors[k]} disabled={!canLogOn(c.date) || c.running}
+                          <Cell r={r} ri={ri} ci={ci} value={drafts[k] ?? hm(c.minutes)} note={c.allNotes ?? c.note} running={c.running} error={errors[k]} disabled={!canLogOn(c.date) || c.running}
                             label={`${r.key} on ${dayName(c.date)} ${dayNum(c.date)}`} rowsCount={rows.length}
                             onFocus={() => setFocus({ row: rowKey(r), date: c.date })} onDraft={(v) => setDrafts((d) => ({ ...d, [k]: v }))} onCommit={(v) => commit(r, c.date, v)}
                             onRevert={() => setDrafts((d) => { const n = { ...d }; delete n[k]; return n; })} />

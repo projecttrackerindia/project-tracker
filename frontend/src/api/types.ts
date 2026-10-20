@@ -322,7 +322,7 @@ export interface Approvals { weekStart: string; entitled: boolean; week: Approva
 
 // ---- the week grid
 export type GridKind = 'task' | 'work';
-export interface GridCell { date: string; minutes: number; entries: number; running: boolean; note: string | null }
+export interface GridCell { date: string; minutes: number; entries: number; running: boolean; note: string | null; allNotes?: string | null }
 export interface GridRow { kind: GridKind; targetId: string; key: string; title: string; projectId: string | null; projectName: string | null; billable: boolean; cells: GridCell[]; totalMinutes: number }
 export interface GridDay { date: string; minutes: number; targetMinutes: number; weekend: boolean; leave: boolean; leaveNote: string | null; future: boolean; meetings: number; meetingMinutes: number }
 export type GridSuggestionReason = 'lastWeek' | 'assigned' | 'touched' | 'timer';
@@ -331,7 +331,7 @@ export interface TimesheetGrid {
   weekStart: string; weekEnd: string; user: UserRef; mine: boolean; editable: boolean; locked: boolean; status: TimesheetStatus; days: GridDay[]; rows: GridRow[];
   suggestions: GridSuggestion[]; totalMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; missingDays: number; running: TimeEntry | null;
 }
-export interface GridCellChange { kind: GridKind; targetId: string; date: string; minutes: number; note?: string | null }
+export interface GridCellChange { kind: GridKind; targetId: string; date: string; minutes: number; note?: string | null; addAsNew?: boolean }
 export interface GridCellError { kind: GridKind; targetId: string; date: string; message: string }
 export interface SaveGridResult { grid: TimesheetGrid; saved: number; errors: GridCellError[] }
 export interface InsightWeek { weekStart: string; loggedMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; leaveDays: number; missingDays: number; status: TimesheetStatus }
