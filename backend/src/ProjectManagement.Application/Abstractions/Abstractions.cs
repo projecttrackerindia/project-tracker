@@ -12,6 +12,9 @@ public interface IAppDbContext
     DbSet<OperationsSettings> OperationsSettings { get; }
     DbSet<MailAccount> MailAccounts { get; }
     DbSet<CompanyMailSettings> CompanyMailSettings { get; }
+    DbSet<VoiceAgentSettings> VoiceAgentSettings { get; }
+    DbSet<VoiceConnector> VoiceConnectors { get; }
+    DbSet<VoiceCall> VoiceCalls { get; }
     DbSet<MeetingBotIdentity> MeetingBotIdentities { get; }
     DbSet<NotetakerSettings> NotetakerSettings { get; }
     DbSet<MeetingMinutes> MeetingMinutes { get; }

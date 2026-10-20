@@ -50,7 +50,8 @@ public static class SqliteEnterpriseUpgrade
         "20261028000100_MailAccounts",
         "20261029000100_Notetaker",
         "20261030000100_CompanyMail",
-        "20261031000100_NotetakerAutomation"
+        "20261031000100_NotetakerAutomation",
+        "20261101000100_VoiceAgent"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

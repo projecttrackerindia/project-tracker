@@ -97,6 +97,26 @@ public partial class AppDbContext
             e.HasOne<AgentMeetingBot>().WithMany().HasForeignKey(x => x.BotRowId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<VoiceAgentSettings>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.AgentName).HasMaxLength(60); e.Property(x => x.CompanyName).HasMaxLength(120); e.Property(x => x.Languages).HasMaxLength(60);
+            e.Property(x => x.Knowledge).HasMaxLength(20000); e.Property(x => x.VerificationRule).HasMaxLength(300); e.Property(x => x.TransferNumber).HasMaxLength(30);
+            e.Property(x => x.StorageKeyPattern).HasMaxLength(200);
+        });
+        b.Entity<VoiceConnector>(e =>
+        {
+            e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Name).HasMaxLength(60); e.Property(x => x.Description).HasMaxLength(500); e.Property(x => x.Method).HasMaxLength(8);
+            e.Property(x => x.UrlTemplate).HasMaxLength(500); e.Property(x => x.HeaderName).HasMaxLength(100); e.Property(x => x.SecretProtected).HasMaxLength(4000);
+        });
+        b.Entity<VoiceCall>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.StartedAt });
+            e.Property(x => x.Channel).HasMaxLength(10); e.Property(x => x.Direction).HasMaxLength(10); e.Property(x => x.CallerNumber).HasMaxLength(30);
+            e.Property(x => x.Language).HasMaxLength(10); e.Property(x => x.Status).HasMaxLength(20); e.Property(x => x.TranscriptProtected).HasMaxLength(400000);
+            e.Property(x => x.Summary).HasMaxLength(4000); e.Property(x => x.ArchiveKey).HasMaxLength(300);
+        });
         b.Entity<CompanyMailSettings>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();

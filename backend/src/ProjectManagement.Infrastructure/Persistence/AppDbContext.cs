@@ -103,6 +103,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<OperationsSettings> OperationsSettings => Set<OperationsSettings>();
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
     public DbSet<CompanyMailSettings> CompanyMailSettings => Set<CompanyMailSettings>();
+    public DbSet<VoiceAgentSettings> VoiceAgentSettings => Set<VoiceAgentSettings>();
+    public DbSet<VoiceConnector> VoiceConnectors => Set<VoiceConnector>();
+    public DbSet<VoiceCall> VoiceCalls => Set<VoiceCall>();
     public DbSet<MeetingBotIdentity> MeetingBotIdentities => Set<MeetingBotIdentity>();
     public DbSet<NotetakerSettings> NotetakerSettings => Set<NotetakerSettings>();
     public DbSet<MeetingMinutes> MeetingMinutes => Set<MeetingMinutes>();
