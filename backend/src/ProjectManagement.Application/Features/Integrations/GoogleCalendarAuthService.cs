@@ -77,10 +77,10 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         if (!Configured) throw new ConflictException("Google Calendar is not set up for this installation.", "GOOGLE_NOT_CONFIGURED");
         if(mail&&!_o.MailEnabled)throw new ConflictException("Gmail sending is not enabled for this installation.","GMAIL_DISABLED");
         if(inbox&&!_o.InboxEnabled)throw new ConflictException("Gmail inbox access is not enabled for this installation.","INBOX_DISABLED");
-        if(mail&&inbox||transcripts&&(mail||inbox))throw new ValidationException("inbox","Grant sending, inbox reading and meeting transcripts in their separate consent steps.");
+        if(transcripts&&(mail||inbox))throw new ValidationException("inbox","Grant sending, inbox reading and meeting transcripts in their separate consent steps.");
         if(autoTranscripts&&(mail||inbox))throw new ValidationException("inbox","Grant sending, inbox reading and meeting transcripts in their separate consent steps.");
         // Automatic transcripts: read the transcripts, and switch them on for this person's meetings.
-        var requested=autoTranscripts?TranscriptScope+" "+MeetSettingsScope+" https://www.googleapis.com/auth/userinfo.email":transcripts?TranscriptScope+" https://www.googleapis.com/auth/userinfo.email":inbox?InboxScope+" https://www.googleapis.com/auth/userinfo.email":mail?MailScope+" https://www.googleapis.com/auth/userinfo.email":Scopes;
+        var requested=autoTranscripts?TranscriptScope+" "+MeetSettingsScope+" https://www.googleapis.com/auth/userinfo.email":transcripts?TranscriptScope+" https://www.googleapis.com/auth/userinfo.email":inbox&&mail?InboxScope+" "+MailScope+" https://www.googleapis.com/auth/userinfo.email":inbox?InboxScope+" https://www.googleapis.com/auth/userinfo.email":mail?MailScope+" https://www.googleapis.com/auth/userinfo.email":Scopes;
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         if(string.IsNullOrWhiteSpace(browserProof)||browserProof.Length>100)throw new UnauthorizedException("Start the connection from this browser.","GOOGLE_BROWSER_INVALID");
         var id=Random(32);

@@ -46,7 +46,8 @@ public static class SqliteEnterpriseUpgrade
         "20261024000100_AgentAlertsAndCosts",
         "20261025000100_UserUiPreferences",
         "20261026000100_OperationsRouting",
-        "20261027000100_DataProtectionKeys"
+        "20261027000100_DataProtectionKeys",
+        "20261028000100_MailAccounts"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

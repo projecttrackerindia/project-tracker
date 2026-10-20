@@ -145,7 +145,7 @@ public partial class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,G
     private static string GraphNext(string next)
     {
         // Preserve the provider cursor verbatim, but never turn a returned URL into arbitrary authenticated fetches.
-        if(next.Length>6000||!Uri.TryCreate(next,UriKind.Absolute,out var uri)||uri.Scheme!="https"||uri.Host!="graph.microsoft.com"||!uri.IsDefaultPort||uri.UserInfo.Length!=0||uri.Fragment.Length!=0||uri.AbsolutePath!="/v1.0/me/mailFolders/inbox/messages")throw Invalid();
+        if(next.Length>6000||!Uri.TryCreate(next,UriKind.Absolute,out var uri)||uri.Scheme!="https"||uri.Host!="graph.microsoft.com"||!uri.IsDefaultPort||uri.UserInfo.Length!=0||uri.Fragment.Length!=0||uri.AbsolutePath is not ("/v1.0/me/mailFolders/inbox/messages" or "/v1.0/me/mailFolders/sentitems/messages"))throw Invalid();
         return next;
     }
     private string? Cursor(Grant grant,string next)
@@ -163,26 +163,27 @@ public partial class PersonalInboxService(IAppDbContext db,ICurrentContext ctx,G
             return grant.Provider=="microsoft"?GraphNext(token.Next):token.Next;
         }catch(Exception e)when(e is JsonException or CryptographicException or FormatException){throw new ValidationException("cursor","This inbox page expired or belongs to a different connection. Reload the inbox.");}
     }
-    public async Task<InboxPageDto> ListAsync(string provider,string? cursor,CancellationToken ct)
+    public async Task<InboxPageDto> ListAsync(string provider,string? cursor,CancellationToken ct,string folder="inbox")
     {
+        if(folder is not ("inbox" or "sent"))throw new ValidationException("folder","Choose Inbox or Sent.");
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(20));
         try{
             var grant=await GrantAsync(provider,deadline.Token);var next=string.IsNullOrEmpty(cursor)?"":Decode(grant,cursor);
             IReadOnlyList<InboxMessageDto> items;string continuation;
             if(provider=="google"){
-                using var page=await ReadAsync(grant,Gmail+"/messages?maxResults=20&labelIds=INBOX"+(next.Length>0?"&pageToken="+Uri.EscapeDataString(next):""),deadline.Token);
+                using var page=await ReadAsync(grant,Gmail+"/messages?maxResults=20&labelIds="+(folder=="sent"?"SENT":"INBOX")+(next.Length>0?"&pageToken="+Uri.EscapeDataString(next):""),deadline.Token);
                 var messages=page.RootElement.TryGetProperty("messages",out _)?Array(page.RootElement,"messages",20):[];
                 var found=new List<InboxMessageDto>();
                 // Four bounded metadata reads at a time, no DbContext calls run concurrently.
                 for(var offset=0;offset<messages.Length;offset+=4){
                     var batch=await Task.WhenAll(messages.Skip(offset).Take(4).Select(async m=>{
-                        using var detail=await ReadAsync(grant,Gmail+"/messages/"+Id(Text(m,"id"),provider)+"?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date",deadline.Token);
+                        using var detail=await ReadAsync(grant,Gmail+"/messages/"+Id(Text(m,"id"),provider)+"?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date"+(folder=="sent"?"&metadataHeaders=To":""),deadline.Token);
                         var result=Google(detail.RootElement);if(result.Id!=Text(m,"id"))throw Invalid();return result;
                     }));found.AddRange(batch);
                 }
                 items=found;continuation=Text(page.RootElement,"nextPageToken",2001);
             }else{
-                using var page=await ReadAsync(grant,next.Length>0?next:Graph+"/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select="+Metadata,deadline.Token);
+                using var page=await ReadAsync(grant,next.Length>0?next:Graph+"/mailFolders/"+(folder=="sent"?"sentitems":"inbox")+"/messages?$top=20&$orderby=receivedDateTime%20desc&$select="+Metadata,deadline.Token);
                 items=Array(page.RootElement,"value",20).Select(m=>Outlook(m)).ToArray();continuation=Text(page.RootElement,"@odata.nextLink",6001);
             }
             if(items.Select(m=>m.Id).Distinct().Count()!=items.Count)throw Invalid();

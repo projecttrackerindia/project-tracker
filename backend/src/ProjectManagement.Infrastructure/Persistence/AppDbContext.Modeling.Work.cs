@@ -76,6 +76,14 @@ public partial class AppDbContext
         });
         b.Entity<StageAutoStart>(e => { e.HasIndex(x => x.StageId).IsUnique(); e.HasOne<ProjectStage>().WithMany().HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.Cascade); });
         b.Entity<DataProtectionKey>(e => { e.Property(x => x.FriendlyName).HasMaxLength(200); });
+        b.Entity<MailAccount>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId });
+            e.Property(x => x.Provider).HasMaxLength(20); e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.ImapHost).HasMaxLength(200); e.Property(x => x.SmtpHost).HasMaxLength(200);
+            e.Property(x => x.SecretProtected).HasMaxLength(4000); e.Property(x => x.LastError).HasMaxLength(300);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<OperationsSettings>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();

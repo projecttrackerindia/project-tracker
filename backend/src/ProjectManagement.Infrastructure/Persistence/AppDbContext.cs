@@ -101,6 +101,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<StageAutoStart> StageAutoStarts => Set<StageAutoStart>();
     public DbSet<OperationsSettings> OperationsSettings => Set<OperationsSettings>();
+    public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
     public DbSet<WorkRoutingRule> WorkRoutingRules => Set<WorkRoutingRule>();
     public DbSet<CalendarFeed> CalendarFeeds => Set<CalendarFeed>();
     public DbSet<InboundMailbox> InboundMailboxes => Set<InboundMailbox>();
