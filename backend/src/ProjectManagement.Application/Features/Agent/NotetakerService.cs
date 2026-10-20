@@ -36,7 +36,7 @@ public record SendMinutesRequest(string Account, string To, string? Cc, string S
 /// </summary>
 public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetingService meetings, ProjectAccess access, MeetingBotClient botService,
     ISecretProtector secrets, AppClock clock, IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions,
-    MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log)
+    MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -51,7 +51,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     }
 
     private IQueryable<AgentMeetingBot> MySessions(Guid uid) =>
-        db.AgentMeetingBots.Where(b => b.Kind == "bot" && (b.CreatedBy == uid || db.AgentDelegations.Any(d => d.BotRowId == b.Id && d.UserId == uid)));
+        db.AgentMeetingBots.Where(b => b.Kind == "bot" && db.AgentDelegations.Any(d => d.BotRowId == b.Id && d.UserId == uid));
 
     public async Task<NotetakerOverviewDto> OverviewAsync(CancellationToken ct)
     {
@@ -70,7 +70,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
                 Minutes = db.MeetingMinutes.Where(m => m.BotRowId == b.Id).Select(m => m.Status).FirstOrDefault(),
             }).ToListAsync(ct);
         var sessions = rows.Select(r => new NotetakerSessionDto(r.Id, r.ProjectId, r.Project ?? "", r.Meeting ?? r.Title ?? "Meeting", r.MeetUrl, r.SessionStartUtc, r.SessionEndUtc,
-            r.Status, r.WorkerStatus, r.Error, r.TranscriptLength, r.Minutes != null, r.Minutes, r.CreatedBy == uid, r.CalendarEventId != null)).ToList();
+            r.Status, r.WorkerStatus, r.Error, r.TranscriptLength, r.Minutes != null, r.Minutes, true, r.CalendarEventId != null)).ToList();
         var identity = await db.MeetingBotIdentities.AsNoTracking().Where(i => i.Active && i.LastError == null).OrderBy(i => i.CreatedAt).Select(i => i.DisplayName).FirstOrDefaultAsync(ct);
         var calendar = await db.GoogleConnections.AsNoTracking().AnyAsync(c => c.UserId == uid, ct);
         return new(new(settings?.ProjectId, settings?.AutoJoin ?? false, settings?.AutoMinutes ?? true), projects, sessions,
@@ -107,16 +107,31 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     public async Task StopAsync(Guid id, CancellationToken ct)
     {
         var uid = ctx.RequireUserId();
-        var bot = await MySessions(uid).FirstOrDefaultAsync(b => b.Id == id, ct) ?? throw new NotFoundException("Session not found.");
+        var bot = await SessionAsync(id, ct);
         if (bot.Status is not ("scheduled" or "in_call")) return;
-        // The worker is told to leave on its next report; what was heard so far is kept and read.
-        bot.SessionEndUtc = clock.Now.AddMinutes(-4);
-        bot.WorkerStatus = bot.WorkerId is null ? "done" : bot.WorkerStatus;
+        // Finished now: the worker is told to leave on its next report (a done row is never held), and what was heard so far is read.
+        var now = clock.Now;
+        bot.EndedAt = now; bot.SessionEndUtc = now < bot.SessionEndUtc ? now : bot.SessionEndUtc;
+        bot.Status = bot.TranscriptLength > 0 ? "done" : "failed";
+        if (bot.TranscriptLength == 0) bot.Error ??= "Called back before anything was heard.";
+        await db.SaveChangesAsync(ct);
+        if (bot.TranscriptProtected is { } heard && bot.TranscriptLength > 0)
+            await signals.AddAsync(bot.TenantId, bot.ProjectId, AgentSourceKind.LiveMeeting, $"bot:{bot.Id}", $"{bot.Title ?? "Meeting"} · {bot.SessionStartUtc:dd MMM}", null,
+                secrets.Unprotect(heard), now, null, bot.MeetingId, ct);
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task<AgentMeetingBot> SessionAsync(Guid id, CancellationToken ct) =>
-        await MySessions(ctx.RequireUserId()).FirstOrDefaultAsync(b => b.Id == id, ct) ?? throw new NotFoundException("Session not found.");
+    /// <summary>One of the person's own sessions, in a project they can still open.</summary>
+    private async Task<AgentMeetingBot> SessionAsync(Guid id, CancellationToken ct)
+    {
+        var bot = await MySessions(ctx.RequireUserId()).FirstOrDefaultAsync(b => b.Id == id, ct) ?? throw new NotFoundException("Session not found.");
+        await access.GetProjectAsync(bot.ProjectId, ct);
+        return bot;
+    }
+    private void RequireOwner(MeetingMinutes? row)
+    {
+        if (row is not null && row.UserId != ctx.RequireUserId()) throw new ForbiddenException("These minutes belong to the person who sent the notetaker.", "PERMISSION_DENIED");
+    }
 
     private MinutesDto ToDto(MeetingMinutes m)
     {
@@ -137,6 +152,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     public async Task<MinutesDto> GenerateMinutesAsync(Guid id, CancellationToken ct)
     {
         var bot = await SessionAsync(id, ct);
+        RequireOwner(await db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(m => m.BotRowId == bot.Id, ct));
         return await WriteMinutesAsync(bot, ctx.RequireUserId(), ct);
     }
 
@@ -161,15 +177,16 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             "Keep each line short and concrete. Empty lists are fine.";
         var cost = Math.Clamp(aiOptions.Value.Chat.Quick.Credits, 1, 10000);
         AiAnswer answer;
+        JsonObject json;
+        // Charged only for minutes that could be read: a reply that is not the expected JSON releases the reservation.
         await using (var lease = await credits.ReserveAsync(Guid.NewGuid(), cost, "meeting_minutes", ct))
         {
             answer = await ai.CompleteAsync(system, JsonSerializer.Serialize(new { meeting = title, project, notetakerFor = owner, date = bot.SessionStartUtc.ToString("yyyy-MM-dd"), transcript }), 3000, ct);
+            var text = answer.Text; var start = text.IndexOf('{'); var end = text.LastIndexOf('}');
+            try { json = (start >= 0 && end > start ? JsonNode.Parse(text[start..(end + 1)]) as JsonObject : null) ?? throw new JsonException(); }
+            catch (JsonException) { throw new AppException(502, "AI_FAILED", "The minutes could not be written. Try again."); }
             await lease.SettleAsync(cost, ct);
         }
-        var text = answer.Text; var start = text.IndexOf('{'); var end = text.LastIndexOf('}');
-        JsonObject json;
-        try { json = (start >= 0 && end > start ? JsonNode.Parse(text[start..(end + 1)]) as JsonObject : null) ?? throw new JsonException(); }
-        catch (JsonException) { throw new AppException(502, "AI_FAILED", "The minutes could not be written. Try again."); }
         var content = new MinutesContent($"{title} · {bot.SessionStartUtc:dd MMM yyyy}", Str(json["summary"], 2000), List(json["attendees"], 40, 80), List(json["discussion"], 20, 400),
             List(json["decisions"], 15, 400),
             (json["actionItems"] as JsonArray ?? []).OfType<JsonObject>().Select(a => new MinutesActionItem(Str(a["task"], 300), Str(a["owner"], 80) is { Length: > 0 } o && o != "null" ? o : null,
@@ -181,7 +198,13 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         row.ContentProtected = secrets.Protect(JsonSerializer.Serialize(content, Json));
         row.Status = "ready"; row.Model = answer.Model?.Length > 200 ? answer.Model[..200] : answer.Model; row.UpdatedAt = clock.Now;
         recorder.Audit("ai.used", "MeetingMinutes", row.Id, null, new { feature = "meeting_minutes", model = answer.Model, credits = cost });
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            // Written twice at once: keep the first.
+            db.MeetingMinutes.Entry(row).State = EntityState.Detached;
+            return ToDto(await db.MeetingMinutes.AsNoTracking().FirstAsync(m => m.BotRowId == bot.Id, ct));
+        }
         return ToDto(row);
     }
 
@@ -189,6 +212,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     {
         var bot = await SessionAsync(id, ct);
         var row = await db.MeetingMinutes.FirstOrDefaultAsync(m => m.BotRowId == bot.Id, ct) ?? throw new ConflictException("Write the minutes first.", "MINUTES_MISSING");
+        RequireOwner(row);
         await mailbox.SendAsync(new MailSendRequest(req.Account, null, null, false, req.To, req.Cc, req.Subject, req.Body, req.Confirmed), ct);
         row.Status = "sent"; row.SentAt = clock.Now; row.UpdatedAt = clock.Now;
         recorder.Audit("notetaker.minutes_sent", "MeetingMinutes", row.Id, null, new { account = req.Account });
@@ -203,7 +227,10 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     public async Task<int> TickAsync(ProjectAgentSettings s, CancellationToken ct)
     {
         if (!s.Enabled || !s.ReadMeetings) return 0;
-        var people = await db.NotetakerSettings.AsNoTracking().Where(n => n.ProjectId == s.ProjectId && (n.AutoJoin || n.AutoMinutes)).ToListAsync(ct);
+        // Only people who are still active and still in the project.
+        var people = await db.NotetakerSettings.AsNoTracking().Where(n => n.ProjectId == s.ProjectId && (n.AutoJoin || n.AutoMinutes)
+            && db.Users.Any(u => u.Id == n.UserId && u.IsActive)
+            && (db.ProjectMembers.Any(m => m.ProjectId == s.ProjectId && m.UserId == n.UserId) || db.Projects.Any(p => p.Id == s.ProjectId && p.OwnerId == n.UserId))).ToListAsync(ct);
         if (people.Count == 0) return 0;
         var now = clock.Now; var done = 0;
         foreach (var p in people.Where(p => p.AutoJoin && botService.Configured))
@@ -221,7 +248,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         {
             var since = now.AddHours(-24);
             var finished = await db.AgentMeetingBots.Where(b => b.ProjectId == s.ProjectId && b.Kind == "bot" && b.Status == "done" && b.TranscriptLength > 200
-                    && b.EndedAt > since && (b.CreatedBy == p.UserId || db.AgentDelegations.Any(d => d.BotRowId == b.Id && d.UserId == p.UserId))
+                    && b.EndedAt > since && db.AgentDelegations.Any(d => d.BotRowId == b.Id && d.UserId == p.UserId)
                     && !db.MeetingMinutes.Any(m => m.BotRowId == b.Id)).Take(3).ToListAsync(ct);
             foreach (var bot in finished)
             {

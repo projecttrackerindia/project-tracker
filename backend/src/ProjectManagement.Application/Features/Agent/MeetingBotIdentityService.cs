@@ -115,12 +115,11 @@ public class MeetingBotIdentityService(IAppDbContext db, ICurrentContext ctx, IS
     public async Task<BotIdentityDto?> PickAsync(string meetingUrl, CancellationToken ct)
     {
         if (!meetingUrl.Contains("meet.google.com", StringComparison.OrdinalIgnoreCase)) return null;
-        var row = await db.MeetingBotIdentities.Where(i => i.Active && i.LastError == null)
+        var row = await db.MeetingBotIdentities.AsNoTracking().Where(i => i.Active && i.LastError == null)
             .OrderBy(i => i.LastUsedAt ?? DateTime.MinValue).FirstOrDefaultAsync(ct);
         if (row is null) return null;
         string json;
         try { json = secrets.Unprotect(row.CookiesProtected); } catch { return null; }
-        row.LastUsedAt = clock.Now;
         await db.MeetingBotIdentities.Where(i => i.Id == row.Id).ExecuteUpdateAsync(u => u.SetProperty(i => i.LastUsedAt, clock.Now), ct);
         using var doc = JsonDocument.Parse(json);
         return new BotIdentityDto(row.Id.ToString(), doc.RootElement.Clone());

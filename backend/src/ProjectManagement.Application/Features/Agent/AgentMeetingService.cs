@@ -245,7 +245,14 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             Automatic = calendarEventId is not null, CreatedAt = now, CreatedBy = userId };
         db.AgentDelegations.Add(delegation);
         await db.SaveChangesAsync(ct);
-        await SendAsync(s, w, bot, url, [delegation], ct);
+        try { await SendAsync(s, w, bot, url, [delegation], ct); }
+        catch
+        {
+            // Never leave a queued row no worker can take: it would block sending the notetaker again.
+            bot.Status = "failed"; bot.Error = "The notetaker could not be queued."; delegation.Status = "cancelled";
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
         return bot;
     }
 
