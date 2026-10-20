@@ -328,7 +328,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
 
       {redirecting ? <Route path="*" element={<OrgRedirect />} /> : <Route element={<RequireAuth />}>
         {/* Home */}
-        <Route index element={<DashboardPage />} />
+        <Route index element={mProjects && !isGuest ? <CommandCenterPage /> : <DashboardPage />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="approve/:id" element={<ApprovePage />} />
         {/* My work lives in the Command Center now (its own tab); without the Command Center the page stands alone. */}
         <Route path="my-work" element={<Guard allow={kinds.length > 0}>{mProjects && !isGuest ? <Moved to="/command-center?tab=work" /> : <MyWorkPage />}</Guard>} />

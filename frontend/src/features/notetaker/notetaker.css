@@ -57,3 +57,10 @@
 .nt-steps { margin: 0 0 14px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: 13.5px; line-height: 1.5; }
 .nt-after { display: flex; flex-direction: column; gap: 10px; padding-left: 14px; border-left: 2px solid var(--border); }
 .nt-after.off .nt-toggle:not(:last-child) { opacity: .55; }
+.nt-presets { display: grid; gap: 8px; }
+.nt-presets button { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font: inherit; }
+.nt-presets button small { color: var(--text-3); font-size: 12.5px; }
+.nt-presets button.on { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 1px var(--primary) inset; }
+.nt-presets button:disabled { opacity: .5; cursor: default; }
+.nt-advanced summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 4px 0; }
+.nt-advanced[open] { display: flex; flex-direction: column; gap: 10px; }

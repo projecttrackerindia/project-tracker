@@ -21,7 +21,8 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   const admin = role === 'Owner' || role === 'Admin';
   const inbox = useWsQuery(['agent', 'inbox'], agentApi.inbox, { enabled: proposals, staleTime: 60_000 });
   const tabs: { to: string; label: string; icon: IconName | 'mark'; show: boolean; on: boolean; badge?: number }[] = [
-    { to: '/ai', label: 'Assistant', icon: 'mark', show: ai, on: pathname === '/ai' || (pathname.startsWith('/ai/') && pathname !== '/ai/operations') },
+    { to: '/ai', label: 'Ask', icon: 'mark', show: ai, on: pathname === '/ai' || (pathname.startsWith('/ai/') && pathname !== '/ai/operations') },
+    { to: '/notetaker', label: 'Meetings', icon: 'video', show: projects && role !== 'Guest', on: pathname === '/notetaker' },
     { to: '/project-agent', label: 'Proposals', icon: 'sparkle', show: proposals, on: pathname.startsWith('/project-agent'), badge: inbox.data?.pending },
     { to: '/ai/operations', label: 'Workflows', icon: 'workflow', show: ai, on: pathname === '/ai/operations' },
     { to: '/agent-tracker', label: 'Tracker', icon: 'gauge', show: admin, on: pathname === '/agent-tracker' },
@@ -30,7 +31,7 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   if (shown.length < 2) return null;
   if (compact) return (
     // Inside the assistant's own header: the other agent places, without the hub's title.
-    <nav className="agh-tabs agh-compact" aria-label="Agents">
+    <nav className="agh-tabs agh-compact" aria-label="Assistant">
       {shown.filter((t) => !t.on).map((t) => (
         <NavLink key={t.to} to={t.to} end title={t.label} aria-label={t.label}>
           {t.icon === 'mark' ? <AgentMark size={16} /> : <Icon name={t.icon} size={15} />}<span>{t.label}</span>{!!t.badge && <em>{t.badge > 99 ? '99+' : t.badge}</em>}
@@ -40,8 +41,8 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   );
   return (
     <div className="agh">
-      <div className="agh-title"><span className="agh-mark"><AgentMark size={20} animated /></span><div><b>Agents</b>{sub && <small>{sub}</small>}</div></div>
-      <nav className="agh-tabs" aria-label="Agents">
+      <div className="agh-title"><span className="agh-mark"><AgentMark size={20} animated /></span><div><b>Assistant</b>{sub && <small>{sub}</small>}</div></div>
+      <nav className="agh-tabs" aria-label="Assistant">
         {shown.map((t) => (
           <NavLink key={t.to} to={t.to} end className={t.on ? 'on' : ''} aria-current={t.on ? 'page' : undefined}>
             {t.icon === 'mark' ? <AgentMark size={16} /> : <Icon name={t.icon} size={15} />}<span>{t.label}</span>

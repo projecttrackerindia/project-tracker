@@ -10,7 +10,9 @@ import { navKey, inSidebar, type NavDef, type NavGroup } from './navigation';
  * while the account copy loads.
  */
 export interface NavPrefs { version: 1; order: Record<string, string[]>; pinned: string[]; hidden: string[]; collapsed: string[] }
-export const EMPTY_PREFS: NavPrefs = { version: 1, order: {}, pinned: [], hidden: [], collapsed: [] };
+/** A lean start: the places most people use every day. The rest stay one search away (Ctrl K) and can be shown again in Customize. */
+export const DEFAULT_HIDDEN = ['/reminders', '/portfolio', '/workload', '/activity'];
+export const EMPTY_PREFS: NavPrefs = { version: 1, order: {}, pinned: [], hidden: DEFAULT_HIDDEN, collapsed: [] };
 export const PINNED = 'Pinned';
 
 const localKey = (uid: string) => `pm_sidebar_${uid}`;
@@ -45,7 +47,7 @@ export function useNavPrefs() {
       writeLocal(uid, next);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
-        const blank = !next.pinned.length && !next.hidden.length && !next.collapsed.length && !Object.keys(next.order).length;
+        const blank = !next.pinned.length && next.hidden.join() === DEFAULT_HIDDEN.join() && !next.collapsed.length && !Object.keys(next.order).length;
         void put('/me/ui/sidebar', { value: blank ? null : next }).then(() => { dirty.current = false; client.setQueryData(['ui', 'sidebar', uid], next); }).catch(() => { /* kept on this device; saved next time */ });
       }, 500);
       return next;

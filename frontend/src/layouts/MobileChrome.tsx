@@ -334,6 +334,8 @@ function CreateSheet({ onClose }: { onClose: () => void }) {
             <Action icon="alarm" tone="amber" title="Reminder" sub="Be nudged at the right time" onClick={() => { onClose(); openReminderComposer(); }} />
             {canProject && <Action icon="folder" tone="blue" title="Project" sub="Start something new" onClick={() => setMaking('project')} />}
             {canWork && <Action icon="bolt" tone="orange" title="Work task" sub="Support, bugs and requests" onClick={() => setMaking('work')} />}
+            <Action icon="mail" tone="blue" title="Email" sub="Write from your connected mail" onClick={() => { onClose(); nav('/mailbox?compose=1'); }} />
+            {projectModule > 0 && <Action icon="video" tone="violet" title="Join a call for me" sub="Your notetaker takes the notes" onClick={() => { onClose(); nav('/notetaker'); }} />}
           </div>
         </Sheet>
       )}

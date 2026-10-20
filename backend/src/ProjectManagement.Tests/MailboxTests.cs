@@ -37,6 +37,7 @@ public class MailboxTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Olu Owner");
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
         var member = await owner.AddMemberAsync(factory, ProjectManagement.Domain.Enums.TenantRole.Member, "Mo Member");
         Assert.Equal(HttpStatusCode.Forbidden, (await member.Put("/api/v1/me/mailbox/company", new { provider = "rediffpro", domains = "fivestar.test" })).Status);
         Assert.Equal(422, (int)(await owner.Put("/api/v1/me/mailbox/company", new { provider = "rediffpro", domains = "not a domain" })).Status);

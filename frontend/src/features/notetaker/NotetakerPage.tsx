@@ -15,9 +15,15 @@ import { mailboxApi } from '../mailbox/mailboxApi';
 import { minutesText, notetakerApi } from './notetakerApi';
 import type { Minutes, NotetakerSession, NotetakerSettings } from './notetakerApi';
 import './notetaker.css';
+import { AgentsHubNav } from '../agents/AgentsHubNav';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const DURATIONS = [30, 45, 60, 90, 120, 180];
+const PRESETS = [
+  { id: 'notes', label: 'Notes only', text: 'Joins when you send it, writes the minutes and emails them to you.', values: { autoJoin: false, autoMinutes: true, autoEmail: true, autoTasks: false } },
+  { id: 'tasks', label: 'Notes + tasks', text: 'Also turns the action items into tasks in the project.', values: { autoJoin: false, autoMinutes: true, autoEmail: true, autoTasks: true } },
+  { id: 'auto', label: 'Fully automatic', text: 'Also joins every call on your Google Calendar by itself.', values: { autoJoin: true, autoMinutes: true, autoEmail: true, autoTasks: true } },
+] as const;
 
 function statusOf(s: NotetakerSession): { label: string; tone: 'live' | 'wait' | 'ok' | 'bad' | 'idle' } {
   if (s.status === 'failed') return { label: 'Did not record', tone: 'bad' };
@@ -75,6 +81,7 @@ export function NotetakerPage() {
 
   return (
     <div className="nt">
+      <AgentsHubNav sub="Your notetaker joins calls, writes the minutes and updates tasks" />
       <header className="nt-hero">
         <div>
           <span className="nt-eyebrow"><Icon name="sparkle" size={13} /> AI notetaker</span>
@@ -110,10 +117,23 @@ export function NotetakerPage() {
         </section>
 
         <section className="nt-card" aria-labelledby="nt-auto-title">
-          <h2 id="nt-auto-title"><Icon name="settings" size={17} /> Automatic</h2>
+          <h2 id="nt-auto-title"><Icon name="settings" size={17} /> How much it does for you</h2>
           <label className="nt-field"><span>File my notes under</span>
             <Select className="select" aria-label="Default project" value={settings.projectId ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
               <option value="">Choose a project</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
+          <div className="nt-presets" role="radiogroup" aria-label="How much it does for you">
+            {PRESETS.map((p) => {
+              const on = (Object.keys(p.values) as (keyof typeof p.values)[]).every((k) => settings[k] === p.values[k]);
+              return (
+                <button key={p.id} type="button" role="radio" aria-checked={on} className={on ? 'on' : ''} disabled={p.values.autoJoin && !settings.projectId}
+                  onClick={() => void save(p.values)}>
+                  <b>{p.label}</b><small>{p.text}</small>
+                </button>
+              );
+            })}
+          </div>
+          <details className="nt-advanced">
+            <summary>Advanced</summary>
           <label className="nt-toggle"><input type="checkbox" checked={settings.autoJoin} disabled={!settings.projectId} onChange={(e) => void save({ autoJoin: e.target.checked })} />
             <span><b>Join every call on my Google Calendar</b><small>It joins each Meet call a minute before it starts, in your name, even when you are there too.</small></span></label>
           <label className="nt-toggle"><input type="checkbox" checked={settings.autoMinutes} onChange={(e) => void save({ autoMinutes: e.target.checked })} />
@@ -126,6 +146,7 @@ export function NotetakerPage() {
             <label className="nt-toggle"><input type="checkbox" checked={settings.deleteTranscript} onChange={(e) => void save({ deleteTranscript: e.target.checked })} />
               <span><b>Delete the transcript afterwards</b><small>Once the minutes are written and the agent has read the call, only the minutes are kept. Audio is never stored.</small></span></label>
           </div>
+          </details>
         </section>
       </div>
 

@@ -1,6 +1,6 @@
 /* Mailbox: an Outlook-style three-pane mail client - accounts and folders, the message list, and the reading pane. */
 .mailbox {
-  --mb-accent: #0f6cbd;
+  --mb-accent: var(--primary);
   display: grid; grid-template-columns: 236px 360px minmax(0, 1fr);
   height: calc(100vh - var(--topbar-h) - 48px); min-height: 520px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden;
@@ -204,3 +204,6 @@ div.mb-guide { padding-left: 0; }
 .mb-company-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .mb-company-form small { color: var(--text-3); font-size: 12px; }
 .mb-company-form input { height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; }
+
+.mb-agent-tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mb-agent-tasks-head h4 { margin: 0; }

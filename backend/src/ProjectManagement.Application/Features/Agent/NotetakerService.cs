@@ -37,7 +37,7 @@ public record SendMinutesRequest(string Account, string To, string? Cc, string S
 public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetingService meetings, ProjectAccess access, MeetingBotClient botService,
     ISecretProtector secrets, AppClock clock, IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions,
     MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals,
-    ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email)
+    ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email, AgentSettingsService agentSettings, IOptions<ProjectManagement.Application.Common.AppOptions> app)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -83,6 +83,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         var uid = ctx.RequireUserId(); var tid = ctx.RequireTenantId();
         if (req.ProjectId is { } pid) await access.GetProjectAsync(pid, ct);
         if (req.AutoJoin && req.ProjectId is null) throw new ValidationException("projectId", "Choose the project the notes are filed under.");
+        if (req.ProjectId is { } chosen && (req.AutoJoin || req.AutoMinutes)) await EnsureNotesOnlyAsync(chosen, ct);
         var row = await SettingsRowAsync(uid, ct);
         if (row is null) { row = new NotetakerSettings { TenantId = tid, UserId = uid, CreatedAt = clock.Now, CreatedBy = uid }; db.NotetakerSettings.Add(row); }
         row.ProjectId = req.ProjectId; row.AutoJoin = req.AutoJoin; row.AutoMinutes = req.AutoMinutes; row.UpdatedAt = clock.Now;
@@ -98,12 +99,37 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         var projectId = req.ProjectId ?? (await SettingsRowAsync(uid, ct))?.ProjectId ?? throw new ValidationException("projectId", "Choose the project the notes are filed under.");
         var project = await access.GetProjectAsync(projectId, ct);
         ProjectAccess.EnsureNotArchived(project, "take meeting notes");
+        await EnsureNotesOnlyAsync(projectId, ct);
         var now = clock.Now;
         var bot = await meetings.JoinForAsync(projectId, uid, req.Url ?? "", req.Title, null, now.AddMinutes(req.Minutes), req.Instructions, null, ct)
             ?? throw new ConflictException("Your notetaker is already on its way to this call.", "AGENT_ALREADY_SENT");
         recorder.Audit("notetaker.sent", "AgentMeetingBot", bot.Id, null, new { projectId });
         await db.SaveChangesAsync(ct);
         return new(bot.Id, projectId, project.Name, bot.Title ?? "Call", bot.MeetUrl, bot.SessionStartUtc, bot.SessionEndUtc, bot.Status, null, null, 0, false, null, true, false);
+    }
+
+    /// <summary>
+    /// The notetaker files notes through the project's agent. When that agent is off, someone who may set it up gets it switched on in
+    /// "notes only" mode (meetings only: no mailbox, chat, WhatsApp or daily updates); anyone else is told who can.
+    /// </summary>
+    private async Task EnsureNotesOnlyAsync(Guid projectId, CancellationToken ct)
+    {
+        var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
+        if (s is { Enabled: true, ReadMeetings: true }) return;
+        var project = await access.GetProjectAsync(projectId, ct);
+        if (!await agentSettings.CanManageAsync(project, ct))
+            throw new ConflictException("This project's assistant is off. Ask the project lead to switch it on, or choose another project.", "AGENT_OFF");
+        var uid = ctx.RequireUserId();
+        if (s is null)
+        {
+            s = new ProjectAgentSettings { TenantId = ctx.RequireTenantId(), ProjectId = projectId, MailboxToken = AgentSettingsService.NewToken(12), ActingUserId = uid,
+                CreatedAt = clock.Now, CreatedBy = uid, ChatReadUntil = clock.Now, ReadMailbox = false, ReadChat = false, ReadWhatsApp = false, DailyUpdates = false };
+            db.ProjectAgentSettings.Add(s);
+        }
+        if (!s.Enabled) { s.ActingUserId = uid; s.ChatReadUntil = clock.Now; s.LastError = null; }
+        s.Enabled = true; s.ReadMeetings = true; s.UpdatedAt = clock.Now;
+        recorder.Audit("notetaker.agent_enabled", "ProjectAgentSettings", s.Id, null, new { projectId, mode = "notes-only" });
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task StopAsync(Guid id, CancellationToken ct)
@@ -329,7 +355,9 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         if (created.Count > 0) html.Append($"<p><b>{created.Count} task(s) were created in the project</b> from these action items.</p>");
         if (c.Risks.Count > 0) html.Append("<h3>Risks and blockers</h3>").Append(Bullets(c.Risks));
         if (c.NextMeeting is not null) html.Append($"<p><b>Next meeting:</b> {H(c.NextMeeting)}</p>");
-        html.Append("<p style=\"color:#888;font-size:12px\">Written by your ProjectTracker notetaker. Open Notetaker to edit or email these minutes to the attendees.</p>");
+        var open = $"{ProjectManagement.Application.Features.Sso.PublicUrls.Web(app.Value)}/notetaker?session={bot.Id}";
+        html.Append($"<p><a href=\"{H(open)}\" style=\"display:inline-block;padding:10px 16px;background:#4f46e5;color:#fff;border-radius:8px;text-decoration:none\">Review and send to attendees</a></p>");
+        html.Append("<p style=\"color:#888;font-size:12px\">Written by your ProjectTracker notetaker.</p>");
         try { await email.SendAsync(new EmailMessage(to, $"Minutes: {c.Title}", html.ToString(), Kind: "meeting_minutes"), ct); }
         catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning("The minutes email could not be sent for {Session}: {Reason}", bot.Id, ex.Message); }
     }

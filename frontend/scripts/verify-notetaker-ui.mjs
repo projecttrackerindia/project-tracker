@@ -90,11 +90,9 @@ try{
  await page.getByRole('button',{name:'Join now'}).click();
  const j=await waitWrite(w=>w.ep==='/api/v1/me/notetaker/join');assert.equal(j.b.url,'https://meet.google.com/xyz-abcd-efg');assert.equal(j.b.projectId,'p1');assert.equal(j.b.minutes,60);assert.equal(j.b.instructions,'Ask about the release date');
  checks.push('join');
- await page.locator('.nt-toggle',{hasText:'Join every call'}).locator('input').check();
- assert.equal((await waitWrite(w=>w.ep==='/api/v1/me/notetaker/settings')).b.autoJoin,true);checks.push('settings');
- await page.locator('.nt-toggle',{hasText:'Create tasks from the action items'}).locator('input').check();
- for(let i=0;i<30&&!writes.some(w=>w.ep==='/api/v1/me/notetaker/settings'&&w.b.autoTasks);i++)await new Promise(r=>setTimeout(r,100));
- const at=writes.filter(w=>w.ep==='/api/v1/me/notetaker/settings').pop();assert.equal(at.b.autoTasks,true);assert.equal(at.b.autoJoin,true);assert.equal(at.b.deleteTranscript,true);checks.push('automation');
+ await page.getByRole('radio',{name:/Fully automatic/}).click();
+ const at=await waitWrite(w=>w.ep==='/api/v1/me/notetaker/settings');assert.equal(at.b.autoJoin,true);assert.equal(at.b.autoTasks,true);assert.equal(at.b.deleteTranscript,true);
+ await page.waitForFunction(()=>document.querySelector('[role=radio][aria-checked=true]')?.textContent.includes('Fully automatic'));checks.push('settings','automation');
  await shot(page,'notetaker-1440.png');
  await page.locator('.nt-session',{hasText:'Client review'}).getByRole('button',{name:/Write minutes/}).click();
  await page.getByRole('dialog').getByRole('button',{name:'Write the minutes'}).click();

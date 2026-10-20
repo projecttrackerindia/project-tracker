@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { GetStarted } from './GetStarted';
 import { Link, useSearchParams } from 'react-router-dom';
 import { delegateApi } from '../../api/endpoints';
 import type {
@@ -70,6 +71,7 @@ export function CommandCenterPage() {
       {q.isLoading ? <PageLoader /> : q.isError || !q.data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <>
           <Hero c={q.data} onWhatIf={() => setWhatIf(true)} />
+          <GetStarted />
           <nav className="cmd-tabs" aria-label="Command Center">
             {TABS.map((t) => (
               <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>

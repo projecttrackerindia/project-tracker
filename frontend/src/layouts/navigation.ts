@@ -58,18 +58,19 @@ export function useMainNav(): NavGroup[] {
   const isAdmin = ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin';
   const command = lv('projects') > 0 && !isGuest;
   const proposals = lv('projects') > 0 && !personal && ai && !isGuest;
-  const agentsTo = ai ? '/ai' : proposals ? '/project-agent' : '/agent-tracker';
-  const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker';
+  const notes = lv('projects') > 0 && !isGuest;
+  const agentsTo = ai ? '/ai' : notes ? '/notetaker' : proposals ? '/project-agent' : '/agent-tracker';
+  const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker' || p === '/notetaker';
   return [
     { title: 'Home', items: [
-      { to: '/', label: 'Dashboard', icon: 'dashboard', end: true, hint: 'Your day at a glance' },
-      { to: '/command-center', label: 'Command Center', icon: 'radar', show: command, hint: 'What needs you today, your work, meetings and decisions',
-        match: (p) => p === '/command-center' },
-      { id: 'agents', to: agentsTo, label: 'Agents', icon: 'agent', show: ai || proposals || isAdmin, match: agentsPath, hint: 'The assistant, proposals, workflows and the agent tracker' },
+      // Home is the Command Center (what needs me today); the charts dashboard stays one search away.
+      { id: '/', to: '/', label: 'Dashboard', icon: 'dashboard', end: true, show: !command, hint: 'Your day at a glance' },
+      { id: '/command-center', to: '/', label: 'Home', icon: 'radar', show: command, hint: 'What needs you today, your work, meetings and decisions',
+        match: (p) => p === '/' || p === '/command-center' },
+      { id: 'agents', to: agentsTo, label: 'Assistant', icon: 'agent', show: ai || proposals || isAdmin || notes, match: agentsPath, hint: 'Ask the assistant, your notetaker, proposals and workflows' },
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat },
       { to: '/mailbox', label: 'Mailbox', icon: 'mail', hint: 'Gmail, Outlook and Rediffmail in one inbox, with the mail agent' },
-      { to: '/notetaker', label: 'Notetaker', icon: 'video', show: lv('projects') > 0 && !isGuest, hint: 'Sends an AI notetaker to your calls: notes, minutes and task updates' },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
     ] },
     { title: 'Work', items: [
@@ -92,6 +93,8 @@ export function useMainNav(): NavGroup[] {
     { title: 'Go to', items: [
       { to: command ? '/command-center?tab=work' : '/my-work', id: 'my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0, paletteOnly: true },
       { to: '/ai', label: AI_NAME, icon: 'agent', show: ai, paletteOnly: true },
+      { to: '/notetaker', label: 'Notetaker', icon: 'video', show: notes, paletteOnly: true, hint: 'Send an AI notetaker to your calls: notes, minutes and task updates' },
+      { id: 'dashboard', to: '/dashboard', label: 'Dashboard', icon: 'dashboard', show: command, paletteOnly: true, hint: 'Charts of your projects and work' },
       { to: '/project-agent', label: 'Agent proposals', icon: 'sparkle', show: proposals, paletteOnly: true },
       { to: '/ai/operations', label: 'Agent workflows', icon: 'workflow', show: ai, paletteOnly: true },
       { to: '/agent-tracker', label: 'Agent Tracker', icon: 'workflow', show: isAdmin, paletteOnly: true },

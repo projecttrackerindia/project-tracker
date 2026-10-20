@@ -56,6 +56,13 @@ export function MailboxPage() {
   const [cursors, setCursors] = useState<Record<string, string | null>>({});
   const [extra, setExtra] = useState<Record<string, MailMessage[]>>({});
 
+  // "Create › Email" on the phone opens a new message straight away.
+  useEffect(() => {
+    if (params.get('compose') !== '1') return;
+    setComposeOpen({});
+    const n = new URLSearchParams(params); n.delete('compose'); setParams(n, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Landing back from a provider's consent page.
   useEffect(() => {
     const g = params.get('google'), m = params.get('microsoft');
@@ -322,6 +329,7 @@ function Reader({ account, folder, messageId, row, agent, onBack, onForward, onS
 const INTENT: Record<string, string> = { action_required: 'Action required', question: 'Question for you', meeting: 'Meeting', fyi: 'For your information', follow_up: 'Follow-up', approval: 'Needs approval', promotional: 'Promotional' };
 
 function AgentPanel({ assist, busy, wid, onReply }: { assist: MailAssist | null; busy: boolean; wid: string | null; onReply: (body: string) => void }) {
+  const [applyAll, setApplyAll] = useState(0);
   if (busy && !assist) return <div className="mb-agent loading"><Icon name="sparkle" size={16} /><span>The mail agent is reading the conversation and your open work…</span><Spinner /></div>;
   if (!assist) return null;
   return (
@@ -335,7 +343,10 @@ function AgentPanel({ assist, busy, wid, onReply }: { assist: MailAssist | null;
         {assist.keyFacts.length > 0 && <div><h4>Key facts</h4><ul>{assist.keyFacts.map((f, i) => <li key={i}>{f}</li>)}</ul></div>}
         {assist.actionItems.length > 0 && <div><h4>For you to do</h4><ul className="checks">{assist.actionItems.map((f, i) => <li key={i}>{f}</li>)}</ul></div>}
       </div>}
-      {assist.tasks.length > 0 && <div className="mb-agent-tasks"><h4>Suggested task updates</h4>{assist.tasks.map((t, i) => <TaskSuggestion key={i} s={t} wid={wid} />)}</div>}
+      {assist.tasks.length > 0 && <div className="mb-agent-tasks">
+        <div className="mb-agent-tasks-head"><h4>Suggested task updates</h4>
+          {assist.tasks.length > 1 && <button type="button" className="btn btn-sm" onClick={() => setApplyAll((n) => n + 1)}><Icon name="checks" size={13} /> Apply all</button>}</div>
+        {assist.tasks.map((t, i) => <TaskSuggestion key={i} s={t} wid={wid} trigger={applyAll} />)}</div>}
       {assist.replies.length > 0 && <div className="mb-agent-replies"><h4>Suggested replies</h4>
         <div className="mb-reply-chips">{assist.replies.map((r, i) => <button key={i} onClick={() => onReply(r.body)} title={r.body}><Icon name="edit" size={13} /> {r.label}</button>)}</div></div>}
       <small className="mb-agent-foot">Suggestions only. Nothing is sent or changed until you choose it.</small>
@@ -343,7 +354,9 @@ function AgentPanel({ assist, busy, wid, onReply }: { assist: MailAssist | null;
   );
 }
 
-function TaskSuggestion({ s, wid }: { s: MailTaskSuggestion; wid: string | null }) {
+const STATUS_LABEL: Record<string, string> = { ToDo: 'To do', InProgress: 'In progress', OnHold: 'On hold', Completed: 'Completed', Cancelled: 'Cancelled' };
+
+function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion; wid: string | null; trigger?: number }) {
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [link, setLink] = useState<string | null>(s.kind === 'update' ? (s.taskKind === 'task' && s.projectId ? `/projects/${s.projectId}?task=${s.taskId}` : `/operations?task=${s.taskId}`) : null);
   const types = useWsQuery(['work-types'], () => workApi.types(), { enabled: s.kind === 'create', staleTime: 300_000 });
@@ -371,12 +384,14 @@ function TaskSuggestion({ s, wid }: { s: MailTaskSuggestion; wid: string | null 
       setState('done'); toast(s.kind === 'create' ? 'Task created.' : 'Task updated.');
     } catch (e) { setState('idle'); toast(errText(e, e instanceof Error ? e.message : 'Could not apply this suggestion.'), 'error'); }
   };
+  // "Apply all": each suggestion still applies itself (its own checks and messages), once.
+  useEffect(() => { if (trigger > 0 && state === 'idle') void apply(); }, [trigger]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className={`mb-task ${state === 'done' ? 'done' : ''}`}>
       <span className="mb-task-kind">{s.kind === 'create' ? <Icon name="plus" size={13} /> : <Icon name="refresh" size={13} />}</span>
       <div className="mb-task-main">
         <b>{s.kind === 'create' ? 'Create: ' : `Update ${s.taskRef ?? ''}: `}{s.title}</b>
-        <small>{[s.status && `Status → ${s.status.replace(/([a-z])([A-Z])/g, '$1 $2')}`, s.priority && s.kind === 'create' && `${s.priority} priority`, s.due && `due ${s.due}`].filter(Boolean).join(' · ')}</small>
+        <small>{[s.status && `Status → ${STATUS_LABEL[s.status] ?? s.status}`, s.priority && s.kind === 'create' && `${s.priority} priority`, s.due && `due ${s.due}`].filter(Boolean).join(' · ')}</small>
         {s.detail && <p>{s.detail}</p>}
         {s.reason && <p className="mb-task-why">“{s.reason}”</p>}
         {s.kind === 'create' && state !== 'done' && (types.data?.length ?? 0) > 1 && (
@@ -551,7 +566,7 @@ function ConnectModal({ accountsData, presets, google, microsoft, imapAccounts, 
           </button>
           {presets.map(p => (
             <button key={p.id} className="mb-provider" onClick={() => { setPick(p.id); setEmail(''); }}>
-              <span className={`mb-logo ${p.id === 'gmail' ? 'gmail' : p.id.startsWith('rediff') ? 'rediff' : 'other'}`}>{p.name[0]}</span><span><b>{p.name}</b><small>{p.id === 'gmail' ? 'No Google approval needed: sign in with an app password' : p.id.startsWith('rediff') ? 'Rediffmail account' : 'IMAP mailbox'}</small></span><Icon name="chevronR" size={16} />
+              <span className={`mb-logo ${p.id === 'gmail' ? 'gmail' : p.id.startsWith('rediff') ? 'rediff' : 'other'}`}>{p.name[0]}</span><span><b>{p.name}</b><small>{p.id === 'gmail' ? 'No Google approval needed: sign in with an app password' : p.id.startsWith('rediff') ? 'Rediffmail account' : 'Mail account'}</small></span><Icon name="chevronR" size={16} />
             </button>
           ))}
           {accountsData?.canManageCompany && <CompanyMailSetup accounts={accountsData} onSaved={onConnected} />}
