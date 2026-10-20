@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { workItemApi } from '../../api/endpoints';
 import type { WorkItemKind, WorkloadPerson, WorkloadScope } from '../../api/types';
 import { ChartTip } from '../../components/ChartTip';
@@ -109,12 +109,14 @@ function OpenWork() {
               <div className="card-body">
                 <div style={{ height: Math.max(160, chart.length * 76) }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chart} layout="vertical" margin={{ top: 0, right: 20, left: 2, bottom: 0 }} barGap={3}>
+                    <BarChart data={chart} layout="vertical" margin={{ top: 0, right: 30, left: 2, bottom: 0 }} barGap={3}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
                       <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} domain={[0, maxWorkload]} />
                       <YAxis type="category" dataKey="name" tick={<NameTick />} axisLine={false} tickLine={false} width={NAME_WIDTH} interval={0} />
                       <Tooltip content={<ChartTip />} cursor={{ fill: 'var(--hover-bg)' }} />
-                      {SERIES.map((s) => <Bar key={s.key} dataKey={s.key} name={s.name} fill={s.color} radius={[0, 6, 6, 0]} barSize={16} animationDuration={600} animationEasing="ease-out" />)}
+                      {SERIES.map((s) => <Bar key={s.key} dataKey={s.key} name={s.name} fill={s.color} radius={[0, 6, 6, 0]} barSize={16} animationDuration={600} animationEasing="ease-out">
+                        <LabelList dataKey={s.key} position="right" offset={6} style={{ fontSize: 11, fontWeight: 700, fill: 'var(--text-2)' }} formatter={(v: unknown) => (Number(v) > 0 ? String(v) : '')} />
+                      </Bar>)}
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

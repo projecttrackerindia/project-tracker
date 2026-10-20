@@ -379,3 +379,6 @@
 @keyframes m-page { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes m-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .sheet, .modal, .m-shell .content { animation: none !important; } }
+
+/* QA: comfortable touch targets for the close button on sheets (44 px, platform guidance) */
+@media (max-width: 768px) { .modal-head .btn-icon { width: 44px; height: 44px; } }

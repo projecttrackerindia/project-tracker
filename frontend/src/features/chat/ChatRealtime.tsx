@@ -210,7 +210,8 @@ export function ChatRealtime() {
         useChat.getState().setLink('connected');
         if (idle.isIdle()) sendIdle(true);
         notifyLiveConnected();
-        void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });
+        // Catch up on anything sent before the live link was up - but not data that was fetched a moment ago (no double requests on load).
+        void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid), predicate: (q) => Date.now() - q.state.dataUpdatedAt > 5000 });
       } catch {
         if (stopped) return;
         useChat.getState().setLink('offline');

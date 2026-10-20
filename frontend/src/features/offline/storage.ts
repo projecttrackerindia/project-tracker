@@ -25,7 +25,18 @@ export function readOfflineSnapshot(): OfflineSnapshot | null {
 }
 
 /** Forgets everything this person left on the device: the snapshot and the service worker's cached pages. */
+/** Kept across sign-outs: device preferences, not anyone's data. */
+const DEVICE_KEYS = new Set(['pm_theme', 'pm_alerts_prompt', 'pm_hint']);
+
 export function clearOfflineData() {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(KEY);
+    // Everything else this app (or an older version of it) cached for the person - chat threads, layouts, recent items - goes too.
+    for (const k of Object.keys(localStorage)) {
+      if (DEVICE_KEYS.has(k) || /remember|email/i.test(k)) continue;
+      if (/^(pm_|pt|pf)/i.test(k) || /cache/i.test(k)) localStorage.removeItem(k);
+    }
+    sessionStorage.clear();
+  } catch { /* ignore */ }
   navigator.serviceWorker?.controller?.postMessage('clear');
 }

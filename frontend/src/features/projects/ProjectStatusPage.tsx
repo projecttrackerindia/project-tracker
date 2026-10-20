@@ -53,12 +53,13 @@ export function ProjectStatusPage() {
   if (groups.isLoading) return <PageLoader />;
   if (groups.isError || !groups.data) return <ErrorState error={groups.error} retry={() => groups.refetch()} />;
   const total = groups.data.reduce((n, g) => n + g.count, 0);
+  const shown = groups.data.reduce((n, g) => n + g.projects.length, 0);
 
   return (
     <div className={`ps ${selected && !listOpen ? 'has-panel' : ''}`}>
       <aside className="ps-side" aria-label="Projects">
         <div className="ps-side-head">
-          <div><h2>Projects</h2><span>{total} in {groups.data.length} group{groups.data.length === 1 ? '' : 's'}{team ? ` · ${team.name}` : ''}</span></div>
+          <div><h2>Projects</h2><span title={shown < total ? 'Completed and archived projects are not listed here' : undefined}>{shown < total ? `${shown} active of ${total}` : total} in {groups.data.length} group{groups.data.length === 1 ? '' : 's'}{team ? ` · ${team.name}` : ''}</span></div>
           {selected && <button type="button" className="ps-side-toggle btn btn-ghost btn-sm" aria-expanded={listOpen} onClick={() => setListOpen((v) => !v)}>
             {listOpen ? 'Hide list' : `${current?.name ?? 'Projects'}`} <Icon name="chevronD" size={14} /></button>}
         </div>

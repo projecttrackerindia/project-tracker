@@ -122,3 +122,9 @@ export function formatBytes(bytes: number) {
   while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
   return `${value < 10 ? value.toFixed(1).replace(/\.0$/, '') : Math.round(value)} ${units[i]}`;
 }
+
+const pluralRules = new Intl.PluralRules('en');
+/** "1 task", "3 tasks": the count with the word in the right number (pass the plural when it is not just "+s"). */
+export function plural(n: number, one: string, many = `${one}s`) {
+  return `${n.toLocaleString()} ${pluralRules.select(n) === 'one' ? one : many}`;
+}

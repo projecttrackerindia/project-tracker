@@ -64,6 +64,10 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 
+// The public landing page ships inside index.html; in the signed-in app it is never shown, so take it out of the page altogether
+// (no second <main>/<h1> for screen readers, nothing hidden to lay out).
+if (document.documentElement.classList.contains('app')) document.getElementById('site')?.remove();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

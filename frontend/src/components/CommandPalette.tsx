@@ -82,7 +82,12 @@ export function CommandPalette() {
     window.addEventListener('pm:palette', onOpen);
     return () => { document.removeEventListener('keydown', onKey); window.removeEventListener('pm:palette', onOpen); };
   }, []);
-  useEffect(() => { if (open) { setQ(''); setActive(0); setTimeout(() => input.current?.focus(), 20); } }, [open]);
+  // Remember what had focus, and give it back when the palette closes (keyboard users land where they were).
+  const opener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (open) { opener.current = document.activeElement as HTMLElement | null; setQ(''); setActive(0); setTimeout(() => input.current?.focus(), 20); }
+    else if (opener.current) { const el = opener.current; opener.current = null; if (el.isConnected && el !== document.body) el.focus({ preventScroll: true }); else document.querySelector<HTMLElement>('main.content')?.focus({ preventScroll: true }); }
+  }, [open]);
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 220); return () => clearTimeout(t); }, [q]);
 
   const search = useQuery({ queryKey: ['palette-search', ctx?.current?.id, debounced], queryFn: () => insightApi.search(debounced), enabled: open && debounced.length >= 2 && !ctx?.user.isPlatformAdmin });

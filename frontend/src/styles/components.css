@@ -216,7 +216,7 @@ tr.clickable { cursor: pointer; }
 .pc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
 .pc-stat { background: var(--tint); border: 1px solid var(--border-strong); border-radius: 11px; padding: 8px 4px; box-shadow: none; }
 .pc-stat b { display: block; font-size: 16px; font-weight: 750; letter-spacing: -.02em; }
-.pc-stat span { font-size: 10.5px; color: var(--text-3); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.pc-stat span { font-size: 11px; color: var(--text-3); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .pc-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--text-3); }
 
 /* ---------- kanban ---------- */
@@ -336,7 +336,7 @@ tr.clickable { cursor: pointer; }
 .member-card-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 2px; }
 .member-card-stats > div { text-align: center; padding: 10px 4px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
 .member-card-stats b { display: block; font-size: 17px; font-weight: 800; }
-.member-card-stats small { font-size: 10.5px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.member-card-stats small { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
 .photo-card { display: flex; align-items: center; gap: 18px; }
 .photo-well { position: relative; width: 84px; height: 84px; border-radius: 50%; cursor: pointer; flex-shrink: 0; transition: transform .12s; }
 .photo-well:hover, .photo-well.over { transform: scale(1.03); }

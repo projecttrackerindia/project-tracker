@@ -169,7 +169,7 @@ function GlobalSearch() {
   return (
     <div className="global-search" ref={ref}>
       <span className="search-icon"><Icon name="search" /></span>
-      <input ref={input} type="search" placeholder="Search work, projects, people… or a key like WT-12" autoComplete="off" aria-label="Global search" value={q}
+      <input ref={input} type="search" placeholder="Search work, people or a key (WT-12)" autoComplete="off" aria-label="Global search" value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
         onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); input.current?.blur(); } }} />
       {!q && <button type="button" className="kbd kbd-btn" title="Command palette (Ctrl K)" onClick={openPalette}>Ctrl K</button>}
@@ -328,12 +328,13 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const page = <Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense>;
   return (
     <div ref={shell} className={`app-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
+      <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
       <LensSync />
       {phone ? (
         <div className="main m-main">
           <PlatformBanner />
           <MobileTopBar />
-          <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
+          <main id="main-content" className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
           <TabBar />
           {!conversation && <PullToRefresh />}
         </div>
@@ -343,7 +344,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <div className={`main ${collapsed ? 'expanded' : ''}`}>
             <PlatformBanner />
             <Topbar />
-            <main className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
+            <main id="main-content" className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
           </div>
         </>
       )}

@@ -1,9 +1,10 @@
-import { createContext, forwardRef, useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { cloneElement, createContext, forwardRef, isValidElement, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { useSheetDrag } from './Sheet';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
-import { ApiError } from '../api/client';
+import { ApiError, get as apiGet } from '../api/client';
+import { useAuth } from '../stores/auth';
 import { clamp, initials, labelize } from '../lib/format';
 import { useUi } from '../stores/ui';
 import { usePriorities } from '../features/priorities/usePriorities';
@@ -111,12 +112,35 @@ export function invalidateAvatarCache(userId: string) {
   const hit = avatarUrlCache.get(userId);
   if (hit) { URL.revokeObjectURL(hit.url); avatarUrlCache.delete(userId); }
   avatarMissing.delete(userId);
+  avatarIndex = null;
   avatarEpoch += 1;
   avatarListeners.forEach((fn) => fn());
 }
 
+/** Who in the workspace has a photo (userId -> version), fetched once every few minutes and shared: people without one cost no request. */
+let avatarIndex: { at: number; wid: string | undefined; map: Promise<Map<string, string> | null> } | null = null;
+const AVATAR_INDEX_TTL_MS = 5 * 60_000;
+function avatarIndexMap(): Promise<Map<string, string> | null> {
+  const wid = useAuth.getState().ctx?.current?.id;
+  if (!avatarIndex || avatarIndex.wid !== wid || Date.now() - avatarIndex.at > AVATAR_INDEX_TTL_MS) {
+    avatarIndex = {
+      at: Date.now(), wid,
+      map: apiGet<{ userId: string; version: string }[]>('/workspace/avatars')
+        .then((rows) => new Map(rows.map((r) => [r.userId, r.version])))
+        .catch(() => null),   // unknown: fall back to asking per person
+    };
+  }
+  return avatarIndex.map;
+}
+
 /** The photo's object URL, or null when the person has none. One request per person at a time, shared by every caller. */
-function loadAvatar(userId: string): Promise<string | null> {
+async function loadAvatar(userId: string): Promise<string | null> {
+  const index = await avatarIndexMap();
+  if (index && !index.has(userId)) return null;
+  return loadAvatarFile(userId);
+}
+
+function loadAvatarFile(userId: string): Promise<string | null> {
   const hit = avatarUrlCache.get(userId);
   if (hit && Date.now() - hit.at < AVATAR_TTL_MS) return Promise.resolve(hit.url);
   const missedAt = avatarMissing.get(userId);
@@ -297,11 +321,30 @@ export function LabelChip({ name, color }: { name: string; color: string }) {
 export function Field({ label, required, error, hint, full, children }: {
   label?: string; required?: boolean; error?: string; hint?: string; full?: boolean; children: ReactNode;
 }) {
+  const id = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const noteId = `${id}-note`;
+  // A single native control gets the label, its error or hint, and its required/invalid state wired up for assistive technology.
+  const native = isValidElement(children) && typeof children.type === 'string';
+  const props = native ? (children.props as Record<string, unknown>) : {};
+  const controlId = native ? (props.id as string | undefined) ?? id : undefined;
+  const control = native ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+    id: controlId, 'aria-invalid': error ? true : undefined, 'aria-required': required || undefined,
+    'aria-describedby': error || hint ? [props['aria-describedby'], noteId].filter(Boolean).join(' ') : props['aria-describedby'],
+  }) : children;
+  // The first field with a problem scrolls into view and takes focus, so the reason a save did nothing is never off screen.
+  useEffect(() => {
+    if (!error || !box.current) return;
+    const scope = box.current.closest('.modal, form, main') ?? document.body;
+    if (scope.querySelector('.field.invalid') !== box.current) return;
+    box.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box.current.querySelector<HTMLElement>('input,select,textarea,.ss-trigger,[contenteditable]')?.focus({ preventScroll: true });
+  }, [error]);
   return (
-    <div className={`field ${full ? 'full' : ''} ${error ? 'invalid' : ''}`}>
-      {label && <label>{label}{required && <span className="req">*</span>}</label>}
-      {children}
-      {error ? <div className="field-error" role="alert">{error}</div> : hint ? <div className="field-hint">{hint}</div> : null}
+    <div ref={box} className={`field ${full ? 'full' : ''} ${error ? 'invalid' : ''}`}>
+      {label && <label htmlFor={controlId}>{label}{required && <span className="req" aria-hidden="true">*</span>}</label>}
+      {control}
+      {error ? <div id={noteId} className="field-error" role="alert">{error}</div> : hint ? <div id={noteId} className="field-hint">{hint}</div> : null}
     </div>
   );
 }
@@ -341,6 +384,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const drag = useSheetDrag(() => ref.current, onClose);   // on a phone a dialog is a sheet: drag its handle down to dismiss it
 
   useEffect(() => {
@@ -368,7 +412,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
   const inner = (
     <>
       <div className="modal-head">
-        <div><h3>{title}</h3>{subtitle && <p>{subtitle}</p>}</div>
+        <div><h3 id={titleId}>{title}</h3>{subtitle && <p>{subtitle}</p>}</div>
         <button className="btn-icon" type="button" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
       </div>
       <div className="modal-body">{children}</div>
@@ -378,7 +422,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
 
   return createPortal(
     <div className={`modal-overlay${className ? ` ${className}` : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} className={`modal ${size ?? ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={ref} className={`modal ${size ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal-grab" {...drag}><i aria-hidden="true" /></div>
         {onSubmit ? <form onSubmit={onSubmit} noValidate style={{ display: 'contents' }}>{inner}</form> : inner}
       </div>

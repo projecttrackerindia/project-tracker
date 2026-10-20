@@ -312,3 +312,4 @@
   .trk-alert { grid-template-columns: auto minmax(0, 1fr); }
   .trk-alert .trk-link { grid-column: 2; justify-self: start; }
 }
+.trk-refreshing .trk-tabs ~ * { opacity: .6; transition: opacity .2s ease; }

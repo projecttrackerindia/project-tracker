@@ -4,7 +4,7 @@ import { insightApi, workApi } from '../../api/endpoints';
 import type { StatusCategory } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, HealthBadge, PageHead, PageLoader, Progress, StatCard } from '../../components/ui';
-import { formatDate, formatDateShort, timeAgo } from '../../lib/format';
+import { formatDate, formatDateShort, timeAgo , plural } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
 import { useAi } from '../ai/Assistant';
@@ -122,7 +122,7 @@ export function DashboardPage() {
           <StatCard icon="folder" tone="purple" value={c.activeProjects} label="Active projects" foot={`${c.totalProjects} total`} />
           <StatCard icon="target" tone="cyan" value={c.completedProjects} label="Completed projects" foot="Delivered" />
         </>}
-        {!personal && showMembers && leader && <StatCard icon="users" tone="blue" value={c.members} label="Members" foot={`${c.overdueTasks} overdue tasks overall`} />}
+        {!personal && showMembers && leader && <StatCard icon="users" tone="blue" value={c.members} label="Members" foot={`${plural(c.overdueTasks, 'overdue task')} overall`} />}
         {(showTasks || showProjects) && leader && <div className="stat-card">
           <div className="stat-top"><div className="stat-icon cyan"><Icon name="chart" /></div></div>
           <div className="stat-value">{c.overallProgress}%</div><div className="stat-label">Overall progress</div>

@@ -18,7 +18,7 @@
 
   --text: #111827;
   --text-2: #4b5565;
-  --text-3: #8892a2;
+  --text-3: #5f6b7c;                  /* 4.9:1+ on every light surface (WCAG AA) */
 
   --accent-rgb: 74, 95, 224;
   --primary: #4a5fe0;
@@ -88,7 +88,7 @@
 
   --text: #e8ecf3;
   --text-2: #a7b1c2;
-  --text-3: #738096;
+  --text-3: #8b97ab;                  /* 5:1+ on dark surfaces (WCAG AA) */
 
   --accent-rgb: 92, 124, 250;
   --primary: #8aa0ff;

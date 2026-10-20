@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient , keepPreviousData } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AgentMark } from '../../components/AgentMark';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime , plural } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { ActivityChart, BarList, FleetTrend, Histogram, LatencyTrend, Ring, Spark, StackBar } from './tracker/TrackerCharts';
@@ -45,8 +45,8 @@ export function AgentTrackerPage() {
   const [model, setModel] = useState('');
   const [intent, setIntent] = useState('');
   const q = useWsQuery(['ai', 'tracker', page, status, model, intent, from], () => trackerApi.list({ page, status: status || undefined, model: model || undefined, intent: intent || undefined, from }),
-    { enabled: authorized, staleTime: 15_000 });
-  const fleet = useWsQuery(['ai', 'tracker', 'fleet', from], () => trackerApi.fleet(from), { enabled: authorized, staleTime: 30_000 });
+    { enabled: authorized, staleTime: 15_000, placeholderData: keepPreviousData });   // a new period keeps the page in place while it loads
+  const fleet = useWsQuery(['ai', 'tracker', 'fleet', from], () => trackerApi.fleet(from), { enabled: authorized, staleTime: 30_000, placeholderData: keepPreviousData });
   const alerts = useWsQuery(['ai', 'tracker', 'alerts'], () => trackerApi.alerts(), { enabled: authorized, staleTime: 60_000 });
   // On a phone the tab row scrolls: keep the open tab in view.
   const tabsRef = useRef<HTMLElement>(null);
@@ -61,7 +61,7 @@ export function AgentTrackerPage() {
   if (!authorized) return <div className="trk"><EmptyState icon="lock" title="Owners and admins only" text="Agent Tracker shows how the workspace's agents perform. Ask an owner or admin." /></div>;
   const d = q.data;
   return (
-    <div className="trk">
+    <div className={`trk ${q.isPlaceholderData || fleet.isPlaceholderData ? 'trk-refreshing' : ''}`}>
       <AgentsHubNav sub="How every agent in the workspace is doing" />
       <header className="trk-hero">
         <div className="trk-hero-glow" aria-hidden />
@@ -158,7 +158,7 @@ function Overview({ d, fleet, alerts, onFilter, goTo }: { d: Tracker; fleet?: Fl
     { id: 'assistant', name: 'Project Assistant', icon: 'agent', accent: 'indigo', big: `${pct(d.succeeded, d.total) ?? '–'}${d.total ? '%' : ''}`, bigLabel: 'runs succeed',
       facts: [`${compact(d.total)} runs`, `typical ${secs(d.p50Ms)}`, `${compact(d.inputTokens + d.outputTokens)} tokens`], spark: runsSpark },
     { id: 'agent', name: 'Project agent', icon: 'sparkle', accent: 'emerald', big: f ? `${pct(f.projectAgent.approved, decided) ?? '–'}${decided ? '%' : ''}` : '…', bigLabel: 'proposals approved',
-      facts: f ? [`${f.projectAgent.projectsOn} projects on`, `${f.projectAgent.readings} readings`, `${f.projectAgent.findings} proposals`] : [], spark: (f?.days ?? []).map((x) => x.findings) },
+      facts: f ? [`${plural(f.projectAgent.projectsOn, 'project')} on`, plural(f.projectAgent.readings, 'reading'), plural(f.projectAgent.findings, 'proposal')] : [], spark: (f?.days ?? []).map((x) => x.findings) },
     { id: 'meetings', name: 'Meeting bot', icon: 'video', accent: 'amber', big: f ? `${pct(f.meetings.attended, f.meetings.sessions) ?? '–'}${f.meetings.sessions ? '%' : ''}` : '…', bigLabel: 'sessions attended',
       facts: f ? [`${f.meetings.sessions} sessions`, `${f.meetings.delegations} sent in someone's place`, `${f.meetings.minutesSent} minutes sent`] : [], spark: (f?.days ?? []).map((x) => x.meetings) },
     { id: 'meetings', name: 'Follow-ups', icon: 'flag', accent: 'rose', big: f ? `${pct(f.followUps.kept, f.followUps.kept + f.followUps.missed) ?? '–'}${f.followUps.kept + f.followUps.missed ? '%' : ''}` : '…', bigLabel: 'commitments kept',

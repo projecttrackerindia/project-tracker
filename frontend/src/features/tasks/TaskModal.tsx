@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { labelApi, planningApi, projectApi, taskApi, workspaceApi } from '../../api/endpoints';
@@ -14,9 +14,9 @@ import { TargetDocuments } from '../documents/LinkedWork';
 import { CustomFieldsSection } from '../customfields/CustomFieldsSection';
 import { customFieldApi, sprintApi } from '../../api/endpoints';
 import { Avatar, Field, Modal, PageLoader, SubmitButton, PriorityOptions } from '../../components/ui';
-import { formatDateTime, timeAgo } from '../../lib/format';
+import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useCan, useModule, useWorkspaceId } from '../../stores/auth';
+import { useCan, useModule, useWorkspaceId , queryClient } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { reportTaskError } from './actions';
 import { Select } from '../../components/Select';
@@ -89,6 +89,9 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
     if (!isEdit && !pid) e.project = 'Choose a project.';
     if (stageRequired && !f.stageId) e.stageId = 'Choose the timeline phase this task belongs to.';
     if (f.startDate && f.dueDate && f.dueDate < f.startDate) e.dueDate = 'Due date must not be before the start date.';
+    const projectStart = project.data?.project.startDate;
+    if (!e.dueDate && projectStart && f.dueDate && f.dueDate < projectStart && f.dueDate !== task?.dueDate)
+      e.dueDate = `The project starts on ${formatDate(projectStart)}; the due date cannot be before that.`;
     if (isEdit && dueChange(task?.dueDate, f.dueDate)?.delay && !dueReason.trim()) e.dueDateReason = 'Say why the due date is moving.';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -113,7 +116,8 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
           if (Object.keys(filled).length > 0) await customFieldApi.setValues(created.id, filled).catch(() => toast('The task was created, but some custom fields could not be saved.', 'warning'));
           return created;
         }),
-    onSuccess: async () => { toast(isEdit ? 'Task updated.' : 'Task created.'); await invalidateWorkspace(wid); onClose(); },
+    // Close first: refreshing while the dialog is still open would refetch every one of its panels for nothing.
+    onSuccess: () => { toast(isEdit ? 'Task updated.' : 'Task created.'); onClose(); void invalidateWorkspace(wid); },
     onError: async (err) => {
       if (err instanceof ApiError) {
         if (err.code === 'TASK_INCOMPLETE_CHILDREN' || err.code === 'STAGE_PREVIOUS_INCOMPLETE') {
@@ -132,7 +136,15 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
 
   const remove = async () => {
     if (!task || !(await confirmDialog({ title: 'Delete task?', message: `Delete ${task.key} “${task.title}” and its subtasks?` }))) return;
-    try { await taskApi.remove(task.id); toast('Task deleted.', 'warning'); await invalidateWorkspace(wid); onClose(); }
+    try {
+      await taskApi.remove(task.id);
+      onClose();
+      // Forget everything about the deleted task (its panels would only answer "not found"), then refresh the lists.
+      await queryClient.cancelQueries({ predicate: (q) => q.queryKey.includes(task.id) });
+      queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(task.id) });
+      toast('Task deleted.', 'success');
+      void invalidateWorkspace(wid);
+    }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete the task.', 'error'); }
   };
 
@@ -255,17 +267,32 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
         <>
           <CustomFieldsSection taskId={task.id} canEdit={task.canEdit} />
           <Checklist taskId={task.id} canEdit={task.canEdit} />
-          <TimeTracker taskId={task.id} canEdit={task.canEdit} />
-          <DevLinks taskId={task.id} />
-          <Dependencies taskId={task.id} projectId={task.projectId} canEdit={task.canEdit} />
-          <Attachments projectId={task.projectId} taskId={task.id} canEdit={task.canEdit} compact />
-          <TargetDocuments targetType="Task" targetId={task.id} />
+          <WhenVisible><TimeTracker taskId={task.id} canEdit={task.canEdit} /></WhenVisible>
+          <WhenVisible><DevLinks taskId={task.id} /></WhenVisible>
+          <WhenVisible><Dependencies taskId={task.id} projectId={task.projectId} canEdit={task.canEdit} /></WhenVisible>
+          <WhenVisible><Attachments projectId={task.projectId} taskId={task.id} canEdit={task.canEdit} compact /></WhenVisible>
+          <WhenVisible><TargetDocuments targetType="Task" targetId={task.id} /></WhenVisible>
           {!task.parentTaskId && <Subtasks parent={task} subtasks={detail.data.subtasks} statuses={sortedStatuses} canCreate={canCreate && task.canEdit} onOpen={setCurrentId} />}
-          <Comments taskId={task.id} canComment={canComment} members={members.data ?? []} />
+          <WhenVisible><Comments taskId={task.id} canComment={canComment} members={members.data ?? []} /></WhenVisible>
         </>
       )}
     </Modal>
   );
+}
+
+/** Renders its panel only once it scrolls into view, so opening a task loads what is on screen instead of every panel at once. */
+function WhenVisible({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seen) return;
+    if (typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
+    const io = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); } }, { rootMargin: '200px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+  return seen ? <>{children}</> : <div ref={ref} className="when-visible" style={{ minHeight: 48 }} aria-hidden />;
 }
 
 // ------------------------------------------------------------------ subtasks

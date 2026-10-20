@@ -1,0 +1,52 @@
+/* Agents → Workflows */
+.awf { display: grid; gap: 16px; }
+.awf-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.awf-kind { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); text-align: left; color: var(--text); cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; min-height: 44px; }
+.awf-kind:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.awf-kind.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.awf-kind b { display: block; font-size: 13.5px; }
+.awf-kind small { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.awf-kind-icon, .awf-dot { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0; background: var(--primary-soft); color: var(--primary); }
+.awf-dot { width: 30px; height: 30px; border-radius: 9px; }
+.purple .awf-kind-icon, .awf-dot.purple { background: rgba(139, 92, 246, .14); color: #7c3aed; }
+.blue .awf-kind-icon, .awf-dot.blue { background: rgba(14, 165, 233, .14); color: #0284c7; }
+.amber .awf-kind-icon, .awf-dot.amber { background: var(--warning-soft); color: var(--warning); }
+.awf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.awf-or { font-size: 12.5px; color: var(--text-3); }
+.awf-repeat { width: 130px; }
+.awf-grid { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.awf-jobs { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; max-height: 520px; overflow-y: auto; }
+.awf-jobs li { position: relative; display: flex; align-items: center; gap: 6px; border-radius: 12px; }
+.awf-jobs li.on { background: var(--primary-soft); }
+.awf-job { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; border-radius: 12px; min-height: 44px; }
+.awf-job:hover { background: var(--hover-bg); }
+.awf-job-text { flex: 1; min-width: 0; display: grid; }
+.awf-job-text b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.awf-job-text small { font-size: 11.5px; color: var(--text-3); }
+.awf-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.awf-status.succeeded, .awf-status.completed { background: var(--success-soft); color: var(--success); }
+.awf-status.failed { background: var(--danger-soft); color: var(--danger-text); }
+.awf-status.running, .awf-status.queued { background: var(--primary-soft); color: var(--primary); }
+.awf-progress { position: absolute; left: 50px; right: 10px; bottom: 4px; height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.awf-progress i { display: block; height: 100%; background: var(--primary); transition: width .4s ease; }
+.awf-body { display: grid; gap: 12px; }
+.awf-body h4 { margin: 4px 0 0; font-size: 13px; }
+.awf-method summary { cursor: pointer; font-size: 12.5px; color: var(--text-2); font-weight: 600; }
+.awf-method p { font-size: 12.5px; color: var(--text-2); }
+.awf-sources { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+.awf-schedules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.awf-schedules li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
+.awf-schedules li > svg { color: var(--primary); }
+.awf-schedules span { flex: 1; min-width: 0; display: grid; }
+.awf-schedules b { font-size: 13px; }
+.awf-schedules small { font-size: 12px; color: var(--text-3); }
+.awf-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.awf-stats div { padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); display: grid; }
+.awf-stats b { font-size: 20px; }
+.awf-stats span { font-size: 12px; color: var(--text-3); }
+.awf-table { width: 100%; font-size: 13px; }
+@media (max-width: 900px) { .awf-kinds, .awf-grid { grid-template-columns: 1fr; } .awf-stats { grid-template-columns: repeat(2, 1fr); } }
+.callout-error { background: var(--danger-soft); color: var(--danger-text); }
+.callout-error > svg { color: var(--danger-text); }
+.callout-warning { background: var(--warning-soft); }
+.callout-warning > svg { color: var(--warning); }

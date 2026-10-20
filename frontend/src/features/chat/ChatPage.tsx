@@ -70,6 +70,7 @@ export function ChatPage() {
 
   return (
     <div className="chat-shell">
+      <h1 className="sr-only">Chat</h1>
       {linkDown && (
         <div className="chat-link" role="status"><Icon name="alert" size={14} />{link === 'offline' ? 'Live updates are off. Trying to reconnect…' : 'Reconnecting…'}</div>
       )}
