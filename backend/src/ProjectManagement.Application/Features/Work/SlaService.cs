@@ -233,6 +233,14 @@ public class SlaMonitor(IAppDbContext db, AppClock clock, ProjectManagement.Appl
         if (due.Count == 0) return 0;
 
         var notes = new List<Notification>();
+        // Who hears about missed resolution targets, per workspace and work type.
+        var tenantIds = due.Select(t => t.TenantId).Distinct().ToList();
+        var settings = await db.OperationsSettings.IgnoreQueryFilters().AsNoTracking().Where(s => tenantIds.Contains(s.TenantId)).ToDictionaryAsync(s => s.TenantId, ct);
+        var rules = await db.WorkRoutingRules.IgnoreQueryFilters().AsNoTracking().Where(r => tenantIds.Contains(r.TenantId) && r.Enabled && r.EscalateToUserId != null).ToListAsync(ct);
+        Guid? EscalateTo(WorkTask t) =>
+            rules.FirstOrDefault(r => r.TenantId == t.TenantId && r.WorkTypeId == t.WorkTypeId)?.EscalateToUserId
+            ?? (settings.TryGetValue(t.TenantId, out var s) && s.EscalateOnBreach ? s.EscalateToUserId : null)
+            ?? rules.FirstOrDefault(r => r.TenantId == t.TenantId && r.WorkTypeId == null)?.EscalateToUserId;
         foreach (var t in due)
         {
             var key = WorkTaskService.KeyOf(t.Number);
@@ -254,6 +262,8 @@ public class SlaMonitor(IAppDbContext db, AppClock clock, ProjectManagement.Appl
                 if ((t.SlaAlerted & SlaAlerts.Resolution) == 0)
                     foreach (var u in new[] { owner, t.ReporterId }.Distinct())
                         Tell(u, "res", sd, $"{key} missed its resolution target", $"“{t.Title}” was due to be resolved by {sd:dd MMM HH:mm} UTC.");
+                if ((t.SlaAlerted & SlaAlerts.Resolution) == 0 && EscalateTo(t) is { } boss && boss != owner && boss != t.ReporterId)
+                    Tell(boss, "esc", sd, $"Escalated: {key} missed its resolution target", $"“{t.Title}” ({t.Priority}) was due by {sd:dd MMM HH:mm} UTC and is still open.");
                 // Past due, an at-risk warning would only be noise.
                 t.SlaAlerted |= SlaAlerts.Resolution | SlaAlerts.Risk;
             }

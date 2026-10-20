@@ -165,6 +165,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaService>();
+        services.AddScoped<ProjectManagement.Application.Features.Work.WorkRouting>();
+        services.AddScoped<ProjectManagement.Application.Features.Work.OperationsService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SupportResolutionService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkItemService>();

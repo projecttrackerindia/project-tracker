@@ -54,7 +54,7 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// only ever reads and writes operational work.
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
-    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla)
+    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -296,8 +296,16 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             // Raised already under way: it has had its response. Raised on hold: the resolution clock starts stopped.
             RespondedAt = status == WorkTaskStatus.ToDo ? null : now, SlaPausedAt = status == WorkTaskStatus.OnHold ? now : null,
         };
+        // Raised without an assignee: a routing rule for its type may pick one.
+        string? routedBy = null;
+        if (task.AssigneeId is null && await routing.PickAsync(type.Id, ct) is { } pick) { task.AssigneeId = pick.UserId; routedBy = pick.Mode == "least_loaded" ? "least open work" : "taking turns"; }
         await sla.ApplyTargetsAsync(task, ct);
         db.WorkTasks.Add(task);
+        if (routedBy is not null)
+        {
+            var who = await db.Users.Where(u => u.Id == task.AssigneeId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "someone";
+            recorder.Activity("worktask.routed", "WorkTask", task.Id, $"{KeyOf(task.Number)} was routed to {who} ({routedBy})", null);
+        }
         // Work activity belongs to the workspace, not to the related project: the project's own history stays about the project.
         recorder.Activity("worktask.created", "WorkTask", task.Id, $"Created work task {KeyOf(task.Number)} “{title}” ({type.Name})", null);
         await NotifyAssignedAsync(task, ct);
