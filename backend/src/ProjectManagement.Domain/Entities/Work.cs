@@ -80,8 +80,6 @@ public class ProjectStage : TenantEntity, ITenantScoped
     public DateOnly? ActualStart { get; set; }
     public DateOnly? ActualEnd { get; set; }
     public StageStatus Status { get; set; } = StageStatus.Pending;
-    /// <summary>The stage was started by its tasks, not by a person: it goes back to Pending (actual dates cleared) if those tasks go away.</summary>
-    public bool AutoStarted { get; set; }
     public Guid? OwnerId { get; set; }
     public Guid? AssigneeId { get; set; }
     public string? Description { get; set; }
@@ -300,4 +298,11 @@ public class Sprint : TenantEntity, ITenantScoped
     public DateTime? CompletedAt { get; set; }
     /// <summary>How many tasks the sprint holds: fixed when it starts, then follows tasks added or dropped while it runs.</summary>
     public int CommittedTasks { get; set; }
+}
+
+/// <summary>Marks a stage that was started by its tasks rather than by a person: it goes back to Pending (actual dates cleared) when no task
+/// under it is under way any more. Removed when a person sets the stage themselves.</summary>
+public class StageAutoStart : ProjectManagement.Domain.Common.Entity
+{
+    public Guid StageId { get; set; }
 }

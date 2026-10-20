@@ -251,7 +251,8 @@ public class TaskStageTests(ApiFactory factory)
         var task = await NewTask(c, project, "QA test", dev);
         Assert.True((await Move(c, task, s["Done"])).Ok);
         Assert.Equal("Completed", StageStatus(await Stage(c, project, dev)));
-        Assert.True((await Move(c, task, s["To Do"])).Ok);
+        var todo = Guid.Parse((await c.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray().First(x => x!["category"]!.GetValue<string>() == "Todo")!["id"]!.GetValue<string>());
+        Assert.True((await Move(c, task, todo)).Ok);
         var reopened = await Stage(c, project, dev);
         Assert.Equal("Pending", StageStatus(reopened));                    // nothing is under way any more
         Assert.Null(reopened["actualStart"]);

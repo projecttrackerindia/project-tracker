@@ -106,6 +106,11 @@ public class TaskCompletionService(IAppDbContext db, AppClock clock, Recorder re
     /// A stage whose predecessor is unfinished is locked, so it can be reopened but never started or completed here. When a stage becomes
     /// Completed the next one is looked at too, since it may just have been unlocked. Call this after the task changes were saved.
     /// </summary>
+    private void MarkAutoStarted(Guid stageId)
+    {
+        if (!db.StageAutoStarts.Local.Any(a => a.StageId == stageId)) db.StageAutoStarts.Add(new StageAutoStart { StageId = stageId });
+    }
+
     public async Task SyncStagesAsync(IEnumerable<Guid?> stageIds, CancellationToken ct)
     {
         var queue = new Queue<Guid>(stageIds.Where(i => i is not null).Select(i => i!.Value).Distinct());
@@ -129,11 +134,14 @@ public class TaskCompletionService(IAppDbContext db, AppClock clock, Recorder re
             var started = total == 0 ? 0 : await CountedTasks(stage.Id).CountAsync(t => t.Status!.Category != StatusCategory.Todo, ct);
 
             var old = stage.Status;
-            // Started only by its tasks, and no task is under way any more (all deleted, or all back to To Do): back to how it was.
-            if (stage.AutoStarted && openIssues == 0 && (total == 0 || (started == 0 && open > 0)) && old != StageStatus.Pending)
+            // Started only by its tasks, and no task is under way any more (all back to To Do, or the last one deleted before it was
+            // finished): back to how it was. A stage its tasks completed stays completed when they move on.
+            var auto = await db.StageAutoStarts.FirstOrDefaultAsync(a => a.StageId == stage.Id, ct);
+            if (auto is not null && openIssues == 0 && old != StageStatus.Pending && ((started == 0 && open > 0) || (total == 0 && old == StageStatus.InProgress)))
             {
                 stage.Status = StageStatus.Pending;
-                stage.ActualStart = null; stage.ActualEnd = null; stage.AutoStarted = false;
+                stage.ActualStart = null; stage.ActualEnd = null;
+                db.StageAutoStarts.Remove(auto);
             }
             else if (total == 0 && openIssues == 0) continue;
             else if (total > 0 && open == 0 && openIssues == 0)
@@ -141,7 +149,7 @@ public class TaskCompletionService(IAppDbContext db, AppClock clock, Recorder re
                 if (!locked)
                 {
                     stage.Status = StageStatus.Completed;
-                    if (stage.ActualStart is null) { stage.ActualStart = today; stage.AutoStarted = true; }
+                    if (stage.ActualStart is null) { stage.ActualStart = today; MarkAutoStarted(stage.Id); }
                     stage.ActualEnd ??= today;
                 }
             }
@@ -153,7 +161,7 @@ public class TaskCompletionService(IAppDbContext db, AppClock clock, Recorder re
             else if (old == StageStatus.Pending && started > 0 && !locked)
             {
                 stage.Status = StageStatus.InProgress;
-                if (stage.ActualStart is null) { stage.ActualStart = today; stage.AutoStarted = true; }
+                if (stage.ActualStart is null) { stage.ActualStart = today; MarkAutoStarted(stage.Id); }
             }
 
             if (old == stage.Status) continue;

@@ -5191,6 +5191,23 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("DataProtectionKeys");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.StageAutoStart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StageId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StageId")
+                        .IsUnique();
+
+                    b.ToTable("StageAutoStarts");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.OperationsSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6492,9 +6509,6 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uuid");
-
-                    b.Property<bool>("AutoStarted")
-                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -11870,6 +11884,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasOne("ProjectManagement.Domain.Entities.Webhook", null)
                         .WithMany()
                         .HasForeignKey("WebhookId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.StageAutoStart", b =>
+                {
+                    b.HasOne("ProjectManagement.Domain.Entities.ProjectStage", null)
+                        .WithMany()
+                        .HasForeignKey("StageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

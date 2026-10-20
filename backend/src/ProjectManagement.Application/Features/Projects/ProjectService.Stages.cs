@@ -118,7 +118,8 @@ public partial class ProjectService
         stage.DurationDays = req.DurationDays ?? StageScheduler.Duration(null, req.PlannedStart, req.PlannedEnd) ?? stage.DurationDays;
         stage.PlannedStart = req.PlannedStart; stage.PlannedEnd = req.PlannedEnd;
         stage.ActualStart = req.ActualStart; stage.ActualEnd = req.ActualEnd;
-        stage.AutoStarted = false;   // set by a person now
+        // Set by a person now: never put back automatically.
+        db.StageAutoStarts.RemoveRange(await db.StageAutoStarts.Where(a => a.StageId == stage.Id).ToListAsync(ct));
         stage.OwnerId = req.OwnerId; stage.AssigneeId = req.AssigneeId;
         stage.Description = req.Description?.Trim();
         stage.Status = req.Status;

@@ -74,6 +74,7 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.WorkTypeId, x.Priority });
             e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<StageAutoStart>(e => { e.HasIndex(x => x.StageId).IsUnique(); e.HasOne<ProjectStage>().WithMany().HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.Cascade); });
         b.Entity<DataProtectionKey>(e => { e.Property(x => x.FriendlyName).HasMaxLength(200); });
         b.Entity<OperationsSettings>(e =>
         {

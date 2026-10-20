@@ -24,13 +24,21 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table => table.PrimaryKey("PK_DataProtectionKeys", x => x.Id));
-            migrationBuilder.AddColumn<bool>(name: "AutoStarted", table: "ProjectStages", type: "boolean", nullable: false, defaultValue: false);
+            migrationBuilder.CreateTable(
+                name: "StageAutoStarts",
+                columns: table => new { Id = table.Column<Guid>(type: "uuid", nullable: false), StageId = table.Column<Guid>(type: "uuid", nullable: false) },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StageAutoStarts", x => x.Id);
+                    table.ForeignKey(name: "FK_StageAutoStarts_ProjectStages_StageId", column: x => x.StageId, principalTable: "ProjectStages", principalColumn: "Id", onDelete: ReferentialAction.Cascade);
+                });
+            migrationBuilder.CreateIndex(name: "IX_StageAutoStarts_StageId", table: "StageAutoStarts", column: "StageId", unique: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(name: "AutoStarted", table: "ProjectStages");
+            migrationBuilder.DropTable(name: "StageAutoStarts");
             migrationBuilder.DropTable(name: "DataProtectionKeys");
         }
     }
