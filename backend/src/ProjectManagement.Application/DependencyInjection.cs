@@ -177,6 +177,9 @@ public static class DependencyInjection
         services.AddScoped<TimeService>();
         services.AddScoped<PlannedLeaveService>();
         services.AddScoped<TimesheetApprovalService>();
+        services.AddScoped<TimesheetGridService>();
+        services.AddScoped<TimesheetInsightsService>();
+        services.AddScoped<TimesheetNudgeMonitor>();
         services.AddScoped<CapacityService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.InboundEmailService>();

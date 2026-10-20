@@ -59,6 +59,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Cache__EntitlementSeconds", "0"); // most tests change plans directly in the database; cache tests switch it on themselves
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
+        Environment.SetEnvironmentVariable("TimesheetNudges__WorkerEnabled", "false"); // tests run the timesheet reminders explicitly
         Environment.SetEnvironmentVariable("GoogleMeetSync__WorkerEnabled", "false"); // tests run the RSVP sync engine explicitly
         Environment.SetEnvironmentVariable("Agent__WorkerEnabled", "false"); // tests run the project agent's tick explicitly
         Environment.SetEnvironmentVariable("Agent__MailBatchMinutes", "0"); // mail is read at the next tick

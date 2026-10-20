@@ -32,6 +32,31 @@ public sealed partial class AiMessageSendingTests
     });
 
     [Fact]
+    public Task Worked_time_is_proposed_then_logged_for_the_person_only_after_confirming() => Run(async (sender, _) =>
+    {
+        var project = await sender.CreateProjectAsync("Atlas");
+        var task = await sender.CreateTaskAsync(project, "Login page", new { title = "Login page", priority = "Medium", assigneeId = sender.UserId });
+        var key = task["key"]!.GetValue<string>();
+        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddMinutes(330)).AddDays(-1).ToString("yyyy-MM-dd");
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiToolbox.LogTime, new { entries = new[] { new { key, minutes = 90, work_date = yesterday, note = "Form layout" } } }));
+        var reply = await Ask(sender, $"Log 1.5 hours on {key} yesterday");
+        Assert.Equal("log_time", reply["actions"]![0]!["kind"]!.GetValue<string>());
+        var sheet = await sender.Get($"/api/v1/time?from={yesterday}&to={yesterday}");
+        Assert.Equal(0, sheet.Data!["totalMinutes"]!.GetValue<int>());                       // nothing until confirmed
+        var confirmed = await sender.Post(ConfirmUrl(reply)); Assert.True(confirmed.Ok, confirmed.ToString());
+        sheet = await sender.Get($"/api/v1/time?from={yesterday}&to={yesterday}");
+        Assert.Equal(90, sheet.Data!["totalMinutes"]!.GetValue<int>());
+        Assert.Equal("Form layout", sheet.Data!["entries"]![0]!["note"]!.GetValue<string>());
+
+        // A future day is refused before any card is shown.
+        var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow.AddMinutes(330)).AddDays(2).ToString("yyyy-MM-dd");
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiToolbox.LogTime, new { entries = new[] { new { key, minutes = 30, work_date = tomorrow } } }));
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.Say("I can only log time for today or earlier."));
+        var refused = await Ask(sender, $"Log 30 minutes on {key} the day after tomorrow");
+        Assert.True(refused["actions"] is not JsonArray list || list.Count == 0, refused.ToJsonString());
+    });
+
+    [Fact]
     public Task Leave_permission_is_rechecked_when_the_card_is_confirmed() => Run(async (owner, member) =>
     {
         var date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(8).ToString("yyyy-MM-dd");

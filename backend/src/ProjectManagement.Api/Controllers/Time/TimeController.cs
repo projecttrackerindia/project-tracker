@@ -10,7 +10,7 @@ namespace ProjectManagement.Api.Controllers.Time;
 /// entries and your timesheet are not tied to one module: someone who only does operational work tracks their time the same way.
 /// </summary>
 [Route("api/v1"), RequireWorkspace]
-public class TimeController(TimeService time, TimesheetApprovalService approvals) : ApiControllerBase
+public class TimeController(TimeService time, TimesheetApprovalService approvals, TimesheetGridService grid, TimesheetInsightsService insights) : ApiControllerBase
 {
     // ---- on a project task
     [HttpGet("tasks/{taskId:guid}/time"), RequireModule(Modules.Tasks)]
@@ -57,6 +57,23 @@ public class TimeController(TimeService time, TimesheetApprovalService approvals
     [HttpGet("projects/{projectId:guid}/time"), RequireModule(Modules.Projects)]
     public async Task<IActionResult> ProjectSummary(Guid projectId, CancellationToken ct) => Ok(await time.ProjectSummaryAsync(projectId, ct));
 
+    // ---- the week grid
+    /// <summary>A person's week as a grid (mine when no user is given): rows, days against their normal day, meetings and suggestions.</summary>
+    [HttpGet("time/grid")]
+    public async Task<IActionResult> Grid([FromQuery] DateOnly? weekStart, [FromQuery] Guid? userId, CancellationToken ct) => Ok(await grid.GridAsync(weekStart, userId, ct));
+
+    /// <summary>Sets cells of my week; cells that cannot be saved come back as errors and the rest are kept.</summary>
+    [HttpPut("time/grid")]
+    public async Task<IActionResult> SaveGrid([FromBody] SaveGridRequest req, CancellationToken ct) => Ok(await grid.SaveAsync(req, ct));
+
+    /// <summary>Fills my empty cells this week with what I logged on the same weekday last week.</summary>
+    [HttpPost("time/grid/copy-previous")]
+    public async Task<IActionResult> CopyPrevious([FromBody] CopyWeekRequest req, CancellationToken ct) => Ok(await grid.CopyPreviousAsync(req, ct));
+
+    /// <summary>The last weeks of a person's time: against capacity, overtime, leave, where it went and logging habits.</summary>
+    [HttpGet("time/insights")]
+    public async Task<IActionResult> Insights([FromQuery] Guid? userId, [FromQuery] int weeks = 8, CancellationToken ct = default) => Ok(await insights.GetAsync(userId, weeks, ct));
+
     // ---- weekly approval
     /// <summary>A person's week (mine when no user is given) and where it stands.</summary>
     [HttpGet("time/week")]
@@ -74,6 +91,10 @@ public class TimeController(TimeService time, TimesheetApprovalService approvals
 
     [HttpPost("time/approvals/{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id, [FromBody] ReviewTimesheetRequest req, CancellationToken ct) => Ok(await approvals.ApproveAsync(id, req, ct));
+
+    /// <summary>Approves several waiting weeks at once; any that cannot be approved come back with the reason.</summary>
+    [HttpPost("time/approvals/approve")]
+    public async Task<IActionResult> ApproveMany([FromBody] BulkReviewRequest req, CancellationToken ct) => Ok(await approvals.ApproveManyAsync(req, ct));
 
     [HttpPost("time/approvals/{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id, [FromBody] ReviewTimesheetRequest req, CancellationToken ct) => Ok(await approvals.RejectAsync(id, req, ct));

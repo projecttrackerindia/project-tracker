@@ -17,6 +17,9 @@ public record TimesheetWeekDto(DateOnly WeekStart, DateOnly WeekEnd, Guid UserId
     Guid? Id, bool Entitled);
 public record SubmitTimesheetRequest(DateOnly WeekStart, string? Note);
 public record ReviewTimesheetRequest(string? Note);
+public record BulkReviewRequest(IReadOnlyList<Guid> Ids, string? Note);
+public record BulkReviewFailureDto(Guid Id, string Message);
+public record BulkReviewResultDto(int Approved, IReadOnlyList<BulkReviewFailureDto> Failed);
 /// <summary>A row of the approvals view. <see cref="Status"/> is NotSubmitted, Submitted, Approved or Rejected; minutes are live for
 /// weeks nobody has submitted and the submitted snapshot otherwise.</summary>
 public record ApprovalRowDto(Guid? Id, UserRefDto User, DateOnly WeekStart, string Status, int TotalMinutes, int BillableMinutes, string? Note,
@@ -169,6 +172,24 @@ public class TimesheetApprovalService(IAppDbContext db, ICurrentContext ctx, App
     }
 
     public async Task<TimesheetWeekDto> ApproveAsync(Guid id, ReviewTimesheetRequest req, CancellationToken ct = default) => await ReviewAsync(id, true, req.Note, ct);
+
+    /// <summary>Approves several waiting weeks at once. Each is checked on its own (a week that was withdrawn meanwhile, or is not the
+    /// caller's to review, is reported back) and the rest are approved.</summary>
+    public async Task<BulkReviewResultDto> ApproveManyAsync(BulkReviewRequest req, CancellationToken ct = default)
+    {
+        await entitlements.EnsureFeatureAsync(FeatureKeys.ResourceManagement, ct);
+        var ids = (req.Ids ?? []).Distinct().ToList();
+        if (ids.Count == 0) throw new ValidationException("ids", "Choose the timesheets to approve.");
+        if (ids.Count > 200) throw new ValidationException("ids", "Approve at most 200 timesheets at once.");
+        var approved = 0;
+        var failed = new List<BulkReviewFailureDto>();
+        foreach (var id in ids)
+        {
+            try { await ReviewAsync(id, true, req.Note, ct); approved++; }
+            catch (AppException ex) { failed.Add(new BulkReviewFailureDto(id, ex.Message)); }
+        }
+        return new BulkReviewResultDto(approved, failed);
+    }
 
     public async Task<TimesheetWeekDto> RejectAsync(Guid id, ReviewTimesheetRequest req, CancellationToken ct = default)
     {

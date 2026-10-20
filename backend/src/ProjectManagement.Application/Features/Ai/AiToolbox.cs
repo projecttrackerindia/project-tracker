@@ -46,7 +46,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     private const int ListCap = 40;
 
     public const string SendMessage = "propose_send_message";
-    public const string PlanLeave = "propose_planned_leave", ListLeave = "list_planned_leave";
+    public const string PlanLeave = "propose_planned_leave", ListLeave = "list_planned_leave", LogTime = "propose_log_time";
     public const string ListReminders = "list_reminders", ReviseReminder = "revise_reminder_proposal", UpdateReminder = "propose_update_reminder";
     public const string SearchDocuments = "search_documents", ReadDocument = "read_document";
     public const string SearchKnowledge = "search_knowledge", ReadKnowledge = "read_knowledge";
@@ -58,7 +58,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
     public const string ScheduleProject = "propose_schedule_project";
-    public static readonly string[] WriteTools = [PlanLeave, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting];
+    public static readonly string[] WriteTools = [PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -81,7 +81,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         actionsAllowed &= !AiExecutionPolicy.IsReadOnlyRequest(text);
         var all = Definitions(actionsAllowed);
         var lower = text.ToLowerInvariant();
-        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off)\b")) return all;
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off|log|logged|spent|hours)\b")) return all;
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(message|dm|chat)\b") && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
             return all.Where(t => t.Name is SendMessage or ListPeople).ToList();
         if (!System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b")
@@ -161,6 +161,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
+            new(LogTime, "Propose logging the signed-in person's own worked time in the native timesheet: one to ten entries, each a work item key (ATL-12 a project task, WT-3 operational work, AI-4 an action item), the minutes spent, the day it was spent (yyyy-MM-dd, today or earlier, never in the future) and an optional note. Resolve relative days like 'yesterday' from today's date. Only their own time; the person confirms first.",
+                """{"type":"object","properties":{"entries":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"minutes":{"type":"integer","minimum":1,"maximum":1440},"work_date":{"type":"string","description":"yyyy-mm-dd"},"note":{"type":"string","maxLength":500}},"required":["key","minutes","work_date"]}}},"required":["entries"]}"""),
             new(PlanLeave, "Propose planned leave in the native Project Tracker timesheet. Resolve every named person, use explicit yyyy-MM-dd dates, and require confirmation. Does not approve HR leave, send email or count as worked/billable hours. Do not assume another person's dates or HR approval.",
                 """{"type":"object","properties":{"people":{"type":"array","items":{"type":"string"}},"from_date":{"type":"string"},"to_date":{"type":"string"},"note":{"type":"string","maxLength":1000}},"required":["people","from_date","to_date"]}"""),
             new(UpdateWork, "Propose changing existing work by its key (ATL-12 for a project task, WT-3 operational work, AI-4 an action item): status, assignee (or \"none\"), due date, priority, and/or add a comment. A later due date needs a reason. The person confirms first.",
@@ -269,6 +271,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             {
                 ListReminders => await ListRemindersAsync(ct),
                 PlanLeave => await ProposeLeaveAsync(a, ct),
+                LogTime => await ProposeLogTimeAsync(a, ct),
                 ListLeave => await ListLeaveAsync(a, ct),
                 ReviseReminder => await ReviseReminderAsync(a, conversationId, timeZone, ct),
                 UpdateReminder => await UpdateReminderAsync(a, timeZone, ct),
@@ -874,6 +877,29 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         return Propose("planned_leave", "Plan leave in timesheets", $"{string.Join(", ", people.Select(p => p.Name))}: {from:dd MMM yyyy} – {to:dd MMM yyyy}. Planned only; HR approval is separate.",
             new { userIds = people.Select(p => p.Id).ToArray(), from, to, note = Str(a, "note") }, Str(a, "note"));
     }
+    private async Task<AiToolOutcome> ProposeLogTimeAsync(JsonElement a, CancellationToken ct)
+    {
+        if (!a.TryGetProperty("entries", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() is < 1 or > 10)
+            throw new AiToolException("Give one to ten time entries.");
+        var today = clock.Today;
+        var entries = new List<object>();
+        var lines = new List<string>();
+        var total = 0;
+        foreach (var e in list.EnumerateArray())
+        {
+            var (kind, id, key, title) = await ResolveWorkItemAsync(Str(e, "key") ?? throw new AiToolException("Each entry needs a work item key."), ct);
+            var minutes = e.TryGetProperty("minutes", out var m) && m.ValueKind == JsonValueKind.Number && m.TryGetInt32(out var n) ? n : 0;
+            if (minutes is < 1 or > 24 * 60) throw new AiToolException("Each entry needs between 1 minute and 24 hours.");
+            var date = Date(e, "work_date") ?? today;
+            if (date > today) throw new AiToolException("Time can only be logged for today or earlier days.");
+            if (date < today.AddDays(-92)) throw new AiToolException("That day is too long ago to log time from here.");
+            entries.Add(new { kind = kind == "Task" ? "task" : "work", id, key, minutes, date, note = Str(e, "note") });
+            lines.Add($"{ProjectManagement.Application.Features.Time.TimeService.Format(minutes)} on {key} “{title}” ({(date == today ? "today" : date.ToString("ddd d MMM"))})");
+            total += minutes;
+        }
+        return Propose("log_time", $"Log {ProjectManagement.Application.Features.Time.TimeService.Format(total)} in your timesheet", string.Join("; ", lines), new { entries });
+    }
+
     private async Task<AiToolOutcome> ListLeaveAsync(JsonElement a, CancellationToken ct)
     {
         var person = await PersonAsync(Str(a, "person") ?? "me", ct);

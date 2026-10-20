@@ -31,7 +31,8 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null);
 /// </summary>
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
-    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave)
+    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
+    ProjectManagement.Application.Features.Time.TimeService time)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -100,6 +101,19 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 var request = executionId ?? throw new ConflictException("Leave requires a reviewed action identity.", "AI_ACTION_ID_REQUIRED");
                 var saved = await leave.CreateAsync(new(ids, from, to, Str(a, "note"), request), ct);
                 return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(from):yyyy-MM-dd}", saved[0].Id);
+            }
+            case "log_time":
+            {
+                Guid? first = null; DateOnly? day = null;
+                foreach (var e in a.GetProperty("entries").EnumerateArray())
+                {
+                    var id = Guid(e, "id") ?? throw new ValidationException("entries", "An entry has no work item.");
+                    var date = Date(e, "date") ?? throw new ValidationException("entries", "An entry has no day.");
+                    var req = new ProjectManagement.Application.Features.Time.LogTimeRequest(e.GetProperty("minutes").GetInt32(), date, Str(e, "note"));
+                    var saved = Str(e, "kind") == "work" ? await time.LogOnWorkTaskAsync(id, req, ct) : await time.LogAsync(id, req, ct);
+                    first ??= saved.Id; day ??= date;
+                }
+                return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(day ?? DateOnly.FromDateTime(DateTime.UtcNow)):yyyy-MM-dd}", first);
             }
             case "create_task":
             {

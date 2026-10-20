@@ -161,6 +161,8 @@ public static class DependencyInjection
         services.AddHostedService<WebhookWorker>();
         services.Configure<SlaOptions>(config.GetSection(SlaOptions.Section));
         services.AddHostedService<SlaWorker>();
+        services.Configure<TimesheetNudgeOptions>(config.GetSection(TimesheetNudgeOptions.Section));
+        services.AddHostedService<TimesheetNudgeWorker>();
         services.Configure<GoogleMeetSyncOptions>(config.GetSection(GoogleMeetSyncOptions.Section));
         services.AddHostedService<GoogleMeetSyncWorker>();
         services.Configure<ProjectManagement.Application.Features.Agent.AgentOptions>(config.GetSection(ProjectManagement.Application.Features.Agent.AgentOptions.Section));

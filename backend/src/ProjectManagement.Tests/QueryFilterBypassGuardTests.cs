@@ -75,6 +75,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Tasks/TaskService.cs",
         "ProjectManagement.Application/Features/Time/CapacityService.cs",
         "ProjectManagement.Application/Features/Work/SlaService.cs",
+        "ProjectManagement.Application/Features/Time/TimesheetNudgeMonitor.cs", // background: timesheet reminders across active organizations, written per (tenant, person) with dedupe keys
         "ProjectManagement.Application/Features/Work/WorkTaskService.cs",
         "ProjectManagement.Application/Features/Workspaces/WorkspaceService.cs",
         "ProjectManagement.Application/Services/EntitlementService.cs",
