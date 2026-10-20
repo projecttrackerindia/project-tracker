@@ -55,6 +55,7 @@ const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPa
 const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
 const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
+const UserMailboxPage = page(() => import('./features/mailbox/MailboxPage'), 'MailboxPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
 const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
@@ -347,6 +348,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="timesheet/entries" element={<Guard allow={mTasks || mWork}><TimesheetPage section="entries" /></Guard>} />
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
         <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
+        <Route path="mailbox" element={<UserMailboxPage />} />
         <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         {/* Delivery */}
         <Route path="projects" element={<Guard allow={mProjects}><ProjectsPage /></Guard>} />

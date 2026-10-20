@@ -1,0 +1,565 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '../../api/client';
+import { integrationsApi } from '../../api/endpoints';
+import { microsoftApi, workApi } from '../../api/endpoints.platform';
+import { taskApi } from '../../api/endpoints.projects';
+import { Icon } from '../../components/Icon';
+import { Select } from '../../components/Select';
+import { Modal, PasswordInput, Spinner } from '../../components/ui';
+import { formatDateTime, initials } from '../../lib/format';
+import { continueConnectionInBrowser } from '../../lib/personalConnection';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useAuth, useWorkspaceId } from '../../stores/auth';
+import { confirmDialog, toast } from '../../stores/ui';
+import { addressOf, displayName, mailboxApi } from './mailboxApi';
+import type { ComposeMode, MailAssist, MailFolder, MailMessage, MailTaskSuggestion } from './mailboxApi';
+import './mailbox.css';
+
+const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
+/** Set before leaving for Microsoft's consent page, so the landing page sends the person back here. */
+export const MAILBOX_RETURN_KEY = 'pt.mailbox-return';
+
+interface Account { key: string; label: string; email: string; kind: 'gmail' | 'outlook' | 'imap'; canRead: boolean; canSend: boolean; needs?: string; error?: string | null }
+type Row = MailMessage & { account: string; accountLabel: string; kind: Account['kind'] };
+
+const KIND_COLOR: Record<Account['kind'], string> = { gmail: '#ea4335', outlook: '#0a64d6', imap: '#d6262a' };
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+function shortDate(iso: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso); const now = new Date();
+  if (sameDay(d, now)) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (now.getTime() - d.getTime() < 6 * 864e5) return d.toLocaleDateString([], { weekday: 'short' });
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+const quote = (m: MailMessage) => `\n\nOn ${m.date ? formatDateTime(m.date) : ''}, ${m.from} wrote:\n` + (m.body ?? '').split('\n').map(l => '> ' + l).join('\n');
+
+export function MailboxPage() {
+  const wid = useWorkspaceId();
+  const uid = useAuth(s => s.ctx?.user.id);
+  const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const google = useWsQuery(['account', 'google-status'], integrationsApi.googleStatus);
+  const ms = useWsQuery(['account', 'microsoft-status'], microsoftApi.status);
+  const imap = useWsQuery(['mailbox', 'accounts'], mailboxApi.accounts);
+  const agentOpts = useWsQuery(['mailbox', 'agent-options'], mailboxApi.agentOptions, { staleTime: 300_000 });
+  const [scope, setScope] = useState<string>('all');        // 'all' or one account key
+  const [folder, setFolder] = useState<MailFolder>('inbox');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'attachments'>('all');
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<{ account: string; id: string } | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState<null | { to?: string; subject?: string; body?: string }>(null);
+  const [cursors, setCursors] = useState<Record<string, string | null>>({});
+  const [extra, setExtra] = useState<Record<string, MailMessage[]>>({});
+
+  // Landing back from a provider's consent page.
+  useEffect(() => {
+    const g = params.get('google'), m = params.get('microsoft');
+    if (!g && !m) return;
+    const outcome = g ?? m;
+    toast(outcome === 'connected' ? `${g ? 'Gmail' : 'Outlook'} connected. Your mail is syncing.` : outcome === 'declined' ? 'The connection was cancelled.' : 'The mail account could not be connected. Try again.', outcome === 'connected' ? 'success' : 'info');
+    void invalidateWorkspace(wid, 'account');
+    const n = new URLSearchParams(params); n.delete('google'); n.delete('microsoft'); setParams(n, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const accounts: Account[] = useMemo(() => {
+    const list: Account[] = [];
+    const g = google.data;
+    if (g?.connected) list.push({ key: 'google', label: 'Gmail', email: g.googleEmail ?? '', kind: 'gmail', canRead: !!g.inboxAccess, canSend: !!g.mailSendAccess,
+      needs: !g.inboxAccess || !g.mailSendAccess ? 'Allow Gmail to read and send mail' : undefined, error: g.lastError });
+    const o = ms.data;
+    if (o?.connected) list.push({ key: 'microsoft', label: 'Outlook', email: o.email ?? '', kind: 'outlook', canRead: !!o.inboxAccess, canSend: !!o.mailSendAccess,
+      needs: !o.inboxAccess ? 'Allow Outlook to read your inbox' : undefined });
+    for (const a of imap.data?.imap ?? []) list.push({ key: `imap:${a.id}`, label: a.name, email: a.email, kind: 'imap', canRead: true, canSend: true, error: a.lastError });
+    return list;
+  }, [google.data, ms.data, imap.data]);
+  const readable = accounts.filter(a => a.canRead);
+  const shown = scope === 'all' ? readable : readable.filter(a => a.key === scope);
+  const loadingAccounts = google.isLoading || ms.isLoading || imap.isLoading;
+
+  const lists = useQueries({
+    queries: shown.map(a => ({
+      queryKey: [wid, 'mailbox', 'list', a.key, folder, query],
+      queryFn: ({ signal }: { signal: AbortSignal }) => mailboxApi.messages(a.key, folder, null, a.kind === 'imap' ? query : undefined, signal),
+      staleTime: 60_000, refetchInterval: 120_000, retry: 1,
+    })),
+  });
+  useEffect(() => { setCursors({}); setExtra({}); }, [scope, folder, query]);
+
+  const rows: Row[] = useMemo(() => {
+    const out: Row[] = [];
+    shown.forEach((a, i) => {
+      const data = lists[i]?.data;
+      const msgs = [...(data?.messages ?? []), ...(extra[a.key] ?? [])];
+      for (const m of msgs) out.push({ ...m, account: a.key, accountLabel: a.label, kind: a.kind });
+    });
+    const q = query.trim().toLowerCase();
+    return out
+      .filter(r => filter === 'all' || (filter === 'unread' ? r.unread : r.hasAttachments))
+      .filter(r => !q || r.kind === 'imap' || `${r.subject} ${r.from} ${r.to}`.toLowerCase().includes(q))
+      .sort((x, y) => (y.date ? Date.parse(y.date) : 0) - (x.date ? Date.parse(x.date) : 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lists.map(l => l.dataUpdatedAt).join(','), extra, filter, query, shown.map(a => a.key).join(',')]);
+  const listLoading = lists.some(l => l.isLoading);
+  const listErrors = shown.map((a, i) => ({ a, e: lists[i]?.error })).filter(x => x.e);
+  const unreadCount = (key: string) => {
+    const i = shown.findIndex(a => a.key === key);
+    return i >= 0 ? (lists[i]?.data?.messages ?? []).filter(m => m.unread).length : 0;
+  };
+
+  const loadMore = async () => {
+    if (shown.length !== 1) return;
+    const a = shown[0]; const cursor = a.key in cursors ? cursors[a.key] : lists[0]?.data?.cursor;
+    if (!cursor) return;
+    try {
+      const page = await mailboxApi.messages(a.key, folder, cursor, a.kind === 'imap' ? query : undefined);
+      setExtra(e => ({ ...e, [a.key]: [...(e[a.key] ?? []), ...page.messages] }));
+      setCursors(c => ({ ...c, [a.key]: page.cursor }));
+    } catch (e) { toast(errText(e, 'Could not load more mail.'), 'error'); }
+  };
+  const hasMore = shown.length === 1 && !!(shown[0].key in cursors ? cursors[shown[0].key] : lists[0]?.data?.cursor);
+  const refresh = () => { void qc.invalidateQueries({ queryKey: [wid, 'mailbox'] }); };
+
+  const selectedRow = rows.find(r => selected && r.account === selected.account && r.id === selected.id) ?? null;
+  const selectedAccount = accounts.find(a => a.key === selected?.account);
+
+  return (
+    <div className={`mailbox ${selected ? 'has-selection' : ''}`} key={`${wid}-${uid}`}>
+      <h1 className="sr-only">Mailbox</h1>
+      <aside className="mb-rail" aria-label="Mail accounts and folders">
+        <button className="btn btn-primary mb-new" onClick={() => setComposeOpen({})} disabled={!accounts.some(a => a.canSend)}><Icon name="edit" size={16} /> New mail</button>
+        <nav className="mb-folders">
+          <button className={scope === 'all' && folder === 'inbox' ? 'active' : ''} onClick={() => { setScope('all'); setFolder('inbox'); setSelected(null); }}>
+            <Icon name="inbox" size={16} /><span>All inboxes</span>
+          </button>
+          {accounts.map(a => (
+            <div key={a.key} className="mb-account">
+              <div className="mb-account-head" title={a.email}>
+                <span className="mb-dot" style={{ background: KIND_COLOR[a.kind] }} />
+                <span className="mb-account-name"><b>{a.label}</b><small>{a.email}</small></span>
+              </div>
+              {a.canRead ? (['inbox', 'sent'] as MailFolder[]).map(f => (
+                <button key={f} className={scope === a.key && folder === f ? 'active' : ''} onClick={() => { setScope(a.key); setFolder(f); setSelected(null); }}>
+                  <Icon name={f === 'inbox' ? 'inbox' : 'send'} size={15} /><span>{f === 'inbox' ? 'Inbox' : 'Sent'}</span>
+                  {f === 'inbox' && scope === a.key && unreadCount(a.key) > 0 && <em>{unreadCount(a.key)}</em>}
+                </button>
+              )) : <button className="mb-needs" onClick={() => void reconnect(a.kind)}><Icon name="lock" size={14} /><span>{a.needs}</span></button>}
+              {a.error && <p className="mb-account-error">{a.error}</p>}
+            </div>
+          ))}
+        </nav>
+        <button className="btn mb-connect" onClick={() => setConnectOpen(true)}><Icon name="plus" size={16} /> Connect mail</button>
+        <p className="mb-private"><Icon name="lock" size={12} /> Private to you. Mail is read live from your provider and never shared with your workspace.</p>
+      </aside>
+
+      <section className="mb-list" aria-label="Messages">
+        <header className="mb-list-head">
+          <form className="mb-search" onSubmit={e => { e.preventDefault(); setQuery(search); }} role="search">
+            <Icon name="search" size={15} />
+            <input value={search} onChange={e => { setSearch(e.target.value); if (!e.target.value) setQuery(''); }} placeholder="Search mail" aria-label="Search mail" />
+          </form>
+          <button className="btn btn-ghost btn-icon" onClick={refresh} title="Sync now" aria-label="Sync now"><Icon name="refresh" size={16} /></button>
+        </header>
+        <div className="mb-filters" role="tablist" aria-label="Filter messages">
+          {(['all', 'unread', 'attachments'] as const).map(f => (
+            <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f === 'unread' ? 'Unread' : 'Attachments'}</button>
+          ))}
+          <span className="mb-scope">{scope === 'all' ? 'All inboxes' : `${accounts.find(a => a.key === scope)?.label ?? ''} · ${folder === 'inbox' ? 'Inbox' : 'Sent'}`}</span>
+        </div>
+        {listErrors.map(({ a, e }) => <div key={a.key} className="mb-banner" role="alert"><Icon name="alert" size={14} /> {a.label}: {errText(e, 'Could not sync this mailbox.')}</div>)}
+        <div className="mb-rows">
+          {loadingAccounts ? <div className="mb-center"><Spinner /></div> : readable.length === 0 ? (
+            <div className="mb-empty">
+              <span className="mb-empty-art"><Icon name="mail" size={30} /></span>
+              <h2>Bring your mail here</h2>
+              <p>Connect Gmail, Outlook or Rediffmail to read, reply and let the mail agent turn emails into tasks.</p>
+              <button className="btn btn-primary" onClick={() => setConnectOpen(true)}><Icon name="plus" size={15} /> Connect mail</button>
+            </div>
+          ) : listLoading && rows.length === 0 ? <div className="mb-center"><Spinner /></div> : rows.length === 0 ? (
+            <div className="mb-empty small"><Icon name="checkCircle" size={22} /><p>{query ? 'No messages match your search.' : 'Nothing here. You are all caught up.'}</p></div>
+          ) : rows.map(r => {
+            const name = displayName(folder === 'sent' && r.to ? r.to : r.from) || '(unknown)';
+            const active = selected?.account === r.account && selected.id === r.id;
+            return (
+              <button key={`${r.account}-${r.id}`} className={`mb-row ${r.unread ? 'unread' : ''} ${active ? 'active' : ''}`} onClick={() => setSelected({ account: r.account, id: r.id })}>
+                <span className="mb-avatar" style={{ background: `color-mix(in srgb, ${KIND_COLOR[r.kind]} 14%, transparent)`, color: KIND_COLOR[r.kind] }}>{initials(name)}</span>
+                <span className="mb-row-main">
+                  <span className="mb-row-top"><b>{name}</b><time>{shortDate(r.date)}</time></span>
+                  <span className="mb-row-subject">{r.subject || '(no subject)'}</span>
+                  <span className="mb-row-meta">
+                    {scope === 'all' && <span className="mb-tag" style={{ color: KIND_COLOR[r.kind] }}>{r.accountLabel}</span>}
+                    {r.hasAttachments && <Icon name="paperclip" size={12} />}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+          {hasMore && <button className="btn btn-ghost mb-more" onClick={() => void loadMore()}>Load older mail</button>}
+        </div>
+      </section>
+
+      <section className="mb-reader" aria-label="Reading pane">
+        {selected && selectedAccount ? (
+          <Reader key={`${selected.account}-${selected.id}`} account={selectedAccount} folder={folder} messageId={selected.id} row={selectedRow}
+            agent={!!agentOpts.data?.available} onBack={() => setSelected(null)}
+            onForward={(m) => setComposeOpen({ subject: m.subject.startsWith('Fwd:') ? m.subject : `Fwd: ${m.subject}`, body: quote(m) })}
+            onSent={refresh} />
+        ) : (
+          <div className="mb-reader-empty"><Icon name="mail" size={36} /><p>Select a message to read it.</p>
+            {agentOpts.data?.available && <small><Icon name="sparkle" size={12} /> The mail agent summarises each conversation, drafts replies and suggests task updates.</small>}</div>
+        )}
+      </section>
+
+      {connectOpen && <ConnectModal presets={imap.data?.presets ?? []} google={google.data} microsoft={ms.data} imapAccounts={imap.data?.imap ?? []}
+        onClose={() => setConnectOpen(false)} onConnected={() => { void invalidateWorkspace(wid, 'mailbox', 'accounts'); }} />}
+      {composeOpen && <ComposeModal accounts={accounts.filter(a => a.canSend)} initial={composeOpen} agent={!!agentOpts.data?.available}
+        onClose={() => setComposeOpen(null)} onSent={refresh} />}
+    </div>
+  );
+}
+
+async function reconnect(kind: Account['kind']) {
+  if (continueConnectionInBrowser()) return;
+  try {
+    if (kind === 'gmail') { const { url } = await integrationsApi.googleConnectUrl('/mailbox', true, true); window.location.assign(url); }
+    else if (kind === 'outlook') {
+      try { sessionStorage.setItem(MAILBOX_RETURN_KEY, '1'); } catch { /* the person lands in settings instead */ }
+      const { url } = await microsoftApi.connect(true); window.location.assign(url);
+    }
+  } catch (e) { toast(errText(e, 'Could not start the connection.'), 'error'); }
+}
+
+/* ---------------- reading pane ---------------- */
+
+function Reader({ account, folder, messageId, row, agent, onBack, onForward, onSent }: {
+  account: Account; folder: MailFolder; messageId: string; row: Row | null; agent: boolean; onBack: () => void; onForward: (m: MailMessage) => void; onSent: () => void;
+}) {
+  const wid = useWorkspaceId();
+  const t = useWsQuery(['mailbox', 'thread', account.key, folder, messageId], () => mailboxApi.thread(account.key, folder, messageId), { staleTime: 300_000, retry: 1 });
+  const [reply, setReply] = useState<null | { all: boolean; body: string }>(null);
+  const [assist, setAssist] = useState<MailAssist | null>(null);
+  const [assisting, setAssisting] = useState(false);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const replyRef = useRef<HTMLDivElement>(null);
+  const thread = t.data;
+  const last = thread?.messages[thread.messages.length - 1];
+
+  useEffect(() => { if (thread && last) setOpen(new Set([last.id])); }, [thread?.threadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (reply) replyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [!!reply]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runAssist = async () => {
+    setAssisting(true);
+    try { setAssist(await mailboxApi.assist({ account: account.key, folder, messageId })); }
+    catch (e) { toast(errText(e, 'The mail agent could not read this conversation.'), 'error'); }
+    finally { setAssisting(false); }
+  };
+  const startReply = (all: boolean, body = '') => setReply({ all, body });
+
+  if (t.isLoading) return <div className="mb-center"><Spinner /></div>;
+  if (t.isError || !thread) return <div className="mb-reader-empty"><Icon name="alert" size={28} /><p>{errText(t.error, 'This message could not be opened.')}</p><button className="btn" onClick={() => void t.refetch()}>Try again</button></div>;
+  const subject = last?.subject || row?.subject || '(no subject)';
+
+  return (
+    <div className="mb-read">
+      <header className="mb-read-head">
+        <button className="btn btn-ghost btn-icon mb-back" onClick={onBack} aria-label="Back to messages"><Icon name="arrowLeft" size={18} /></button>
+        <h2>{subject}</h2>
+        <div className="mb-read-actions">
+          <button className="btn btn-sm" disabled={!account.canSend} onClick={() => startReply(false)}><Icon name="undo" size={14} /> Reply</button>
+          <button className="btn btn-sm" disabled={!account.canSend} onClick={() => startReply(true)}><Icon name="users" size={14} /> Reply all</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => last && onForward(last)}><Icon name="arrowRight" size={14} /> Forward</button>
+          {agent && <button className="btn btn-sm mb-agent-btn" disabled={assisting} onClick={() => void runAssist()}>{assisting ? <Spinner /> : <Icon name="sparkle" size={14} />} {assist ? 'Re-read' : 'Ask agent'}</button>}
+        </div>
+      </header>
+      <div className="mb-read-body">
+        {(assisting || assist) && <AgentPanel assist={assist} busy={assisting} wid={wid} onReply={(body) => startReply(false, body)} />}
+        {thread.truncated && <p className="mb-note"><Icon name="info" size={13} /> Older messages in this conversation are not shown.</p>}
+        {thread.messages.map(m => {
+          const expanded = open.has(m.id);
+          return (
+            <article key={m.id} className={`mb-msg ${expanded ? 'open' : ''}`}>
+              <button className="mb-msg-head" onClick={() => setOpen(s => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} aria-expanded={expanded}>
+                <span className="mb-avatar lg">{initials(displayName(m.from))}</span>
+                <span className="mb-msg-from"><b>{displayName(m.from)}</b><small>{addressOf(m.from)}</small>
+                  {expanded && (m.to || m.cc) && <small className="mb-msg-to">To: {m.to}{m.cc ? ` · Cc: ${m.cc}` : ''}</small>}
+                  {!expanded && <small className="mb-msg-snip">{(m.body ?? '').slice(0, 140)}</small>}
+                </span>
+                <time>{m.date ? formatDateTime(m.date) : ''}</time>
+              </button>
+              {expanded && <div className="mb-msg-body">{m.body}{m.bodyTruncated && <p className="mb-note">This message is longer than shown here. Open it in your mail app to see all of it.</p>}
+                {m.hasAttachments && <p className="mb-note"><Icon name="paperclip" size={13} /> This message has attachments. Open it in your mail app to download them.</p>}</div>}
+            </article>
+          );
+        })}
+        {reply && last && (
+          <div ref={replyRef}>
+            <ReplyBox account={account} folder={folder} message={last} all={reply.all} initial={reply.body} agent={agent}
+              onCancel={() => setReply(null)} onSent={() => { setReply(null); onSent(); }} />
+          </div>
+        )}
+        {!reply && account.canSend && (
+          <div className="mb-quick">
+            <button onClick={() => startReply(false)}><Icon name="undo" size={14} /> Reply</button>
+            <button onClick={() => startReply(true)}><Icon name="users" size={14} /> Reply all</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- the mail agent ---------------- */
+
+const INTENT: Record<string, string> = { action_required: 'Action required', question: 'Question for you', meeting: 'Meeting', fyi: 'For your information', follow_up: 'Follow-up', approval: 'Needs approval', promotional: 'Promotional' };
+
+function AgentPanel({ assist, busy, wid, onReply }: { assist: MailAssist | null; busy: boolean; wid: string | null; onReply: (body: string) => void }) {
+  if (busy && !assist) return <div className="mb-agent loading"><Icon name="sparkle" size={16} /><span>The mail agent is reading the conversation and your open work…</span><Spinner /></div>;
+  if (!assist) return null;
+  return (
+    <section className="mb-agent" aria-label="Mail agent">
+      <header><Icon name="sparkle" size={15} /><b>Mail agent</b>
+        <span className={`mb-chip intent-${assist.intent}`}>{INTENT[assist.intent] ?? assist.intent}</span>
+        <span className={`mb-chip urgency-${assist.urgency}`}>{assist.urgency === 'high' ? 'Urgent' : assist.urgency === 'medium' ? 'Soon' : 'No rush'}</span>
+      </header>
+      <p className="mb-agent-summary">{assist.summary}</p>
+      {(assist.keyFacts.length > 0 || assist.actionItems.length > 0) && <div className="mb-agent-grid">
+        {assist.keyFacts.length > 0 && <div><h4>Key facts</h4><ul>{assist.keyFacts.map((f, i) => <li key={i}>{f}</li>)}</ul></div>}
+        {assist.actionItems.length > 0 && <div><h4>For you to do</h4><ul className="checks">{assist.actionItems.map((f, i) => <li key={i}>{f}</li>)}</ul></div>}
+      </div>}
+      {assist.tasks.length > 0 && <div className="mb-agent-tasks"><h4>Suggested task updates</h4>{assist.tasks.map((t, i) => <TaskSuggestion key={i} s={t} wid={wid} />)}</div>}
+      {assist.replies.length > 0 && <div className="mb-agent-replies"><h4>Suggested replies</h4>
+        <div className="mb-reply-chips">{assist.replies.map((r, i) => <button key={i} onClick={() => onReply(r.body)} title={r.body}><Icon name="edit" size={13} /> {r.label}</button>)}</div></div>}
+      <small className="mb-agent-foot">Suggestions only. Nothing is sent or changed until you choose it.</small>
+    </section>
+  );
+}
+
+function TaskSuggestion({ s, wid }: { s: MailTaskSuggestion; wid: string | null }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const [link, setLink] = useState<string | null>(s.kind === 'update' ? (s.taskKind === 'task' && s.projectId ? `/projects/${s.projectId}?task=${s.taskId}` : `/operations?task=${s.taskId}`) : null);
+  const types = useWsQuery(['work-types'], () => workApi.types(), { enabled: s.kind === 'create', staleTime: 300_000 });
+  const [typeId, setTypeId] = useState('');
+  const type = typeId || types.data?.find(t => t.isActive !== false)?.id || '';
+  const apply = async () => {
+    setState('busy');
+    try {
+      if (s.kind === 'create') {
+        if (!type) throw new Error('Add a work type in Operations first.');
+        const created = await workApi.create({ title: s.title, description: [s.detail, s.reason ? `From email: ${s.reason}` : ''].filter(Boolean).join('\n\n'), workTypeId: type,
+          priority: s.priority ?? 'Medium', dueDate: s.due, assigneeId: useAuth.getState().ctx?.user.id ?? null });
+        setLink(`/operations?task=${created.id}`);
+        void invalidateWorkspace(wid, 'work');
+      } else if (s.taskId) {
+        const note = [s.detail, s.reason].filter(Boolean).join('\n\n') || 'Update from email.';
+        if (s.taskKind === 'work') {
+          if (s.status) await workApi.setStatus(s.taskId, s.status);
+          await workApi.addComment(s.taskId, `From email: ${note}`);
+          void invalidateWorkspace(wid, 'work');
+        } else {
+          await taskApi.addComment(s.taskId, { body: `From email: ${note}` });
+        }
+      }
+      setState('done'); toast(s.kind === 'create' ? 'Task created.' : 'Task updated.');
+    } catch (e) { setState('idle'); toast(errText(e, e instanceof Error ? e.message : 'Could not apply this suggestion.'), 'error'); }
+  };
+  return (
+    <div className={`mb-task ${state === 'done' ? 'done' : ''}`}>
+      <span className="mb-task-kind">{s.kind === 'create' ? <Icon name="plus" size={13} /> : <Icon name="refresh" size={13} />}</span>
+      <div className="mb-task-main">
+        <b>{s.kind === 'create' ? 'Create: ' : `Update ${s.taskRef ?? ''}: `}{s.title}</b>
+        <small>{[s.status && `Status → ${s.status.replace(/([a-z])([A-Z])/g, '$1 $2')}`, s.priority && s.kind === 'create' && `${s.priority} priority`, s.due && `due ${s.due}`].filter(Boolean).join(' · ')}</small>
+        {s.detail && <p>{s.detail}</p>}
+        {s.reason && <p className="mb-task-why">“{s.reason}”</p>}
+        {s.kind === 'create' && state !== 'done' && (types.data?.length ?? 0) > 1 && (
+          <Select aria-label="Work type" value={type} onChange={e => setTypeId(e.target.value)}>{types.data!.filter(t => t.isActive !== false).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+        )}
+      </div>
+      <div className="mb-task-actions">
+        {state === 'done' ? <><span className="mb-done"><Icon name="check" size={13} /> Done</span>{link && <Link className="btn btn-sm btn-ghost" to={link}>Open</Link>}</>
+          : <><button className="btn btn-sm btn-primary" disabled={state === 'busy'} onClick={() => void apply()}>{state === 'busy' ? <Spinner /> : s.kind === 'create' ? 'Create task' : s.status ? 'Apply update' : 'Add note'}</button>
+            {link && <Link className="btn btn-sm btn-ghost" to={link}>View</Link>}</>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- writing ---------------- */
+
+const TOOLS: { mode: ComposeMode; label: string; needsText: boolean }[] = [
+  { mode: 'reply', label: 'Draft reply', needsText: false }, { mode: 'improve', label: 'Improve', needsText: true }, { mode: 'shorter', label: 'Shorter', needsText: true },
+  { mode: 'formal', label: 'Formal', needsText: true }, { mode: 'friendly', label: 'Friendly', needsText: true }, { mode: 'complete', label: 'Finish it', needsText: true },
+];
+
+function AgentTools({ draft, setDraft, context, agent, replying }: { draft: string; setDraft: (s: string) => void; context?: { account: string; folder: MailFolder; messageId: string }; agent: boolean; replying: boolean }) {
+  const [busy, setBusy] = useState<ComposeMode | null>(null);
+  const [undo, setUndo] = useState<string | null>(null);
+  if (!agent) return null;
+  const run = async (mode: ComposeMode) => {
+    setBusy(mode);
+    try { const r = await mailboxApi.compose({ ...context, draft, mode }); setUndo(draft); setDraft(r.body); }
+    catch (e) { toast(errText(e, 'The mail agent could not help with this draft.'), 'error'); }
+    finally { setBusy(null); }
+  };
+  return (
+    <div className="mb-tools" role="toolbar" aria-label="Writing help">
+      <Icon name="sparkle" size={14} />
+      {TOOLS.filter(t => replying || t.mode !== 'reply').map(t => (
+        <button key={t.mode} type="button" disabled={!!busy || (t.needsText && !draft.trim())} onClick={() => void run(t.mode)}>{busy === t.mode ? <Spinner /> : null}{t.label}</button>
+      ))}
+      {undo !== null && !busy && <button type="button" className="mb-undo" onClick={() => { setDraft(undo); setUndo(null); }}><Icon name="undo" size={12} /> Undo</button>}
+    </div>
+  );
+}
+
+function ReplyBox({ account, folder, message, all, initial, agent, onCancel, onSent }: {
+  account: Account; folder: MailFolder; message: MailMessage; all: boolean; initial: string; agent: boolean; onCancel: () => void; onSent: () => void;
+}) {
+  const [body, setBody] = useState(initial);
+  const [replyAll, setReplyAll] = useState(all);
+  const [sending, setSending] = useState(false);
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { setBody(initial); }, [initial]);
+  useEffect(() => { area.current?.focus(); }, []);
+  const recipients = replyAll ? [displayName(message.from), ...(message.to ? ['others on this thread'] : [])].join(', ') : displayName(message.from);
+  const send = async () => {
+    if (!body.trim()) return;
+    if (!(await confirmDialog({ title: replyAll ? 'Send reply to everyone?' : 'Send reply?', message: `From ${account.email} to ${replyAll ? 'the sender and everyone on the conversation' : displayName(message.from)}.`, confirmText: 'Send' }))) return;
+    setSending(true);
+    try {
+      const r = await mailboxApi.send({ account: account.key, folder, replyToId: message.id, replyAll, body: body.trimEnd() + quote(message), confirmed: true });
+      toast(r.to ? `Reply sent to ${r.to}.` : 'Reply sent.');
+      onSent();
+    } catch (e) { toast(errText(e, 'The reply could not be sent.'), 'error'); }
+    finally { setSending(false); }
+  };
+  return (
+    <div className="mb-compose inline">
+      <div className="mb-compose-to">
+        <Icon name={replyAll ? 'users' : 'undo'} size={14} />
+        <span>{replyAll ? 'Reply all' : 'Reply'} to <b>{recipients}</b></span>
+        <button type="button" className="mb-link" onClick={() => setReplyAll(v => !v)}>{replyAll ? 'Only the sender' : 'Everyone'}</button>
+      </div>
+      <textarea ref={area} value={body} onChange={e => setBody(e.target.value)} rows={8} placeholder="Write your reply…" aria-label="Reply"
+        onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void send(); }} />
+      <AgentTools draft={body} setDraft={setBody} agent={agent} replying context={{ account: account.key, folder, messageId: message.id }} />
+      <footer>
+        <button className="btn btn-primary" disabled={sending || !body.trim()} onClick={() => void send()}>{sending ? <Spinner /> : <Icon name="send" size={14} />} Send</button>
+        <button className="btn btn-ghost" onClick={onCancel}>Discard</button>
+        <small>The original message is quoted below your reply. Ctrl+Enter to send.</small>
+      </footer>
+    </div>
+  );
+}
+
+function ComposeModal({ accounts, initial, agent, onClose, onSent }: { accounts: Account[]; initial: { to?: string; subject?: string; body?: string }; agent: boolean; onClose: () => void; onSent: () => void }) {
+  const [from, setFrom] = useState(accounts[0]?.key ?? '');
+  const [to, setTo] = useState(initial.to ?? '');
+  const [cc, setCc] = useState('');
+  const [showCc, setShowCc] = useState(false);
+  const [subject, setSubject] = useState(initial.subject ?? '');
+  const [body, setBody] = useState(initial.body ?? '');
+  const [sending, setSending] = useState(false);
+  const account = accounts.find(a => a.key === from);
+  const send = async () => {
+    if (!account) return;
+    if (!(await confirmDialog({ title: 'Send this email?', message: `From ${account.email} to ${to}${cc ? `, cc ${cc}` : ''}.`, confirmText: 'Send' }))) return;
+    setSending(true);
+    try { await mailboxApi.send({ account: account.key, to, cc, subject, body, confirmed: true }); toast('Email sent.'); onSent(); onClose(); }
+    catch (e) { toast(errText(e, 'The email could not be sent.'), 'error'); }
+    finally { setSending(false); }
+  };
+  return (
+    <Modal title="New mail" onClose={onClose} size="lg" footer={<>
+      <button className="btn btn-ghost" onClick={onClose}>Discard</button>
+      <button className="btn btn-primary" disabled={sending || !to.trim() || !body.trim() || !account} onClick={() => void send()}>{sending ? <Spinner /> : <Icon name="send" size={14} />} Send</button>
+    </>}>
+      {accounts.length === 0 ? <p className="muted">Connect a mail account that can send first.</p> : <div className="mb-compose">
+        <label className="mb-line"><span>From</span>
+          <Select aria-label="From" value={from} onChange={e => setFrom(e.target.value)}>{accounts.map(a => <option key={a.key} value={a.key}>{a.label} · {a.email}</option>)}</Select>
+        </label>
+        <label className="mb-line"><span>To</span><input value={to} onChange={e => setTo(e.target.value)} placeholder="name@example.com, …" autoFocus />
+          {!showCc && <button type="button" className="mb-link" onClick={() => setShowCc(true)}>Cc</button>}</label>
+        {showCc && <label className="mb-line"><span>Cc</span><input value={cc} onChange={e => setCc(e.target.value)} /></label>}
+        <label className="mb-line"><span>Subject</span><input value={subject} onChange={e => setSubject(e.target.value)} /></label>
+        <textarea value={body} onChange={e => setBody(e.target.value)} rows={12} placeholder="Write your message…" aria-label="Message" />
+        <AgentTools draft={body} setDraft={setBody} agent={agent} replying={false} />
+      </div>}
+    </Modal>
+  );
+}
+
+/* ---------------- connecting ---------------- */
+
+function ConnectModal({ presets, google, microsoft, imapAccounts, onClose, onConnected }: {
+  presets: { id: string; name: string; domain: string }[];
+  google?: { connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailSendAccess?: boolean } | undefined;
+  microsoft?: { enabled: boolean; configured: boolean; connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean } | undefined;
+  imapAccounts: { id: string; name: string; email: string }[]; onClose: () => void; onConnected: () => void;
+}) {
+  const wid = useWorkspaceId();
+  const [pick, setPick] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const preset = presets.find(p => p.id === pick);
+  const gmailReady = google?.connected && google.inboxAccess && google.mailSendAccess;
+  const outlookReady = microsoft?.connected && microsoft.inboxAccess;
+  const outlookAvailable = microsoft?.enabled && microsoft.configured && microsoft.inboxEnabled !== false;
+  const connectImap = async () => {
+    setBusy(true);
+    try { await mailboxApi.connectImap({ provider: pick!, email, password }); setPassword(''); toast(`${preset?.name ?? 'Mailbox'} connected.`); onConnected(); onClose(); }
+    catch (e) { toast(errText(e, 'The mailbox could not be connected.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  const remove = async (id: string, name: string) => {
+    if (!(await confirmDialog({ title: `Disconnect ${name}?`, message: 'The stored password is deleted. Your mail stays with your provider.', confirmText: 'Disconnect', danger: true }))) return;
+    try { await mailboxApi.disconnectImap(id); void invalidateWorkspace(wid, 'mailbox'); toast('Mailbox disconnected.'); }
+    catch (e) { toast(errText(e, 'Could not disconnect.'), 'error'); }
+  };
+  const disconnectProvider = async (kind: 'gmail' | 'outlook') => {
+    if (!(await confirmDialog({ title: `Disconnect ${kind === 'gmail' ? 'Google' : 'Microsoft'}?`, message: kind === 'gmail' ? 'This also stops Google Calendar and Meet scheduling from your account.' : 'This also stops Outlook calendar availability.', confirmText: 'Disconnect', danger: true }))) return;
+    try { if (kind === 'gmail') await integrationsApi.googleDisconnect(); else await microsoftApi.disconnect(); void invalidateWorkspace(wid, 'account'); toast('Disconnected.'); }
+    catch (e) { toast(errText(e, 'Could not disconnect.'), 'error'); }
+  };
+
+  return (
+    <Modal title={preset ? `Connect ${preset.name}` : 'Connect mail'} subtitle={preset ? 'Signs in over secure IMAP and SMTP.' : 'Your mail stays private to you.'} onClose={onClose} size="sm"
+      footer={preset ? <><button className="btn btn-ghost" onClick={() => setPick(null)}>Back</button><button className="btn btn-primary" disabled={busy || !email || !password} onClick={() => void connectImap()}>{busy ? <Spinner /> : null} Connect</button></> : undefined}>
+      {!preset ? (
+        <div className="mb-providers">
+          <button className="mb-provider" onClick={() => void reconnect('gmail')} disabled={google?.inboxEnabled === false}>
+            <span className="mb-logo gmail">G</span><span><b>Gmail</b><small>{gmailReady ? 'Connected' : google?.connected ? 'Allow reading and sending' : google?.inboxEnabled === false ? 'Awaiting administrator setup' : 'Google account'}</small></span>
+            {gmailReady ? <Icon name="checkCircle" size={16} /> : <Icon name="chevronR" size={16} />}
+          </button>
+          <button className="mb-provider" onClick={() => void reconnect('outlook')} disabled={!outlookAvailable}>
+            <span className="mb-logo outlook">O</span><span><b>Outlook</b><small>{outlookReady ? 'Connected' : microsoft?.connected ? 'Allow reading your inbox' : !outlookAvailable ? 'Awaiting administrator setup' : 'Microsoft 365, Outlook.com, Hotmail'}</small></span>
+            {outlookReady ? <Icon name="checkCircle" size={16} /> : <Icon name="chevronR" size={16} />}
+          </button>
+          {presets.map(p => (
+            <button key={p.id} className="mb-provider" onClick={() => { setPick(p.id); setEmail(''); }}>
+              <span className={`mb-logo ${p.id.startsWith('rediff') ? 'rediff' : 'other'}`}>{p.name[0]}</span><span><b>{p.name}</b><small>{p.id.startsWith('rediff') ? 'Rediffmail account' : 'IMAP mailbox'}</small></span><Icon name="chevronR" size={16} />
+            </button>
+          ))}
+          {(google?.connected || microsoft?.connected || imapAccounts.length > 0) && <div className="mb-connected">
+            <h4>Connected</h4>
+            {google?.connected && <div><span>Google</span><button className="mb-link" onClick={() => void disconnectProvider('gmail')}>Disconnect</button></div>}
+            {microsoft?.connected && <div><span>Microsoft</span><button className="mb-link" onClick={() => void disconnectProvider('outlook')}>Disconnect</button></div>}
+            {imapAccounts.map(a => <div key={a.id}><span>{a.name} · {a.email}</span><button className="mb-link" onClick={() => void remove(a.id, a.name)}>Disconnect</button></div>)}
+          </div>}
+        </div>
+      ) : (
+        <form className="mb-imap" onSubmit={e => { e.preventDefault(); void connectImap(); }}>
+          <label>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={preset.domain ? `you@${preset.domain}` : 'you@yourcompany.com'} autoFocus autoComplete="username" /></label>
+          <label>Password<PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
+          <p className="mb-note"><Icon name="info" size={13} /> {preset.id.startsWith('rediff')
+            ? 'In Rediffmail, open Settings → POP/IMAP access and switch IMAP on first. Use your Rediffmail password.'
+            : 'Switch IMAP on in your mail settings. If you use two-step sign-in, create an app password and use it here.'} The password is stored encrypted and used only to sync your mail.</p>
+        </form>
+      )}
+    </Modal>
+  );
+}

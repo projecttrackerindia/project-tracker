@@ -2,10 +2,8 @@ import { continueConnectionInBrowser } from '../../lib/personalConnection';
 import { useEffect, useRef, useState } from 'react';
 import { OutlookAvailability } from './OutlookAvailability';
 import { PersonalCalendarProposals } from './PersonalCalendarProposals';
-import { PersonalEmailDrafts } from './PersonalEmailDrafts';
 import { MicrosoftIntegrationSection } from './MicrosoftIntegration';
-import { PersonalInbox } from './PersonalInbox';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { integrationsApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
@@ -60,10 +58,10 @@ export function GoogleIntegrationSection() {
 
   return (
     <>
-      <StudioHero title="Connected accounts" eyebrow="My account / Productivity" icon="link" description="Connect your own Google and Microsoft accounts in this workspace. See which permissions are allowed, enable the features you need, and keep control of every action."><span className="studio-chip"><Icon name="lock"/>Private to you</span></StudioHero>
-      <ol className="connection-guide" aria-label="How connected accounts work"><li><span>01</span><div><b>Connect your account</b><p>Google enables Calendar & Meet. Microsoft enables reviewed email sending.</p></div></li><li><span>02</span><div><b>Choose extra permissions</b><p>Allow inbox reading or Outlook availability only when you need them.</p></div></li><li><span>03</span><div><b>Use it in your workday</b><p>Schedule Meet from a project, read your inbox below, or review an email before sending.</p></div></li></ol>
+      <StudioHero title="Connected accounts" eyebrow="My account / Productivity" icon="link" description="Connect your own Google and Microsoft accounts for calendars and meetings. Email now lives in Mailbox."><span className="studio-chip"><Icon name="lock"/>Private to you</span></StudioHero>
+      <ol className="connection-guide" aria-label="How connected accounts work"><li><span>01</span><div><b>Connect your account</b><p>Google enables Calendar & Meet. Microsoft enables Outlook calendar availability.</p></div></li><li><span>02</span><div><b>Choose extra permissions</b><p>Allow Outlook availability only when you need it.</p></div></li><li><span>03</span><div><b>Use it in your workday</b><p>Schedule Meet from a project or check your Outlook calendars before planning.</p></div></li></ol>
       {isDesktopApp() && <div className="connection-browser-note"><Icon name="link"/><p>Account connections open in your browser. Sign in there and complete the connection, then return here and refresh the status.</p><button type="button" className="btn" onClick={() => continueConnectionInBrowser()}>Open in browser</button></div>}
-      <nav className="personal-productivity-nav" aria-label="Personal email sections"><a href="#personal-accounts"><Icon name="link" size={15} /> Accounts</a><a href="#private-inbox-title"><Icon name="mail" size={15} /> Private inbox</a><a href="#private-drafts-title"><Icon name="edit" size={15} /> Email studio</a><span><Icon name="lock" size={13} /> Your personal space</span></nav>
+      <div className="connection-mailbox-note"><Icon name="mail" size={16} /><p>Gmail, Outlook and Rediffmail are connected in <b>Mailbox</b>, where you read, reply and let the mail agent update your tasks.</p><Link className="btn btn-sm" to="/mailbox">Open Mailbox</Link></div>
       <div className="personal-account-grid" id="personal-accounts">
       <div className="personal-account-card">
         <header><span className="personal-account-symbol"><Icon name="video" size={19} /></span><div><span className="studio-eyebrow">CONNECTED ACCOUNT</span><h2>Google Workspace</h2></div></header>
@@ -91,15 +89,11 @@ export function GoogleIntegrationSection() {
           </Field>
         )}
         <ConnectionCapabilities items={[
-          {name:'Calendar & Meet',description:'Schedule project meetings and create video links.',granted:!!q.data?.connected && q.data?.calendarAccess!==false},
-          {name:'Gmail sending',description:'Enable in Email studio; every send needs your confirmation.',granted:!!q.data?.mailSendAccess,available:q.data?.mailEnabled},
-          {name:'Private inbox',description:'Enable below to read your own messages on request.',granted:!!q.data?.inboxAccess,available:q.data?.inboxEnabled}
+          {name:'Calendar & Meet',description:'Schedule project meetings and create video links.',granted:!!q.data?.connected && q.data?.calendarAccess!==false}
         ]}/><div className="connection-card-footer"><small>Drive files are outside this connection.</small><button type="button" className="btn btn-sm" disabled={q.isFetching} onClick={()=>void q.refetch()}><Icon name="refresh" size={14}/>Refresh status</button></div>
       </div>
       <MicrosoftIntegrationSection key={`microsoft-${wid}-${uid}`} />
       </div>
-      <PersonalInbox key={`inbox-${wid}-${uid}`} google={q.data} googleState={q.isLoading ? 'loading' : q.isError ? 'error' : 'ready'} />
-      <PersonalEmailDrafts key={`${wid}-${uid}`} google={q.data} googleState={q.isLoading ? 'loading' : q.isError ? 'error' : 'ready'} />
       <OutlookAvailability key={`outlook-availability-${wid}-${uid}`} />
       <PersonalCalendarProposals key={`calendar-${wid}-${uid}`} />
     </>

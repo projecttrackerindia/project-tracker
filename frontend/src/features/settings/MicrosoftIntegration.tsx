@@ -2,7 +2,7 @@ import { ConnectionCapabilities } from './ConnectionCapabilities';
 import { continueConnectionInBrowser } from '../../lib/personalConnection';
 import { useEffect, useState } from 'react';
 import { useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { microsoftApi } from '../../api/endpoints.platform';
 import { Icon } from '../../components/Icon';
@@ -20,8 +20,12 @@ export function MicrosoftIntegrationSection() {
   const [busy, setBusy] = useState(false);
   const [params, setParams] = useSearchParams();
   const outcome = params.get('microsoft');
+  const navigate = useNavigate();
   useEffect(() => {
     if (!outcome) return;
+    let toMailbox = false;
+    try { toMailbox = sessionStorage.getItem('pt.mailbox-return') === '1'; sessionStorage.removeItem('pt.mailbox-return'); } catch { /* stay here */ }
+    if (toMailbox) { navigate(`/mailbox?microsoft=${encodeURIComponent(outcome)}`, { replace: true }); return; }
     toast(outcome === 'connected' ? 'Microsoft account connected.' : outcome === 'permission' ? 'The requested Microsoft permissions were not granted.' : outcome === 'declined' ? 'Microsoft connection was cancelled.' : 'Microsoft connection could not be completed.', outcome === 'connected' ? 'success' : 'info');
     void invalidateWorkspace(wid, 'account', 'microsoft-status');
     const next = new URLSearchParams(params); next.delete('microsoft'); setParams(next, { replace: true });
@@ -43,9 +47,9 @@ export function MicrosoftIntegrationSection() {
     finally { if (active()) setBusy(false); }
   };
   return <section className="personal-account-card">
-    <header><span className="personal-account-symbol"><Icon name="mail" size={19} /></span><div><span className="studio-eyebrow">CONNECTED ACCOUNT</span><h2>Microsoft Outlook</h2></div></header>
+    <header><span className="personal-account-symbol"><Icon name="mail" size={19} /></span><div><span className="studio-eyebrow">CONNECTED ACCOUNT</span><h2>Microsoft account</h2></div></header>
     {q.isLoading ? <PageLoader /> : q.isError ? <p role="alert">Could not load Microsoft status. <button className="btn btn-sm" onClick={() => void q.refetch()}>Reload</button></p> : <>
-      <p className="muted">Connect your own Microsoft account for separately confirmed email sending. Inbox reading and calendar access have separate, optional consent steps in the sections below.</p>
+      <p className="muted">Connect your own Microsoft account to check Outlook calendar availability below. Outlook mail is read and answered in Mailbox.</p>
       {!q.data?.enabled || !q.data.configured ? <p className="muted">Awaiting administrator configuration. Microsoft actions are disabled.</p> :
         <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
           <span>{q.data.connected ? q.data.email || 'Connected Microsoft account' : 'Not connected'}</span>
@@ -54,8 +58,6 @@ export function MicrosoftIntegrationSection() {
       {q.data?.connected && <button className="btn btn-ghost" disabled={busy} style={{ marginTop: 10 }} onClick={() => void disconnect()}>Disconnect Microsoft</button>}
     </>}
     <ConnectionCapabilities items={[
-      {name:'Outlook sending',description:'Review recipients and content before confirming each send.',granted:!!q.data?.mailSendAccess,available:q.data?.enabled && q.data?.configured},
-      {name:'Private inbox',description:'Enable below for reading your own Outlook messages.',granted:!!q.data?.inboxAccess,available:q.data?.inboxEnabled},
       {name:'Calendar availability',description:'Enable below to check selected calendars that you own.',granted:!!q.data?.calendarAccess,available:q.data?.calendarsEnabled}
     ]}/><div className="connection-card-footer"><small>You can disconnect at any time.</small><button type="button" className="btn btn-sm" disabled={q.isFetching} onClick={()=>void q.refetch()}><Icon name="refresh" size={14}/>Refresh status</button></div>
   </section>;

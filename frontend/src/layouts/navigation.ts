@@ -68,6 +68,7 @@ export function useMainNav(): NavGroup[] {
       { id: 'agents', to: agentsTo, label: 'Agents', icon: 'agent', show: ai || proposals || isAdmin, match: agentsPath, hint: 'The assistant, proposals, workflows and the agent tracker' },
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat },
+      { to: '/mailbox', label: 'Mailbox', icon: 'mail', hint: 'Gmail, Outlook and Rediffmail in one inbox, with the mail agent' },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
     ] },
     { title: 'Work', items: [

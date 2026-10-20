@@ -11,6 +11,8 @@
 .connection-guide li { display:flex; gap:14px; align-items:start; padding:20px; border:1px solid var(--border); border-radius:16px; background:var(--panel-solid); }
 .connection-guide li>span { display:grid; place-items:center; flex-shrink:0; width:32px; height:32px; border-radius:10px; font-size:12px; font-weight:750; background:var(--primary-soft); color:var(--primary); }
 .connection-guide b { font-size:14px; }.connection-guide p { font-size:13px; color:var(--text-2); line-height:1.7; margin-top:8px; }
+.connection-mailbox-note { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:14px 18px; margin-bottom:22px; border:1px solid var(--border); background:var(--surface-2, var(--primary-soft)); border-radius:14px; }
+.connection-mailbox-note p { flex:1; min-width:200px; color:var(--text-2); font-size:14px; margin:0; }
 .connection-browser-note { display:flex; flex-wrap:wrap; align-items:center; gap:14px; padding:18px; margin-bottom:22px; border:1px solid var(--border); background:var(--primary-soft); border-radius:14px; }
 .connection-browser-note p { flex:1; min-width:200px; color:var(--text-2); font-size:14px; }
 .connection-description { font-size:14px; color:var(--text-2); line-height:1.75; margin-bottom:20px; }

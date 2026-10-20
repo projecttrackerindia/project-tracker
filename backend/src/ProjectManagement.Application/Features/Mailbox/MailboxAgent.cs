@@ -15,7 +15,7 @@ namespace ProjectManagement.Application.Features.Mailbox;
 public record MailAssistRequest(string Account, string? Folder, string MessageId);
 public record MailReplySuggestion(string Label, string Body);
 /// <summary>Kind "create" proposes a new work item; "update" points at one of the person's open tasks with a status and/or a note.</summary>
-public record MailTaskSuggestion(string Kind, string? TaskId, string? TaskKind, string? TaskRef, string Title, string? Detail, string? Priority, string? Status, string Reason, string? Due);
+public record MailTaskSuggestion(string Kind, string? TaskId, string? TaskKind, string? TaskRef, string? ProjectId, string Title, string? Detail, string? Priority, string? Status, string Reason, string? Due);
 public record MailAssistDto(string Summary, string Intent, string Urgency, IReadOnlyList<string> ActionItems, IReadOnlyList<MailReplySuggestion> Replies,
     IReadOnlyList<MailTaskSuggestion> Tasks, IReadOnlyList<string> KeyFacts, string? Model);
 public record MailComposeAssistRequest(string? Account, string? Folder, string? MessageId, string Draft, string Mode);
@@ -81,20 +81,20 @@ public class MailboxAgent(IAppDbContext db, ICurrentContext ctx, MailboxService 
     }
     private static string? Opt(JsonNode? n, int max = 4000) => Str(n, max) is { Length: > 0 } s ? s : null;
 
-    private sealed record OpenTask(string Id, string Kind, string Ref, string Title, string Status, string? Due);
+    private sealed record OpenTask(string Id, string Kind, string Ref, string Title, string Status, string? Due, string? ProjectId);
 
     private async Task<List<OpenTask>> OpenWorkAsync(CancellationToken ct)
     {
         var uid = ctx.RequireUserId();
         var tasks = await db.Tasks.AsNoTracking().Where(t => t.AssigneeId == uid && t.CompletedAt == null)
             .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).Take(40)
-            .Select(t => new { t.Id, t.Number, t.Title, t.DueDate, Key = t.Project!.Key, Status = db.WorkflowStatuses.Where(s => s.Id == t.StatusId).Select(s => s.Name).FirstOrDefault() })
+            .Select(t => new { t.Id, t.ProjectId, t.Number, t.Title, t.DueDate, Key = t.Project!.Key, Status = db.WorkflowStatuses.Where(s => s.Id == t.StatusId).Select(s => s.Name).FirstOrDefault() })
             .ToListAsync(ct);
         var work = await db.WorkTasks.AsNoTracking().Where(w => w.AssigneeId == uid && w.Status != WorkTaskStatus.Completed && w.Status != WorkTaskStatus.Cancelled)
             .OrderByDescending(w => w.UpdatedAt ?? w.CreatedAt).Take(40)
             .Select(w => new { w.Id, w.Number, w.Title, w.Status, w.DueDate }).ToListAsync(ct);
-        return tasks.Select(t => new OpenTask(t.Id.ToString(), "task", $"{t.Key}-{t.Number}", t.Title, t.Status ?? "", t.DueDate?.ToString("yyyy-MM-dd")))
-            .Concat(work.Select(w => new OpenTask(w.Id.ToString(), "work", $"W-{w.Number}", w.Title, w.Status.ToString(), w.DueDate?.ToString("yyyy-MM-dd")))).ToList();
+        return tasks.Select(t => new OpenTask(t.Id.ToString(), "task", $"{t.Key}-{t.Number}", t.Title, t.Status ?? "", t.DueDate?.ToString("yyyy-MM-dd"), t.ProjectId.ToString()))
+            .Concat(work.Select(w => new OpenTask(w.Id.ToString(), "work", $"W-{w.Number}", w.Title, w.Status.ToString(), w.DueDate?.ToString("yyyy-MM-dd"), null))).ToList();
     }
 
     public async Task<MailAssistDto> AssistAsync(MailAssistRequest req, CancellationToken ct)
@@ -138,10 +138,10 @@ public class MailboxAgent(IAppDbContext db, ICurrentContext ctx, MailboxService 
                 // An update may only point at one of the person's own open tasks we listed.
                 if (Opt(t["taskId"], 64) is not { } id || !byId.TryGetValue(id, out var known)) continue;
                 var status = Opt(t["status"], 20) is { } s ? Pick(s, ["ToDo", "InProgress", "OnHold", "Completed"], "") : "";
-                tasks.Add(new("update", known.Id, known.Kind, known.Ref, known.Title, Opt(t["detail"], 2000), null, status.Length > 0 ? status : null, Str(t["reason"], 400), null));
+                tasks.Add(new("update", known.Id, known.Kind, known.Ref, known.ProjectId, known.Title, Opt(t["detail"], 2000), null, status.Length > 0 ? status : null, Str(t["reason"], 400), null));
             }
             else if (title.Length > 0)
-                tasks.Add(new("create", null, "work", null, title, Opt(t["detail"], 2000), priority, null, Str(t["reason"], 400), due));
+                tasks.Add(new("create", null, "work", null, null, title, Opt(t["detail"], 2000), priority, null, Str(t["reason"], 400), due));
         }
         return new(Str(json["summary"], 1200), Pick(Str(json["intent"]), ["action_required", "question", "meeting", "fyi", "follow_up", "approval", "promotional"], "fyi"),
             Pick(Str(json["urgency"]), ["low", "medium", "high"], "low"),
