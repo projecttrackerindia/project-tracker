@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { SmartTriage } from './Ops';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
@@ -107,6 +108,11 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
               if (t.priority) setPriority(t.priority);
               if (t.assigneeId) setAssigneeId(t.assigneeId);
             }} />
+            <SmartTriage title={title} description={description} workTypeId={workTypeId} onApply={(t) => {
+              if (t.workTypeId) setWorkTypeId(t.workTypeId);
+              if (t.priority) setPriority(t.priority);
+              if (t.assigneeId) setAssigneeId(t.assigneeId);
+            }} onOpen={(id) => window.open(`${window.location.pathname}?task=${id}`, '_blank', 'noopener')} />
           </div>
         )}
         <Field label="Work type" required error={errors.workTypeId} hint="What kind of work this is. The list is managed in Workspace settings.">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { projectApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
+import { opsApi, projectApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
 import type { WorkTask } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
@@ -13,6 +13,20 @@ import { useCan, useModule } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { WorkTaskModal } from './WorkTaskModal';
 import { SlaChip } from './Sla';
+import { useIsMobile } from '../../lib/mobile';
+import { BulkBar, OpsBoard, OpsInsights, OpsSettingsPanel } from './Ops';
+import { get, put } from '../../api/client';
+
+type Tab = 'queue' | 'board' | 'insights' | 'settings';
+interface SavedView { name: string; f: Record<string, string | boolean> }
+const VIEWS: { id: string; label: string; icon: 'bolt' | 'user' | 'users' | 'alert' | 'timer' | 'calendar'; f: Record<string, string | boolean> }[] = [
+  { id: 'open', label: 'Open', icon: 'bolt', f: { view: 'open' } },
+  { id: 'mine', label: 'My queue', icon: 'user', f: { view: 'open', mine: true } },
+  { id: 'unassigned', label: 'Unassigned', icon: 'users', f: { view: 'open', unassigned: true } },
+  { id: 'late', label: 'SLA breached', icon: 'alert', f: { sla: 'breached' } },
+  { id: 'risk', label: 'At risk', icon: 'timer', f: { sla: 'atRisk' } },
+  { id: 'overdue', label: 'Overdue', icon: 'calendar', f: { overdue: true } },
+];
 
 const NO_PROJECT = '__none';
 type View = 'all' | 'open' | 'closed';
@@ -45,12 +59,21 @@ export function WorkTasksPage() {
   const [overdue, setOverdue] = useState(params.get('overdue') === '1');
   const [sla, setSla] = useState(params.get('sla') ?? '');
   const [sort, setSort] = useState('');
+  const [mineOnly, setMineOnly] = useState(false);
+  const [unassigned, setUnassigned] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [tab, setTabState] = useState<Tab>((params.get('view') as Tab) ?? 'queue');
+  const setTab = (t: Tab) => { setTabState(t); const n = new URLSearchParams(params); if (t === 'queue') n.delete('view'); else n.set('view', t); setParams(n, { replace: true }); };
+  const [naming, setNaming] = useState<string | null>(null);
+  const mobile = useIsMobile();
+  const [showFilters, setShowFilters] = useState(false);
+  const saved = useWsQuery(['ui', 'operations'], async () => ((await get<{ value: { views?: SavedView[] } | null }>('/me/ui/operations')).value?.views ?? []), { staleTime: 300_000 });
   const [page, setPage] = useState(1);
   const dq = useDebounced(q);
 
   const filters: WorkFilters = {
     q: dq || undefined, workTypeId: typeId || undefined, relatedProjectId: projectId && projectId !== NO_PROJECT ? projectId : undefined, noProject: projectId === NO_PROJECT || undefined,
-    assigneeId: !mine ? assigneeId || undefined : undefined, mine: mine || undefined, priority: priority || undefined, status: status || undefined,
+    assigneeId: !mine && !mineOnly && !unassigned ? assigneeId || undefined : undefined, mine: mine || mineOnly || undefined, unassigned: unassigned || undefined, priority: priority || undefined, status: status || undefined,
     open: !status && view !== 'all' ? view === 'open' : undefined, dueFrom: dueFrom || undefined, dueTo: dueTo || undefined, overdue: overdue || undefined, sort: sort || undefined, page,
     sla: sla || undefined,
   };
@@ -70,8 +93,8 @@ export function WorkTasksPage() {
   const openTask = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('task', id); else n.delete('task'); setParams(n, { replace: true }); };
 
   const on = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
-  const hasFilters = !!(q || typeId || projectId || assigneeId || priority || status || dueFrom || dueTo || overdue || sla || (view !== (mine ? 'open' : 'all')));
-  const reset = () => { setQ(''); setTypeId(''); setProjectId(''); setAssigneeId(''); setPriority(''); setStatus(''); setDueFrom(''); setDueTo(''); setOverdue(false); setSla(''); setView(mine ? 'open' : 'all'); setPage(1); };
+  const hasFilters = !!(mineOnly || unassigned || q || typeId || projectId || assigneeId || priority || status || dueFrom || dueTo || overdue || sla || (view !== (mine ? 'open' : 'all')));
+  const reset = () => { setMineOnly(false); setUnassigned(false); setQ(''); setTypeId(''); setProjectId(''); setAssigneeId(''); setPriority(''); setStatus(''); setDueFrom(''); setDueTo(''); setOverdue(false); setSla(''); setView(mine ? 'open' : 'all'); setPage(1); };
   const sortBy = (key: string) => { setSort((s) => (s === key ? `-${key}` : key)); setPage(1); };
   const th = (key: string, label: string) => (
     <th aria-sort={sort === key ? 'ascending' : sort === `-${key}` ? 'descending' : 'none'}>
@@ -81,18 +104,60 @@ export function WorkTasksPage() {
   const exportCsv = () => void workApi.exportCsv(filters).catch((e) => toast(e instanceof ApiError ? e.message : 'Could not export the list.', 'error'));
 
   const items = list.data?.items ?? [];
+  const applyView = (f: Record<string, string | boolean>) => {
+    reset();
+    if (f.view) setView(f.view as View); if (f.mine) setMineOnly(true); if (f.unassigned) setUnassigned(true); if (f.sla) setSla(String(f.sla)); if (f.overdue) setOverdue(true);
+    if (f.typeId) setTypeId(String(f.typeId)); if (f.priority) setPriority(String(f.priority)); if (f.status) setStatus(String(f.status)); if (f.assigneeId) setAssigneeId(String(f.assigneeId)); if (f.q) setQ(String(f.q));
+  };
+  const current: Record<string, string | boolean> = Object.fromEntries(Object.entries({ view, mine: mineOnly, unassigned, sla, overdue, typeId, priority, status, assigneeId, q }).filter(([k, v]) => v && !(k === 'view' && v === 'all')));
+  const sameAs = (f: Record<string, string | boolean>) => JSON.stringify(Object.entries(f).sort()) === JSON.stringify(Object.entries(current).sort());
+  const saveView = async (name: string) => {
+    setNaming(null);
+    if (!name.trim()) return;
+    const views = [...(saved.data ?? []).filter((v) => v.name !== name.trim()), { name: name.trim().slice(0, 40), f: current }].slice(-12);
+    try { await put('/me/ui/operations', { value: { views } }); void saved.refetch(); toast('View saved.'); } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save the view.', 'error'); }
+  };
+  const dropView = async (name: string) => { const views = (saved.data ?? []).filter((v) => v.name !== name); await put('/me/ui/operations', { value: views.length ? { views } : null }).catch(() => undefined); void saved.refetch(); };
+  const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const settingsQ = useWsQuery(['ops', 'settings'], opsApi.settings, { staleTime: 300_000 });
   return (
     <>
       <PageHead title="Operations" sub="Your support desk and operational work: tickets, bug fixes, analysis and requests, with SLA tracking, resolution notes and analytics.">
-        <Link className="btn btn-ghost" to="/reports/operations" title="Charts of open, late and finished operational work"><Icon name="chart" /> Analytics</Link>
         <button type="button" className="btn btn-ghost" onClick={exportCsv} title="Download the filtered list as a CSV file now"><Icon name="download" /> Export CSV</button>
         {canReports && <Link className="btn btn-ghost" to="/reports?kind=WorkTasks" title="Excel or PDF, built in the background"><Icon name="download" /> Excel / PDF</Link>}
         {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
       </PageHead>
 
+      <nav className="tabs route-tabs ops-tabs" aria-label="Operations">
+        {([['queue', 'Queue', 'list'], ['board', 'Board', 'kanban'], ['insights', 'Insights', 'chart'], ...(settingsQ.data?.canManage ? [['settings', 'Settings', 'settings']] : [])] as [Tab, string, 'list'][]).map(([id, label, icon]) => (
+          <button key={id} type="button" className={`tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}><Icon name={icon} />{label}</button>
+        ))}
+      </nav>
+      {tab === 'insights' ? <OpsInsights /> : tab === 'settings' ? <OpsSettingsPanel /> : (
       <div className="card">
+        <div className="ops-views" role="group" aria-label="Views">
+          {VIEWS.map((v) => <button key={v.id} type="button" className={`ops-view ${sameAs(v.f) ? 'on' : ''}`} onClick={() => applyView(v.f)}><Icon name={v.icon} size={13} />{v.label}</button>)}
+          {(saved.data ?? []).map((v) => (
+            <span key={v.name} className={`ops-view saved ${sameAs(v.f) ? 'on' : ''}`}><button type="button" onClick={() => applyView(v.f)}><Icon name="star" size={12} />{v.name}</button>
+              <button type="button" className="ops-view-x" aria-label={`Remove the ${v.name} view`} onClick={() => void dropView(v.name)}><Icon name="close" size={10} /></button></span>
+          ))}
+          {hasFilters && naming === null && <button type="button" className="ops-view add" onClick={() => setNaming('')}><Icon name="plus" size={12} />Save view</button>}
+          {naming !== null && (
+            <form className="ops-view-name" onSubmit={(e) => { e.preventDefault(); void saveView(naming); }}>
+              <input className="input" autoFocus maxLength={40} placeholder="Name this view" value={naming} onChange={(e) => setNaming(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setNaming(null); }} aria-label="View name" />
+              <button type="submit" className="btn btn-primary btn-sm" disabled={!naming.trim()}>Save</button>
+            </form>
+          )}
+        </div>
+        {mobile && (
+          <div className="ops-mobile-search">
+            <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>
+            <button type="button" className={`btn btn-ghost btn-sm ${showFilters ? 'btn-soft' : ''}`} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}><Icon name="settings" size={14} />Filters</button>
+          </div>
+        )}
+        {(!mobile || showFilters) && <>
         <div className="toolbar">
-          <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search work tasks…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>
+          {!mobile && <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search work tasks…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>}
           <Select className="select filter-input" value={typeId} onChange={(e) => on(setTypeId)(e.target.value)} aria-label="Work type">
             <option value="">All work types</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
@@ -124,7 +189,10 @@ export function WorkTasksPage() {
           </Select>
           {hasFilters && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button>}
         </div>
+        </>}
 
+        {tab === 'board' ? <div className="card-body"><OpsBoard filters={filters} onOpen={openTask} /></div> : <>
+        <BulkBar ids={picked} onDone={() => setPicked([])} />
         {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : items.length === 0 ? (
           <EmptyState icon="bolt" title={hasFilters ? 'No work tasks match these filters' : mine ? 'Nothing is assigned to you' : 'No work tasks yet'}
             text={hasFilters ? undefined : 'Operations is the support desk: log tickets, bug fixes, analysis and other operational work that does not need a project.'}
@@ -133,10 +201,12 @@ export function WorkTasksPage() {
           <>
             <div className="table-wrap">
               <table className="work-table">
-                <thead><tr>{th('title', 'Work task')}{th('type', 'Work type')}{th('project', 'Related project')}{th('assignee', 'Assigned to')}{th('priority', 'Priority')}{th('due', 'Due date')}{th('sla', 'SLA')}{th('status', 'Status')}</tr></thead>
+                <thead><tr><th className="ops-pick"><input type="checkbox" aria-label="Select all on this page" checked={items.length > 0 && items.every((t) => picked.includes(t.id))}
+                  onChange={(e) => setPicked(e.target.checked ? [...new Set([...picked, ...items.filter((t) => t.can.edit).map((t) => t.id)])] : picked.filter((id) => !items.some((t) => t.id === id)))} /></th>{th('title', 'Work task')}{th('type', 'Work type')}{th('project', 'Related project')}{th('assignee', 'Assigned to')}{th('priority', 'Priority')}{th('due', 'Due date')}{th('sla', 'SLA')}{th('status', 'Status')}</tr></thead>
                 <tbody>
                   {items.map((t) => (
                     <tr key={t.id} className="clickable" tabIndex={0} onClick={() => openTask(t.id)} onKeyDown={(e) => { if (e.key === 'Enter') openTask(t.id); }} aria-label={`Open ${t.key} ${t.title}`}>
+                      <td className="ops-pick" onClick={(e) => e.stopPropagation()}>{t.can.edit && <input type="checkbox" aria-label={`Select ${t.key}`} checked={picked.includes(t.id)} onChange={() => togglePick(t.id)} />}</td>
                       <td><div className="td-title"><span className="task-key">{t.key}</span> {t.title}</div>{(t.commentCount > 0 || t.attachmentCount > 0) && <div className="td-sub">{t.commentCount > 0 ? `${t.commentCount} comment${t.commentCount === 1 ? '' : 's'}` : ''}{t.commentCount > 0 && t.attachmentCount > 0 ? ' · ' : ''}{t.attachmentCount > 0 ? `${t.attachmentCount} file${t.attachmentCount === 1 ? '' : 's'}` : ''}</div>}</td>
                       <td className="cell-muted">{t.workType}</td>
                       <td className="cell-muted">{t.relatedProject ? <span title={`${t.relatedProject.name} (${t.relatedProject.status})`}>{t.relatedProject.name}</span> : '—'}</td>
@@ -153,7 +223,8 @@ export function WorkTasksPage() {
             <Pager page={list.data!.page} totalPages={list.data!.totalPages} totalItems={list.data!.totalItems} onPage={setPage} />
           </>
         )}
-      </div>
+        </>}
+      </div>)}
 
       {creating && <WorkTaskModal defaults={{ relatedProjectId: projectId && projectId !== NO_PROJECT ? projectId : undefined }} onClose={() => setCreating(false)} />}
       {openId && <WorkTaskModal taskId={openId} onClose={() => openTask(null)} />}

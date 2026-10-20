@@ -909,3 +909,14 @@ export interface AgentAuditEntry {
   id: string; projectId: string; projectKey: string; kind: AgentFindingKind; action: string; title: string; key: string | null; status: string; auto: boolean;
   by: AgentPerson | null; at: string | null; confidence: number; before: string | null; after: string | null; evidence: string | null; sourceLabel: string | null; error: string | null;
 }
+
+// ---- Operations
+export interface RoutingRule { id: string; workTypeId: string | null; workType: string | null; mode: 'round_robin' | 'least_loaded'; members: UserRef[]; escalateTo: UserRef | null; enabled: boolean; lastAssigned: UserRef | null }
+export interface RoutingRuleInput { workTypeId: string | null; mode: string; memberIds: string[]; escalateToUserId: string | null; enabled: boolean }
+export interface OpsSettings { canManage: boolean; businessHoursOnly: boolean; dayStartMinutes: number; dayEndMinutes: number; workDays: number[]; timeZone: string; escalateOnBreach: boolean; escalateTo: UserRef | null; rules: RoutingRule[] }
+export interface Triage { workTypeId: string | null; workType: string | null; typeReason: string | null; priority: Priority | null; priorityReason: string | null; assignee: UserRef | null; assigneeReason: string | null;
+  duplicates: { id: string; key: string; title: string; status: WorkTaskStatus; assignee: UserRef | null; score: number }[]; routed: string | null }
+export interface OpsBreakdown { name: string; id: string | null; open: number; completed: number; breached: number; compliance: number | null; medianResolutionHours: number | null }
+export interface OpsInsights { days: number; open: number; unassigned: number; breached: number; atRisk: number; compliance: number | null; medianResolutionHours: number | null; medianResponseMinutes: number | null;
+  createdInPeriod: number; completedInPeriod: number; weeks: { weekStart: string; created: number; completed: number; breached: number; compliance: number | null }[]; aging: { label: string; count: number }[];
+  byType: OpsBreakdown[]; byPriority: OpsBreakdown[]; byPerson: OpsBreakdown[]; businessHours: boolean }

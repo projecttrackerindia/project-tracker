@@ -1,6 +1,6 @@
 import { providerConnectionUrl } from './providerConnection';
 import { del, download, fetchBlobUrl, get, post, put, uploadFile } from './client';
-import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview } from './types';
+import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -177,7 +177,18 @@ export interface WorkFilters {
   dueFrom?: string; dueTo?: string; overdue?: boolean; sort?: string; page?: number; pageSize?: number;
   /** Service levels: 'breached' (a target already missed), 'atRisk' or 'tracked'. */
   sla?: string;
+  unassigned?: boolean;
 }
+export const opsApi = {
+  settings: () => get<OpsSettings>('/operations/settings'),
+  saveSettings: (b: { businessHoursOnly: boolean; dayStartMinutes: number; dayEndMinutes: number; workDays: number[]; timeZone: string; escalateOnBreach: boolean; escalateToUserId: string | null }) => put<OpsSettings>('/operations/settings', b),
+  addRule: (b: RoutingRuleInput) => post<OpsSettings>('/operations/routing', b),
+  saveRule: (id: string, b: RoutingRuleInput) => put<OpsSettings>(`/operations/routing/${id}`, b),
+  removeRule: (id: string) => del<OpsSettings>(`/operations/routing/${id}`),
+  triage: (b: { title: string; description?: string | null; workTypeId?: string | null }) => post<Triage>('/operations/triage', b),
+  bulk: (b: { ids: string[]; status?: string; assigneeId?: string; unassign?: boolean; priority?: string; dueDate?: string; clearDueDate?: boolean }) => post<{ updated: number; failed: { id: string; message: string }[] }>('/operations/bulk', b),
+  insights: (days = 90) => get<OpsInsights>('/operations/insights', { days }),
+};
 export const workApi = {
   types: (includeInactive = false) => get<WorkType[]>('/work-types', includeInactive ? { includeInactive: true } : undefined),
   createType: (b: { name: string; description?: string | null }) => post<WorkType>('/work-types', b),

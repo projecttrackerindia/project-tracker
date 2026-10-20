@@ -30,7 +30,7 @@ public record SetWorkTaskStatusRequest(WorkTaskStatus Status);
 
 public record WorkTaskQuery(string? Q = null, Guid? WorkTypeId = null, Guid? RelatedProjectId = null, bool? NoProject = null, Guid? AssigneeId = null, bool Mine = false,
     Priority? Priority = null, WorkTaskStatus? Status = null, bool? Open = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool? Overdue = null,
-    string? Sort = null, int Page = 1, int PageSize = 25, string? Sla = null);
+    string? Sort = null, int Page = 1, int PageSize = 25, string? Sla = null, bool? Unassigned = null);
 
 public record WorkCommentDto(Guid Id, Guid WorkTaskId, UserRefDto? Author, string Body, DateTime CreatedAt, DateTime? EditedAt, bool CanEdit, bool CanDelete);
 /// <summary>A comment, and the people @mentioned in it (they are told, the same way as on a project task).</summary>
@@ -159,6 +159,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var today = clock.Today;
         if (f.Mine) { var me = ctx.UserId; q = q.Where(t => t.AssigneeId == me); }
         else if (f.AssigneeId is { } a) q = q.Where(t => t.AssigneeId == a);
+        else if (f.Unassigned == true) q = q.Where(t => t.AssigneeId == null);
         if (f.WorkTypeId is { } wt) q = q.Where(t => t.WorkTypeId == wt);
         if (f.NoProject == true) q = q.Where(t => t.RelatedProjectId == null);
         else if (f.RelatedProjectId is { } p) q = q.Where(t => t.RelatedProjectId == p);
