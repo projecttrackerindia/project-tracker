@@ -1,7 +1,7 @@
 import { del, get, post, put } from '../../api/client';
 
 export interface NotetakerProject { id: string; key: string; name: string; agentReady: boolean }
-export interface NotetakerSettings { projectId: string | null; autoJoin: boolean; autoMinutes: boolean }
+export interface NotetakerSettings { projectId: string | null; autoJoin: boolean; autoMinutes: boolean; autoEmail: boolean; autoTasks: boolean; deleteTranscript: boolean }
 export interface NotetakerSession {
   id: string; projectId: string; projectName: string; title: string; meetUrl: string | null; start: string; end: string; status: string; workerStatus: string | null;
   error: string | null; transcriptLength: number; hasMinutes: boolean; minutesStatus: string | null; mine: boolean; automatic: boolean;

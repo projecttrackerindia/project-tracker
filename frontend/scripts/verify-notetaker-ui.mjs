@@ -14,7 +14,7 @@ const pid='00000000-0000-0000-0000-000000000003';
 const now=Date.now(),iso=(m)=>new Date(now+m*60000).toISOString();
 const W=(n,title,status,priority,assignee,sla,type='Production Support')=>({id:`w${n}`,key:`WT-${n}`,number:n,title,description:null,workTypeId:'t1',workType:type,relatedProject:null,assignee:assignee?{id:assignee[0],name:assignee[1]}:null,reporter:{id:user.id,name:user.displayName},priority,status,startDate:null,dueDate:null,isOverdue:false,completedAt:status==='Completed'?iso(-600):null,createdAt:iso(-3000),version:1,commentCount:0,attachmentCount:0,can:{edit:true,delete:true},loggedMinutes:0,sla:sla?{response:null,resolution:{dueAt:iso(sla==='Breached'?-60:120),metAt:null,state:sla},state:sla}:null});
 const imap=[],presets=[],gmail=[],rediff=[];const assist=null;const writes=[],errors=[],checks=[];
-const overview={settings:{projectId:'p1',autoJoin:false,autoMinutes:true},projects:[{id:'p1',key:'ATL',name:'Atlas',agentReady:true},{id:'p2',key:'ORB',name:'Orbit',agentReady:false}],botReady:true,signedInAccount:true,accountName:'Atlas Notetaker',calendarConnected:true,aiAvailable:true};
+const overview={settings:{projectId:'p1',autoJoin:false,autoMinutes:true,autoEmail:true,autoTasks:false,deleteTranscript:true},projects:[{id:'p1',key:'ATL',name:'Atlas',agentReady:true},{id:'p2',key:'ORB',name:'Orbit',agentReady:false}],botReady:true,signedInAccount:true,accountName:'Atlas Notetaker',calendarConnected:true,aiAvailable:true};
 const sessions=[{id:'s1',projectId:'p1',projectName:'Atlas',title:'Daily stand-up',meetUrl:'https://meet.google.com/aaa-bbbb-ccc',start:iso(-5),end:iso(25),status:'in_call',workerStatus:'in_call_recording',error:null,transcriptLength:1200,hasMinutes:false,minutesStatus:null,mine:true,automatic:true},
  {id:'s2',projectId:'p1',projectName:'Atlas',title:'Client review',meetUrl:'https://meet.google.com/ddd-eeee-fff',start:iso(-240),end:iso(-180),status:'done',workerStatus:'done',error:null,transcriptLength:9000,hasMinutes:false,minutesStatus:null,mine:true,automatic:false},
  {id:'s3',projectId:'p1',projectName:'Atlas',title:'Vendor call',meetUrl:null,start:iso(-2000),end:iso(-1940),status:'failed',workerStatus:'fatal',error:'Nobody let the bot into the meeting.',transcriptLength:0,hasMinutes:false,minutesStatus:null,mine:true,automatic:false}];
@@ -92,6 +92,9 @@ try{
  checks.push('join');
  await page.locator('.nt-toggle',{hasText:'Join every call'}).locator('input').check();
  assert.equal((await waitWrite(w=>w.ep==='/api/v1/me/notetaker/settings')).b.autoJoin,true);checks.push('settings');
+ await page.locator('.nt-toggle',{hasText:'Create tasks from the action items'}).locator('input').check();
+ for(let i=0;i<30&&!writes.some(w=>w.ep==='/api/v1/me/notetaker/settings'&&w.b.autoTasks);i++)await new Promise(r=>setTimeout(r,100));
+ const at=writes.filter(w=>w.ep==='/api/v1/me/notetaker/settings').pop();assert.equal(at.b.autoTasks,true);assert.equal(at.b.autoJoin,true);assert.equal(at.b.deleteTranscript,true);checks.push('automation');
  await shot(page,'notetaker-1440.png');
  await page.locator('.nt-session',{hasText:'Client review'}).getByRole('button',{name:/Write minutes/}).click();
  await page.getByRole('dialog').getByRole('button',{name:'Write the minutes'}).click();

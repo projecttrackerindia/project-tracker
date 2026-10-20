@@ -118,6 +118,14 @@ export function NotetakerPage() {
             <span><b>Join every call on my Google Calendar</b><small>It joins each Meet call a minute before it starts, in your name, even when you are there too.</small></span></label>
           <label className="nt-toggle"><input type="checkbox" checked={settings.autoMinutes} onChange={(e) => void save({ autoMinutes: e.target.checked })} />
             <span><b>Write the minutes when a call ends</b><small>You get a notification to review and email them. One AI request per call.</small></span></label>
+          <div className={`nt-after ${settings.autoMinutes ? '' : 'off'}`} aria-label="After the minutes are written">
+            <label className="nt-toggle"><input type="checkbox" checked={settings.autoEmail} disabled={!settings.autoMinutes} onChange={(e) => void save({ autoEmail: e.target.checked })} />
+              <span><b>Email me the minutes</b><small>Sent to your ProjectTracker address as soon as they are written.</small></span></label>
+            <label className="nt-toggle"><input type="checkbox" checked={settings.autoTasks} disabled={!settings.autoMinutes} onChange={(e) => void save({ autoTasks: e.target.checked })} />
+              <span><b>Create tasks from the action items</b><small>Added to the project, assigned when the person named in the call is a member, with the date said.</small></span></label>
+            <label className="nt-toggle"><input type="checkbox" checked={settings.deleteTranscript} onChange={(e) => void save({ deleteTranscript: e.target.checked })} />
+              <span><b>Delete the transcript afterwards</b><small>Once the minutes are written and the agent has read the call, only the minutes are kept. Audio is never stored.</small></span></label>
+          </div>
         </section>
       </div>
 

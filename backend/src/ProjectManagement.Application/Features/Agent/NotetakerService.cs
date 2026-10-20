@@ -17,7 +17,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Agent;
 
 public record NotetakerProjectDto(Guid Id, string Key, string Name, bool AgentReady);
-public record NotetakerSettingsDto(Guid? ProjectId, bool AutoJoin, bool AutoMinutes);
+public record NotetakerSettingsDto(Guid? ProjectId, bool AutoJoin, bool AutoMinutes, bool AutoEmail = true, bool AutoTasks = false, bool DeleteTranscript = true);
 public record NotetakerSessionDto(Guid Id, Guid ProjectId, string ProjectName, string Title, string? MeetUrl, DateTime Start, DateTime End, string Status, string? WorkerStatus,
     string? Error, int TranscriptLength, bool HasMinutes, string? MinutesStatus, bool Mine, bool Automatic);
 public record NotetakerOverviewDto(NotetakerSettingsDto Settings, IReadOnlyList<NotetakerProjectDto> Projects, IReadOnlyList<NotetakerSessionDto> Sessions,
@@ -36,7 +36,8 @@ public record SendMinutesRequest(string Account, string To, string? Cc, string S
 /// </summary>
 public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetingService meetings, ProjectAccess access, MeetingBotClient botService,
     ISecretProtector secrets, AppClock clock, IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions,
-    MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals)
+    MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals,
+    ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -73,7 +74,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             r.Status, r.WorkerStatus, r.Error, r.TranscriptLength, r.Minutes != null, r.Minutes, true, r.CalendarEventId != null)).ToList();
         var identity = await db.MeetingBotIdentities.AsNoTracking().Where(i => i.Active && i.LastError == null).OrderBy(i => i.CreatedAt).Select(i => i.DisplayName).FirstOrDefaultAsync(ct);
         var calendar = await db.GoogleConnections.AsNoTracking().AnyAsync(c => c.UserId == uid, ct);
-        return new(new(settings?.ProjectId, settings?.AutoJoin ?? false, settings?.AutoMinutes ?? true), projects, sessions,
+        return new(new(settings?.ProjectId, settings?.AutoJoin ?? false, settings?.AutoMinutes ?? true, settings?.AutoEmail ?? true, settings?.AutoTasks ?? false, settings?.DeleteTranscript ?? true), projects, sessions,
             botService.Configured, identity != null, identity, calendar, await AiAvailableAsync(ct));
     }
 
@@ -85,8 +86,9 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         var row = await SettingsRowAsync(uid, ct);
         if (row is null) { row = new NotetakerSettings { TenantId = tid, UserId = uid, CreatedAt = clock.Now, CreatedBy = uid }; db.NotetakerSettings.Add(row); }
         row.ProjectId = req.ProjectId; row.AutoJoin = req.AutoJoin; row.AutoMinutes = req.AutoMinutes; row.UpdatedAt = clock.Now;
+        row.AutoEmail = req.AutoEmail; row.AutoTasks = req.AutoTasks; row.DeleteTranscript = req.DeleteTranscript;
         await db.SaveChangesAsync(ct);
-        return new(row.ProjectId, row.AutoJoin, row.AutoMinutes);
+        return new(row.ProjectId, row.AutoJoin, row.AutoMinutes, row.AutoEmail, row.AutoTasks, row.DeleteTranscript);
     }
 
     public async Task<NotetakerSessionDto> JoinAsync(NotetakerJoinRequest req, CancellationToken ct)
@@ -255,14 +257,80 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
                 try
                 {
                     var minutes = await WriteMinutesAsync(bot, p.UserId, ct);
+                    var created = p.AutoTasks ? await CreateTasksAsync(bot.ProjectId, minutes, ct) : [];
+                    if (p.AutoEmail) await EmailOwnerAsync(p.UserId, bot, minutes, created, ct);
+                    if (p.DeleteTranscript)
+                        await db.AgentMeetingBots.Where(b => b.Id == bot.Id).ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, (string?)null), ct);
                     await notifications.AddAsync(p.UserId, NotificationType.Meeting, $"Minutes ready: {minutes.Title}",
-                        "Your notetaker wrote up the call. Review and send the minutes.", $"/notetaker?session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
+                        created.Count > 0 ? $"Your notetaker wrote up the call and created {created.Count} task(s) from it." : "Your notetaker wrote up the call. Review and send the minutes.",
+                        $"/notetaker?session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
                     await db.SaveChangesAsync(ct);
                     done++;
                 }
                 catch (AppException ex) { log.LogInformation("Minutes could not be written for {Session}: {Reason}", bot.Id, ex.Message); break; }
             }
+            // Erase the agent's own copy of a written-up call once it has read it: the minutes are what is kept.
+            if (p.DeleteTranscript)
+            {
+                var refs = (await db.MeetingMinutes.Where(m => m.UserId == p.UserId && m.ProjectId == s.ProjectId && m.CreatedAt > now.AddDays(-14))
+                    .Select(m => m.BotRowId).ToListAsync(ct)).Select(id => $"bot:{id}").ToList();
+                if (refs.Count > 0)
+                    await db.AgentSignals.Where(x => x.ProjectId == s.ProjectId && refs.Contains(x.SourceRef) && x.ProcessedAt != null && x.ContentProtected != "")
+                        .ExecuteUpdateAsync(u => u.SetProperty(x => x.ContentProtected, ""), ct);
+            }
         }
         return done;
+    }
+
+    /// <summary>The minutes' action items as tasks in the project, assigned where the owner named in the call matches a member.</summary>
+    private async Task<List<string>> CreateTasksAsync(Guid projectId, MinutesDto minutes, CancellationToken ct)
+    {
+        var members = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == projectId).Join(db.Users, m => m.UserId, u => u.Id, (m, u) => new { u.Id, u.DisplayName }).ToListAsync(ct);
+        Guid? Match(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            var n = name.Trim();
+            var exact = members.Where(m => m.DisplayName.Equals(n, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (exact.Count == 1) return exact[0].Id;
+            var first = members.Where(m => m.DisplayName.Split(' ')[0].Equals(n.Split(' ')[0], StringComparison.OrdinalIgnoreCase)).ToList();
+            return first.Count == 1 ? first[0].Id : null;
+        }
+        var created = new List<string>();
+        foreach (var a in minutes.Content.ActionItems.Take(15))
+        {
+            DateOnly? due = DateOnly.TryParse(a.Due, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) && d >= DateOnly.FromDateTime(clock.Now) ? d : null;
+            var title = a.Task.Length > 200 ? a.Task[..200] : a.Task;
+            try
+            {
+                await tasks.CreateAsync(projectId, new ProjectManagement.Application.Features.Tasks.CreateTaskRequest(title,
+                    $"From the minutes of {minutes.Title}.{(a.Owner is null ? "" : $" Owner named in the call: {a.Owner}.")}{(a.Due is not null && due is null ? $" Due as said: {a.Due}." : "")}",
+                    null, Priority.Medium, Match(a.Owner), null, due, null, null, null), ct);
+                created.Add(title);
+            }
+            catch (AppException ex) { log.LogInformation("A task from the minutes could not be created: {Reason}", ex.Message); }
+        }
+        return created;
+    }
+
+    /// <summary>The minutes, by email, to the person who sent the notetaker (through the app's own mail, so no mailbox is needed).</summary>
+    private async Task EmailOwnerAsync(Guid userId, AgentMeetingBot bot, MinutesDto minutes, IReadOnlyList<string> created, CancellationToken ct)
+    {
+        var to = await db.Users.AsNoTracking().Where(u => u.Id == userId && u.IsActive).Select(u => u.Email).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(to)) return;
+        var c = minutes.Content;
+        static string H(string s) => System.Net.WebUtility.HtmlEncode(s);
+        static string Bullets(IEnumerable<string> items) => "<ul>" + string.Concat(items.Select(i => $"<li>{H(i)}</li>")) + "</ul>";
+        var html = new System.Text.StringBuilder();
+        html.Append($"<h2 style=\"margin:0 0 4px\">{H(c.Title)}</h2>");
+        if (c.Attendees.Count > 0) html.Append($"<p style=\"color:#666\">Attendees: {H(string.Join(", ", c.Attendees))}</p>");
+        html.Append($"<h3>Summary</h3><p>{H(c.Summary)}</p>");
+        if (c.Decisions.Count > 0) html.Append("<h3>Decisions</h3>").Append(Bullets(c.Decisions));
+        if (c.ActionItems.Count > 0) html.Append("<h3>Action items</h3>").Append(Bullets(c.ActionItems.Select(a => a.Task + (a.Owner is null ? "" : $" — {a.Owner}") + (a.Due is null ? "" : $" (by {a.Due})"))));
+        if (created.Count > 0) html.Append($"<p><b>{created.Count} task(s) were created in the project</b> from these action items.</p>");
+        if (c.Risks.Count > 0) html.Append("<h3>Risks and blockers</h3>").Append(Bullets(c.Risks));
+        if (c.NextMeeting is not null) html.Append($"<p><b>Next meeting:</b> {H(c.NextMeeting)}</p>");
+        html.Append("<p style=\"color:#888;font-size:12px\">Written by your ProjectTracker notetaker. Open Notetaker to edit or email these minutes to the attendees.</p>");
+        try { await email.SendAsync(new EmailMessage(to, $"Minutes: {c.Title}", html.ToString(), Kind: "meeting_minutes"), ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning("The minutes email could not be sent for {Session}: {Reason}", bot.Id, ex.Message); }
     }
 }

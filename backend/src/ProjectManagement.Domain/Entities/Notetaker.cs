@@ -23,6 +23,12 @@ public class NotetakerSettings : TenantEntity, ITenantScoped
     public Guid? ProjectId { get; set; }
     public bool AutoJoin { get; set; }
     public bool AutoMinutes { get; set; } = true;
+    /// <summary>Email the minutes to the person as soon as they are written.</summary>
+    public bool AutoEmail { get; set; } = true;
+    /// <summary>Create the minutes' action items as tasks in the project (assigned by name where a member matches).</summary>
+    public bool AutoTasks { get; set; }
+    /// <summary>Erase the transcript once the minutes are written and the agent has read it (the minutes stay).</summary>
+    public bool DeleteTranscript { get; set; } = true;
 }
 
 /// <summary>The minutes (MOM) of one session the bot attended, written by the agent from the transcript; encrypted.</summary>

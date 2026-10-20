@@ -21,9 +21,10 @@ public class NotetakerTests(ApiFactory factory)
         Assert.Empty(overview.Data!["sessions"]!.AsArray());
 
         Assert.Equal(422, (int)(await me.Put("/api/v1/me/notetaker/settings", new { projectId = (Guid?)null, autoJoin = true, autoMinutes = true })).Status);
-        var saved = await me.Put("/api/v1/me/notetaker/settings", new { projectId = project, autoJoin = true, autoMinutes = false });
+        var saved = await me.Put("/api/v1/me/notetaker/settings", new { projectId = project, autoJoin = true, autoMinutes = false, autoEmail = false, autoTasks = true, deleteTranscript = true });
         Assert.True(saved.Ok, saved.ToString());
         Assert.False(saved.Data!["autoMinutes"]!.GetValue<bool>());
+        Assert.True((await me.Get("/api/v1/me/notetaker")).Data!["settings"]!["autoTasks"]!.GetValue<bool>());
 
         Assert.Equal(422, (int)(await me.Post("/api/v1/me/notetaker/join", new { url = "https://example.com/call", minutes = 60 })).Status);
         Assert.Equal(422, (int)(await me.Post("/api/v1/me/notetaker/join", new { url = "https://meet.google.com/abc-defg-hij", minutes = 5 })).Status);

@@ -55,3 +55,5 @@
   .nt-session-actions { width: 100%; justify-content: flex-start; padding-left: 22px; }
 }
 .nt-steps { margin: 0 0 14px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: 13.5px; line-height: 1.5; }
+.nt-after { display: flex; flex-direction: column; gap: 10px; padding-left: 14px; border-left: 2px solid var(--border); }
+.nt-after.off .nt-toggle:not(:last-child) { opacity: .55; }

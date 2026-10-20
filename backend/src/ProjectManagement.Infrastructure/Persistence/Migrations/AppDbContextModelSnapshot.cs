@@ -5268,10 +5268,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AutoEmail")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("AutoJoin")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("AutoMinutes")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AutoTasks")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("CreatedAt")
@@ -5279,6 +5285,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("DeleteTranscript")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid?>("ProjectId")
                         .HasColumnType("uuid");
