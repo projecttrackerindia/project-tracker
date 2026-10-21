@@ -164,7 +164,7 @@ public class DocumentDesignTests(ApiFactory factory)
         Assert.Contains("(STAGE 5 / 9) Tj", raw);                 // the lifecycle ring names the stage (UAT = 5th)
         Assert.Contains("(UAT) Tj", raw);
         Assert.Contains("(Gateway) Tj", raw);                     // the request flow is drawn
-        Assert.Contains("f56f6*******bd8a", raw);                 // the secret header example is masked ...
+        Assert.Contains("CLIENT-SECRET", raw);                    // the secret header is listed, its example masked (server-side masking) ...
         Assert.DoesNotContain("f56f6a0c9d4e2bd8a", raw);          // ... everywhere
         Assert.DoesNotContain("api.corp.example.com", raw);       // and so is the host
         Assert.Contains("(Request) Tj", raw);
