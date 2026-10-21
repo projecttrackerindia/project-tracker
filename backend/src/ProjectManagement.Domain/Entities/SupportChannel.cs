@@ -1,0 +1,55 @@
+using ProjectManagement.Domain.Common;
+
+namespace ProjectManagement.Domain.Entities;
+
+/// <summary>
+/// A team's own WhatsApp Business number, connected by pasting its Cloud API details. Messages to it reach the team's AI support employee,
+/// which answers from the team's knowledge, raises tickets and hands over to people. Token and app secret are stored encrypted.
+/// </summary>
+public class SupportChannel : TenantEntity, ITenantScoped
+{
+    public string Kind { get; set; } = "whatsapp";
+    public string Name { get; set; } = "";
+    public Guid? TeamId { get; set; }
+    public string PhoneNumberId { get; set; } = "";
+    public string BusinessAccountId { get; set; } = "";
+    public string? DisplayPhone { get; set; }
+    public string? VerifiedName { get; set; }
+    public string AccessTokenProtected { get; set; } = "";
+    public string AppSecretProtected { get; set; } = "";
+    /// <summary>Random value the team pastes into Meta's webhook settings; Meta sends it back to prove the webhook is theirs.</summary>
+    public string VerifyToken { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    /// <summary>The AI employee answers new messages by itself; when off, people reply from the inbox.</summary>
+    public bool AutoReply { get; set; } = true;
+    public string AgentName { get; set; } = "Asha";
+    public Guid? WorkTypeId { get; set; }
+    /// <summary>Who connected it: tickets the AI raises from this number are reported in their name.</summary>
+    public Guid ConnectedBy { get; set; }
+    public DateTime? LastInboundAt { get; set; }
+    public DateTime? CheckedAt { get; set; }
+    public string? LastError { get; set; }
+}
+
+/// <summary>One person's WhatsApp chat with a support number. The number and the messages are stored encrypted.</summary>
+public class SupportConversation : TenantEntity, ITenantScoped
+{
+    public Guid ChannelId { get; set; }
+    /// <summary>Keyed hash of the sender's number, to find their chat without storing the number in clear.</summary>
+    public string ContactKey { get; set; } = "";
+    public string ContactProtected { get; set; } = "";
+    public string? ContactName { get; set; }
+    public string Language { get; set; } = "en";
+    /// <summary>open, waiting (on a person), closed.</summary>
+    public string Status { get; set; } = "open";
+    /// <summary>ai while the AI employee handles it; human once a person takes over.</summary>
+    public string Mode { get; set; } = "ai";
+    public DateTime LastMessageAt { get; set; }
+    /// <summary>WhatsApp lets a business reply freely only within 24 hours of the person's last message.</summary>
+    public DateTime? LastInboundAt { get; set; }
+    public bool NeedsReply { get; set; }
+    public int ReplyAttempts { get; set; }
+    public int Unread { get; set; }
+    public Guid? WorkTaskId { get; set; }
+    public string MessagesProtected { get; set; } = "";
+}

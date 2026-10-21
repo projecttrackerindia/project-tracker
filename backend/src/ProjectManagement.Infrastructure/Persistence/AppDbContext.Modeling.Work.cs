@@ -117,6 +117,21 @@ public partial class AppDbContext
             e.Property(x => x.Language).HasMaxLength(10); e.Property(x => x.Status).HasMaxLength(20); e.Property(x => x.TranscriptProtected).HasMaxLength(400000);
             e.Property(x => x.Summary).HasMaxLength(4000); e.Property(x => x.ArchiveKey).HasMaxLength(300);
         });
+        b.Entity<SupportChannel>(e =>
+        {
+            e.HasIndex(x => x.TenantId); e.HasIndex(x => x.PhoneNumberId).IsUnique();
+            e.Property(x => x.Kind).HasMaxLength(10); e.Property(x => x.Name).HasMaxLength(80); e.Property(x => x.PhoneNumberId).HasMaxLength(40);
+            e.Property(x => x.BusinessAccountId).HasMaxLength(40); e.Property(x => x.DisplayPhone).HasMaxLength(40); e.Property(x => x.VerifiedName).HasMaxLength(120);
+            e.Property(x => x.AccessTokenProtected).HasMaxLength(4000); e.Property(x => x.AppSecretProtected).HasMaxLength(1000); e.Property(x => x.VerifyToken).HasMaxLength(64);
+            e.Property(x => x.AgentName).HasMaxLength(60); e.Property(x => x.LastError).HasMaxLength(500);
+        });
+        b.Entity<SupportConversation>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.LastMessageAt }); e.HasIndex(x => new { x.ChannelId, x.ContactKey }).IsUnique(); e.HasIndex(x => x.NeedsReply);
+            e.Property(x => x.ContactKey).HasMaxLength(64); e.Property(x => x.ContactProtected).HasMaxLength(400); e.Property(x => x.ContactName).HasMaxLength(120);
+            e.Property(x => x.Language).HasMaxLength(10); e.Property(x => x.Status).HasMaxLength(20); e.Property(x => x.Mode).HasMaxLength(10);
+            e.Property(x => x.MessagesProtected).HasMaxLength(400000);
+        });
         b.Entity<CompanyMailSettings>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();

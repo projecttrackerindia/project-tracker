@@ -37,7 +37,7 @@ public static class TelemetryExtensions
                 {
                     // Health probes and static files would drown the interesting requests.
                     o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health") && ctx.Request.Path.StartsWithSegments("/api")
-                        && !ctx.Request.Path.StartsWithSegments("/api/v1/integrations/whatsapp");
+                        && !ctx.Request.Path.StartsWithSegments("/api/v1/integrations/whatsapp") && !ctx.Request.Path.StartsWithSegments("/api/v1/support/whatsapp");
                     o.RecordException = true;
                 })
                 .AddHttpClientInstrumentation(o => o.FilterHttpRequestMessage = request => request.RequestUri?.Host != "graph.facebook.com")

@@ -15,6 +15,8 @@ public interface IAppDbContext
     DbSet<VoiceAgentSettings> VoiceAgentSettings { get; }
     DbSet<VoiceConnector> VoiceConnectors { get; }
     DbSet<VoiceCall> VoiceCalls { get; }
+    DbSet<SupportChannel> SupportChannels { get; }
+    DbSet<SupportConversation> SupportConversations { get; }
     DbSet<MeetingBotIdentity> MeetingBotIdentities { get; }
     DbSet<NotetakerSettings> NotetakerSettings { get; }
     DbSet<MeetingMinutes> MeetingMinutes { get; }
