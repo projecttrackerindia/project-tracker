@@ -30,8 +30,9 @@ public class VoiceOptions
     /// <summary>Sarvam AI key for speech (Indian languages). Without it the test call is typed only.</summary>
     public string? SarvamApiKey { get; set; }
     public string SarvamBaseUrl { get; set; } = "https://api.sarvam.ai";
-    public string SarvamTtsModel { get; set; } = "bulbul:v2";
-    public string SarvamSpeaker { get; set; } = "anushka";
+    public string SarvamTtsModel { get; set; } = "bulbul:v3";
+    /// <summary>A bulbul:v3 voice (lower case). bulbul:v2 voices are anushka, manisha, vidya, arya, abhilash, karun, hitesh.</summary>
+    public string SarvamSpeaker { get; set; } = "kavya";
     public bool ArchiveConfigured => !string.IsNullOrWhiteSpace(S3Endpoint) && !string.IsNullOrWhiteSpace(S3Bucket) && !string.IsNullOrWhiteSpace(S3AccessKey) && !string.IsNullOrWhiteSpace(S3SecretKey);
 }
 

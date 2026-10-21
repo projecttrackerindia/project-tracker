@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, del, get, post, put, uploadFile } from '../../api/client';
 import { workApi } from '../../api/endpoints.platform';
@@ -10,6 +10,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import './voice.css';
+import { audioSupported, playWav, startRecording, stopPlayback, unlockAudio, wavSeconds, type Recording } from './voiceAudio';
 
 interface VoiceSettings {
   enabled: boolean; agentName: string; companyName: string; languages: string[]; knowledge: string | null; requireVerification: boolean; verificationRule: string;
@@ -217,18 +218,9 @@ function Transcript({ turns, typing }: { turns: Turn[]; typing?: boolean }) {
   );
 }
 
-/** Plays the agent's line (base64 WAV from Sarvam). Returns when it finishes so the mic is not opened over the agent's voice. */
-function play(audio: string | null | undefined, player: MutableRefObject<HTMLAudioElement | null>): Promise<void> {
-  if (!audio) return Promise.resolve();
-  player.current?.pause();
-  const a = new Audio(`data:audio/wav;base64,${audio}`);
-  player.current = a;
-  return new Promise((done) => { a.onended = () => done(); a.onerror = () => done(); void a.play().catch(() => done()); });
-}
-
 function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
   const wid = useWorkspaceId();
-  const canTalk = !!s.speechConfigured && typeof window !== 'undefined' && 'MediaRecorder' in window && !!navigator.mediaDevices?.getUserMedia;
+  const canTalk = !!s.speechConfigured && audioSupported();
   const [lang, setLang] = useState(s.languages[0] ?? 'en');
   const [phone, setPhone] = useState('');
   const [talk, setTalk] = useState(canTalk);
@@ -236,22 +228,24 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [rec, setRec] = useState<MediaRecorder | null>(null);
-  const player = useRef<HTMLAudioElement | null>(null);
+  const [rec, setRec] = useState<Recording | null>(null);
   const stream = useRef<MediaStream | null>(null);
-  useEffect(() => () => { player.current?.pause(); stream.current?.getTracks().forEach((t) => t.stop()); }, []);
+  const limit = useRef<number | undefined>(undefined);
+  useEffect(() => () => { stopPlayback(); window.clearTimeout(limit.current); stream.current?.getTracks().forEach((t) => t.stop()); }, []);
   const answered = async (r: Reply) => {
     setCall(r.call); setEnded(r.ended);
     if (r.ended) void invalidateWorkspace(wid, 'voice');
-    if (talk) await play(r.audio, player);
+    if (talk) await playWav(r.audio);
   };
   const start = async () => {
+    if (talk) unlockAudio();   // on the tap itself, so the phone lets the greeting play
     setBusy(true);
     try { const r = await voiceApi.start({ language: lang, callerNumber: phone || undefined, speak: talk }); setBusy(false); await answered(r); }
     catch (e) { toast(errText(e, 'Could not start.'), 'error'); } finally { setBusy(false); }
   };
   const send = async () => {
     if (!call || !text.trim()) return;
+    if (talk) unlockAudio();
     const said = text.trim(); setText('');
     setCall({ ...call, turns: [...call.turns, { role: 'caller', text: said, at: new Date().toISOString() }] });
     setBusy(true);
@@ -259,32 +253,29 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
     catch (e) { toast(errText(e, 'The agent did not answer.'), 'error'); }
     finally { setBusy(false); }
   };
+  const finish = async (r: Recording) => {
+    window.clearTimeout(limit.current);
+    setRec(null);
+    const wav = r.stop();
+    if (!call) return;
+    if (wavSeconds(wav) < 0.6) { toast('That was too short — tap, speak, then tap again.', 'error'); return; }
+    setBusy(true);
+    try { const reply = await voiceApi.listen(call.id, new File([wav], 'speech.wav', { type: 'audio/wav' })); setBusy(false); await answered(reply); }
+    catch (e) { toast(errText(e, 'The agent did not hear that.'), 'error'); } finally { setBusy(false); }
+  };
   const record = async () => {
     if (!call) return;
-    if (rec) { rec.stop(); return; }
-    player.current?.pause();
+    if (rec) { void finish(rec); return; }
+    unlockAudio(); stopPlayback();
     try {
-      stream.current ??= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
-      const m = new MediaRecorder(stream.current, type ? { mimeType: type } : undefined);
-      const parts: Blob[] = [];
-      m.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
-      m.onstop = async () => {
-        setRec(null);
-        const blob = new Blob(parts, { type: m.mimeType || 'audio/webm' });
-        if (blob.size < 800) { toast('That was too short — tap, speak, then tap again.', 'error'); return; }
-        setBusy(true);
-        try {
-          const r = await voiceApi.listen(call.id, new File([blob], 'speech.' + (blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'), { type: blob.type }));
-          setBusy(false); await answered(r);
-        } catch (e) { toast(errText(e, 'The agent did not hear that.'), 'error'); } finally { setBusy(false); }
-      };
-      m.start(); setRec(m);
-      window.setTimeout(() => { if (m.state === 'recording') m.stop(); }, 45_000);
+      stream.current ??= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+      const r = await startRecording(stream.current);
+      setRec(r);
+      limit.current = window.setTimeout(() => void finish(r), 28_000);   // Sarvam's quick transcription takes up to about 30 seconds
     } catch { toast('Allow the microphone to talk to the agent.', 'error'); setTalk(false); }
   };
   const hangUp = async () => {
-    rec?.stop(); player.current?.pause();
+    rec?.cancel(); window.clearTimeout(limit.current); stopPlayback();
     if (call && !ended) { try { await voiceApi.end(call.id); } catch { /* the call log shows it */ } }
     void invalidateWorkspace(wid, 'voice'); onClose();
   };

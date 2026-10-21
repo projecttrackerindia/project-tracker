@@ -17,6 +17,9 @@ public class VoiceSpeechService(IOptions<VoiceOptions> options, IHttpClientFacto
     /// <summary>"te" -> "te-IN", the BCP-47 code Sarvam expects.</summary>
     public static string Code(string lang) => lang is { Length: 2 } ? lang + "-IN" : "en-IN";
 
+    /// <summary>Sarvam's error message, for the log (it never contains the key).</summary>
+    private static string Short(string raw) => raw.Length > 300 ? raw[..300] : raw;
+
     private HttpClient Client() => http.CreateClient("voice-speech");
 
     private HttpRequestMessage Request(HttpMethod m, string path, HttpContent body)
@@ -33,7 +36,8 @@ public class VoiceSpeechService(IOptions<VoiceOptions> options, IHttpClientFacto
         if (!Configured) return null;
         using var form = new MultipartFormDataContent();
         var file = new ByteArrayContent(audio);
-        file.Headers.ContentType = MediaTypeHeaderValue.TryParse(contentType, out var ctype) ? ctype : new MediaTypeHeaderValue("audio/webm");
+        var media = contentType.Split(';')[0].Trim().ToLowerInvariant();
+        file.Headers.ContentType = new MediaTypeHeaderValue(media.StartsWith("audio/") ? media : "audio/wav");
         var ext = contentType.Contains("wav") ? "wav" : contentType.Contains("ogg") ? "ogg" : contentType.Contains("mp4") || contentType.Contains("m4a") ? "m4a" : "webm";
         form.Add(file, "file", "speech." + ext);
         form.Add(new StringContent("unknown"), "language_code");
@@ -42,7 +46,7 @@ public class VoiceSpeechService(IOptions<VoiceOptions> options, IHttpClientFacto
             using var req = Request(HttpMethod.Post, "speech-to-text", form);
             using var res = await Client().SendAsync(req, ct);
             var raw = await res.Content.ReadAsStringAsync(ct);
-            if (!res.IsSuccessStatusCode) { log.LogWarning("Sarvam speech-to-text answered {Status}", (int)res.StatusCode); return null; }
+            if (!res.IsSuccessStatusCode) { log.LogWarning("Sarvam speech-to-text answered {Status}: {Reason}", (int)res.StatusCode, Short(raw)); return null; }
             var j = JsonNode.Parse(raw);
             var text = j?["transcript"]?.ToString()?.Trim();
             if (string.IsNullOrEmpty(text)) return null;
@@ -57,21 +61,24 @@ public class VoiceSpeechService(IOptions<VoiceOptions> options, IHttpClientFacto
     {
         if (!Configured || string.IsNullOrWhiteSpace(text)) return null;
         var o = options.Value;
-        var body = JsonSerializer.Serialize(new Dictionary<string, object>
+        var v2 = o.SarvamTtsModel == "bulbul:v2";
+        var max = v2 ? 1500 : 2500;
+        var fields = new Dictionary<string, object>
         {
-            ["text"] = text.Length > 1500 ? text[..1500] : text,
-            ["target_language_code"] = Code(lang),
+            ["text"] = text.Length > max ? text[..max] : text,
+            ["language_code"] = Code(lang),
             ["model"] = o.SarvamTtsModel,
             ["speaker"] = o.SarvamSpeaker,
             ["speech_sample_rate"] = 22050,
-            ["enable_preprocessing"] = true,
-        });
+        };
+        if (v2) fields["enable_preprocessing"] = true;   // v3 and later normalise numbers and English words themselves and reject the flag
+        var body = JsonSerializer.Serialize(fields);
         try
         {
             using var req = Request(HttpMethod.Post, "text-to-speech", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
             using var res = await Client().SendAsync(req, ct);
             var raw = await res.Content.ReadAsStringAsync(ct);
-            if (!res.IsSuccessStatusCode) { log.LogWarning("Sarvam text-to-speech answered {Status}", (int)res.StatusCode); return null; }
+            if (!res.IsSuccessStatusCode) { log.LogWarning("Sarvam text-to-speech answered {Status}: {Reason}", (int)res.StatusCode, Short(raw)); return null; }
             var j = JsonNode.Parse(raw);
             var audios = j?["audios"] ?? j?["audio"];
             return audios is JsonArray a && a.Count > 0 ? a[0]?.ToString() : audios?.ToString();
