@@ -17,7 +17,7 @@ public record CreatedApiKeyDto(ApiKeyDto Key, string Secret);
 public record CreateApiKeyRequest(string Name, ApiKeyScope Scope, int? ExpiresInDays);
 
 /// <summary>Who a valid API key stands for.</summary>
-public record ApiKeyIdentity(Guid KeyId, Guid UserId, Guid TenantId, ApiKeyScope Scope);
+public record ApiKeyIdentity(Guid KeyId, Guid UserId, Guid TenantId, ApiKeyScope Scope, bool ConnectedApp = false);
 
 public static class ApiKeyFormat
 {
@@ -64,7 +64,7 @@ public class ApiKeyAuthenticator(IAppDbContext db, TimeProvider time, Entitlemen
 
         if (key.LastUsedAt is null || now - key.LastUsedAt > TouchEvery)
             await db.ApiKeys.IgnoreQueryFilters().Where(k => k.Id == key.Id).ExecuteUpdateAsync(s => s.SetProperty(k => k.LastUsedAt, now).SetProperty(k => k.LastUsedIp, ip), ct);
-        return new ApiKeyIdentity(key.Id, key.UserId, key.TenantId, key.Scope);
+        return new ApiKeyIdentity(key.Id, key.UserId, key.TenantId, key.Scope, key.OAuthGrantId is not null);
     }
 }
 
@@ -90,7 +90,7 @@ public class ApiKeyService(IAppDbContext db, ICurrentContext ctx, AppClock clock
     public async Task<IReadOnlyList<ApiKeyDto>> ListAsync(CancellationToken ct = default)
     {
         RequireAdmin();
-        var rows = await db.ApiKeys.AsNoTracking().Include(k => k.User).OrderByDescending(k => k.CreatedAt).Take(200).ToListAsync(ct);
+        var rows = await db.ApiKeys.AsNoTracking().Include(k => k.User).Where(k => k.OAuthGrantId == null).OrderByDescending(k => k.CreatedAt).Take(200).ToListAsync(ct);   // connected apps are listed on their own
         return rows.Select(k => ToDto(k, k.User?.DisplayName ?? "Unknown")).ToList();
     }
 
@@ -103,7 +103,7 @@ public class ApiKeyService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         if (!Enum.IsDefined(req.Scope)) throw new ValidationException("scope", "Unknown access level.");
         if (req.ExpiresInDays is { } d && !AllowedExpiry.Contains(d)) throw new ValidationException("expiresInDays", "Choose 30, 90 or 365 days, or no expiry.");
         var now = clock.Now;
-        if (await db.ApiKeys.CountAsync(k => k.RevokedAt == null && (k.ExpiresAt == null || k.ExpiresAt > now), ct) >= MaxActive)
+        if (await db.ApiKeys.CountAsync(k => k.OAuthGrantId == null && k.RevokedAt == null && (k.ExpiresAt == null || k.ExpiresAt > now), ct) >= MaxActive)
             throw new ConflictException($"A workspace can have at most {MaxActive} active API keys. Revoke one you no longer use.", "LIMIT_REACHED");
 
         string prefix;

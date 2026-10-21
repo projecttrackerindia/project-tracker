@@ -30,6 +30,7 @@ import { CustomFieldSettings } from './CustomFieldSettings';
 import { WorkTypeSettings } from './WorkTypeSettings';
 import { SlaSettings } from '../work/Sla';
 import { ApiKeySettings } from './ApiKeySettings';
+import { ConnectedApps } from '../integrations/ConnectedApps';
 import { WebhookSettings } from './WebhookSettings';
 import { DataSettings, GitSettings, InboundEmailSettings } from './IntegrationSettings';
 import { WorkspaceAutomationSettings } from '../automation/AutomationPanel';
@@ -279,6 +280,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'priorities' && <><PageHead title="Priorities" sub="The names and colours of the four priority levels." /><PrioritySettings /></>}
       {current.id === 'custom-fields' && <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /></>}
       {current.id === 'work-types' && <><PageHead title="Work types" sub="The kinds of operational work people can raise, and how fast each must be answered and resolved." /><WorkTypeSettings /><SlaSettings /></>}
+      {current.id === 'connected-apps' && <><PageHead title="Connected apps" sub="Claude, ChatGPT and other AI assistants working in this workspace." /><ConnectedApps /></>}
       {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
       {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}

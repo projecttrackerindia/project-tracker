@@ -111,6 +111,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<DocumentMaskingSettings> DocumentMaskingSettings => Set<DocumentMaskingSettings>();
     public DbSet<MaskingRule> MaskingRules => Set<MaskingRule>();
     public DbSet<ProjectArchitecture> ProjectArchitectures => Set<ProjectArchitecture>();
+    public DbSet<OAuthClient> OAuthClients => Set<OAuthClient>();
+    public DbSet<OAuthCode> OAuthCodes => Set<OAuthCode>();
+    public DbSet<OAuthGrant> OAuthGrants => Set<OAuthGrant>();
     public DbSet<MeetingBotIdentity> MeetingBotIdentities => Set<MeetingBotIdentity>();
     public DbSet<NotetakerSettings> NotetakerSettings => Set<NotetakerSettings>();
     public DbSet<MeetingMinutes> MeetingMinutes => Set<MeetingMinutes>();

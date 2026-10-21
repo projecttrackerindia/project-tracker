@@ -51,6 +51,7 @@ if (!app.Environment.IsDevelopment() && app.Configuration.GetValue("Https:Redire
     app.UseHttpsRedirection();
 }
 app.UseCors();
+app.UseMiddleware<McpChallengeMiddleware>();
 app.UseMiddleware<ApiKeyAuthMiddleware>();
 app.UseAuthentication();
 app.UseRateLimiter();

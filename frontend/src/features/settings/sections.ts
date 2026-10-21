@@ -2,7 +2,7 @@ import type { SectionLink } from '../../components/ui';
 import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 
 export type WorkspaceSection = 'general' | 'access' | 'security' | 'sso' | 'billing' | 'audit' | 'data'
-  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation' | 'reminders' | 'api-keys' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git';
+  | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation' | 'reminders' | 'api-keys' | 'connected-apps' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git';
 
 interface SectionDef extends SectionLink { id: WorkspaceSection; group: 'Workspace' | 'Configuration' | 'Integrations' }
 
@@ -31,6 +31,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'work-types', group: 'Configuration', to: '/settings/work-types', label: 'Work types', icon: 'bolt', show: has('work.types.manage') && mWork > 0 },
     { id: 'automation', group: 'Configuration', to: '/settings/automation', label: 'Automation', icon: 'refresh', show: has('workflow.manage') && mProjects > 0 },
     { id: 'reminders', group: 'Configuration', to: '/settings/reminders', label: 'Reminders', icon: 'alarm', show: !personal && isAdmin },
+    { id: 'connected-apps', group: 'Integrations', to: '/settings/connected-apps', label: 'Connected apps', icon: 'sparkle', show: !ctx.user.isPlatformAdmin },
     { id: 'api-keys', group: 'Integrations', to: '/settings/api-keys', label: 'API keys', icon: 'lock', show: isAdmin },
     { id: 'webhooks', group: 'Integrations', to: '/settings/webhooks', label: 'Webhooks, Slack & Teams', icon: 'send', show: isAdmin },
     { id: 'slack', group: 'Integrations', to: '/settings/slack', label: 'Slack workspace', icon: 'message', show: !personal && isAdmin },

@@ -151,7 +151,7 @@ public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMi
 /// </summary>
 public class ApiKeyAuthMiddleware(RequestDelegate next)
 {
-    public const string ClaimKey = "api_key", ClaimScope = "api_scope";
+    public const string ClaimKey = "api_key", ClaimScope = "api_scope", ItemToken = "api_key_token";
 
     /// <summary>Areas a key can never use, whatever its owner may do: the things that manage access itself.</summary>
     private static readonly string[] Blocked = ["/api/v1/api-keys", "/api/v1/webhooks", "/api/v1/auth", "/api/v1/me/passkeys", "/api/v1/me/device-login",
@@ -181,11 +181,13 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
         var identity = await authenticator.AuthenticateAsync(token, http.Connection.RemoteIpAddress?.ToString(), http.RequestAborted);
         if (identity is null)
         {
+            McpChallenge.Add(http, "invalid_token");
             await ErrorWriter.WriteAsync(http, 401, "This API key is not valid. It may have been revoked or may have expired.", [new ApiError("INVALID_API_KEY", "This API key is not valid. It may have been revoked or may have expired.")]);
             return;
         }
 
-        if (!await authenticator.PlanAllowsAsync(identity.TenantId, http.RequestAborted))
+        // A connected app (Claude, ChatGPT...) works on every plan; keys made by hand need the plan's API access.
+        if (!identity.ConnectedApp && !await authenticator.PlanAllowsAsync(identity.TenantId, http.RequestAborted))
         {
             await ErrorWriter.WriteAsync(http, 403, "API access is not included in this workspace's plan.", [new ApiError("API_ACCESS_NOT_IN_PLAN", "API access is not included in this workspace's current plan. Upgrade the plan to use API keys again; existing keys start working again automatically.")]);
             return;
@@ -210,6 +212,7 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
             new Claim("sub", identity.UserId.ToString()), new Claim(JwtClaims.WorkspaceId, identity.TenantId.ToString()),
             new Claim(ClaimKey, identity.KeyId.ToString()), new Claim(ClaimScope, identity.Scope.ToString()),
         ], "ApiKey"));
+        http.Items[ItemToken] = token;   // the MCP server calls the app's own endpoints as the same caller
         http.Request.Headers.Remove("Authorization"); // the JWT handler must not try to read an API key as a token
         await next(http);
     }
@@ -375,6 +378,31 @@ public class SecurityHeadersMiddleware(RequestDelegate next)
                 return Task.CompletedTask;
             });
         }
+        return next(http);
+    }
+}
+
+/// <summary>
+/// An MCP client that is not signed in (or whose token expired) is told where to sign in: a 401 from the MCP endpoint carries
+/// WWW-Authenticate with the protected-resource metadata (RFC 9728), which leads it to the OAuth server.
+/// </summary>
+public static class McpChallenge
+{
+    public static bool IsMcp(HttpContext http) => http.Request.Path.StartsWithSegments("/api/v1/mcp");
+    public static void Add(HttpContext http, string? error = null)
+    {
+        if (!IsMcp(http)) return;
+        var origin = http.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Common.AppOptions>>().Value.WebBaseUrl.TrimEnd('/');
+        http.Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource/api/v1/mcp\"{(error is null ? "" : $", error=\"{error}\"")}";
+    }
+}
+
+public class McpChallengeMiddleware(RequestDelegate next)
+{
+    public Task InvokeAsync(HttpContext http)
+    {
+        if (McpChallenge.IsMcp(http))
+            http.Response.OnStarting(() => { if (http.Response.StatusCode == 401 && !http.Response.Headers.ContainsKey("WWW-Authenticate")) McpChallenge.Add(http); return Task.CompletedTask; });
         return next(http);
     }
 }

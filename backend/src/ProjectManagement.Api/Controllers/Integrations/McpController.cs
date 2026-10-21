@@ -20,7 +20,8 @@ public class McpController(IHttpClientFactory http, IServer server) : ApiControl
     private const string Protocol = "2025-06-18";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private sealed record Tool(string Name, string Description, JsonObject Schema);
+    /// <summary>A tool with its safety annotations: read-only tools never change anything; the others change data in the workspace only (never the outside world).</summary>
+    private sealed record Tool(string Name, string Description, JsonObject Schema, string Title = "", bool ReadOnly = true, bool Idempotent = true);
 
     private static JsonObject Schema(params (string Name, string Type, string Description, bool Required)[] props)
     {
@@ -31,24 +32,28 @@ public class McpController(IHttpClientFactory http, IServer server) : ApiControl
 
     private static readonly Tool[] Tools =
     [
-        new("list_projects", "List the projects you can see, optionally filtered by a search word.", Schema(("q", "string", "Search text", false))),
-        new("get_project", "One project's details: dates, status, owner, members and progress.", Schema(("projectId", "string", "Project id", true))),
-        new("list_project_tasks", "The tasks of one project with status, assignee, priority and due date.", Schema(("projectId", "string", "Project id", true), ("q", "string", "Search text", false))),
+        new("list_projects", "List the projects you can see, optionally filtered by a search word.", Schema(("q", "string", "Search text", false)), "List projects", true, true),
+        new("get_project", "One project's details: dates, status, owner, members and progress.", Schema(("projectId", "string", "Project id", true)), "Get a project", true, true),
+        new("list_project_tasks", "The tasks of one project with status, assignee, priority and due date.", Schema(("projectId", "string", "Project id", true), ("q", "string", "Search text", false)), "List a project's tasks", true, true),
         new("my_work", "Everything assigned to you: tasks, issues, action items and operational work. Open items only unless open is false.",
-            Schema(("open", "boolean", "Only open items (default true)", false), ("overdue", "boolean", "Only overdue items", false), ("q", "string", "Search text", false))),
-        new("get_task", "One task with its description, status, assignee, dates and project.", Schema(("taskId", "string", "Task id", true))),
+            Schema(("open", "boolean", "Only open items (default true)", false), ("overdue", "boolean", "Only overdue items", false), ("q", "string", "Search text", false)), "My work", true, true),
+        new("get_task", "One task with its description, status, assignee, dates and project.", Schema(("taskId", "string", "Task id", true)), "Get a task", true, true),
         new("create_task", "Create a task in a project.", Schema(("projectId", "string", "Project id", true), ("title", "string", "Task title", true),
             ("description", "string", "Details", false), ("priority", "string", "Low, Medium, High or Critical (default Medium)", false),
-            ("dueDate", "string", "Due date, yyyy-MM-dd", false), ("assigneeId", "string", "User id of the assignee", false))),
+            ("dueDate", "string", "Due date, yyyy-MM-dd", false), ("assigneeId", "string", "User id of the assignee", false)), "Create a task", false, false),
         new("update_task_status", "Move a task to another status by the status's name (for example To Do, In Progress, Done).",
-            Schema(("taskId", "string", "Task id", true), ("status", "string", "Status name as shown in the project", true))),
-        new("add_task_comment", "Add a comment to a task.", Schema(("taskId", "string", "Task id", true), ("body", "string", "Comment text", true))),
+            Schema(("taskId", "string", "Task id", true), ("status", "string", "Status name as shown in the project", true)), "Change a task's status", false, true),
+        new("add_task_comment", "Add a comment to a task.", Schema(("taskId", "string", "Task id", true), ("body", "string", "Comment text", true)), "Comment on a task", false, false),
         new("log_time", "Log time spent on a task.", Schema(("taskId", "string", "Task id", true), ("minutes", "integer", "Minutes worked", true),
-            ("date", "string", "Work date, yyyy-MM-dd (default today)", false), ("note", "string", "What was done", false))),
+            ("date", "string", "Work date, yyyy-MM-dd (default today)", false), ("note", "string", "What was done", false)), "Log time", false, false),
         new("create_work_item", "Create an operational work item (support, request, analysis) in Operations.", Schema(("title", "string", "Title", true),
-            ("description", "string", "Details", false), ("priority", "string", "Low, Medium, High or Critical", false), ("workType", "string", "Work type name (default: the first one)", false))),
+            ("description", "string", "Details", false), ("priority", "string", "Low, Medium, High or Critical", false), ("workType", "string", "Work type name (default: the first one)", false)), "Create a work item", false, false),
+        new("list_work_items", "Operational work (support tickets, requests, analysis) with status, priority, assignee and service level. Open items only unless open is false.",
+            Schema(("q", "string", "Search text", false), ("open", "boolean", "Only open items (default true)", false), ("mine", "boolean", "Only items assigned to you", false)), "List work items"),
+        new("search_api_docs", "Search the published API documentation (DocTracker) by path, summary or group. Sensitive example values stay masked.",
+            Schema(("q", "string", "Words from the path, summary or group (at least 2 characters)", true)), "Search API documentation"),
         new("update_work_item_status", "Change an operational work item's status.", Schema(("workItemId", "string", "Work item id", true),
-            ("status", "string", "ToDo, InProgress, OnHold, Completed or Cancelled", true))),
+            ("status", "string", "ToDo, InProgress, OnHold, Completed or Cancelled", true)), "Change a work item's status", false, true),
     ];
 
     [HttpGet] public IActionResult Get() => StatusCode(405);   // no server-sent stream: every answer comes back on its POST
@@ -69,13 +74,19 @@ public class McpController(IHttpClientFactory http, IServer server) : ApiControl
                 {
                     ["protocolVersion"] = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("protocolVersion", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : Protocol,
                     ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
-                    ["serverInfo"] = new JsonObject { ["name"] = "projecttracker", ["title"] = "ProjectTracker", ["version"] = "1.0.0" },
+                    ["serverInfo"] = new JsonObject { ["name"] = "projecttracker", ["title"] = "ProjectTracker", ["version"] = "1.1.0" },
                     ["instructions"] = "Work in the user's ProjectTracker workspace: find projects and tasks before changing them, and use ids from earlier results.",
                 });
             case "ping": return Rpc(id, new JsonObject());
             case "tools/list":
                 return Rpc(id, new JsonObject { ["tools"] = new JsonArray(Tools.Select(t => (JsonNode)new JsonObject
-                    { ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = t.Schema.DeepClone() }).ToArray()) });
+                {
+                    ["name"] = t.Name, ["title"] = t.Title, ["description"] = t.Description, ["inputSchema"] = t.Schema.DeepClone(),
+                    ["annotations"] = new JsonObject
+                    {
+                        ["title"] = t.Title, ["readOnlyHint"] = t.ReadOnly, ["destructiveHint"] = !t.ReadOnly, ["idempotentHint"] = t.Idempotent, ["openWorldHint"] = false,
+                    },
+                }).ToArray()) });
             case "tools/call":
                 var name = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("name", out var n) ? n.GetString() : null;
                 var input = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("arguments", out var a) && a.ValueKind == JsonValueKind.Object ? a : default;
@@ -163,6 +174,12 @@ public class McpController(IHttpClientFactory http, IServer server) : ApiControl
                 return await SendAsync(HttpMethod.Post, "work-tasks", new { title = Arg(input, "title"), description = NullIfEmpty(Arg(input, "description", false)),
                     workTypeId = type.GetProperty("id").GetString(), priority = Priority(Arg(input, "priority", false)) }, ct);
             }
+            case "list_work_items":
+                return await SendAsync(HttpMethod.Get, $"work-tasks?pageSize=50&open={(Arg(input, "open", false) is "false" ? "false" : "true")}{(Arg(input, "mine", false) is "true" ? "&mine=true" : "")}{(Arg(input, "q", false) is { Length: > 0 } wq ? "&q=" + Q(wq) : "")}", null, ct);
+            case "search_api_docs":
+                var term = Arg(input, "q");
+                if (term.Length < 2) throw new ToolError("'q' needs at least 2 characters.");
+                return await SendAsync(HttpMethod.Get, $"api-search?q={Q(term)}", null, ct);
             case "update_work_item_status":
                 return await SendAsync(HttpMethod.Put, $"work-tasks/{Id(input, "workItemId")}/status", new { status = Arg(input, "status") }, ct);
             default: throw new ToolError($"Unknown tool: {tool}");
@@ -177,7 +194,8 @@ public class McpController(IHttpClientFactory http, IServer server) : ApiControl
     private async Task<string> SendAsync(HttpMethod method, string path, object? payload, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, $"{BaseUrl()}/api/v1/{path}");
-        if (Request.Headers.Authorization.Count > 0) request.Headers.TryAddWithoutValidation("Authorization", Request.Headers.Authorization.ToString());
+        if (HttpContext.Items[ProjectManagement.Api.Middleware.ApiKeyAuthMiddleware.ItemToken] is string key) request.Headers.TryAddWithoutValidation("X-Api-Key", key);
+        else if (Request.Headers.Authorization.Count > 0) request.Headers.TryAddWithoutValidation("Authorization", Request.Headers.Authorization.ToString());
         foreach (var h in Request.Headers.Where(h => h.Key.StartsWith("X-Workspace", StringComparison.OrdinalIgnoreCase) || h.Key.Equals("X-Team-Lens", StringComparison.OrdinalIgnoreCase)))
             request.Headers.TryAddWithoutValidation(h.Key, h.Value.ToString());
         if (payload is not null) request.Content = new StringContent(JsonSerializer.Serialize(payload, Json), Encoding.UTF8, "application/json");

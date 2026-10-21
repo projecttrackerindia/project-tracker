@@ -25,6 +25,8 @@ namespace ProjectManagement.Domain.Entities
         public string? LastUsedIp { get; set; }
         public DateTime? RevokedAt { get; set; }
         public Guid? RevokedBy { get; set; }
+        /// <summary>Set when the key is the access token of a connected app (OAuth): it then expires within the hour and is renewed by the app.</summary>
+        public Guid? OAuthGrantId { get; set; }
 
         public User? User { get; set; }
     }

@@ -59,6 +59,17 @@ export const apiKeyApi = {
   revoke: (id: string) => del(`/api-keys/${id}`),
 };
 
+export interface OAuthClientInfo { clientId: string; name: string; clientUri: string | null; logoUri: string | null; redirectAllowed: boolean; known: boolean }
+export interface ConnectedApp { id: string; clientName: string; clientId: string; person: string; mine: boolean; scope: string; createdAt: string; lastUsedAt: string | null }
+/** Apps such as Claude and ChatGPT connected through OAuth (the MCP server). */
+export const connectedAppApi = {
+  client: (clientId: string, redirectUri: string) => get<OAuthClientInfo>('/oauth/client', { clientId, redirectUri }),
+  consent: (b: { clientId: string; redirectUri: string; state: string | null; codeChallenge: string; codeChallengeMethod: string | null; scope: string | null; resource: string | null; approve: boolean }) =>
+    post<{ redirect: string }>('/oauth/consent', b),
+  list: () => get<ConnectedApp[]>('/connected-apps'),
+  disconnect: (id: string) => del(`/connected-apps/${id}`),
+};
+
 export const webhookApi = {
   list: () => get<Webhook[]>('/webhooks'),
   events: () => get<string[]>('/webhooks/events'),

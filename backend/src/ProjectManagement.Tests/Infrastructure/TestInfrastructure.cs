@@ -144,6 +144,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             });
             services.AddHttpClient("slack").ConfigurePrimaryHttpMessageHandler(() => Slack);
             services.AddHttpClient("meetbot").ConfigurePrimaryHttpMessageHandler(() => MeetingBot);
+            services.AddHttpClient("mcp-self").ConfigurePrimaryHttpMessageHandler(() => Server.CreateHandler());   // the MCP server calls the app's own endpoints
             services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiClient>();

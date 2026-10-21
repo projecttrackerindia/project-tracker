@@ -153,6 +153,9 @@ public static class ServiceCollectionExtensions
                 // The meeting bot's live captions arrive from one address, many lines a minute: its own allowance per bot.
                 if (http.Request.Path.StartsWithSegments("/api/v1/agent/bot", out var rest))
                     return rest.Value is { Length: 33 } bot && bot.Skip(1).All(Uri.IsHexDigit) ? Limited(http, $"meetbot:{bot[1..]}", scim) : Limited(http, $"ip:{Ip(http)}", anon);
+                // Connector sign-in comes from the assistants' servers, many people behind few addresses: its own, larger allowance.
+                if (http.Request.Path.StartsWithSegments("/oauth") || http.Request.Path.StartsWithSegments("/.well-known"))
+                    return Limited(http, $"oauth:{Ip(http)}", scim);
                 var uid = http.User.FindFirst("sub")?.Value;
                 var keyId = http.User.FindFirst("api_key")?.Value; // integrations get their own allowance, separate from the person's browser use
                 if (keyId is not null) return Limited(http, $"key:{keyId}", authed);

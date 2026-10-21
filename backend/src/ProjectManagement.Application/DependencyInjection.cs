@@ -233,6 +233,7 @@ public static class DependencyInjection
         services.AddScoped<WebhookService>();
         services.AddSingleton<WebhookProcessor>();
         services.AddScoped<ApiKeyService>();
+        services.AddScoped<OAuthService>();
         services.AddScoped<ApiKeyAuthenticator>();
         services.AddScoped<CustomFieldService>();
         services.AddScoped<TaskImportService>();

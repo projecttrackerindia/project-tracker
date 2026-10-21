@@ -20,6 +20,9 @@ public interface IAppDbContext
     DbSet<DocumentMaskingSettings> DocumentMaskingSettings { get; }
     DbSet<MaskingRule> MaskingRules { get; }
     DbSet<ProjectArchitecture> ProjectArchitectures { get; }
+    DbSet<OAuthClient> OAuthClients { get; }
+    DbSet<OAuthCode> OAuthCodes { get; }
+    DbSet<OAuthGrant> OAuthGrants { get; }
     DbSet<MeetingBotIdentity> MeetingBotIdentities { get; }
     DbSet<NotetakerSettings> NotetakerSettings { get; }
     DbSet<MeetingMinutes> MeetingMinutes { get; }

@@ -45,6 +45,7 @@ const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
 const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
 const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
 const DocTrackerPage = page(() => import('./features/doctracker/DocTrackerPage'), 'DocTrackerPage');
+const ConnectPage = page(() => import('./features/integrations/ConnectPage'), 'ConnectPage');
 const DocumentPage = page(() => import('./features/documents/DocumentPage'), 'DocumentPage');
 const DashboardPage = page(() => import('./features/dashboard/DashboardPage'), 'DashboardPage');
 const MailboxPage = page(() => import('./features/dev/MailboxPage'), 'MailboxPage');
@@ -366,6 +367,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
         <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
         <Route path="support" element={<Moved to="/operations" />} />
+        <Route path="connect" element={<ConnectPage />} />
         <Route path="doctracker" element={<Guard allow={mDocuments}><DocTrackerPage /></Guard>} />
         <Route path="documents" element={<Guard allow={mDocuments}><LegacyDocuments /></Guard>} />
         <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />

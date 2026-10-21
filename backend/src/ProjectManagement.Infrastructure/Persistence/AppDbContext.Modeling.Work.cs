@@ -552,6 +552,12 @@ public partial class AppDbContext
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.IpRanges).HasMaxLength(6000);
         });
+        b.Entity<OAuthClient>(e => { e.HasIndex(x => x.ClientId).IsUnique(); e.Property(x => x.ClientId).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.RedirectUrisJson).HasMaxLength(4000); e.Property(x => x.ClientUri).HasMaxLength(500); e.Property(x => x.LogoUri).HasMaxLength(500); });
+        b.Entity<OAuthCode>(e => { e.HasIndex(x => x.CodeHash).IsUnique(); e.HasIndex(x => x.ExpiresAt); e.Property(x => x.CodeHash).HasMaxLength(64); e.Property(x => x.ClientId).HasMaxLength(40);
+            e.Property(x => x.RedirectUri).HasMaxLength(500); e.Property(x => x.CodeChallenge).HasMaxLength(128); e.Property(x => x.Scope).HasMaxLength(100); e.Property(x => x.Resource).HasMaxLength(500); });
+        b.Entity<OAuthGrant>(e => { e.HasIndex(x => x.RefreshHash).IsUnique(); e.HasIndex(x => new { x.TenantId, x.UserId }); e.Property(x => x.ClientId).HasMaxLength(40);
+            e.Property(x => x.ClientName).HasMaxLength(120); e.Property(x => x.Scope).HasMaxLength(100); e.Property(x => x.RefreshHash).HasMaxLength(64); });
         b.Entity<ProjectArchitecture>(e => { e.HasIndex(x => new { x.TenantId, x.ProjectId }).IsUnique(); e.Property(x => x.DiagramsJson).HasMaxLength(600000); e.Property(x => x.Notes).HasMaxLength(8000); });
         b.Entity<DocumentMaskingSettings>(e => { e.HasIndex(x => x.TenantId).IsUnique(); e.Property(x => x.DisabledBuiltIns).HasMaxLength(500); });
         b.Entity<MaskingRule>(e =>

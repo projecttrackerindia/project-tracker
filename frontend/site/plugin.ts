@@ -119,6 +119,8 @@ const sitemap = () => {
 const robots = () => `User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /oauth/
+Disallow: /connect
 Disallow: /hubs/
 Disallow: /scim/
 Disallow: /r/
