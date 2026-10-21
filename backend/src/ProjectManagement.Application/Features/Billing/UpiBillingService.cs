@@ -61,7 +61,7 @@ public record UpiAccountHealthDto(string UpiId, string? BankLabel, bool Enabled,
 /// (UTR); a platform administrator checks it against the bank statement and confirms, which activates the plan and records a paid invoice.
 /// </summary>
 public class UpiBillingService(IAppDbContext db, CurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, SubscriptionActivator activator,
-    IEmailSender email, IOptions<UpiOptions> options, IOptions<AppOptions> app, ILogger<UpiBillingService> log)
+    IEmailSender email, IOptions<UpiOptions> options, IOptions<AppOptions> app, ILogger<UpiBillingService> log, BillingMailer? mailer = null)
 {
     private static readonly Regex Vpa = new(@"^[A-Za-z0-9._\-]{2,100}@[A-Za-z0-9]{2,40}$", RegexOptions.CultureInvariant);
     private static readonly Regex UtrShape = new(@"^[A-Za-z0-9]{10,22}$", RegexOptions.CultureInvariant);
@@ -260,10 +260,11 @@ public class UpiBillingService(IAppDbContext db, CurrentContext ctx, AppClock cl
         row.Status = "confirmed"; row.DecidedAt = now; row.DecidedBy = ctx.UserId; row.DecisionNote = Cut(req.Note?.Trim(), 300); row.UpdatedAt = now;
         await db.UpiPayments.IgnoreQueryFilters().Where(p => p.ChainId == row.ChainId && p.Id != row.Id && p.Status == "awaiting")
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, "cancelled"), ct);
-        await activator.RecordPaymentAsync(row.TenantId, plan, row.Amount, row.Currency, $"upi:{row.Utr}", true, null, $"{row.Description} — UPI {row.Utr}", ct);
+        var invoice = await activator.RecordPaymentAsync(row.TenantId, plan, row.Amount, row.Currency, $"upi:{row.Utr}", true, null, $"{row.Description} — UPI {row.Utr}", ct);
         recorder.Audit("billing.upi_confirmed", "UpiPayment", row.Id, tenantId: row.TenantId, newValue: new { row.Reference, row.Amount, plan.Code, Until = sub.CurrentPeriodEnd });
         Notify(row.TenantId, "Payment received - your plan is active", $"{plan.Name} is active until {sub.CurrentPeriodEnd:dd MMM yyyy}. Thank you!", now);
         await db.SaveChangesAsync(ct);
+        if (invoice is not null && mailer is not null) await mailer.PaymentReceivedAsync(invoice, plan.Name, sub.CurrentPeriodEnd, false, "UPI", ct);
     }
 
     /// <summary>The money is not in the bank (wrong or unknown UTR, wrong amount): the payer is told why and can pay again.</summary>

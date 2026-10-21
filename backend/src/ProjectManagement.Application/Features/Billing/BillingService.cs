@@ -41,7 +41,7 @@ public record ConfirmPaymentRequest(string PaymentId, string SubscriptionId, str
 public class BillingService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, IPaymentProvider payments, SubscriptionActivator activator, IOptions<AppOptions> options, IOptions<PricingOptions> pricing,
-    ILogger<BillingService> log, UpiBillingService upi)
+    ILogger<BillingService> log, UpiBillingService upi, BillingMailer? mailer = null)
 {
     private readonly AppOptions _opt = options.Value;
     private readonly PricingOptions _pricing = pricing.Value;
@@ -244,10 +244,12 @@ public class BillingService(
         var scheduled = activator.IsScheduledChange(sub, plan, clock.Now);
         await activator.ActivateAsync(sub, plan, req.SubscriptionId!, clock.Now, null, ct);
         // A change that starts at the next renewal has not charged anything yet (only the approval of the new amount): its invoice comes with its first charge.
-        if (!scheduled) await activator.RecordPaymentAsync(tid, plan, quote.ChargePerCycle, plan.Currency, req.PaymentId!, true, null, DescribePurchase(plan, quote), ct);
+        var invoice = scheduled ? null : await activator.RecordPaymentAsync(tid, plan, quote.ChargePerCycle, plan.Currency, req.PaymentId!, true, null, DescribePurchase(plan, quote), ct);
         recorder.Audit("subscription.changed", "Subscription", sub.Id, old.Plan.Code, plan.Code);
         recorder.Activity("subscription.changed", "Subscription", sub.Id, scheduled ? $"Seats changed to {quote.Seats}: the new amount starts at the next renewal" : $"Plan changed: {old.Plan.Name} → {plan.Name}");
         await db.SaveChangesAsync(ct);
+        // The webhook may report the same payment first; whichever records it sends the one receipt.
+        if (invoice is not null && mailer is not null) await mailer.PaymentReceivedAsync(invoice, plan.Name, sub.CurrentPeriodEnd, sub.ProviderSubscriptionId is not null, null, ct);
         return await GetOverviewAsync(ct);
     }
 
@@ -272,6 +274,7 @@ public class BillingService(
         recorder.Audit("subscription.cancelled", "Subscription", sub.Id, newValue: new { sub.CurrentPeriodEnd });
         recorder.Activity("subscription.cancelled", "Subscription", sub.Id, $"Subscription cancelled — access continues until {sub.CurrentPeriodEnd:dd MMM yyyy}");
         await db.SaveChangesAsync(ct);
+        if (mailer is not null) await mailer.CancelledAsync(tid, sub.Plan?.Name ?? "paid", sub.CurrentPeriodEnd!.Value, ct);
         return await GetOverviewAsync(ct);
     }
 
@@ -352,7 +355,7 @@ public class BillingService(
     }}
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
-public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks, ProjectManagement.Application.Features.Integrations.WhatsAppMetadataMaintenance whatsAppMetadata)
+public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks, ProjectManagement.Application.Features.Integrations.WhatsAppMetadataMaintenance whatsAppMetadata, BillingMailer? mailer = null)
 {
     private const int PastDueGraceDays = 7;
 
@@ -428,6 +431,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
     public async Task RunSubscriptionLifecycleAsync(CancellationToken ct = default)
     {
         var now = clock.Now;
+        var ended = new List<(Guid Tenant, string Plan, bool Trial)>();
         var subs = await db.Subscriptions.Include(s => s.Plan).Where(s => s.Status != SubscriptionStatus.Expired
             && s.CurrentPeriodEnd != null && s.CurrentPeriodEnd <= now
             && db.Tenants.Any(t => t.Id == s.TenantId)) // soft-deleted tenants are filtered out: no renewals or charges
@@ -482,7 +486,9 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
                     Title = sub.Status == SubscriptionStatus.PastDue ? (sub.Provider == UpiBillingService.ProviderName ? "Time to renew your plan" : "Payment failed — please update billing") : "Your subscription has ended",
                     Body = sub.Status == SubscriptionStatus.PastDue ? (sub.Provider == UpiBillingService.ProviderName ? "Your paid period has ended. Open Billing and pay by UPI to keep your plan." : "We could not renew your plan.") : "The workspace is now on the Free plan.",
                 };
-                if (await router.ApplyAsync(note, ct)) db.Notifications.Add(note);
+                var richMail = sub.Status == SubscriptionStatus.Expired && sub.Plan is { } endedPlan && endedPlan.Code != EntitlementService.FreePlan;
+                if (richMail) ended.Add((sub.TenantId, sub.Plan!.Name, before == SubscriptionStatus.Trial));
+                if (await router.ApplyAsync(note, ct)) { if (richMail) note.EmailPending = false; db.Notifications.Add(note); }
             }
           }
           catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -492,6 +498,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
           }
         }
         await db.SaveChangesAsync(ct);
+        if (mailer is not null) foreach (var (tenant, plan, trial) in ended) await mailer.PlanEndedAsync(tenant, plan, trial, ct);
     }
 
     public async Task CleanupAsync(CancellationToken ct = default)

@@ -49,7 +49,7 @@ and its password live only in Secret Manager (`android-keystore`, `android-keyst
     tries the voice agent from the app (microphone); app interactions; device or other IDs (push notification token).
   - Purpose: app functionality and account management; analytics only to run and secure the service. Not used for ads.
   - Shared: not sold. Processed by service providers on our behalf (Google Cloud hosting and Gemini AI, Firebase Cloud
-    Messaging for alerts, Resend for e-mail), which Play treats as *not shared*.
+    Messaging for alerts, Google Workspace and Resend for e-mail), which Play treats as *not shared*.
   - Encrypted in transit: yes. People can request deletion: yes (see above).
 
 ## 4. Each new version

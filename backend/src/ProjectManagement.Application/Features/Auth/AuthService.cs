@@ -65,7 +65,7 @@ public class AuthService(
     IAppDbContext db, ICurrentContext ctx, IPasswordHasher hasher, ITokenService tokens, IEmailSender email,
     IOptions<AppOptions> options, AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, MfaService mfa, SecurityAlerts alerts, ProjectManagement.Application.Features.Admin.PlatformSettingsCache platform,
     PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent, ProjectManagement.Application.Features.Sso.SsoPolicy ssoPolicy,
-    ILogger<AuthService> log)
+    ILogger<AuthService> log, WelcomeMailer? welcome = null)
 {
     private readonly AppOptions _opt = options.Value;
 
@@ -104,6 +104,7 @@ public class AuthService(
         await consent.RecordCurrentAsync(user.Id, ctx.IpAddress, ct);
 
         if (rawToken is not null) await SendVerificationEmailAsync(user, rawToken, ct, req.ReturnUrl);
+        else if (welcome is not null) await welcome.SendAsync(user, ct);   // no verification step: the account is ready now
         return new RegisterResult(user.Id, _opt.RequireEmailVerification);
     }
 
@@ -139,6 +140,7 @@ public class AuthService(
         user.EmailVerificationExpiresAt = null;
         recorder.Audit("user.email_verified", "User", user.Id, userId: user.Id);
         await db.SaveChangesAsync(ct);
+        if (welcome is not null) await welcome.SendAsync(user, ct);
     }
 
     public async Task ResendVerificationAsync(ResendVerificationRequest req, CancellationToken ct = default)

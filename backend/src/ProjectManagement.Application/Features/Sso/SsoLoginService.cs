@@ -93,7 +93,7 @@ public class SsoPolicy(IAppDbContext db)
 public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IDistributedCache cache, IOptions<AppOptions> appOptions,
     IOptions<ExternalAuthOptions> externalOptions, IOidcProtocol oidc, IGitHubOAuth github, IAppleClientSecret apple, ISamlProtocol saml, ISecretProtector secrets,
     AuthService auth, WorkspaceProvisioner provisioner, SsoPolicy policy, EntitlementService entitlements, PlatformSettingsCache platform,
-    ILogger<SsoLoginService> log)
+    ILogger<SsoLoginService> log, ProjectManagement.Application.Features.Auth.WelcomeMailer? welcome = null)
 {
     private readonly AppOptions _o = appOptions.Value;
     private readonly ExternalAuthOptions _x = externalOptions.Value;
@@ -394,6 +394,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (p.Kind == "link") return await LinkAsync(provider, p.LinkUserId!.Value, login, who, ct);
 
         User? user = login is not null ? await db.Users.FirstOrDefaultAsync(u => u.Id == login.UserId, ct) : null;
+        var newAccount = false;
         if (user is null)
         {
             if (string.IsNullOrWhiteSpace(who.Email)) throw new UnauthorizedException($"{Label(provider)} did not share an email address.", "SSO_NO_EMAIL");
@@ -412,6 +413,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 if (!who.EmailVerified) throw new ForbiddenException($"{Label(provider)} has not verified {who.Email}. Sign up with your email address instead.", "EXTERNAL_EMAIL_UNVERIFIED");
                 await EnsureSignupsOpenAsync(normalized, ct);
                 user = await CreateAccountAsync(who.Email.Trim(), who.Name, emailVerified: true, ct);
+                newAccount = true;
             }
             db.UserLogins.Add(login = new UserLogin { UserId = user.Id, Provider = provider, Subject = who.Subject, Email = who.Email, CreatedAt = clock.Now });
         }
@@ -427,6 +429,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             throw new MfaRequiredRedirect(auth.CreateMfaChallenge(user), provider, p.ReturnUrl);
         }
         var session = await auth.SignInExternalAsync(user, provider, null, null, ct);
+        if (newAccount && welcome is not null) await welcome.SendAsync(user, ct);
         return new SignInCompletion(session, p.ReturnUrl);
     }
 

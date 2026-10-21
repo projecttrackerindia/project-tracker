@@ -83,6 +83,13 @@ const credits = () => {
 const matrix = () => `<div class="matrix" ${reveal()}><table><thead><tr><th scope="col">Compare plans</th>${PLANS.map((p) => `<th scope="col"${p.featured ? ' class="hotc"' : ''}>${p.name}</th>`).join('')}</tr></thead><tbody>${COMPARE.map((g) =>
   `<tr class="grp"><td colspan="5">${esc(g.group)}</td></tr>${g.rows.map((r) => `<tr><td>${esc(r.label)}</td>${r.v.map((c) => `<td class="${c === '✓' ? 'yes' : c === '–' ? 'no' : ''}">${c === '–' ? '<span aria-label="Not included">–</span>' : esc(c)}</td>`).join('')}</tr>`).join('')}`).join('')}</tbody></table></div>`;
 
+/** How paid plans are paid: the gateway, the ways to pay and what we never see. Shown under the plans on Pricing. */
+const PAY_METHODS: [string, string, string][] = [['phone', 'UPI', 'Google Pay, PhonePe, Paytm, BHIM'], ['card', 'Cards', 'Visa, Mastercard, RuPay'], ['building', 'Netbanking', 'All major Indian banks'], ['repeat', 'Autopay', 'UPI and card mandates you approve']];
+const payTrust = () => `<section class="paytrust" aria-label="Payments" ${reveal()}>
+<div class="pt-head"><span class="pt-badge">${icon('shield', 18)}<span>Payments secured by <b>Razorpay</b></span></span><span class="pt-sub">PCI DSS compliant gateway · bank-grade encryption · we never see or store your card details</span></div>
+<ul class="pt-methods">${PAY_METHODS.map(([ic, name, sub]) => `<li>${icon(ic, 18)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span></li>`).join('')}</ul>
+<p class="pt-foot">${icon('lock', 14)}<span>Invoice for every payment · cancel any time in Billing · <a href="/refund-policy/">refund policy</a></span></p>
+</section>`;
 const faq = () => `<div class="faq">${FAQ.map((f, i) => `<details ${reveal(i)}><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join('')}</div>`;
 
 const featureCard = (f: { icon: string; title: string; text: string }, i: number) => `<article class="card" ${reveal(i % 3)}><div class="ic">${icon(f.icon)}</div><h3>${esc(f.title)}</h3><p>${esc(f.text)}</p></article>`;
@@ -431,7 +438,7 @@ const bodies: Record<string, () => string> = {
   '/features/': () => `<div class="wrap">${employee}<div style="height:28px"></div>${suite}<h2 style="margin:64px 0 20px">Everything else in the workspace</h2><div class="grid">${FEATURES.map(featureCard).join('')}</div><div style="height:40px"></div>${assist}
 <h2 style="margin:64px 0 20px">Go deeper</h2><div class="grid">${DETAILS.map((d, i) => `<article class="card" ${reveal(i % 3)}><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.description)}</p></article>`).join('')}</div>
 <div style="height:30px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,
-  '/pricing/': () => `<div class="wrap">${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}${offers()}<div style="height:40px"></div>${credits()}${matrix()}
+  '/pricing/': () => `<div class="wrap">${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}${payTrust()}${offers()}<div style="height:40px"></div>${credits()}${matrix()}
 <h2 class="center" style="margin:84px 0 28px">Questions about plans</h2>${faq()}<div style="height:50px"></div>${band('Start free today', 'Move up only when your team needs more.')}</div>`,
   '/security/': () => `<div class="wrap"><div class="grid">${SECURITY.map((p, i) => `<article class="card" ${reveal(i % 3)}><div class="ic">${icon(p.icon)}</div><h3>${esc(p.title)}</h3><ul>${p.points.map((x) => `<li>${tick}<span>${esc(x)}</span></li>`).join('')}</ul></article>`).join('')}</div>
 <section class="report" id="report" ${reveal()}><div><h2>Report a vulnerability</h2><p>If you believe you have found a security problem, e-mail <a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a> with the steps to reproduce it. We reply within two working days, keep you informed while we fix it, and credit you if you wish. Please do not access other customers' data, degrade the service or run automated scans against it while investigating.</p></div>

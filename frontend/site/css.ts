@@ -581,6 +581,18 @@ footer .cols>*{min-width:0}footer a{overflow-wrap:anywhere}
 @media (max-width:620px){.ast{padding:22px 18px}.ast-stage{padding:14px}.emp{padding:22px 18px}.emp-stage{min-height:560px;padding:16px}.emp-call{width:100%}.emp-wa{right:12px;bottom:126px;width:78%}.emp-ticket{left:12px;right:12px;width:auto;bottom:12px}.credit-grid.two-up{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
   __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note,.app,.say,.ml,.emp-line,.emp-wa .w,.emp-ticket,.ast-q,.ast-tool,.ast-a{opacity:1!important}__JS__ .tube.draw,__JS__ .path .curve{stroke-dashoffset:0!important}}
+.paytrust{margin:34px auto 0;max-width:1000px;border:1px solid var(--line);border-radius:18px;padding:22px 24px;background:var(--surface)}
+.paytrust .pt-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:16px}
+.paytrust .pt-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:rgba(16,185,129,.12);color:#059669;font-size:14px;font-weight:600}
+.paytrust .pt-badge b{font-weight:800}
+.paytrust .pt-sub{font-size:13px;color:var(--muted)}
+.paytrust .pt-methods{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.paytrust .pt-methods li{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;color:var(--brand,#7c3aed)}
+.paytrust .pt-methods span{display:flex;flex-direction:column;color:var(--text)}
+.paytrust .pt-methods b{font-size:14px}.paytrust .pt-methods small{font-size:12px;color:var(--muted);line-height:17px}
+.paytrust .pt-foot{display:flex;align-items:center;gap:8px;margin:14px 0 0;font-size:13px;color:var(--muted)}
+@media (max-width:820px){.paytrust .pt-methods{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:420px){.paytrust{padding:18px 16px}.paytrust .pt-methods{grid-template-columns:1fr}}
 `;
 
 /** Gives every class in the stylesheet (and in the markup, see `scoped`) the pt- prefix. */

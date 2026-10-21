@@ -33,8 +33,8 @@ public static class EmailTemplates
         Render(title, greeting, $"<p class=\"tx2\" style=\"margin:0 0 22px;font-size:15px;line-height:25px;color:#4a4268\">{Enc(body)}</p>", cta, link, footer, preheader, unsubscribeUrl, kind, details);
 
     /// <summary>A message whose body the caller has already built as HTML (every value in it encoded by the caller).</summary>
-    public static string Rich(string title, string greeting, string bodyHtml, string cta, string link, string? footer = null, string? preheader = null) =>
-        Render(title, greeting, bodyHtml, cta, link, footer, preheader, null, EmailKind.Update, null);
+    public static string Rich(string title, string greeting, string bodyHtml, string cta, string link, string? footer = null, string? preheader = null, EmailKind kind = EmailKind.Update) =>
+        Render(title, greeting, bodyHtml, cta, link, footer, preheader, null, kind, null);
 
     /// <summary>Several short updates in one message, each with its own link: used instead of many separate e-mails.</summary>
     public static string Digest(string title, string greeting, IReadOnlyList<(string Title, string? Body, string Link)> items, string cta, string link, string? footer, string? preheader, string? unsubscribeUrl)
@@ -50,9 +50,15 @@ public static class EmailTemplates
         IReadOnlyList<(string Label, string Value)>? details)
     {
         var (label, accent) = Look(kind);
+        // The product's logo, served from the site itself (a PNG: mail programs do not show SVG). Where images are blocked, the purple tile with a
+        // tick is what people see instead, so the header never looks broken.
         string origin;
         try { origin = new Uri(link).GetLeftPart(UriPartial.Authority); } catch (UriFormatException) { origin = ""; }
         var host = origin.Replace("https://", "").Replace("http://", "");
+        var tile = "width:34px;height:34px;border-radius:10px;background:#7c3aed;background-image:linear-gradient(135deg,#8b5cf6,#c084fc);color:#ffffff;font-size:17px;font-weight:700;line-height:34px";
+        var mark = origin.Length > 0 && origin.StartsWith("https://", StringComparison.Ordinal)
+            ? $"<td width=\"34\" height=\"34\" align=\"center\" valign=\"middle\" bgcolor=\"#7c3aed\" style=\"{tile}\"><img src=\"{Enc(origin)}/email/logo.png\" width=\"34\" height=\"34\" alt=\"&#10003;\" style=\"display:block;width:34px;height:34px;border:0;border-radius:10px;color:#ffffff;font-size:17px;line-height:34px;text-align:center\"></td>"
+            : $"<td width=\"34\" height=\"34\" align=\"center\" valign=\"middle\" bgcolor=\"#7c3aed\" style=\"{tile}\">&#10003;</td>";
         var hidden = preheader is null ? "" : $"<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px\">{Enc(preheader)}&#8199;&zwnj;&#8199;&zwnj;&#8199;&zwnj;&#8199;&zwnj;</div>";
         var facts = details is { Count: > 0 }
             ? "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" class=\"panel\" style=\"margin:0 0 22px;background:#f7f4ff;border:1px solid #e7e1f7;border-radius:12px\">" +
@@ -95,8 +101,8 @@ public static class EmailTemplates
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td height="4" style="height:4px;line-height:4px;font-size:0;background:{{{accent}}};border-radius:20px 20px 0 0">&nbsp;</td></tr></table>
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="pad" style="padding:26px 32px 30px;font-family:Inter,'Segoe UI',Roboto,Arial,sans-serif">
                     <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-                      <td width="30" height="30" align="center" valign="middle" bgcolor="#7c3aed" style="width:30px;height:30px;border-radius:9px;background:#7c3aed;background-image:linear-gradient(135deg,#8b5cf6,#c084fc);color:#ffffff;font-size:16px;font-weight:700;line-height:30px">&#10003;</td>
-                      <td style="padding-left:11px;font-size:15px;font-weight:700;color:#ffffff;letter-spacing:.2px">Project Tracker</td>
+                      {{{mark}}}
+                      <td style="padding-left:12px;font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.2px">Project Tracker<div style="font-size:11px;font-weight:500;color:#c9bdf5;letter-spacing:.3px;padding-top:1px">projecttracker.in</div></td>
                     </tr></table>
                     <p style="margin:26px 0 8px;font-size:11px;line-height:16px;font-weight:700;letter-spacing:2.2px;color:{{{accent}}}">{{{label}}}</p>
                     <h1 class="h1" style="margin:0;font-size:27px;line-height:34px;font-weight:800;letter-spacing:-.4px;color:#ffffff">{{{Enc(title)}}}</h1>
@@ -111,7 +117,7 @@ public static class EmailTemplates
                   <p class="mono" style="margin:0;padding:10px 12px;font-family:Consolas,Menlo,monospace;font-size:12px;line-height:18px;color:#6d28d9;background:#f7f4ff;border:1px solid #e7e1f7;border-radius:10px;word-break:break-all"><a class="lnk" href="{{{Enc(link)}}}" style="color:#6d28d9;text-decoration:none">{{{Enc(link)}}}</a></p>
                 </td></tr>
                 <tr><td class="pad" style="padding:20px 32px 0;font-family:Inter,'Segoe UI',Roboto,Arial,sans-serif;text-align:center">{{{foot}}}{{{stop}}}{{{links}}}{{{help}}}
-                  <p class="tx3" style="margin:6px 0 0;font-size:11px;line-height:17px;color:#a59ec3">Sent by Project Tracker{{{(host.Length > 0 ? " · " + Enc(host) : "")}}}</p></td></tr>
+                  <p class="tx3" style="margin:6px 0 0;font-size:11px;line-height:17px;color:#a59ec3">Sent by Project Tracker{{{(host.Length > 0 ? " · " + Enc(host) : "")}}} · Hyderabad, India</p></td></tr>
               </table>
             </td></tr></table></body></html>
             """;

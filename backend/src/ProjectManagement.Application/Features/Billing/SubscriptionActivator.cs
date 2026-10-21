@@ -64,11 +64,12 @@ public class SubscriptionActivator(IAppDbContext db, IPaymentProvider payments, 
         }
     }
 
-    /// <summary>One invoice per provider payment id, however many times it is reported (the browser, the webhook, a webhook retry).</summary>
-    public async Task RecordPaymentAsync(Guid tenantId, Plan plan, decimal amount, string currency, string paymentId, bool success, string? error, string description, CancellationToken ct)
+    /// <summary>One invoice per provider payment id, however many times it is reported (the browser, the webhook, a webhook retry).
+    /// Returns the invoice when this call recorded it, and null when the payment was already known, so a receipt goes out exactly once.</summary>
+    public async Task<Invoice?> RecordPaymentAsync(Guid tenantId, Plan plan, decimal amount, string currency, string paymentId, bool success, string? error, string description, CancellationToken ct)
     {
         Task<bool> Recorded() => db.Invoices.IgnoreQueryFilters().AsNoTracking().AnyAsync(i => i.TenantId == tenantId && i.ProviderReference == paymentId, ct);
-        if (await Recorded()) return;
+        if (await Recorded()) return null;
         var now = DateTime.UtcNow;
         var invoice = new Invoice
         {
@@ -78,11 +79,12 @@ public class SubscriptionActivator(IAppDbContext db, IPaymentProvider payments, 
         // The browser and the webhook can report the same payment at the same moment. A paid invoice's number is taken under the sequence's
         // row lock and the payment is checked again after it, so the second report finds the first and gives its number back; the unique
         // (tenant, provider reference) index is the last line for anything else.
-        try { await BillingService.SaveInvoiceAsync(db, invoice, success, Recorded, ct); }
+        try { return await BillingService.SaveInvoiceAsync(db, invoice, success, Recorded, ct) ? invoice : null; }
         catch (DbUpdateException ex)
         {
             if (!await Recorded()) throw;
             log.LogInformation(ex, "Payment {PaymentId} was already recorded by a concurrent report", paymentId);
+            return null;
         }
     }
 }

@@ -59,6 +59,8 @@ public static class DependencyInjection
         services.AddScoped<DeviceLoginService>();
         services.AddScoped<PasskeyService>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.InvoiceService>();
+        services.AddScoped<ProjectManagement.Application.Features.Billing.BillingMailer>();
+        services.AddScoped<ProjectManagement.Application.Features.Auth.WelcomeMailer>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.SubscriptionActivator>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.UpiBillingService>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.BillingWebhookService>();
