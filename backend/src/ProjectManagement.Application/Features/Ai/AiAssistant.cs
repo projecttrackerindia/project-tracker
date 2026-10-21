@@ -42,6 +42,11 @@ public sealed class AiGeminiOptions
 {
     public bool Enabled { get; set; }
     public string? ApiKey { get; set; }
+    /// <summary>Use Gemini on Google Cloud's Vertex AI instead of an API key: the server signs in with its own Google service account
+    /// (no key to store), requests are billed to the Google Cloud project (and its credits), and they are served in <see cref="Location"/>.</summary>
+    public bool Vertex { get; set; }
+    /// <summary>Vertex AI region, e.g. asia-south1 (Mumbai, keeps data in India) or global.</summary>
+    public string Location { get; set; } = "asia-south1";
     public string ProjectId { get; set; } = "gen-lang-client-0699313292";
     public string Model { get; set; } = "gemini-3.5-flash-lite";
     public int MaxOutputTokens { get; set; } = 1024;

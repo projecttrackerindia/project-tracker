@@ -7,6 +7,8 @@ Everything runs on one server in Mumbai (`asia-south1`), with the database and f
 | App, website, meeting bot, HTTPS | One Compute Engine server `pt-app` (e2-medium, 2 vCPU, 4 GB) | ~₹2,500 a month |
 | Database | Cloud SQL for PostgreSQL 16 (`db-f1-micro`), daily backups for 14 days, point-in-time recovery | ~₹1,000 a month |
 | Uploaded files and call recordings | Cloud Storage bucket `<project>-pt-files` in Mumbai | a few rupees per GB |
+| AI (assistant, AI employee, project agent) | Gemini on Vertex AI in Mumbai, signed in as the server (no API key) | pay per use, from the credits |
+| Shared cache and AI limits | Redis container on the same server | included |
 | Logs | Cloud Logging (Logs Explorer) | free allowance |
 
 Free-trial or other Google Cloud credits are used automatically by the project's billing account. Check under Billing › Credits.
@@ -50,6 +52,15 @@ railway variables --service FrontEnd --kv > ~/.pt-gcp/railway-web.env      # sea
 
 The script keeps every Railway setting, including keys for AI, e-mail, payments and speech. It then points the database, files and recordings at Google Cloud. The results stay in `~/.pt-gcp` in your Cloud Shell. If your Railway services have other names, use the names shown by `railway status`.
 
+Check that Gemini answers in Mumbai (and which model to use) before the move:
+
+```bash
+./ai-check.sh                     # prints "OK: ready"; if the model is not offered in Mumbai, try another: ./ai-check.sh gemini-2.5-flash-lite
+GEMINI_MODEL=<model that worked> ./3-env.sh   # only if you picked a different model
+```
+
+The Ollama and Redis services on Railway are not moved: Gemini on Vertex AI replaces the self-hosted model (the e2-medium server has no room for it), and Redis runs as a small container on the server.
+
 ## 4. The move (maintenance window)
 
 1. In ProjectTracker go to **Admin › Settings** and turn on **Maintenance mode**.
@@ -71,11 +82,12 @@ It waits until the API reports healthy, then prints the server address.
 
 ## 6. Switch the domain
 
-1. At your DNS provider, set the **A record** of `projecttracker.in` to the address printed in step 5 (and `www` too, if you use it).
+1. At your DNS provider, set the **A record** of `projecttracker.in` to the address printed in step 5, and the **A record** of `www` to the same address (`www` redirects to the main address). Leave the MX, TXT and other e-mail records alone.
 2. Within a few minutes Caddy on the server gets the HTTPS certificate on its own.
 3. Open the site, sign in and check a project, a file download and Operations.
 4. Turn **Maintenance mode** off. It is part of the database, so it came across already on.
-5. Keep the Railway project for a week without deleting it. To go back, point the A record at Railway again.
+5. In Google Search Console (property `projecttracker.in`), open **Sitemaps** and submit `https://projecttracker.in/sitemap.xml`, then use **URL inspection › Request indexing** on the home page.
+6. Keep the Railway project for a week without deleting it. To go back, point the A record at Railway again. After that week, delete the Railway project: nothing on Google Cloud depends on it.
 
 ## Day to day
 

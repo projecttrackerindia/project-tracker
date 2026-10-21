@@ -7,10 +7,10 @@ namespace ProjectManagement.Application.Features.Admin;
 /// </summary>
 public static class ConsentTexts
 {
-    public const string LastUpdated = "19 October 2026";
+    public const string LastUpdated = "21 October 2026";
 
     public const string PrivacyPolicy = """
-Last updated: 19 October 2026
+Last updated: 21 October 2026
 
 This policy explains what personal data Project Tracker (projecttracker.in, "we", "us") collects, why, who it is shared with, how long it is kept and the choices you have. Questions or requests: support@projecttracker.in.
 
@@ -41,16 +41,16 @@ Access tokens are encrypted at rest. You can disconnect at any time in Account â
 If you connect Microsoft 365 or Outlook, Slack, GitHub or WhatsApp, we receive only what is needed for the feature you turn on (for example the Slack channel you link to a project, or messages sent from your verified WhatsApp number that start with a project key). Tokens are encrypted and you can disconnect at any time.
 
 6. AI features
-The AI assistant and the project agent send the text needed to answer your request (for example a task list, a document section or a meeting transcript) to an AI model provider, currently Google Gemini, with Anthropic or a model we host ourselves as alternatives. Providers process it only to return the answer and are not permitted to train their models on it. AI output can be wrong: the project agent only proposes changes, and nothing changes in a project until someone who may edit it approves.
+The AI assistant and the project agent send the text needed to answer your request (for example a task list, a document section or a meeting transcript) to an AI model provider, currently Google Gemini on Google Cloud (Vertex AI), with Anthropic or a model we host ourselves as alternatives. Providers process it only to return the answer and are not permitted to train their models on it. AI output can be wrong: the project agent only proposes changes, and nothing changes in a project until someone who may edit it approves.
 
 7. The meeting bot
 If your team turns on the live meeting bot, a bot joins your project's Google Meet calls as a guest with the name your workspace chooses. The host must admit it, everyone in the call can see it, and it follows the call's captions to produce minutes. What it reads is stored encrypted and erased after 30 days by default; the minutes and approved items stay in the project.
 
 8. Who we share data with
-Only with the service providers that run Project Tracker for us, under contracts that limit their use of the data: hosting and databases (Railway), file storage (an S3-compatible storage provider), e-mail delivery (Resend), AI model providers (section 6), push notifications (Google Firebase Cloud Messaging and browser push services), and the sign-in and integration providers you choose to use. We may disclose data when the law requires it or to protect the rights and safety of our users. Within a workspace, other members see the content shared with them according to the workspace's roles and permissions.
+Only with the service providers that run Project Tracker for us, under contracts that limit their use of the data: hosting, databases and file storage (Google Cloud, Mumbai region), e-mail delivery (Resend), AI model providers (section 6), push notifications (Google Firebase Cloud Messaging and browser push services), and the sign-in and integration providers you choose to use. We may disclose data when the law requires it or to protect the rights and safety of our users. Within a workspace, other members see the content shared with them according to the workspace's roles and permissions.
 
 9. Where data is stored
-Our providers may store and process data outside India, including in the United States. We take steps so it stays protected wherever it is processed.
+Your workspace data, files and backups are stored on Google Cloud in Mumbai, India. Some providers (for example e-mail delivery, push notifications or an AI provider your workspace chooses) may process data outside India, including in the United States. We take steps so it stays protected wherever it is processed.
 
 10. How long we keep it
 Workspace content is kept while the workspace exists. When a workspace is closed it is first kept in a recoverable state in case the closure was a mistake; ask support@projecttracker.in to erase it permanently. Content read by the project agent from mail, chat and meetings is erased after 30 days by default. Security and audit logs are kept for as long as they are needed for security and legal purposes. Invoices are kept as long as tax law requires. Backups are overwritten on a rolling basis.

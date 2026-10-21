@@ -22,7 +22,12 @@ if [ -n "$MULTI" ]; then echo "These settings span several lines and must be put
 # Everything from Railway except its own variables and what moves to Google Cloud.
 OUT="$STATE/api.env"
 grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$STATE/railway-api.env" \
-  | grep -vE '^(RAILWAY_|PORT=|DATABASE_URL|DATABASE_PUBLIC_URL|PG[A-Z]*=|ConnectionStrings__|Database__Provider=|Storage__|Voice__S3|App__WebBaseUrl=|Cors__Origins__|Proxy__Trust=|Agent__MeetingBotUrl=|Agent__MeetingBotSecret=|Backups__|Redis__)' > "$OUT" || true
+  | grep -vE '^(RAILWAY_|PORT=|DATABASE_URL|DATABASE_PUBLIC_URL|PG[A-Z]*=|ConnectionStrings__|Database__Provider=|Storage__|Voice__S3|App__WebBaseUrl=|Cors__Origins__|Proxy__Trust=|Agent__MeetingBotUrl=|Agent__MeetingBotSecret=|Backups__|Redis__|Ai__PrimaryProvider=|Ai__Gemini__)' \
+  | grep -v 'railway\.internal' > "$OUT" || true
+# Anything else that still points at Railway is listed so it can be changed (nothing on the new server may depend on Railway).
+LEFT=$(grep -E 'railway\.(app|internal)' "$STATE/railway-api.env" | cut -d= -f1 | tr '\n' ' ' || true)
+[ -z "$LEFT" ] || echo "Left out (they pointed at Railway): $LEFT"
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"   # served by Vertex AI in Mumbai; check with ./ai-check.sh
 cat >> "$OUT" <<ENV
 Database__Provider=Postgres
 ConnectionStrings__Default=Host=cloudsql;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD};SSL Mode=Disable;Maximum Pool Size=40
@@ -46,6 +51,19 @@ Voice__S3AccessKey=${HMAC_ID}
 Voice__S3SecretKey=${HMAC_SECRET}
 Agent__MeetingBotUrl=http://meetbot:8080
 Agent__MeetingBotSecret=${MEETBOT_SECRET}
+Redis__ConnectionString=redis:6379
+Ai__PrimaryProvider=gemini
+Ai__Gemini__Enabled=true
+Ai__Gemini__Vertex=true
+Ai__Gemini__ProjectId=${PROJECT_ID}
+Ai__Gemini__Location=${REGION}
+Ai__Gemini__Model=${GEMINI_MODEL}
+Ai__Gemini__MaxOutputTokens=4096
+Ai__Gemini__RequestsPerMinute=120
+Ai__Gemini__InputTokensPerMinute=1000000
+Ai__Gemini__RequestsPerDay=20000
+Ai__Gemini__PilotInputTokenAllowance=2000000000
+Ai__Gemini__PilotOutputTokenAllowance=200000000
 ENV
 chmod 600 "$OUT"
 

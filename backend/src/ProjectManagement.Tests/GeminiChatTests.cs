@@ -233,6 +233,63 @@ public class GeminiChatTests
         Assert.False(new GeminiChat(stub, o, new Admission(o)).Configured);
     }
 
+    private sealed class VertexStub : HttpMessageHandler, IHttpClientFactory
+    {
+        public readonly List<string> Urls = [];
+        public string? Bearer, Flavor;
+        public bool ApiKeySent;
+        public HttpClient CreateClient(string name) => new(this, false);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var url = request.RequestUri!.ToString(); Urls.Add(url);
+            if (url.StartsWith("http://metadata.google.internal/", StringComparison.Ordinal))
+            {
+                Flavor = request.Headers.GetValues("Metadata-Flavor").Single();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new StringContent("""{"access_token":"server-token","expires_in":3599,"token_type":"Bearer"}""", Encoding.UTF8, "application/json") });
+            }
+            Bearer = request.Headers.Authorization?.ToString(); ApiKeySent = request.Headers.Contains("x-goog-api-key");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                "data: " + """{"candidates":[{"content":{"parts":[{"text":"Namaste"}]},"finishReason":"STOP"}]}""" + "\n\n", Encoding.UTF8, "text/event-stream") });
+        }
+    }
+
+    [Fact]
+    public async Task Vertex_mode_signs_in_as_the_server_and_calls_the_regional_endpoint_without_a_key()
+    {
+        var o = Options.Create(new AiOptions { PrimaryProvider = "gemini",
+            Gemini = new() { Enabled = true, Vertex = true, ProjectId = "central-weft-511003-c1", Location = "asia-south1", Model = "gemini-2.5-flash" } });
+        var stub = new VertexStub(); var token = new GoogleAccessToken(stub);
+        var chat = new GeminiChat(stub, o, new Admission(o), token);
+        Assert.True(chat.Configured);
+        var events = await Collect(chat, Ask());
+        Assert.Equal("Namaste", string.Concat(events.OfType<AiTextDelta>().Select(e => e.Text)));
+        Assert.Equal("Google", stub.Flavor);
+        Assert.Equal("Bearer server-token", stub.Bearer);
+        Assert.False(stub.ApiKeySent);
+        Assert.Equal("https://asia-south1-aiplatform.googleapis.com/v1/projects/central-weft-511003-c1/locations/asia-south1/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse", stub.Urls[^1]);
+        await Collect(chat, Ask());
+        Assert.Single(stub.Urls, u => u.StartsWith("http://metadata.google.internal/", StringComparison.Ordinal)); // token cached
+        o.Value.Gemini.Location = "global";
+        Assert.StartsWith("https://aiplatform.googleapis.com/v1/projects/central-weft-511003-c1/locations/global/", GeminiChat.Endpoint(o.Value.Gemini));
+        Assert.False(new GeminiChat(stub, o, new Admission(o)).Configured); // Vertex needs the server's sign-in
+    }
+
+    [Fact]
+    public void Vertex_settings_validate_without_an_api_key()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Ai:PrimaryProvider"] = "gemini", ["Ai:Gemini:Enabled"] = "true", ["Ai:Gemini:Vertex"] = "true", ["Ai:Gemini:ProjectId"] = "central-weft-511003-c1",
+            ["Database:Provider"] = "Sqlite", ["ConnectionStrings:Default"] = "Data Source=:memory:"
+        }).Build();
+        var services = new ServiceCollection(); services.AddLogging(); services.AddInfrastructure(config);
+        using var provider = services.BuildServiceProvider();
+        var o = provider.GetRequiredService<IOptions<AiOptions>>().Value;
+        Assert.True(o.Gemini.Vertex); Assert.Equal("asia-south1", o.Gemini.Location);
+        Assert.True(provider.GetRequiredService<GeminiChat>().Configured);
+    }
+
     [Fact]
     public async Task Cancelled_request_and_unsupported_media_never_dispatch()
     {

@@ -99,10 +99,19 @@ public class GeminiAdmission(IOptions<AiOptions> options, IConnectionMultiplexer
 public sealed class GeminiUnavailableException(string code, string message) : AppException(502, code, message);
 
 /// <summary>Native Gemini SSE. No automatic retries or provider switching after response content.</summary>
-public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> options, GeminiAdmission admission) : IAiChat
+public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> options, GeminiAdmission admission, GoogleAccessToken? token = null) : IAiChat
 {
     private AiGeminiOptions G => options.Value.Gemini;
-    public bool Configured => options.Value.UsesGemini && !string.IsNullOrWhiteSpace(G.ApiKey);
+    public bool Configured => options.Value.UsesGemini && (G.Vertex ? token is not null : !string.IsNullOrWhiteSpace(G.ApiKey));
+
+    /// <summary>The streaming address: Vertex AI in the configured region (signed in as the server), or the Gemini API (API key).</summary>
+    internal static string Endpoint(AiGeminiOptions g)
+    {
+        var model = Uri.EscapeDataString(g.Model);
+        if (!g.Vertex) return $"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse";
+        var host = g.Location == "global" ? "aiplatform.googleapis.com" : $"{g.Location}-aiplatform.googleapis.com";
+        return $"https://{host}/v1/projects/{Uri.EscapeDataString(g.ProjectId)}/locations/{g.Location}/publishers/google/models/{model}:streamGenerateContent?alt=sse";
+    }
     public string Provider => "Google Gemini";
     public string ModelFor(string requestedModel) => G.Model;
 
@@ -141,10 +150,17 @@ public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> opti
 
     private async IAsyncEnumerable<AiChatEvent> ReadAsync(string body, AiChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(G.Model)}:streamGenerateContent?alt=sse")
+        using var req = new HttpRequestMessage(HttpMethod.Post, Endpoint(G))
         { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        req.Headers.Add("x-goog-api-key", G.ApiKey!.Trim());
+        if (G.Vertex)
+        {
+            string bearer;
+            try { bearer = await token!.GetAsync(ct); }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+            { throw new GeminiUnavailableException("AI_UNREACHABLE", "The server could not sign in to Google Cloud for Gemini."); }
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearer);
+        }
+        else req.Headers.Add("x-goog-api-key", G.ApiKey!.Trim());
         HttpResponseMessage response;
         try { response = await http.CreateClient("ai-gemini").SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct); }
         catch (HttpRequestException) { throw new GeminiUnavailableException("AI_UNREACHABLE", "Gemini could not be reached. Please try again later."); }

@@ -39,7 +39,8 @@ public static class DependencyInjection
             .Bind(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section))
             .PostConfigure(o => { if (string.IsNullOrWhiteSpace(o.Gemini.ApiKey)) o.Gemini.ApiKey = config["AI_gemini_apikey"]; })
             .Validate(o => o.PrimaryProvider is "local" or "anthropic" or "gemini", "Ai:PrimaryProvider must be local, anthropic or gemini.")
-            .Validate(o => o.PrimaryProvider != "gemini" || o.Gemini.Enabled && !string.IsNullOrWhiteSpace(o.Gemini.ApiKey), "Gemini requires explicit enablement and a backend key.")
+            .Validate(o => o.PrimaryProvider != "gemini" || o.Gemini.Enabled && (o.Gemini.Vertex || !string.IsNullOrWhiteSpace(o.Gemini.ApiKey)), "Gemini requires explicit enablement and a backend key (or Vertex AI).")
+            .Validate(o => !o.Gemini.Vertex || System.Text.RegularExpressions.Regex.IsMatch(o.Gemini.Location, "^[a-z0-9-]+$"), "Ai:Gemini:Location must be a Google Cloud region such as asia-south1.")
             .Validate(o => !o.Gemini.Enabled || !string.IsNullOrWhiteSpace(o.Gemini.Model) && System.Text.RegularExpressions.Regex.IsMatch(o.Gemini.ProjectId, "^[a-zA-Z0-9-]+$"), "Gemini needs a model and a valid project identifier.")
             .Validate(o => o.Gemini.MaxOutputTokens is >= 1 and <= 16000 && o.Gemini.TimeoutSeconds is >= 1 and <= 600 && o.Gemini.MaxPromptBytes >= 256 && o.Gemini.RequestsPerMinute > 0 && o.Gemini.InputTokensPerMinute > 0 && o.Gemini.RequestsPerDay > 0 && o.Gemini.PilotInputTokenAllowance > 0 && o.Gemini.PilotOutputTokenAllowance > 0, "Gemini capacity and pilot settings are invalid.")
             .Validate(o => o.PrimaryProvider != "anthropic" || o.AllowAnthropic, "Anthropic requires explicit Ai:AllowAnthropic=true.")
@@ -135,6 +136,8 @@ public static class DependencyInjection
         services.AddSingleton<AnthropicChat>();
         services.AddSingleton<OpenAiCompatibleChat>();
         services.AddSingleton<GeminiAdmission>();
+        services.AddSingleton<GoogleAccessToken>();
+        services.AddHttpClient("gcp-metadata", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<GeminiChat>();
         services.AddHttpClient("ai-gemini", c => c.Timeout = Timeout.InfiniteTimeSpan);
         // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted

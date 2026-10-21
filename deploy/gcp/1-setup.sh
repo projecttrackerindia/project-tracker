@@ -6,7 +6,7 @@ cd "$(dirname "$0")"; source ./config.sh
 
 echo "== Turning on the Google Cloud services"
 gcloud services enable compute.googleapis.com sqladmin.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com \
-  storage.googleapis.com iam.googleapis.com logging.googleapis.com monitoring.googleapis.com
+  storage.googleapis.com iam.googleapis.com logging.googleapis.com monitoring.googleapis.com aiplatform.googleapis.com
 
 echo "== Image registry"
 gcloud artifacts repositories describe "$REPO" --location="$REGION" >/dev/null 2>&1 || \
@@ -14,7 +14,7 @@ gcloud artifacts repositories describe "$REPO" --location="$REGION" >/dev/null 2
 
 echo "== Service account for the server"
 gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 || gcloud iam service-accounts create "$SA_NAME" --display-name="ProjectTracker server"
-for role in roles/cloudsql.client roles/artifactregistry.reader roles/logging.logWriter roles/monitoring.metricWriter; do
+for role in roles/cloudsql.client roles/artifactregistry.reader roles/logging.logWriter roles/monitoring.metricWriter roles/aiplatform.user; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$SA" --role="$role" --condition=None >/dev/null
 done
 
