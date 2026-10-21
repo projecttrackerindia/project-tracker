@@ -105,7 +105,7 @@ public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> opti
     public bool Configured => options.Value.UsesGemini && (G.Vertex ? token is not null : !string.IsNullOrWhiteSpace(G.ApiKey));
 
     /// <summary>The streaming address: Vertex AI in the configured region (signed in as the server), or the Gemini API (API key).</summary>
-    internal static string Endpoint(AiGeminiOptions g)
+    public static string Endpoint(AiGeminiOptions g)
     {
         var model = Uri.EscapeDataString(g.Model);
         if (!g.Vertex) return $"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse";
