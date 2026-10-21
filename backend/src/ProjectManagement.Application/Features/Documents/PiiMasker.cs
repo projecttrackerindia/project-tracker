@@ -193,6 +193,7 @@ public sealed class PiiMasker
                 if (masked != all) { code.Clear(); code.Add(new JsonObject { ["type"] = "text", ["text"] = masked }); }
                 return;
             }
+            if (o["type"]?.ToString() == "archDiagram") { ArchDiagram.Mask(o["attrs"]?["data"], this); return; }
             if (o["type"]?.ToString() == "text" && o["text"] is JsonValue t) o["text"] = MaskText(t.ToString());
             if (o["content"] is JsonArray kids) foreach (var k in kids) Walk(k);
         }

@@ -26,7 +26,7 @@ public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrd
 public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false,
     int MaskedCount = 0, bool Revealed = false, int RevealSeconds = 0, bool CanReveal = false);
 /// <param name="Purpose">edit (an editor opens the real values to change them) or read (someone allowed to look, for a few seconds).</param>
-public record RevealRequest(string? Reason, string? Purpose);
+public record DocumentRevealRequest(string? Reason, string? Purpose);
 
 public record SectionInput(string Key, string? Content);
 public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId = null, Guid? TeamId = null, DocumentVisibility? Visibility = null,
@@ -296,7 +296,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     /// The real values of a masked document, for someone allowed to see them: an editor about to change it (purpose "edit"), or a reader with
     /// the reveal permission who gives a reason (purpose "read", shown for the workspace's reveal time). Every reveal is audited.
     /// </summary>
-    public async Task<DocumentDto> RevealAsync(Guid id, RevealRequest req, CancellationToken ct = default)
+    public async Task<DocumentDto> RevealAsync(Guid id, DocumentRevealRequest req, CancellationToken ct = default)
     {
         var doc = await Base().FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException("Document not found.");
         var can = await CanAsync(doc, ct);

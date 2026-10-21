@@ -15,7 +15,7 @@ public static class SectionContent
     public const int MaxChars = 200_000, MaxNodes = 20_000, MaxDepth = 14, MaxColumns = 12, MaxRows = 500, MaxCell = 2000;
     private const string Empty = """{"type":"doc","content":[{"type":"paragraph"}]}""";
 
-    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage"];
+    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram"];
     private static readonly HashSet<string> Inline = ["text", "hardBreak"];
     private static readonly HashSet<string> Marks = ["bold", "italic", "underline", "strike", "code", "link", "highlight"];
     private static readonly string[] SafeLinks = ["http://", "https://", "mailto:", "/", "#"];
@@ -77,6 +77,14 @@ public static class SectionContent
             if (!images.Contains(id)) return null;
             var alt = node["attrs"]?["alt"] is JsonValue av && av.TryGetValue<string>(out var a2) ? a2 : "";
             o["attrs"] = new JsonObject { ["fileId"] = id.ToString(), ["alt"] = alt.Length > 200 ? alt[..200] : alt };
+            return o;
+        }
+
+        if (type == "archDiagram")
+        {
+            // A diagram from Architecture Studio: rebuilt from known fields with limits (ArchDiagram.Clean).
+            var title = node["attrs"]?["title"] is JsonValue tv2 && tv2.TryGetValue<string>(out var ts) ? ts.Trim() : "";
+            o["attrs"] = new JsonObject { ["title"] = title.Length > 120 ? title[..120] : title, ["data"] = ArchDiagram.Clean(node["attrs"]?["data"]) };
             return o;
         }
 

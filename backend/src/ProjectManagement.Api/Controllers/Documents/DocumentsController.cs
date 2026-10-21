@@ -70,7 +70,7 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
 
     /// <summary>The real values of a masked document (editors to edit; readers with the permission, with a reason). Audited; never cached.</summary>
     [HttpPost("documents/{id:guid}/reveal"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public async Task<IActionResult> Reveal(Guid id, [FromBody] RevealRequest req, CancellationToken ct) => Ok(await documents.RevealAsync(id, req, ct));
+    public async Task<IActionResult> Reveal(Guid id, [FromBody] DocumentRevealRequest req, CancellationToken ct) => Ok(await documents.RevealAsync(id, req, ct));
 
     [HttpPost("documents/{id:guid}/archive")]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct) => Ok(await documents.SetArchivedAsync(id, true, ct));

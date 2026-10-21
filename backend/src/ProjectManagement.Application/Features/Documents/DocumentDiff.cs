@@ -76,6 +76,7 @@ public static class DocumentDiff
                 case "text": sb.Append(o["text"]?.GetValue<string>()); break;
                 case "hardBreak": sb.Append(' '); break;
                 case "docImage": sb.Append("[image] ").Append(o["attrs"]?["alt"]?.GetValue<string>()); break;
+                case "archDiagram": sb.Append("[diagram] ").Append(o["attrs"]?["title"]?.GetValue<string>()); break;
                 default: foreach (var c in o["content"] as JsonArray ?? []) Go(c); break;
             }
         }
@@ -107,6 +108,7 @@ public static class DocumentDiff
                 }
             case "table": foreach (var row in kids.OfType<JsonObject>()) lines.Add(new Line(string.Join(" | ", (row["content"] as JsonArray ?? []).Select(Inline)), "row")); break;
             case "docImage": lines.Add(new Line(Inline(o), "img")); break;
+            case "archDiagram": lines.Add(new Line(ArchDiagram.ToFlowchart(o["attrs"]?["data"]), "code", "flowchart")); break;
             default: foreach (var k in kids) Walk(k, lines, style, prefix); break;
         }
     }
