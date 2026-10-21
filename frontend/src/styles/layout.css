@@ -172,5 +172,5 @@ button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
 
 /* the "Ctrl K" chip sits inside the search box: keep the text clear of it */
 .global-search input[type=search] { padding-right: 64px; text-overflow: ellipsis; }
-.skip-link { position: fixed; left: 12px; top: -60px; z-index: 2000; padding: 10px 16px; border-radius: 10px; background: var(--primary); color: #fff; font-weight: 700; text-decoration: none; transition: top .15s ease; }
+.skip-link { position: fixed; left: 12px; top: -60px; z-index: 2000; padding: 10px 16px; border-radius: 10px; background: var(--primary-fill); color: #fff; font-weight: 700; text-decoration: none; transition: top .15s ease; }
 .skip-link:focus { top: 12px; outline: 3px solid var(--primary-soft); }

@@ -26,6 +26,12 @@
   --primary-fill: #4a5fe0;
   --primary-soft: rgba(74, 95, 224, .09);
   --primary-text: #ffffff;
+  /* How to use the accent so it reads in BOTH themes (scripts/check-theme-colors.mjs enforces it):
+     - accent text, icons, borders, selected chips on --primary-soft or a surface  -> color: var(--primary)
+     - solid filled buttons, badges, counts with white text                        -> background: var(--primary-fill); color: #fff
+     - text on a solid var(--primary) background                                    -> color: var(--primary-text)
+     --primary is dark in light theme and LIGHT in dark theme, so white on it vanishes in dark;
+     --primary-text is white in light theme, so on a soft or surface background it vanishes in light. */
 
   --success: #13805c;
   --success-soft: rgba(19, 128, 92, .09);

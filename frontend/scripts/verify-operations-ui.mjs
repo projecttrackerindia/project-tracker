@@ -30,7 +30,7 @@ const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{exec
 try{
  const make=async()=>{
   const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
-  await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');});
+  await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');if(!localStorage.getItem('pm_theme'))localStorage.setItem('pm_theme','light');});
   await ctx.route('**/*',async route=>{
    const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();
    if(url.origin!==origin){await route.abort();return;}
@@ -124,6 +124,20 @@ try{
  await page.locator('.ops-sug',{hasText:'High priority'}).click();await shot(page,'triage-1440.png');checks.push('triage');
  // Voice agent: settings, then a typed test call in Telugu that creates a ticket.
  await page.goto(origin+'/preview-org/operations?view=voice');await page.locator('.va-hero').waitFor();
+ // Selected language chips stay readable in both themes (text vs. the background actually behind it, WCAG contrast).
+ const contrast=(sel)=>page.evaluate((sel)=>{
+  const parse=(c)=>{const m=c.match(/[\d.]+/g).map(Number);return {r:m[0],g:m[1],b:m[2],a:m[3]??1};};
+  const el=document.querySelector(sel);let fg=parse(getComputedStyle(el).color);
+  const layers=[];for(let n=el;n;n=n.parentElement){const b=parse(getComputedStyle(n).backgroundColor);if(b.a>0)layers.push(b);if(b.a>=1)break;}
+  let bg={r:255,g:255,b:255};for(const l of layers.reverse())bg={r:l.r*l.a+bg.r*(1-l.a),g:l.g*l.a+bg.g*(1-l.a),b:l.b*l.a+bg.b*(1-l.a)};
+  const lum=(c)=>{const f=(v)=>{v/=255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4;};return .2126*f(c.r)+.7152*f(c.g)+.0722*f(c.b);};
+  const [a,b]=[lum(fg),lum(bg)].sort((x,y)=>y-x);return (a+.05)/(b+.05);},sel);
+ for(const theme of ['light','dark']){
+  await page.evaluate((t)=>{localStorage.setItem('pm_theme',t);},theme);await page.reload();await page.locator('.va-langs button.on').first().waitFor();
+  const c=await contrast('.va-langs button.on');assert.ok(c>=4.5,`selected language chip contrast ${c.toFixed(2)} in ${theme} theme`);
+  await shot(page,`voice-settings-${theme}-1440.png`);
+ }
+ await page.evaluate(()=>localStorage.setItem('pm_theme','light'));await page.reload();await page.locator('.va-hero').waitFor();checks.push('theme-contrast');
  await page.locator('.va-langs button',{hasText:'Kannada'}).click();
  await page.getByRole('button',{name:'Save',exact:true}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/settings');i++)await page.waitForTimeout(100);

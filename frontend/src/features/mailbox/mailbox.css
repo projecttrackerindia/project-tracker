@@ -49,7 +49,7 @@
 .mb-row:hover { background: var(--tint); }
 .mb-row.active { background: color-mix(in srgb, var(--mb-accent) 10%, transparent); }
 .mb-row.unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--mb-accent); }
-.mb-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-size: 12.5px; font-weight: 700; background: var(--primary-soft); color: var(--primary-text); }
+.mb-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-size: 12.5px; font-weight: 700; background: var(--primary-soft); color: var(--primary); }
 .mb-avatar.lg { width: 38px; height: 38px; }
 .mb-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .mb-row-top { display: flex; align-items: baseline; gap: 8px; }
@@ -112,7 +112,7 @@
 .mb-agent-tasks { display: flex; flex-direction: column; gap: 8px; }
 .mb-task { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
 .mb-task.done { opacity: .75; }
-.mb-task-kind { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--primary-soft); color: var(--primary-text); flex: none; }
+.mb-task-kind { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--primary-soft); color: var(--primary); flex: none; }
 .mb-task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .mb-task-main b { font-size: 13.5px; }
 .mb-task-main small { font-size: 12px; color: var(--text-3); }

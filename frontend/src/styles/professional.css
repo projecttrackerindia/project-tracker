@@ -9,7 +9,7 @@ body { font-size: 14px; }
 .page-head { margin-bottom: 26px; }
 .card, .stat-card, .project-card { border-color: var(--border); }
 .btn { min-height: 40px; border-radius: 10px; box-shadow: none; font-size: 13px; }
-.btn-primary { background: var(--primary-fill, var(--primary)); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary { background: var(--primary-fill); color: #fff; box-shadow: var(--shadow-sm); }
 .btn-primary:hover { background: var(--primary-fill, var(--primary-hover)); filter: brightness(1.06); }
 .input, .select, .textarea { font-size: 14px; min-height: 42px; border-radius: 10px; }
 .icon-btn { min-width: 38px; min-height: 38px; }

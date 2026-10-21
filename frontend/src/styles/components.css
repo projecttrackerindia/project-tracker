@@ -344,7 +344,7 @@ tr.clickable { cursor: pointer; }
 .photo-well .avatar.lg { width: 84px; height: 84px; font-size: 24px; }
 .photo-well-badge {
   position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px; border-radius: 50%;
-  display: grid; place-items: center; background: var(--primary); color: #fff;
+  display: grid; place-items: center; background: var(--primary-fill); color: #fff;
   border: 2.5px solid var(--panel-solid); box-shadow: 0 2px 8px rgba(0,0,0,.25);
 }
 
@@ -606,7 +606,7 @@ tr.row-deleted .td-title { font-style: italic; }
 .ps-buttons { display: flex; align-items: center; gap: 8px; }
 .ps-go, .ai-close { color: var(--text-2); border: 1px solid var(--border-strong); }
 .ps-go:hover, .ai-close:hover:not(:disabled) { color: var(--primary); border-color: rgba(var(--accent-rgb), .5); }
-.ps-count { min-width: 18px; height: 18px; padding: 0 5px; margin-left: 2px; border-radius: 99px; background: var(--primary); color: #fff; font-size: 10.5px; font-weight: 750; display: inline-grid; place-items: center; line-height: 1; }
+.ps-count { min-width: 18px; height: 18px; padding: 0 5px; margin-left: 2px; border-radius: 99px; background: var(--primary-fill); color: #fff; font-size: 10.5px; font-weight: 750; display: inline-grid; place-items: center; line-height: 1; }
 .ps-table tr.click { cursor: pointer; transition: background .14s; }
 .ps-table tr.click:hover td { background: var(--hover-bg); }
 .ps-table tr.click:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
