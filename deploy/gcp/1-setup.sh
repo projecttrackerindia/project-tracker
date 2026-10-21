@@ -28,9 +28,9 @@ if [ ! -s "$STATE/hmac" ]; then
   chmod 600 "$STATE/hmac"
 fi
 
-echo "== Database (Cloud SQL for PostgreSQL 16, daily backups kept 14 days, point-in-time recovery)"
+echo "== Database (Cloud SQL for PostgreSQL 18, daily backups kept 14 days, point-in-time recovery)"
 if ! gcloud sql instances describe "$DB_INSTANCE" >/dev/null 2>&1; then
-  gcloud sql instances create "$DB_INSTANCE" --database-version=POSTGRES_16 --edition=ENTERPRISE --tier="$DB_TIER" --region="$REGION" \
+  gcloud sql instances create "$DB_INSTANCE" --database-version=POSTGRES_18 --edition=ENTERPRISE --tier="$DB_TIER" --region="$REGION" \
     --storage-type=SSD --storage-size=10 --storage-auto-increase --availability-type=zonal \
     --backup-start-time=20:30 --retained-backups-count=14 --enable-point-in-time-recovery
 fi

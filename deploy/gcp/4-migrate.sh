@@ -20,9 +20,9 @@ else
   gcloud sql databases create "$DB_NAME" --instance="$DB_INSTANCE" >/dev/null
 fi
 
-# PostgreSQL 17 tools, installed here (Cloud Shell's Docker Hub pulls can stall).
-PG=/usr/lib/postgresql/17/bin
-[ -x "$PG/pg_dump" ] || sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+# PostgreSQL 18 tools (the same major version as Railway), installed here (Cloud Shell's Docker Hub pulls can stall).
+PG=/usr/lib/postgresql/18/bin
+[ -x "$PG/pg_dump" ] || sudo apt-get install -y -qq postgresql-client-18 >/dev/null
 export PGPASSWORD="$(cat "$STATE/db-password")"
 
 echo "== 1/4 Copying the database out of Railway"

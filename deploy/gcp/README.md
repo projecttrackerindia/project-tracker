@@ -5,7 +5,7 @@ Everything runs on one server in Mumbai (`asia-south1`), with the database and f
 | Part | Where | About |
 |---|---|---|
 | App, website, meeting bot, HTTPS | One Compute Engine server `pt-app` (e2-medium, 2 vCPU, 4 GB) | ~₹2,500 a month |
-| Database | Cloud SQL for PostgreSQL 16 (`db-f1-micro`), daily backups for 14 days, point-in-time recovery | ~₹1,000 a month |
+| Database | Cloud SQL for PostgreSQL 18 (`db-f1-micro`), daily backups for 14 days, point-in-time recovery | ~₹1,000 a month |
 | Uploaded files and call recordings | Cloud Storage bucket `<project>-pt-files` in Mumbai | a few rupees per GB |
 | AI (assistant, AI employee, project agent) | Gemini on Vertex AI in Mumbai, signed in as the server (no API key) | pay per use, from the credits |
 | Shared cache and AI limits | Redis container on the same server | included |
