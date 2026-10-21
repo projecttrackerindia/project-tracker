@@ -94,7 +94,7 @@ public class PerSeatPricingTests(ApiFactory factory)
         var q = (await owner.Get("/api/v1/billing/quote?planCode=PRO&seats=12&period=yearly")).Data!;
         Assert.Equal(45259m, q["quote"]!["chargePerCycle"]!.GetValue<decimal>());
         Assert.Equal(30, q["quote"]!["totalPercent"]!.GetValue<int>());
-        Assert.Equal(12 * 60, q["aiCredits"]!.GetValue<int>());
+        Assert.Equal(12 * 80, q["aiCredits"]!.GetValue<int>());
         Assert.Equal(12 * 5120, q["storageMb"]!.GetValue<int>());
         Assert.Equal(1, q["minSeats"]!.GetValue<int>());
     }

@@ -648,7 +648,7 @@ public partial class AiWorkspaceTests(ApiFactory factory)
         var d = report.Data!;
         Assert.Equal(DateTime.UtcNow.ToString("yyyy-MM"), S(d["month"]));
         Assert.Equal(22, d["creditsUsed"]!.GetValue<long>());                       // 1 + 20 + 1; the failed answer was free
-        Assert.Equal(2000, d["creditsLimit"]!.GetValue<long>());
+        Assert.Equal(3000, d["creditsLimit"]!.GetValue<long>());
         Assert.Equal(4, d["answers"]!.GetValue<int>());
         Assert.Equal(1, d["failed"]!.GetValue<int>());
         var tiers = d["byTier"]!.AsArray().ToDictionary(t => S(t!["tier"]), t => t!["answers"]!.GetValue<int>());
@@ -685,7 +685,7 @@ public partial class AiWorkspaceTests(ApiFactory factory)
         var row = res.Data!["rows"]!.AsArray().Single(r => Guid.Parse(S(r!["tenantId"])) == o.Owner.WorkspaceId)!;
         Assert.Equal("BUSINESS", S(row["planCode"]));
         Assert.Equal(20, row["creditsUsed"]!.GetValue<long>());
-        Assert.Equal(2000, row["creditsLimit"]!.GetValue<long>());
+        Assert.Equal(3000, row["creditsLimit"]!.GetValue<long>());
         Assert.Equal(1, row["deep"]!.GetValue<int>());
         Assert.Equal(200, row["tokensIn"]!.GetValue<long>());
         Assert.Equal(40, row["tokensOut"]!.GetValue<long>());
