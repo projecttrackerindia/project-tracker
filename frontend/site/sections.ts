@@ -24,7 +24,7 @@ export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
 <div><h4>Resources</h4><ul><li><a href="/docs/">Help Center</a></li><li><a href="/blog/">Blog</a></li>${GUIDES.slice(0, 3).map((g) => `<li><a href="${g.path}">${esc(g.h1)}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
-<div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
+<div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><a href="tel:${SITE.phoneHref}">${SITE.phone}</a></li><li><a href="/about/">About us</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="/delete-account/">Delete your account</a></li></ul></div>
 </div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Hosted in India on Google Cloud (Mumbai) · Prices in INR</span><span>Made for teams that deliver.</span></div></div></footer>`;
 
@@ -443,6 +443,17 @@ const bodies: Record<string, () => string> = {
 <article class="card" ${reveal(2)}><h3>What is deleted, and when</h3><ul><li>Within 30 days: your account, profile, photo, sign-in methods, devices, notification settings and personal data.</li><li>If you own a workspace, we first agree with you who takes it over or whether it closes, so your team keeps its work.</li><li>Kept: invoices as long as tax law requires, and security logs while they are needed; backups age out within 14 days.</li></ul></article>
 </div><div style="height:30px"></div>${band('Questions?', `Write to ${SITE.supportEmail}.`)}</div>`,
   ...Object.fromEntries(DETAILS.map((d) => [d.path, () => detailBody(d)])),
+  '/about/': () => `<div class="wrap"><article class="prose">
+<h2>Why we started</h2>
+<p>Most teams we met ran their projects from spreadsheets, their support from a shared inbox and their documentation from folders nobody could find. Each tool was fine on its own; together they meant chasing people for updates and losing the reason behind every decision.</p>
+<p>Project Tracker brings that work into one workspace: projects and timesheets, an operations desk with service levels, documentation for every API, and an AI assistant that answers from your own data, priced in rupees and hosted in India.</p>
+<h2>The founder</h2>
+<p><b>${SITE.founder}</b>, Founder. An integration and software engineer who has spent years building and running API platforms and internal tools for business teams, Prasanna started Project Tracker to give Indian companies the kind of delivery and support tooling that is usually built only for large enterprises: secure by default, simple to adopt and fair in price.</p>
+<h2>What we believe</h2>
+<ul><li>Your data belongs to you: export everything at any time, and delete your account whenever you choose.</li><li>Security is not a premium feature: passkeys, two-step sign-in and workspace isolation are on every plan.</li><li>AI should help, not decide: the assistant proposes, and a person confirms.</li><li>Software should fit how Indian teams work: rupee pricing, local languages and data kept in India.</li></ul>
+<h2>Contact us</h2>
+<ul><li>E-mail: <a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a> (sales, billing, help and security)</li><li>Phone: <a href="tel:${SITE.phoneHref}">${SITE.phone}</a></li><li>Hosting: Google Cloud, Mumbai, India</li></ul>
+</article><div style="height:50px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,
   [DOCS_INDEX.path]: () => libraryIndex(GUIDES, 'Every guide'),
   [BLOG_INDEX.path]: () => libraryIndex(ARTICLES, 'Latest articles'),
   ...Object.fromEntries(LIBRARY.map((d) => [d.path, () => libraryBody(d)])),

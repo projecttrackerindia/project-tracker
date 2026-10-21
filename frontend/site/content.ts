@@ -9,6 +9,10 @@ export const SITE = {
   alternateNames: ['ProjectTracker', 'projecttracker.in'],
   /** The one address for every question: sales, billing, help and security reports. */
   supportEmail: 'support@projecttracker.in',
+  /** The founder and the public phone number. */
+  founder: 'Prasanna Krishna Daddala',
+  phone: '+91 76750 41369',
+  phoneHref: '+917675041369',
   securityEmail: 'support@projecttracker.in',
   themeColor: '#7c3aed',
 };
@@ -123,6 +127,9 @@ export const PAGES: StaticPage[] = [
   { path: '/security/', title: 'Security | Project Tracker', h1: 'Security and privacy built into the foundations', lead: 'How we keep each organization\'s work separate, controlled and recoverable.',
     description: 'How Project Tracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
 ];
+
+PAGES.push({ path: '/about/', title: 'About Us | Project Tracker', h1: 'Built in India for teams that deliver', lead: 'Why we are building Project Tracker, who is behind it, and how to reach us.',
+  description: 'About Project Tracker: founded by Prasanna Krishna Daddala to give Indian teams one secure workspace for projects, support and documentation. Our principles, where your data is kept, and how to contact us.' });
 
 /** Required by app stores: how anyone can ask for their account and personal data to be deleted, with or without the app. */
 PAGES.push({ path: '/delete-account/', title: 'Delete Your Account | Project Tracker', h1: 'Delete your Project Tracker account', lead: 'How to ask for your account and the personal data linked to it to be deleted, what is removed and what is kept.',

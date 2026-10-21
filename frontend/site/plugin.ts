@@ -54,7 +54,8 @@ const orgLd = {
   logo: { '@type': 'ImageObject', url: abs('/icons/icon-512.png'), width: 512, height: 512 },
   email: SITE.supportEmail, areaServed: 'IN', address: { '@type': 'PostalAddress', addressCountry: 'IN' },
   sameAs: ['https://github.com/projecttrackerindia'],
-  contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, areaServed: 'IN', availableLanguage: ['en', 'hi', 'te'] },
+  founder: { '@type': 'Person', name: SITE.founder, jobTitle: 'Founder' }, telephone: SITE.phoneHref,
+  contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, telephone: SITE.phoneHref, areaServed: 'IN', availableLanguage: ['en', 'hi', 'te'] },
 };
 const siteLd = { '@context': 'https://schema.org', '@type': 'WebSite', '@id': abs('/#website'), url: abs('/'), name: SITE.name, alternateName: SITE.alternateNames, description: SITE.description, publisher: { '@id': abs('/#organization') }, inLanguage: 'en' };
 const appLd = {
