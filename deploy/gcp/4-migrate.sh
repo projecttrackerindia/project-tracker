@@ -49,29 +49,33 @@ if [ "$TABLES" != "0" ]; then echo "Cloud SQL already has $TABLES tables. To sta
 fi
 
 echo "== 3/4 Uploaded files"
+# rclone reads from Railway's bucket into Cloud Shell; gcloud uploads to the Google bucket. Both only move what changed.
 command -v rclone >/dev/null || sudo apt-get install -y -qq rclone >/dev/null
-# The bucket is written through rclone's own Google Cloud Storage connection, signed in as you (Cloud Shell's sign-in).
-export RCLONE_CONFIG_GCS_TYPE="google cloud storage" RCLONE_CONFIG_GCS_ENV_AUTH=true RCLONE_CONFIG_GCS_BUCKET_POLICY_ONLY=true \
-  RCLONE_CONFIG_GCS_LOCATION="$REGION"
+M="$STATE/mirror"; mkdir -p "$M/files" "$M/voice"
 API="$STATE/railway-api.env"
 if [ "$(get Storage__Provider "$API")" = "S3" ]; then
   export RCLONE_CONFIG_RW_TYPE=s3 RCLONE_CONFIG_RW_PROVIDER=Other RCLONE_CONFIG_RW_ENDPOINT="$(get Storage__S3__ServiceUrl "$API")" \
     RCLONE_CONFIG_RW_ACCESS_KEY_ID="$(get Storage__S3__AccessKeyId "$API")" RCLONE_CONFIG_RW_SECRET_ACCESS_KEY="$(get Storage__S3__SecretAccessKey "$API")" \
     RCLONE_CONFIG_RW_REGION="$(get Storage__S3__Region "$API")" RCLONE_CONFIG_RW_FORCE_PATH_STYLE=true
   SRC_PREFIX=$(get Storage__S3__Prefix "$API")
-  rclone copy --stats-one-line --stats 30s "rw:$(get Storage__S3__Bucket "$API")/${SRC_PREFIX}" "gcs:${BUCKET}/files"
+  VOICE_BUCKET=$(get Voice__S3Bucket "$API"); FILE_BUCKET=$(get Storage__S3__Bucket "$API")
+  EXTRA=(); [ -n "$VOICE_BUCKET" ] && [ "$VOICE_BUCKET" = "$FILE_BUCKET" ] && [ -z "$SRC_PREFIX" ] && EXTRA=(--exclude "voice/**" --exclude "calls/**" --exclude "recordings/**")
+  rclone copy --stats-one-line --stats 30s "rw:${FILE_BUCKET}/${SRC_PREFIX}" "$M/files" "${EXTRA[@]}"
 else
-  # Files on the Railway server's disk: packed there and unpacked into the bucket with the same names.
+  # Files on the Railway server's disk: packed there and unpacked here with the same names.
   railway ssh --service API -- tar czf - -C /app/data files > "$STATE/files.tgz" || { echo "Could not read files from Railway; if the API has no files yet this is fine."; : > "$STATE/files.tgz"; }
-  if [ -s "$STATE/files.tgz" ]; then rm -rf "$STATE/files" && mkdir -p "$STATE/files" && tar xzf "$STATE/files.tgz" -C "$STATE/files" && \
-    gcloud storage cp -r "$STATE/files/files/*" "gs://${BUCKET}/files/"; fi
+  [ -s "$STATE/files.tgz" ] && tar xzf "$STATE/files.tgz" -C "$M" || true
 fi
+gcloud storage rsync --recursive "$M/files" "gs://${BUCKET}/files"
+echo "files: $(find "$M/files" -type f | wc -l) ($(du -sh "$M/files" | cut -f1))"
 
 echo "== 4/4 Call recordings"
 if [ -n "$(get Voice__S3Bucket "$API")" ]; then
   export RCLONE_CONFIG_RV_TYPE=s3 RCLONE_CONFIG_RV_PROVIDER=Other RCLONE_CONFIG_RV_ENDPOINT="$(get Voice__S3Endpoint "$API")" \
     RCLONE_CONFIG_RV_ACCESS_KEY_ID="$(get Voice__S3AccessKey "$API")" RCLONE_CONFIG_RV_SECRET_ACCESS_KEY="$(get Voice__S3SecretKey "$API")" \
     RCLONE_CONFIG_RV_REGION="$(get Voice__S3Region "$API")" RCLONE_CONFIG_RV_FORCE_PATH_STYLE=true
-  rclone copy --stats-one-line --stats 30s "rv:$(get Voice__S3Bucket "$API")" "gcs:${BUCKET}" --exclude "files/**"
+  rclone copy --stats-one-line --stats 30s "rv:$(get Voice__S3Bucket "$API")" "$M/voice" --exclude "files/**"
+  gcloud storage rsync --recursive "$M/voice" "gs://${BUCKET}"
+  echo "recordings: $(find "$M/voice" -type f | wc -l) ($(du -sh "$M/voice" | cut -f1))"
 fi
 echo "Moved. Next: ./5-start.sh"
