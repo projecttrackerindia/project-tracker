@@ -40,37 +40,29 @@ This creates the image registry, database, bucket, server, fixed address and fir
 
 ## 3. Bring the settings over from Railway
 
-```bash
-npm i -g @railway/cli && railway login --browserless && railway link      # pick the ProjectTracker project, production
-railway variables --service API --kv > ~/.pt-gcp/railway-api.env
-railway variables --service MeetBot --kv > ~/.pt-gcp/railway-meetbot.env
-railway variables --service Postgres --kv > ~/.pt-gcp/railway-postgres.env
-railway variables --service FrontEnd --kv > ~/.pt-gcp/railway-web.env      # search-engine verification tags
-./3-env.sh
-./2-build.sh                          # once more, so the website carries those tags
-```
-
-The script keeps every Railway setting, including keys for AI, e-mail, payments and speech. It then points the database, files and recordings at Google Cloud. The results stay in `~/.pt-gcp` in your Cloud Shell. If your Railway services have other names, use the names shown by `railway status`.
-
-Check that Gemini answers in Mumbai (and which model to use) before the move:
+Create a Railway token (railway.com › Account › Tokens; a workspace token works) and store it as a Secret Manager secret named
+`railway-token` in this project (Security › Secret Manager › Create secret). Nothing is typed into Cloud Shell or chat. Then:
 
 ```bash
-./ai-check.sh                     # prints "OK: ready"; if the model is not offered in Mumbai, try another: ./ai-check.sh gemini-2.5-flash-lite
-GEMINI_MODEL=<model that worked> ./3-env.sh   # only if you picked a different model
+./railway-export.sh                 # every service's settings into ~/.pt-gcp/railway-*.env (prints only counts)
+./3-env.sh                          # Google Cloud settings; anything still pointing at Railway is listed and left out
+./2-build.sh                        # once more, so the website carries the search-engine verification tags
+./ai-check.sh                       # Gemini answers through Vertex AI in Mumbai ("OK: ready")
 ```
 
-The Ollama and Redis services on Railway are not moved: Gemini on Vertex AI replaces the self-hosted model (the e2-medium server has no room for it), and Redis runs as a small container on the server.
+Railway's Ollama and Redis are not moved: Gemini on Vertex AI replaces the self-hosted model and Redis runs on the server.
+Cloud SQL must run the same PostgreSQL major version as Railway (18 at the time of the move).
 
 ## 4. The move (maintenance window)
 
-1. In ProjectTracker go to **Admin › Settings** and turn on **Maintenance mode**.
-2. Run:
-
 ```bash
-./4-migrate.sh
+./railway-db-proxy.sh on            # a temporary public address for the Railway database (password protected)
+REHEARSAL=1 ./4-migrate.sh          # optional trial while the site stays live (only reads Railway)
+FILES_ONLY=1 ./4-migrate.sh         # optional: copy files and recordings ahead of time (repeatable, only changes)
 ```
 
-This copies the database (and prints how many organizations and people arrived), the uploaded files and the call recordings.
+Then turn on **Maintenance mode** (Admin › Settings) and run `./4-migrate.sh`. It copies the database (printing how many
+organizations and people arrived), then the files and recordings that changed. It took under 3 minutes for the first move.
 
 ## 5. Start on Google Cloud
 
@@ -85,9 +77,10 @@ It waits until the API reports healthy, then prints the server address.
 1. At your DNS provider, set the **A record** of `projecttracker.in` to the address printed in step 5, and the **A record** of `www` to the same address (`www` redirects to the main address). Leave the MX, TXT and other e-mail records alone.
 2. Within a few minutes Caddy on the server gets the HTTPS certificate on its own.
 3. Open the site, sign in and check a project, a file download and Operations.
-4. Turn **Maintenance mode** off. It is part of the database, so it came across already on.
-5. In Google Search Console (property `projecttracker.in`), open **Sitemaps** and submit `https://projecttracker.in/sitemap.xml`, then use **URL inspection › Request indexing** on the home page.
-6. Keep the Railway project for a week without deleting it. To go back, point the A record at Railway again. After that week, delete the Railway project: nothing on Google Cloud depends on it.
+4. Turn **Maintenance mode** off on the new site (Admin › Settings). It came across already on. Leave it ON in Railway, so anyone whose DNS is still cached sees a read-only copy instead of making changes that would be lost.
+5. Close the temporary database address: `./railway-db-proxy.sh off`.
+6. In Google Search Console (property `projecttracker.in`), open **Sitemaps** and submit `https://projecttracker.in/sitemap.xml`, then use **URL inspection › Request indexing** on the home page.
+7. Keep the Railway project for a week without deleting it. To go back, point the A record at Railway again. After that week, delete the Railway project: nothing on Google Cloud depends on it.
 
 ## Day to day
 
