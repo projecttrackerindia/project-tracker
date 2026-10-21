@@ -27,6 +27,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Ai/AiOperationsProcessor.cs", // scheduling metadata and atomic leases; retrieval uses fresh current requester scope
         "ProjectManagement.Application/Features/Ai/AiToolbox.cs",
         "ProjectManagement.Application/Features/Ai/AiUsageService.cs",
+        "ProjectManagement.Application/Features/Auth/AccountDeletionService.cs", // the signed-in person's own account, the workspaces they own (count only) and the platform administrators' e-mail addresses
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
