@@ -24,6 +24,8 @@ const insights={days:90,open:4,unassigned:1,breached:1,atRisk:1,compliance:0.86,
 const writes=[],errors=[],checks=[];
 let saved=null;
 let voice={enabled:false,agentName:'Asha',companyName:'FiveStar',languages:['te','hi','en','ta'],knowledge:null,requireVerification:true,verificationRule:'date of birth and the last 4 digits of the loan number',transferNumber:null,workTypeId:null,storageKeyPattern:'{yyyy}/{MM}/{dd}/{callId}',archiveConfigured:false,canManage:true,availableLanguages:{en:'English',hi:'Hindi',te:'Telugu',ta:'Tamil',kn:'Kannada'}};let vcall=null;
+let waChannels=[];const waChat={id:'w1',channelId:'ch1',channelName:'IT helpdesk',contact:'+91 98•••••210',contactName:'Ravi Kumar',language:'te',status:'open',mode:'ai',lastMessageAt:iso(0),lastText:'password reset కావాలి',unread:1,workTaskId:null,ticketKey:null,canReply:true};
+let waMessages=[{from:'contact',text:'నా లాగిన్ పని చేయడం లేదు, password reset కావాలి',at:iso(0)},{from:'ai',text:'సరేనండి, మీ employee ID చెప్పగలరా?',at:iso(0),by:'Asha'}];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const make=async()=>{
@@ -43,6 +45,8 @@ try{
    else if(ep==='/api/v1/operations/triage'&&method==='POST'){writes.push({ep});data={workTypeId:'t1',workType:'Production Support',typeReason:'3 similar work items were this type',priority:'High',priorityReason:'it mentions “urgent”',assignee:{id:'u2',name:'Upendra Rao'},assigneeReason:'resolved 4 similar items · 2 open now',duplicates:[{id:'w1',key:'WT-1',title:'Printer queue stuck on floor 3',status:'ToDo',assignee:null,score:71}],routed:'to the next person on the rota'};}
    else if(ep==='/api/v1/operations/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});settings={...settings,...b};data=settings;}
    else if(ep==='/api/v1/agent/inbox')data={items:[],pending:0,canDecide:true};
+   else if(ep==='/api/v1/support/channels'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});const ch={id:'ch1',name:b.name,teamId:null,teamName:null,phoneNumberId:b.phoneNumberId,businessAccountId:b.businessAccountId,displayPhone:null,verifiedName:null,enabled:true,autoReply:b.autoReply,agentName:b.agentName,workTypeId:null,webhookUrl:'https://projecttracker.in/api/v1/support/whatsapp/ch1',verifyToken:'0123456789abcdef0123456789abcdef',lastInboundAt:null,checkedAt:null,lastError:null,openChats:1,connectedAt:iso(0)};waChannels=[ch];data=ch;}
+   else if(ep==='/api/v1/support/conversations/w1/reply'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});waMessages=[...waMessages,{from:'agent',text:b.text,at:iso(0),by:'Asha Rao'}];waChat.mode='human';data={chat:waChat,messages:waMessages};}
    else if(ep==='/api/v1/voice/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});voice={...voice,...b};data=voice;}
    else if(ep==='/api/v1/voice/calls/test'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});vcall={id:'c1',channel:'test',direction:'inbound',callerNumber:null,language:'te',status:'active',startedAt:iso(0),endedAt:null,turns:[{role:'agent',text:'నమస్కారం, FiveStar కి స్వాగతం. నేను Asha.',at:iso(0)}],summary:null,workTaskId:null,ticketKey:null,verified:false,transferred:false,archiveKey:null};data={call:vcall,say:vcall.turns[0].text,ended:false};}
    else if(ep==='/api/v1/voice/calls/c1/say'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});vcall={...vcall,turns:[...vcall.turns,{role:'caller',text:b.text,at:iso(0)},{role:'tool',tool:'create_ticket',text:'Created ticket WT-9.',at:iso(0)},{role:'agent',text:'మీ అభ్యర్థన నమోదు చేయబడింది: WT-9.',at:iso(0)}],ticketKey:'WT-9',workTaskId:'w9'};data={call:vcall,say:'ok',ended:false};}
@@ -57,6 +61,10 @@ try{
     else if(ep==='/api/v1/workspace/members')data=members;
     else if(ep==='/api/v1/operations/settings')data=settings;
     else if(ep==='/api/v1/voice/settings')data=voice;
+    else if(ep==='/api/v1/support/channels')data=waChannels;
+    else if(ep==='/api/v1/support/conversations')data=[waChat];
+    else if(ep==='/api/v1/support/conversations/w1')data={chat:waChat,messages:waMessages};
+    else if(ep==='/api/v1/teams')data=[];
     else if(ep==='/api/v1/voice/connectors')data=[];
     else if(ep==='/api/v1/voice/calls')data=vcall?[{id:'c1',channel:'test',callerNumber:null,language:'te',status:'ended',startedAt:iso(0),endedAt:iso(0),summary:'Caller asked about EMI date; ticket WT-9 created.',ticketKey:'WT-9',transferred:false}]:[];
     else if(ep==='/api/v1/operations/insights')data=insights;
@@ -75,7 +83,7 @@ try{
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(500);await page.screenshot({path:path.join(out,name)});};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/operations');await page.locator('.work-table').waitFor();
- const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Queue','Board','Insights','Voice agent','Settings']);
+ const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Queue','Board','Insights','WhatsApp','Voice agent','Settings']);
  // Views and saving one.
  await page.locator('.ops-view',{hasText:'Unassigned'}).click();await page.waitForTimeout(400);
  assert.equal(await page.locator('.work-table tbody tr').count(),1);assert.ok(await page.locator('.ops-view.on',{hasText:'Unassigned'}).isVisible());
@@ -126,6 +134,18 @@ try{
  await page.locator('.va-tool',{hasText:'create_ticket'}).waitFor();await shot(page,'voice-test-1440.png');
  await page.getByRole('button',{name:'Hang up'}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/calls/c1/end');i++)await page.waitForTimeout(100);checks.push('voice');
+ // WhatsApp: a team connects its number, sees the webhook setup, then answers a chat from the inbox.
+ await page.goto(origin+'/preview-org/operations?view=whatsapp');await page.locator('.wa-hero').waitFor();
+ await page.getByRole('button',{name:'Connect WhatsApp'}).click();
+ const dlg=page.getByRole('dialog');await dlg.getByLabel('Name',{exact:true}).fill('IT helpdesk');await dlg.getByLabel('Phone number ID').fill('123456789012345');
+ await dlg.getByLabel('WhatsApp Business Account ID').fill('998877665544332');await dlg.getByLabel('Permanent access token').fill('EAAG'+'x'.repeat(40));await dlg.getByLabel('App secret').fill('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6');
+ await dlg.getByRole('button',{name:'Connect',exact:true}).click();
+ await page.getByRole('dialog').getByText('/api/v1/support/whatsapp/ch1').waitFor();await shot(page,'whatsapp-setup-1440.png');
+ assert.equal(writes.find(w=>w.ep==='/api/v1/support/channels').b.phoneNumberId,'123456789012345');
+ await page.getByRole('button',{name:'Done'}).click();await page.locator('.wa-channel',{hasText:'IT helpdesk'}).waitFor();
+ await page.locator('.wa-chats button',{hasText:'Ravi Kumar'}).click();await page.locator('.wa-msg.ai').waitFor();
+ await page.getByLabel('Reply').fill('Reset link sent to your mail.');await page.getByLabel('Reply').press('Enter');
+ await page.locator('.wa-msg.agent',{hasText:'Reset link'}).waitFor();await shot(page,'whatsapp-chat-1440.png');checks.push('whatsapp');
  await page.close();await ctx.close();
  // Phone.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});

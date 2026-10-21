@@ -16,9 +16,10 @@ import { SlaChip } from './Sla';
 import { useIsMobile } from '../../lib/mobile';
 import { BulkBar, OpsBoard, OpsInsights, OpsSettingsPanel } from './Ops';
 import { VoiceAgentPanel } from './VoiceAgent';
+import { WhatsAppSupportPanel } from './WhatsAppSupport';
 import { get, put } from '../../api/client';
 
-type Tab = 'queue' | 'board' | 'insights' | 'voice' | 'settings';
+type Tab = 'queue' | 'board' | 'insights' | 'whatsapp' | 'voice' | 'settings';
 interface SavedView { name: string; f: Record<string, string | boolean> }
 const VIEWS: { id: string; label: string; icon: 'bolt' | 'user' | 'users' | 'alert' | 'timer' | 'calendar'; f: Record<string, string | boolean> }[] = [
   { id: 'open', label: 'Open', icon: 'bolt', f: { view: 'open' } },
@@ -130,11 +131,11 @@ export function WorkTasksPage() {
       </PageHead>
 
       <nav className="tabs route-tabs ops-tabs" aria-label="Operations">
-        {([['queue', 'Queue', 'list'], ['board', 'Board', 'kanban'], ['insights', 'Insights', 'chart'], ...(settingsQ.data?.canManage ? [['voice', 'Voice agent', 'phone'], ['settings', 'Settings', 'settings']] : [])] as [Tab, string, 'list'][]).map(([id, label, icon]) => (
+        {([['queue', 'Queue', 'list'], ['board', 'Board', 'kanban'], ['insights', 'Insights', 'chart'], ['whatsapp', 'WhatsApp', 'message'], ...(settingsQ.data?.canManage ? [['voice', 'Voice agent', 'phone'], ['settings', 'Settings', 'settings']] : [])] as [Tab, string, 'list'][]).map(([id, label, icon]) => (
           <button key={id} type="button" className={`tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}><Icon name={icon} />{label}</button>
         ))}
       </nav>
-      {tab === 'insights' ? <OpsInsights /> : tab === 'voice' ? <VoiceAgentPanel /> : tab === 'settings' ? <OpsSettingsPanel /> : (
+      {tab === 'insights' ? <OpsInsights /> : tab === 'whatsapp' ? <WhatsAppSupportPanel canManage={!!settingsQ.data?.canManage} /> : tab === 'voice' ? <VoiceAgentPanel /> : tab === 'settings' ? <OpsSettingsPanel /> : (
       <div className="card">
         <div className="ops-views" role="group" aria-label="Views">
           {VIEWS.map((v) => <button key={v.id} type="button" className={`ops-view ${sameAs(v.f) ? 'on' : ''}`} onClick={() => applyView(v.f)}><Icon name={v.icon} size={13} />{v.label}</button>)}
