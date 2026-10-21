@@ -1,22 +1,24 @@
 # Pricing and the arithmetic behind it
 
-Paid plans are priced **per person per month**, in the platform's billing currency (INR by default, excluding GST). Storage and AI credits are per person and **pooled** across the workspace. The numbers below are the built-in catalog (`DatabaseInitializer.PlanCatalog`, catalog version 2); a platform administrator can change any of them under Admin → Plans.
+Paid plans are priced **per person per month**, in the platform's billing currency (INR by default, excluding GST). Storage and AI credits are per person and **pooled** across the workspace. The numbers below are the built-in catalog (`DatabaseInitializer.PlanCatalog`, catalog version 3); a platform administrator can change any of them under Admin → Plans.
 
 ## The plans
 
 | | Free | Pro | Business | Enterprise |
 |---|---|---|---|---|
-| Price | ₹0 | **₹349** per person / month | **₹699** per person / month | custom |
+| Price | ₹0 | **₹449** per person / month | **₹999** per person / month | custom |
 | People | 1 | pay per person | pay per person | by contract |
 | Files | 500 MB | 5 GB per person | 25 GB per person | unlimited |
 | AI model levels | Quick | Quick, Standard | Quick, Standard, Deep | all |
-| AI credits / month | 10 | **60** per person | **200** per person | 25,000 shared (override per organization) |
+| AI credits / month | 10 | **80** per person | **300** per person | 25,000 shared (override per organization) |
 | AI reads files / takes actions | – / – | yes / – | yes / yes | yes / yes |
 | Documents (`DOCUMENT_LIMIT`) | **10** | unlimited | unlimited | unlimited |
 
 **Discounts** (`Billing:Pricing`): paying a year at once takes **20% off**; teams of 10+ get **10%**, 25+ **15%**, 100+ **20%** automatically. They add up to at most **30%**. A discounted total is rounded to a whole rupee. **Trial:** 14 days of Pro or Business, up to 5 people and 100 AI credits, no payment.
 
-Examples: 12 people on Pro, monthly: 349 × 12 − 10% = **₹3,769**. The same, yearly: 349 × 12 × 12 − 30% = **₹35,179** a year (₹244.30 per person per month). 100 people on Business, yearly: 40% would apply, capped at 30%.
+Examples: 12 people on Pro, monthly: 449 × 12 − 10% = **₹4,849**. The same, yearly: 449 × 12 × 12 − 30% = **₹45,259** a year (₹314.30 per person per month). 100 people on Business, yearly: 40% would apply, capped at 30%.
+
+**Catalog version 3** (from catalog 2: Pro ₹349 → ₹449 with 60 → 80 credits, Business ₹699 → ₹999 with 200 → 300 credits) came with Operations, the AI employee on voice and WhatsApp, DocTracker and the meeting notetaker. On start-up an older database moves once: only the per-person prices and the AI credits change; seats and every other limit an administrator set are kept. The payment-provider plans are made again at the new amount, so a running subscription keeps charging its old amount until its owner next changes plan or seats.
 
 **Documents** cost almost nothing to run (rows of text; their files count against the storage pool people already pay for), so the only limit in the first release is how many a Free workspace may hold (10). Deleted documents do not count and can be restored for 30 days. Later releases add the governance features by plan as set out in `docs/proposals/documentation-platform.md` section 12 (approval workflows, expiring grants, secret reveal, audit export, PDF exports per month, history retention that follows `ACTIVITY_RETENTION_DAYS`). **Release D3** applies it to review: no workflow on Free (the owner publishes), one default multi-step workflow on Pro (`CUSTOM_WORKFLOWS`), a workflow per kind of document with due times and reminders on Business (`ADVANCED_PERMISSIONS`); asking for access, requirement coverage and the document's activity are on every plan, the full audit trail with export needs `AUDIT_LOG` (Business). **Release D4** adds `DOC_ENDPOINT_LIMIT`, the documented API endpoints a workspace may keep (Free 50, Pro 2,000, Business 25,000, Enterprise unlimited unless the contract says otherwise); describing APIs, importing and exporting OpenAPI and Postman files and the API-changes check are on every plan, only the number of endpoints differs. A workspace that moves to a lower plan keeps every endpoint but cannot add or import more while it is over the limit. **Release D5** (secrets): keeping secrets, masked everywhere, and revealing them with the `docs.secrets.reveal` permission (owners, admins and managers by default) are on every plan; on Business and above: the reveal time chosen by an administrator (10/15/30/60 s or 5-300), the *Confidential* class that needs a fresh two-step check, data-key rotation and the audit-trail verification (`ADVANCED_SECURITY`). A workspace that moves down keeps its secrets and the chosen time, but cannot add confidential ones or rotate. **Release D6** (PDF, search): downloading a document as PDF follows the report formats (`ADVANCED_REPORTS`, Pro and above; the file is kept 7 days); full-text search of documents and the Documents overview are on every plan. Group to team mapping for single sign-on is part of `ADVANCED_SECURITY` (Business and above), like SSO itself. The workspace **logo** on PDFs and the API lifecycle stage are on every plan (the PDF itself follows `ADVANCED_REPORTS`). A workspace that moves down keeps its workflows but only the ones its plan allows apply. A workspace that moves to a lower plan keeps every document; it just cannot create more while it is over the limit. **Release D2** applies the plan to history and sharing: old versions are removed after the plan's history period (`ACTIVITY_RETENTION_DAYS`: Free 30 days, Pro 1 year, Business 2 years, Enterprise unlimited; a workspace's own data policy can shorten it), except the newest published version and the newest three of each document; blocking a person, team or role and ending access on a date need `ADVANCED_PERMISSIONS` (Business and above); files count against the workspace's storage pool and the plan's file-size limit.
 
@@ -32,18 +34,31 @@ A credit is a unit of AI use: a Quick answer is **1** credit, Standard **4**, De
 
 Deep used to be 15 credits (₹1.71 per credit); at 20 every credit costs about the same whichever level answers. With a mix of 50% Quick, 40% Standard and 10% Deep answers, a credit costs **about ₹1.2**. These are estimates: **Admin → AI usage** records the real tokens and shows an estimated provider cost per organization. Check it after the first weeks of real use and change the credits per level, or the credits per plan, if it differs.
 
+## Voice, WhatsApp and the notetaker use the same credits
+
+Nothing is unlimited: the AI employee and the notetaker draw on the workspace's credit pool, priced so a credit never costs us more than about ₹1.3.
+
+| What | Credits | What it costs us | Per credit |
+|---|---|---|---|
+| A WhatsApp or typed answer from the AI employee | 1 (Quick) | ~₹1.06 (model) | ₹1.06 |
+| A **spoken** voice turn (`Voice:SpeechCreditsPerTurn`, 1 on top of the answer) | 2 | ~₹1.06 model + ~₹0.5 speech (Sarvam: speech to text ₹30/hour, text to speech ₹30 per 10,000 characters) | ₹0.78 |
+| Meeting minutes | 1 | ~₹1.06 | ₹1.06 |
+| Our bot in a meeting (`NotetakerService.BotCreditsPerHour`, charged once with the first minutes) | 3 per started hour | ~₹3.7 per hour of server time (1 vCPU, 1 GB) | ₹1.23 |
+
+Phone minutes (Plivo/Exotel) and WhatsApp conversation charges (Meta) are billed by those providers to the customer's own account, not by us.
+
 ## Margin per person
 
-Cost lines: payment fee 2.36% (Razorpay 2% plus 18% GST on the fee), servers/database/e-mail/push ₹18 (Pro) or ₹22 (Business), storage ₹2 per GB-month, AI at ₹1.2 per credit. "Typical" assumes 35% of the credits and 40% of the storage are used; "worst" assumes all of both are.
+Cost lines: payment fee 2.36% (Razorpay 2% plus 18% GST on the fee), servers/database/e-mail/push ₹18 (Pro) or ₹26 (Business, which carries the AI employee and the notetaker), storage ₹2 per GB-month, AI at ₹1.2 per credit typically and ₹1.3 in the worst case. "Typical" assumes 35% of the credits and 40% of the storage are used; "worst" assumes all of both are. The target is at least 20% left over in the worst case at the biggest discount.
 
 | | Price per person / month | Typical contribution | Worst case |
 |---|---|---|---|
-| Pro, monthly | ₹349 | ₹293 (84%) | ₹240 (69%) |
-| Pro, yearly | ₹279 | ₹225 (81%) | ₹172 (62%) |
-| Pro, 25 people, yearly (−30%) | ₹244 | ₹191 (78%) | ₹138 (56%) |
-| Business, monthly | ₹699 | ₹556 (80%) | ₹368 (53%) |
-| Business, yearly | ₹559 | ₹419 (75%) | ₹232 (41%) |
-| Business, 100 people, yearly (−30%) | ₹489 | ₹351 (72%) | ₹164 (33%) |
+| Pro, monthly | ₹449 | ₹383 (85%) | ₹306 (68%) |
+| Pro, yearly | ₹359 | ₹295 (82%) | ₹219 (61%) |
+| Pro, 25 people, yearly (−30%) | ₹314 | ₹251 (80%) | ₹175 (56%) |
+| Business, monthly | ₹999 | ₹803 (80%) | ₹509 (51%) |
+| Business, yearly | ₹799 | ₹608 (76%) | ₹314 (39%) |
+| Business, 100 people, yearly (−30%) | ₹699 | ₹511 (73%) | ₹217 (31%) |
 
 Every case stays positive even when each person uses every credit and every gigabyte. The only open-ended cost was "unlimited" AI, so no plan has it any more: Enterprise gets a large shared pool, and a contract can override it per organization (Admin → Organizations → feature exceptions). A **free** account costs at most ₹10 a month in AI (10 Quick answers); a **trial** at most about ₹135.
 

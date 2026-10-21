@@ -35,6 +35,8 @@ public class VoiceOptions
     public string SarvamSpeaker { get; set; } = "kavya";
     /// <summary>Speaking speed (1 = Sarvam's default). Slightly quicker sounds more like a real agent on the phone.</summary>
     public double SarvamPace { get; set; } = 1.1;
+    /// <summary>AI credits a spoken answer costs on top of the thinking (speech to text and back). Thinking is a Quick answer (1 credit), so a spoken turn is 2.</summary>
+    public int SpeechCreditsPerTurn { get; set; } = 1;
     public bool ArchiveConfigured => !string.IsNullOrWhiteSpace(S3Endpoint) && !string.IsNullOrWhiteSpace(S3Bucket) && !string.IsNullOrWhiteSpace(S3AccessKey) && !string.IsNullOrWhiteSpace(S3SecretKey);
 }
 
@@ -262,6 +264,9 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var connectors = await db.VoiceConnectors.AsNoTracking().Where(c => c.Enabled).ToListAsync(ct);
         var turns = Turns(call);
         turns.Add(new("caller", text, clock.Now));
+        // A spoken answer also pays for the speech; reserved first so a workspace out of credits is told before the call goes quiet.
+        await using var speaking = req.Speak && speech.Configured && voice.Value.SpeechCreditsPerTurn > 0
+            ? await credits.ReserveAsync(Guid.NewGuid(), Math.Clamp(voice.Value.SpeechCreditsPerTurn, 1, 100), "voice_speech", ct) : null;
         var thinking = System.Diagnostics.Stopwatch.StartNew();
         var (say, ended) = await ThinkAsync(s, call, connectors, turns, ct);
         var thought = thinking.ElapsedMilliseconds;
@@ -273,6 +278,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (!req.Speak) return new(await CallDtoAsync(call, ct), say, ended);
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var parts = await speech.SpeakPartsAsync(say, call.Language, ct);
+        if (speaking is not null && parts.Count > 0) await speaking.SettleAsync(speaking.Amount, ct);
         log.LogInformation("Voice turn {Call}: thought {Think} ms, spoke {Tts} ms ({Parts} parts)", call.Id, thought, watch.ElapsedMilliseconds, parts.Count);
         return new(await CallDtoAsync(call, ct), say, ended, parts.FirstOrDefault(), null, parts);
     }

@@ -74,7 +74,8 @@ public static class DatabaseInitializer
     }
 
     /// <summary>Bumped when the built-in plans change (price, who pays for what, limits): existing databases are brought up to it once, see <see cref="SeedPlansAsync"/>.</summary>
-    public const int PlanCatalogVersion = 2;
+    /// <summary>2: prices per person. 3: Pro 449 and Business 999 with more AI credits, once Operations, the voice and WhatsApp AI employee, DocTracker and the notetaker joined the plans.</summary>
+    public const int PlanCatalogVersion = 3;
     private const string CatalogVersionKey = "plan_catalog_version";
 
     // code, name, description, price per person per month (null = custom), per seat, sort, features
@@ -96,7 +97,7 @@ public static class DatabaseInitializer
             [FeatureKeys.ChatAttachments] = 0, [FeatureKeys.MobileApp] = 0,
             [FeatureKeys.DocumentLimit] = 10, [FeatureKeys.DocEndpointLimit] = 50,
         }),
-        ("PRO", "Pro", "For teams that plan and deliver together.", 349m, true, 1, new()
+        ("PRO", "Pro", "For teams that plan and deliver together.", 449m, true, 1, new()
         {
             [FeatureKeys.ResumeTemplates] = 5, [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = 365, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
@@ -104,11 +105,11 @@ public static class DatabaseInitializer
             [FeatureKeys.StorageLimitMb] = 5120, [FeatureKeys.MaxFileSizeMb] = 100, [FeatureKeys.AdvancedSecurity] = 0,    // 5 GB per person
             [FeatureKeys.ResourceManagement] = 0, [FeatureKeys.ServiceLevels] = 0,
             [FeatureKeys.ReminderLimit] = 500, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 0,
-            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 2, [FeatureKeys.AiMonthlyCredits] = 60, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 0,   // 60 credits per person
+            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 2, [FeatureKeys.AiMonthlyCredits] = 80, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 0,   // 80 credits per person
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
             [FeatureKeys.DocumentLimit] = -1, [FeatureKeys.DocEndpointLimit] = 2000,
         }),
-        ("BUSINESS", "Business", "For growing teams and departments.", 699m, true, 2, new()
+        ("BUSINESS", "Business", "For growing teams and departments.", 999m, true, 2, new()
         {
             [FeatureKeys.ResumeTemplates] = 8, [FeatureKeys.ProjectLimit] = -1, [FeatureKeys.TaskLimit] = -1, [FeatureKeys.MaxMembers] = -1, [FeatureKeys.MaxTeams] = -1,
             [FeatureKeys.ActivityRetentionDays] = 730, [FeatureKeys.AdvancedReports] = 1, [FeatureKeys.CustomWorkflows] = 1,
@@ -116,7 +117,7 @@ public static class DatabaseInitializer
             [FeatureKeys.StorageLimitMb] = 25600, [FeatureKeys.MaxFileSizeMb] = 250, [FeatureKeys.AdvancedSecurity] = 1,   // 25 GB per person
             [FeatureKeys.ResourceManagement] = 1, [FeatureKeys.ServiceLevels] = 1,
             [FeatureKeys.ReminderLimit] = -1, [FeatureKeys.RecurringReminderLimit] = -1, [FeatureKeys.ReminderEscalation] = 1,
-            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 200, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,   // 200 credits per person
+            [FeatureKeys.AiAssistant] = 1, [FeatureKeys.AiModelTier] = 3, [FeatureKeys.AiMonthlyCredits] = 300, [FeatureKeys.AiAttachments] = 1, [FeatureKeys.AiActions] = 1,   // 300 credits per person
             [FeatureKeys.ChatAttachments] = 1, [FeatureKeys.MobileApp] = 1,
             [FeatureKeys.DocumentLimit] = -1, [FeatureKeys.DocEndpointLimit] = 25000,
         }),
@@ -197,18 +198,26 @@ public static class DatabaseInitializer
                 log?.LogInformation("Plan {Code}: moving the starter price {Old} USD to {New} {Currency}.", plan.Code, plan.PriceMonthly, StartingPrice(def.Code, def.Price, config), currency);
                 plan.PriceMonthly = StartingPrice(def.Code, def.Price, config); plan.Currency = currency;
             }
-            else if (upgrade)
+            else if (upgrade && current < 2)
             {
                 log?.LogInformation("Plan {Code}: moving to catalog version {Version} (price {Old} -> {New} {Currency}).", plan.Code, PlanCatalogVersion, plan.PriceMonthly, StartingPrice(def.Code, def.Price, config), currency);
                 plan.Description = def.Description; plan.PerSeat = def.PerSeat; plan.SortOrder = def.Sort;
                 plan.PriceMonthly = StartingPrice(def.Code, def.Price, config); plan.ProviderPlanId = null; plan.ProviderPlanAmount = null;
                 foreach (var f in plan.Features.Where(f => def.Features.ContainsKey(f.FeatureKey))) f.Value = def.Features[f.FeatureKey];
             }
+            else if (upgrade && def.PerSeat)
+            {
+                // Version 3 changes only the per-person price and the AI credits; every other limit an administrator set stays as it is. Payment-provider
+                // plans are made again at the new amount, so a subscription already running keeps its amount until its owner next changes plan or seats.
+                log?.LogInformation("Plan {Code}: moving to catalog version {Version} (price {Old} -> {New} {Currency}).", plan.Code, PlanCatalogVersion, plan.PriceMonthly, StartingPrice(def.Code, def.Price, config), currency);
+                plan.PriceMonthly = StartingPrice(def.Code, def.Price, config); plan.ProviderPlanId = null; plan.ProviderPlanAmount = null;
+                foreach (var f in plan.Features.Where(f => f.FeatureKey == FeatureKeys.AiMonthlyCredits)) f.Value = def.Features[FeatureKeys.AiMonthlyCredits];
+            }
             foreach (var (key, value) in def.Features)
                 if (plan.Features.All(f => f.FeatureKey != key))
                     db.PlanFeatures.Add(new PlanFeature { PlanId = plan.Id, FeatureKey = key, Value = value });
         }
-        if (upgrade)
+        if (upgrade && current < 2)
         {
             // Workspaces that paid for the old flat plans keep their people: seats = the people they have now (at least 5), so nobody is locked out the day prices change.
             var perSeatIds = existing.Where(p => PlanCatalog.Any(c => c.Code == p.Code && c.PerSeat)).Select(p => p.Id).ToList();

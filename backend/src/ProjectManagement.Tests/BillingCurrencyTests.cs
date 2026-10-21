@@ -41,14 +41,14 @@ public class BillingCurrencyTests(ApiFactory factory)
         var plans = await PlansSeenBy(c);
         Assert.All(plans, p => Assert.Equal("INR", p!["currency"]!.GetValue<string>()));
         Assert.Equal(0m, Plan(plans, "FREE")["priceMonthly"]!.GetValue<decimal>());
-        Assert.Equal(349m, Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>());
-        Assert.Equal(699m, Plan(plans, "BUSINESS")["priceMonthly"]!.GetValue<decimal>());
+        Assert.Equal(449m, Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>());
+        Assert.Equal(999m, Plan(plans, "BUSINESS")["priceMonthly"]!.GetValue<decimal>());
         Assert.Null(Plan(plans, "ENTERPRISE")["priceMonthly"]);       // custom pricing
 
         await c.UpgradeAsync("PRO", 1);
         var invoice = (await c.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!;
         Assert.Equal("INR", invoice["currency"]!.GetValue<string>());
-        Assert.Equal(349m, invoice["amount"]!.GetValue<decimal>());
+        Assert.Equal(449m, invoice["amount"]!.GetValue<decimal>());
 
         var admin = await Admin();
         var settings = (await admin.Get("/api/v1/admin/billing-settings")).Data!;
@@ -79,14 +79,14 @@ public class BillingCurrencyTests(ApiFactory factory)
             Assert.Equal(1199.50m, Plan(await PlansSeenBy(after), "PRO")["priceMonthly"]!.GetValue<decimal>());
             await after.UpgradeAsync("PRO", 1);
             Assert.Equal(1199.50m, (await after.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["amount"]!.GetValue<decimal>());
-            Assert.Equal(349m, (await before.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["amount"]!.GetValue<decimal>());   // what was already charged stays
+            Assert.Equal(449m, (await before.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["amount"]!.GetValue<decimal>());   // what was already charged stays
 
             Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.Put($"/api/v1/admin/plans/{id}", Body(-5m))).Status);
             var custom = await admin.Put($"/api/v1/admin/plans/{id}", Body(null));            // no price = "contact sales"
             Assert.True(custom.Ok);
             Assert.Null(custom.Data!["priceMonthly"]);
         }
-        finally { Assert.True((await admin.Put($"/api/v1/admin/plans/{id}", Body(349m))).Ok); }
+        finally { Assert.True((await admin.Put($"/api/v1/admin/plans/{id}", Body(449m))).Ok); }
     }
 
     // ------------------------------------------------------------------ the currency is configurable
@@ -111,7 +111,7 @@ public class BillingCurrencyTests(ApiFactory factory)
             Assert.Equal("USD", (await admin.Get("/api/v1/admin/billing-settings")).Data!["currency"]!.GetValue<string>());
 
             // Prices are not converted, invoices already issued keep their currency and new ones use the new one.
-            Assert.Equal(349m, Plan(await PlansSeenBy(owner), "PRO")["priceMonthly"]!.GetValue<decimal>());
+            Assert.Equal(449m, Plan(await PlansSeenBy(owner), "PRO")["priceMonthly"]!.GetValue<decimal>());
             Assert.Equal("INR", (await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["currency"]!.GetValue<string>());
             var other = await TestClient.RegisterAsync(factory); await other.CreateOrgAsync(); await other.UpgradeAsync("PRO", 1);
             Assert.Equal("USD", (await other.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().First()!["currency"]!.GetValue<string>());
@@ -132,6 +132,49 @@ public class BillingCurrencyTests(ApiFactory factory)
         Assert.Contains("INR", (await admin.Get("/api/v1/admin/billing-settings")).Data!["currencies"]!.AsArray().Select(x => x!["code"]!.GetValue<string>()));
     }
 
+    // ------------------------------------------------------------------ catalog version 3
+
+    [Fact]
+    public async Task Catalog_version_3_raises_the_per_person_prices_and_credits_and_keeps_seats_and_other_limits()
+    {
+        var owner = await TestClient.RegisterAsync(factory); var tid = await owner.CreateOrgAsync(); Assert.True((await owner.UpgradeAsync("BUSINESS", 7)).Ok);
+        try
+        {
+            factory.WithDb(db =>
+            {
+                db.PlatformSettings.Where(s => s.Key == "plan_catalog_version").ExecuteUpdate(s => s.SetProperty(x => x.Value, "2"));
+                db.Plans.Where(p => p.Code == "PRO").ExecuteUpdate(s => s.SetProperty(p => p.PriceMonthly, 349m).SetProperty(p => p.ProviderPlanId, "plan_old"));
+                db.Plans.Where(p => p.Code == "BUSINESS").ExecuteUpdate(s => s.SetProperty(p => p.PriceMonthly, 699m));
+                var pro = db.Plans.Where(p => p.Code == "PRO").Select(p => p.Id).First();
+                db.PlanFeatures.Where(f => f.PlanId == pro && f.FeatureKey == "AI_MONTHLY_CREDITS").ExecuteUpdate(s => s.SetProperty(f => f.Value, 60L));
+                db.PlanFeatures.Where(f => f.PlanId == pro && f.FeatureKey == "STORAGE_LIMIT_MB").ExecuteUpdate(s => s.SetProperty(f => f.Value, 9999L));   // an administrator's own limit
+                DatabaseInitializer.SeedPlansAsync(db, default, Config()).GetAwaiter().GetResult();
+                return 0;
+            });
+            factory.WithDb(db =>
+            {
+                var pro = db.Plans.Include(p => p.Features).Single(p => p.Code == "PRO");
+                Assert.Equal(449m, pro.PriceMonthly);
+                Assert.Null(pro.ProviderPlanId);                                                       // the payment plan is made again at the new amount
+                Assert.Equal(80L, pro.Features.Single(f => f.FeatureKey == "AI_MONTHLY_CREDITS").Value);
+                Assert.Equal(9999L, pro.Features.Single(f => f.FeatureKey == "STORAGE_LIMIT_MB").Value);   // kept
+                Assert.Equal(999m, db.Plans.Single(p => p.Code == "BUSINESS").PriceMonthly);
+                Assert.Equal(7, db.Subscriptions.IgnoreQueryFilters().Single(x => x.TenantId == tid).Seats);   // seats are not reset
+                Assert.Equal("3", db.PlatformSettings.Single(x => x.Key == "plan_catalog_version").Value);
+                return 0;
+            });
+        }
+        finally
+        {
+            factory.WithDb(db =>
+            {
+                var pro = db.Plans.Where(p => p.Code == "PRO").Select(p => p.Id).First();
+                db.PlanFeatures.Where(f => f.PlanId == pro && f.FeatureKey == "STORAGE_LIMIT_MB").ExecuteUpdate(s => s.SetProperty(f => f.Value, 5120L));
+                return 0;
+            });
+        }
+    }
+
     // ------------------------------------------------------------------ start-up: configuration defaults and older databases
 
     [Fact]
@@ -149,13 +192,13 @@ public class BillingCurrencyTests(ApiFactory factory)
                 return 0;
             });
             var plans = (await admin.Get("/api/v1/admin/plans")).Data!.AsArray();
-            Assert.Equal(("INR", 349m), (Plan(plans, "PRO")["currency"]!.GetValue<string>(), Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>()));
+            Assert.Equal(("INR", 449m), (Plan(plans, "PRO")["currency"]!.GetValue<string>(), Plan(plans, "PRO")["priceMonthly"]!.GetValue<decimal>()));
             Assert.Equal(("INR", 35m), (Plan(plans, "BUSINESS")["currency"]!.GetValue<string>(), Plan(plans, "BUSINESS")["priceMonthly"]!.GetValue<decimal>()));   // labelled, not converted
             Assert.Equal("INR", (await admin.Get("/api/v1/admin/billing-settings")).Data!["currency"]!.GetValue<string>());
         }
         finally
         {
-            factory.WithDb(db => { db.Plans.Where(p => p.Code == "BUSINESS").ExecuteUpdate(s => s.SetProperty(p => p.PriceMonthly, 699m)); return 0; });
+            factory.WithDb(db => { db.Plans.Where(p => p.Code == "BUSINESS").ExecuteUpdate(s => s.SetProperty(p => p.PriceMonthly, 999m)); return 0; });
         }
     }
 

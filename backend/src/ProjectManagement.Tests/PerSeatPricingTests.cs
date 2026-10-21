@@ -42,7 +42,7 @@ public class PerSeatPricingTests(ApiFactory factory)
 
         var overview = (await owner.Get("/api/v1/billing")).Data!;
         var invoice = overview["invoices"]![0]!;
-        Assert.Equal(33552m, invoice["amount"]!.GetValue<decimal>());                                    // 699 x 5 x 12, 20% off
+        Assert.Equal(47952m, invoice["amount"]!.GetValue<decimal>());                                    // 999 x 5 x 12, 20% off
         Assert.Contains("5 seats, billed yearly (20% off)", invoice["description"]!.GetValue<string>());
         Assert.Equal((true, 5, "yearly"), (overview["seats"]!["perSeat"]!.GetValue<bool>(), overview["seats"]!["purchased"]!.GetValue<int>(), overview["seats"]!["period"]!.GetValue<string>()));
         Assert.True(DateTime.Parse(overview["plan"]!["periodEnd"]!.GetValue<string>()).ToUniversalTime() > DateTime.UtcNow.AddMonths(11));
@@ -51,7 +51,7 @@ public class PerSeatPricingTests(ApiFactory factory)
         await owner.LoginAsync();
         var limits = (await owner.Get($"/api/v1/admin/tenants/{tid}")).Data!["limits"]!;
         Assert.Equal(5, limits["MAX_MEMBERS"]!.GetValue<int>());
-        Assert.Equal(5 * 200, limits["AI_MONTHLY_CREDITS"]!.GetValue<int>());                           // 200 credits a person, pooled
+        Assert.Equal(5 * 300, limits["AI_MONTHLY_CREDITS"]!.GetValue<int>());                           // 300 credits a person, pooled
         Assert.Equal(5 * 25600, limits["STORAGE_LIMIT_MB"]!.GetValue<int>());                           // 25 GB a person, pooled
     }
 
@@ -89,10 +89,10 @@ public class PerSeatPricingTests(ApiFactory factory)
         await owner.LoginAsync();
         var limits = (await owner.Get($"/api/v1/admin/tenants/{tid}")).Data!["limits"]!;
         Assert.Equal(5, limits["MAX_MEMBERS"]!.GetValue<int>());
-        Assert.Equal(100, limits["AI_MONTHLY_CREDITS"]!.GetValue<int>());                                // 5 x 200 would be 1000: a trial is capped
+        Assert.Equal(100, limits["AI_MONTHLY_CREDITS"]!.GetValue<int>());                                // 5 x 300 would be 1500: a trial is capped
 
         var q = (await owner.Get("/api/v1/billing/quote?planCode=PRO&seats=12&period=yearly")).Data!;
-        Assert.Equal(35179m, q["quote"]!["chargePerCycle"]!.GetValue<decimal>());
+        Assert.Equal(45259m, q["quote"]!["chargePerCycle"]!.GetValue<decimal>());
         Assert.Equal(30, q["quote"]!["totalPercent"]!.GetValue<int>());
         Assert.Equal(12 * 60, q["aiCredits"]!.GetValue<int>());
         Assert.Equal(12 * 5120, q["storageMb"]!.GetValue<int>());
@@ -113,12 +113,12 @@ public class PerSeatPricingTests(ApiFactory factory)
             var start = await owner.Post("/api/v1/billing/checkout", new { planCode = "PRO", startTrial = false, seats = 3, period = "yearly" });
             Assert.True(start.Ok, start.ToString());
             var first = start.Data!["payment"]!["subscriptionId"]!.GetValue<string>();
-            Assert.Equal(("yearly", 10051m), factory.Payments.Plans[^1]);                                  // 349 x 3 x 12, 20% off
+            Assert.Equal(("yearly", 12931m), factory.Payments.Plans[^1]);                                  // 449 x 3 x 12, 20% off
             Assert.Null(factory.Payments.Started[^1].StartAt);
             Assert.True((await owner.Post("/api/v1/billing/confirm", new { paymentId = "pay_s1", subscriptionId = first, signature = Sig("pay_s1", first) })).Ok);
             var overview = (await owner.Get("/api/v1/billing")).Data!;
             Assert.Equal(3, overview["seats"]!["purchased"]!.GetValue<int>());
-            Assert.Equal(10051m, overview["invoices"]![0]!["amount"]!.GetValue<decimal>());
+            Assert.Equal(12931m, overview["invoices"]![0]!["amount"]!.GetValue<decimal>());
             Assert.Contains("3 seats", overview["invoices"]![0]!["description"]!.GetValue<string>());
 
             // 2. Two more seats while the year is paid for: the new amount starts at the renewal, the seats are there now, and nothing is charged today.

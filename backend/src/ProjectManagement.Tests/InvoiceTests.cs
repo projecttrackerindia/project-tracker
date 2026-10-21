@@ -58,7 +58,7 @@ public class InvoiceTests(ApiFactory factory)
         Assert.Contains("Acme Works Private Limited", text);
         Assert.Contains("19AAACA1234B1Z9", text);
         Assert.Contains("Kolkata 700016", text);
-        Assert.Contains("INR 349.00", text);
+        Assert.Contains("INR 449.00", text);
         Assert.Contains("Amount includes GST at 18%.", text);
         Assert.Contains("Pro plan", text);
     }

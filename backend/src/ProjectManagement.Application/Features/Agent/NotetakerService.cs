@@ -187,7 +187,10 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     private static string Str(JsonNode? n, int max) { var s = n is JsonValue v && v.TryGetValue<string>(out var t) ? t.Trim() : ""; return s.Length > max ? s[..max] : s; }
     private static List<string> List(JsonNode? n, int count, int max) => (n as JsonArray ?? []).Select(x => Str(x, max)).Where(x => x.Length > 0).Take(count).ToList();
 
-    /// <summary>Writes (or rewrites) the minutes from the transcript. Costs one AI request at the quick price.</summary>
+    /// <summary>AI credits per started hour of a session our bot attended, charged once with its first minutes.</summary>
+    public const int BotCreditsPerHour = 3;
+
+    /// <summary>Writes (or rewrites) the minutes from the transcript. Costs one AI request at the quick price, plus the bot's hours the first time.</summary>
     private async Task<MinutesDto> WriteMinutesAsync(AgentMeetingBot bot, Guid userId, CancellationToken ct)
     {
         if (!await AiAvailableAsync(ct)) throw new ForbiddenException("AI is switched off or not part of this plan, so minutes cannot be written.", "AI_DISABLED");
@@ -204,6 +207,9 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             "\"actionItems\":[{\"task\":\"what to do\",\"owner\":\"name or null\",\"due\":\"date as said, or null\"}],\"risks\":[\"blockers or concerns raised\"],\"nextMeeting\":\"if one was agreed, else null\"}. " +
             "Keep each line short and concrete. Empty lists are fine.";
         var cost = Math.Clamp(aiOptions.Value.Chat.Quick.Credits, 1, 10000);
+        // Our bot sitting in the call costs server time, so the first minutes of a bot session also carry its hours (rewrites do not).
+        if (bot.Kind == "bot" && !await db.MeetingMinutes.AsNoTracking().AnyAsync(m => m.BotRowId == bot.Id, ct))
+            cost += BotCreditsPerHour * (int)Math.Clamp(Math.Ceiling((bot.SessionEndUtc - bot.SessionStartUtc).TotalHours), 1, 8);
         AiAnswer answer;
         JsonObject json;
         // Charged only for minutes that could be read: a reply that is not the expected JSON releases the reservation.
