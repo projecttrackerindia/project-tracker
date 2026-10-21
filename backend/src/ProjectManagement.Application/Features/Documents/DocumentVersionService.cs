@@ -20,7 +20,7 @@ public record RestoreRequest(string? Reason, bool DiscardChanges, int Revision);
 /// The history of a document. Publishing freezes the draft as the next version (1.0, then 1.1, or 2.0 for a major change) and starts a fresh draft from it;
 /// nothing that was published is ever changed. Restoring an old version publishes a new version with its content, so the history shows both.
 /// </summary>
-public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows, ProjectManagement.Application.Features.ApiDocs.ApiTransferService apiData, ProjectManagement.Application.Features.ApiDocs.ApiDocService apiDocs, DocumentSearchIndexer indexer)
+public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, DocumentAccessService rights, DocumentWorkflowService workflows, ProjectManagement.Application.Features.ApiDocs.ApiTransferService apiData, ProjectManagement.Application.Features.ApiDocs.ApiDocService apiDocs, DocumentSearchIndexer indexer, DocumentMaskingService masking)
 {
     public static string Label(int major, int minor) => $"{major}.{minor}";
 
@@ -62,7 +62,8 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         var list = await ListAsync(documentId, ct);
         var v = list.Items.FirstOrDefault(x => x.Id == versionId) ?? throw new NotFoundException("Version not found.");
         var sections = await db.DocumentSections.AsNoTracking().Where(s => s.VersionId == versionId).OrderBy(s => s.SortOrder).ToListAsync(ct);
-        return new VersionContentDto(v, sections.Select(s => new SectionDto(s.Key, s.Title, s.Kind, s.SortOrder, s.ContentJson)).ToList());
+        var masker = await masking.MaskerAsync(ct);   // history is masked like the document itself
+        return new VersionContentDto(v, sections.Select(s => new SectionDto(s.Key, s.Title, s.Kind, s.SortOrder, masker?.MaskSection(s.Kind.ToString(), s.ContentJson) ?? s.ContentJson)).ToList());
     }
 
     public async Task<VersionDiff> CompareAsync(Guid documentId, Guid fromId, Guid toId, CancellationToken ct = default)
@@ -70,8 +71,9 @@ public class DocumentVersionService(IAppDbContext db, ICurrentContext ctx, AppCl
         var list = await ListAsync(documentId, ct);
         var from = list.Items.FirstOrDefault(x => x.Id == fromId) ?? throw new NotFoundException("Version not found.");
         var to = list.Items.FirstOrDefault(x => x.Id == toId) ?? throw new NotFoundException("Version not found.");
+        var masker = await masking.MaskerAsync(ct);
         async Task<List<DocumentDiff.Snapshot>> Load(Guid v) => (await db.DocumentSections.AsNoTracking().Where(s => s.VersionId == v).OrderBy(s => s.SortOrder).ToListAsync(ct))
-            .Select(s => new DocumentDiff.Snapshot(s.Key, s.Title, s.Kind, s.SortOrder, s.ContentJson)).ToList();
+            .Select(s => new DocumentDiff.Snapshot(s.Key, s.Title, s.Kind, s.SortOrder, masker?.MaskSection(s.Kind.ToString(), s.ContentJson) ?? s.ContentJson)).ToList();
         return DocumentDiff.Compare(new VersionRef(from.Id, from.Label, from.IsDraft, from.PublishedAt), await Load(fromId), new VersionRef(to.Id, to.Label, to.IsDraft, to.PublishedAt), await Load(toId));
     }
 

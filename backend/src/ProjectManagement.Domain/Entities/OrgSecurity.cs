@@ -27,3 +27,23 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     public long? ChainBrokenSeq { get; set; }
     public DateTime? ChainBrokenAt { get; set; }
 }
+
+/// <summary>How a workspace masks personal and secret data in documents. No row = masking on, every built-in kind on.</summary>
+public class DocumentMaskingSettings : TenantEntity, ITenantScoped
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>Built-in kinds switched off, by label, comma separated (e.g. "Address,Date of birth").</summary>
+    public string DisabledBuiltIns { get; set; } = "";
+}
+
+/// <summary>A workspace's own masking rule: values in this field (a table column, JSON key or "Label:") are hidden with this strategy.</summary>
+public class MaskingRule : TenantEntity, ITenantScoped
+{
+    public string Field { get; set; } = "";
+    /// <summary>exact (ignores case, spaces and _ -), contains, or regex (on the field name, or on values).</summary>
+    public string Match { get; set; } = "exact";
+    /// <summary>full, last4, last2, first2last2, email or secret.</summary>
+    public string Strategy { get; set; } = "full";
+    public string Label { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+}

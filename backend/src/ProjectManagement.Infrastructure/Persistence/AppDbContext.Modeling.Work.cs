@@ -552,6 +552,12 @@ public partial class AppDbContext
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.IpRanges).HasMaxLength(6000);
         });
+        b.Entity<DocumentMaskingSettings>(e => { e.HasIndex(x => x.TenantId).IsUnique(); e.Property(x => x.DisabledBuiltIns).HasMaxLength(500); });
+        b.Entity<MaskingRule>(e =>
+        {
+            e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Field).HasMaxLength(200); e.Property(x => x.Match).HasMaxLength(10); e.Property(x => x.Strategy).HasMaxLength(20); e.Property(x => x.Label).HasMaxLength(80);
+        });
         b.Entity<SsoConnection>(e =>
         {
             e.HasIndex(x => x.TenantId).IsUnique();   // one identity provider per organization

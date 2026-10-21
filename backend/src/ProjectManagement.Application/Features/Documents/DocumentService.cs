@@ -21,7 +21,12 @@ public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Gui
     string VersionLabel = "Draft", int SharedCount = 0);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
-public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false);
+/// <param name="MaskedCount">How many personal or secret values were masked in what is sent (0 when nothing was, or for a revealed copy).</param>
+/// <param name="Revealed">The real values are shown (an audited reveal, or the editor's copy); <paramref name="RevealSeconds"/> is how long a reader's reveal lasts.</param>
+public record DocumentDto(DocumentItemDto Item, int Revision, string VersionLabel, IReadOnlyList<SectionDto> Sections, DocumentCan Can, string? PublishedLabel = null, bool HasUnpublishedChanges = false, bool ViewingPublished = false,
+    int MaskedCount = 0, bool Revealed = false, int RevealSeconds = 0, bool CanReveal = false);
+/// <param name="Purpose">edit (an editor opens the real values to change them) or read (someone allowed to look, for a few seconds).</param>
+public record RevealRequest(string? Reason, string? Purpose);
 
 public record SectionInput(string Key, string? Content);
 public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId = null, Guid? TeamId = null, DocumentVisibility? Visibility = null,
@@ -36,7 +41,7 @@ public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? 
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer, ILogger<DocumentService> logger)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer, DocumentMaskingService masking, ILogger<DocumentService> logger)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
     /// <summary>A view is touched again only once it is this old: a person re-opening (or merely refetching) the same document seconds apart never writes twice.</summary>
@@ -266,7 +271,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         return await ToDtoAsync(doc, ct);
     }
 
-    private async Task<DocumentDto> ToDtoAsync(Document doc, CancellationToken ct)
+    private async Task<DocumentDto> ToDtoAsync(Document doc, CancellationToken ct, bool reveal = false, int revealSeconds = 0)
     {
         var item = (await ToItemsAsync([doc], ct))[0];
         var can = await CanAsync(doc, ct);
@@ -279,7 +284,41 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var publishedLabel = published is null ? null : DocumentVersionService.Label(published.Major, published.Minor);
         var unpublished = draft is not null && (published is null || draft.ContentHash != published.ContentHash);
         var label = publishedLabel is null ? "Draft" : showPublished ? publishedLabel : unpublished ? $"{publishedLabel} + changes" : publishedLabel;
-        return new DocumentDto(item, doc.Revision, label, sections.Select(s => new SectionDto(s.Key, s.Title, s.Kind, s.SortOrder, s.ContentJson)).ToList(), can, publishedLabel, unpublished && (can.Edit || published is null), showPublished);
+        // Personal and secret values are masked in everything sent, unless this is an audited reveal or the editor's own copy.
+        var masker = reveal ? null : await masking.MaskerAsync(ct);
+        var dtos = sections.Select(s => new SectionDto(s.Key, s.Title, s.Kind, s.SortOrder, masker is null ? s.ContentJson : masker.MaskSection(s.Kind.ToString(), s.ContentJson))).ToList();
+        var canReveal = can.Edit || await permissions.HasAsync(Permissions.DocsSecrets, ct);
+        return new DocumentDto(item, doc.Revision, label, dtos, can, publishedLabel, unpublished && (can.Edit || published is null), showPublished,
+            masker?.Count ?? 0, reveal, revealSeconds, canReveal);
+    }
+
+    /// <summary>
+    /// The real values of a masked document, for someone allowed to see them: an editor about to change it (purpose "edit"), or a reader with
+    /// the reveal permission who gives a reason (purpose "read", shown for the workspace's reveal time). Every reveal is audited.
+    /// </summary>
+    public async Task<DocumentDto> RevealAsync(Guid id, RevealRequest req, CancellationToken ct = default)
+    {
+        var doc = await Base().FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException("Document not found.");
+        var can = await CanAsync(doc, ct);
+        var editing = req.Purpose == "edit";
+        var reason = (req.Reason ?? "").Trim();
+        if (editing)
+        {
+            if (!can.Edit) throw new ForbiddenException("You can't edit this document.");
+            if (reason.Length == 0) reason = "Editing the document";
+        }
+        else
+        {
+            if (!can.Edit && !await permissions.HasAsync(Permissions.DocsSecrets, ct)) throw new ForbiddenException("You are not allowed to reveal masked values.", "PERMISSION_DENIED");
+            if (reason.Length < 4) throw new ValidationException("reason", "Say why you need to see the masked values (at least a few words).");
+        }
+        if (reason.Length > 300) reason = reason[..300];
+        var seconds = editing ? 0 : Math.Clamp(await db.TenantSecuritySettings.AsNoTracking().Select(x => (int?)x.RevealSeconds).FirstOrDefaultAsync(ct) ?? 15, 5, 300);
+        var masked = await ToDtoAsync(doc, ct);
+        recorder.Audit("document.pii_revealed", "Document", doc.Id, null, new { purpose = editing ? "edit" : "read", reason, values = masked.MaskedCount });
+        if (!editing) recorder.Activity("document.pii_revealed", "Document", doc.Id, $"Revealed masked values in {KeyOf(doc.Number)}: {reason}", doc.ProjectId);
+        await SaveAsync(ct);
+        return await ToDtoAsync(doc, ct, reveal: true, revealSeconds: seconds);
     }
 
     private async Task<DocumentCan> CanAsync(Document doc, CancellationToken ct)
@@ -403,9 +442,13 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var sections = await db.DocumentSections.Where(s => s.VersionId == vid).ToListAsync(ct);
         var images = (await db.DocumentFiles.Where(f => f.DocumentId == doc.Id && f.ContentType.StartsWith("image/")).Select(f => f.Id).ToListAsync(ct)).ToHashSet();
         var now = clock.Now;
+        var maskingOn = await masking.MaskerAsync(ct) is not null;
         foreach (var input in req.Sections)
         {
             var s = sections.FirstOrDefault(x => x.Key == input.Key) ?? throw new ValidationException("sections", $"There is no section \"{input.Key}\" in this document.");
+            // A masked copy must never be saved over the real values (they would be lost for good).
+            if (maskingOn && input.Content is { } c && PiiMasker.LooksMasked(c) && !PiiMasker.LooksMasked(s.ContentJson))
+                throw new ConflictException($"\"{s.Title}\" still shows masked values. Switch to Edit again to load the real values, then make your change.", "MASKED_CONTENT");
             s.ContentJson = SectionContent.Normalize(s.Kind, input.Content, $"sections.{s.Key}", images);
             s.UpdatedAt = now;
         }
@@ -418,7 +461,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         recorder.Audit("document.edited", "Document", doc.Id, null, new { sections = req.Sections.Select(x => x.Key), hash });   // which sections, never the words
         await SaveAsync(ct);
         if (doc.PublishedVersionId is null) await indexer.IndexAsync(doc.Id, ct);   // readers see the draft until there is a published version
-        return await GetAsync(id, ct);
+        return await ToDtoAsync(doc, ct, reveal: true);   // the editor keeps working on the real values
     }
 
     public async Task<DocumentDto> SetArchivedAsync(Guid id, bool archived, CancellationToken ct = default)

@@ -108,6 +108,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<VoiceCall> VoiceCalls => Set<VoiceCall>();
     public DbSet<SupportChannel> SupportChannels => Set<SupportChannel>();
     public DbSet<SupportConversation> SupportConversations => Set<SupportConversation>();
+    public DbSet<DocumentMaskingSettings> DocumentMaskingSettings => Set<DocumentMaskingSettings>();
+    public DbSet<MaskingRule> MaskingRules => Set<MaskingRule>();
     public DbSet<MeetingBotIdentity> MeetingBotIdentities => Set<MeetingBotIdentity>();
     public DbSet<NotetakerSettings> NotetakerSettings => Set<NotetakerSettings>();
     public DbSet<MeetingMinutes> MeetingMinutes => Set<MeetingMinutes>();

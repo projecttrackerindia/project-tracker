@@ -10,8 +10,21 @@ namespace ProjectManagement.Api.Controllers.Documents;
 /// is permission-checked, rate-limited and audited whether it succeeds or not. Responses are never cached.
 /// </summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Documents)]
-public class SecretsController(SecretService secrets, StepUpService stepUp, DocumentSecurityService security) : ApiControllerBase
+public class SecretsController(SecretService secrets, StepUpService stepUp, DocumentSecurityService security, DocumentMaskingService masking) : ApiControllerBase
 {
+    [HttpGet("document-security/masking")]
+    public async Task<IActionResult> Masking(CancellationToken ct) => Ok(await masking.GetAsync(ct));
+    [HttpPut("document-security/masking")]
+    public async Task<IActionResult> SaveMasking([FromBody] SaveMaskingSettingsRequest req, CancellationToken ct) => Ok(await masking.SaveSettingsAsync(req, ct));
+    [HttpPost("document-security/masking/rules")]
+    public async Task<IActionResult> AddRule([FromBody] SaveMaskingRuleRequest req, CancellationToken ct) => Ok(await masking.SaveRuleAsync(null, req, ct));
+    [HttpPut("document-security/masking/rules/{id:guid}")]
+    public async Task<IActionResult> SaveRule(Guid id, [FromBody] SaveMaskingRuleRequest req, CancellationToken ct) => Ok(await masking.SaveRuleAsync(id, req, ct));
+    [HttpDelete("document-security/masking/rules/{id:guid}")]
+    public async Task<IActionResult> DeleteRule(Guid id, CancellationToken ct) => Ok(await masking.DeleteRuleAsync(id, ct));
+    [HttpPost("document-security/masking/preview")]
+    public async Task<IActionResult> Preview([FromBody] MaskPreviewRequest req, CancellationToken ct) => Ok(await masking.PreviewAsync(req, ct));
+
     [HttpGet("documents/{id:guid}/secrets")]
     public async Task<IActionResult> List(Guid id, CancellationToken ct) => Ok(await secrets.ListAsync(id, ct));
 

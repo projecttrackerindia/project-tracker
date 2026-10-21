@@ -68,6 +68,10 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     [HttpPut("documents/{id:guid}/sections")]
     public async Task<IActionResult> Save(Guid id, [FromBody] SaveSectionsRequest req, CancellationToken ct) => Ok(await documents.SaveSectionsAsync(id, req, ct));
 
+    /// <summary>The real values of a masked document (editors to edit; readers with the permission, with a reason). Audited; never cached.</summary>
+    [HttpPost("documents/{id:guid}/reveal"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Reveal(Guid id, [FromBody] RevealRequest req, CancellationToken ct) => Ok(await documents.RevealAsync(id, req, ct));
+
     [HttpPost("documents/{id:guid}/archive")]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct) => Ok(await documents.SetArchivedAsync(id, true, ct));
 
