@@ -50,9 +50,9 @@ fi
 
 echo "== 3/4 Uploaded files"
 command -v rclone >/dev/null || sudo apt-get install -y -qq rclone >/dev/null
-read -r HMAC_ID HMAC_SECRET < "$STATE/hmac"
-export RCLONE_CONFIG_GCS_TYPE=s3 RCLONE_CONFIG_GCS_PROVIDER=GCS RCLONE_CONFIG_GCS_ENDPOINT=https://storage.googleapis.com \
-  RCLONE_CONFIG_GCS_ACCESS_KEY_ID="$HMAC_ID" RCLONE_CONFIG_GCS_SECRET_ACCESS_KEY="$HMAC_SECRET"
+# The bucket is written through rclone's own Google Cloud Storage connection, signed in as you (Cloud Shell's sign-in).
+export RCLONE_CONFIG_GCS_TYPE="google cloud storage" RCLONE_CONFIG_GCS_ENV_AUTH=true RCLONE_CONFIG_GCS_BUCKET_POLICY_ONLY=true \
+  RCLONE_CONFIG_GCS_LOCATION="$REGION"
 API="$STATE/railway-api.env"
 if [ "$(get Storage__Provider "$API")" = "S3" ]; then
   export RCLONE_CONFIG_RW_TYPE=s3 RCLONE_CONFIG_RW_PROVIDER=Other RCLONE_CONFIG_RW_ENDPOINT="$(get Storage__S3__ServiceUrl "$API")" \
