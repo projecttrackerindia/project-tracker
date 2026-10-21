@@ -10,7 +10,7 @@ import { WorkflowsModal } from './DocumentWorkflows';
 import { DocumentSecurityModal } from './DocumentSecurity';
 import { DocumentsControlCenter } from './DocumentsControlCenter';
 import { DocumentWizard } from './DocumentWizard';
-import { DocumentsSidebar, type DocumentsView } from './DocumentsSidebar';
+import { DocShell, DocumentsSidebar, type DocumentsView } from './DocumentsSidebar';
 import { NeedsAttention, RequiredDocumentsModal } from './NeedsAttention';
 
 const VIEWS: DocumentsView[] = ['all', 'mine', 'shared', 'inbox', 'attention', 'recent', 'restricted', 'trash'];
@@ -57,9 +57,7 @@ export function DocumentsPage() {
           {canCreate && <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New document</button>}
         </div>
       </header>
-      <div className="doc-shell">
-        <DocumentsSidebar view={view} onSelectView={(v) => setView(v)} waiting={waiting} attention={attention} activeProject={project} onSelectProject={setProject} />
-        <div className="doc-shell-main">
+      <DocShell tree={<DocumentsSidebar view={view} onSelectView={(v) => setView(v)} waiting={waiting} attention={attention} activeProject={project} onSelectProject={setProject} />}>
           {view === 'all' && !inProject && <DocumentsControlCenter onView={setView} />}
           <div className="ds-list-head"><h2>{here}</h2><span>{view === 'inbox' && !inProject ? 'Reviews and access requests that need you' : view === 'attention' && !inProject ? 'Gaps and documents that may be out of date' : inProject ? 'Documents in this project' : view === 'all' ? 'Every document you can open' : ''}</span></div>
           {view === 'inbox' && !inProject ? <InboxView /> : view === 'attention' && !inProject ? <NeedsAttention canCreate={canCreate} isAdmin={isAdmin} onRequired={() => setRequired(true)} /> : (
@@ -68,8 +66,7 @@ export function DocumentsPage() {
               mine={!inProject && view === 'mine' ? userId : undefined} restricted={!inProject && view === 'restricted'}
               projectId={inProject && project !== 'general' ? project : undefined} general={inProject && project === 'general'} />
           )}
-        </div>
-      </div>
+      </DocShell>
       {flows && <WorkflowsModal onClose={() => setFlows(false)} />}
       {security && <DocumentSecurityModal onClose={() => setSecurity(false)} />}
       {required && <RequiredDocumentsModal onClose={() => setRequired(false)} />}

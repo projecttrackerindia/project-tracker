@@ -27,6 +27,7 @@ import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
+import { DocShell, DocumentsSidebar } from './DocumentsSidebar';
 import { CLASSIFICATION, ClassificationBadge, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
@@ -86,8 +87,24 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
 type DocTab = 'doc' | 'api' | 'artifact' | 'links' | 'requirements' | 'files' | 'secrets' | 'comments' | 'activity';
 const DOC_TABS: DocTab[] = ['doc', 'links', 'requirements', 'files', 'secrets', 'comments', 'activity'];
 
-/** One document: its sections (editable by people who may edit), who and where, and the work linked to it. */
+/** A document with the Documents tree beside it (the tree opens on this document and lists its sections). */
 export function DocumentPage() {
+  const { id = '' } = useParams();
+  const nav = useNavigate();
+  const q = useWsQuery(['documents', id], () => documentApi.get(id), { retry: false });
+  const inbox = useWsQuery(['documents', 'inbox'], documentApi.inbox);
+  return (
+    <div className="doc-scope dv-shell-page">
+      <DocShell tree={<DocumentsSidebar view={null} waiting={inbox.data?.waiting ?? 0} activeProject={null} activeDoc={q.data ?? null}
+        onSelectView={(v) => nav(v === 'all' ? '/documents' : `/documents?view=${v}`)} onSelectProject={(p) => nav(p ? `/documents?project=${p}` : '/documents')} />}>
+        <DocumentView />
+      </DocShell>
+    </div>
+  );
+}
+
+/** One document: its sections (editable by people who may edit), who and where, and the work linked to it. */
+function DocumentView() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const wid = useWorkspaceId();
