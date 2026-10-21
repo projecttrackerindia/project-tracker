@@ -201,7 +201,9 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
             await ErrorWriter.WriteAsync(http, 403, "API keys cannot be used for this.", [new ApiError("API_KEY_NOT_ALLOWED", "API keys cannot be used for account, billing, administration or key management.")]);
             return;
         }
-        if (identity.Scope == ApiKeyScope.ReadOnly && !(HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method) || HttpMethods.IsOptions(http.Request.Method)))
+        // The MCP endpoint is always a POST (JSON-RPC); what it does is checked again on each call it makes to the app, with this same key.
+        var mcp = path.TrimEnd('/').Equals("/api/v1/mcp", StringComparison.OrdinalIgnoreCase);
+        if (identity.Scope == ApiKeyScope.ReadOnly && !mcp && !(HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method) || HttpMethods.IsOptions(http.Request.Method)))
         {
             await ErrorWriter.WriteAsync(http, 403, "This API key is read-only.", [new ApiError("API_KEY_READ_ONLY", "This API key can only read data. Create a read/write key to make changes.")]);
             return;
