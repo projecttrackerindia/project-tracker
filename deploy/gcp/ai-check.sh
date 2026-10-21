@@ -5,5 +5,5 @@ cd "$(dirname "$0")"; source ./config.sh
 MODEL="${1:-${GEMINI_MODEL:-gemini-2.5-flash}}"
 curl -sS -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" \
   "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/publishers/google/models/${MODEL}:generateContent" \
-  -d '{"contents":[{"role":"user","parts":[{"text":"Reply with the single word: ready"}]}],"generationConfig":{"maxOutputTokens":20}}' \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin); print("OK:", d["candidates"][0]["content"]["parts"][0]["text"].strip()) if "candidates" in d else (print("FAILED:", d.get("error",{}).get("message",d)), sys.exit(1))'
+  -d '{"contents":[{"role":"user","parts":[{"text":"Reply with the single word: ready"}]}],"generationConfig":{"maxOutputTokens":400}}' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print("OK:", "".join(p.get("text","") for p in d["candidates"][0].get("content",{}).get("parts",[])).strip() or d["candidates"][0].get("finishReason")) if "candidates" in d else (print("FAILED:", d.get("error",{}).get("message",d)), sys.exit(1))'
