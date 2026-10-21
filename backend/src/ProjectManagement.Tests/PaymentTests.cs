@@ -171,6 +171,42 @@ public class PaymentTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_payment_gets_one_receipt_and_a_refund_marks_the_invoice_and_tells_the_owner()
+    {
+        factory.Payments.Hosted = true;
+        try
+        {
+            var (owner, sub) = await StartPro();
+            var payment = "pay_rf_" + Guid.NewGuid().ToString("N")[..10];
+            await Webhook("subscription.charged", sub, "evt_r1_" + payment, Pay(payment), Unix(DateTime.UtcNow), Unix(DateTime.UtcNow.AddMonths(1)));
+            await Webhook("subscription.charged", sub, "evt_r2_" + payment, Pay(payment), Unix(DateTime.UtcNow), Unix(DateTime.UtcNow.AddMonths(1)));   // the same payment reported again
+            var number = (await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().Single()!["number"]!.GetValue<string>();
+            Assert.Equal(1, factory.WithDb(db => db.EmailLogs.Count(l => l.Subject.StartsWith("Payment received") && l.Subject.Contains(number))));
+
+            var refundId = "rfnd_" + Guid.NewGuid().ToString("N")[..10];
+            var body = JsonSerializer.Serialize(new
+            {
+                @event = "refund.processed",
+                payload = new
+                {
+                    refund = new { entity = new { id = refundId, payment_id = payment, amount = 99900, currency = "INR", status = "processed" } },
+                    payment = new { entity = new { id = payment, amount = 99900, amount_refunded = 99900, currency = "INR" } },
+                },
+            });
+            var res = await Webhook("refund.processed", sub, "evt_rf_" + refundId, bodyOverride: body);
+            Assert.Equal(HttpStatusCode.OK, res.Status);
+            var invoice = (await owner.Get("/api/v1/billing")).Data!["invoices"]!.AsArray().Single()!;
+            Assert.Equal("Refunded", invoice["status"]!.GetValue<string>());
+            Assert.Equal(1, factory.WithDb(db => db.EmailLogs.Count(l => l.Subject == "Refund of ₹999.00 processed")));
+
+            // A refund for a payment we never invoiced is accepted and ignored, so the provider stops retrying.
+            var stray = JsonSerializer.Serialize(new { @event = "refund.processed", payload = new { refund = new { entity = new { id = "rfnd_x", payment_id = "pay_unknown", amount = 100 } }, payment = (object?)null } });
+            Assert.Equal(HttpStatusCode.OK, (await Webhook("refund.processed", sub, "evt_stray_" + refundId, bodyOverride: stray)).Status);
+        }
+        finally { factory.Payments.Hosted = false; }
+    }
+
+    [Fact]
     public async Task A_failed_renewal_puts_the_workspace_past_due_and_tells_the_owner_and_cancelling_keeps_the_paid_period()
     {
         factory.Payments.Hosted = true;

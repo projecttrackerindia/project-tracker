@@ -141,9 +141,14 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
         };
     }
 
+    /// <summary>payload.{name}.entity when it is there and an object; providers send null or leave parts out depending on the event.</summary>
+    private static JsonElement? Entity(JsonElement payload, string name) =>
+        payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(name, out var wrap) && wrap.ValueKind == JsonValueKind.Object
+        && wrap.TryGetProperty("entity", out var entity) && entity.ValueKind == JsonValueKind.Object ? entity : null;
+
     private static (decimal? Amount, string Currency, string? Reason) FailedPayment(JsonElement payload, string fallbackCurrency)
     {
-        if (!payload.TryGetProperty("payment", out var wrap) || !wrap.TryGetProperty("entity", out var p)) return (null, fallbackCurrency, null);
+        if (Entity(payload, "payment") is not { } p) return (null, fallbackCurrency, null);
         var currency = p.TryGetProperty("currency", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString()! : fallbackCurrency;
         decimal? amount = p.TryGetProperty("amount", out var a) && a.ValueKind == JsonValueKind.Number ? a.GetInt64() / 100m : null;
         var reason = p.TryGetProperty("error_description", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
@@ -162,9 +167,9 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
     /// </summary>
     private async Task<RefundMail?> RecordRefundAsync(string type, JsonElement payload, CancellationToken ct)
     {
-        if (type is not ("refund.processed" or "refund.failed") || !payload.TryGetProperty("refund", out var wrap) || !wrap.TryGetProperty("entity", out var refund)) return null;
-        var refundId = refund.TryGetProperty("id", out var rid) ? rid.GetString() ?? "" : "";
-        var paymentId = refund.TryGetProperty("payment_id", out var pid) ? pid.GetString() ?? "" : "";
+        if (type is not ("refund.processed" or "refund.failed") || Entity(payload, "refund") is not { } refund) return null;
+        var refundId = refund.TryGetProperty("id", out var rid) && rid.ValueKind == JsonValueKind.String ? rid.GetString()! : "";
+        var paymentId = refund.TryGetProperty("payment_id", out var pid) && pid.ValueKind == JsonValueKind.String ? pid.GetString()! : "";
         if (paymentId.Length == 0) return null;
         var invoice = await db.Invoices.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.ProviderReference == paymentId, ct);
         if (invoice is null) { log.LogInformation("Refund {Refund} is for payment {Payment}, which has no invoice here", refundId, paymentId); return null; }
@@ -172,7 +177,7 @@ public class BillingWebhookService(IAppDbContext db, IPaymentProvider payments, 
         var currency = refund.TryGetProperty("currency", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString()! : invoice.Currency;
         var succeeded = type == "refund.processed";
         // Several part-refunds add up: the payment's own running total says whether all of it has gone back.
-        var refundedSoFar = payload.TryGetProperty("payment", out var pw) && pw.TryGetProperty("entity", out var pe) && pe.TryGetProperty("amount_refunded", out var ar) && ar.ValueKind == JsonValueKind.Number
+        var refundedSoFar = Entity(payload, "payment") is { } pe && pe.TryGetProperty("amount_refunded", out var ar) && ar.ValueKind == JsonValueKind.Number
             ? ar.GetInt64() / 100m : amount;
         var full = refundedSoFar >= invoice.Amount;
         if (succeeded)
