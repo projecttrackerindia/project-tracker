@@ -57,6 +57,9 @@
 .va-mic > span { font-size: 13px; color: var(--text-3); }
 .va-mic-btn { width: 64px; height: 64px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; background: var(--primary); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 35%, transparent); }
 .va-mic-btn:disabled { opacity: .6; cursor: default; }
-.va-mic-btn.on { background: var(--danger); animation: va-pulse 1.2s ease-in-out infinite; }
+.va-mic-btn.listening { background: var(--success); }
+.va-mic-btn.hearing { background: var(--danger); animation: va-pulse 1.2s ease-in-out infinite; }
+.va-mic-btn.speaking { background: var(--purple, var(--primary)); }
+.va-mic-opts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 13px; }
 @keyframes va-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent); } 50% { box-shadow: 0 0 0 12px transparent; } }
-@media (prefers-reduced-motion: reduce) { .va-mic-btn.on { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .va-mic-btn.hearing { animation: none; } }

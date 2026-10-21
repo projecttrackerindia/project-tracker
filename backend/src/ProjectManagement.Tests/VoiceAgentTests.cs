@@ -37,6 +37,16 @@ public class VoiceAgentTests(ApiFactory factory)
     }
 
     [Fact]
+    public void Replies_are_split_into_sentences_for_parallel_voice()
+    {
+        var parts = VoiceSpeechService.Sentences("Okay. Your EMI of 4,500 rupees is due on the 5th of next month. Shall I send the details on WhatsApp?");
+        Assert.Equal(2, parts.Count);
+        Assert.StartsWith("Okay. Your EMI", parts[0]);
+        Assert.Equal("మీ లోన్ బ్యాలెన్స్ చూస్తున్నాను.", Assert.Single(VoiceSpeechService.Sentences("మీ లోన్ బ్యాలెన్స్ చూస్తున్నాను.")));
+        Assert.Equal(2, VoiceSpeechService.Sentences("आपकी EMI पाँच तारीख को है। क्या मैं WhatsApp पर भेज दूँ?").Count);
+    }
+
+    [Fact]
     public void Archive_keys_follow_the_pattern()
     {
         var call = new VoiceCall { Id = Guid.Parse("0f5e1c2a-0000-0000-0000-000000000001"), StartedAt = new DateTime(2026, 10, 20, 9, 5, 0, DateTimeKind.Utc), Channel = "phone", Language = "te" };

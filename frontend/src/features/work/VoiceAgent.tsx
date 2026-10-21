@@ -10,7 +10,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import './voice.css';
-import { audioSupported, playWav, startRecording, stopPlayback, unlockAudio, wavSeconds, type Recording } from './voiceAudio';
+import { audioSupported, playParts, startRecording, stopPlayback, unlockAudio, wavSeconds, type Recording } from './voiceAudio';
 
 interface VoiceSettings {
   enabled: boolean; agentName: string; companyName: string; languages: string[]; knowledge: string | null; requireVerification: boolean; verificationRule: string;
@@ -19,7 +19,7 @@ interface VoiceSettings {
 interface Connector { id: string; name: string; description: string; method: string; urlTemplate: string; headerName: string | null; hasSecret: boolean; enabled: boolean; placeholders: string[] }
 interface Turn { role: 'agent' | 'caller' | 'tool'; text: string; at: string; tool?: string | null }
 interface Call { id: string; channel: string; direction: string; callerNumber: string | null; language: string; status: string; startedAt: string; endedAt: string | null; turns: Turn[]; summary: string | null; workTaskId: string | null; ticketKey: string | null; verified: boolean; transferred: boolean; archiveKey: string | null }
-interface Reply { call: Call; say: string; ended: boolean; audio?: string | null; heard?: string | null }
+interface Reply { call: Call; say: string; ended: boolean; audio?: string | null; heard?: string | null; audioParts?: string[] | null; fillers?: { kind: 'ack' | 'hold'; audio: string }[] | null }
 interface CallItem { id: string; channel: string; callerNumber: string | null; language: string; status: string; startedAt: string; endedAt: string | null; summary: string | null; ticketKey: string | null; transferred: boolean }
 
 const voiceApi = {
@@ -218,6 +218,8 @@ function Transcript({ turns, typing }: { turns: Turn[]; typing?: boolean }) {
   );
 }
 
+type Phase = 'idle' | 'listening' | 'hearing' | 'thinking' | 'speaking';
+
 function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
   const wid = useWorkspaceId();
   const canTalk = !!s.speechConfigured && audioSupported();
@@ -228,20 +230,52 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [rec, setRec] = useState<Recording | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [handsFree, setHandsFree] = useState(true);
+  const rec = useRef<Recording | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const limit = useRef<number | undefined>(undefined);
-  useEffect(() => () => { stopPlayback(); window.clearTimeout(limit.current); stream.current?.getTracks().forEach((t) => t.stop()); }, []);
+  const fillerTimers = useRef<number[]>([]);
+  const fillers = useRef<{ kind: 'ack' | 'hold'; audio: string }[]>([]);
+  const fillerDone = useRef<Promise<void> | null>(null);
+  const live = useRef({ callId: '', ended: false, handsFree: true, closed: false });
+  live.current.handsFree = handsFree;
+  useEffect(() => () => {
+    live.current.closed = true; stopPlayback(); rec.current?.cancel(); window.clearTimeout(limit.current);
+    fillerTimers.current.forEach((t) => window.clearTimeout(t)); stream.current?.getTracks().forEach((t) => t.stop());
+  }, []);
+
+  const clearFillers = () => { fillerTimers.current.forEach((t) => window.clearTimeout(t)); fillerTimers.current = []; };
+  /** While the agent thinks: a quick "hmm, okay" soon after the caller stops, and "one moment, let me check" if it takes longer. */
+  const startFillers = () => {
+    clearFillers();
+    const acks = fillers.current.filter((f) => f.kind === 'ack'), hold = fillers.current.find((f) => f.kind === 'hold');
+    if (acks.length) fillerTimers.current.push(window.setTimeout(() => { fillerDone.current = playParts([acks[Math.floor(Math.random() * acks.length)].audio]); }, 650));
+    if (hold) fillerTimers.current.push(window.setTimeout(() => { fillerDone.current = playParts([hold.audio]); }, 4200));
+  };
+
   const answered = async (r: Reply) => {
-    setCall(r.call); setEnded(r.ended);
+    clearFillers();
+    setCall(r.call); setEnded(r.ended); live.current.ended = r.ended;
+    if (r.fillers?.length) fillers.current = r.fillers;
     if (r.ended) void invalidateWorkspace(wid, 'voice');
-    if (talk) await playWav(r.audio);
+    if (!talk) return;
+    // Let a "hmm, okay" that is already playing finish instead of cutting it off mid-word.
+    if (fillerDone.current) { await Promise.race([fillerDone.current, new Promise((d) => window.setTimeout(d, 2500))]); fillerDone.current = null; }
+    setPhase('speaking');
+    await playParts(r.audioParts?.length ? r.audioParts : [r.audio]);
+    if (live.current.closed) return;
+    setPhase('idle');
+    if (!r.ended && live.current.handsFree) void listen();   // like a phone call: it is your turn as soon as the agent stops talking
   };
   const start = async () => {
     if (talk) unlockAudio();   // on the tap itself, so the phone lets the greeting play
     setBusy(true);
-    try { const r = await voiceApi.start({ language: lang, callerNumber: phone || undefined, speak: talk }); setBusy(false); await answered(r); }
-    catch (e) { toast(errText(e, 'Could not start.'), 'error'); } finally { setBusy(false); }
+    try {
+      const r = await voiceApi.start({ language: lang, callerNumber: phone || undefined, speak: talk });
+      live.current.callId = r.call.id;
+      setBusy(false); await answered(r);
+    } catch (e) { toast(errText(e, 'Could not start.'), 'error'); } finally { setBusy(false); }
   };
   const send = async () => {
     if (!call || !text.trim()) return;
@@ -253,32 +287,48 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
     catch (e) { toast(errText(e, 'The agent did not answer.'), 'error'); }
     finally { setBusy(false); }
   };
-  const finish = async (r: Recording) => {
+  const finish = async () => {
+    const r = rec.current;
+    if (!r) return;
+    rec.current = null;
     window.clearTimeout(limit.current);
-    setRec(null);
+    const spoke = r.heardSpeech();
     const wav = r.stop();
-    if (!call) return;
-    if (wavSeconds(wav) < 0.6) { toast('That was too short — tap, speak, then tap again.', 'error'); return; }
-    setBusy(true);
-    try { const reply = await voiceApi.listen(call.id, new File([wav], 'speech.wav', { type: 'audio/wav' })); setBusy(false); await answered(reply); }
-    catch (e) { toast(errText(e, 'The agent did not hear that.'), 'error'); } finally { setBusy(false); }
+    if (!live.current.callId || live.current.closed) return;
+    if (!spoke || wavSeconds(wav) < 0.6) { setPhase('idle'); if (!live.current.handsFree) toast('That was too short — tap, speak, then tap again.', 'error'); return; }
+    setPhase('thinking'); setBusy(true);
+    startFillers();
+    try { const reply = await voiceApi.listen(live.current.callId, new File([wav], 'speech.wav', { type: 'audio/wav' })); setBusy(false); await answered(reply); }
+    catch (e) { clearFillers(); setPhase('idle'); toast(errText(e, 'The agent did not hear that.'), 'error'); } finally { setBusy(false); }
   };
-  const record = async () => {
-    if (!call) return;
-    if (rec) { void finish(rec); return; }
+  const listen = async () => {
+    if (!live.current.callId || live.current.ended || rec.current) return;
     unlockAudio(); stopPlayback();
     try {
       stream.current ??= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
-      const r = await startRecording(stream.current);
-      setRec(r);
-      limit.current = window.setTimeout(() => void finish(r), 28_000);   // Sarvam's quick transcription takes up to about 30 seconds
+      rec.current = await startRecording(stream.current, {
+        onSpeech: () => setPhase('hearing'),
+        onTurnEnd: () => { if (live.current.handsFree) void finish(); },
+      });
+      setPhase('listening');
+      limit.current = window.setTimeout(() => void finish(), 28_000);   // Sarvam's quick transcription takes up to about 30 seconds
     } catch { toast('Allow the microphone to talk to the agent.', 'error'); setTalk(false); }
   };
+  /** The big button: send now while listening, interrupt the agent while it speaks, or start listening. */
+  const tapMic = () => {
+    unlockAudio();
+    if (rec.current) { void finish(); return; }
+    if (phase === 'speaking') { stopPlayback(); setPhase('idle'); }
+    void listen();
+  };
   const hangUp = async () => {
-    rec?.cancel(); window.clearTimeout(limit.current); stopPlayback();
+    live.current.closed = true;
+    rec.current?.cancel(); rec.current = null; window.clearTimeout(limit.current); clearFillers(); stopPlayback();
     if (call && !ended) { try { await voiceApi.end(call.id); } catch { /* the call log shows it */ } }
     void invalidateWorkspace(wid, 'voice'); onClose();
   };
+  const label = { idle: handsFree ? 'Tap to talk' : 'Tap and speak', listening: 'Listening… go ahead', hearing: handsFree ? 'Listening… pause when you are done' : 'Listening… tap to send',
+    thinking: 'Thinking…', speaking: 'Speaking… tap to interrupt' }[phase];
   return (
     <Modal title="Test call" subtitle={talk ? 'Speak as a caller would, in any of the agent\'s languages — it answers out loud.' : 'Type as the caller would speak, in any of the agent\'s languages.'} onClose={() => void hangUp()} size="lg"
       footer={call ? <button className="btn btn-ghost" onClick={() => void hangUp()}>{ended ? 'Close' : 'Hang up'}</button> : undefined}>
@@ -297,11 +347,15 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
           <Transcript turns={call.turns} typing={busy} />
           {ended ? <p className="va-muted">The call ended.{call.ticketKey ? ` Ticket ${call.ticketKey} was created.` : ''}</p>
             : talk ? <div className="va-mic">
-              <button type="button" className={`va-mic-btn${rec ? ' on' : ''}`} disabled={busy} onClick={() => void record()} aria-label={rec ? 'Stop and send' : 'Speak'}>
-                {busy ? <Spinner /> : <Icon name={rec ? 'square' : 'mic'} size={22} />}
+              <button type="button" className={`va-mic-btn ${phase}`} disabled={phase === 'thinking'} onClick={tapMic}
+                aria-label={phase === 'listening' || phase === 'hearing' ? 'Send now' : phase === 'speaking' ? 'Interrupt' : 'Talk'}>
+                {phase === 'thinking' ? <Spinner /> : <Icon name={phase === 'speaking' ? 'square' : 'mic'} size={22} />}
               </button>
-              <span>{rec ? 'Listening… tap to send' : busy ? 'The agent is thinking…' : 'Tap and speak'}</span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTalk(false)}>Type instead</button>
+              <span aria-live="polite">{label}</span>
+              <div className="va-mic-opts">
+                <label className="va-toggle inline"><input type="checkbox" checked={handsFree} onChange={(e) => setHandsFree(e.target.checked)} /><span>Hands-free</span></label>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { rec.current?.cancel(); rec.current = null; setPhase('idle'); setTalk(false); }}>Type instead</button>
+              </div>
             </div>
             : <form className="va-say" onSubmit={(e) => { e.preventDefault(); void send(); }}>
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder="नमस्ते, मेरी EMI कब है? / నా లోన్ బ్యాలెన్స్ ఎంత? / What is my loan balance?" aria-label="What the caller says" autoFocus disabled={busy} />

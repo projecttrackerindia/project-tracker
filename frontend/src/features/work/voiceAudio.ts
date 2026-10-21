@@ -9,6 +9,7 @@ const RATE = 16_000;
 
 let ctx: AudioContext | null = null;
 let playing: AudioBufferSourceNode | null = null;
+let generation = 0;   // bumped by stopPlayback so a reply that is cut off does not carry on with its next sentence
 
 /** Call from a tap or click handler, before any await: creates or wakes the audio engine. */
 export function unlockAudio(): AudioContext | null {
@@ -23,17 +24,31 @@ export const audioSupported = () =>
   typeof window !== 'undefined' && !!(window.AudioContext ?? (window as unknown as { webkitAudioContext?: unknown }).webkitAudioContext) && !!navigator.mediaDevices?.getUserMedia;
 
 export function stopPlayback() {
+  generation++;
   try { playing?.stop(); } catch { /* already stopped */ }
   playing = null;
 }
 
+export const isPlaying = () => playing !== null;
+
+/** Plays the reply's sentences back to back; stops early when stopPlayback is called (the caller interrupts or hangs up). */
+export async function playParts(parts: (string | null | undefined)[]): Promise<void> {
+  const mine = ++generation;
+  for (const p of parts) {
+    if (mine !== generation) return;
+    await playWav(p, mine);
+  }
+}
+
 /** Plays a base64 WAV and resolves when it ends (or at once when it cannot be played; the text is on screen anyway). */
-export async function playWav(base64: string | null | undefined): Promise<void> {
+export async function playWav(base64: string | null | undefined, mine?: number): Promise<void> {
   if (!base64 || !ctx) return;
-  stopPlayback();
+  if (mine === undefined) stopPlayback();
+  else { try { playing?.stop(); } catch { /* already stopped */ } }
   try {
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
     const buffer = await ctx.decodeAudioData(bytes.buffer);
+    if (mine !== undefined && mine !== generation) return;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
     src.connect(ctx.destination);
@@ -43,22 +58,55 @@ export async function playWav(base64: string | null | undefined): Promise<void> 
   finally { playing = null; }
 }
 
-export interface Recording { stop: () => Blob; cancel: () => void }
+export interface Recording { stop: () => Blob; cancel: () => void; heardSpeech: () => boolean }
+export interface ListenOptions {
+  /** Called once when the caller has spoken and then paused (end of their turn). */
+  onTurnEnd?: () => void;
+  /** Called once when the caller starts speaking. */
+  onSpeech?: () => void;
+  /** How long a pause ends the turn. */
+  pauseMs?: number;
+}
 
-/** Starts recording the microphone. stop() returns the speech as a 16 kHz mono WAV. */
-export async function startRecording(stream: MediaStream): Promise<Recording> {
+/**
+ * Starts recording the microphone. stop() returns the speech as a 16 kHz mono WAV.
+ * With onTurnEnd it also listens like a person does: it learns the room's background level for a moment, notices when the caller starts
+ * talking, and calls onTurnEnd after they have been quiet for pauseMs - so nobody has to tap to send.
+ */
+export async function startRecording(stream: MediaStream, opts: ListenOptions = {}): Promise<Recording> {
   const c = unlockAudio();
   if (!c) throw new Error('No audio support');
   const source = c.createMediaStreamSource(stream);
   // ScriptProcessor is old but is the one recorder that works the same on iPhone, Android and desktop browsers.
   const node = c.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];
-  node.onaudioprocess = (e) => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+  const pauseMs = opts.pauseMs ?? 850;
+  let floor = 0, frames = 0, loud = 0, spoke = false, quietMs = 0, done = false;
+  node.onaudioprocess = (e) => {
+    const data = e.inputBuffer.getChannelData(0);
+    chunks.push(new Float32Array(data));
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+    const ms = (data.length / c.sampleRate) * 1000;
+    frames++;
+    if (frames <= 3) { floor = Math.max(floor, rms); return; }          // the first ~250 ms: background level
+    const threshold = Math.max(0.012, floor * 2.5);
+    if (!spoke) {
+      floor = floor * 0.95 + Math.min(rms, threshold) * 0.05;            // the room may get quieter or louder before they speak
+      loud = rms > threshold ? loud + 1 : 0;
+      if (loud >= 2) { spoke = true; opts.onSpeech?.(); }
+      return;
+    }
+    quietMs = rms < threshold * 0.7 ? quietMs + ms : 0;
+    if (!done && quietMs >= pauseMs) { done = true; opts.onTurnEnd?.(); }
+  };
   const mute = c.createGain(); mute.gain.value = 0;   // keeps the node running without echoing the caller back
   source.connect(node); node.connect(mute); mute.connect(c.destination);
   const close = () => { node.onaudioprocess = null; try { source.disconnect(); node.disconnect(); mute.disconnect(); } catch { /* gone */ } };
   return {
     cancel: close,
+    heardSpeech: () => spoke,
     stop: () => { close(); return toWav(chunks, c.sampleRate); },
   };
 }

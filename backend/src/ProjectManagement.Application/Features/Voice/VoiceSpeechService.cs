@@ -56,6 +56,31 @@ public class VoiceSpeechService(IOptions<VoiceOptions> options, IHttpClientFacto
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException) { log.LogWarning("Sarvam speech-to-text failed: {Reason}", e.Message); return null; }
     }
 
+    /// <summary>
+    /// The agent's line as one WAV per sentence, voiced in parallel: the reply is ready when its longest sentence is, not after all of them,
+    /// and the browser plays them back to back.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> SpeakPartsAsync(string text, string lang, CancellationToken ct)
+    {
+        if (!Configured || string.IsNullOrWhiteSpace(text)) return [];
+        var parts = Sentences(text);
+        var audios = await Task.WhenAll(parts.Select(p => SpeakAsync(p, lang, ct)));
+        return audios.Where(a => !string.IsNullOrEmpty(a)).Select(a => a!).ToList();
+    }
+
+    /// <summary>Splits a reply at sentence ends (. ? ! । and line breaks) into at most four pieces; short sentences stay with their neighbour.</summary>
+    public static List<string> Sentences(string text)
+    {
+        var raw = System.Text.RegularExpressions.Regex.Split(text.Trim(), @"(?<=[.?!।])\s+|\n+").Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+        var merged = new List<string>();
+        foreach (var piece in raw)
+        {
+            if (merged.Count > 0 && (merged[^1].Length < 25 || merged.Count >= 4)) merged[^1] += " " + piece;
+            else merged.Add(piece);
+        }
+        return merged.Count == 0 ? [text.Trim()] : merged;
+    }
+
     /// <summary>The agent's line as a base64 WAV, or null when speech is not set up or the call fails (the text is still shown).</summary>
     public async Task<string?> SpeakAsync(string text, string lang, CancellationToken ct)
     {
@@ -70,6 +95,7 @@ public class VoiceSpeechService(IOptions<VoiceOptions> options, IHttpClientFacto
             ["model"] = o.SarvamTtsModel,
             ["speaker"] = o.SarvamSpeaker,
             ["speech_sample_rate"] = 22050,
+            ["pace"] = Math.Clamp(o.SarvamPace, 0.5, 2.0),
         };
         if (v2) fields["enable_preprocessing"] = true;   // v3 and later normalise numbers and English words themselves and reject the flag
         var body = JsonSerializer.Serialize(fields);
