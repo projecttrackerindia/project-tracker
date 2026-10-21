@@ -1,10 +1,19 @@
-/* The one-time "turn on notifications" card (features/notifications/AlertsSetup.tsx). */
-.alerts-card { position: fixed; left: 20px; bottom: 20px; z-index: 880; display: flex; gap: 12px; align-items: flex-start; width: min(360px, calc(100vw - 32px));
-  padding: 14px 16px; border-radius: 14px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: 0 12px 40px rgba(15, 12, 29, .28); animation: alerts-in .25s ease-out; }
-.alerts-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--primary-soft, rgba(var(--accent-rgb), .14)); color: var(--primary, var(--primary-fill)); }
-.alerts-main { display: grid; gap: 4px; font-size: 13px; }
-.alerts-main span { color: var(--text-muted, #6b7280); }
-.alerts-actions { display: flex; gap: 8px; margin-top: 8px; }
-@keyframes alerts-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .alerts-card { animation: none; } }
-@media (max-width: 768px) { .alerts-card { left: 16px; bottom: 76px; } }
+/* The one-time "turn on notifications" pop-up (features/notifications/AlertsSetup.tsx): shown once per browser, on the first sign-in. */
+.alerts-overlay { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 16px; background: rgba(15, 12, 29, .38); animation: alerts-fade .2s ease-out; }
+.alerts-pop { width: min(440px, 100%); padding: 26px 26px 20px; border-radius: 18px; background: var(--panel-solid, var(--surface)); border: 1px solid var(--border);
+  box-shadow: 0 24px 60px -18px rgba(15, 12, 29, .45); display: flex; flex-direction: column; gap: 10px; animation: alerts-in .25s ease-out; }
+.alerts-pop h2 { margin: 4px 0 0; font-size: 19px; }
+.alerts-pop p { margin: 0; color: var(--text-2, #4b5563); line-height: 1.5; font-size: 14px; }
+.alerts-pop small { color: var(--text-3, #6b7280); font-size: 12px; }
+.alerts-pop-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--primary-soft, rgba(var(--accent-rgb), .14)); color: var(--primary, var(--primary-fill)); }
+.alerts-list { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
+.alerts-list li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.4; }
+.alerts-list li svg { flex: none; margin-top: 2px; color: var(--primary, var(--primary-fill)); }
+.alerts-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+@keyframes alerts-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes alerts-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .alerts-overlay, .alerts-pop { animation: none; } }
+/* The Notifications | Reminders switch in the bell menu. */
+.dp-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--surface-2, rgba(0,0,0,.04)); }
+.dp-tabs button { border: 0; background: none; padding: 4px 10px; border-radius: 7px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-2, #4b5563); cursor: pointer; }
+.dp-tabs button.on { background: var(--panel-solid, var(--surface)); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }

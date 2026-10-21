@@ -11,6 +11,7 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Ai;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Voice;
 using ProjectManagement.Application.Features.Work;
 using ProjectManagement.Application.Services;
@@ -48,7 +49,7 @@ public record SupportReplyRequest(string Text);
 /// </summary>
 public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, PermissionService permissions,
     IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<SupportOptions> options,
-    IOptions<AppOptions> app, IHttpClientFactory http, WorkTaskService workTasks, WorkTypeService workTypes, Recorder recorder, ILogger<SupportChannelService> log)
+    IOptions<AppOptions> app, IHttpClientFactory http, WorkTaskService workTasks, WorkTypeService workTypes, NotificationService notifications, Recorder recorder, ILogger<SupportChannelService> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly Regex Digits = new(@"^[0-9]{5,25}$", RegexOptions.Compiled);
@@ -253,6 +254,8 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (chat.Status == "closed") { chat.Status = "open"; chat.Mode = "ai"; }
         chat.NeedsReply = channel.AutoReply && chat.Mode == "ai"; chat.ReplyAttempts = 0;
         chat.UpdatedAt = now;
+        if (!chat.NeedsReply)   // people answer this chat: let them know it moved
+            await NotifyTeamAsync(channel, chat, $"{Who(chat)} wrote on WhatsApp", $"{channel.Name}: {(text.Length > 140 ? text[..140] + "…" : text)}", ct);
         await db.SaveChangesAsync(ct);
     }
 
@@ -362,6 +365,24 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         return await db.WorkTasks.AsNoTracking().Where(t => t.Id == ticket.Id).Select(t => (int?)t.Number).FirstOrDefaultAsync(ct) is { } num ? $"WT-{num}" : null;
     }
 
+    /// <summary>
+    /// Tells the number's team (or, without a team, the person who connected it) that a chat needs a person. One unread notice per chat:
+    /// while it sits unread, further messages do not add more.
+    /// </summary>
+    private async Task NotifyTeamAsync(SupportChannel channel, SupportConversation c, string title, string? body, CancellationToken ct)
+    {
+        var people = channel.TeamId is { } team
+            ? await db.TeamMembers.AsNoTracking().Where(m => m.TeamId == team).Select(m => m.UserId).ToListAsync(ct)
+            : [];
+        if (people.Count == 0) people = [channel.ConnectedBy];
+        var key = $"support:{c.Id:N}";
+        var unread = await db.Notifications.AsNoTracking().Where(n => n.DedupeKey == key && n.ReadAt == null).Select(n => n.UserId).ToListAsync(ct);
+        foreach (var person in people.Distinct().Where(p => !unread.Contains(p)).Take(50))
+            await notifications.AddAsync(person, NotificationType.Support, title, body, $"/operations?view=whatsapp&chat={c.Id}", key, ct: ct);
+    }
+
+    private static string Who(SupportConversation c) => c.ContactName is { Length: > 0 } n ? n : "A customer";
+
     // ------------------------------------------------------------------ the AI employee
 
     private async Task SendAsync(SupportChannel channel, string to, string text, CancellationToken ct)
@@ -397,7 +418,11 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (c.LastInboundAt is not { } at || at < clock.Now.AddHours(-24)) return;
         var tid = c.TenantId;
         if (!ai.Configured || await entitlements.GetValueAsync(FeatureKeys.AiAssistant, ct) == 0 || await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct))
-        { c.Mode = "human"; c.Status = "waiting"; await db.SaveChangesAsync(ct); return; }
+        {
+            c.Mode = "human"; c.Status = "waiting";
+            await NotifyTeamAsync(channel, c, $"{Who(c)} is waiting on WhatsApp", $"{channel.Name}: the AI employee is off, so a person needs to answer.", ct);
+            await db.SaveChangesAsync(ct); return;
+        }
 
         var settings = await db.VoiceAgentSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var company = settings?.CompanyName is { Length: > 0 } cn ? cn : "the company";
@@ -425,7 +450,12 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         var a = answer.Text.IndexOf('{'); var b = answer.Text.LastIndexOf('}');
         if (a >= 0 && b > a) { try { j = JsonNode.Parse(answer.Text[a..(b + 1)]) as JsonObject; } catch (JsonException) { } }
         var reply = j?["reply"]?.ToString()?.Trim();
-        if (string.IsNullOrEmpty(reply)) { c.Mode = "human"; c.Status = "waiting"; c.NeedsReply = false; await db.SaveChangesAsync(ct); return; }
+        if (string.IsNullOrEmpty(reply))
+        {
+            c.Mode = "human"; c.Status = "waiting"; c.NeedsReply = false;
+            await NotifyTeamAsync(channel, c, $"{Who(c)} is waiting on WhatsApp", $"{channel.Name}: the AI employee could not answer this one.", ct);
+            await db.SaveChangesAsync(ct); return;
+        }
         if (j?["language"]?.ToString() is { Length: >= 2 and <= 5 } lang && VoiceLanguages.Names.ContainsKey(lang)) c.Language = lang;
         var action = j?["action"]?.ToString();
         if (action is "ticket" or "human" && c.WorkTaskId is null)
@@ -439,7 +469,11 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             }
             catch (AppException e) { log.LogWarning("WhatsApp chat {Chat}: ticket not raised ({Reason})", c.Id, e.Message); c.Status = "waiting"; }
         }
-        if (action == "human") { c.Mode = "human"; c.Status = "waiting"; }
+        if (action == "human")
+        {
+            c.Mode = "human"; c.Status = "waiting";
+            await NotifyTeamAsync(channel, c, $"{Who(c)} asked for a person on WhatsApp", $"{channel.Name}: {j?["summary"]?.ToString() ?? "call them back in their language."}", ct);
+        }
         await SendAsync(channel, secrets.Unprotect(c.ContactProtected), reply, ct);
         messages.Add(new("ai", reply, clock.Now, channel.AgentName));
         Save(c, messages);

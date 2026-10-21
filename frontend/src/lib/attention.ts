@@ -166,7 +166,7 @@ export function getAttention({ kind, silent }: AttentionOptions): boolean {
   return sound;
 }
 
-const URGENT = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Security', 'SignInRequest']);
+const URGENT = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Support', 'Security', 'SignInRequest']);
 const CHAT = new Set(['Message', 'Mention']);
 
 /** Which sound a kind of notification gets. */

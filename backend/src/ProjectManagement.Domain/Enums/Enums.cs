@@ -33,4 +33,4 @@ public enum DependencyType
 public enum SubscriptionStatus { Trial, Active, PastDue, Cancelled, Expired }
 public enum InvitationStatus { Pending, Accepted, Revoked, Expired }
 public enum InvoiceStatus { Paid, Failed, Refunded }
-public enum NotificationType { TaskAssigned, Mention, Comment, DueSoon, Overdue, Invitation, Subscription, Security, ReportReady, Issue, Approval, ServiceLevel, Reminder, Nudge, Briefing, Message, PortfolioDigest, Document, Meeting, TaskUpdated, ProjectUpdated, CertificationExpiry, AgentAlert, AgentDigest, TimesheetReminder }
+public enum NotificationType { TaskAssigned, Mention, Comment, DueSoon, Overdue, Invitation, Subscription, Security, ReportReady, Issue, Approval, ServiceLevel, Reminder, Nudge, Briefing, Message, PortfolioDigest, Document, Meeting, TaskUpdated, ProjectUpdated, CertificationExpiry, AgentAlert, AgentDigest, TimesheetReminder, Support }

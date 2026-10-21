@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, del, get, post, put } from '../../api/client';
 import { teamApi } from '../../api/endpoints.auth';
 import { workApi } from '../../api/endpoints.platform';
@@ -183,7 +183,14 @@ function SetupModal({ c, onClose }: { c: Channel; onClose: () => void }) {
 function Inbox({ channels }: { channels: Channel[] }) {
   const [status, setStatus] = useState<'open' | 'closed'>('open');
   const [channelId, setChannelId] = useState('');
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  // A notification links straight to the chat (?chat=<id>); the address is cleaned once it is open.
+  const [openId, setOpenId] = useState<string | null>(params.get('chat'));
+  useEffect(() => {
+    if (!params.has('chat')) return;
+    const next = new URLSearchParams(params); next.delete('chat'); setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const q = useWsQuery(['support', 'chats', status, channelId], () => api.chats(status, channelId), { refetchInterval: 10_000 });
   const chats = q.data ?? [];
   return (

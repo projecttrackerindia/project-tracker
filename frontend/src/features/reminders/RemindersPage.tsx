@@ -9,7 +9,6 @@ import { toast } from '../../stores/ui';
 import { reminderApi, SNOOZE_CHOICES, type Reminder, type ReminderList, type SnoozePreset } from './api';
 import { openReminderComposer, refreshReminders } from './store';
 import { addDays, atTime, dayFirst, describeInstant, deviceZone, iso, parseReminder, relative, sameDay, toRRule, wall } from './time';
-import { deviceDetail, enableDeviceAlerts, lastDeviceError, onDeviceAlerts, playChime, soundOn, systemNotification, type DeviceDetail } from './device';
 
 type Filter = 'all' | 'mine' | 'others' | 'auto' | 'sent';
 const AUTO = new Set(['DueDate', 'Overdue', 'Escalation']);
@@ -155,7 +154,6 @@ export function RemindersPage() {
         <button type="button" className="btn btn-primary" onClick={() => openReminderComposer()}><Icon name="plus" size={15} /> New reminder</button>
       </PageHead>
 
-      <DeviceBanner />
       <QuickAdd defaultTime={settings.data?.defaultTime ?? '09:00'} onAdded={() => refreshReminders(wid)} />
 
       <div className="rp-stats">
@@ -208,51 +206,6 @@ export function RemindersPage() {
           </section>
         )))}
 
-    </div>
-  );
-}
-
-/** A nudge to turn this device's notifications on (reminders are pointless if they only show inside a closed tab). Same logic as the Notification Center. */
-function DeviceBanner() {
-  const nav = useNavigate();
-  const [detail, setDetail] = useState<DeviceDetail | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [hidden, setHidden] = useState(() => { try { return sessionStorage.getItem('pm_device_banner') === 'hide'; } catch { return false; } });
-  useEffect(() => {
-    const load = () => void deviceDetail().then(setDetail);
-    load();
-    return onDeviceAlerts(load);
-  }, []);
-  if (!detail || detail.state === 'on' || hidden) return null;
-  const turnOn = async () => {
-    setBusy(true); setProblem(null);
-    try {
-      const s = await enableDeviceAlerts();
-      if (s === 'on' || s === 'tab-only') {
-        if (soundOn()) playChime();
-        await systemNotification('Notifications are on', 'This is how reminders will reach you - in other apps too.', 'reminder-test', '/reminders', { sticky: false });
-        toast(s === 'on' ? 'Done. Reminders now reach this device even when Project Tracker is closed.' : 'Done. Reminders now show in other apps while Project Tracker is open.', 'success');
-      }
-      setProblem(lastDeviceError());
-    } finally { setBusy(false); }
-  };
-  const title = detail.state === 'tab-only' ? 'Reminders reach you only while Project Tracker is open'
-    : detail.state === 'blocked' ? 'Notifications are blocked for this site'
-    : detail.state === 'unsupported' ? 'This browser cannot notify outside the tab' : 'Get reminders in other apps too';
-  const text = problem ?? detail.reason ?? (detail.state === 'tab-only' ? 'Turn on push so they arrive even with the tab or browser window closed.'
-    : 'Right now they only appear inside this tab. Turn on notifications and they show up like any other app\u2019s - with a sound.');
-  return (
-    <div className={`rp-device is-${detail.state}`} role="note">
-      <span className="rp-device-ico"><Icon name="bell" size={18} /></span>
-      <div className="rp-device-text"><b>{title}</b><span>{text}</span></div>
-      {detail.canFixHere && (detail.state === 'off' || detail.state === 'tab-only') && (
-        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void turnOn()}>
-          {busy && <span className="spinner" />}<Icon name="bell" size={14} /> {detail.state === 'tab-only' ? 'Turn on push' : 'Turn on notifications'}
-        </button>
-      )}
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => nav('/notifications/devices')}>Details</button>
-      <button type="button" className="btn-icon" aria-label="Hide for now" onClick={() => { try { sessionStorage.setItem('pm_device_banner', 'hide'); } catch { /* */ } setHidden(true); }}><Icon name="close" size={14} /></button>
     </div>
   );
 }

@@ -35,7 +35,8 @@ import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
 import { firstTime, getAttention, kindForType } from '../lib/attention';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
-import { useReminderComposer, useReminderCounts } from '../features/reminders/store';
+import { openReminderComposer, useReminderComposer, useReminderCounts } from '../features/reminders/store';
+import { reminderApi } from '../features/reminders/api';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -248,6 +249,10 @@ function NotificationsMenu() {
 
   const unread = useQuery({ queryKey: [wid, 'notifications', 'unread'], queryFn: notificationApi.unread, refetchInterval: 60_000, enabled: !!wid });
   const list = useQuery({ queryKey: [wid, 'notifications', 'recent'], queryFn: () => notificationApi.list(1, true), enabled: open && !!wid });
+  const [pane, setPane] = useState<'notifications' | 'reminders'>('notifications');
+  // Reminders live in the same place as notifications: what is coming up, and one tap to add one from any page.
+  const reminders = useQuery({ queryKey: [wid, 'reminders', 'bell'], queryFn: reminderApi.list, enabled: open && pane === 'reminders' && !!wid });
+  const upcoming = (reminders.data?.open ?? []).filter((r) => r.nextFireAt).sort((a, b) => (a.nextFireAt! < b.nextFireAt! ? -1 : 1)).slice(0, 6);
   const refresh = () => queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
   const readAll = useMutation({ mutationFn: notificationApi.readAll, onSuccess: refresh });
   const count = unread.data?.count ?? 0;
@@ -267,10 +272,23 @@ function NotificationsMenu() {
       {open && (
         <div className="dropdown-panel">
           <div className="dp-head">
-            <strong>Notifications</strong>
-            {count > 0 && <button className="link" style={{ fontSize: 12 }} onClick={() => readAll.mutate()}>Mark all read</button>}
+            <div className="dp-tabs" role="tablist" aria-label="Show">
+              <button type="button" role="tab" aria-selected={pane === 'notifications'} className={pane === 'notifications' ? 'on' : ''} onClick={() => setPane('notifications')}>Notifications{count > 0 ? ` (${count > 99 ? '99+' : count})` : ''}</button>
+              <button type="button" role="tab" aria-selected={pane === 'reminders'} className={pane === 'reminders' ? 'on' : ''} onClick={() => setPane('reminders')}>Reminders</button>
+            </div>
+            {pane === 'notifications' && count > 0 && <button className="link" style={{ fontSize: 12 }} onClick={() => readAll.mutate()}>Mark all read</button>}
+            {pane === 'reminders' && <button className="link" style={{ fontSize: 12 }} onClick={() => { setOpen(false); openReminderComposer(); }}>+ New reminder</button>}
           </div>
-          {list.isLoading ? <div className="sr-empty">Loading…</div>
+          {pane === 'reminders' ? (reminders.isLoading ? <div className="sr-empty">Loading…</div>
+            : upcoming.length === 0 ? <div className="sr-empty">No reminders coming up. Add one from here, or "Remind me" on any task or ticket.</div>
+            : upcoming.map((r) => (
+              <button key={r.id} className="dp-item" onClick={() => { setOpen(false); nav(r.link ?? '/reminders'); }}>
+                <span className="dp-ico">⏰</span>
+                <span className="dp-main"><b>{r.title}</b>{r.targetKey && <span>{r.targetKey}{r.targetTitle ? ` · ${r.targetTitle}` : ''}</span>}
+                  <span className="muted" style={{ display: 'block', fontSize: 11 }}>{new Date(r.nextFireAt!).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{r.recurrenceText ? ` · ${r.recurrenceText}` : ''}</span></span>
+              </button>
+            )))
+          : list.isLoading ? <div className="sr-empty">Loading…</div>
             : !list.data?.items.length ? <div className="sr-empty">You're all caught up.</div>
             : list.data.items.slice(0, 8).map((n) => (
               <button key={n.id} className={`dp-item ${n.isRead ? '' : 'unread'}`} onClick={() => openItem(n)}>
@@ -280,7 +298,9 @@ function NotificationsMenu() {
             ))}
           <div className="dp-sep" />
           <div className="dp-foot-row">
-            <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/notifications'); }}><Icon name="inbox" size={14} /> Notification Center</button>
+            {pane === 'reminders'
+              ? <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/reminders'); }}><Icon name="alarm" size={14} /> All reminders</button>
+              : <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/notifications'); }}><Icon name="inbox" size={14} /> Notification Center</button>}
             <button className="dp-menu-item dp-menu-icon" aria-label="Notification settings" title="Notification settings" onClick={() => { setOpen(false); nav('/notifications/preferences'); }}><Icon name="settings" size={14} /></button>
           </div>
         </div>

@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 // Which of the page's alert sounds a kind of notification gets (the same grouping as lib/attention.ts).
-const URGENT = ['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Security', 'SignInRequest'];
+const URGENT = ['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Support', 'Security', 'SignInRequest'];
 const CHAT = ['Message', 'Mention'];
 
 /** Asks an open page to play its alert sound; resolves true if one did (a page that cannot make sound yet, or none, answers false). */

@@ -57,17 +57,25 @@ export function AlertsSetup() {
     if (s === 'on' || s === 'tab-only') playSound('message');   // so they hear what an alert sounds like
   };
 
+  // Asked once per browser, on the first sign-in here. Allowed: never asked again. "Not now": never nagged again either - the switch stays
+  // in Notification Center › Devices. Blocked or unsupported browsers are not asked at all.
   const canAsk = typeof Notification !== 'undefined' && Notification.permission === 'default';
-  if (!enabled || asked || !canAsk || state === 'unsupported' || state === 'blocked') return null;
+  if (!enabled || asked || !canAsk || state === null || state === 'unsupported' || state === 'blocked' || state === 'on') return null;
   return (
-    <div className="alerts-card" role="dialog" aria-label="Turn on notifications">
-      <div className="alerts-ico"><Icon name="bell" size={18} /></div>
-      <div className="alerts-main">
-        <b>Don't miss messages and reminders</b>
-        <span>Get a pop-up and a sound when something arrives while you are in another tab or app.</span>
+    <div className="alerts-overlay" role="presentation">
+      <div className="alerts-pop" role="dialog" aria-modal="true" aria-labelledby="alerts-title">
+        <div className="alerts-pop-ico"><Icon name="bell" size={26} /></div>
+        <h2 id="alerts-title">Turn on notifications?</h2>
+        <p>Get a pop-up and a sound on this {isDesktopApp() ? 'computer' : 'browser'} - even in other apps - when something needs you:</p>
+        <ul className="alerts-list">
+          <li><Icon name="alarm" size={15} /> Your reminders and due dates</li>
+          <li><Icon name="bolt" size={15} /> Operations: tickets assigned to you, SLA warnings, WhatsApp chats waiting for your team</li>
+          <li><Icon name="message" size={15} /> Messages, mentions and meetings</li>
+        </ul>
+        <small>We ask only once on this browser. You can change it any time in Notification Center.</small>
         <div className="alerts-actions">
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => void turnOn()}>Turn on</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={remember}>Not now</button>
+          <button type="button" className="btn btn-ghost" onClick={remember}>Not now</button>
+          <button type="button" className="btn btn-primary" autoFocus onClick={() => void turnOn()}><Icon name="bell" size={15} /> Turn on</button>
         </div>
       </div>
     </div>

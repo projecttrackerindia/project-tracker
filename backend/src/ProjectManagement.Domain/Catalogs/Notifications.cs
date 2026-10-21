@@ -34,6 +34,7 @@ public static class NotificationCatalog
         new(NotificationType.Document, "Documents", "A document is waiting for your review, was approved, sent back or published, or someone asks for or gets access.", true, true, true, false),
         new(NotificationType.Meeting, "Meetings", "You are invited to a Google Meet someone scheduled or started, or one you are in is rescheduled or cancelled.", true, true, true, false),
         new(NotificationType.ServiceLevel, "Service levels (SLA)", "Operational work you are assigned or raised is about to miss, or has missed, its response or resolution target.", true, true, true, false),
+        new(NotificationType.Support, "Support chats", "A WhatsApp support chat on your team's number needs a person: the customer asked for one, the AI employee could not answer, or they wrote again in a chat your team has taken over.", true, false, true, false),
         // Security alerts cannot be switched off in-app or by email.
         new(NotificationType.Security, "Security alerts", "Password changes and other account security events. Always on.", true, true, false, true),
     ];
