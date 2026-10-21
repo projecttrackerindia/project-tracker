@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { apiDocApi, documentApi } from '../../api/endpoints';
-import type { ApiDefinition, ApiMethod, DocumentDetail, EndpointItem } from '../../api/types';
+import type { ApiDefinition, ApiMethod, DocumentDetail, EndpointDetail, EndpointItem } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
@@ -54,6 +54,12 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
   const ep = useWsQuery(['documents', id, 'api-endpoint', epId, versionId], () => apiDocApi.endpoint(id, epId, versionId || null), { enabled: !!epId });
 
   const refresh = () => invalidateWorkspace(wid, 'documents');
+  // Editing starts from the real values (masked ones must never be saved back); the unlock is audited as editing.
+  const [editCopy, setEditCopy] = useState<EndpointDetail | null>(null);
+  const startEdit = async () => {
+    try { setEditCopy(await apiDocApi.revealEndpoint(id, epId, { purpose: 'edit' })); setModal('editEndpoint'); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not open it for editing.', 'error'); }
+  };
   const removeEp = useMutation({
     mutationFn: () => apiDocApi.removeEndpoint(id, epId),
     onSuccess: () => { setEpId(''); refresh(); toast('Endpoint removed.', 'warning'); },
@@ -132,7 +138,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
           </aside>
           <section className="api-main">
             {epId && ep.isLoading ? <PageLoader /> : epId && ep.data ? (
-              <EndpointArticle ep={ep.data} definition={defs.find((d) => d.id === ep.data!.item.definitionId)} canEdit={canEdit} onEdit={() => setModal('editEndpoint')}
+              <EndpointArticle ep={ep.data} definition={defs.find((d) => d.id === ep.data!.item.definitionId)} canEdit={canEdit} onEdit={() => void startEdit()}
                 onDelete={async () => { if (await confirmDialog({ title: 'Remove this endpoint?', message: `${ep.data!.item.method} ${ep.data!.item.path} is removed from the working copy. Published versions keep it.`, confirmText: 'Remove' })) removeEp.mutate(); }} />
             ) : def ? (
               <div className="api-def-card">
@@ -158,7 +164,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
       {modal === 'import' && <ImportModal documentId={id} definitions={defs} onClose={() => setModal(null)} onDone={(r) => { if (r) setDefId(r.definitions[r.definitions.length - 1]?.id ?? def?.id ?? ''); }} />}
       {modal === 'changes' && <ChangesModal documentId={id} canEdit={editable} onClose={() => setModal(null)} />}
       {modal === 'endpoint' && def && <EndpointEditor documentId={id} definitions={defs} existing={null} startDefinition={def.id} onClose={() => setModal(null)} onSaved={(r) => { setEpId(r.item.id); setModal(null); }} />}
-      {modal === 'editEndpoint' && def && ep.data && <EndpointEditor documentId={id} definitions={defs} existing={ep.data} startDefinition={def.id} onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
+      {modal === 'editEndpoint' && def && editCopy && <EndpointEditor documentId={id} definitions={defs} existing={editCopy} startDefinition={def.id} onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
     </div>
   );
 }
