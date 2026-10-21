@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Step 4 (the move): copies the database, uploaded files and call recordings from Railway to Google Cloud.
+# Before running: in ProjectTracker, Admin > Settings, turn on Maintenance mode (people can still read; changes pause).
+# Also export the Railway database address (stays in your Cloud Shell):
+#   railway variables --service Postgres --kv > ~/.pt-gcp/railway-postgres.env
+set -euo pipefail
+cd "$(dirname "$0")"; source ./config.sh
+get() { grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2- || true; }
+SRC_DB=$(get DATABASE_PUBLIC_URL "$STATE/railway-postgres.env")
+[ -n "$SRC_DB" ] || { echo "Missing DATABASE_PUBLIC_URL in $STATE/railway-postgres.env" >&2; exit 1; }
+read -r -p "Is Maintenance mode ON in ProjectTracker (Admin > Settings)? Type yes to continue: " ok; [ "$ok" = "yes" ] || exit 1
+
+echo "== 1/4 Copying the database out of Railway"
+docker run --rm -v "$STATE:/s" postgres:17-alpine pg_dump --format=custom --no-owner --no-acl --dbname="$SRC_DB" --file=/s/db.dump
+ls -lh "$STATE/db.dump"
+
+echo "== 2/4 Loading it into Cloud SQL"
+if [ ! -x "$STATE/cloud-sql-proxy" ]; then
+  curl -sSL -o "$STATE/cloud-sql-proxy" https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.1/cloud-sql-proxy.linux.amd64
+  chmod +x "$STATE/cloud-sql-proxy"
+fi
+CONN=$(gcloud sql instances describe "$DB_INSTANCE" --format='value(connectionName)')
+"$STATE/cloud-sql-proxy" --port 6543 --token "$(gcloud auth print-access-token)" "$CONN" > "$STATE/proxy.log" 2>&1 &
+PROXY=$!; trap 'kill $PROXY 2>/dev/null || true' EXIT; sleep 4
+TABLES=$(docker run --rm --network host -e PGPASSWORD="$(cat "$STATE/db-password")" postgres:17-alpine psql -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" -tAc "select count(*) from information_schema.tables where table_schema='public'")
+if [ "$TABLES" != "0" ]; then echo "Cloud SQL already has $TABLES tables. To start over: gcloud sql databases delete $DB_NAME --instance=$DB_INSTANCE && gcloud sql databases create $DB_NAME --instance=$DB_INSTANCE" >&2; exit 1; fi
+docker run --rm --network host -v "$STATE:/s" -e PGPASSWORD="$(cat "$STATE/db-password")" postgres:17-alpine \
+  pg_restore --no-owner --no-acl --no-comments --no-publications --no-subscriptions --no-security-labels --exit-on-error -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" /s/db.dump
+docker run --rm --network host -e PGPASSWORD="$(cat "$STATE/db-password")" postgres:17-alpine psql -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" \
+  -c 'select count(*) as organizations from "Tenants";' -c 'select count(*) as people from "Users";'
+
+echo "== 3/4 Uploaded files"
+command -v rclone >/dev/null || curl -sSL https://rclone.org/install.sh | sudo bash
+read -r HMAC_ID HMAC_SECRET < "$STATE/hmac"
+export RCLONE_CONFIG_GCS_TYPE=s3 RCLONE_CONFIG_GCS_PROVIDER=GCS RCLONE_CONFIG_GCS_ENDPOINT=https://storage.googleapis.com \
+  RCLONE_CONFIG_GCS_ACCESS_KEY_ID="$HMAC_ID" RCLONE_CONFIG_GCS_SECRET_ACCESS_KEY="$HMAC_SECRET"
+API="$STATE/railway-api.env"
+if [ "$(get Storage__Provider "$API")" = "S3" ]; then
+  export RCLONE_CONFIG_RW_TYPE=s3 RCLONE_CONFIG_RW_PROVIDER=Other RCLONE_CONFIG_RW_ENDPOINT="$(get Storage__S3__ServiceUrl "$API")" \
+    RCLONE_CONFIG_RW_ACCESS_KEY_ID="$(get Storage__S3__AccessKeyId "$API")" RCLONE_CONFIG_RW_SECRET_ACCESS_KEY="$(get Storage__S3__SecretAccessKey "$API")" \
+    RCLONE_CONFIG_RW_REGION="$(get Storage__S3__Region "$API")" RCLONE_CONFIG_RW_FORCE_PATH_STYLE=true
+  SRC_PREFIX=$(get Storage__S3__Prefix "$API")
+  rclone copy --progress "rw:$(get Storage__S3__Bucket "$API")/${SRC_PREFIX}" "gcs:${BUCKET}/files"
+else
+  # Files on the Railway server's disk: packed there and unpacked into the bucket with the same names.
+  railway ssh --service API -- tar czf - -C /app/data files > "$STATE/files.tgz" || { echo "Could not read files from Railway; if the API has no files yet this is fine."; : > "$STATE/files.tgz"; }
+  if [ -s "$STATE/files.tgz" ]; then rm -rf "$STATE/files" && mkdir -p "$STATE/files" && tar xzf "$STATE/files.tgz" -C "$STATE/files" && \
+    gcloud storage cp -r "$STATE/files/files/*" "gs://${BUCKET}/files/"; fi
+fi
+
+echo "== 4/4 Call recordings"
+if [ -n "$(get Voice__S3Bucket "$API")" ]; then
+  export RCLONE_CONFIG_RV_TYPE=s3 RCLONE_CONFIG_RV_PROVIDER=Other RCLONE_CONFIG_RV_ENDPOINT="$(get Voice__S3Endpoint "$API")" \
+    RCLONE_CONFIG_RV_ACCESS_KEY_ID="$(get Voice__S3AccessKey "$API")" RCLONE_CONFIG_RV_SECRET_ACCESS_KEY="$(get Voice__S3SecretKey "$API")" \
+    RCLONE_CONFIG_RV_REGION="$(get Voice__S3Region "$API")" RCLONE_CONFIG_RV_FORCE_PATH_STYLE=true
+  rclone copy --progress "rv:$(get Voice__S3Bucket "$API")" "gcs:${BUCKET}" --exclude "files/**"
+fi
+echo "Moved. Next: ./5-start.sh"

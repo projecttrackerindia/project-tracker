@@ -1,0 +1,29 @@
+# Builds the three images in Google Cloud Build and stores them in Artifact Registry (Mumbai).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: api
+    args: ["build", "-t", "${_IMAGES}/api:${_TAG}", "-t", "${_IMAGES}/api:latest", "backend"]
+  - name: gcr.io/cloud-builders/docker
+    id: web
+    waitFor: ["-"]
+    args: ["build", "-t", "${_IMAGES}/web:${_TAG}", "-t", "${_IMAGES}/web:latest", "--build-arg", "SITE_URL=${_SITE_URL}",
+           "--build-arg", "GOOGLE_SITE_VERIFICATION=${_GOOGLE}", "--build-arg", "BING_SITE_VERIFICATION=${_BING}", "--build-arg", "INDEXNOW_KEY=${_INDEXNOW}", "frontend"]
+  - name: gcr.io/cloud-builders/docker
+    id: meetbot
+    waitFor: ["-"]
+    args: ["build", "-t", "${_IMAGES}/meetbot:${_TAG}", "-t", "${_IMAGES}/meetbot:latest", "apps/meetbot"]
+images:
+  - ${_IMAGES}/api:${_TAG}
+  - ${_IMAGES}/api:latest
+  - ${_IMAGES}/web:${_TAG}
+  - ${_IMAGES}/web:latest
+  - ${_IMAGES}/meetbot:${_TAG}
+  - ${_IMAGES}/meetbot:latest
+substitutions:
+  _GOOGLE: ""
+  _BING: ""
+  _INDEXNOW: ""
+timeout: 3600s
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY

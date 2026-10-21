@@ -1,0 +1,52 @@
+# ProjectTracker on one Google Cloud server (Mumbai). Copied to /opt/pt on the server with its .env (made by 3-env.sh).
+# Caddy (HTTPS) -> web (website + proxy) -> api; the database is Cloud SQL through its proxy; files and recordings live in the bucket.
+x-log: &log
+  driver: gcplogs                      # logs go to Cloud Logging (Logs Explorer), tagged by container
+  options: { gcp-log-cmd: "false" }
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data               # the HTTPS certificate: keep this volume
+      - caddy_config:/config
+    logging: *log
+
+  web:
+    image: ${IMAGES}/web:${TAG:-latest}
+    restart: unless-stopped
+    depends_on: [api]
+    logging: *log
+
+  api:
+    image: ${IMAGES}/api:${TAG:-latest}
+    restart: unless-stopped
+    depends_on: [cloudsql]
+    env_file: [api.env]
+    volumes: ["files:/app/data/files"]    # only used once: files copied from Railway's disk are moved into the bucket at start-up
+    logging: *log
+
+  meetbot:
+    image: ${IMAGES}/meetbot:${TAG:-latest}
+    restart: unless-stopped
+    shm_size: "1gb"
+    env_file: [meetbot.env]
+    logging: *log
+
+  cloudsql:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+    restart: unless-stopped
+    command: ["--address=0.0.0.0", "--port=5432", "--health-check", "--http-address=0.0.0.0", "${DB_CONNECTION}"]
+    logging: *log
+
+volumes:
+  caddy_data:
+  caddy_config:
+  files:
