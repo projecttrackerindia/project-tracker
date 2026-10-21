@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { GetStarted } from './GetStarted';
 import { Link, useSearchParams } from 'react-router-dom';
 import { delegateApi } from '../../api/endpoints';
@@ -17,6 +17,9 @@ import { BriefModal, DecisionsView, AuditView, WhatIfModal, SettingsCard } from 
 import { MyWorkPage } from '../workitems/MyWorkPage';
 import { errText } from './shared';
 import '../agent/agent.css';
+
+// The classic dashboard (tasks, projects, charts) is the first tab of Home; loaded on its own so the other tabs stay light.
+const DashboardPage = lazy(() => import('../dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 import './command.css';
 
 
@@ -33,9 +36,9 @@ const KIND: Record<AttentionKind, { icon: IconName; label: string }> = {
   unresolved: { icon: 'repeat', label: 'Keeps coming up' },
 };
 
-type Tab = 'today' | 'work' | 'meetings' | 'decisions' | 'audit';
+type Tab = 'dashboard' | 'today' | 'work' | 'meetings' | 'decisions' | 'audit';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: 'today', label: 'Today', icon: 'target' }, { id: 'work', label: 'My work', icon: 'inbox' }, { id: 'meetings', label: 'Meetings', icon: 'video' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' }, { id: 'today', label: 'Today', icon: 'target' }, { id: 'work', label: 'My work', icon: 'inbox' }, { id: 'meetings', label: 'Meetings', icon: 'video' },
   { id: 'decisions', label: 'Decisions', icon: 'checks' }, { id: 'audit', label: 'Audit trail', icon: 'shield' },
 ];
 
@@ -46,7 +49,7 @@ const TABS: { id: Tab; label: string; icon: IconName }[] = [
 export function CommandCenterPage() {
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) || 'today';
+  const tab = (params.get('tab') as Tab) || 'dashboard';
   const q = useWsQuery(['agent', 'command-center'], () => delegateApi.commandCenter(), { refetchInterval: 120_000 });
   const [checkIn, setCheckIn] = useState<string | null>(params.get('checkin'));
   const [delegate, setDelegate] = useState<{ meetingId: string; at: string; title?: string } | null>(params.get('delegate') && params.get('at') ? { meetingId: params.get('delegate')!, at: params.get('at')! } : null);
@@ -64,22 +67,23 @@ export function CommandCenterPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const setTab = (t: Tab) => { const next = new URLSearchParams(params); if (t === 'today') next.delete('tab'); else next.set('tab', t); setParams(next, { replace: true }); };
+  const setTab = (t: Tab) => { const next = new URLSearchParams(params); if (t === 'dashboard') next.delete('tab'); else next.set('tab', t); setParams(next, { replace: true }); };
 
   return (
     <div className="cmd-page">
-      {q.isLoading ? <PageLoader /> : q.isError || !q.data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
+      <nav className="cmd-tabs" aria-label="Home">
+        {TABS.map((t) => (
+          <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
+            <Icon name={t.icon} size={15} /><span>{t.label}</span>
+            {t.id === 'meetings' && (q.data?.counts.meetingsToday ?? 0) > 0 && <em>{q.data!.counts.meetingsToday}</em>}
+          </button>
+        ))}
+      </nav>
+      {tab === 'dashboard' ? <div className="cmd-dashboard"><Suspense fallback={<PageLoader />}><DashboardPage /></Suspense></div>
+        : q.isLoading ? <PageLoader /> : q.isError || !q.data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <>
           <Hero c={q.data} onWhatIf={() => setWhatIf(true)} />
           <GetStarted />
-          <nav className="cmd-tabs" aria-label="Command Center">
-            {TABS.map((t) => (
-              <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
-                <Icon name={t.icon} size={15} /><span>{t.label}</span>
-                {t.id === 'meetings' && q.data.counts.meetingsToday > 0 && <em>{q.data.counts.meetingsToday}</em>}
-              </button>
-            ))}
-          </nav>
           {tab === 'today' && <TodayView c={q.data} onCheckIn={setCheckIn} onDelegate={setDelegate} onBrief={setBrief} onReport={setReport} />}
           {tab === 'work' && <div className="cmd-mywork"><MyWorkPage embedded /></div>}
           {tab === 'meetings' && <MeetingsView onDelegate={setDelegate} onBrief={setBrief} onReport={setReport} />}

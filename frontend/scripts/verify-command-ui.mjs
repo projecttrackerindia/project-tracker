@@ -91,6 +91,8 @@ try{
    else if(ep.endsWith('/workspace/members'))data=[{userId:user.id,displayName:user.displayName,email:user.email,role:'Owner'}];
    else if(ep==='/api/v1/timer')data=null;
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
+   else if(ep==='/api/v1/reports/summary'||ep==='/api/v1/work-tasks/summary')data=null;
+   else if(ep==='/api/v1/dashboard')data={counts:{myDueToday:1,myCompletedToday:0,myOpen:3,myOverdue:0,activeProjects:1,completedProjects:0,totalProjects:1,openTasks:6,overdueTasks:1,members:4,overallProgress:42,myLoggedMinutesThisWeek:90},myTasks:[],projects:[],activity:[],myWork:[]};
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
    else if(ep.endsWith('/workspace/logo'))data={hasLogo:false};
    else if(ep==='/api/v1/chat/projects/unread')data=[];
@@ -105,7 +107,7 @@ try{
  // Desktop: what needs me, with the evidence; answer a check-in; send the agent; what if; meetings, brief, settings; decisions; audit.
  let ctx=await make('light');
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/command-center');
+ await page.goto(origin+'/preview-org/command-center');await page.locator('.cmd-tabs button.on',{hasText:'Dashboard'}).waitFor();await page.locator('.cmd-dashboard').waitFor();checks.push('dashboard-first');await page.goto(origin+'/preview-org/command-center?tab=today');
  await page.getByRole('heading',{name:'Good morning, Asha'}).waitFor();
  assert.equal(await page.locator('[data-attention]').count(),5);
  assert.ok(await page.getByText('moves 3 dependent tasks',{exact:false}).isVisible());checks.push('attention-with-evidence');
@@ -172,7 +174,7 @@ try{
  for(const theme of ['light','dark']){
   ctx=await make(theme);
   page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
-  await page.goto(origin+'/preview-org/command-center');await page.locator('[data-attention]').first().waitFor();
+  await page.goto(origin+'/preview-org/command-center?tab=today');await page.locator('[data-attention]').first().waitFor();
   await shot(page,`command-390-${theme}.png`,true);await noOverflow(page,`command 390 ${theme}`);
   if(theme==='light'){
    assert.ok(await page.locator('.m-tabs').getByRole('link',{name:'Home'}).isVisible(),'Home (the Command Center) is a phone tab');checks.push('phone-tab');
