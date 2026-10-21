@@ -25,7 +25,7 @@ export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><h4>Resources</h4><ul><li><a href="/docs/">Help Center</a></li><li><a href="/blog/">Blog</a></li>${GUIDES.slice(0, 3).map((g) => `<li><a href="${g.path}">${esc(g.h1)}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><a href="tel:${SITE.phoneHref}">${SITE.phone}</a></li><li><a href="/about/">About us</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
-<div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="/delete-account/">Delete your account</a></li></ul></div>
+<div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="/refund-policy/">Cancellation and refunds</a></li><li><a href="/shipping-policy/">Shipping and delivery</a></li><li><a href="/contact/">Contact us</a></li><li><a href="/delete-account/">Delete your account</a></li></ul></div>
 </div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Hosted in India on Google Cloud (Mumbai) · Prices in INR</span><span>Made for teams that deliver.</span></div></div></footer>`;
 
 const planCard = (p: (typeof PLANS)[number], i: number) => {
@@ -443,6 +443,30 @@ const bodies: Record<string, () => string> = {
 <article class="card" ${reveal(2)}><h3>What is deleted, and when</h3><ul><li>Within 30 days: your account, profile, photo, sign-in methods, devices, notification settings and personal data.</li><li>If you own a workspace, we first agree with you who takes it over or whether it closes, so your team keeps its work.</li><li>Kept: invoices as long as tax law requires, and security logs while they are needed; backups age out within 14 days.</li></ul></article>
 </div><div style="height:30px"></div>${band('Questions?', `Write to ${SITE.supportEmail}.`)}</div>`,
   ...Object.fromEntries(DETAILS.map((d) => [d.path, () => detailBody(d)])),
+  '/contact/': () => `<div class="wrap"><div class="grid">
+<article class="card" ${reveal(0)}><h3>E-mail</h3><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li>Sales, billing, help, account and security questions.</li><li>We reply within one working day.</li></ul></article>
+<article class="card" ${reveal(1)}><h3>Phone</h3><ul><li><a href="tel:${SITE.phoneHref}">${SITE.phone}</a></li><li>Monday to Saturday, 10:00 to 18:00 IST.</li><li>Outside these hours, e-mail us and we call back.</li></ul></article>
+<article class="card" ${reveal(2)}><h3>Business</h3><ul><li>Project Tracker, founded by ${SITE.founder}.</li><li>Hyderabad, Telangana, India.</li><li>Service hosted on Google Cloud, Mumbai.</li></ul></article>
+</div><div style="height:30px"></div>${band('Report a security problem', `Write to ${SITE.securityEmail}; see the Security page for details.`)}</div>`,
+  '/refund-policy/': () => `<div class="wrap"><article class="prose">
+<h2>Cancelling a plan</h2>
+<ul><li>The workspace owner can cancel at any time in <b>Billing</b>, with <b>Cancel subscription</b>. No phone call or form is needed.</li><li>Your paid plan stays active until the end of the period you have paid for. After that the workspace moves to the Free plan's limits.</li><li>Nothing is deleted when you cancel. You can export your data at any time, and pick a paid plan again whenever you like.</li><li>Plans that renew automatically stop renewing as soon as you cancel; you are not charged again.</li></ul>
+<h2>Refunds</h2>
+<ul><li><b>Failed or duplicate payments:</b> if money left your account but the payment failed, or you were charged twice, the full amount is refunded.</li><li><b>Plan not switched on:</b> if you paid and we could not switch on your plan, we either switch it on or refund the full amount, whichever you prefer.</li><li><b>Charged after cancelling:</b> if you were charged for a renewal after you cancelled, the full renewal is refunded.</li><li>Other payments for a period that has started are not refunded part-way through, except where the law requires it.</li></ul>
+<h2>How refunds are paid</h2>
+<ul><li>Write to <a href="mailto:${SITE.supportEmail}?subject=Refund%20request">${SITE.supportEmail}</a> within 30 days of the payment, with the workspace name and the payment reference (UTR or payment id).</li><li>We confirm within two working days. Approved refunds go back to the original payment method within 5 to 7 working days; your bank may take a little longer to show it.</li></ul>
+<p>This policy is part of our <a href="/terms">Terms of Service</a>.</p>
+</article><div style="height:50px"></div>${band('Questions about a payment?', `Write to ${SITE.supportEmail} or call ${SITE.phone}.`)}</div>`,
+  '/shipping-policy/': () => `<div class="wrap"><article class="prose">
+<h2>Nothing is shipped</h2>
+<p>Project Tracker is software used online, in the browser and in our apps. We do not sell or ship physical goods, so there are no shipping charges, delivery addresses or courier tracking.</p>
+<h2>How your plan is delivered</h2>
+<ul><li>Free plans are available as soon as you create your account.</li><li>Paid plans are switched on in your workspace as soon as the payment is confirmed, usually within minutes. A plan paid by UPI QR is switched on once we have matched the payment, normally within a few working hours.</li><li>An invoice is sent by e-mail and is always available in <b>Billing</b>.</li></ul>
+<h2>Exchanges</h2>
+<p>You can move to a different plan at any time from <b>Billing</b>. For anything else, see our <a href="/refund-policy/">cancellation and refund policy</a>.</p>
+<h2>Problems with delivery</h2>
+<p>If you paid and your plan is not active, write to <a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a> with the payment reference, or call <a href="tel:${SITE.phoneHref}">${SITE.phone}</a>.</p>
+</article><div style="height:50px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,
   '/about/': () => `<div class="wrap"><article class="prose">
 <h2>Why we started</h2>
 <p>Most teams we met ran their projects from spreadsheets, their support from a shared inbox and their documentation from folders nobody could find. Each tool was fine on its own; together they meant chasing people for updates and losing the reason behind every decision.</p>

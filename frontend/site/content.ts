@@ -135,6 +135,14 @@ PAGES.push({ path: '/about/', title: 'About Us | Project Tracker', h1: 'Built in
 PAGES.push({ path: '/delete-account/', title: 'Delete Your Account | Project Tracker', h1: 'Delete your Project Tracker account', lead: 'How to ask for your account and the personal data linked to it to be deleted, what is removed and what is kept.',
   description: 'How to delete your Project Tracker account and personal data: from Account, Profile in the app or the website, or by e-mail to support. Completed within 30 days.' });
 
+/** Pages payment providers and card networks check for: how to reach us, how cancellation and refunds work, and how the service is delivered. */
+PAGES.push({ path: '/contact/', title: 'Contact Us | Project Tracker', h1: 'Contact us', lead: 'Sales, billing, help and security questions: write or call, and a person replies.',
+  description: 'Contact Project Tracker: e-mail support@projecttracker.in or call +91 76750 41369. Replies within one working day, Monday to Saturday.' });
+PAGES.push({ path: '/refund-policy/', title: 'Cancellation and Refund Policy | Project Tracker', h1: 'Cancellation and refund policy', lead: 'How to cancel a paid plan, what happens to your data, and when we refund a payment.',
+  description: 'Cancel a Project Tracker plan at any time from Billing. Your plan stays until the end of the paid period. Failed, duplicate or unapplied payments are refunded in full within 5 to 7 working days.' });
+PAGES.push({ path: '/shipping-policy/', title: 'Shipping and Delivery Policy | Project Tracker', h1: 'Shipping and delivery policy', lead: 'Project Tracker is online software: nothing is shipped, and your plan is delivered to your workspace as soon as payment is confirmed.',
+  description: 'Project Tracker is delivered online. No physical goods are shipped. Paid plans are switched on in your workspace as soon as payment is confirmed, with an invoice by e-mail.' });
+
 export const HOME = { path: '/', title: `${SITE.name} | Projects, Support Desk and AI Employee`, description: SITE.description, h1: 'Plan the work, see risk early, ship on time.', lead: 'Projects, an operations desk, API documentation and an AI employee that answers your customers, in one secure workspace.' };
 
 /** One page per thing people search for, written to stand on its own. Every statement here describes what the product does today. */
