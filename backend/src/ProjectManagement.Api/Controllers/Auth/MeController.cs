@@ -12,6 +12,11 @@ namespace ProjectManagement.Api.Controllers.Auth;
 public class MeController(AuthService auth, WorkspaceService workspaces, NotificationPreferenceService preferences, MfaService mfa,
     ProjectManagement.Application.Features.Sso.SsoLoginService logins, ProjectManagement.Application.Features.People.UserAvatarService avatars) : ApiControllerBase
 {
+    /// <summary>Ask for my account and personal data to be deleted. Support completes it within 30 days; I get a confirmation e-mail.</summary>
+    [HttpPost("deletion-request")]
+    public async Task<IActionResult> RequestDeletion([FromBody] AccountDeletionService.DeletionRequest req, [FromServices] AccountDeletionService deletion, CancellationToken ct) =>
+        Ok(await deletion.RequestAsync(req, ct));
+
     /// <summary>My own app layout (the sidebar: order, pinned, hidden, collapsed sections), saved with my account.</summary>
     [HttpGet("ui/{key}")]
     public async Task<IActionResult> GetUi(string key, [FromServices] UiPreferenceService ui, CancellationToken ct) => Ok(await ui.GetAsync(key, ct));

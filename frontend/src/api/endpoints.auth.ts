@@ -22,6 +22,7 @@ export const meApi = {
   context: () => get<AppContext>('/me'),
   fingerprint: () => get<{ fingerprint: string }>('/me/fingerprint'),
   updateProfile: (b: { displayName: string; timeZone?: string }) => put<User>('/me', b),
+  requestDeletion: (reason?: string) => post<{ email: string; completeWithinDays: number }>('/me/deletion-request', { reason }),
   changePassword: (b: { currentPassword: string; newPassword: string }) => post('/me/password', b),
   mfaStatus: () => get<MfaStatus>('/me/mfa'),
   mfaSetup: (password: string) => post<MfaSetup>('/me/mfa/setup', { password }),

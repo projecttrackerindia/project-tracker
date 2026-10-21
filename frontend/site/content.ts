@@ -123,6 +123,10 @@ export const PAGES: StaticPage[] = [
     description: 'How Project Tracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
 ];
 
+/** Required by app stores: how anyone can ask for their account and personal data to be deleted, with or without the app. */
+PAGES.push({ path: '/delete-account/', title: 'Delete Your Account | Project Tracker', h1: 'Delete your Project Tracker account', lead: 'How to ask for your account and the personal data linked to it to be deleted, what is removed and what is kept.',
+  description: 'How to delete your Project Tracker account and personal data: from Account, Profile in the app or the website, or by e-mail to support. Completed within 30 days.' });
+
 export const HOME = { path: '/', title: `${SITE.name} | Projects, Support Desk and AI Employee`, description: SITE.description, h1: 'Plan the work, see risk early, ship on time.', lead: 'Projects, an operations desk, API documentation and an AI employee that answers your customers, in one secure workspace.' };
 
 /** One page per thing people search for, written to stand on its own. Every statement here describes what the product does today. */

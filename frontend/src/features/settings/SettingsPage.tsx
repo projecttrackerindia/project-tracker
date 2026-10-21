@@ -119,7 +119,40 @@ function ProfileSection() {
           <ThemeSwitch />
         </div></div>
       </div>
+      <DeleteAccountCard />
     </>
+  );
+}
+
+/** Asking for this account and its personal data to be deleted (app stores require it in the app). Support completes it within 30 days. */
+function DeleteAccountCard() {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [sent, setSent] = useState<string | null>(null);
+  const request = useMutation({
+    mutationFn: () => meApi.requestDeletion(reason.trim() || undefined),
+    onSuccess: (r) => { setSent(r.email); setOpen(false); toast('Deletion requested. Check your e-mail for the confirmation.'); },
+    onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not send the request.', 'error'),
+  });
+  return (
+    <div className="card mb-22">
+      <div className="card-head"><h3>Delete my account</h3></div>
+      <div className="card-body"><div className="setting-row">
+        <div className="setting-info"><h4>Delete my account and personal data</h4>
+          <p>{sent ? `Requested. We will complete it within 30 days and write to ${sent} when it is done.`
+            : 'We remove your account and the personal data linked to it within 30 days. If you own a workspace, we first agree with you who takes it over, so your team keeps its work. Invoices are kept as long as tax law requires.'}</p></div>
+        {!sent && <button type="button" className="btn btn-danger btn-sm" onClick={() => setOpen(true)}>Request deletion</button>}
+      </div></div>
+      {open && (
+        <Modal title="Delete my account?" onClose={() => setOpen(false)}>
+          <form className="form-grid" onSubmit={(e) => { e.preventDefault(); request.mutate(); }}>
+            <p className="full" style={{ margin: 0 }}>Your request goes to our support team, and you get a confirmation e-mail. Nothing is deleted until support completes it.</p>
+            <Field label="Why are you leaving? (optional)" full><textarea className="input" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+            <div className="full"><SubmitButton busy={request.isPending}>Request deletion</SubmitButton></div>
+          </form>
+        </Modal>
+      )}
+    </div>
   );
 }
 

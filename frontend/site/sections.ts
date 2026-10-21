@@ -23,7 +23,7 @@ export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
-<div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li></ul></div>
+<div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="/delete-account/">Delete your account</a></li></ul></div>
 </div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Hosted in India on Google Cloud (Mumbai) · Prices in INR</span><span>Made for teams that deliver.</span></div></div></footer>`;
 
 const planCard = (p: (typeof PLANS)[number], i: number) => {
@@ -412,6 +412,11 @@ const bodies: Record<string, () => string> = {
 <section class="report" id="report" ${reveal()}><div><h2>Report a vulnerability</h2><p>If you believe you have found a security problem, e-mail <a href="mailto:${SITE.securityEmail}">${SITE.securityEmail}</a> with the steps to reproduce it. We reply within two working days, keep you informed while we fix it, and credit you if you wish. Please do not access other customers' data, degrade the service or run automated scans against it while investigating.</p></div>
 <a class="btn btn-primary" href="mailto:${SITE.securityEmail}?subject=Security%20report">Report a problem</a></section>
 <p class="note2">Machine-readable contact: <a href="/.well-known/security.txt">/.well-known/security.txt</a></p></div>`,
+  '/delete-account/': () => `<div class="wrap"><div class="grid">
+<article class="card" ${reveal(0)}><h3>In the app or on the website</h3><ul><li>Sign in, open <b>Account</b>, then <b>Profile</b>.</li><li>Under <b>Delete my account</b>, choose <b>Request deletion</b> and confirm.</li><li>You get a confirmation e-mail at once.</li></ul></article>
+<article class="card" ${reveal(1)}><h3>Without signing in</h3><ul><li>E-mail <a href="mailto:${SITE.supportEmail}?subject=Delete%20my%20account">${SITE.supportEmail}</a> from the address you use to sign in, with the subject <b>Delete my account</b>.</li><li>We reply to confirm it is you before anything is deleted.</li></ul></article>
+<article class="card" ${reveal(2)}><h3>What is deleted, and when</h3><ul><li>Within 30 days: your account, profile, photo, sign-in methods, devices, notification settings and personal data.</li><li>If you own a workspace, we first agree with you who takes it over or whether it closes, so your team keeps its work.</li><li>Kept: invoices as long as tax law requires, and security logs while they are needed; backups age out within 14 days.</li></ul></article>
+</div><div style="height:30px"></div>${band('Questions?', `Write to ${SITE.supportEmail}.`)}</div>`,
   ...Object.fromEntries(DETAILS.map((d) => [d.path, () => detailBody(d)])),
 };
 

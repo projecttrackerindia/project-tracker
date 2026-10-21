@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Organization.OrgSecurityService>();
         services.AddScoped<ProjectManagement.Application.Features.Consent.ConsentService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<AccountDeletionService>();
         services.AddScoped<DeviceLoginService>();
         services.AddScoped<PasskeyService>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.InvoiceService>();
