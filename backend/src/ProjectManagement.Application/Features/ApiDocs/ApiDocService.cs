@@ -258,7 +258,7 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         // A masked copy must never overwrite the real examples (they would be lost for good).
         if (EndpointMasking.LooksMasked(details) && await masking.MaskerAsync(ct) is not null)
         {
-            var stored = id is { } eid ? await db.ApiEndpoints.AsNoTracking().Where(e => e.Id == eid).Select(e => e.DetailsJson).FirstOrDefaultAsync(ct) : null;
+            var stored = id is { } prior ? await db.ApiEndpoints.AsNoTracking().Where(e => e.Id == prior).Select(e => e.DetailsJson).FirstOrDefaultAsync(ct) : null;
             if (stored is null || !PiiMasker.LooksMasked(stored))
                 throw new ConflictException("This endpoint still shows masked values. Open it for editing again to load the real values, then make your change.", "MASKED_CONTENT");
         }
