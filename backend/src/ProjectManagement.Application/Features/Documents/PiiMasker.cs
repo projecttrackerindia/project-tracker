@@ -129,6 +129,9 @@ public sealed class PiiMasker
 
     private string Hide(string value, string strategy) { Count++; return Apply(value, strategy); }
 
+    /// <summary>Masks one value with a strategy and counts it (for fields whose rule is already known).</summary>
+    public string HideValue(string value, string strategy) => Hide(value, strategy);
+
     /// <summary>Masks sensitive values in a piece of prose or a code sample.</summary>
     public string MaskText(string text)
     {
@@ -227,5 +230,7 @@ public sealed class PiiMasker
     public string MaskSection(string kind, string content) => kind == "Table" ? MaskTable(content) : MaskRichText(content);
 
     /// <summary>True when content still carries a run of mask dots - a masked copy that must never be saved over the original.</summary>
-    public static bool LooksMasked(string content) => content.Contains(new string(Dot, 3), StringComparison.Ordinal);
+    /// <summary>Whether content still carries mask dots - as text, or JSON-escaped inside stored rich text (\u2022).</summary>
+    public static bool LooksMasked(string content) =>
+        content.Contains(new string(Dot, 3), StringComparison.Ordinal) || content.Contains("\\u2022\\u2022\\u2022", StringComparison.OrdinalIgnoreCase);
 }

@@ -96,6 +96,8 @@ try{
  await page.locator('.dv-mode').getByRole('button',{name:'Edit',exact:true}).click();
  for(let i=0;i<20&&writes.filter(w=>w.ep==='/api/v1/documents/d1/reveal').length<2;i++)await page.waitForTimeout(100);
  assert.equal(writes.filter(w=>w.ep==='/api/v1/documents/d1/reveal')[1].b.purpose,'edit');
+ // Architecture Studio: insert a diagram while editing, start from a template, rename a box, Done.
+ await page.locator('.rte-content',{hasText:'9876543210'}).first().waitFor();   // the editor shows the real values, not the masked copy
  await page.locator('.dv-mode').getByRole('button',{name:'Read',exact:true}).click();checks.push('edit-unlock');
  // Collapse with the keyboard and the button, then back.
  await page.keyboard.press('Control+\\');await page.locator('.ds-shell.collapsed').waitFor();await shot(page,'document-collapsed-1440.png');

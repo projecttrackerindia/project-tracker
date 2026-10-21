@@ -53,7 +53,8 @@ public static class SqliteEnterpriseUpgrade
         "20261031000100_NotetakerAutomation",
         "20261101000100_VoiceAgent",
         "20261102000100_SupportChannels",
-        "20261102000200_DocumentMasking"
+        "20261102000200_DocumentMasking",
+        "20261102000300_ProjectArchitecture"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

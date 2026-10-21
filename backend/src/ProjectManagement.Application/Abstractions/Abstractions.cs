@@ -19,6 +19,7 @@ public interface IAppDbContext
     DbSet<SupportConversation> SupportConversations { get; }
     DbSet<DocumentMaskingSettings> DocumentMaskingSettings { get; }
     DbSet<MaskingRule> MaskingRules { get; }
+    DbSet<ProjectArchitecture> ProjectArchitectures { get; }
     DbSet<MeetingBotIdentity> MeetingBotIdentities { get; }
     DbSet<NotetakerSettings> NotetakerSettings { get; }
     DbSet<MeetingMinutes> MeetingMinutes { get; }

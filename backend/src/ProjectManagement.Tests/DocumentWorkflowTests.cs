@@ -583,7 +583,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         Assert.True((await Write(owner, doc, "first")).Ok);
 
         long Rows() => factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().LongCount(a => a.TenantId == owner.WorkspaceId));
-        Guid apiDef = Guid.Empty, apiEndpoint = Guid.Empty, grant = Guid.Empty, link = Guid.Empty, requirement = Guid.Empty, access = Guid.Empty, file = Guid.Empty, version = Guid.Empty, secret = Guid.Empty;
+        Guid apiDef = Guid.Empty, apiEndpoint = Guid.Empty, grant = Guid.Empty, link = Guid.Empty, requirement = Guid.Empty, access = Guid.Empty, file = Guid.Empty, version = Guid.Empty, secret = Guid.Empty, maskRule = Guid.Empty;
 
         // One scenario per write endpoint, keyed "VERB template". Each runs the call and the test checks that the audit table grew.
         var scenarios = new Dictionary<string, Func<Task<ApiResult>>>
@@ -626,6 +626,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["POST documents/{id:guid}/api/endpoints"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/api/endpoints", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited", deprecated = false, details = new { } }); apiEndpoint = Guid.Parse(S(r.Data!["item"]!["id"])); return r; },
             ["PUT documents/{id:guid}/api/endpoints/{endpointId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited again", deprecated = true, details = new { } }),
             ["POST documents/{id:guid}/api/import"] = () => owner.Post($"/api/v1/documents/{doc}/api/import", new { content = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"Imp\",\"version\":\"1\"},\"paths\":{\"/imp\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\"}}}}}}", fileName = "imp.json", mode = "merge", dryRun = false }),
+            ["POST documents/{id:guid}/api/endpoints/{endpointId:guid}/reveal"] = () => owner.Post($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}/reveal", new { purpose = "read", reason = "Audit check" }),
             ["DELETE documents/{id:guid}/api/endpoints/{endpointId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}"),
             ["DELETE documents/{id:guid}/api/definitions/{definitionId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/api/definitions/{apiDef}"),
             ["POST documents/{id:guid}/requirements"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/requirements", new { titles = new[] { "One" } }); requirement = Guid.Parse(S(r.Data!.AsArray()[0]!["id"])); return r; },
@@ -644,6 +645,11 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
                 factory.WithDb(db => { db.Users.IgnoreQueryFilters().Where(u => u.Id == owner.UserId).ExecuteUpdate(x => x.SetProperty(u => u.MfaLastStep, 0L)); return 0; });
                 return await owner.Post("/api/v1/documents/step-up", new { code = ProjectManagement.Application.Common.Totp.Compute(key, ProjectManagement.Application.Common.Totp.StepOf(DateTime.UtcNow)) });
             },
+            ["POST documents/{id:guid}/reveal"] = () => owner.Post($"/api/v1/documents/{doc}/reveal", new { purpose = "read", reason = "Audit check" }),
+            ["PUT document-security/masking"] = () => owner.Put("/api/v1/document-security/masking", new { enabled = true, disabledBuiltIns = Array.Empty<string>() }),
+            ["POST document-security/masking/rules"] = async () => { var r = await owner.Post("/api/v1/document-security/masking/rules", new { field = "employee code", match = "exact", strategy = "last2", label = "Employee code", enabled = true }); maskRule = Guid.Parse(S(r.Data!["rules"]!.AsArray().Last()!["id"])); return r; },
+            ["PUT document-security/masking/rules/{id:guid}"] = () => owner.Put($"/api/v1/document-security/masking/rules/{maskRule}", new { field = "employee code", match = "exact", strategy = "all", label = "Employee code", enabled = true }),
+            ["DELETE document-security/masking/rules/{id:guid}"] = () => owner.Delete($"/api/v1/document-security/masking/rules/{maskRule}"),
             ["PUT document-security/reveal-duration"] = () => owner.Put("/api/v1/document-security/reveal-duration", new { seconds = 30 }),
             ["POST document-security/rotate-key"] = () => owner.Post("/api/v1/document-security/rotate-key"),
             ["POST document-security/verify-audit"] = () => owner.Post("/api/v1/document-security/verify-audit"),
@@ -655,6 +661,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         var written = new[] { typeof(DocumentsController), typeof(ApiDocsController), typeof(SecretsController) }.SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .SelectMany(m => m.GetCustomAttributes<HttpMethodAttribute>(true))
             .Where(a => a.HttpMethods.Any(h => h is "POST" or "PUT" or "DELETE" or "PATCH"))
+            .Where(a => a.Template?.EndsWith("/preview") != true)   // a dry run that changes nothing
             .Select(a => $"{a.HttpMethods.First()} {a.Template}").ToHashSet();
         Assert.Empty(written.Except(scenarios.Keys));
         Assert.Empty(scenarios.Keys.Except(written));

@@ -28,6 +28,10 @@ public class ApiDocsController(ApiDocService api, ApiTransferService transfer) :
     [HttpGet("documents/{id:guid}/api/endpoints/{endpointId:guid}")]
     public async Task<IActionResult> Endpoint(Guid id, Guid endpointId, [FromQuery] Guid? versionId, CancellationToken ct) => Ok(await api.GetAsync(id, endpointId, versionId, ct));
 
+    /// <summary>The endpoint with its masked values shown: "edit" (to change it) or "read" (needs the reveal permission and a reason). Audited.</summary>
+    [HttpPost("documents/{id:guid}/api/endpoints/{endpointId:guid}/reveal")]
+    public async Task<IActionResult> RevealEndpoint(Guid id, Guid endpointId, [FromBody] ProjectManagement.Application.Features.Documents.DocumentRevealRequest req, CancellationToken ct) => Ok(await api.RevealAsync(id, endpointId, req, ct));
+
     [HttpPost("documents/{id:guid}/api/endpoints")]
     public async Task<IActionResult> AddEndpoint(Guid id, [FromBody] SaveEndpointRequest req, CancellationToken ct) => Created(await api.SaveEndpointAsync(id, null, req, ct));
 

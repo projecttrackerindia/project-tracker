@@ -5873,6 +5873,47 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("MaskingRules");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.ProjectArchitecture", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DiagramsJson")
+                        .IsRequired()
+                        .HasMaxLength(600000)
+                        .HasColumnType("character varying(600000)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .IsUnique();
+
+                    b.ToTable("ProjectArchitectures");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.CompanyMailSettings", b =>
                 {
                     b.Property<Guid>("Id")

@@ -427,3 +427,15 @@ public class StepUpGrant : Entity
     public string TokenHash { get; set; } = "";
     public DateTime ExpiresAt { get; set; }
 }
+
+/// <summary>
+/// DocTracker's per-project page: the project's architecture and request-flow diagrams (drawn in Architecture Studio) and its integration
+/// notes. ProjectId is Guid.Empty for "General" (documents that belong to no project).
+/// </summary>
+public class ProjectArchitecture : TenantEntity, ITenantScoped
+{
+    public Guid ProjectId { get; set; }
+    /// <summary>JSON list of {key, title, kind: architecture|flow, data: {nodes, edges}}, cleaned by ArchDiagram.Clean.</summary>
+    public string DiagramsJson { get; set; } = "[]";
+    public string? Notes { get; set; }
+}

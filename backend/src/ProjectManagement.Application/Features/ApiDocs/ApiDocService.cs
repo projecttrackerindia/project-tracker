@@ -17,7 +17,8 @@ public record DefinitionDto(Guid Id, string Name, string? Description, string? B
 public record ApiOverviewDto(IReadOnlyList<DefinitionDto> Definitions, int Endpoints, bool Live, string Reading, Guid? VersionId, bool CanEdit, long Limit, int Used);
 public record EndpointItemDto(Guid Id, Guid DefinitionId, string Definition, string Method, string Path, string Summary, string? Tag, bool Deprecated, UserRefDto? Owner);
 public record EndpointPageDto(IReadOnlyList<EndpointItemDto> Items, string? NextCursor, int? Total);
-public record EndpointDto(EndpointItemDto Item, EndpointDetails Details, bool ReadOnly);
+/// <param name="MaskedCount">Personal or secret values masked in this copy (0 for a revealed one).</param>
+public record EndpointDto(EndpointItemDto Item, EndpointDetails Details, bool ReadOnly, int MaskedCount = 0, bool Revealed = false, int RevealSeconds = 0, bool CanReveal = false);
 public record EndpointHitDto(Guid DocumentId, string DocumentKey, string DocumentTitle, string Definition, string Method, string Path, string Summary);
 public record SaveDefinitionRequest(string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, IReadOnlyList<string>? Servers, ApiStage? Stage = null);
 public record SaveEndpointRequest(Guid DefinitionId, string Method, string Path, string? Summary, string? Tag, bool Deprecated, Guid? OwnerId, EndpointDetails? Details);
@@ -35,7 +36,7 @@ public sealed record ApiSource(Guid? VersionId, string Label)
 /// thousands of endpoints opens by API and loads a page at a time. Any change counts as a change of the document: it voids a review in progress and
 /// makes the draft differ from the published version.
 /// </summary>
-public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements, DocumentAccessService rights, DocumentWorkflowService workflows)
+public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentMaskingService masking, PermissionService permissions)
 {
     public const int PageSize = 50, MaxPageSize = 200, MaxDefinitions = 30, MaxHits = 50;
 
@@ -138,14 +139,43 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
             x.OwnerId is { } o ? new UserRefDto(o, names.GetValueOrDefault(o) ?? "Former member") : null)).ToList();
     }
 
-    public async Task<EndpointDto> GetAsync(Guid documentId, Guid endpointId, Guid? versionId, CancellationToken ct = default)
+    public async Task<EndpointDto> GetAsync(Guid documentId, Guid endpointId, Guid? versionId, CancellationToken ct = default) => await GetAsync(documentId, endpointId, versionId, false, 0, ct);
+
+    /// <summary>
+    /// The real values of a masked endpoint: an editor about to change it ("edit"), or someone with the reveal permission who gives a reason
+    /// ("read", for the workspace's reveal time). Audited either way.
+    /// </summary>
+    public async Task<EndpointDto> RevealAsync(Guid documentId, Guid endpointId, DocumentRevealRequest req, CancellationToken ct = default)
+    {
+        var (doc, r) = await OpenAsync(documentId, false, ct);
+        var editing = req.Purpose == "edit";
+        var reason = (req.Reason ?? "").Trim();
+        if (editing) { if (!r.Edit) throw new ForbiddenException("You can't edit this API."); if (reason.Length == 0) reason = "Editing the endpoint"; }
+        else
+        {
+            if (!r.Edit && !await permissions.HasAsync(Permissions.DocsSecrets, ct)) throw new ForbiddenException("You are not allowed to reveal masked values.", "PERMISSION_DENIED");
+            if (reason.Length < 4) throw new ValidationException("reason", "Say why you need to see the masked values (at least a few words).");
+        }
+        if (reason.Length > 300) reason = reason[..300];
+        var seconds = editing ? 0 : Math.Clamp(await db.TenantSecuritySettings.AsNoTracking().Select(x => (int?)x.RevealSeconds).FirstOrDefaultAsync(ct) ?? 15, 5, 300);
+        var masked = await GetAsync(documentId, endpointId, null, false, 0, ct);
+        recorder.Audit("api.pii_revealed", "ApiEndpoint", endpointId, null, new { document = doc.Id, purpose = editing ? "edit" : "read", reason, values = masked.MaskedCount });
+        await db.SaveChangesAsync(ct);
+        return await GetAsync(documentId, endpointId, null, true, seconds, ct);
+    }
+
+    private async Task<EndpointDto> GetAsync(Guid documentId, Guid endpointId, Guid? versionId, bool reveal, int revealSeconds, CancellationToken ct)
     {
         var (doc, r) = await OpenAsync(documentId, false, ct);
         var src = await SourceAsync(doc, r, versionId, ct);
         var row = await Rows(documentId, src).FirstOrDefaultAsync(x => x.Id == endpointId, ct) ?? throw new NotFoundException("Endpoint not found.");
         var json = src.Live ? await db.ApiEndpoints.AsNoTracking().Where(e => e.Id == endpointId).Select(e => e.DetailsJson).FirstAsync(ct)
             : await db.EndpointRevisions.AsNoTracking().Where(e => e.VersionId == src.VersionId && e.EndpointId == endpointId).Select(e => e.DetailsJson).FirstAsync(ct);
-        return new EndpointDto((await ToItemsAsync(documentId, src, [row], ct))[0], ApiJson.Read(json), !src.Live || !r.Edit);
+        var details = ApiJson.Read(json);
+        var masker = reveal ? null : await masking.MaskerAsync(ct);
+        if (masker is not null) details = EndpointMasking.Mask(details, masker);
+        var canReveal = r.Edit || await permissions.HasAsync(Permissions.DocsSecrets, ct);
+        return new EndpointDto((await ToItemsAsync(documentId, src, [row], ct))[0], details, !src.Live || !r.Edit, masker?.Count ?? 0, reveal, revealSeconds, canReveal);
     }
 
     /// <summary>Published endpoints whose path, summary or group contains the text, in documents the person may open. Drafts are not searched: they are read in their document.</summary>
@@ -225,6 +255,13 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         if (tag is { Length: > 80 }) throw new ValidationException("tag", "A group name is at most 80 characters.");
         if (req.OwnerId is { } owner && !await db.TenantMembers.AnyAsync(m => m.TenantId == doc.TenantId && m.UserId == owner, ct)) throw new ValidationException("ownerId", "That person is not in this workspace.");
         var details = ApiJson.Clean(req.Details ?? new EndpointDetails());
+        // A masked copy must never overwrite the real examples (they would be lost for good).
+        if (EndpointMasking.LooksMasked(details) && await masking.MaskerAsync(ct) is not null)
+        {
+            var stored = id is { } eid ? await db.ApiEndpoints.AsNoTracking().Where(e => e.Id == eid).Select(e => e.DetailsJson).FirstOrDefaultAsync(ct) : null;
+            if (stored is null || !PiiMasker.LooksMasked(stored))
+                throw new ConflictException("This endpoint still shows masked values. Open it for editing again to load the real values, then make your change.", "MASKED_CONTENT");
+        }
         var duplicate = await db.ApiEndpoints.AnyAsync(e => e.DefinitionId == req.DefinitionId && e.Path == path && e.Method == method && e.Id != id, ct);
         if (duplicate) throw new ConflictException($"{method.ToString().ToUpperInvariant()} {path} is already described in this API.", "ENDPOINT_EXISTS");
 
@@ -248,7 +285,7 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         recorder.Audit(id is null ? "document.endpoint_added" : "document.endpoint_changed", "Document", doc.Id, before, new { api = def.Name, endpoint = label, summary, req.Deprecated });
         await db.SaveChangesAsync(ct);
         await AfterChangeAsync(doc, ct);
-        return await GetAsync(documentId, e.Id, null, ct);
+        return await GetAsync(documentId, e.Id, null, true, 0, ct);   // the editor keeps working on the real values
     }
 
     internal static void Apply(ApiEndpoint e, Guid definitionId, ApiMethod method, string path, string summary, string? tag, bool deprecated, Guid? owner, EndpointDetails details)

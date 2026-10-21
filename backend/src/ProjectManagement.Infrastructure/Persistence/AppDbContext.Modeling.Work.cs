@@ -552,6 +552,7 @@ public partial class AppDbContext
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.IpRanges).HasMaxLength(6000);
         });
+        b.Entity<ProjectArchitecture>(e => { e.HasIndex(x => new { x.TenantId, x.ProjectId }).IsUnique(); e.Property(x => x.DiagramsJson).HasMaxLength(600000); e.Property(x => x.Notes).HasMaxLength(8000); });
         b.Entity<DocumentMaskingSettings>(e => { e.HasIndex(x => x.TenantId).IsUnique(); e.Property(x => x.DisabledBuiltIns).HasMaxLength(500); });
         b.Entity<MaskingRule>(e =>
         {

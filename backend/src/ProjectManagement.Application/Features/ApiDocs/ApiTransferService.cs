@@ -22,7 +22,7 @@ public sealed record ExportFile(string FileName, string ContentType, byte[] Byte
 /// do first (a dry run), reports problems with the line they are on, never leaves half an API behind (everything is saved together) and respects the
 /// plan's endpoint limit. Also freezing the API when a version is published, and what changed between two versions.
 /// </summary>
-public class ApiTransferService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements, ApiDocService api)
+public class ApiTransferService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements, ApiDocService api, ProjectManagement.Application.Features.Documents.DocumentMaskingService masking)
 {
     public const int MaxContentChars = 6_000_000;
 
@@ -123,6 +123,8 @@ public class ApiTransferService(IAppDbContext db, ICurrentContext ctx, AppClock 
         if (defs.Count == 0) throw new ConflictException("This document does not describe an API yet.", "NO_API");
         var def = definitionId is { } did ? defs.FirstOrDefault(d => d.Id == did) ?? throw new NotFoundException("API not found.") : defs.Count == 1 ? defs[0] : throw new ValidationException("definitionId", "Choose which API to export.");
         var rows = await LoadAsync(documentId, src, def.Id, ct);
+        // Exports leave the app: personal and secret example values go out masked.
+        if (await masking.MaskerAsync(ct) is { } masker) rows = rows.Select(x => x with { Details = EndpointMasking.Mask(x.Details, masker) }).ToList();
         var safe = new string(def.Name.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
         if (safe.Length == 0) safe = "api";
         var fmt = (format ?? "openapi").ToLowerInvariant();

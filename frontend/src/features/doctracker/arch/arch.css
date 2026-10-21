@@ -1,0 +1,100 @@
+/* Architecture Studio (features/documents/arch). Uses the app's tokens so it follows light and dark themes. */
+.arch-studio, .arch-block, .arch-full {
+  --arch-bg: var(--surface, #fff); --arch-panel: var(--surface, #fff); --arch-line: var(--border, #e5e7eb); --arch-text: var(--text, #111827); --arch-text-2: var(--text-2, #4b5563);
+  --arch-muted: var(--text-3, #6b7280); --arch-accent: var(--primary-fill, #5c7cfa); --arch-label-bg: var(--surface, #fff); --arch-edge: color-mix(in srgb, var(--text-3, #6b7280) 80%, transparent);
+}
+.arch-studio { position: fixed; inset: 0; z-index: 1300; display: grid; grid-template-rows: 54px 1fr; background: var(--bg, #f5f6fa); color: var(--arch-text); }
+.arch-top { display: flex; align-items: center; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--arch-line); background: var(--arch-panel); }
+.arch-brand { display: inline-flex; gap: 7px; align-items: center; font-weight: 700; font-size: 13.5px; white-space: nowrap; color: var(--arch-accent); }
+.arch-title { flex: 1; min-width: 120px; max-width: 420px; padding: 7px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--arch-text); font: inherit; font-size: 15px; font-weight: 650; }
+.arch-title:hover, .arch-title:focus { border-color: var(--arch-line); outline: none; }
+.arch-top-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.arch-btn { display: inline-flex; gap: 6px; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--arch-line); background: var(--arch-panel); color: var(--arch-text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; white-space: nowrap; }
+.arch-btn::-webkit-details-marker { display: none; }
+.arch-btn:hover { border-color: var(--arch-accent); }
+.arch-btn.primary { background: var(--arch-accent); border-color: var(--arch-accent); color: #fff; }
+.arch-btn.ghost { border-color: transparent; background: transparent; }
+.arch-btn.danger { color: var(--danger, #ef5c6e); }
+.arch-ibtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--arch-line); background: var(--arch-panel); color: var(--arch-text); cursor: pointer; }
+.arch-ibtn:disabled { opacity: .4; cursor: default; }
+.arch-select { height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--arch-line); background: var(--arch-panel); color: var(--arch-text); font: inherit; font-size: 13px; }
+.arch-menu { position: relative; }
+.arch-menu-pop { position: absolute; right: 0; top: 38px; z-index: 5; min-width: 200px; padding: 6px; border-radius: 10px; border: 1px solid var(--arch-line); background: var(--arch-panel); box-shadow: 0 16px 40px -12px rgba(0,0,0,.3); display: grid; }
+.arch-menu-pop button { text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: none; color: var(--arch-text); font: inherit; font-size: 13px; cursor: pointer; }
+.arch-menu-pop button:hover { background: var(--hover-bg, rgba(0,0,0,.05)); }
+.arch-body { display: grid; grid-template-columns: 250px minmax(0, 1fr) 270px; min-height: 0; }
+.arch-palette, .arch-inspector { background: var(--arch-panel); overflow-y: auto; padding: 12px; min-height: 0; }
+.arch-palette { border-right: 1px solid var(--arch-line); }
+.arch-inspector { border-left: 1px solid var(--arch-line); }
+.arch-search { display: flex; gap: 6px; align-items: center; padding: 0 10px; height: 32px; border: 1px solid var(--arch-line); border-radius: 8px; color: var(--arch-muted); margin-bottom: 10px; }
+.arch-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--arch-text); font: inherit; font-size: 13px; }
+.arch-palette h5 { margin: 12px 2px 6px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--arch-muted); }
+.arch-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.arch-tile-btn { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: 9px; border: 1px solid var(--arch-line); background: var(--arch-panel); color: var(--arch-text-2); font: inherit; font-size: 10.5px; line-height: 1.2; text-align: center; cursor: grab; }
+.arch-tile-btn:hover { border-color: var(--arch-accent); color: var(--arch-text); }
+.arch-mini { display: block; width: 22px; height: 16px; border: 1.6px solid var(--arch-text-2); }
+.arch-mini.frame { border-style: dashed; border-radius: 3px; }
+.arch-mini.rounded { border-radius: 5px; } .arch-mini.ellipse { border-radius: 50%; }
+.arch-mini.diamond { width: 14px; height: 14px; transform: rotate(45deg); margin: 1px 0; }
+.arch-mini.text { border: 0; font-weight: 700; font-size: 15px; height: auto; color: var(--arch-text-2); text-align: center; }
+.arch-canvas { position: relative; min-width: 0; min-height: 0; background: var(--arch-bg); }
+.arch-empty { position: absolute; inset: 0; margin: auto; width: min(440px, 90%); height: max-content; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--arch-muted); pointer-events: none; }
+.arch-empty b { color: var(--arch-text); }
+.arch-empty div { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 6px; pointer-events: auto; }
+.arch-help ul { padding-left: 18px; margin: 8px 0; display: grid; gap: 6px; font-size: 13px; color: var(--arch-text-2); }
+.arch-muted { color: var(--arch-muted); font-size: 12.5px; }
+.arch-insp { display: grid; gap: 12px; font-size: 13px; }
+.arch-insp label, .arch-field { display: grid; gap: 5px; font-weight: 600; color: var(--arch-text-2); }
+.arch-insp input:not([type=checkbox]), .arch-insp textarea { padding: 7px 9px; border-radius: 8px; border: 1px solid var(--arch-line); background: var(--arch-panel); color: var(--arch-text); font: inherit; font-weight: 400; font-size: 13px; resize: vertical; }
+.arch-check { display: flex !important; grid-auto-flow: column; gap: 8px; align-items: center; font-weight: 500 !important; }
+.arch-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.arch-swatches button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+.arch-swatches button.on { border-color: var(--arch-text); }
+.arch-seg { display: inline-flex; border: 1px solid var(--arch-line); border-radius: 8px; overflow: hidden; }
+.arch-seg button { padding: 5px 10px; border: 0; background: none; color: var(--arch-text-2); font: inherit; font-size: 12.5px; cursor: pointer; text-transform: capitalize; }
+.arch-seg button.on { background: color-mix(in srgb, var(--arch-accent) 14%, transparent); color: var(--arch-accent); font-weight: 650; }
+.arch-insp-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* nodes */
+.arch-node { position: relative; width: 100%; height: 100%; display: flex; align-items: center; gap: 10px; color: var(--arch-text); font-size: 12.5px; font-weight: 600; line-height: 1.25; }
+.arch-icon { padding: 8px 12px 8px 8px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--c) 35%, var(--arch-line)); background: var(--arch-panel); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.arch-icon.sel, .arch-shape.sel .arch-shape-bg, .arch-text.sel { outline: 2px solid var(--arch-accent); outline-offset: 2px; }
+.arch-tile { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 14%, transparent); }
+.arch-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.arch-has-notes { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--arch-accent); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; font-style: italic; }
+.arch-shape { justify-content: center; text-align: center; padding: 6px 12px; }
+.arch-shape-bg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.arch-shape-bg > * { fill: color-mix(in srgb, var(--c) 12%, var(--arch-panel)); stroke: var(--c); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.arch-shape .arch-label { position: relative; flex: none; max-width: 100%; }
+.arch-text { font-size: 14px; font-weight: 650; padding: 2px 4px; }
+.arch-frame { width: 100%; height: 100%; border-radius: 14px; border: 1.6px dashed color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 5%, transparent); }
+.arch-frame.sel { border-style: solid; border-color: var(--arch-accent); }
+.arch-frame-title { position: absolute; top: -11px; left: 12px; padding: 1px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700; color: var(--c); background: var(--arch-bg); }
+.arch-h { width: 9px !important; height: 9px !important; background: var(--arch-panel) !important; border: 1.6px solid var(--arch-accent) !important; opacity: 0; transition: opacity .12s; }
+.react-flow__node:hover .arch-h, .react-flow__node.selected .arch-h, .react-flow.connecting .arch-h { opacity: 1; }
+.arch-h.hidden { opacity: 0 !important; pointer-events: none; }
+.arch-rs-line { border-color: var(--arch-accent) !important; }
+.arch-rs-h { width: 8px !important; height: 8px !important; border-radius: 2px; background: var(--arch-panel) !important; border: 1.5px solid var(--arch-accent) !important; }
+.arch-studio .react-flow__controls { box-shadow: 0 2px 10px rgba(0,0,0,.12); border-radius: 8px; overflow: hidden; }
+.arch-studio .react-flow__minimap { border-radius: 10px; overflow: hidden; border: 1px solid var(--arch-line); }
+
+/* the block inside a document */
+.arch-block { margin: 14px 0; border: 1px solid var(--arch-line); border-radius: 14px; overflow: hidden; background: var(--arch-panel); }
+.arch-block.selected { outline: 2px solid var(--arch-accent); outline-offset: 2px; }
+.arch-block-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--arch-line); flex-wrap: wrap; }
+.arch-block-title { display: inline-flex; gap: 7px; align-items: center; font-weight: 700; font-size: 13.5px; }
+.arch-block-meta { color: var(--arch-muted); font-size: 12px; }
+.arch-block-actions { margin-left: auto; display: flex; gap: 6px; }
+.arch-block-actions .arch-btn { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.arch-preview { background: var(--arch-bg); }
+.arch-preview .react-flow__pane { cursor: default; }
+.arch-block-empty { padding: 28px; text-align: center; color: var(--arch-muted); font-size: 13px; }
+.arch-full { position: fixed; inset: 0; z-index: 1300; display: grid; grid-template-rows: 52px 1fr; background: var(--arch-bg); }
+.arch-full-head { display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--arch-line); background: var(--arch-panel); }
+@media (max-width: 900px) {
+  .arch-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  .arch-palette { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--arch-line); }
+  .arch-tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .arch-inspector { max-height: 220px; border-left: 0; border-top: 1px solid var(--arch-line); }
+  .arch-top { overflow-x: auto; } .arch-brand { display: none; }
+}

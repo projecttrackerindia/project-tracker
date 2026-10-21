@@ -87,7 +87,8 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
     },
   });
 
-  useEffect(() => { editor?.setEditable(!readOnly); }, [editor, readOnly]);
+  // Switching between reading and editing is not an edit (setEditable would otherwise report the old text as a change).
+  useEffect(() => { editor?.setEditable(!readOnly, false); }, [editor, readOnly]);
   // A reload (or a restore) replaces the text from outside: take it, but never fight what is being typed.
   useEffect(() => {
     if (!editor || value === last.current) return;
