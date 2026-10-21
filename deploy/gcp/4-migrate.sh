@@ -10,7 +10,9 @@ SRC_DB=$(get DATABASE_PUBLIC_URL "$STATE/railway-postgres.env")
 [ -n "$SRC_DB" ] || { echo "Missing DATABASE_PUBLIC_URL in $STATE/railway-postgres.env" >&2; exit 1; }
 # REHEARSAL=1 makes a trial copy while the site stays live (only reads from Railway) and empties Cloud SQL first, so the real
 # move later is a known quantity; the real move then copies everything again (files only fetch what changed).
-if [ "${REHEARSAL:-0}" = 1 ]; then
+if [ "${FILES_ONLY:-0}" = 1 ]; then
+  echo "Files and recordings only."
+elif [ "${REHEARSAL:-0}" = 1 ]; then
   echo "Rehearsal: Railway is only read; Cloud SQL's copy is replaced."
   gcloud sql databases delete "$DB_NAME" --instance="$DB_INSTANCE" --quiet >/dev/null 2>&1 || true
   gcloud sql databases create "$DB_NAME" --instance="$DB_INSTANCE" >/dev/null
@@ -25,6 +27,7 @@ PG=/usr/lib/postgresql/18/bin
 [ -x "$PG/pg_dump" ] || sudo apt-get install -y -qq postgresql-client-18 >/dev/null
 export PGPASSWORD="$(cat "$STATE/db-password")"
 
+if [ "${FILES_ONLY:-0}" != 1 ]; then
 echo "== 1/4 Copying the database out of Railway"
 "$PG/pg_dump" --format=custom --no-owner --no-acl --dbname="$SRC_DB" --file="$STATE/db.dump"
 ls -lh "$STATE/db.dump"
@@ -42,6 +45,8 @@ if [ "$TABLES" != "0" ]; then echo "Cloud SQL already has $TABLES tables. To sta
 "$PG/pg_restore" --no-owner --no-acl --no-comments --no-publications --no-subscriptions --no-security-labels --exit-on-error -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" "$STATE/db.dump"
 "$PG/psql" -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" \
   -c 'select count(*) as organizations from "Tenants";' -c 'select count(*) as people from "Users";'
+
+fi
 
 echo "== 3/4 Uploaded files"
 command -v rclone >/dev/null || sudo apt-get install -y -qq rclone >/dev/null
