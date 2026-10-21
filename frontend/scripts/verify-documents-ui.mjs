@@ -21,7 +21,10 @@ const docs=[D(1,'UPI collect API','API','API documentation','#35c491','Published
 const rich=(t)=>JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:t}]}]});
 const detail={item:docs[0],revision:3,versionLabel:'v1.0',publishedLabel:'v1.0',hasUnpublishedChanges:false,viewingPublished:false,
   can:{edit:true,delete:true,link:true,share:true,publish:true},
-  sections:[{key:'overview',title:'Overview',kind:'RichText',sortOrder:0,content:rich('Collect UPI payments from customers.')},{key:'auth',title:'Authentication',kind:'RichText',sortOrder:1,content:rich('client_id and client_secret headers.')},{key:'errors',title:'Error codes',kind:'RichText',sortOrder:2,content:rich('400, 401, 500.')}]};
+  maskedCount:2,revealed:false,revealSeconds:0,canReveal:true,
+  sections:[{key:'overview',title:'Overview',kind:'RichText',sortOrder:0,content:rich('Support desk: ••••••3210, PAN ••••••••4F.')},{key:'auth',title:'Authentication',kind:'RichText',sortOrder:1,content:rich('client_id and client_secret headers.')},{key:'errors',title:'Error codes',kind:'RichText',sortOrder:2,content:rich('400, 401, 500.')}]};
+const revealedDetail={...detail,maskedCount:0,revealed:true,revealSeconds:15,sections:detail.sections.map((x,i)=>i===0?{...x,content:rich('Support desk: 9876543210, PAN ABCDE1234F.')}:x)};
+const writes=[];
 const errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
@@ -33,8 +36,9 @@ try{
    if(url.origin!==origin){await route.abort();return;}
    if(ep.endsWith('/avatar')){await route.fulfill({status:404,body:''});return;}
    if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp}});return;}
-   assert.ok(method==='GET'||ep.endsWith('/auth/refresh')||ep.endsWith('/views'),`Unexpected write: ${method} ${ep}`);
    let data=[],status=200;
+   if(ep==='/api/v1/documents/d1/reveal'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});await route.fulfill({contentType:'application/json',body:JSON.stringify({data:revealedDetail})});return;}
+   assert.ok(method==='GET'||ep.endsWith('/auth/refresh')||ep.endsWith('/views'),`Unexpected write: ${method} ${ep}`);
    if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
    else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','projects.edit','docs.create','docs.edit','docs.delete','docs.workflow','org.manage'],modules:{projects:3,tasks:3,documents:3,calendar:3,work:3,ai:3,activity:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
@@ -79,6 +83,20 @@ try{
  assert.equal(await page.locator('.ds-doc.active .ds-sections a').count(),3);
  await shot(page,'document-tree-1440.png');checks.push('document-sections');
 
+ // Masked values: a banner, a reason to reveal, then the real values for a few seconds.
+ await page.locator('.dv-mask',{hasText:'2 personal or secret values are masked'}).waitFor();
+ assert.ok(await page.getByText('••••••3210',{exact:false}).isVisible());
+ await page.locator('.dv-mask').getByRole('button',{name:'Reveal'}).click();
+ const dlg=page.getByRole('dialog');await dlg.getByLabel('Why do you need to see them?').fill('Customer called about EMI');await dlg.getByRole('button',{name:'Reveal'}).click();
+ await page.locator('.dv-mask.revealed').waitFor();assert.ok(await page.getByText('9876543210',{exact:false}).isVisible());
+ assert.equal(writes.find(w=>w.ep==='/api/v1/documents/d1/reveal').b.purpose,'read');
+ await shot(page,'document-revealed-1440.png');
+ await page.getByRole('button',{name:'Hide now'}).click();await page.getByText('••••••3210',{exact:false}).waitFor();checks.push('mask-reveal');
+ // Edit unlocks the real values (audited as editing).
+ await page.locator('.dv-mode').getByRole('button',{name:'Edit',exact:true}).click();
+ for(let i=0;i<20&&writes.filter(w=>w.ep==='/api/v1/documents/d1/reveal').length<2;i++)await page.waitForTimeout(100);
+ assert.equal(writes.filter(w=>w.ep==='/api/v1/documents/d1/reveal')[1].b.purpose,'edit');
+ await page.locator('.dv-mode').getByRole('button',{name:'Read',exact:true}).click();checks.push('edit-unlock');
  // Collapse with the keyboard and the button, then back.
  await page.keyboard.press('Control+\\');await page.locator('.ds-shell.collapsed').waitFor();await shot(page,'document-collapsed-1440.png');
  await page.getByRole('button',{name:'Show document tree'}).click();await page.locator('.ds-shell:not(.collapsed)').waitFor();checks.push('collapse');

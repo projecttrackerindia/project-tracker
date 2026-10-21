@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
+import { del, get, post, put } from '../../api/client';
 import { documentApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Modal, PageLoader } from '../../components/ui';
+import { Select } from '../../components/Select';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -29,6 +31,7 @@ export function DocumentSecurityModal({ onClose }: { onClose: () => void }) {
     <Modal title="Document security" subtitle="Secrets, reveal time and the audit trail." size="lg" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="dsec">
+          <MaskingSection />
           <section>
             <h4>Reveal time</h4>
             <p className="muted">A revealed value hides again after this long. It protects an unattended screen; the audit record protects against a copy.</p>
@@ -65,5 +68,73 @@ export function DocumentSecurityModal({ onClose }: { onClose: () => void }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+interface MaskBuiltIn { label: string; strategy: string; example: string; masked: string; enabled: boolean }
+interface MaskRuleRow { id: string; field: string; match: string; strategy: string; label: string; enabled: boolean }
+interface Masking { enabled: boolean; builtIns: MaskBuiltIn[]; rules: MaskRuleRow[]; canManage: boolean }
+const maskingApi = {
+  get: () => get<Masking>('/document-security/masking'),
+  save: (b: { enabled: boolean; disabledBuiltIns: string[] }) => put<Masking>('/document-security/masking', b),
+  addRule: (b: Omit<MaskRuleRow, 'id'>) => post<Masking>('/document-security/masking/rules', b),
+  removeRule: (id: string) => del<Masking>(`/document-security/masking/rules/${id}`),
+  preview: (text: string) => post<{ masked: string; count: number }>('/document-security/masking/preview', { text }),
+};
+const STRATEGY: Record<string, string> = { full: 'Hide all', last4: 'Show last 4', last2: 'Show last 2', first2last2: 'Show first 2 and last 2', email: 'Hide the name, keep the domain', secret: 'Credential' };
+
+/** What is masked in documents: on or off, the built-in kinds, the workspace's own rules, and a box to try a sample. */
+function MaskingSection() {
+  const wid = useWorkspaceId();
+  const q = useWsQuery(['document-security', 'masking'], maskingApi.get);
+  const [field, setField] = useState(''); const [strategy, setStrategy] = useState('full'); const [match, setMatch] = useState('exact');
+  const [sample, setSample] = useState('Ravi 98765 43210, PAN ABCDE1234F, client_secret: s3cr3tValue');
+  const [preview, setPreview] = useState<{ masked: string; count: number } | null>(null);
+  const done = () => { void q.refetch(); invalidateWorkspace(wid, 'documents'); };
+  const fail = (e: unknown) => toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'That did not work.', 'error');
+  const save = useMutation({ mutationFn: maskingApi.save, onSuccess: () => { done(); toast('Masking saved.'); }, onError: fail });
+  const add = useMutation({ mutationFn: maskingApi.addRule, onSuccess: () => { done(); setField(''); toast('Rule added.'); }, onError: fail });
+  const remove = useMutation({ mutationFn: maskingApi.removeRule, onSuccess: done, onError: fail });
+  const m = q.data;
+  if (!m) return <section><h4>Data masking</h4>{q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <PageLoader />}</section>;
+  const off = m.builtIns.filter((b) => !b.enabled).map((b) => b.label);
+  const toggle = (label: string) => save.mutate({ enabled: m.enabled, disabledBuiltIns: off.includes(label) ? off.filter((x) => x !== label) : [...off, label] });
+  return (
+    <section className="dmask">
+      <div className="dmask-head">
+        <div><h4>Data masking</h4><p className="muted">Personal and secret values in documents are masked before they leave the server - for readers, in version history and in PDFs. Editors unlock them to edit; others with the reveal permission give a reason. Every reveal is in the audit trail.</p></div>
+        <label className="dmask-switch"><input type="checkbox" checked={m.enabled} disabled={!m.canManage || save.isPending} onChange={(e) => save.mutate({ enabled: e.target.checked, disabledBuiltIns: off })} /><span>{m.enabled ? 'On' : 'Off'}</span></label>
+      </div>
+      {m.enabled && <>
+        <div className="dmask-kinds" role="group" aria-label="Built-in kinds">
+          {m.builtIns.map((b) => (
+            <button key={b.label} type="button" className={`dmask-kind${b.enabled ? ' on' : ''}`} aria-pressed={b.enabled} disabled={!m.canManage || save.isPending} onClick={() => toggle(b.label)} title={`${b.example} → ${b.masked}`}>
+              <Icon name={b.enabled ? 'lock' : 'eye'} size={12} /><span>{b.label}</span><code>{b.masked}</code>
+            </button>
+          ))}
+        </div>
+        <div className="dmask-rules">
+          <b>Your own fields</b>
+          {m.rules.length === 0 && <p className="muted">None yet. Add fields your company uses, like loan_account_no or Employee code.</p>}
+          {m.rules.map((r) => (
+            <div key={r.id} className="dmask-rule"><code>{r.field}</code><span className="muted">{r.match === 'exact' ? 'exact name' : r.match}</span><span>{STRATEGY[r.strategy] ?? r.strategy}</span>
+              {m.canManage && <button type="button" className="btn-icon" aria-label={`Remove ${r.field}`} onClick={() => remove.mutate(r.id)}><Icon name="trash" size={14} /></button>}</div>
+          ))}
+          {m.canManage && (
+            <form className="dmask-add" onSubmit={(e) => { e.preventDefault(); if (field.trim()) add.mutate({ field: field.trim(), match, strategy, label: field.trim(), enabled: true }); }}>
+              <input aria-label="Field name" value={field} onChange={(e) => setField(e.target.value)} placeholder="Field name, e.g. loan_account_no" />
+              <Select className="select" aria-label="Match" value={match} onChange={(e) => setMatch(e.target.value)}><option value="exact">Exact name</option><option value="contains">Name contains</option><option value="regex">Pattern (regex)</option></Select>
+              <Select className="select" aria-label="Mask" value={strategy} onChange={(e) => setStrategy(e.target.value)}>{Object.entries(STRATEGY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
+              <button className="btn btn-primary btn-sm" disabled={!field.trim() || add.isPending}>Add</button>
+            </form>
+          )}
+        </div>
+        <div className="dmask-try">
+          <b>Try it</b>
+          <div className="dmask-try-row"><input aria-label="Sample text" value={sample} onChange={(e) => setSample(e.target.value)} /><button type="button" className="btn btn-ghost btn-sm" onClick={async () => { try { setPreview(await maskingApi.preview(sample)); } catch (e) { fail(e); } }}>Preview</button></div>
+          {preview && <p className="dmask-out"><code>{preview.masked}</code> <span className="muted">{preview.count} masked</span></p>}
+        </div>
+      </>}
+    </section>
   );
 }

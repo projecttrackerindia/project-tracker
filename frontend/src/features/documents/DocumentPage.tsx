@@ -118,13 +118,27 @@ function DocumentView() {
   const [stale, setStale] = useState(false);
   const [params, setParams] = useSearchParams();
   const apiOverview = useWsQuery(['documents', id, 'api', ''], () => apiDocApi.overview(id), { enabled: !!q.data, retry: false });
-  const detail = q.data;
+  // The real values of a masked document: the editor's copy while editing, or a reader's short, audited reveal. Never put in the cache.
+  const [plain, setPlain] = useState<DocumentDetail | null>(null);
+  const [plainUntil, setPlainUntil] = useState<number | null>(null);
+  const [askReveal, setAskReveal] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!plainUntil) return;
+    const t = window.setInterval(() => { const n = Date.now(); setNow(n); if (n >= plainUntil) { setPlain(null); setPlainUntil(null); } }, 500);
+    return () => window.clearInterval(t);
+  }, [plainUntil]);
+  const detail = q.data && plain ? { ...q.data, sections: plain.sections } : q.data;
   const dirty = Object.keys(edits).length > 0;
 
   const apply = useCallback((r: DocumentDetail) => { queryClient.setQueryData([wid, 'documents', id], r); invalidateWorkspace(wid, 'documents'); }, [wid, id]);
   const save = useMutation({
     mutationFn: () => documentApi.saveSections(id, { revision: detail!.revision, sections: Object.entries(edits).map(([key, content]) => ({ key, content })) }),
-    onSuccess: (r) => { setEdits({}); setStale(false); apply(r); toast('Saved.'); },
+    onSuccess: (r) => {
+      setEdits({}); setStale(false); toast('Saved.');
+      if (r.revealed) { setPlain(r); queryClient.setQueryData([wid, 'documents', id], (old: DocumentDetail | undefined) => old ? { ...r, sections: old.sections, revealed: false, maskedCount: old.maskedCount } : old); void q.refetch(); invalidateWorkspace(wid, 'documents'); }
+      else apply(r);
+    },
     onError: (e) => { if (e instanceof ApiError && e.code === 'DOCUMENT_CHANGED') setStale(true); toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); },
   });
   const pdf = useExportPdf(id);
@@ -172,6 +186,15 @@ function DocumentView() {
   const isArtifact = type?.code === 'ARTIFACT';
   const hasApi = type?.code === 'API' || (apiOverview.data?.definitions.length ?? 0) > 0;
   const setTab = (t: DocTab) => setParams(t === 'doc' ? {} : { tab: t }, { replace: true });
+  // Editing works on the real values: a masked document is unlocked first (recorded in the audit trail as editing).
+  const enterEdit = async () => {
+    if ((q.data?.maskedCount ?? 0) > 0 && !(plain && !plainUntil)) {
+      try { const r = await documentApi.revealDocument(id, { purpose: 'edit' }); setPlain(r); setPlainUntil(null); }
+      catch (e) { toast(e instanceof ApiError ? e.message : 'Could not open the real values for editing.', 'error'); return; }
+    }
+    setMode('edit'); if (tab !== 'doc' && tab !== 'api') setTab('doc');
+  };
+  const masked = q.data?.maskedCount ?? 0;
   const shownSections = editable ? detail.sections : detail.sections.filter((s) => hasContent(s.kind, edits[s.key] ?? s.content));
   const set = (key: string, v: string) => setEdits((x) => {
     const orig = detail.sections.find((s) => s.key === key)?.content;
@@ -225,8 +248,8 @@ function DocumentView() {
         <div className="dv-actions">
           {canEdit && (
             <div className="dv-mode" role="group" aria-label="Reading or editing">
-              <button type="button" className={mode === 'view' ? 'on' : ''} aria-pressed={mode === 'view'} aria-label="Read" title="Read" onClick={() => setMode('view')}><Icon name="eye" size={15} /><span>Read</span></button>
-              <button type="button" className={mode === 'edit' ? 'on' : ''} aria-pressed={mode === 'edit'} aria-label="Edit" title="Edit" onClick={() => { setMode('edit'); if (tab !== 'doc' && tab !== 'api') setTab('doc'); }}><Icon name="edit" size={15} /><span>Edit</span></button>
+              <button type="button" className={mode === 'view' ? 'on' : ''} aria-pressed={mode === 'view'} aria-label="Read" title="Read" onClick={() => { setMode('view'); if (!plainUntil) setPlain(null); }}><Icon name="eye" size={15} /><span>Read</span></button>
+              <button type="button" className={mode === 'edit' ? 'on' : ''} aria-pressed={mode === 'edit'} aria-label="Edit" title="Edit" onClick={() => void enterEdit()}><Icon name="edit" size={15} /><span>Edit</span></button>
             </div>
           )}
           {editable && <button className="btn btn-primary" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>}
@@ -264,6 +287,17 @@ function DocumentView() {
         ))}
       </div>
 
+      {tab === 'doc' && !editable && (masked > 0 || plainUntil) && (
+        plainUntil
+          ? <div className="dv-mask revealed" role="status"><Icon name="eye" size={16} /><div><b>Showing the real values</b> - masked again in {Math.max(0, Math.ceil((plainUntil - now) / 1000))}s. This reveal is in the audit trail.</div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setPlain(null); setPlainUntil(null); }}>Hide now</button></div>
+          : <div className="dv-mask" role="note"><Icon name="lock" size={16} /><div><b>{masked} personal or secret value{masked === 1 ? ' is' : 's are'} masked</b> - mobile numbers, PAN, Aadhaar, account numbers, credentials and similar.</div>
+              {q.data?.canReveal && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAskReveal(true)}><Icon name="eye" size={14} /> Reveal</button>}</div>
+      )}
+      {askReveal && <RevealModal onClose={() => setAskReveal(false)} onReveal={async (reason) => {
+        const r = await documentApi.revealDocument(id, { purpose: 'read', reason });
+        setPlain(r); setPlainUntil(Date.now() + Math.max(5, r.revealSeconds ?? 15) * 1000); setNow(Date.now()); setAskReveal(false);
+      }} />}
       {tab === 'doc' && (
         <div className={`dv-layout${editable ? ' editing' : ''}`}>
           <article className="dv-paper doc-body" aria-label={d.title}>
@@ -320,5 +354,26 @@ function DocumentView() {
       {panel === 'submit' && review.data && <SubmitModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
       {panel === 'publishApproved' && review.data && <PublishApprovedModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
     </div>
+  );
+}
+
+/** Why someone needs to see the masked values: the reason goes into the audit trail with the reveal. */
+function RevealModal({ onClose, onReveal }: { onClose: () => void; onReveal: (reason: string) => Promise<void> }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true); setError(null);
+    try { await onReveal(reason.trim()); } catch (e) { setError(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not reveal.'); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Reveal masked values" subtitle="They show for a few seconds, then are masked again." onClose={onClose}
+      onSubmit={(e) => { e.preventDefault(); void go(); }}
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="submit" className="btn btn-primary" disabled={busy || reason.trim().length < 4}>{busy && <span className="spinner" />}Reveal</button></>}>
+      {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
+      <Field label="Why do you need to see them?" hint="Recorded in the audit trail with your name and the time.">
+        <input className="input" autoFocus value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="Customer called about their EMI" />
+      </Field>
+    </Modal>
   );
 }

@@ -34,6 +34,8 @@ export const documentApi = {
   create: (b: { title: string; typeId: string; projectId?: string | null; teamId?: string | null; visibility?: DocumentVisibility; classification?: DocumentClassification; tags?: string[]; sections?: { key: string; content: string }[] }) => post<DocumentDetail>('/documents', b),
   update: (id: string, b: { title: string; visibility: DocumentVisibility; classification?: DocumentClassification; tags: string[]; ownerId?: string | null; revision: number; teamId?: string | null }) => put<DocumentDetail>(`/documents/${id}`, b),
   saveSections: (id: string, b: { revision: number; sections: { key: string; content: string }[] }) => put<DocumentDetail>(`/documents/${id}/sections`, b),
+  /** The real values of a masked document: 'edit' for an editor about to change it, 'read' (with a reason) to look for a few seconds. Audited. */
+  revealDocument: (id: string, b: { purpose: 'edit' | 'read'; reason?: string }) => post<DocumentDetail>(`/documents/${id}/reveal`, b),
   archive: (id: string) => post<DocumentDetail>(`/documents/${id}/archive`),
   reopen: (id: string) => post<DocumentDetail>(`/documents/${id}/reopen`),
   restore: (id: string) => post<DocumentDetail>(`/documents/${id}/restore`),

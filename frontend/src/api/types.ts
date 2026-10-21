@@ -638,6 +638,8 @@ export interface DocumentSection { key: string; title: string; kind: SectionKind
 export interface DocumentDetail {
   item: DocumentItem; revision: number; versionLabel: string; sections: DocumentSection[]; can: { edit: boolean; delete: boolean; link: boolean; share: boolean; publish: boolean };
   publishedLabel: string | null; hasUnpublishedChanges: boolean; viewingPublished: boolean;
+  /** Personal or secret values masked in this copy; revealed = the real values (an audited reveal, or the editor's copy). */
+  maskedCount?: number; revealed?: boolean; revealSeconds?: number; canReveal?: boolean;
 }
 export interface DocumentFilters { projectId?: string; teamId?: string; typeId?: string; status?: string; ownerId?: string; tag?: string; q?: string; general?: boolean; scope?: string; cursor?: string; limit?: number }
 export interface LinkedItem {

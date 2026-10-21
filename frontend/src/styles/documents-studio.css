@@ -357,3 +357,12 @@ a.ds-row:hover .ds-doc-title b { color: var(--primary); }
   .ds-drawer .ds-rail-row { width: 100%; white-space: normal; }
   .ds-drawer-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); }
 }
+
+/* masked values banner (server-side masking; reveal is audited) */
+.dv-mask { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin: 0 0 14px; border-radius: 10px; font-size: 13.5px; line-height: 1.45;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border)); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); color: var(--text-2); }
+.dv-mask > svg { flex: none; color: var(--warning); }
+.dv-mask > div { flex: 1; min-width: 0; }
+.dv-mask b { color: var(--text); }
+.dv-mask.revealed { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+.dv-mask.revealed > svg { color: var(--danger); }

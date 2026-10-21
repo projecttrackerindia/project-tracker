@@ -714,3 +714,20 @@
 .api-bar { padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 .api-bar-main { flex: 1 1 auto; }
 .api-bar-main .doc-search { flex: 1 1 280px; max-width: 460px; }
+
+/* Documents › Security › Data masking */
+.dmask { display: grid; gap: 14px; }
+.dmask-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; }
+.dmask-switch { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.dmask-switch input { width: 18px; height: 18px; accent-color: var(--primary-fill); }
+.dmask-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.dmask-kind { display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-3); font: inherit; font-size: 12.5px; cursor: pointer; }
+.dmask-kind.on { border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); background: color-mix(in srgb, var(--warning) 9%, var(--surface)); color: var(--text); }
+.dmask-kind code { font-size: 11px; color: var(--text-3); }
+.dmask-rules, .dmask-try { display: grid; gap: 8px; font-size: 13px; }
+.dmask-rule { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.dmask-rule code { font-weight: 600; }
+.dmask-rule .btn-icon { margin-left: auto; }
+.dmask-add, .dmask-try-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.dmask-add input, .dmask-try-row input { flex: 1 1 220px; min-width: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.dmask-out { margin: 0; overflow-wrap: anywhere; }
