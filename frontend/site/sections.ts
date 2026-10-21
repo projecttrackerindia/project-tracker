@@ -240,6 +240,22 @@ const suite = `<div class="suite">
 <a href="/features/meeting-notetaker/">Notetaker →</a></article>
 </div>`;
 
+// ---- inside Claude and ChatGPT: a question, the tool it calls, the answer
+
+const assist = `<div class="ast" ${reveal()}>
+<div class="ast-copy"><p class="eyebrow">Connectors</p><h2>Ask Claude or ChatGPT about your projects</h2>
+<p class="sub" style="margin-bottom:22px">Connect your workspace to the assistant you already use. It signs in as you, sees only what you can see, and changes things only when you allow it.</p>
+<ul class="sg-points"><li>${tick}<span><b>A secure sign-in</b>, no keys to copy, disconnect any time.</span></li>
+<li>${tick}<span><b>Read only, or read and make changes</b>, your choice per connection.</span></li>
+<li>${tick}<span><b>On every plan</b>, including Free.</span></li></ul>
+<a class="btn btn-ghost" href="/features/connect-ai/">How to connect</a></div>
+<div class="ast-stage" role="img" aria-label="An assistant is asked what is overdue, calls Project Tracker and answers with three tasks">
+<div class="ast-win"><div class="ast-bar"><i></i><i></i><i></i><span>Your AI assistant</span></div>
+<p class="ast-q">What is overdue for me this week?</p>
+<div class="ast-tool">${icon('link', 14)}<span>Project Tracker · my_work</span><b>done</b></div>
+<div class="ast-a"><p>You have 3 overdue tasks:</p><ul><li><b>Review login copy</b> · Customer portal · 2 days</li><li><b>Update release notes</b> · Mobile app v2 · 1 day</li><li><b>Share test plan</b> · Data migration · today</li></ul><span class="ast-act">Move them to Friday?</span></div>
+</div></div></div>`;
+
 // ---- tangled tools, then one clear line
 
 const TANGLE = 'M30 276 C90 96 250 66 282 176 C314 286 150 306 192 206 C234 106 404 96 424 206 C444 316 334 336 354 256 C374 176 560 136 612 96';
@@ -318,6 +334,7 @@ ${fan}</div></section>
 <div class="marquee" aria-label="Works with"><div class="track">${[...INTEGRATIONS, ...INTEGRATIONS].map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>
 ${section(`${heading('Why teams switch', 'Your team\'s week, untangled', 'Every disconnected tool adds friction. Put the work, the people and the truth on one clear line.')}${mess}`)}
 ${section(employee, false)}
+${section(assist, false)}
 ${section(`${heading('Run the whole service', 'Support, documentation and meetings, handled', 'The work around the work, in the same place as the projects it serves.')}${suite}`, false)}
 ${section(`${heading('One workspace', 'From the first task to the portfolio review')}<div style="height:10px"></div>${orbit}`, false)}
 ${section(`${heading('Everything in one place', 'Planning, doing and reporting', 'One workspace for the whole delivery, so leaders see the truth without chasing updates.')}${bento}<p style="margin-top:26px;text-align:center"><a href="/features/"><strong>Explore every feature →</strong></a></p>`, false)}
@@ -386,7 +403,7 @@ ${dlCard('web', OS_ICONS.web, 'In your browser', 'Nothing to install', '<a class
 
 const bodies: Record<string, () => string> = {
   '/download/': downloadBody,
-  '/features/': () => `<div class="wrap">${employee}<div style="height:28px"></div>${suite}<h2 style="margin:64px 0 20px">Everything else in the workspace</h2><div class="grid">${FEATURES.map(featureCard).join('')}</div>
+  '/features/': () => `<div class="wrap">${employee}<div style="height:28px"></div>${suite}<h2 style="margin:64px 0 20px">Everything else in the workspace</h2><div class="grid">${FEATURES.map(featureCard).join('')}</div><div style="height:40px"></div>${assist}
 <h2 style="margin:64px 0 20px">Go deeper</h2><div class="grid">${DETAILS.map((d, i) => `<article class="card" ${reveal(i % 3)}><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.description)}</p></article>`).join('')}</div>
 <div style="height:30px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,
   '/pricing/': () => `<div class="wrap">${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}${offers()}<div style="height:40px"></div>${credits()}${matrix()}

@@ -37,6 +37,7 @@ export const FEATURES: Feature[] = [
   { icon: 'message', title: 'WhatsApp support, team by team', text: 'Each team connects its own business number. Answers come first from what you already know; people step in from a shared inbox when it matters, and nothing is lost between a chat, a call and a ticket.' },
   { icon: 'layers', title: 'DocTracker for APIs and documents', text: 'Every project\'s APIs, architecture and documents in one place, with a score that shows what is missing, diagrams drawn on a canvas, sensitive values masked by default and a record of everyone who looked.' },
   { icon: 'mic', title: 'A notetaker in every meeting', text: 'Send it to the call and get clear minutes afterwards: what was decided, who does what and by when.' },
+  { icon: 'link', title: 'Works inside Claude and ChatGPT', text: 'Connect your workspace to the AI assistant you already use. Ask about projects and your work, and let it create tasks or update status when you allow it, signed in as you with your own permissions.' },
   { icon: 'kanban', title: 'Projects and delivery timelines', text: 'Boards, lists, stages, sprints and milestones with task dependencies, so every project shows what is next and what is blocked.' },
   { icon: 'monitor', title: 'A portfolio view for leaders', text: 'Every project ranked by risk with the reasons, a forecast of when it will really finish, and the history of every delivery date that moved.' },
   { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens.' },
@@ -125,6 +126,22 @@ export const HOME = { path: '/', title: `${SITE.name} | Projects, Support Desk a
 /** One page per thing people search for, written to stand on its own. Every statement here describes what the product does today. */
 export interface DetailPage extends StaticPage { sections: { title: string; text: string; points: string[] }[]; related: string[] }
 export const DETAILS: DetailPage[] = [
+  {
+    path: '/features/connect-ai/', title: 'Connect Claude and ChatGPT to Your Projects | Project Tracker', h1: 'Your workspace, inside the AI assistant you already use',
+    lead: 'Connect Claude or ChatGPT in a minute. Ask about projects, tasks and support work in plain words, and let it make changes only when you allow it.',
+    description: 'Connect Project Tracker to Claude or ChatGPT: a secure sign-in, read-only or read-and-change access, your own permissions, and a list of connected apps you can switch off at any time. Setup steps and example prompts.',
+    sections: [
+      { title: 'Connect in a minute', text: 'Add Project Tracker as a connector, sign in when asked, choose the workspace and what it may do.',
+        points: ['In Claude: Settings, Connectors, then add Project Tracker with the address https://projecttracker.in/api/v1/mcp', 'In ChatGPT: Settings, Apps and connectors, then add the same address with sign-in', 'Pick read only, or read and make changes'] },
+      { title: 'Safe by design', text: 'It works as you, never as more than you.',
+        points: ['Your own role and permissions decide what it can see and change', 'It never sees your password; access renews itself and can be switched off at once', 'Every connected app is listed in Settings, Connected apps'] },
+      { title: 'What it can do', text: 'Find and summarise your work, and keep it moving.',
+        points: ['Projects, tasks, your work, support tickets and API documentation', 'Create tasks and work items, change status, comment and log time', 'Works on every plan, including Free'] },
+      { title: 'Try asking', text: 'Three things people ask first.',
+        points: ['"What is overdue for me this week, by project?" - lists your open work with due dates', '"Create a task in Customer portal to review the login copy, due Friday" - creates it after you allow changes', '"Which support tickets are close to missing their target?" - lists open work items with their service level'] },
+    ],
+    related: ['/features/ai-assistant/', '/security/'],
+  },
   {
     path: '/features/ai-employee/', title: 'AI Employee for Calls and WhatsApp | Project Tracker', h1: 'An AI employee that answers your customers',
     lead: 'It answers calls and WhatsApp messages in your customers\' own language, follows your rules, and hands over to your team the moment a person is needed.',
@@ -299,6 +316,7 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'WhatsApp numbers per team, shared inbox', v: ['✓', '✓', '✓', '✓'] },
     { label: 'Meeting notetaker and minutes', v: ['Try it', '✓', '✓', '✓'] },
     { label: 'DocTracker: score, Swagger view, architecture', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Connect Claude and ChatGPT', v: ['✓', '✓', '✓', '✓'] },
     { label: 'Masked values with a reveal you set', v: ['Masked', 'Masked', 'Reveal timer and audit check', '✓'] },
   ] },
   { group: 'Intelligence', rows: [
@@ -332,6 +350,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'How does per-person pricing work?', a: 'Pro and Business are priced per person per month, and you pay for the people in your workspace. Storage and AI credits grow with each person and are shared by the whole team. Add people any time; the owner chooses the number of seats under Settings, Billing.' },
   { q: 'What discounts are there?', a: 'Paying for a year at once takes 20% off. Teams of 10 or more get 10% off, 25 or more 15%, and 100 or more 20%, automatically. The two add up, to at most 30% off. Prices are in Indian rupees and exclude GST.' },
   { q: 'What is an AI credit?', a: 'A unit of AI use. A quick answer costs 1 credit, a standard answer 4 and a deep analysis 20; a spoken reply from the AI employee costs 2, and the notetaker a little for each hour it sits in a call. Each person on Pro brings 80 credits a month and each person on Business 300, pooled across the team and renewed on the 1st. When the pool runs out the AI waits until the next month; nothing else is affected.' },
+  { q: 'Can I use Project Tracker from Claude or ChatGPT?', a: 'Yes, on every plan. Add Project Tracker as a connector in Claude or ChatGPT, sign in, choose the workspace and whether it may make changes. It works with your own permissions, and you can disconnect it at any time from Settings, Connected apps.' },
   { q: 'Who pays for phone calls and WhatsApp messages?', a: 'Your phone and WhatsApp providers bill you directly for calls and conversations, at their own rates, on the accounts you connect. We charge only the AI credits the AI employee uses.' },
   { q: 'Can the AI employee speak our customers\' language?', a: 'Yes. It answers in Telugu, Hindi, Tamil, Kannada and English, and follows the caller when they switch. You choose which languages it uses and which one it greets in.' },
   { q: 'Is there a free trial of the paid plans?', a: 'Yes. Start a 14-day trial of Pro or Business from Settings, Billing: up to 5 people and 100 AI credits, no payment taken.' },

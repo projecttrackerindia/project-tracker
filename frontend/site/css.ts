@@ -466,6 +466,21 @@ footer .brand{color:var(--ink)}
 __JS__ .ml{opacity:0}.in .ml{animation:pt-note .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--md,0s)}
 .credit-grid.two-up{grid-template-columns:repeat(2,1fr);max-width:820px;margin-top:14px}
 
+/* ---- inside Claude and ChatGPT */
+.ast{display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center;padding:clamp(24px,3.4vw,48px);border-radius:36px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--card)}
+.ast h2{font-size:clamp(26px,3.4vw,40px);letter-spacing:-.04em;margin-bottom:10px}
+.ast-stage{position:relative;padding:26px;border-radius:28px;background:radial-gradient(110% 90% at 0% 0%,rgba(251,191,146,.45),transparent 60%),radial-gradient(100% 90% at 100% 100%,rgba(167,139,250,.4),transparent 60%),var(--surface-2)}
+.ast-win{border-radius:18px;background:#fff;box-shadow:0 24px 60px -24px rgba(54,38,122,.45);padding:0 0 16px;overflow:hidden}
+.ast-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;background:#f6f3ff;border-bottom:1px solid var(--line)}.ast-bar i{width:9px;height:9px;border-radius:50%;background:#d6cdee}.ast-bar span{margin-left:8px;font-size:12px;font-weight:700;color:var(--muted)}
+.ast-q{margin:16px 16px 0 auto;max-width:76%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;font-size:14px;width:fit-content}
+.ast-tool{display:flex;align-items:center;gap:8px;margin:12px 16px 0;padding:8px 12px;border-radius:12px;border:1px dashed #cdbcff;color:var(--brand);font-size:12.5px;font-weight:650;width:fit-content}
+.ast-tool b{color:#16a34a;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.ast-a{margin:12px 16px 0;padding:12px 14px;border-radius:16px 16px 16px 4px;background:var(--surface-2);font-size:14px;color:var(--ink);max-width:90%}
+.ast-a ul{margin:8px 0 0;padding-left:18px;display:grid;gap:4px;font-size:13.5px}.ast-a li{color:var(--muted)}.ast-a li b{color:var(--ink)}
+.ast-act{display:inline-block;margin-top:10px;padding:5px 12px;border-radius:99px;background:#fff;color:var(--brand);font-weight:700;font-size:12.5px;border:1px solid var(--line)}
+__JS__ .ast-q,__JS__ .ast-tool,__JS__ .ast-a{opacity:0}
+.in .ast-q{animation:pt-msg .5s cubic-bezier(.2,.7,.2,1) .2s both}.in .ast-tool{animation:pt-pop .5s cubic-bezier(.2,.7,.2,1) .9s both}.in .ast-a{animation:pt-msg .55s cubic-bezier(.2,.7,.2,1) 1.6s both}
+
 /* ---- sign in the way you unlock your phone */
 .sg{display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center;padding:clamp(24px,3.4vw,48px);border-radius:36px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--card)}
 .sg h2{font-size:clamp(26px,3.4vw,40px);letter-spacing:-.04em;margin-bottom:10px}
@@ -546,10 +561,10 @@ __JS__ .ml{opacity:0}.in .ml{animation:pt-note .55s cubic-bezier(.2,.7,.2,1) bot
 footer .cols>*{min-width:0}footer a{overflow-wrap:anywhere}
 @media (max-width:480px){footer .cols{grid-template-columns:minmax(0,1fr)}.price{font-size:34px}}
 @media (min-width:1600px){.wrap{max-width:1560px}.stage{max-width:1280px}}
-@media (max-width:980px){.emp{grid-template-columns:1fr;gap:28px}.suite{grid-template-columns:1fr}}
-@media (max-width:620px){.emp{padding:22px 18px}.emp-stage{min-height:560px;padding:16px}.emp-call{width:100%}.emp-wa{right:12px;bottom:126px;width:78%}.emp-ticket{left:12px;right:12px;width:auto;bottom:12px}.credit-grid.two-up{grid-template-columns:1fr}}
+@media (max-width:980px){.emp,.ast{grid-template-columns:1fr;gap:28px}.suite{grid-template-columns:1fr}}
+@media (max-width:620px){.ast{padding:22px 18px}.ast-stage{padding:14px}.emp{padding:22px 18px}.emp-stage{min-height:560px;padding:16px}.emp-call{width:100%}.emp-wa{right:12px;bottom:126px;width:78%}.emp-ticket{left:12px;right:12px;width:auto;bottom:12px}.credit-grid.two-up{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
-  __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note,.app,.say,.ml,.emp-line,.emp-wa .w,.emp-ticket{opacity:1!important}__JS__ .tube.draw,__JS__ .path .curve{stroke-dashoffset:0!important}}
+  __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note,.app,.say,.ml,.emp-line,.emp-wa .w,.emp-ticket,.ast-q,.ast-tool,.ast-a{opacity:1!important}__JS__ .tube.draw,__JS__ .path .curve{stroke-dashoffset:0!important}}
 `;
 
 /** Gives every class in the stylesheet (and in the markup, see `scoped`) the pt- prefix. */

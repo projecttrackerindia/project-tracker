@@ -22,7 +22,8 @@
 .cn-scopes button.on { border-color: var(--primary); background: var(--primary-soft); }
 .cn-scopes button.on svg { color: var(--primary); }
 .cn-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.cn-foot { margin: 0; font-size: 12px; display: flex; gap: 6px; align-items: center; justify-content: center; text-align: center; flex-wrap: wrap; }
+.cn-foot { margin: 0; font-size: 12px; text-align: center; line-height: 1.6; }
+.cn-foot svg { vertical-align: -1px; margin-right: 4px; }
 .cn-bad { display: flex; gap: 12px; color: var(--danger-text, var(--danger)); }
 .cn-bad p { margin: 4px 0 0; color: var(--text-2); }
 .cn-how ol { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }

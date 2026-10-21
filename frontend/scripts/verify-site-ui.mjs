@@ -38,9 +38,12 @@ try {
     };
     await visit('/', 'landing');
     await page.locator('.pt-emp-stage').waitFor();
+    await page.locator('.pt-ast-stage').waitFor();
     assert.ok(await page.locator('.pt-suite .pt-tile').count() === 3);
     await page.locator('.pt-emp').scrollIntoViewIfNeeded(); await page.waitForTimeout(3200);
     await page.locator('.pt-emp').screenshot({ path: path.join(out, `employee-${w}.png`) });
+    await page.locator('.pt-ast').scrollIntoViewIfNeeded(); await page.waitForTimeout(2600);
+    await page.locator('.pt-ast').screenshot({ path: path.join(out, `assist-${w}.png`) });
     await page.locator('.pt-suite').scrollIntoViewIfNeeded(); await page.waitForTimeout(2000);
     await page.locator('.pt-suite').screenshot({ path: path.join(out, `suite-${w}.png`) });
     await page.locator('.pt-hero').screenshot({ path: path.join(out, `hero-${w}.png`) });
@@ -53,7 +56,7 @@ try {
     checks.push(`pricing-${w}`);
     await visit('/features/', 'features');
     await page.locator('.pt-emp-stage').waitFor();
-    for (const p of ['/features/ai-employee/', '/features/operations/', '/features/doctracker/', '/features/meeting-notetaker/']) {
+    for (const p of ['/features/connect-ai/', '/features/ai-employee/', '/features/operations/', '/features/doctracker/', '/features/meeting-notetaker/']) {
       await visit(p, p.split('/')[2]);
       await page.locator('h1').first().waitFor();
     }
