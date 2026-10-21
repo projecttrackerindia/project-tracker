@@ -20,8 +20,13 @@ else
   gcloud sql databases create "$DB_NAME" --instance="$DB_INSTANCE" >/dev/null
 fi
 
+# PostgreSQL 17 tools, installed here (Cloud Shell's Docker Hub pulls can stall).
+PG=/usr/lib/postgresql/17/bin
+[ -x "$PG/pg_dump" ] || sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+export PGPASSWORD="$(cat "$STATE/db-password")"
+
 echo "== 1/4 Copying the database out of Railway"
-docker run --rm -v "$STATE:/s" postgres:17-alpine pg_dump --format=custom --no-owner --no-acl --dbname="$SRC_DB" --file=/s/db.dump
+"$PG/pg_dump" --format=custom --no-owner --no-acl --dbname="$SRC_DB" --file="$STATE/db.dump"
 ls -lh "$STATE/db.dump"
 
 echo "== 2/4 Loading it into Cloud SQL"
@@ -32,11 +37,10 @@ fi
 CONN=$(gcloud sql instances describe "$DB_INSTANCE" --format='value(connectionName)')
 "$STATE/cloud-sql-proxy" --port 6543 --token "$(gcloud auth print-access-token)" "$CONN" > "$STATE/proxy.log" 2>&1 &
 PROXY=$!; trap 'kill $PROXY 2>/dev/null || true' EXIT; sleep 4
-TABLES=$(docker run --rm --network host -e PGPASSWORD="$(cat "$STATE/db-password")" postgres:17-alpine psql -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" -tAc "select count(*) from information_schema.tables where table_schema='public'")
+TABLES=$("$PG/psql" -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" -tAc "select count(*) from information_schema.tables where table_schema='public'")
 if [ "$TABLES" != "0" ]; then echo "Cloud SQL already has $TABLES tables. To start over: gcloud sql databases delete $DB_NAME --instance=$DB_INSTANCE && gcloud sql databases create $DB_NAME --instance=$DB_INSTANCE" >&2; exit 1; fi
-docker run --rm --network host -v "$STATE:/s" -e PGPASSWORD="$(cat "$STATE/db-password")" postgres:17-alpine \
-  pg_restore --no-owner --no-acl --no-comments --no-publications --no-subscriptions --no-security-labels --exit-on-error -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" /s/db.dump
-docker run --rm --network host -e PGPASSWORD="$(cat "$STATE/db-password")" postgres:17-alpine psql -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" \
+"$PG/pg_restore" --no-owner --no-acl --no-comments --no-publications --no-subscriptions --no-security-labels --exit-on-error -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" "$STATE/db.dump"
+"$PG/psql" -h 127.0.0.1 -p 6543 -U "$DB_USER" -d "$DB_NAME" \
   -c 'select count(*) as organizations from "Tenants";' -c 'select count(*) as people from "Users";'
 
 echo "== 3/4 Uploaded files"
